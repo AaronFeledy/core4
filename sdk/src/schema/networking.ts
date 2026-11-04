@@ -437,7 +437,7 @@ export const AppRef = Schema.Struct({
   id: Schema.String,
   /**
    * Materialized app root (user app root, `<userDataRoot>/global/`, or
-   * `<userCacheRoot>/scratch/<id>/root/`).
+   * `<userDataRoot>/scratch/<id>/root/`).
    */
   root: AbsolutePath,
 });

@@ -146,7 +146,7 @@ A running MCP session retains the revision of the input declaration it advertise
 
 ## Refresh when the shape changes
 
-The first run in a fresh clone needs one `lando app:cache:refresh`. This explicitly rebuilds the full app plan and command index without starting services; it is not a metadata-only refresh. You do not need to start or rebuild services just to repair command discovery. After that:
+A missing command index on the host CLI rebuilds once automatically before dispatch or help when Lando already resolved the app source. You do not need a first-use `lando app:cache:refresh` only to discover commands, and you do not need to start or rebuild services just to repair discovery. After metadata changes, refresh explicitly:
 
 | You changed | Run |
 | --- | --- |
@@ -159,12 +159,12 @@ Unavailable command metadata produces `ToolingCommandUnavailableError`. Its `rea
 
 | `reason` | Next action |
 | --- | --- |
-| `missing-cache` | Run `lando app:cache:refresh` in this app |
+| `missing-cache` | The automatic rebuild failed. Run `lando app:cache:refresh` to see and repair the underlying error |
 | `stale-cache` | Refresh after the Landofile or script metadata changed |
 | `invalid-cache` | Refresh to replace an index this Lando version cannot decode |
 | `unknown-command` | Check the name and alias; a fresh index has no matching command |
 
-The error also carries `commandId`, `tool`, and `remediation`, with `staleReason` and `sourcePath` when available. Help does not run a planner, start a provider, or silently fall back to live discovery to repair this state. To inspect it, run:
+The error also carries `commandId`, `tool`, and `remediation`, with `staleReason` and `sourcePath` when available. Stale and invalid indexes still need an explicit refresh. Host-proxy calls do not rebuild. Help does not start a provider or fall back to live discovery. To inspect status, run:
 
 ```sh
 lando help --format=json
@@ -552,18 +552,14 @@ lando stamp abc1234
     </Step>
   </Scenario>
 
-  <Scenario id="repair-missing-command-cache" render={false} reason="A fresh clone gets precise read-only recovery before explicit cache refresh">
-    <Step name="prepare-uncached-app">
+  <Scenario id="repair-missing-command-cache" render={false} reason="Help rebuilds a missing tooling index without running the script body">
+    <Step name="prepare-app">
       <UseFixture name="declared-inputs" />
     </Step>
-    <Step name="refuse-uncached-command">
-      <Run command="lando greet dev --format=json" expectExit={1} />
-      <Verify errorTag="ToolingCommandUnavailableError" expect={{ regex: "missing-cache" }} />
-      <Verify file="declared-inputs/body-marker.txt" expect={{ regex: "^not-run\\n$" }} />
-    </Step>
-    <Step name="refresh-and-inspect-help">
-      <Run command="lando app:cache:refresh --format=json" />
+    <Step name="inspect-help-without-refresh">
+      <Run command="lando help --format=json" />
       <Verify command="lando help --format=json" expect={{ stdout: { regex: "\"toolingMetadata\":\\s*\\{\\s*\"status\":\\s*\"fresh\"" } }} />
+      <Verify file="declared-inputs/body-marker.txt" expect={{ regex: "^not-run\\n$" }} />
     </Step>
     <Step name="cleanup-command-cache">
       <Cleanup />

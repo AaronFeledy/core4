@@ -17,6 +17,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
   type ScratchAppService,
+  type StateStore,
 } from "@lando/sdk/services";
 
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
@@ -31,7 +32,6 @@ import {
 } from "@lando/engine/scratch-app/service";
 import { RedactionService } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { finishCommandProgress } from "../command-progress";
 import { withInheritedStdinRawMode } from "../exec-host-io";
 import type { ScratchRunOptions } from "./scratch-run-input";
@@ -83,23 +83,18 @@ export type ScratchRunServices =
   | ScratchAppService
   | ConfigService
   | FileSystem
-  | PrivateFileAccessService
+  | StateStore
   | RuntimeProviderRegistry;
 
 export interface ScratchRunDeps {
   readonly acquireWithPlan: typeof acquireScratchAppWithPlan;
-  readonly detach: (
-    id: string,
-  ) => Effect.Effect<void, ScratchAppError | ScratchAppNotFoundError, PrivateFileAccessService>;
+  readonly detach: (id: string) => Effect.Effect<void, ScratchAppError | ScratchAppNotFoundError, StateStore>;
   readonly readLandofile: typeof readScratchLandofile;
 }
 
 export const defaultScratchRunDeps: ScratchRunDeps = {
   acquireWithPlan: acquireScratchAppWithPlan,
-  detach: (id) =>
-    PrivateFileAccessService.pipe(
-      Effect.flatMap((privateFileAccess) => detachScratchApp(id, privateFileAccess)),
-    ),
+  detach: detachScratchApp,
   readLandofile: readScratchLandofile,
 };
 

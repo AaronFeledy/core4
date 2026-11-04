@@ -244,8 +244,8 @@ Global config is one ordered source stack: built-in defaults, `<userConfRoot>/co
 | Root | Purpose |
 |---|---|
 | `userConfRoot` | User-edited configuration |
-| `userCacheRoot` | Disposable caches and logs |
-| `userDataRoot` | Persistent Lando-managed data |
+| `userCacheRoot` | Regenerable caches, logs, and operation-scoped temporary files; never the sole authority for durable state or retained user data |
+| `userDataRoot` | Persistent Lando-managed data, including every durable record (§12.1) |
 | `systemPluginRoot` | Read-only system plugin search root (§9.3) |
 
 Per-root precedence is explicit runtime option or host `config`, root-specific environment variable, config files where applicable, then platform default. `userConfRoot` is fixed before reading global config and cannot relocate its own load; a `userConfRoot` key in `config.yml` or a drop-in is ignored. `systemPluginRoot` is never a `meta:plugin:add` destination.

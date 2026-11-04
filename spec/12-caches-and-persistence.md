@@ -11,6 +11,8 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 
 ### 12.1 Cache catalog
 
+`<userCacheRoot>` holds only regenerable caches, diagnostics, and operation-scoped temporary files (§7.5). Clearing it between operations MAY cost rebuild time or network access and MUST NOT lose ownership records, live-resource state, security floors such as the update-manifest replay floor (§17.6.1), or user data. Rows under `<userDataRoot>` are durable records listed here for their catalog identity.
+
 | Cache | Location | Encoding | Contract |
 |---|---|---|---|
 | `core-command` | embedded plus `<userCacheRoot>/command-cache.bin` | binary | Built-in command, alias, and docs metadata; invalidated by core version or clear. |
@@ -21,10 +23,9 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `remote-metadata` | `<userCacheRoot>/apps/<app-id>/remote-metadata.bin` | Effect Schema binary | Nonsecret translation snapshots keyed by source/config identity, resolved remote, environment, branch, and schema version, carrying revision/content digest (§7.4.2). Only explicit translation refresh, the initial refresh of pull-with-code or switch, and §8.8.13 init materialization MAY fetch and populate it, always under the final app identity; no TTL network refresh on routine lifecycle commands. |
 | `global-app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | The shared `app-plan` entry for the global `AppPlan` (§20.5), keyed by the reserved global identity and global-root fingerprint (`global-<root-fingerprint>`), not a separate `global/plan.bin` writer. Cross-app-readable; invalidated by global layers/config/contributions or lifecycle changes. |
 | `global-app-info` | `<userCacheRoot>/global/info.json` | JSON | Last known global `ServiceInfo[]`. |
-| `scratch-app-plan` | `<userCacheRoot>/scratch/<scratch-id>/plan.bin` | Effect Schema binary | Scratch `AppPlan`, tooling graphs, and expressions; removed atomically at destroy (§21.5). |
-| `scratch-app-info` | `<userCacheRoot>/scratch/<scratch-id>/info.json` | JSON | Last known scratch `ServiceInfo[]`. |
-| `scratch-build-results` | `<userCacheRoot>/scratch/<scratch-id>/build-results.bin` | binary | Scratch `BuildResult[]`, sharing content-addressed build keys with other app kinds. |
-| `scratch-registry` | `<userCacheRoot>/scratch/registry.bin` | binary | Locked, corruption-quarantined scratch registry (§21.11). |
+| `scratch-app-plan` | `<userDataRoot>/scratch/<scratch-id>/plan.bin` | binary `StateStore` envelope of the schema-encoded plan; corruption quarantined, version mismatch discarded | Scratch `AppPlan`, tooling graphs, and expressions; removed atomically at destroy (§21.5). |
+| `scratch-build-results` | `<userCacheRoot>/scratch-build-results.bin` | binary | Scratch `BuildResult[]`, sharing content-addressed build keys with other app kinds; a regenerable index, so it stays under the cache root. |
+| `scratch-registry` | `<userDataRoot>/scratch/registry.bin` | JSON `StateStore` envelope | Locked, corruption-quarantined scratch registry (§21.11). |
 | `service-info` | `<userCacheRoot>/apps/<app-id>/info.json` | JSON | Last known user-app `ServiceInfo[]`. |
 | `provider` | `<userCacheRoot>/provider-cache.json` | JSON | Provider availability and version metadata. |
 | `command-registry-manifest` | embedded generated module | generated object | Built-in `LandoCommandSpec` projection for native routing; build-derived only and MUST NOT duplicate plugin metadata (§17.2). |
@@ -34,13 +35,13 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered output keyed by template and canonical resolved variables. |
 | `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Canonical ids permitted through host-proxy `runLando` (§10.10). |
 | `mcp-allowlist` | `<userCacheRoot>/mcp-allowlist.bin` | binary | Default non-destructive MCP command allowlist, refined by configured allow/deny policy (§10.14). |
-| `tunnel-registry` | `<userCacheRoot>/tunnels/registry.bin` | binary | Locked detached-tunnel registry with redacted public summaries (§10.2.2). |
-| `file-sync-sessions` | `<userCacheRoot>/file-sync/sessions/` | opaque | The bundled file-sync engine's configured `MUTAGEN_DATA_DIRECTORY`: daemon session history that is durable state, not regenerable plan-cache metadata. Stop, rebuild, and plan-cache invalidation MUST preserve it; verified disposal at destroy retires the app's session state (§10.6.2, §12.4). Listed here for its location only. |
+| `tunnel-registry` | `<userDataRoot>/tunnels/registry.bin` | binary | Locked detached-tunnel registry with redacted public summaries (§10.2.2). |
+| `file-sync-sessions` | `<userDataRoot>/file-sync/sessions/` | opaque | The bundled file-sync engine's configured `MUTAGEN_DATA_DIRECTORY`: daemon session history that is durable state, not regenerable plan-cache metadata. Stop, rebuild, and plan-cache invalidation MUST preserve it; verified disposal at destroy retires the app's session state (§10.6.2, §12.4). Listed here for its location only. |
 | `build-results` | `<userCacheRoot>/apps/<app-id>/build-results.bin` | binary | Bounded build outcome index pointing to persistent transcripts (§6.13.5). |
 | `update` | `<userCacheRoot>/update-cache.json` | JSON | Plugin update-channel metadata. |
 | `tool-downloads` | `<userCacheRoot>/tool-downloads/<toolId>/<filename>` | raw binary | Checksum-keyed verified tool artifacts; matching pinned artifacts require no network (§10.3.4). |
 
-Plugin command metadata is not cached; it is projected from the plugin contribution graph on demand (§9.7). Router bootstrap validates known freshness metadata but MUST NOT parse Landofiles, resolve includes, import plugin modules, contact plugin sources, or initialize providers. Missing or stale app routing metadata omits app tooling and returns repair remediation rather than rebuilding on the hot path.
+Plugin command metadata is not cached; it is projected from the plugin contribution graph on demand (§9.7). The fresh-cache routing path validates known freshness metadata but MUST NOT parse Landofiles, resolve includes, import plugin modules, contact plugin sources, or initialize providers. On the CLI host, when app command-index metadata is missing and the app source is already resolved, dispatch and help MUST rebuild that index once through the same operation as `app:cache:refresh` before continuing (§8.7), loaded lazily off the fresh-cache path. Stale or undecodable metadata still omits app tooling and returns explicit refresh remediation without rebuilding. A failed missing-index rebuild reports the original missing-cache remediation. Host-proxy dispatch MUST NOT rebuild.
 
 ### 12.2 Cache encoding
 
@@ -67,12 +68,13 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
 | `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
-| `<userCacheRoot>/shell/<app-id>/history` | Host `app:shell` history: bounded, resolved secrets redacted before writes, skipped by `--no-history` (§8.2.3). |
+| `<userDataRoot>/shell/<app-id>/history` | Host `app:shell` history: bounded, resolved secrets redacted before writes, skipped by `--no-history` (§8.2.3). |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |
 | `<userCacheRoot>/logs/file-sync/` | Retained file-sync daemon and engine logs. |
-| `<userCacheRoot>/scratch/<scratch-id>/root/` | Materialized scratch app root, removed atomically at destroy. |
-| `<userCacheRoot>/scratch/<scratch-id>/lock` | Per-scratch lifecycle lock. |
-| `<userCacheRoot>/scratch/registry.bin`, `registry.lock` | Durable scratch registry and cross-process lock (§21.11). |
+| `<userCacheRoot>/transfer-staging/` | Operation-scoped `DataMover` staging files, removed when their transfer scope closes. |
+| `<userDataRoot>/scratch/<scratch-id>/root/` | Materialized scratch app root, removed atomically at destroy. |
+| `<userDataRoot>/scratch/<scratch-id>/lock` | Per-scratch lifecycle lock. |
+| `<userDataRoot>/scratch/registry.bin` | Durable scratch registry; its `StateStore` advisory lock serializes cross-process mutation (§21.11). |
 | `<userDataRoot>/plugins/`, `apps/<app-id>/plugins/` | User and app plugins. |
 | `<userDataRoot>/global/`, `global/.lando.dist.yml` | Global app root and generated contribution layer (§20.3). |
 | `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates, and checksum/version-pinned helper binaries. |
@@ -86,7 +88,9 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userDataRoot>/bin/mutagen[.exe]`, `bin/mutagen-agents/` | Isolated verified Mutagen host and guest binaries; never sourced from containers. |
 | `<userDataRoot>/run/file-sync/daemon.sock`, `daemon.pid` | Lando-owned file-sync daemon endpoint and orphan-detection PID; Windows uses the corresponding named pipe. |
 | `<userDataRoot>/plugins/@lando/file-sync-mutagen/sessions/mutagen.json` | Plugin-private ledger of the bundled process client (§12.7.3): durable session ownership and app drain/disposal receipts. Survives stop, rebuild, and plan-cache invalidation; verified disposal retires the app's entries (§10.6.2). |
-| `<userCacheRoot>/file-sync/sessions/` | Opaque embedded-Mutagen daemon history, the configured `MUTAGEN_DATA_DIRECTORY`. Durable, not a regenerable cache: stop, rebuild, and plan-cache invalidation MUST preserve it; uninstall owns final removal. |
+| `<userDataRoot>/file-sync/sessions/` | Opaque embedded-Mutagen daemon history, the configured `MUTAGEN_DATA_DIRECTORY`. Durable, not a regenerable cache: stop, rebuild, and plan-cache invalidation MUST preserve it; uninstall owns final removal. |
+| `<userDataRoot>/update-manifest-state.json` | Per-channel last accepted manifest version and failure summary; the replay floor that rejects an older signed manifest (§17.6.1). |
+| `<userDataRoot>/update-handoff/<token>.json` | One-shot owner-only receipt for a deferred Windows core replacement, surfaced once by a later run and then removed (§17.6.2). |
 | `<userDataRoot>/builds/<app-id>/...`, `builds/global/...`, `builds/scratch/...` | Per-step build transcripts, never telemetry; user/global retention follows build policy and scratch transcripts disappear at destroy (§6.13.6). |
 | `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json` | Owner-keyed `SnapshotInfo` catalog sidecars, one fail-closed version-1 JSON `StateStore` bucket per snapshot; no separate index (§10.11.2). |
 | `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.<format>` | Copy-mode snapshot archives beside their sidecars. Snapshots survive ordinary destroy; explicit purge and pruning, including automatic recovery retention, remove them (§10.11.2). |
@@ -160,7 +164,7 @@ Automatic translation MUST use local snapshots and stored same-identity nonsecre
 
 `StateStore.open` accepts `StateBucketSpec` and returns `StateBucket`. Named contracts are `StateRoot`, `StateCodec`, `StateBucketSpec`, `StateBucket`, `StateMigrator`, and tagged `StateStoreError`. A bucket maps to exactly one contained file; opening resolves and validates the path without reading.
 
-`StateRoot` selects user data/cache/config, an app root, or an explicit host path. `StateCodec` is `json`, `binary`, or a custom codec for a user-facing stable format. `StateBucketSpec` names root, optional namespace, single-segment key, Effect Schema, version, codec, lock policy, corruption/version policy, and optional default. `StateBucket` exposes `path`, `get`, `set`, `update`, `modify`, `remove`, and `exists`.
+`StateRoot` selects user data/cache/config, an app root, or an explicit host path. A bucket rooted in the user cache root is a cache bucket: its spec MUST declare a `default`, its corruption policy MUST be `discard` or `quarantine`, and a version mismatch MUST discard, so a cleared or damaged cache reads as absent (§12.1). The SDK types enforce this, and `open` rejects a violating spec with `StateStoreError` for untyped callers. Durable records use any other root. `StateCodec` is `json`, `binary`, or a custom codec for a user-facing stable format. `StateBucketSpec` names root, optional namespace, single-segment key, Effect Schema, version, codec, lock policy, corruption/version policy, and optional default. `StateBucket` exposes `path`, `get`, `set`, `update`, `modify`, `remove`, and `exists`.
 
 All mutations encode before atomic replace. Version mismatch either discards or runs `StateMigrator`. Corruption policy is quarantine, discard, or fail. Advisory locking serializes mutation across processes, is scope-acquired, and uses bounded stale-owner recovery. Resolved paths MUST remain under their root; traversal, absolute keys, and symlink escapes fail with `StateStoreError` reason `path`. Roots MUST come from §7.5.1. `StateStoreError` also distinguishes `io`, `decode`, `lock`, and `version` and carries operation, path, cause, and remediation.
 

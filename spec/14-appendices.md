@@ -85,8 +85,8 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - User slug `global` raises `AppIdReservedError`. `<userDataRoot>/global/` is excluded from cwd discovery. `globalServices:` regenerates the global `.lando.dist.yml`, starts through `meta:global:*`, and supports `<service>.global.internal` only with shared networking.
 - `AppFeature.requires.globalServices` auto-starts requirements or raises `GlobalServiceMissingError`. `apps:poweroff` includes global services unless `--keep-global`. In sidecar mode, app start after `apps:poweroff` or a host reboot starts the SSH agent sidecar and waits for its agent, restoring forwarding without `lando setup`; a sidecar failure warns and never aborts start. `meta:global:restart` and `meta:global:rebuild` revalidate router startup so a cleared watcher condition clears its persisted record (§20.6.5). The `@lando/proxy-traefik` router layer requires paired router/global contributions or raises `ProxyContributionPairError`.
 - `@lando/service-mailpit` contributes its service type, global service, and framework-aware mail env feature. `global:` alias prefix is reserved. Global-app volumes carry `dev.lando.app: "global"` and the standard storage labels (§6.5).
-- Fork scratch apps copy into `<userCacheRoot>/scratch/<scratch-id>/root/` with exclusions and distinct labels; recipe scratches skip `postInit` by default and honor `baked`/`cwd` isolation and `--mount-cwd`.
-- Scratch global storage rewrites to app scope unless `--share-global-storage`; routes use `ScratchHostnameSuffix` unless overridden. Foreground scope interruption destroys all scratch state; detached state persists in `<userCacheRoot>/scratch/registry.bin` and GC reconciles provider labels.
+- Fork scratch apps copy into `<userDataRoot>/scratch/<scratch-id>/root/` with exclusions and distinct labels; recipe scratches skip `postInit` by default and honor `baked`/`cwd` isolation and `--mount-cwd`.
+- Scratch global storage rewrites to app scope unless `--share-global-storage`; routes use `ScratchHostnameSuffix` unless overridden. Foreground scope interruption destroys all scratch state; detached state persists in `<userDataRoot>/scratch/registry.bin` and GC reconciles provider labels.
 - `apps:poweroff` destroys scratches unless `--keep-scratch`; keep flags compose. Scratch ids and user slugs are separate namespaces keyed by `AppRef.kind`; every consumer considers both kind and id.
 - Library scratch acquisition finalizes on scope close and remains steady-state under runtime reuse. The scratch contract suite covers copy, recipes, isolation, storage rewrite, routes, finalization, registry concurrency, and orphan GC.
 - Programmable execution remains opt-in and local-development-first: minimal host work needs no app/provider, borrowed apps survive closure, config-backed scratch retains its source, admission survives captured-context delegation, process outcomes remain truthful, and artifacts follow explicit lifetime ownership. Existing commands/hooks/budgets are unchanged (§22).
@@ -156,7 +156,7 @@ OCLIF was originally selected for its mature plugin manifest, lazy-loading, inst
 - **`AppRef.kind`** — `user | global | scratch` discriminator that partitions app identity.
 - **`ScratchAppService`** — Lazy service owning scratch acquisition, materialization, lifecycle, registry, and orphan GC.
 - **`ScratchHostnameSuffix` route filter** — Built-in scratch hostname collision-avoidance filter.
-- **Scratch registry** — `<userCacheRoot>/scratch/registry.bin`, reconciled with provider labels for list and GC.
+- **Scratch registry** — `<userDataRoot>/scratch/registry.bin`, reconciled with provider labels for list and GC.
 - **Scope** — Effect lifetime tracker that finalizes resources on close, failure, or interruption.
 - **Service base** — `l337` raw artifact or opinionated `lando` service.
 - **Service feature** — See **Feature**.

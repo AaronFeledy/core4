@@ -38,7 +38,7 @@ describe("library makeLandoRuntime paths surface", () => {
       expect(paths.managedFileLedger("app-one")).toBe(
         join(dataRoot, "managed-files", "app-one", "ledger.json"),
       );
-      expect(paths.scratchDir).toBe(join(cacheRoot, "scratch"));
+      expect(paths.scratchDir).toBe(join(dataRoot, "scratch"));
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
       await rm(cacheRoot, { recursive: true, force: true });

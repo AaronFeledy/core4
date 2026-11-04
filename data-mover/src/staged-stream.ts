@@ -17,7 +17,7 @@ export type StagedStream = {
 
 export type StageStreamInput<E, R> = {
   readonly body: Stream.Stream<Uint8Array, E, R>;
-  readonly scratchDir: string;
+  readonly transferStagingDir: string;
   readonly prefix: string;
   readonly expectedSha256?: string;
   readonly expectedSizeBytes?: number;
@@ -26,7 +26,7 @@ export type StageStreamInput<E, R> = {
 export const stageVerifiedStream = Effect.fnUntraced(function* <E, R>(
   input: StageStreamInput<E, R>,
 ): Effect.fn.Return<StagedStream, E | VerifiedStreamError, Scope.Scope | R> {
-  const path = join(input.scratchDir, `.lando-stage-${input.prefix}-${randomUUID()}`);
+  const path = join(input.transferStagingDir, `.lando-stage-${input.prefix}-${randomUUID()}`);
   yield* Effect.addFinalizer(() => Effect.promise(() => unlink(path).catch(() => undefined)));
   const verified = yield* persistVerifiedStream({
     body: input.body,

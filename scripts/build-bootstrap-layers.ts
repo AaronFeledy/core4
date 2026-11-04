@@ -166,7 +166,7 @@ const renderScratch = (): string =>
     "    globalAppRuntimeLayer,",
     "    routerRegistryLayer,",
     "    routerServiceLayer,",
-    "    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(providerBase)),",
+    "    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(providerBase)),",
     "    ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(providerBase)),",
     "    ScratchInitAppPortLayer.layer,",
     "  ).pipe(Layer.provideMerge(scratchBase));",

@@ -216,10 +216,12 @@ const makeLayer = (
     LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     initApp === undefined
       ? ScratchInitAppPortLayer.layer

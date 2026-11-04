@@ -109,6 +109,12 @@ export const managedFileLedgerPath = (
 export const globalAppRootPath = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
   joinFor(platform)(userDataRoot, "global");
 
+export const UPDATE_HANDOFF_NAMESPACE = "update-handoff";
+
+/** Durable deferred update receipts, discoverable before loading the runtime. */
+export const updateHandoffDir = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
+  joinFor(platform)(userDataRoot, UPDATE_HANDOFF_NAMESPACE);
+
 /**
  * Cache directory for immutable digest-named network-trust CA bundles used by
  * embedded Bun children (NODE_EXTRA_CA_CERTS / --cafile). Under userCacheRoot so
@@ -172,19 +178,17 @@ export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatfor
     snapshotsDir: j(userDataRoot, "snapshots"),
     ownerSnapshotsDir: (ownerKey: string) => j(userDataRoot, "snapshots", ownerKey),
     managedFileLedger: (appId: string) => managedFileLedgerPath(userDataRoot, appId, platform),
+    scratchDir: j(userDataRoot, "scratch"),
+    tunnelRunDir: j(userDataRoot, "run", "tunnels"),
+    shellHistoryFile: (appName: string, appRoot: string) =>
+      j(userDataRoot, "shell", `${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}`, "history"),
+    fileSyncSessionsDir: j(userDataRoot, "file-sync", "sessions"),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),
     toolDownloadsDir: (toolId: string) => j(userCacheRoot, "tool-downloads", toolId),
-    scratchDir: j(userCacheRoot, "scratch"),
-    scratchRegistryFile: j(userCacheRoot, "scratch", "registry.bin"),
-    scratchRegistryLockFile: j(userCacheRoot, "scratch", "registry.lock"),
-    tunnelRegistryFile: j(userCacheRoot, "tunnels", "registry.bin"),
-    tunnelRunDir: j(userDataRoot, "run", "tunnels"),
+    transferStagingDir: j(userCacheRoot, "transfer-staging"),
     appCacheDir,
     appPlanCacheFile: (appName: string, appRoot: string) => j(appCacheDir(appName, appRoot), "plan.bin"),
-    shellHistoryFile: (appName: string, appRoot: string) =>
-      j(userCacheRoot, "shell", `${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}`, "history"),
-    fileSyncSessionsDir: j(userCacheRoot, "file-sync", "sessions"),
     // systemPluginRoot-scoped
     systemPluginsDir: j(systemPluginRoot, "plugins"),
     // userConf-scoped

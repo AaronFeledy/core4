@@ -767,7 +767,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     ArchiveFormatError | DataTransferError | DataEndpointUnsupportedError,
     Scope.Scope
   >,
-  scratchDir: string,
+  transferStagingDir: string,
 ): Effect.fn.Return<DataTransferResult, DataMoverTransferError, Scope.Scope> {
   const target = spec.to;
   switch (target._tag) {
@@ -786,7 +786,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     case "hostArchive": {
       const staged = yield* stageVerifiedStream({
         body,
-        scratchDir,
+        transferStagingDir,
         prefix: "archive",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
@@ -820,7 +820,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       {
         const staged = yield* stageVerifiedStream({
           body,
-          scratchDir,
+          transferStagingDir,
           prefix: "service",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
@@ -871,7 +871,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         }
         const staged = yield* stageVerifiedStream({
           body,
-          scratchDir,
+          transferStagingDir,
           prefix: "volume",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
@@ -905,7 +905,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       {
         const staged = yield* stageVerifiedStream({
           body,
-          scratchDir,
+          transferStagingDir,
           prefix: "artifact",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
@@ -940,7 +940,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       const provider = yield* selectedProvider;
       const staged = yield* stageVerifiedStream({
         body,
-        scratchDir,
+        transferStagingDir,
         prefix: "command",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
@@ -1029,7 +1029,7 @@ export const makeDataMoverService = (
           selectedProvider,
           spec,
           body,
-          persistence.paths.scratchDir,
+          persistence.paths.transferStagingDir,
         );
         const adjusted = nativeServiceCopy ? { ...result, accelerated: true } : result;
         const progress: DataTransferProgress = {
@@ -1217,7 +1217,7 @@ export const makeDataMoverService = (
                     app: store.app,
                     store: store.store,
                   }),
-                  persistence.paths.scratchDir,
+                  persistence.paths.transferStagingDir,
                 )
               : undefined;
           const archiveIntegrity =
@@ -1358,7 +1358,7 @@ export const makeDataMoverService = (
         }
         const staged = yield* stageVerifiedStream({
           body: byteStreamFromHost(archivePath),
-          scratchDir: persistence.paths.scratchDir,
+          transferStagingDir: persistence.paths.transferStagingDir,
           prefix: "snapshot",
           expectedSha256: info.digest,
           expectedSizeBytes: info.sizeBytes,
@@ -1392,7 +1392,7 @@ export const makeDataMoverService = (
             path: absolutePath(staged.path),
             format: info.format ?? "tar",
           }),
-          persistence.paths.scratchDir,
+          persistence.paths.transferStagingDir,
         ).pipe(Effect.asVoid);
       }
       const targetGeneration = physicalVolumeGeneration(target);

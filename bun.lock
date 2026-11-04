@@ -205,6 +205,9 @@
         "effect": "catalog:",
         "yaml": "2.9.1",
       },
+      "devDependencies": {
+        "@lando/state-store": "workspace:*",
+      },
     },
     "plugins/lando3": {
       "name": "@lando/lando3",

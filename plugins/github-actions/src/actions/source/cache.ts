@@ -42,7 +42,8 @@ const openCache = Effect.fn("ActionSource.openCache")(function* (reference: Reso
       version: 1,
       mode: 0o600,
       lock: "advisory",
-      onCorrupt: "fail",
+      onCorrupt: "quarantine",
+      default: { selections: {} },
     })
     .pipe(Effect.mapError(() => sourceError("cache-failed", reference.source)));
 });

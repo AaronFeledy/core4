@@ -45,4 +45,4 @@ lando composer --version
 lando app:composer --version
 ```
 
-Both forms use the same route. The router reads a fresh app command cache before provider-backed execution starts. If the cache is stale or missing, the command names the fix: `lando app:cache:refresh`, `lando start`, or `lando rebuild`. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.
+Both forms use the same route. The router reads a fresh app command cache before provider-backed execution starts. A missing index on the host CLI rebuilds once automatically when the app source is already resolved. If the cache is stale or invalid, run `lando app:cache:refresh`; `lando start` and `lando rebuild` also rebuild it, but you do not need them only for discovery. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.

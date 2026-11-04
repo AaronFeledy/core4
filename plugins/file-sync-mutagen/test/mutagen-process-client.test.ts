@@ -101,7 +101,7 @@ const fake = (
     makeMutagenProcessClient({
       stateStore: store,
       binDir: "C:\\lando\\bin",
-      dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+      dataDir: "C:\\lando\\data\\file-sync\\sessions",
       dockerCliPath: "C:\\lando\\runtime\\docker.exe",
       dockerHost: "npipe:////./pipe/podman-lando",
       platform: "win32",
@@ -251,7 +251,7 @@ describe("Mutagen process client", () => {
     expect(create.args).toContain(`docker://${helper}/lando-data`);
     expect(create.args).toContain("--no-global-configuration");
     expect(create.args).toContain("--no-ignore-vcs");
-    expect(create.env.MUTAGEN_DATA_DIRECTORY).toBe("C:\\lando\\cache\\file-sync\\sessions");
+    expect(create.env.MUTAGEN_DATA_DIRECTORY).toBe("C:\\lando\\data\\file-sync\\sessions");
     expect(create.env.DOCKER_HOST).toBe("npipe:////./pipe/podman-lando");
     expect(create.env.MUTAGEN_DOCKER_PATH).toBe("C:\\lando\\runtime");
     expect(create.env.PATH?.split(";")[0]).toBe("C:\\lando\\runtime");
@@ -318,14 +318,14 @@ describe("Mutagen process client", () => {
         expect(failure.value.message).toContain(name);
         expect(failure.value.message).toContain("README.md");
         expect(failure.value.message).not.toContain("sensitive target details");
-        expect(failure.value.remediation).toContain("C:\\lando\\cache\\file-sync\\sessions");
+        expect(failure.value.remediation).toContain("C:\\lando\\data\\file-sync\\sessions");
       }
     }
     const listed = await Effect.runPromise(client.list);
     expect(listed).toHaveLength(1);
     expect(listed[0]?.conflictedPaths).toEqual(["README.md"]);
     expect(listed[0]?.detail).toContain(id);
-    expect(listed[0]?.detail).toContain("C:\\lando\\cache\\file-sync\\sessions");
+    expect(listed[0]?.detail).toContain("C:\\lando\\data\\file-sync\\sessions");
     expect(calls.some((call) => call.args[1] === "terminate")).toBe(false);
     expect(current()).toHaveLength(1);
     expect(await Effect.runPromise(hasDurableMutagenOwnership(stateStore, spec.app))).toBe(true);
@@ -603,7 +603,7 @@ describe("Mutagen process client", () => {
             name,
             spec: legacySpec,
             target: { containerId: helper, path: "/lando-data" },
-            dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+            dataDir: "C:\\lando\\data\\file-sync\\sessions",
             dockerHost: "npipe:////./pipe/podman-lando",
           },
         ],
@@ -650,7 +650,7 @@ describe("Mutagen process client", () => {
             name,
             spec: legacySpec,
             target: { containerId: helper, path: "/lando-data" },
-            dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+            dataDir: "C:\\lando\\data\\file-sync\\sessions",
             dockerHost: "npipe:////./pipe/podman-lando",
           },
         ],
@@ -763,7 +763,7 @@ describe("Mutagen process client", () => {
       name,
       spec,
       target: { containerId: helper, path: "/lando-data" },
-      dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+      dataDir: "C:\\lando\\data\\file-sync\\sessions",
       dockerHost: WINDOWS_LANDO_DOCKER_HOST,
     };
     await Effect.runPromise(
@@ -895,7 +895,7 @@ describe("Mutagen process client", () => {
         name,
         spec,
         target: { containerId: helper, path: "/lando-data" },
-        dataDir: "C:\\lando\\cache\\file-sync\\sessions",
+        dataDir: "C:\\lando\\data\\file-sync\\sessions",
         dockerHost: WINDOWS_LANDO_DOCKER_HOST,
       };
       await Effect.runPromise(
