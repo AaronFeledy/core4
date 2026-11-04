@@ -33,6 +33,8 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
+Before an import or seed changes anything, Lando reads the whole dump. An empty dump fails with `SqlDumpIncompleteError`, and so does a mysqldump, mariadb-dump, or pg_dump dump that ends before the tool's closing `Dump completed` or `database dump complete` comment, which means the tool stopped early. The database and its seed eligibility stay as they were, and no recovery snapshot is taken. SQL you wrote yourself has no such comment, so it isn't checked for truncation.
+
 MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
 Postgres exports include `DROP IF EXISTS` statements for the objects in the dump,
@@ -62,10 +64,12 @@ Pass `-` instead of a file name to send a dump through your shell. Run these on 
 
 ```sh
 lando db:export - > dump.sql
-lando db:export - | gzip > dump.sql.gz
+lando db:export - --compression=zstd | ssh backup-host 'cat > app.sql.zst'
 ```
 
-`db:export -` writes the uncompressed dump to stdout byte for byte, and progress stays on stderr. SQL Server writes its `.bak` backup the same way. Host compression doesn't apply to `-`, so `--compression-level` is rejected; pipe through `gzip` or `zstd` instead. Lando refuses to write a dump to a terminal, so redirect or pipe stdout. `--format=json` and `--format=yaml` need stdout for their result and are refused with `-`; export to a file when you need the structured result.
+`db:export -` writes the dump to stdout byte for byte, and progress stays on stderr. SQL Server writes its `.bak` backup the same way. The stream is uncompressed unless you pass `--compression=gzip` or `--compression=zstd`, which compresses on the host, so you don't need `gzip` or `zstd` installed; `--compression-level` tunes it. A file export takes its compression from the `.gz` or `.zst` suffix instead, so `--compression` with a file name is refused.
+
+Lando refuses to write a dump to a terminal, so redirect or pipe stdout. `--format=json` and `--format=yaml` need stdout for their result and are refused with `-`; export to a file when you need the structured result. To feed a named pipe, redirect into it, as in `lando db:export - > /tmp/dump.fifo`. A file export into an existing pipe or directory is refused before the dump starts, because the export would replace it.
 
 A dump that fails partway has already sent part of its bytes downstream, and Lando exits non-zero. In a pipeline, check the export's exit status before trusting the output, for example with `set -o pipefail` in bash. If the reader closes early, as `| head` does, Lando stops the dump and exits with status 141.
 
@@ -75,9 +79,27 @@ To import from stdin, pass `-` and `--yes`. Lando can't ask for confirmation bec
 lando db:import - --yes < dump.sql
 ```
 
-Lando saves stdin to a private temporary file before it touches the database, then imports it exactly like a dump file: gzip and zstd input is detected from its bytes, a recovery snapshot is taken first, and failures report the same errors. Make sure the host temp directory has room for the dump, plus its uncompressed size when the input is compressed. `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
+Lando saves stdin to a private temporary file, decompressing gzip or zstd input as it goes, then imports it exactly like a dump file: the same checks run, a recovery snapshot is taken first, and failures report the same errors. Make sure the host temp directory has room for the uncompressed dump. If the program feeding stdin dies partway, the dump it sent ends early, and the import fails before it changes anything; see [Export or import a dump](#export-or-import-a-dump). `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
 
 `-` works only when you run the `lando` CLI yourself. MCP tools and event commands can't use Lando's stdin or stdout for a dump, so they fail with `CommandStdioError`; pass a file path there.
+
+### Stream a dump on Windows
+
+Command Prompt passes dump bytes through unchanged, so the same commands work there:
+
+```bat
+lando db:export - > dump.sql
+lando db:import - --yes < dump.sql
+```
+
+Windows PowerShell 5.1 re-encodes a native command's output and input as text, which corrupts a dump. From PowerShell, hand the redirection to Command Prompt:
+
+```powershell
+cmd /d /c "lando db:export - > dump.sql"
+cmd /d /c "lando db:import - --yes < dump.sql"
+```
+
+On Windows, Lando can't stop an export while the program reading it has stopped reading but is still running. Ctrl+C usually stops that program too; if it doesn't, close it and Lando exits.
 
 ## Inspect a failed database command
 
@@ -190,6 +212,7 @@ lando db:reset --yes
     <Step name="help">
       <Run command="lando db:export --help" />
       <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />
+      <Verify command="lando db:export --help" expect={{ stdout: { regex: "or - for stdout" } }} />
     </Step>
   </Scenario>
 
@@ -198,6 +221,14 @@ lando db:reset --yes
       <UseFixture name="one-db" />
       <Run command="lando db:export - --format=json" expectExit={2} />
       <Verify errorTag="CommandStdioError" expect={{ regex: "stdout" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="export-compression-needs-stdout" render={false} reason="Regression for --compression on a file export">
+    <Step name="export-file">
+      <UseFixture name="one-db" />
+      <Run command="lando db:export dump.sql --compression=gzip --format=json" expectExit={2} />
+      <Verify errorTag="CommandInputValidationError" expect={{ regex: "--compression" }} />
     </Step>
   </Scenario>
 
