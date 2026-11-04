@@ -1,11 +1,13 @@
 import { renderPluginTopicHelp } from "./cold-path-output";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
+import { commandHelpInput } from "./help-command-input";
 import { typeableName } from "./help-names";
 import { redactHelpText } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
 import type { PluginCommandCatalog, PluginCommandDiagnostic } from "./plugin-command-catalog";
+import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 import { renderPluginOwnedCommandHelp } from "./plugin-owned-command-input";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 
@@ -46,6 +48,9 @@ export const tryPluginCommandHelp = async (
         plugin: row.pluginName,
         provenance: row.source,
         implementation: "validated",
+        ...(row.spec === undefined
+          ? {}
+          : { input: commandHelpInput(row.spec, pluginFlagDefinitions(row.spec)) }),
       },
       activeResultFormat,
     );
