@@ -83,13 +83,6 @@ const wholeLineTail = (tail: Uint8Array): Uint8Array => {
 const isAsciiWhitespace = (byte: number): boolean =>
   byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
 
-const lastContentIndex = (chunk: Uint8Array): number => {
-  for (let index = chunk.byteLength - 1; index >= 0; index -= 1) {
-    if (!isAsciiWhitespace(chunk[index] ?? 0x20)) return index;
-  }
-  return -1;
-};
-
 /**
  * Keeps the first bytes of a dump and the last bytes before any trailing whitespace, and follows
  * mongodump archive framing, so completeness is checked during the single read without buffering.
@@ -107,7 +100,7 @@ const trackDumpEdges = () => {
       archive.push(chunk);
       if (head.byteLength < EDGE_BYTES)
         head = concatBytes(head, chunk.subarray(0, EDGE_BYTES - head.byteLength));
-      const last = lastContentIndex(chunk);
+      const last = chunk.findLastIndex((byte) => !isAsciiWhitespace(byte));
       if (last === -1) {
         trailingWhitespace = lastBytes(concatBytes(trailingWhitespace, chunk));
         return;
@@ -204,11 +197,6 @@ const decompressError = (label: string, compression: Exclude<DumpCompression, "n
     remediation: `The ${compression} data is corrupt or cut short. Recreate the dump, then retry the import.`,
   });
 
-/**
- * Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0.
- * `sourceFailure` remembers a read error so it isn't mistaken for corrupt compression after it
- * passes through a decompressor.
- */
 type DumpSourceReader = {
   readonly read: () => Promise<
     | { readonly done: true; readonly value?: Uint8Array | undefined }
@@ -217,6 +205,11 @@ type DumpSourceReader = {
   readonly cancel: (reason?: unknown) => Promise<void>;
 };
 
+/**
+ * Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0.
+ * `sourceFailure` remembers a read error so it isn't mistaken for corrupt compression after it
+ * passes through a decompressor.
+ */
 const peekCompression = async (reader: DumpSourceReader) => {
   let sourceFailure: { readonly cause: unknown } | undefined;
   const read = async () => {

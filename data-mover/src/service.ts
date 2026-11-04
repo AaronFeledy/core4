@@ -1112,7 +1112,7 @@ export const makeDataMoverService = (
         Effect.gen(function* () {
           const startedAt = yield* Clock.currentTimeMillis;
           const fromEndpoint = events.redactText(endpointName(from));
-          const toEndpoint = events.redactText(endpointName({ _tag: "stream" }));
+          const toEndpoint = events.redactText("stream");
           const app = appFromEndpoint(from);
           const service = serviceFromEndpoint(from);
           const publishFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {

@@ -122,11 +122,11 @@ export const runExport = Effect.fn("Sql.export")(function* (
   });
   const destination = input.destination;
   if (destination._tag === "stdout") {
-    const from = yield* dumpSource();
+    const source = mover.read(yield* dumpSource());
     const body =
       input.compression === "none"
-        ? mover.read(from)
-        : compressDumpStream(mover.read(from), input.compression, input.compressionLevel);
+        ? source
+        : compressDumpStream(source, input.compression, input.compressionLevel);
     let sizeBytes = 0;
     yield* Stream.runForEach(body, (chunk) =>
       Effect.suspend(() => {

@@ -114,19 +114,6 @@ const assertReplaceableDestination = async (path: string): Promise<void> => {
   if (info !== undefined && !info.isFile()) throw notReplaceable();
 };
 
-const requireReplaceableDestination = (path: string): Effect.Effect<void, VerifiedStreamError> =>
-  Effect.tryPromise({
-    try: () => assertReplaceableDestination(path),
-    catch: (cause) =>
-      cause instanceof VerifiedStreamError
-        ? cause
-        : new VerifiedStreamError({
-            reason: "persist",
-            message: "Failed to inspect the destination.",
-            cause,
-          }),
-  });
-
 /**
  * Stream `body` into `destinationPath` atomically with checksum/size
  * verification. Requires an ambient `Scope`: a finalizer removes the temp file
@@ -139,7 +126,17 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
   const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
   if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
-  yield* requireReplaceableDestination(params.destinationPath);
+  yield* Effect.tryPromise({
+    try: () => assertReplaceableDestination(params.destinationPath),
+    catch: (cause) =>
+      cause instanceof VerifiedStreamError
+        ? cause
+        : new VerifiedStreamError({
+            reason: "persist",
+            message: "Failed to inspect the destination.",
+            cause,
+          }),
+  });
   const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
   const committed = yield* Ref.make(false);
 

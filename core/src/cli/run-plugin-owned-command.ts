@@ -89,12 +89,12 @@ const withGrantedStdio = Effect.fnUntraced(function* <A, E, R>(
   const baseStdout = renderer.output.stdout;
   const request = spec.stdio?.(input);
   const stdio = yield* grantCommandStdio({
+    ...grantOptions,
     command: spec.id,
     request,
     baseStdout,
     stdoutIsTTY: grantOptions.stdoutIsTTY === true,
     stdinIsTTY: grantOptions.stdinIsTTY === true,
-    ...(grantOptions.stdin === undefined ? {} : { stdin: grantOptions.stdin }),
     resultFormat: grantOptions.resultFormat ?? "text",
     rendererMode: grantOptions.rendererMode ?? "lando",
   });
@@ -169,13 +169,11 @@ const runPluginOwnedCommand = (
       const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
       const completion = spec.completion;
       const stdinSource = options.stdin ?? process.stdin;
-      const stdoutIsTTY =
-        options.io?.stdoutIsTTY === true || (options.io === undefined && process.stdout.isTTY === true);
-      const stdinIsTTY = stdinSource.isTTY === true;
       const stdio = {
         ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
-        stdoutIsTTY,
-        stdinIsTTY,
+        stdoutIsTTY:
+          options.io?.stdoutIsTTY === true || (options.io === undefined && process.stdout.isTTY === true),
+        stdinIsTTY: stdinSource.isTTY === true,
         resultFormat: activeResultFormat,
         rendererMode: activeRendererMode,
       };

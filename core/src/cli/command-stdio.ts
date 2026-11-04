@@ -69,11 +69,8 @@ export const commandStdioRequestError = (
   options: Omit<GrantCommandStdioOptions, "baseStdout" | "stdin">,
 ): CommandStdioError | undefined => {
   const request = options.request;
-  if (request === undefined || (request.stdin !== true && request.stdout !== true)) {
-    return undefined;
-  }
 
-  if (request.stdout === true) {
+  if (request?.stdout === true) {
     const routing = resolveOutputRouting({
       rendererMode: options.rendererMode,
       format: options.resultFormat,
@@ -88,7 +85,7 @@ export const commandStdioRequestError = (
     }
   }
 
-  if (request.stdin === true && options.stdinIsTTY) {
+  if (request?.stdin === true && options.stdinIsTTY) {
     return stdinTerminalError(options.command);
   }
   return undefined;

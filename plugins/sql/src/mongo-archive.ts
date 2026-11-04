@@ -79,7 +79,6 @@ export const makeMongoArchiveTracker = () => {
   let prefixLength = 0;
   let remaining = 0;
   let document: Uint8Array | undefined;
-  let documentOffset = 0;
 
   const finishHeader = (bytes: Uint8Array) => {
     const fields = readHeader(bytes);
@@ -124,8 +123,7 @@ export const makeMongoArchiveTracker = () => {
       while (valid && offset < chunk.length) {
         if (remaining > 0) {
           const count = Math.min(remaining, chunk.length - offset);
-          document?.set(chunk.subarray(offset, offset + count), documentOffset);
-          documentOffset += count;
+          document?.set(chunk.subarray(offset, offset + count), document.length - remaining);
           remaining -= count;
           offset += count;
           if (remaining === 0) {
@@ -157,7 +155,6 @@ export const makeMongoArchiveTracker = () => {
           continue;
         }
         remaining = length - 4;
-        documentOffset = 4;
         if (phase !== "body") {
           document = new Uint8Array(length);
           document.set(prefix);
