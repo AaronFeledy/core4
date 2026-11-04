@@ -2,14 +2,19 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HealthcheckPlan, ServiceName, probeTargetError } from "@lando/sdk/schema";
+import { PluginRegistry } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import * as PlanCache from "../../src/cache/app-plan.ts";
 import * as Cache from "../../src/cache/service.ts";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as Assemble from "../../src/planner/assemble.ts";
+import { resolveLandofileForPlanning } from "../../src/planner/event-set.ts";
+import { planningLintFindings } from "../../src/planner/lint-planning.ts";
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import * as Plugins from "../../src/plugins/registry.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 test("lint rejects a generated route hostname that fails final planning", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-lint-plan-"));
@@ -99,3 +104,38 @@ test("lint validates certificate intent without plan cache access or certificate
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["healthcheck", "readiness"] as const)(
+  "a final %s target failure is reported on that probe",
+  async (role) => {
+    const resolved = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* resolveLandofileForPlanning({
+          landofile: yield* compileTestLandofile(
+            { name: "probe-role", services: { web: { type: "nginx" } } },
+            "/srv/probe-role",
+          ),
+          pluginRegistry: yield* PluginRegistry,
+          configService: undefined,
+          fileSystem: undefined,
+          pathsService: undefined,
+        });
+      }).pipe(Effect.provide(Plugins.layer)),
+    );
+    const probe = Schema.decodeUnknownSync(HealthcheckPlan)({
+      kind: "command",
+      command: "true",
+      executionTarget: "host",
+      user: "www-data",
+      intervalSeconds: 1,
+      timeoutSeconds: 1,
+      retries: 1,
+    });
+    const error = probeTargetError(probe, Schema.decodeUnknownSync(ServiceName)("web"), role);
+    if (error === undefined) throw new Error("expected an unsupported probe target");
+
+    expect(planningLintFindings(resolved.resolution, error)).toMatchObject([
+      { rule: `landofile.${role}`, path: ["services", "web", role] },
+    ]);
+  },
+);

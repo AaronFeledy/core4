@@ -23,13 +23,10 @@ export const planningLintFindings = (
             attributeEffectiveLintIssue(landofile, { ...issue, rule: issue.rule ?? "landofile.validation" }),
           ),
     ),
-    Match.tag("HealthcheckTargetUnsupportedError", (failure) =>
-      finding({
-        ...details,
-        rule: "landofile.healthcheck",
-        path: ["services", failure.service, "healthcheck"],
-      }),
-    ),
+    Match.tag("HealthcheckTargetUnsupportedError", (failure) => {
+      const role = failure.role ?? "healthcheck";
+      return finding({ ...details, rule: `landofile.${role}`, path: ["services", failure.service, role] });
+    }),
     Match.tag("FileSyncSelectionError", () =>
       finding({ ...details, rule: "landofile.capability", path: [] }),
     ),

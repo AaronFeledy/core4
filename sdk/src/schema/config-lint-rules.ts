@@ -102,7 +102,7 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "An authored readiness `kind: http` or `kind: tcp`, which the healthcheck runner does not support.",
+      "An authored readiness `kind: http` or `kind: tcp`, or a final readiness execution target, which the healthcheck runner does not support.",
     examplePaths: ["services.web.readiness.kind"],
   },
   "landofile.event": {
