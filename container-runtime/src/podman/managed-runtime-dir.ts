@@ -303,6 +303,34 @@ export const prepareManagedRuntimeDir = (
     return privateDir;
   });
 
+/**
+ * Prepare the private dir for work on an existing runtime (uninstall, cleanup). A live service's
+ * user namespace lives in the dir it launched with, so that recorded dir is reused while it exists;
+ * once it is gone (reboot, purge) nothing runs there and the current resolution is safe.
+ */
+export const prepareLaunchedManagedRuntimeDir = (
+  runtimeDir: string,
+  seams: ManagedRuntimeDirSeams & {
+    readonly readFile?: (path: string) => Effect.Effect<string, unknown>;
+  } = {},
+): Effect.Effect<string, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    const recorded = yield* managedRuntimeDirForTeardown(runtimeDir, seams);
+    const lstatPath = seams.fs?.lstat ?? defaultManagedRuntimeDirFsSeam.lstat;
+    const recordedExists =
+      recorded !== undefined &&
+      lstatPath !== undefined &&
+      (yield* lstatPath(recorded).pipe(
+        Effect.as(true),
+        Effect.catch(() => Effect.succeed(false)),
+      ));
+    return yield* prepareManagedRuntimeDir(
+      runtimeDir,
+      seams,
+      recordedExists ? { privateRuntimeDir: recorded } : undefined,
+    );
+  });
+
 const parsePausePid = (raw: string): number | undefined => {
   const trimmed = raw.trim();
   if (!/^\d+$/u.test(trimmed)) return undefined;

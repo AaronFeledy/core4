@@ -11,6 +11,7 @@ import {
   type ManagedRuntimeDirFsSeam,
   type ManagedRuntimeDirStat,
   managedRuntimeDirForTeardown,
+  prepareLaunchedManagedRuntimeDir,
   prepareManagedRuntimeDir,
   resolveManagedRuntimeDir,
   terminateManagedPause,
@@ -326,6 +327,41 @@ describe("resolveManagedRuntimeDir / prepareManagedRuntimeDir", () => {
     const b = await run(resolveManagedRuntimeDir(runtimeDir, baseSeams(fs)));
     expect(a).toBe(b);
     expect(a).toBe(expectedUnderXdg);
+  });
+});
+
+describe("prepareLaunchedManagedRuntimeDir", () => {
+  const uid = 4242;
+  const runtimeDir = "/data/runtime";
+  const canonical = "/canonical/runtime";
+  const launchStatePath = "/data/runtime/run/podman.pid.launch.json";
+  const launched = join("/old/xdg", privateName(canonical));
+  const current = join(`/run/user/${uid}`, privateName(canonical));
+  const seams = (fs: ManagedRuntimeDirFsSeam) => ({
+    fs,
+    getuid: () => uid,
+    env: {},
+    readFile: (path: string) =>
+      path === launchStatePath
+        ? Effect.succeed(JSON.stringify({ pid: 1, env: { XDG_RUNTIME_DIR: launched } }))
+        : Effect.fail(missing),
+  });
+  const baseNodes = {
+    [`/run/user/${uid}`]: { kind: "dir", uid, mode: 0o700 },
+    [runtimeDir]: { kind: "dir", uid, mode: 0o755 },
+  } as const;
+
+  test("reuses the dir a still-present service launched with", async () => {
+    const fs = makeRuntimeFs(
+      { ...baseNodes, [launched]: { kind: "dir", uid, mode: 0o700 } },
+      { realpathMap: { [runtimeDir]: canonical }, mkdirUid: uid },
+    );
+    expect(await run(prepareLaunchedManagedRuntimeDir(runtimeDir, seams(fs)))).toBe(launched);
+  });
+
+  test("prepares the current dir once the launched one is gone", async () => {
+    const fs = makeRuntimeFs(baseNodes, { realpathMap: { [runtimeDir]: canonical }, mkdirUid: uid });
+    expect(await run(prepareLaunchedManagedRuntimeDir(runtimeDir, seams(fs)))).toBe(current);
   });
 });
 

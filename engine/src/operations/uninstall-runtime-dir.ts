@@ -11,7 +11,7 @@ import {
   type ManagedPauseSeams,
   type ManagedRuntimeDirSeams,
   managedRuntimeDirForTeardown,
-  prepareManagedRuntimeDir,
+  prepareLaunchedManagedRuntimeDir,
   terminateManagedPause,
 } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { runProbe } from "@lando/sdk/probe";
@@ -292,7 +292,7 @@ export interface RemoveRuntimeDirDeps {
   readonly terminate?: (runtimeDir: string) => Promise<void>;
   /**
    * Prepare (create/verify) the private runtime dir before unshare. Production
-   * default is prepareManagedRuntimeDir. Tests inject to avoid /run writes.
+   * default is prepareLaunchedManagedRuntimeDir. Tests inject to avoid /run writes.
    */
   readonly preparePrivateRuntimeDir?: (runtimeDir: string) => Promise<string>;
   /** Resolve the private runtime dir before the runtime tree is removed (tests inject). */
@@ -315,7 +315,7 @@ export const defaultRemoveRuntimeDir = async (
   const hostEnv = deps.hostEnv ?? process.env;
   const defaultPrepare = (runtimeDir: string): Promise<string> =>
     Effect.runPromise(
-      prepareManagedRuntimeDir(runtimeDir, {
+      prepareLaunchedManagedRuntimeDir(runtimeDir, {
         ...(deps.runtimeDirSeams ?? {}),
         providerId: "lando",
       }),

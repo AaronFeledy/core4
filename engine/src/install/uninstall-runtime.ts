@@ -11,7 +11,7 @@ import {
 } from "@lando/container-runtime/podman/managed-invocation";
 import {
   type ManagedRuntimeDirSeams,
-  prepareManagedRuntimeDir,
+  prepareLaunchedManagedRuntimeDir,
 } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { Effect, Result } from "effect";
@@ -100,7 +100,7 @@ const prepareManagedLinuxRuntime = async (
   seams: UninstallRuntimeSeams = {},
 ): Promise<UninstallRuntime> => {
   if (runtime.managedSpawn !== "linux" || runtime.runtimeDir === undefined) return runtime;
-  const prepare = seams.prepareRuntimeDir ?? prepareManagedRuntimeDir;
+  const prepare = seams.prepareRuntimeDir ?? prepareLaunchedManagedRuntimeDir;
   const prepared = await Effect.runPromise(
     Effect.result(
       prepare(runtime.runtimeDir, {
