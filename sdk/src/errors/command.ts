@@ -5,7 +5,7 @@ export class CommandStdioError extends Schema.TaggedError<CommandStdioError>()("
   message: Schema.String,
   command: Schema.String,
   stream: Schema.Literals(["stdin", "stdout"]),
-  reason: Schema.Literals(["terminal", "machine-output", "unavailable", "read"]),
+  reason: Schema.Literals(["terminal", "unavailable", "read"]),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

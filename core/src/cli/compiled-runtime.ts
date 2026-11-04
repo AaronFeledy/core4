@@ -110,6 +110,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
     readonly streamingMode?: "live";
     readonly preCommand?: boolean;
+    readonly payloadStdout?: boolean;
     readonly io?: RendererIO;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
     readonly tracer?: Tracer.Tracer;
@@ -162,6 +163,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
+    ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
     formatError: (

@@ -12,9 +12,8 @@ export const spec = {
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },
   args: {
-    file: { type: "string", required: true, description: "Dump file to import, or - for stdin." },
+    file: { type: "string", required: true, description: "Dump file to import.", stdio: "stdin" },
   },
-  stdio: (input) => (input.args.file === "-" ? { stdin: true } : undefined),
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("import", input)),

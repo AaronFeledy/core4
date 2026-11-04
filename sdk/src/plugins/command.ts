@@ -42,12 +42,14 @@ export interface ExecutableCommandArgSpec {
   readonly default?: ExecutableCommandValue | undefined;
   readonly options?: ReadonlyArray<string>;
   readonly multiple?: boolean;
-}
-
-/** Per-invocation declaration of process streams used for the command's data payload. */
-export interface ExecutableCommandStdioRequest {
-  readonly stdin?: boolean;
-  readonly stdout?: boolean;
+  /**
+   * The bare value `-` selects the CLI process stream as the command's data payload.
+   * Only non-multiple string/option args may declare this, once per stream per command.
+   * Only the CLI grants streams; MCP rejects `-`, and event/library calls never grant them.
+   * Commands must fail with CommandStdioError reason "unavailable" when a grant is absent.
+   * Granted stdout is byte-exact without payload redaction; write nothing else to stdout.
+   */
+  readonly stdio?: "stdin" | "stdout";
 }
 
 /**
@@ -99,11 +101,6 @@ export interface ExecutableCommandSpec<
   readonly flags?: Readonly<Record<string, ExecutableCommandFlagSpec>>;
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;
   readonly strict?: boolean;
-  /**
-   * Pure declaration of the data payload's process streams for this invocation.
-   * See {@link ExecutableCommandStdio} for grant restrictions and payload requirements.
-   */
-  readonly stdio?: (input: Input) => ExecutableCommandStdioRequest | undefined;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;
   readonly resultSchema: Schema.Codec<A, unknown>;
   readonly completion?: {

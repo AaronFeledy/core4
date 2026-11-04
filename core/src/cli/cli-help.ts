@@ -1,4 +1,5 @@
 import type { ToolingInputDeclaration } from "@lando/sdk/schema";
+import { argStdioDescription } from "./arg-stdio";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
@@ -25,7 +26,11 @@ export type CommandHelpSpec = {
   readonly topLevelAlias?: Parameters<typeof resolveTopLevelAliases>[0]["topLevelAlias"];
   readonly aliases?: Parameters<typeof resolveTopLevelAliases>[0]["aliases"];
   readonly args?: Readonly<
-    Record<string, OclifArgDefinition & Pick<OclifFlagDefinition, "description" | "options">>
+    Record<
+      string,
+      OclifArgDefinition &
+        Pick<OclifFlagDefinition, "description" | "options"> & { readonly stdio?: "stdin" | "stdout" }
+    >
   >;
   readonly flags?: Readonly<Record<string, OclifFlagDefinition>>;
   readonly examples?: ReadonlyArray<string>;
@@ -163,15 +168,15 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
   const flagLines = renderCommandHelpFlags(entry.spec).map((line) =>
     line === "FLAGS" ? style.heading(line) : line,
   );
-  const argRows = Object.entries(entry.spec.args ?? {}).map(
-    ([name, arg]) =>
-      `  ${name}${helpItemMeta({
-        ...(arg.description === undefined ? {} : { description: arg.description }),
-        ...(arg.options === undefined ? {} : { choices: arg.options }),
-        required: arg.required === true,
-        sensitive: false,
-      })}`,
-  );
+  const argRows = Object.entries(entry.spec.args ?? {}).map(([name, arg]) => {
+    const description = argStdioDescription(arg);
+    return `  ${name}${helpItemMeta({
+      ...(description === undefined ? {} : { description }),
+      ...(arg.options === undefined ? {} : { choices: arg.options }),
+      required: arg.required === true,
+      sensitive: false,
+    })}`;
+  });
   return [
     entry.spec.summary,
     "",

@@ -70,7 +70,7 @@ test.each([false, true])("#2040 plugin argument help preserves descriptions with
     namespace: "example",
     bootstrap: "plugins",
     args: {
-      file: { type: "string", description: "Dump file, or - for stdio.", required, multiple: true },
+      file: { type: "string", description: "Dump file.", required, stdio: "stdout" },
     },
     resultSchema: Schema.Void,
     run: () => Effect.void,
@@ -79,7 +79,15 @@ test.each([false, true])("#2040 plugin argument help preserves descriptions with
   const help = renderPluginOwnedCommandHelp(spec);
 
   expect(help.split("\nARGUMENTS\n")[1]?.split("\n\n")[0]).toBe(
-    `  file ${spec.args.file.description}${required ? " [required]" : ""}`,
+    `  file Dump file. Use - to write to stdout.${required ? " [required]" : ""}`,
   );
   expect(help).toContain(required ? "<FILE>" : "[FILE]");
+});
+
+test("command help derives stdin guidance even without a base description", () => {
+  const help = renderCommandHelp({
+    spec: { id: "example:read", summary: "Read a payload.", args: { file: { stdio: "stdin" } } },
+    status: { kind: "implemented" },
+  });
+  expect(help).toContain("\n  file Use - to read from stdin.\n");
 });

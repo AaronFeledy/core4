@@ -1,7 +1,7 @@
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import type { DeprecationNotice } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
-import { DateTime, Effect, Exit, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 import { commandDescriptorNotice } from "./command-catalog";
 
 import type { RendererIO } from "@lando/renderer/io";
@@ -17,7 +17,12 @@ import { Renderer } from "@lando/sdk/services";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { makeLandoRuntime } from "../runtime/layer";
-import { type CommandStdioStdin, commandStdioRequestError, grantCommandStdio } from "./command-stdio";
+import {
+  type CommandStdioStdin,
+  commandStdioRequest,
+  commandStdioRequestError,
+  grantCommandStdio,
+} from "./command-stdio";
 import {
   activeRendererMode,
   activeResultFormat,
@@ -28,7 +33,6 @@ import {
   setActiveCommandId,
 } from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
-import { interruptOnAbort } from "./interrupt-on-abort";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { tryPluginCommandHelp } from "./plugin-command-help";
 import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
@@ -38,6 +42,7 @@ export {
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "./plugin-owned-command-input";
+import { CommandPayloadStdout } from "./command-payload-stdout";
 import type { MalformedCliFlagValueError, UnknownCliFlagError } from "./flag-value-validation";
 import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
@@ -80,14 +85,15 @@ const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOw
 });
 
 const withGrantedStdio = Effect.fnUntraced(function* <A, E, R>(
-  spec: Pick<ExecutableCommandSpec<A, E, R>, "id" | "stdio" | "run">,
+  spec: Pick<ExecutableCommandSpec<A, E, R>, "id" | "args" | "run">,
   input: ExecutableCommandInput,
   grantOptions: PluginOwnedCommandEffectOptions,
 ): Effect.fn.Return<A, E | CommandStdioError, R | Renderer> {
   const renderer = yield* Renderer;
+  const payloadStdout = yield* Effect.serviceOption(CommandPayloadStdout);
   // Capture base stdout before the redacted wrapper so granted payload bytes stay exact.
-  const baseStdout = renderer.output.stdout;
-  const request = spec.stdio?.(input);
+  const baseStdout = payloadStdout._tag === "Some" ? payloadStdout.value : renderer.output.stdout;
+  const request = commandStdioRequest(spec, input.args);
   const stdio = yield* grantCommandStdio({
     ...grantOptions,
     command: spec.id,
@@ -105,7 +111,7 @@ const withGrantedStdio = Effect.fnUntraced(function* <A, E, R>(
 export const pluginOwnedCommandEffect = <A, E, R>(
   spec: Pick<
     ExecutableCommandSpec<A, E, R>,
-    "id" | "flags" | "args" | "strict" | "run" | "render" | "redactionTokens" | "completion" | "stdio"
+    "id" | "flags" | "args" | "strict" | "run" | "render" | "redactionTokens" | "completion"
   >,
   argv: ReadonlyArray<string>,
   renderResult: boolean,
@@ -145,10 +151,15 @@ export const pluginOwnedCommandEffect = <A, E, R>(
   );
 };
 
-const renderPluginOwnedPreCommandFailure = async (error: unknown, io?: RendererIO): Promise<void> => {
+const renderPluginOwnedPreCommandFailure = async (
+  error: unknown,
+  io?: RendererIO,
+  payloadStdout = false,
+): Promise<void> => {
   await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
     failureExitCode: () => 2,
     preCommand: true,
+    payloadStdout,
     ...(io === undefined ? {} : { io }),
   });
 };
@@ -161,12 +172,13 @@ const runPluginOwnedCommand = (
   runWithProcessAbortSignal(
     async (signal) => {
       await import("../runtime/bundled-plugins");
+      const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+      const request = commandStdioRequest(spec, parsed.args);
       const flagError = pluginOwnedCliFlagError(spec, argv);
       if (flagError !== undefined) {
-        await renderPluginOwnedPreCommandFailure(flagError, options.io);
+        await renderPluginOwnedPreCommandFailure(flagError, options.io, request.stdout === true);
         return;
       }
-      const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
       const completion = spec.completion;
       const stdinSource = options.stdin ?? process.stdin;
       const stdio = {
@@ -177,24 +189,20 @@ const runPluginOwnedCommand = (
         resultFormat: activeResultFormat,
         rendererMode: activeRendererMode,
       };
-      // A plugin parser may be async, so validation stays interruptible before the runtime boots.
-      const validated = await Effect.runPromiseExit(
-        interruptOnAbort(validateEventCommandInput(spec, parsed), signal),
-      );
-      // The process signal handler owns the exit status, as it does for other pre-runtime stages.
       if (signal.aborted) return;
-      // A refused stdio request depends only on the invocation's streams and output format, so it
-      // fails before the app runtime boots. Invalid input still fails inside the command lifecycle.
-      const refusal = Exit.isSuccess(validated)
-        ? commandStdioRequestError({ command: spec.id, request: spec.stdio?.(validated.value), ...stdio })
-        : undefined;
+      // Derive refusals from argv alone, without invoking plugin parsers before the lifecycle.
+      const refusal = commandStdioRequestError({
+        command: spec.id,
+        request,
+        ...stdio,
+      });
       if (refusal !== undefined) {
-        await renderPluginOwnedPreCommandFailure(refusal, options.io);
+        await renderPluginOwnedPreCommandFailure(refusal, options.io, request.stdout === true);
         return;
       }
       let normalizedInput: ExecutableCommandInput;
       const operation = Effect.gen(function* () {
-        normalizedInput = yield* validated;
+        normalizedInput = yield* validateEventCommandInput(spec, parsed);
         if (options.deprecation !== undefined) {
           const service = yield* Effect.serviceOption(DeprecationService);
           if (service._tag === "Some")
@@ -210,6 +218,7 @@ const runPluginOwnedCommand = (
       const cwd = await Effect.runPromise(discoveryCwd());
       await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap, cwd), () => undefined, {
         ...compiledPluginOptions(spec, options),
+        payloadStdout: request.stdout === true,
         signal,
         ...(completion === undefined
           ? {}
@@ -259,7 +268,12 @@ const dispatchPluginOwnedCommand = async (
   if (await rejectUnsupportedResultFormat(spec.id, undefined)) return "dispatched";
   const flagError = pluginOwnedCliFlagError(spec, argv);
   if (flagError !== undefined) {
-    await renderPluginOwnedPreCommandFailure(flagError);
+    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+    await renderPluginOwnedPreCommandFailure(
+      flagError,
+      undefined,
+      commandStdioRequest(spec, parsed.args).stdout === true,
+    );
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";

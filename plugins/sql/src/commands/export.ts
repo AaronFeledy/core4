@@ -30,9 +30,8 @@ export const spec = {
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },
   args: {
-    file: { type: "string", description: "Destination dump file, or - for stdout." },
+    file: { type: "string", description: "Destination dump file.", stdio: "stdout" },
   },
-  stdio: (input) => (input.args.file === "-" ? { stdout: true } : undefined),
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("export", input)),

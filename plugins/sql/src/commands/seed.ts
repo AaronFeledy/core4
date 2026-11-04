@@ -15,9 +15,8 @@ export const spec = {
     "from-service": { type: "string", description: "Database service in the source app." },
   },
   args: {
-    file: { type: "string", required: false, description: "Dump file to seed from, or - for stdin." },
+    file: { type: "string", required: false, description: "Dump file to seed from.", stdio: "stdin" },
   },
-  stdio: (input) => (input.args.file === "-" ? { stdin: true } : undefined),
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("seed", input)),

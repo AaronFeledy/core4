@@ -1,21 +1,30 @@
 import { CommandStdioError } from "@lando/sdk/errors";
-import type { ExecutableCommandStdio, ExecutableCommandStdioRequest } from "@lando/sdk/plugins";
+import type { ExecutableCommandSpec, ExecutableCommandStdio } from "@lando/sdk/plugins";
 import { Effect, Stream } from "effect";
 
 import { cancellableTerminalStdin } from "./commands/terminal-stdin";
 import type { ResultFormat } from "./format-flags";
-import { resolveOutputRouting } from "./output-routing";
 import type { RendererMode } from "./renderer-selection";
 
 export type CommandStdioStdin = Parameters<typeof cancellableTerminalStdin>[0] & {
   readonly isTTY?: boolean;
 };
 
+export const commandStdioRequest = (
+  spec: Pick<ExecutableCommandSpec, "args">,
+  args: Readonly<Record<string, unknown>>,
+): { readonly stdin?: boolean; readonly stdout?: boolean } =>
+  Object.fromEntries(
+    Object.entries(spec.args ?? {})
+      .filter(([name, arg]) => arg.stdio !== undefined && args[name] === "-")
+      .map(([, arg]) => [arg.stdio, true]),
+  );
+
 export interface GrantCommandStdioOptions {
   readonly command: string;
-  readonly request: ExecutableCommandStdioRequest | undefined;
+  readonly request: ReturnType<typeof commandStdioRequest> | undefined;
   /** Base `Renderer.output.stdout` captured before the redacted wrapper. */
-  readonly baseStdout: (chunk: string | Uint8Array) => Effect.Effect<void>;
+  readonly baseStdout: (chunk: Uint8Array) => Effect.Effect<void>;
   readonly stdoutIsTTY: boolean;
   readonly stdinIsTTY: boolean;
   readonly stdin?: CommandStdioStdin;
@@ -27,15 +36,6 @@ export const commandStdioExitCode = (error: unknown): number | undefined => {
   if (!(error instanceof CommandStdioError)) return undefined;
   return error.reason === "read" ? 1 : 2;
 };
-
-const stdoutMachineOutputError = (command: string): CommandStdioError =>
-  new CommandStdioError({
-    message: `Command ${command} cannot write its data payload when the result format uses stdout for an envelope or frames.`,
-    command,
-    stream: "stdout",
-    reason: "machine-output",
-    remediation: "Use --format=text, or write the payload to a file instead of -.",
-  });
 
 const stdoutTerminalError = (command: string): CommandStdioError =>
   new CommandStdioError({
@@ -71,15 +71,6 @@ export const commandStdioRequestError = (
   const request = options.request;
 
   if (request?.stdout === true) {
-    const routing = resolveOutputRouting({
-      rendererMode: options.rendererMode,
-      format: options.resultFormat,
-      declaresStreaming: false,
-      live: false,
-    });
-    if (routing.stdout === "envelope" || routing.stdout === "frames") {
-      return stdoutMachineOutputError(options.command);
-    }
     if (options.stdoutIsTTY) {
       return stdoutTerminalError(options.command);
     }

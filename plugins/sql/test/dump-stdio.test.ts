@@ -39,12 +39,9 @@ describe("db dump stdio", () => {
       stdio: { stdin: Stream.empty },
     };
     // When / Then
-    expect(exportSpec.stdio?.(exportInput)).toEqual({ stdout: true });
-    expect(importSpec.stdio?.(importInput)).toEqual({ stdin: true });
-    expect(seedSpec.stdio?.({ argv: [], parsedArgv: ["-"], flags: {}, args: { file: "-" } })).toEqual({
-      stdin: true,
-    });
-    expect(exportSpec.stdio?.({ ...exportInput, args: { file: "dump.sql" } })).toBeUndefined();
+    expect(exportSpec.args.file.stdio).toBe("stdout");
+    expect(importSpec.args.file.stdio).toBe("stdin");
+    expect(seedSpec.args.file.stdio).toBe("stdin");
     expect(dbInputFromCommand("export", exportInput).stdio?.stdout).toBe(exportInput.stdio.stdout);
     expect(dbInputFromCommand("import", importInput).stdio?.stdin).toBe(importInput.stdio.stdin);
   });

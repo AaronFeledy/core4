@@ -8,6 +8,7 @@ import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
 import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { setActiveRendererMode, setActiveResultFormat } from "../../src/cli/compiled-runtime.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
@@ -117,6 +118,64 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
 };
 
 describe("plugin-owned command dispatch", () => {
+  test("refuses terminal stdout from argv before invoking a plugin flag parser", async () => {
+    let parsed = false;
+    let ran = false;
+    const spec: ExecutableCommandSpec = {
+      id: "fixture:dump",
+      summary: "Dump a payload.",
+      namespace: "fixture",
+      bootstrap: "plugins",
+      args: { file: { type: "string", stdio: "stdout" } },
+      flags: {
+        value: {
+          type: "string",
+          parse: (value) => {
+            parsed = true;
+            return value;
+          },
+        },
+      },
+      resultSchema: Schema.Void,
+      run: () =>
+        Effect.sync(() => {
+          ran = true;
+        }),
+    };
+    const catalog = createPluginCommandCatalog(undefined, () =>
+      Effect.succeed({
+        commands: [
+          {
+            id: spec.id,
+            descriptor: { id: spec.id, summary: spec.summary ?? "" },
+            load: async () => spec,
+            pluginName: "fixture",
+            source: "explicit",
+          },
+        ],
+        plugins: [],
+        globalPlugins: [],
+        certificateAuthorities: [],
+        hostContext: Context.empty(),
+      }),
+    );
+    setActiveResultFormat("json");
+    setActiveRendererMode("plain");
+    const stdoutTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    try {
+      expect(await tryPluginOwnedCommand(spec.id, ["-", "--value=x"], undefined, catalog)).toBe(true);
+      expect(process.exitCode).toBe(2);
+      expect(parsed).toBe(false);
+      expect(ran).toBe(false);
+    } finally {
+      if (stdoutTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+      else Object.defineProperty(process.stdout, "isTTY", stdoutTTY);
+      setActiveResultFormat("text");
+      setActiveRendererMode("lando");
+      process.exitCode = 0;
+    }
+  });
   test("interrupts a pending async flag parser before the command runs", async () => {
     // Given a plugin command whose flag parser never settles.
     const parsing = Promise.withResolvers<void>();

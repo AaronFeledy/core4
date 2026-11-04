@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { Effect } from "effect";
+import { argStdioDescription } from "../core/src/cli/arg-stdio.ts";
 import { buildCommandCatalog, commandDescriptorAliases } from "../core/src/cli/command-catalog.ts";
 import { loadPluginSpec } from "../core/src/cli/event-command-target.ts";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "../core/src/cli/generated/bundled-command-descriptors.ts";
@@ -25,6 +26,7 @@ const UNIVERSAL_FLAGS = new Set(["format", "json"]);
 interface ManifestArg {
   readonly name?: string;
   readonly description?: string;
+  readonly stdio?: "stdin" | "stdout";
 }
 
 interface ManifestFlag {
@@ -104,7 +106,7 @@ const renderArgs = (command: ManifestCommand): ReadonlyArray<string> => {
   if (args.length === 0) return [];
   const lines = ["", "Arguments:", "", "| Argument | Description |", "| --- | --- |"];
   for (const arg of args.sort((left, right) => left.name.localeCompare(right.name))) {
-    lines.push(`| \`${escapeCell(arg.name)}\` | ${escapeCell(arg.description ?? "")} |`);
+    lines.push(`| \`${escapeCell(arg.name)}\` | ${escapeCell(argStdioDescription(arg) ?? "")} |`);
   }
   return lines;
 };

@@ -7,7 +7,7 @@ import { CommandInputValidationError, CommandStdioError, ToolingCommandLookupErr
 describe("CommandStdioError", () => {
   test("preserves stream refusal and read diagnostics through the public schema", () => {
     for (const stream of ["stdin", "stdout"] as const) {
-      for (const reason of ["terminal", "machine-output", "unavailable", "read"] as const) {
+      for (const reason of ["terminal", "unavailable", "read"] as const) {
         const payload = {
           _tag: "CommandStdioError",
           message: "Cannot use the requested data stream.",
@@ -29,6 +29,7 @@ describe("CommandStdioError", () => {
   test.each([
     { stream: "stderr", reason: "terminal", remediation: "Retry." },
     { stream: "stdin", reason: "write", remediation: "Retry." },
+    { stream: "stdout", reason: "machine-output", remediation: "Retry." },
     { stream: "stdin", reason: "read", remediation: " " },
   ])("rejects invalid stdio diagnostics %#", (fields) => {
     const decoded = Schema.decodeUnknownResult(CommandStdioError)({

@@ -10,7 +10,7 @@ import type { ExecutableCommandInput, ExecutableCommandSpec } from "@lando/sdk/p
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 
-import { grantCommandStdio } from "../../src/cli/command-stdio.ts";
+import { commandStdioRequest, grantCommandStdio } from "../../src/cli/command-stdio.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { pluginOwnedCommandEffect } from "../../src/cli/run-plugin-owned-command.ts";
 
@@ -52,7 +52,7 @@ const capturingRenderer = (output: { stdout: string; stderr: string }) =>
 
 const stdioSpec = <E = never, R = never>(
   id: string,
-  body: Partial<ExecutableCommandSpec<void, E, R>> & Pick<ExecutableCommandSpec<void, E, R>, "run" | "stdio">,
+  body: Partial<ExecutableCommandSpec<void, E, R>> & Pick<ExecutableCommandSpec<void, E, R>, "run">,
 ): ExecutableCommandSpec<void, E, R> => ({
   id,
   namespace: "db",
@@ -70,9 +70,25 @@ afterEach(() => {
 });
 
 describe("grantCommandStdio", () => {
-  test("refuses stdout when routing is envelope or frames (machine-output)", async () => {
-    const base = capturingRenderer({ stdout: "", stderr: "" });
-    const exit = await Effect.runPromiseExit(
+  test("derives requests only for bare dash values on marked positional args", () => {
+    const spec = {
+      args: {
+        source: { type: "string", stdio: "stdin" },
+        destination: { type: "option", stdio: "stdout" },
+        ordinary: { type: "string" },
+      },
+    } as const;
+    expect(commandStdioRequest(spec, { source: "-", destination: "-" })).toEqual({
+      stdin: true,
+      stdout: true,
+    });
+    expect(commandStdioRequest(spec, { source: "./-", destination: "dump.sql", ordinary: "-" })).toEqual({});
+    expect(commandStdioRequest(spec, {})).toEqual({});
+  });
+  test("grants stdout when routing is machine output", async () => {
+    const output = { stdout: "", stderr: "" };
+    const base = capturingRenderer(output);
+    const granted = await Effect.runPromise(
       grantCommandStdio({
         command: "db:export",
         request: { stdout: true },
@@ -83,15 +99,9 @@ describe("grantCommandStdio", () => {
         rendererMode: "lando",
       }),
     );
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const error = Cause.squash(exit.cause);
-      expect(error).toBeInstanceOf(CommandStdioError);
-      if (error instanceof CommandStdioError) {
-        expect(error.reason).toBe("machine-output");
-        expect(error.stream).toBe("stdout");
-      }
-    }
+    if (granted?.stdout === undefined) throw new Error("expected stdout grant");
+    await Effect.runPromise(granted.stdout(bytes("dump-bytes")));
+    expect(output).toEqual({ stdout: "dump-bytes", stderr: "" });
   });
 
   test("allows --renderer=json with text format (routing stays human)", async () => {
@@ -144,29 +154,41 @@ describe("grantCommandStdio", () => {
 });
 
 describe("pluginOwnedCommandEffect stdio grants", () => {
-  test("refuses before run when stdout is requested under a machine format", async () => {
-    let ran = false;
-    const spec = stdioSpec("db:export", {
-      stdio: () => ({ stdout: true }),
-      run: () =>
-        Effect.sync(() => {
-          ran = true;
-        }),
-    });
-    const exit = await Effect.runPromiseExit(
+  test("preserves granted payload bytes and routes a success envelope to stderr", async () => {
+    const io = createBufferedRendererIO();
+    const resultSchema = Schema.Struct({ bytes: Schema.Number });
+    const spec: ExecutableCommandSpec<typeof resultSchema.Type, never, never> = {
+      id: "fixture:dump",
+      namespace: "fixture",
+      bootstrap: "plugins",
+      resultSchema,
+      args: { file: { type: "string", stdio: "stdout" } },
+      run: (input) => {
+        const write = input.stdio?.stdout;
+        if (write === undefined) throw new Error("expected stdout grant");
+        return Effect.as(write(bytes("dump\u0000\r\nsecret-bytes")), { bytes: 19 });
+      },
+    };
+    await runWithRendererHandling(
       pluginOwnedCommandEffect(spec, ["-"], false, {
         resultFormat: "json",
         stdoutIsTTY: false,
         stdinIsTTY: false,
-      }).pipe(Effect.provideService(Renderer, capturingRenderer({ stdout: "", stderr: "" }))),
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: "json",
+        payloadStdout: true,
+        resultSchema,
+        command: spec.id,
+        io,
+        setExitCode: () => {},
+        formatError: () => "unexpected failure",
+      },
     );
-    expect(ran).toBe(false);
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const error = Cause.squash(exit.cause);
-      expect(error).toBeInstanceOf(CommandStdioError);
-      if (error instanceof CommandStdioError) expect(error.reason).toBe("machine-output");
-    }
+    expect(io.stdoutBytes()).toEqual(bytes("dump\u0000\r\nsecret-bytes"));
+    expect(JSON.parse(io.stderr())).toMatchObject({ ok: true, command: spec.id, result: { bytes: 19 } });
   });
 
   test("granted stdout writes secret bytes exact while ordinary renderer output still redacts", async () => {
@@ -174,7 +196,7 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
     const output = { stdout: "", stderr: "" };
     const redaction = makeRedactionService();
     const spec = stdioSpec("db:export", {
-      stdio: () => ({ stdout: true }),
+      args: { file: { type: "string", stdio: "stdout" } },
       run: (input: ExecutableCommandInput) =>
         Effect.gen(function* () {
           yield* (yield* RedactionService).registerValues([secret]);
@@ -206,7 +228,7 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
     const stdin = new PassThrough();
     let received = "";
     const spec = stdioSpec("db:import", {
-      stdio: () => ({ stdin: true }),
+      args: { file: { type: "string", stdio: "stdin" } },
       run: (input: ExecutableCommandInput) =>
         Effect.gen(function* () {
           const stream = input.stdio?.stdin;
@@ -266,7 +288,7 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
       });
     });
     const spec = stdioSpec("db:import", {
-      stdio: () => ({ stdin: true }),
+      args: { file: { type: "string", stdio: "stdin" } },
       run: (input: ExecutableCommandInput) =>
         Effect.gen(function* () {
           const stream = input.stdio?.stdin;
@@ -301,7 +323,6 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
 describe("CommandStdioError exit codes at the renderer boundary", () => {
   test.each([
     ["terminal", 2],
-    ["machine-output", 2],
     ["unavailable", 2],
     ["read", 1],
   ] as const)("maps reason %s to exit %d", async (reason, expected) => {

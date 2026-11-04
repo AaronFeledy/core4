@@ -1,9 +1,13 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { type CommandHelpEntry, type CommandHelpOptions, renderCommandHelp } from "./cli-help";
+import {
+  type CommandHelpEntry,
+  type CommandHelpOptions,
+  type CommandHelpSpec,
+  renderCommandHelp,
+} from "./cli-help";
 import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { normalizeCliFlagTokens, validateCommandCliFlags } from "./flag-value-validation";
 import { pluginFlagDefinitions } from "./plugin-flag-definitions";
-import type { ArgDefinitions } from "./spec/metadata";
 
 export const pluginOwnedCliFlagError = (
   spec: Pick<ExecutableCommandSpec, "id" | "flags" | "strict">,
@@ -53,12 +57,13 @@ export const renderPluginOwnedCommandHelp = (
   spec: ExecutableCommandSpec,
   options?: Pick<CommandHelpOptions, "styled"> & { readonly aliases?: readonly string[] },
 ): string => {
-  const args: ArgDefinitions = Object.fromEntries(
+  const args: CommandHelpSpec["args"] = Object.fromEntries(
     Object.entries(spec.args ?? {}).map(([name, definition]) => [
       name,
       {
         type: "option",
         ...(definition.description === undefined ? {} : { description: definition.description }),
+        ...(definition.stdio === undefined ? {} : { stdio: definition.stdio }),
         ...(definition.options === undefined ? {} : { options: definition.options }),
         ...(definition.required === undefined ? {} : { required: definition.required }),
         ...(definition.multiple === undefined ? {} : { multiple: definition.multiple }),
