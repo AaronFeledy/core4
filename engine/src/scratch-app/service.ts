@@ -62,6 +62,7 @@ import {
 } from "../landofile/app-resolution.ts";
 import { captureGlobalConsumerAdmission } from "../operations/global-consumer-admission.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { prepareProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { makeScratchReaper } from "./destroy.ts";
@@ -703,13 +704,12 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       (markedPlan.requires?.globalServices.length ?? 0) > 0
     )
       yield* preflightGlobalPlacement;
-    const provider = yield* providerRegistry
-      .select(markedPlan)
-      .pipe(
-        Effect.mapError((cause) =>
-          scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
-        ),
-      );
+    const provider = yield* providerRegistry.select(markedPlan).pipe(
+      Effect.flatMap(prepareProvider),
+      Effect.mapError((cause) =>
+        scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
+      ),
+    );
     yield* writeCachedPlan(planCache, markedPlan);
     const builtPlan = yield* Option.match(buildOrchestrator, {
       onNone: () => Effect.succeed(markedPlan),

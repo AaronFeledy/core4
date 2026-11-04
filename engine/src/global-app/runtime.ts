@@ -9,6 +9,7 @@ import {
   ensureGlobalServicesRunning,
 } from "../operations/ensure-global-services.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { prepareProvider } from "../providers/prepared.ts";
 import { globalCreateProviderId, globalObserveProviderId } from "./placement.ts";
 
 export const layer = Layer.effect(
@@ -39,7 +40,8 @@ export const layer = Layer.effect(
         ),
       ),
       ensureProviderReady: createProvider.pipe(
-        Effect.flatMap((provider) => provider.ensureReady ?? Effect.void),
+        Effect.flatMap(prepareProvider),
+        Effect.asVoid,
         Effect.mapError((cause) =>
           cause instanceof AppPlacementError
             ? cause

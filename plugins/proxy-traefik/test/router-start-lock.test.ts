@@ -146,6 +146,7 @@ const makeHarness = () => {
       }),
   };
   const socketProxy = {
+    userDataRoot: "/lando",
     user: "test",
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),

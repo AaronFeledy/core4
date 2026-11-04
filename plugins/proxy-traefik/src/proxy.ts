@@ -65,7 +65,7 @@ import { invalidateAcknowledgement, routeReloadLockKey } from "./route-reload-st
 import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./router-bind-address.ts";
 import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
-import { stopSockets } from "./socket-proxy-install.ts";
+import { isSocketProxyInstalled, stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
 import { observeTraefikState, persistedStatus } from "./status.ts";
 import { normalizeDefaultDomain, removeAllCertificates, removeAppCertificates } from "./tls.ts";
@@ -224,10 +224,13 @@ const mapStartupRevalidationError = (cause: unknown): ProxyError | RouterWatcher
   cause instanceof RouterWatcherError ? cause : proxyError("startup revalidation", cause);
 
 const resolveLiveSocketProxy = Effect.gen(function* () {
+  const paths = yield* Effect.serviceOption(PathsService);
   const privilege = yield* Effect.serviceOption(PrivilegeService);
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
   const interaction = yield* Effect.serviceOption(InteractionService);
+  if (paths._tag === "None") return undefined;
   return liveSocketProxy({
+    userDataRoot: paths.value.roots.userDataRoot,
     privilege: privilege._tag === "Some" ? privilege.value : undefined,
     processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
     interaction: interaction._tag === "Some" ? interaction.value : undefined,
@@ -242,11 +245,8 @@ const releaseHelperSockets = Effect.fnUntraced(function* (dependencies: TraefikP
   if (previous?.mode !== "socket-helper" || previous.helperInstalled !== true) return;
   const socketProxy = yield* resolveSocketProxy(dependencies);
   if (socketProxy === undefined) return;
-  yield* stopSockets({
-    processRunner: socketProxy.processRunner,
-    privilege: socketProxy.privilege,
-    ...(socketProxy.probeForward === undefined ? {} : { probeForward: socketProxy.probeForward }),
-  });
+  if (!(yield* isSocketProxyInstalled(socketProxy))) return;
+  yield* stopSockets(socketProxy);
 });
 
 const routerListsFromConfig = (router: NonNullable<ProxyConfig["router"]>): TraefikRouterLists => ({
@@ -339,14 +339,22 @@ export const makeTraefikRouterService = (
               yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
               yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
               const socketProxy = yield* resolveSocketProxy(dependencies);
+              const intent = options?.intent ?? "ensure";
+              const previousAcquisition = yield* readAcquisitionState(
+                dependencies.fileSystem,
+                dependencies.paths,
+              );
               const decision = yield* persistPortAcquisition(
                 {
                   ...dependencies,
                   ...(socketProxy === undefined
                     ? {}
                     : {
-                        socketProxy:
-                          options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+                        socketProxy: {
+                          ...socketProxy,
+                          intent,
+                          ...(options?.autoApprove === true ? { autoApprove: true as const } : {}),
+                        },
                       }),
                   ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
                   ...(config.routerPin === undefined
@@ -362,7 +370,12 @@ export const makeTraefikRouterService = (
               );
               const advertised = advertisedPorts(decision);
               authorityPorts = advertised;
-              if (decision.notices.length > 0) {
+              const acquisitionPairChanged =
+                previousAcquisition === undefined ||
+                previousAcquisition.mode !== decision.mode ||
+                previousAcquisition.httpPort !== decision.httpPort ||
+                previousAcquisition.httpsPort !== decision.httpsPort;
+              if (decision.notices.length > 0 && (intent === "configure" || acquisitionPairChanged)) {
                 yield* publishFallbackWarn(dependencies, decision);
               }
               yield* ensureDashboardFile(dependencies, defaultDomain);
@@ -520,7 +533,11 @@ export const layer = (stateStore: PluginStateStore) =>
                 writeSecretAtomic: (path, content) =>
                   Effect.uninterruptible(Effect.tryPromise(() => writeSecretAtomic(path, content))),
               },
-              paths: { platform: paths.platform, globalAppRoot: globalRoot },
+              paths: {
+                platform: paths.platform,
+                globalAppRoot: globalRoot,
+                userDataRoot: paths.roots.userDataRoot,
+              },
               globalApp,
               stateStore,
               ...(socketProxy === undefined ? {} : { socketProxy }),

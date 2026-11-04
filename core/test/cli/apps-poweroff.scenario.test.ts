@@ -150,7 +150,7 @@ describe("apps:poweroff command", () => {
 
   test("runs teardown from the host maintenance registry", async () => {
     // Given: a host maintainer that records the core-computed runtime paths.
-    const teardownInputs: Parameters<HostMaintenanceContribution["teardown"]>[0][] = [];
+    const teardownInputs: Parameters<NonNullable<HostMaintenanceContribution["teardown"]>>[0][] = [];
     const maintainer: HostMaintenanceContribution = {
       id: "fake-runtime",
       teardown: (input) => {

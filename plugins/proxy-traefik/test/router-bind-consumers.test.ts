@@ -250,6 +250,7 @@ test("helper unit forwarding retains a private backend", () => {
     { bindAddress: "127.0.0.1", hostPort: 38443 },
   ]);
   const script = buildInstallScript({
+    userDataRoot: "/lando",
     user: "test",
     binary: "/usr/lib/systemd/systemd-socket-proxyd",
     serviceType: "notify",

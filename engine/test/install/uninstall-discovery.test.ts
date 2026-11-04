@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { AbsolutePath, AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
-import { DateTime, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 import { UninstallResourceCleanupError } from "../../src/install/uninstall-cleanup-error.ts";
 import { makeListDiscoveredApps } from "../../src/install/uninstall-discovery.ts";
-import type { RuntimeExec } from "../../src/install/uninstall-runtime.ts";
+import type { RuntimeExec, UninstallRuntimeSeams } from "../../src/install/uninstall-runtime.ts";
 
 const absentRuntime: RuntimeExec = async () => {
   throw Object.assign(new Error("not installed"), { code: "ENOENT" });
@@ -17,6 +17,17 @@ const perAppLayouts = [
   { path: "plugins/@lando/provider-docker/applied-plans/app.json", field: "data" },
   { path: "providers/provider-lando/apps/app.json", field: "plan" },
 ] as const;
+
+const PRIVATE_RUNTIME = "/tmp/lando-discovery-private-runtime";
+
+const testSeams = (hostPath = "/usr/bin"): UninstallRuntimeSeams => ({
+  hostEnv: {
+    HOME: "/home/fixture",
+    PATH: hostPath,
+    CONTAINER_HOST: "unix:///hostile.sock",
+  },
+  prepareRuntimeDir: () => Effect.succeed(PRIVATE_RUNTIME),
+});
 
 const fixture = () => {
   const root = mkdtempSync(join(tmpdir(), "lando uninstall discovery "));
@@ -52,8 +63,14 @@ const fixture = () => {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, contents);
     },
-    discover: (exec: RuntimeExec = absentRuntime, platform: NodeJS.Platform = "linux") =>
-      makeListDiscoveredApps(exec, platform)(data, cache),
+    ensureRuntimeTree: () => {
+      mkdirSync(join(data, "runtime"), { recursive: true });
+    },
+    discover: (
+      exec: RuntimeExec = absentRuntime,
+      platform: NodeJS.Platform = "linux",
+      seams: UninstallRuntimeSeams = testSeams(),
+    ) => makeListDiscoveredApps(exec, platform, seams)(data, cache),
     [Symbol.dispose]: () => rmSync(root, { recursive: true, force: true }),
   };
 };
@@ -61,6 +78,7 @@ const fixture = () => {
 for (const platform of ["linux", "darwin", "win32"] as const) {
   test(`probes the managed runtime with exact argv and env on ${platform}`, async () => {
     using f = fixture();
+    f.ensureRuntimeTree();
     const calls: Array<{
       file: string;
       args: readonly string[];
@@ -76,26 +94,39 @@ for (const platform of ["linux", "darwin", "win32"] as const) {
 
     const runtime = join(f.data, "runtime");
     const config = join(runtime, "config");
-    const managedCmd = join(runtime, "bin", platform === "win32" ? "podman.exe" : "podman");
-    const prefix =
-      platform === "win32"
-        ? ["--connection", "lando-root"]
-        : [
-            "--root",
-            join(runtime, "storage"),
-            "--runroot",
-            join(runtime, "run"),
-            "--config",
-            config,
-            "--storage-opt",
-            `overlay.mount_program=${join(runtime, "bin")}/fuse-overlayfs`,
-          ];
-    const managedEnv = {
-      ...process.env,
-      CONTAINERS_CONF: join(config, "containers.conf"),
-      CONTAINERS_REGISTRIES_CONF: join(config, "registries.conf"),
-      XDG_CONFIG_HOME: config,
-    };
+    const bin = join(runtime, "bin");
+    const managedCmd = join(bin, platform === "win32" ? "podman.exe" : "podman");
+    const connection = platform !== "linux";
+    const prefix = connection
+      ? ["--connection", "lando-root"]
+      : [
+          "--root",
+          join(runtime, "storage"),
+          "--runroot",
+          join(runtime, "run"),
+          "--config",
+          config,
+          "--storage-opt",
+          `overlay.mount_program=${bin}/fuse-overlayfs`,
+        ];
+    const managedPath = `${bin}${delimiter}/usr/bin`;
+    // Connection: redirect denial only (host allowlist keys that survive withoutPodmanRedirects).
+    // Linux: allowlisted host + overlay including prepared XDG_RUNTIME_DIR.
+    const managedEnv = connection
+      ? {
+          HOME: "/home/fixture",
+          PATH: "/usr/bin",
+        }
+      : {
+          HOME: "/home/fixture",
+          CONTAINERS_CONF: join(config, "containers.conf"),
+          CONTAINERS_REGISTRIES_CONF: join(config, "registries.conf"),
+          XDG_CONFIG_HOME: config,
+          DISABLE_HC_SYSTEMD: "true",
+          LANDO_MANAGED_CONFIG_REVISION: "2-native-init",
+          PATH: managedPath,
+          XDG_RUNTIME_DIR: PRIVATE_RUNTIME,
+        };
     expect(calls).toEqual([
       { file: "docker", args: ["--version"], options: { timeout: 2_000 } },
       { file: "podman", args: ["--version"], options: { timeout: 2_000 } },
@@ -124,6 +155,9 @@ for (const platform of ["linux", "darwin", "win32"] as const) {
         services: [],
       },
     ]);
+    for (const call of calls.filter((c) => c.file === managedCmd)) {
+      expect(call.options.env?.CONTAINER_HOST).toBeUndefined();
+    }
   });
 }
 
@@ -207,6 +241,8 @@ test("concurrent discovery keeps each executor and managed root isolated", async
   };
   const first = gatedExec("first-app");
   const second = gatedExec("second-app");
+  firstFixture.ensureRuntimeTree();
+  secondFixture.ensureRuntimeTree();
   const firstResult = firstFixture.discover(first.exec);
   const secondResult = secondFixture.discover(second.exec);
 

@@ -9,6 +9,7 @@ import {
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
 
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { shellArg } from "../services/shell-quote.ts";
 
 type LocatedPlanVolume = {
@@ -170,3 +171,11 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
     Effect.provideService(HeldCoordinationKeys, new Set([...held, ...keys])),
   );
 });
+
+/** Launch work must prepare the runtime before volume discovery acquires its locks. */
+export const withLaunchVolumeCoordination = <A, E>(input: {
+  readonly plan: AppPlan;
+  readonly provider: PreparedRuntimeProvider;
+  readonly stateStore: StateStoreShape;
+  readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E>;
+}) => withPlanVolumeCoordination(input);

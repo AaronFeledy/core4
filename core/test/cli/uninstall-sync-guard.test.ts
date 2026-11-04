@@ -109,9 +109,10 @@ describe("uninstall purge sync guard", () => {
       expect(
         fixture.probes.some((probe) => probe.file === join(fixture.data, "runtime", "bin", "podman.exe")),
       ).toBe(true);
-      expect(fixture.probes.find((probe) => probe.file.endsWith("podman.exe"))?.env?.XDG_CONFIG_HOME).toBe(
-        join(fixture.data, "runtime", "config"),
-      );
+      // Machine connections resolve from the user's Podman config, as Windows exec does.
+      expect(
+        fixture.probes.find((probe) => probe.file.endsWith("podman.exe"))?.env?.XDG_CONFIG_HOME,
+      ).not.toBe(join(fixture.data, "runtime", "config"));
       const firstSweep = fixture.calls.findIndex((call) => call.includes("label=dev.lando.app"));
       expect(firstSweep).toBeGreaterThan(
         fixture.calls.findIndex(

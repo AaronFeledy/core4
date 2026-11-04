@@ -9,6 +9,8 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
+import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 import { routeOwner } from "./route-owner-fixture.ts";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
@@ -80,8 +82,10 @@ const routes = [
   },
 ];
 
-const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
-const markedUnit = "[Unit]\n# lando-proxy-socket-helper\n";
+const USER_DATA_ROOT = "/lando/user-data";
+const paths = { platform: "linux" as const, globalAppRoot: "/lando/global", userDataRoot: USER_DATA_ROOT };
+const markedUnit = `${socketProxyUnitHeader(USER_DATA_ROOT)}\n`;
+const polkitOwned = `${socketProxyPolkitHeader(USER_DATA_ROOT)}\n`;
 
 const memoryFiles = () => {
   const files = new Map<string, string>();
@@ -133,6 +137,7 @@ describe("acquisition authority ports", () => {
       },
       socketProxy: {
         user: "lando-dev",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => false,
         exists: () => Effect.succeed(false),
         readText: () => Effect.fail(new Error("missing")),
@@ -183,6 +188,7 @@ describe("acquisition authority ports", () => {
       },
       socketProxy: {
         user: "lando-dev",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
         autoApprove: true,
         exists: (path) => Effect.succeed(path === first),
@@ -226,6 +232,7 @@ describe("stale socketsActive restart", () => {
     for (const path of SOCKET_UNIT_PATHS) {
       store.files.set(path, markedUnit);
     }
+    store.files.set("/etc/polkit-1/rules.d/10-lando-proxy.rules", polkitOwned);
     const runner = makeRunner((input) => (input.cmd === "systemctl" ? ok() : fail(1, "not found")));
     const privilege = makePrivilege();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
@@ -241,6 +248,7 @@ describe("stale socketsActive restart", () => {
       },
       socketProxy: {
         user: "lando-dev",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
         autoApprove: true,
         exists: (path) => Effect.succeed(store.files.has(path) || path === first),
@@ -261,8 +269,14 @@ describe("stale socketsActive restart", () => {
 
     // Then: startSockets ran and persisted mode is socket-helper.
     const started =
-      runner.calls().some((call) => call.cmd === "systemctl" && call.args[0] === "start") ||
-      privilege.calls().some((command) => command.includes("start"));
+      runner
+        .calls()
+        .flatMap((call) => socketProxyControlCommands([call.cmd, ...call.args]))
+        .some((command) => command[0] === "start") ||
+      privilege
+        .calls()
+        .flatMap(socketProxyControlCommands)
+        .some((command) => command[0] === "start");
     expect(started).toBe(true);
     const raw = store.files.get(acquisitionStateFile(paths));
     const decoded = Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(raw ?? "null"));

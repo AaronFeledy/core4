@@ -4,7 +4,8 @@ import { MessageInfoEvent } from "@lando/sdk/events";
 import { EventService, FileSyncEngine, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import {
@@ -19,12 +20,12 @@ import { markStartMutation } from "./start-incomplete-notice.ts";
 /** Called under the app lock, before drain invalidation, hooks, or replacement intent. */
 export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSync")(function* (
   target: ResolvedAppTarget,
+  provider: PreparedRuntimeProvider,
 ) {
   const desired = yield* fileSyncBundle(target.plan);
   // An interrupted replacement must resume its recorded identity, never supersede it.
   if ((yield* readPendingAcceleratedStart(target.app, target.plan)) !== null) return;
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(target.plan);
   yield* requireFileSyncProvider(desired, provider);
   if (provider.inspectAppliedFileSync === undefined) return;
   const prior = yield* provider.inspectAppliedFileSync(target.plan);
@@ -75,7 +76,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
         remediation: "Restore the original provider and applied app state, then retry `lando start`.",
       }),
     );
-  const oldProvider = yield* registry.select(old);
+  const oldProvider = provider;
   const oldBundle = yield* fileSyncBundle(old);
   if (oldBundle.kind !== "accelerated" || oldBundle.id !== prior.engineId)
     return yield* Effect.fail(
@@ -92,7 +93,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
   const events = yield* EventService;
   const stateStore = yield* StateStore;
   const context = yield* Effect.context<Effect.Services<typeof disposal.dispose>>();
-  yield* withPlanVolumeCoordination({
+  yield* withLaunchVolumeCoordination({
     plan: old,
     provider: oldProvider,
     stateStore,

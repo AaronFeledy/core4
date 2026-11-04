@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -178,7 +179,8 @@ describe("managed native init readiness", () => {
     withRuntime(async (paths) => {
       const fixture = catatonitFixture();
       let locked = false;
-      const spec = buildPodmanServiceArgs(paths);
+      const privateRuntimeDir = await Effect.runPromise(resolveManagedRuntimeDir(paths.root));
+      const spec = buildPodmanServiceArgs({ ...paths, privateRuntimeDir });
       await writeFile(paths.pidPath, "4321");
       await writeFile(`${paths.pidPath}.launch.json`, JSON.stringify({ pid: 4321, env: spec.env }));
       await mkdir(paths.configDir);
@@ -240,7 +242,9 @@ describe("managed native init readiness", () => {
   test("relaunches only the old owned API daemon and preserves live runroot on upgrade", () =>
     withRuntime(async (paths) => {
       const fixture = catatonitFixture();
-      const { LANDO_MANAGED_CONFIG_REVISION: _revision, ...oldEnv } = buildPodmanServiceArgs(paths).env ?? {};
+      const privateRuntimeDir = await Effect.runPromise(resolveManagedRuntimeDir(paths.root));
+      const { LANDO_MANAGED_CONFIG_REVISION: _revision, ...oldEnv } =
+        buildPodmanServiceArgs({ ...paths, privateRuntimeDir }).env ?? {};
       await writeFile(paths.pidPath, "4321");
       await writeFile(`${paths.pidPath}.launch.json`, JSON.stringify({ pid: 4321, env: oldEnv }));
       await mkdir(paths.runtimeBinDir, { recursive: true });

@@ -108,6 +108,7 @@ const makeHarness = (
   const runtime = makeApplyRuntime(files);
   const stateStore = durableReloadState ? makeMemoryPluginStateStore() : undefined;
   const socketProxy = {
+    userDataRoot: "/lando",
     user: "test",
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),
