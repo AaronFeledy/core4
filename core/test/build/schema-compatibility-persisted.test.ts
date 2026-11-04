@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { loadWorkingSchemaArtifacts } from "../../../scripts/schema-compatibility-artifacts.ts";
 import {
   acceptCompatibilityExceptions,
@@ -12,7 +14,10 @@ import {
   type JsonValue,
   isJsonObject,
 } from "../../../scripts/schema-compatibility/model.ts";
-import { buildPersistedSurfaceStores } from "../../../scripts/schema-compatibility/persisted.ts";
+import {
+  buildPersistedSurfaceStores,
+  readPersistedStoreVersions,
+} from "../../../scripts/schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "../../../scripts/schema-compatibility/store-versions.ts";
 
 const storeVersions = { "applied-state": 4, "tunnel-registry": 2 } as const;
@@ -198,9 +203,62 @@ test.each([false, true])("requires migrations for every store sharing a surface:
   expect(parseCompatibilityExceptions(JSON.stringify([entry]), "fixture")).toEqual([entry]);
 });
 
-test("loads actual baseline store versions for bump enforcement", async () => {
-  expect(await loadBasePersistedStoreVersions(resolve(import.meta.dir, "../../.."), "140f4828f")).toEqual({
-    "applied-state": 3,
-    "tunnel-registry": 1,
-  });
+const git = async (cwd: string, ...args: string[]) => {
+  const child = Bun.spawn(
+    [
+      "git",
+      "-c",
+      "user.name=test",
+      "-c",
+      "user.email=test@example.invalid",
+      "-c",
+      "core.hooksPath=/dev/null",
+      ...args,
+    ],
+    { cwd, stdout: "pipe", stderr: "pipe" },
+  );
+  if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
+};
+const commitFiles = async (root: string, files: Readonly<Record<string, string>>, message: string) => {
+  for (const [path, text] of Object.entries(files)) await Bun.write(join(root, path), text);
+  await git(root, "add", "-A");
+  await git(root, "commit", "-q", "-m", message);
+};
+
+test("loads store versions from the historical and current source layouts", async () => {
+  // Given: main's layout kept the tunnel version in registry.ts; the current one has a constant.
+  const repoRoot = resolve(import.meta.dir, "../../..");
+  const root = await mkdtemp(join(tmpdir(), "lando-store-versions-"));
+  try {
+    await git(root, "init", "-q");
+    await commitFiles(
+      root,
+      {
+        "container-runtime/src/applied-state-migrate.ts": "export const APPLIED_STATE_VERSION = 3;\n",
+        "engine/src/tunnel/registry.ts": "const registrySpec = {\n  version: 1,\n};\n",
+      },
+      "historical",
+    );
+    await git(root, "tag", "historical");
+    const current = [
+      "container-runtime/src/applied-state-migrate.ts",
+      "engine/src/tunnel/registry-migrate.ts",
+      "engine/src/tunnel/registry.ts",
+    ];
+    await commitFiles(
+      root,
+      Object.fromEntries(
+        await Promise.all(current.map(async (path) => [path, await Bun.file(join(repoRoot, path)).text()])),
+      ),
+      "current",
+    );
+    // When / Then
+    expect(await loadBasePersistedStoreVersions(root, "historical")).toEqual({
+      "applied-state": 3,
+      "tunnel-registry": 1,
+    });
+    expect(await loadBasePersistedStoreVersions(root, "HEAD")).toEqual(readPersistedStoreVersions());
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
