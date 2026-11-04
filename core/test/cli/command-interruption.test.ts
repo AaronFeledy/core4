@@ -8,7 +8,7 @@ import { commandFailureOutcome, commandInterruptionExitCode } from "../../src/cl
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { renderTerminalFailure } from "../../src/cli/terminal-failure";
 
-for (const reason of ["SIGINT", "SIGTERM", { secret: "private-abort-reason" }] as const)
+for (const reason of ["SIGINT", "SIGTERM", "SIGHUP", { secret: "private-abort-reason" }] as const)
   for (const format of ["json", "text"] as const)
     test(`pure interruption renders ordinary ${format} cancellation (${String(reason)})`, async () => {
       const controller = new AbortController();
@@ -34,7 +34,9 @@ for (const reason of ["SIGINT", "SIGTERM", { secret: "private-abort-reason" }] a
             }),
         },
       );
-      expect(codes).toEqual([reason === "SIGINT" ? 130 : reason === "SIGTERM" ? 143 : 1]);
+      expect(codes).toEqual([
+        reason === "SIGINT" ? 130 : reason === "SIGTERM" ? 143 : reason === "SIGHUP" ? 129 : 1,
+      ]);
       const output = io.stdout() + io.stderr();
       expect(output).toContain("Command interrupted.");
       expect(output).not.toMatch(

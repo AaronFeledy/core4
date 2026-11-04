@@ -166,7 +166,7 @@ for (const execution of process.platform === "win32"
     ) => withFixture(execution, mode, run, shell, pty);
     const posix = test.skipIf(process.platform === "win32");
 
-    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
       posix(
         `${signal} terminates the owned child by signal after command and runtime finalizers`,
         async () => {
