@@ -379,7 +379,7 @@ hostEvents:
       service: ":host"
 ```
 
-Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
+Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. Validation reports a step that uses `${NAME}`, which Lando never expands here; write `$NAME` for the step's shell or `{{ env.NAME }}` for your host's value. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
 
   <Scenario id="host-events-hand-edit" render={false} reason="Reject config set/unset of hostEvents">
     <Step name="reject-set">

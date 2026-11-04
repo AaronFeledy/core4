@@ -44,6 +44,26 @@ describe("bunShellDialectIssues: flagged constructs", () => {
     ['echo a"#"${X}', "${X}", 9],
     ['echo "${X}"', "${X}", 6],
     ['echo "$?"', "$?", 6],
+    ["for x in a", "for", 0],
+    ["while true", "while", 0],
+    ["until false", "until", 0],
+    ["case x", "case", 0],
+    ["select x", "select", 0],
+    ["function f", "function", 0],
+    ["{ echo x; }", "{", 0],
+    ["! true", "!", 0],
+    ["f() { true; }", "f()", 0],
+    ["f () { true; }", "f ()", 0],
+    ["f( ) { true; }", "f( )", 0],
+    ["X=1 Y='two words' set -e", "set", 18],
+    ["> 'set' set -e", "set", 8],
+    ["(true) > out", ">", 7],
+    ["echo $( (true) &>> out)", "&>>", 15],
+    ["printf hel\\\nlo", "\\\n", 10],
+    ["echo $X\\\ny", "\\\n", 7],
+    ["2>&1 set -e", "set", 5],
+    ['echo "$(set -e)"', "set", 8],
+    ["if true; then true; fi :", ":", 23],
   ] as const)("flags %s at the construct", (source, text, index) => {
     const issues = bunShellDialectIssues(source);
     expect(texts(issues)).toContain(text);
@@ -51,6 +71,71 @@ describe("bunShellDialectIssues: flagged constructs", () => {
     expect(hit).toBeDefined();
     expect(hit?.message.length ?? 0).toBeGreaterThan(0);
     expect(hit?.suggestion.length ?? 0).toBeGreaterThan(0);
+  });
+
+  test.each([
+    "set",
+    "unset",
+    "source",
+    ".",
+    "eval",
+    "exec",
+    "shift",
+    "trap",
+    "wait",
+    "local",
+    "read",
+    "readonly",
+    "return",
+    "getopts",
+    "alias",
+    "unalias",
+    "umask",
+    "ulimit",
+    "type",
+    "command",
+    "hash",
+    "break",
+    "continue",
+    ":",
+  ])("flags missing builtin %s only at command position", (word) => {
+    expect(texts(bunShellDialectIssues(`${word} value`))).toEqual([word]);
+    expect(bunShellDialectIssues(`echo ${word}`)).toEqual([]);
+  });
+
+  test.each([
+    ['"set" -e', '"set"'],
+    ["s\\et -e", "s\\et"],
+    ["'source' .env", "'source'"],
+    ['X=1 "set" -e', '"set"'],
+  ])("flags a quoted builtin name %s, which sh still runs", (source, text) => {
+    expect(texts(bunShellDialectIssues(source))).toEqual([text]);
+  });
+
+  test.each(['"for" x', 'echo "set"', '"$CMD" -e'])("leaves %s alone", (source) => {
+    expect(bunShellDialectIssues(source)).toEqual([]);
+  });
+
+  test.each([
+    "",
+    "true; ",
+    "true && ",
+    "false || ",
+    "true | ",
+    "true & ",
+    "true\n",
+    "(",
+    "echo $(",
+    "echo `",
+    "if ",
+    "then ",
+    "elif ",
+    "else ",
+    "do ",
+  ])("recognizes command position after %s", (prefix) => {
+    expect(bunShellDialectIssues(`${prefix}set -e`).map(({ index, text }) => ({ index, text }))).toEqual([
+      { index: prefix.length, text: "set" },
+    ]);
   });
 
   test("plain ${NAME} message names the construct and suggests $NAME", () => {
@@ -171,6 +256,16 @@ describe("bunShellDialectIssues: flagged constructs", () => {
     expect(indexes(issues)).toEqual([...indexes(issues)].sort((a, b) => a - b));
     expect(texts(issues)).toEqual(["${A}", "$?", "${B}"]);
   });
+
+  test("command, expansion, group redirection, and continuation issues share source order", () => {
+    const source = "set -e; echo ${X}; (true) > f; printf hel\\\nlo";
+    expect(bunShellDialectIssues(source).map(({ index, text }) => ({ index, text }))).toEqual([
+      { index: 0, text: "set" },
+      { index: 13, text: "${X}" },
+      { index: 26, text: ">" },
+      { index: 41, text: "\\\n" },
+    ]);
+  });
 });
 
 describe("bunShellDialectIssues: clean constructs", () => {
@@ -200,12 +295,30 @@ describe("bunShellDialectIssues: clean constructs", () => {
     ["echo a; echo b 2>&1"],
     ["echo $NAME$OTHER"],
     ["echo pre$NAME"],
+    ["echo for"],
+    ['"for" x'],
+    ["f'or' x"],
+    ["\\for x"],
+    ["if true; then echo y; fi"],
+    ["[ -f x ] && echo y"],
+    ["awk '{print $1}'"],
+    ["(a) | cat"],
+    ["(cd /tmp && ls)"],
+    ["a \\\n b"],
+    ['"a\\\nb"'],
+    ["true > f"],
+    ['echo "https://example.test/?x=y&z=w"'],
+    ["X=1 cmd"],
+    ["X=1 > set cmd"],
+    ["echo $(true) > f"],
+    ["echo `true` > f"],
+    ["echo for()"],
   ] as const)("does not flag %s", (source) => {
     expect(bunShellDialectIssues(source)).toEqual([]);
   });
 
-  test("line continuation with backslash-newline stays clean", () => {
-    expect(bunShellDialectIssues("echo $X\\\ny")).toEqual([]);
+  test("line continuation between words stays clean", () => {
+    expect(bunShellDialectIssues("echo $X \\\n y")).toEqual([]);
   });
 });
 
@@ -317,6 +430,7 @@ describe("correctedBunShellText", () => {
   test.each([
     ["echo ${HOME} >&2", "echo $HOME 1>&2"],
     ['printf "%s" "${TOKEN}" | wc -c', 'printf "%s" "$TOKEN" | wc -c'],
+    [": > f; echo ok", "true > f; echo ok"],
   ] as const)("fixes %s mechanically", (source, corrected) => {
     expect(correctedBunShellText(source)).toBe(corrected);
   });

@@ -53,6 +53,36 @@ export type ResolveLandofileLoadExpressionError =
   | LandofileParseError
   | LandofileValidationError;
 
+/** Which shell, if any, reads a command written at `path`. */
+const commandShell = (path: ReadonlyArray<string | number>): "host-or-service" | "service" | undefined => {
+  const [root, name, field, index, leaf] = path;
+  if (typeof name !== "string") return undefined;
+  if (root === "tooling")
+    return (field === "cmd" && index === undefined) ||
+      (field === "cmds" && typeof index === "number" && (leaf === undefined || leaf === "cmd"))
+      ? "host-or-service"
+      : undefined;
+  if (root === "events" && typeof field === "number")
+    return index === undefined || index === "cmd" || index === "defer" ? "host-or-service" : undefined;
+  if (root !== "services") return undefined;
+  if ((field === "readiness" || field === "healthcheck") && index === "command" && leaf === undefined)
+    return "host-or-service";
+  return (field === "command" || field === "readiness" || field === "healthcheck") && index === undefined
+    ? "service"
+    : undefined;
+};
+
+const shellParameterSuggestion = (path: ReadonlyArray<string | number>, name: string): string => {
+  switch (commandShell(path)) {
+    case "host-or-service":
+      return `Write $\${${name}} to pass it to a container shell, $${name} in a service: ":host" command, or {{ env.${name} }} for your host's value.`;
+    case "service":
+      return `Write $\${${name}} to pass it to the service's shell, or {{ env.${name} }} for your host's value.`;
+    case undefined:
+      return `Write {{ env.${name} }} for your host's value, or $\${${name}} to keep the text as written.`;
+  }
+};
+
 export const resolveLandofileLoadExpressions = (
   options: ResolveLandofileLoadExpressionsOptions,
 ): Effect.Effect<ResolvedLandofileLoadExpressions, ResolveLandofileLoadExpressionError> =>
@@ -60,10 +90,19 @@ export const resolveLandofileLoadExpressions = (
     try: () => {
       const session = new LandofileFileSession(options.source, options.policy);
       const pendingSites: ParsedPendingSite[] = [];
-      const unsupported = (path: ReadonlyArray<string | number>, description: string): never => {
-        const message = `${description} are not supported at ${path.join(".")}.`;
+      const unsupported = (
+        path: ReadonlyArray<string | number>,
+        description: string,
+        shell?: { readonly name: string; readonly operator: string },
+      ): never => {
+        const message =
+          shell === undefined
+            ? `${description} are not supported at ${path.join(".")}.`
+            : `\`\${${shell.name}${shell.operator === "plain" ? "" : "..."}}\` at ${path.join(".")} is shell syntax Lando does not expand.`;
         const suggestion =
-          "Use {{ env.NAME }} for a host value. In a container command write $${NAME} for the shell's value; in a :host command write $NAME.";
+          shell === undefined
+            ? "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
+            : shellParameterSuggestion(path, shell.name);
         throw new LandofileValidationError({
           file: options.source.sourcePath,
           message,
@@ -145,8 +184,8 @@ export const resolveLandofileLoadExpressions = (
               secret.name,
               value,
             );
-          if (parsed.success.segments.some((segment) => segment.kind === "ShellParamSegment"))
-            return unsupported(path, "Configuration expressions");
+          const shell = parsed.success.segments.find((segment) => segment.kind === "ShellParamSegment");
+          if (shell !== undefined) return unsupported(path, "Configuration expressions", shell);
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");
           const scopes =
             eligibleBindingPath(path) && secretMembers.analyzable

@@ -288,10 +288,21 @@ const runTask = Effect.fnUntraced(function* (
   const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
   const variableRedaction = yield* options.redactorFor({ env: [leaf.vars] });
   if (task === undefined) {
+    if (options.hostRunner === undefined)
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "ShellRunner is unavailable for script-backed event execution.",
+          tool: leaf.task,
+          remediation: "Provide the selected ShellRunner in the event runtime.",
+        }),
+      );
     const script = yield* runBunShellTooling(
       { name: leaf.task, cwd: String(options.plan.root) },
       String(options.plan.root),
-    ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
+    ).pipe(
+      Effect.provideService(PrivateFileAccessService, options.privateFileAccess),
+      Effect.provideService(ShellRunner, options.hostRunner),
+    );
     if (script !== undefined) {
       return {
         leaf,

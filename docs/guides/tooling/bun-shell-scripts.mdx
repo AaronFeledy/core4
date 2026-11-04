@@ -304,8 +304,16 @@ Every host command uses the same Bun Shell on Linux, macOS, and Windows: `.bun.s
 | `$@`, `$#`, `$*` | `$1` through `$9` in a script. A `:host` task appends the arguments you pass to its command |
 | `$((1 + 2))` | `$(bun -e "console.log(1 + 2)")` |
 | `cat <<EOF` here-documents | `printf` or `echo` piped into the command, or a file |
+| `for`, `while`, `case`, or a function | A script you run by path; see [Run sh or bash when you need them](#run-sh-or-bash-when-you-need-them) |
+| `set -e` | Commands chained with `&&` |
+| `command -v NAME`, `type`, `hash` | `which NAME` |
+| `source .env`, `. .env` | Values set in the task's `env:` |
+| `:` | `true` |
+| `{ a; b; }`, `! cmd` | `( a; b )`, `cmd \|\| other` |
+| `( a; b ) > out.log` | `( a > out.log; b >> out.log )`, so the second command appends instead of truncating |
+| A word broken across lines with `\` | The word on one line |
 
-Lando also rejects `<<<` here-strings, a quote that's never closed, and descriptor duplication other than `1>&2` and `2>&1`, such as `3>&1`. Text you mean literally still works: `'${NAME}'` and `\${NAME}` aren't flagged.
+Lando also rejects `<<<` here-strings, a quote that's never closed, descriptor duplication other than `1>&2` and `2>&1`, such as `3>&1`, and the other builtins Bun Shell lacks, such as `eval`, `exec`, `read`, `trap`, and `shift`. Bun Shell reports those as missing commands and keeps running the rest of the line, so Lando stops first. Text you mean literally still works: `'${NAME}'` and `\${NAME}` aren't flagged.
 
 Lando looks for these forms before running anything, so a host command doesn't quietly pass `${NAME}` through as text or stop with Bun Shell's bare `Redirection with no file` error. Each diagnostic names the form, its column, and the fix:
 
@@ -322,6 +330,21 @@ lando app:config:lint
 ```
 
 Container commands are different. They run through the service's own `sh -c`, so `${NAME}` works there, and you write it as `$${NAME}` in a Landofile so Lando passes it through. See [Landofile expressions](../landofile/expressions.mdx#keep-var-and--as-text).
+
+A few differences depend on values or files, so Lando can't see them in the command. Bun Shell keeps a variable's value as one argument instead of splitting it at spaces and doesn't expand patterns inside it, expands `*` patterns you write but leaves `?` and `[...]` as written, and its `echo` prints backslashes as written and treats `-e` as an option. A `*` matches the same files `sh` would, but Bun Shell lists them in directory order instead of sorting them. Like bash, it expands `{a,b}`. Quote your variables, match files with `*`, name the files in order when order matters, such as migrations you pipe to a database, and use `printf` when you need escapes.
+
+#### Run sh or bash when you need them
+
+Loops, functions, and `set -e` belong in a script file that its own shell runs. Call the script from the task, and Lando appends the arguments you pass:
+
+```yaml
+tooling:
+  seed:
+    service: ":host"
+    cmd: bash ./scripts/seed.sh
+```
+
+`lando seed db/one.sql db/two.sql` runs `bash ./scripts/seed.sh 'db/one.sql' 'db/two.sql'`, so the script reads them as `$1`, `$2`, and `"$@"` like any bash script. This needs `bash` on the host, which macOS and Linux have and Windows does not. For a task that must also run on Windows, write the logic as a Bun program and use `cmd: bun ./scripts/seed.ts`; Lando uses the Bun it ships when your host has none.
 
 Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
 
@@ -398,7 +421,7 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
 
 ## Declare a host task in the Landofile
 
-A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Host output streams as the command writes it, value-only redacted and byte-exact, the same sink container tooling uses. Task progress stays on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` uses Bun Shell, written in [Bun Shell syntax](#write-host-commands-in-bun-shell-syntax). A list is argv, and arguments you pass on the line are appended to it:
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Host output streams as the command writes it, value-only redacted and byte-exact, the same sink container tooling uses. Task progress stays on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` uses Bun Shell, written in [Bun Shell syntax](#write-host-commands-in-bun-shell-syntax). A list runs as exact arguments with no shell, and the arguments you pass on the line are appended to it:
 
 ```yaml
 name: host-task-demo
@@ -633,6 +656,13 @@ lando stamp abc1234
     </Step>
     <Step name="run-bun-shell-task">
       <Verify command="lando notify --format=json" expect={{ stdout: { regex: "\"stderr\":\\s*\"posting to deploys" } }} />
+    </Step>
+    <Step name="refuse-posix-loop">
+      <Run command="lando seed-posix --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "for" }} />
+    </Step>
+    <Step name="run-loop-as-bun-program">
+      <Verify command="lando seed one two --format=json" expect={{ stdout: { regex: "\"stdout\":\\s*\"seeding one\\\\nseeding two\\\\n\"" } }} />
     </Step>
     <Step name="cleanup-host-shell-syntax">
       <Cleanup />

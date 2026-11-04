@@ -14,7 +14,7 @@ afterAll(() => {
 
 const runBunExec = async (
   command: string,
-  env: Record<string, string> = {},
+  env: Readonly<Record<string, string | undefined>> = {},
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
   const cwd = mkdtempSync(join(tmpdir(), "bun-shell-dialect-exec-"));
   workDirs.push(cwd);
@@ -34,6 +34,98 @@ const runBunExec = async (
 
 describe("bun-shell-dialect conformance: flagged constructs diverge in real Bun", () => {
   test.each([
+    ...[
+      "for",
+      "while",
+      "until",
+      "select",
+      "function",
+      "{",
+      "!",
+      "set",
+      "unset",
+      "source",
+      ".",
+      "eval",
+      "exec",
+      "shift",
+      "trap",
+      "wait",
+      "local",
+      "read",
+      "readonly",
+      "return",
+      "getopts",
+      "alias",
+      "unalias",
+      "umask",
+      "ulimit",
+      "type",
+      "command",
+      "hash",
+      "break",
+      "continue",
+      ":",
+    ].map((word) => ({
+      name: `${word} is not found and execution continues`,
+      command: `${word} value; echo survived`,
+      env: { PATH: "" },
+      expect: (r: { exitCode: number; stdout: string; stderr: string }) => {
+        expect(r.exitCode).toBe(0);
+        expect(r.stdout).toBe("survived\n");
+        expect(r.stderr).toContain(`command not found: ${word}`);
+      },
+    })),
+    ...["f() { echo hi; }", "f () { echo hi; }", "f( ) { echo hi; }", "case x in x) echo y;; esac"].map(
+      (command) => ({
+        name: `${command} fails to parse`,
+        command,
+        expect: (r: { exitCode: number; stderr: string }) => {
+          expect(r.exitCode).not.toBe(0);
+          expect(r.stderr).toContain("Unexpected");
+        },
+      }),
+    ),
+    ...[
+      "(printf hello) > out",
+      "(true; true) 2>/dev/null",
+      "(true) &> out",
+      "(true) &>> out",
+      "echo $( (true) > out)",
+    ].map((command) => ({
+      name: `${command} cannot redirect a group`,
+      command,
+      expect: (r: { exitCode: number; stderr: string }) => {
+        expect(r.exitCode).not.toBe(0);
+        expect(r.stderr).toContain("Subshells with redirections are currently not supported");
+      },
+    })),
+    ...['"set" -e', "s\\et -e", "'source' .env"].map((command) => ({
+      name: `${command} is still a missing builtin when quoted`,
+      command: `${command}; echo survived`,
+      env: { PATH: "" },
+      expect: (r: { exitCode: number; stdout: string }) => {
+        expect(r.exitCode).toBe(0);
+        expect(r.stdout).toBe("survived\n");
+      },
+    })),
+    {
+      name: "word continuation splits arguments instead of joining",
+      command: "printf '%s\\n' hel\\\nlo",
+      expect: (r: { exitCode: number; stdout: string }) => {
+        expect(r.exitCode).toBe(0);
+        expect(r.stdout).toBe("hel\nlo\n");
+      },
+    },
+    {
+      name: "word continuation after expansion splits arguments",
+      command: "echo $X\\\ny",
+      env: { X: "a" },
+      expect: (r: { exitCode: number; stdout: string }) => {
+        expect(r.exitCode).toBe(0);
+        expect(r.stdout).toBe("a y\n");
+      },
+    },
     {
       name: "braced plain is literal",
       command: "echo ${X}",
@@ -361,8 +453,8 @@ describe("bun-shell-dialect conformance: clean constructs work in real Bun", () 
       },
     },
     {
-      name: "line continuation works",
-      command: "echo $X\\\ny",
+      name: "line continuation between words works",
+      command: "echo $X \\\ny",
       env: { X: "a" },
       expect: (r: { exitCode: number; stdout: string }) => {
         expect(r.exitCode).toBe(0);
