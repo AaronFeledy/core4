@@ -41,6 +41,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { prepareProvider } from "../providers/prepared.ts";
 import { globalAppRef, selectGlobalServices, withGlobalLifecycleEvents } from "./global-common";
 
 import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
@@ -123,7 +124,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
     }
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan.provider);
+    const selectedProvider = yield* registry.select(loaded.plan.provider);
     const verifyAdmission = yield* captureGlobalStartupAdmission();
 
     return yield* withGlobalLifecycleEvents(
@@ -156,10 +157,11 @@ export const globalStart = Effect.fn("GlobalStart.start")(
         const retained = options.services?.length
           ? yield* retainGlobalPlanSiblings(
               loaded.plan,
-              provider,
+              selectedProvider,
               services.map((service) => String(service.name)),
             )
           : undefined;
+        const provider = retained?.provider ?? (yield* prepareProvider(selectedProvider));
         const builds = yield* BuildOrchestrator;
         const applied = yield* applyGlobalServiceGroups(
           loaded.plan,

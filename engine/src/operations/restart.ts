@@ -42,9 +42,10 @@ import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { type PreparedRuntimeProvider, selectPreparedProvider } from "../providers/prepared.ts";
 import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -91,12 +92,14 @@ type RestartAppServices =
 const restartSelectedServices = Effect.fnUntraced(function* (
   selectedPlan: AppPlan,
   target: ResolvedAppTarget,
-  options: Pick<RestartAppOptions, "signal"> & { readonly preparedOverlays: PreparedDebuggerOverlay },
+  options: Pick<RestartAppOptions, "signal"> & {
+    readonly preparedOverlays: PreparedDebuggerOverlay;
+    readonly provider: PreparedRuntimeProvider;
+  },
 ): Effect.fn.Return<RestartAppResult["servicesStarted"], RestartAppError, RestartAppServices> {
-  const { signal, preparedOverlays } = options;
+  const { signal, preparedOverlays, provider } = options;
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(target.plan);
   const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
   if (
     appliedPlan === undefined ||
@@ -277,18 +280,17 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
     const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
-    const registry = yield* RuntimeProviderRegistry;
     const plan = resolvedTarget.plan;
     const scoped = options.services !== undefined && options.services.length > 0;
     const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
     const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
-    const provider = yield* registry.select(plan);
+    const provider = yield* selectPreparedProvider(plan);
     const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(resolvedTarget, provider);
     const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
     return yield* withAppMutationLock(
       appLockTarget(plan),
-      withPlanVolumeCoordination({
+      withLaunchVolumeCoordination({
         plan,
         provider,
         stateStore,
@@ -310,6 +312,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
               app: plan.name,
               servicesStarted: yield* restartSelectedServices(selectedPlan, resolvedTarget, {
                 ...options,
+                provider,
                 preparedOverlays,
               }),
             };
