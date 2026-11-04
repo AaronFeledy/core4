@@ -14,7 +14,9 @@ import {
   SqlDumpNotFoundError,
 } from "@lando/sdk/errors";
 
-import { ensureDumpFile, ensureExportDestination, prepareImportDump } from "../src/dump-file.ts";
+import { ensureDumpFile, prepareImportDump } from "../src/dump-file.ts";
+import { ensureExportDestination } from "../src/export-destination.ts";
+import { dumpCompleteness } from "../src/families.ts";
 
 const sha256 = (bytes: Uint8Array | string) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
@@ -27,6 +29,8 @@ const MARIADB_DUMP =
 const PG_DUMP =
   "--\n-- PostgreSQL database dump\n--\n\n\\restrict abc\nCREATE TABLE t (id int);\n--\n-- PostgreSQL database dump complete\n--\n\n\\unrestrict abc\n\n";
 
+const noPrivateAccess = { enforce: async () => undefined, verify: async () => undefined };
+
 describe("dump files", () => {
   let root = "";
   beforeEach(async () => {
@@ -36,10 +40,22 @@ describe("dump files", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  const prepare = (input: Omit<Parameters<typeof prepareImportDump>[0], "stagingDir">) =>
+  const prepare = (
+    input: Omit<
+      Parameters<typeof prepareImportDump>[0],
+      "stagingDir" | "privateFileAccess" | "completeness"
+    > & {
+      readonly completeness?: Parameters<typeof prepareImportDump>[0]["completeness"];
+    },
+  ) =>
     Effect.runPromiseExit(
       Effect.scoped(
-        prepareImportDump({ ...input, stagingDir: join(root, "staging") }).pipe(
+        prepareImportDump({
+          completeness: dumpCompleteness("mysql"),
+          ...input,
+          stagingDir: join(root, "staging"),
+          privateFileAccess: noPrivateAccess,
+        }).pipe(
           Effect.flatMap((prepared) =>
             Effect.promise(async () => ({
               ...prepared,
@@ -81,6 +97,21 @@ describe("dump files", () => {
   });
 
   describe("prepareImportDump", () => {
+    test.each([
+      ["mysql", PG_DUMP.split("CREATE")[0]],
+      ["mariadb", PG_DUMP.split("CREATE")[0]],
+      ["postgres", MYSQL_DUMP.split("CREATE")[0]],
+      ["mongodb", MYSQL_DUMP.split("CREATE")[0]],
+      ["mssql", MYSQL_DUMP.split("CREATE")[0]],
+    ] as const)("only applies the %s target family's completeness rule", async (family, dump) => {
+      const exit = await prepare({
+        file: "-",
+        appRoot: root,
+        completeness: dumpCompleteness(family),
+        stdin: Stream.make(new TextEncoder().encode(dump)),
+      });
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
     test("hashes an uncompressed file in place instead of copying it", async () => {
       const path = join(root, "plain.sql.gz");
       await writeFile(path, "select 1;\n");
@@ -96,7 +127,7 @@ describe("dump files", () => {
       async (_label, compress) => {
         const path = join(root, "dump.sql");
         await writeFile(path, compress(PG_DUMP));
-        const exit = await prepare({ file: path, appRoot: root });
+        const exit = await prepare({ file: path, appRoot: root, completeness: dumpCompleteness("postgres") });
         if (!Exit.isSuccess(exit)) throw new Error(`prepare failed: ${Cause.pretty(exit.cause)}`);
         expect(exit.value.path).not.toBe(path);
         expect(exit.value.bytes).toBe(PG_DUMP);
@@ -106,6 +137,38 @@ describe("dump files", () => {
         expect(existsSync(exit.value.path)).toBe(false);
       },
     );
+
+    test("makes the staging directories and the staged file private before any dump byte is written", async () => {
+      // Given private-access hooks that record each path and how much of the staged file exists.
+      const staging = join(root, "staging");
+      const calls: string[] = [];
+      const record = (operation: string) => async (path: string) => {
+        const size = existsSync(path) && (await stat(path)).isFile() ? (await stat(path)).size : undefined;
+        calls.push(
+          `${operation} ${path.startsWith(staging) ? path.slice(staging.length) || "/" : path}${size === undefined ? "" : ` size=${size}`}`,
+        );
+      };
+      // When stdin is staged.
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          prepareImportDump({
+            file: "-",
+            appRoot: root,
+            stagingDir: staging,
+            privateFileAccess: { enforce: record("enforce"), verify: record("verify") },
+            stdin: Stream.make(new TextEncoder().encode(MYSQL_DUMP)),
+            completeness: dumpCompleteness("mysql"),
+          }),
+        ),
+      );
+      // Then the shared directory, the per-dump directory, and the empty temp file are each enforced and verified.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(calls.slice(0, 2)).toEqual(["enforce /", "verify /"]);
+      expect(calls[2]).toMatch(/^enforce \/sql-dump-[^/]+$/u);
+      expect(calls[4]).toMatch(/^enforce \/sql-dump-[^/]+\/dump\.tmp-.+ size=0$/u);
+      expect(calls[5]).toMatch(/^verify .+ size=0$/u);
+      if (process.platform !== "win32") expect((await stat(staging)).mode & 0o777).toBe(0o700);
+    });
 
     test("stages stdin, including compressed stdin, and removes the copy when the scope closes", async () => {
       const exit = await prepare({ file: "-", appRoot: root, stdin: Stream.make(Bun.gzipSync(MYSQL_DUMP)) });
@@ -132,18 +195,24 @@ describe("dump files", () => {
     });
 
     test.each([
-      ["mysqldump", MYSQL_DUMP],
-      ["mariadb-dump", MARIADB_DUMP],
-      ["pg_dump", PG_DUMP],
+      ["mysql", MYSQL_DUMP],
+      ["mariadb", MARIADB_DUMP],
+      ["postgres", PG_DUMP],
     ] as const)(
       "accepts a complete %s dump and rejects one cut off before its trailer",
-      async (_tool, dump) => {
+      async (family, dump) => {
         const complete = join(root, "complete.sql");
         const cut = join(root, "cut.sql");
         await writeFile(complete, dump);
         await writeFile(cut, dump.slice(0, dump.indexOf("CREATE TABLE") + 20));
-        expect(Exit.isSuccess(await prepare({ file: complete, appRoot: root }))).toBe(true);
-        const error = failureOf(await prepare({ file: cut, appRoot: root }));
+        expect(
+          Exit.isSuccess(
+            await prepare({ file: complete, appRoot: root, completeness: dumpCompleteness(family) }),
+          ),
+        ).toBe(true);
+        const error = failureOf(
+          await prepare({ file: cut, appRoot: root, completeness: dumpCompleteness(family) }),
+        );
         expect(error).toBeInstanceOf(SqlDumpIncompleteError);
         expect(error).toMatchObject({ reason: "truncated", path: cut });
       },
@@ -186,6 +255,7 @@ describe("dump files", () => {
         file: "-",
         appRoot: root,
         stdin: Stream.make(crlf.subarray(0, split), crlf.subarray(split)),
+        completeness: dumpCompleteness("postgres"),
       });
       expect(Exit.isSuccess(exit)).toBe(true);
     });
@@ -212,7 +282,12 @@ describe("dump files", () => {
       const head = PG_DUMP.split("CREATE")[0];
       const cut = `${head}COPY public.t (v) FROM stdin;\n-- PostgreSQL database dump complete\n`;
       const error = failureOf(
-        await prepare({ file: "-", appRoot: root, stdin: Stream.make(new TextEncoder().encode(cut)) }),
+        await prepare({
+          file: "-",
+          appRoot: root,
+          stdin: Stream.make(new TextEncoder().encode(cut)),
+          completeness: dumpCompleteness("postgres"),
+        }),
       );
       expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
     });
@@ -235,11 +310,25 @@ describe("dump files", () => {
       expect(cut.subarray(-4)).toEqual(Uint8Array.of(0xff, 0xff, 0xff, 0xff));
 
       // Then the whole archive imports, and the cut one is refused plain or gzip-compressed.
-      expect(Exit.isSuccess(await prepare({ file: "-", appRoot: root, stdin: Stream.make(archive) }))).toBe(
-        true,
-      );
+      expect(
+        Exit.isSuccess(
+          await prepare({
+            file: "-",
+            appRoot: root,
+            stdin: Stream.make(archive),
+            completeness: dumpCompleteness("mongodb"),
+          }),
+        ),
+      ).toBe(true);
       for (const bytes of [cut, Bun.gzipSync(cut)]) {
-        const error = failureOf(await prepare({ file: "-", appRoot: root, stdin: Stream.make(bytes) }));
+        const error = failureOf(
+          await prepare({
+            file: "-",
+            appRoot: root,
+            stdin: Stream.make(bytes),
+            completeness: dumpCompleteness("mongodb"),
+          }),
+        );
         expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
       }
     });
@@ -291,7 +380,14 @@ describe("dump files", () => {
       // When
       const fiber = Effect.runFork(
         Effect.scoped(
-          prepareImportDump({ file: "-", appRoot: root, stagingDir: join(root, "staging"), stdin }),
+          prepareImportDump({
+            file: "-",
+            appRoot: root,
+            stagingDir: join(root, "staging"),
+            privateFileAccess: noPrivateAccess,
+            stdin,
+            completeness: dumpCompleteness("mysql"),
+          }),
         ),
       );
       await started.promise;

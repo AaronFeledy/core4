@@ -25,18 +25,20 @@ import {
 } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
-import { ensureDumpFile, ensureExportDestination, prepareImportDump } from "./dump-file.ts";
+import { ensureDumpFile, prepareImportDump } from "./dump-file.ts";
 import {
   SqlEnvironmentSession,
   classifySqlPlan,
   protectSqlEnvironment,
   registerSqlLiteralCredentials,
 } from "./environment.ts";
-import { countCommand } from "./families.ts";
+import { ensureExportDestination } from "./export-destination.ts";
+import { countCommand, dumpCompleteness } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
+import { precheckSeedEligibility } from "./seed-eligibility.ts";
 import { resolveSeedSource } from "./seed-source.ts";
 import { executeSeed } from "./seed.ts";
 import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
@@ -159,16 +161,25 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     const readsDump = action === "import" || (action === "seed" && input.file !== undefined);
     // Missing or unreadable files fail before the count probe and confirmation prompt.
     if (readsDump && dumpStdio === undefined) yield* ensureDumpFile(file, deps.plan.root);
-
-    if (action === "import") {
+    const countTables = Effect.suspend(() => {
       const command = countCommand(target.family, creds);
-      const counted = yield* checkedSqlExecution(deps.exec(target.name, command, env), {
+      return checkedSqlExecution(deps.exec(target.name, command, env), {
         service: target.name,
         command,
         env,
         secrets: protectedEnvironment.secrets,
+      }).pipe(Effect.map((counted) => parseCount(counted.stdout)));
+    });
+    if (action === "seed" && readsDump)
+      yield* precheckSeedEligibility(deps, {
+        plan: deps.plan,
+        service,
+        serviceName: target.name,
+        count: countTables,
       });
-      const count = parseCount(counted.stdout);
+
+    if (action === "import") {
+      const count = yield* countTables;
       yield* confirmOrFail(
         input,
         deps.confirm,
@@ -254,6 +265,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           file,
           appRoot: deps.plan.root,
           stagingDir: deps.stagingDir,
+          privateFileAccess: deps.privateFileAccess,
+          completeness: dumpCompleteness(target.family),
           ...(dumpStdio?._tag === "stdin" ? { stdin: dumpStdio.stream } : {}),
         })
       : undefined;

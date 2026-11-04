@@ -16,6 +16,7 @@ import {
   StateStore,
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { validateExportCompression } from "./command-input.ts";
 import { providerSqlExec } from "./dispatch.ts";
@@ -33,6 +34,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const events = yield* EventService;
   const stateStore = yield* StateStore;
   const paths = yield* PathsService;
+  const privateFileAccess = yield* PrivateFileAccessService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
   const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
@@ -77,6 +79,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
             }),
         }).pipe(Effect.map(AbsolutePath.make)),
       stagingDir: paths.transferStagingDir,
+      privateFileAccess,
       exec: providerSqlExec(provider, planned),
       resume: (service, identity) => {
         const resume = provider.resume;

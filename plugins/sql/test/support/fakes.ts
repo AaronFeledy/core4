@@ -256,6 +256,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       }),
     pruneSnapshots: () => Effect.succeed([]),
     stagingDir: join(root, "transfer-staging"),
+    privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
     canonicalizeSourcePath: (path) =>
       Effect.try({
         try: () => AbsolutePath.make(realpathSync(path)),

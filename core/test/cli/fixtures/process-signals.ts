@@ -82,6 +82,8 @@ try {
                 file: dump,
                 appRoot: directory,
                 stagingDir: join(directory, "staging"),
+                privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+                completeness: undefined,
               }).pipe(
                 Effect.flatMap((prepared) =>
                   Effect.sync(() =>

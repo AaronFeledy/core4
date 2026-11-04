@@ -51,12 +51,12 @@
     "@lando/container-runtime": "workspace:*",
     "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
+    "@lando/state-store": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@lando/data-mover": "workspace:*",
-    "@lando/paths": "workspace:*",
-    "@lando/state-store": "workspace:*"
+    "@lando/paths": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

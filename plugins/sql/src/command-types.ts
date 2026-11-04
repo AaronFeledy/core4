@@ -4,6 +4,7 @@ import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { ExecutableCommandStdio } from "@lando/sdk/plugins";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver, RuntimeProvider } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import type { SqlExec, SqlMover } from "./actions.ts";
 import type { SqlPublisher } from "./progress.ts";
@@ -58,4 +59,5 @@ export type SqlCommandDeps = SqlMover &
     readonly publish: SqlPublisher;
     /** Host directory for staging stdin and compressed dumps before import or seed. */
     readonly stagingDir: string;
+    readonly privateFileAccess: PrivateFileAccess;
   };
