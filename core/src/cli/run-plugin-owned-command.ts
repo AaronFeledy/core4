@@ -28,6 +28,7 @@ import {
   setActiveCommandId,
 } from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
+import { interruptOnAbort } from "./interrupt-on-abort";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { tryPluginCommandHelp } from "./plugin-command-help";
 import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
@@ -178,7 +179,12 @@ const runPluginOwnedCommand = (
         resultFormat: activeResultFormat,
         rendererMode: activeRendererMode,
       };
-      const validated = await Effect.runPromiseExit(validateEventCommandInput(spec, parsed));
+      // A plugin parser may be async, so validation stays interruptible before the runtime boots.
+      const validated = await Effect.runPromiseExit(
+        interruptOnAbort(validateEventCommandInput(spec, parsed), signal),
+      );
+      // The process signal handler owns the exit status, as it does for other pre-runtime stages.
+      if (signal.aborted) return;
       // A refused stdio request depends only on the invocation's streams and output format, so it
       // fails before the app runtime boots. Invalid input still fails inside the command lifecycle.
       const refusal = Exit.isSuccess(validated)

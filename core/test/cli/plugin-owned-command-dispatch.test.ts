@@ -11,12 +11,14 @@ import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/buil
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
+import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   isPluginOwnedCommandId,
   pluginOwnedCliFlagError,
   pluginOwnedCommandEffect,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
+  tryPluginOwnedCommand,
 } from "../../src/cli/run-plugin-owned-command.ts";
 
 const DbImportResult = Schema.Struct({
@@ -115,6 +117,59 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
 };
 
 describe("plugin-owned command dispatch", () => {
+  test("interrupts a pending async flag parser before the command runs", async () => {
+    // Given a plugin command whose flag parser never settles.
+    const parsing = Promise.withResolvers<void>();
+    let ran = false;
+    const spec: ExecutableCommandSpec = {
+      id: "fixture:hang",
+      summary: "Hang while parsing.",
+      namespace: "fixture",
+      bootstrap: "plugins",
+      flags: {
+        wait: {
+          type: "string",
+          parse: () => {
+            parsing.resolve();
+            return new Promise<never>(() => {});
+          },
+        },
+      },
+      resultSchema: Schema.Void,
+      run: () =>
+        Effect.sync(() => {
+          ran = true;
+        }),
+    };
+    const catalog = createPluginCommandCatalog(undefined, () =>
+      Effect.succeed({
+        commands: [
+          {
+            id: spec.id,
+            descriptor: { id: spec.id, summary: "Hang while parsing." },
+            load: async () => spec,
+            pluginName: "@example/hang",
+            source: "explicit",
+          },
+        ],
+        plugins: [],
+        globalPlugins: [],
+        certificateAuthorities: [],
+        hostContext: Context.empty(),
+      }),
+    );
+    const controller = new AbortController();
+
+    // When the user interrupts while the parser is pending.
+    const dispatched = tryPluginOwnedCommand("fixture:hang", ["--wait=forever"], controller.signal, catalog);
+    await parsing.promise;
+    controller.abort("SIGINT");
+
+    // Then dispatch settles without running the command.
+    expect(await dispatched).toBe(true);
+    expect(ran).toBe(false);
+  });
+
   test("loads a compliant confirmation flag and passes -y through execution to run", async () => {
     // Given
     const spec = {
