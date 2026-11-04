@@ -65,7 +65,6 @@ export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressi
     compression: Schema.Literals(["gzip", "zstd"]),
     operation: Schema.Literals(["compress", "decompress"]),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-    cause: Schema.optional(Schema.Unknown),
   },
 ) {}
 
