@@ -28,6 +28,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 
 import { makeDataMoverService } from "../src/service.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 
 const app = AppId.make("data-app");
@@ -119,7 +120,11 @@ describe("DataMover.read", () => {
                   if (event._tag === "post-data-transfer") outcomes.push(event.outcome);
                 }),
             },
-            { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+            {
+              paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") },
+              stateStore,
+              privateFileAccess,
+            },
           );
           // When
           return yield* mover
@@ -204,7 +209,11 @@ describe("DataMover.read", () => {
           const mover = makeDataMoverService(
             Effect.succeed(provider),
             { redactText: (text) => text, publish: () => Effect.void },
-            { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+            {
+              paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") },
+              stateStore,
+              privateFileAccess,
+            },
           );
           return yield* mover
             .read({

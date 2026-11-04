@@ -37,6 +37,8 @@ export interface PersistVerifiedStreamParams<E, R = never> {
   readonly expectedSha256?: string | undefined;
   readonly expectedSizeBytes?: number | undefined;
   readonly mode?: number | undefined;
+  /** Prepare the empty temp file before consuming or writing any payload bytes. */
+  readonly beforeWrite?: ((path: string) => Promise<void>) | undefined;
   /** Override the temp-suffix generator (tests). */
   readonly randomId?: (() => string) | undefined;
 }
@@ -166,6 +168,15 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
     }),
     (h) => Effect.promise(() => h.close().catch(() => undefined)),
   );
+
+  if (params.beforeWrite !== undefined) {
+    const beforeWrite = params.beforeWrite;
+    yield* Effect.tryPromise({
+      try: () => beforeWrite(tempPath),
+      catch: (cause) =>
+        new VerifiedStreamError({ reason: "persist", message: "Failed to prepare temp file.", cause }),
+    });
+  }
 
   const hash = createHash("sha256");
   const size = yield* Ref.make(0);

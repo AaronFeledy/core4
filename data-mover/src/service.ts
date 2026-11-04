@@ -70,6 +70,7 @@ import {
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
 import { execStdoutStream } from "./exec-stream.ts";
@@ -769,7 +770,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     ArchiveFormatError | DataTransferError | DataEndpointUnsupportedError,
     Scope.Scope
   >,
-  transferStagingDir: string,
+  staging: { readonly transferStagingDir: string; readonly privateFileAccess: PrivateFileAccess },
 ): Effect.fn.Return<DataTransferResult, DataMoverTransferError, Scope.Scope> {
   const target = spec.to;
   switch (target._tag) {
@@ -788,7 +789,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     case "hostArchive": {
       const staged = yield* stageVerifiedStream({
         body,
-        transferStagingDir,
+        ...staging,
         prefix: "archive",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
@@ -822,7 +823,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       {
         const staged = yield* stageVerifiedStream({
           body,
-          transferStagingDir,
+          ...staging,
           prefix: "service",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
@@ -873,7 +874,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         }
         const staged = yield* stageVerifiedStream({
           body,
-          transferStagingDir,
+          ...staging,
           prefix: "volume",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
@@ -907,7 +908,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       {
         const staged = yield* stageVerifiedStream({
           body,
-          transferStagingDir,
+          ...staging,
           prefix: "artifact",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
@@ -942,7 +943,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       const provider = yield* selectedProvider;
       const staged = yield* stageVerifiedStream({
         body,
-        transferStagingDir,
+        ...staging,
         prefix: "command",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
@@ -982,7 +983,7 @@ const failureDetail = (cause: Cause.Cause<unknown>): string => {
 export const makeDataMoverService = (
   selectedProvider: DataProvider,
   events: DataMoverEvents,
-  persistence: SnapshotPersistence,
+  persistence: SnapshotPersistence & { readonly privateFileAccess: PrivateFileAccess },
 ): Context.Service.Shape<typeof DataMover> =>
   DataMover.of({
     volumeInitialization: Effect.fn("DataMover.volumeInitialization")((identity) =>
@@ -1027,12 +1028,10 @@ export const makeDataMoverService = (
         const nativeServiceCopy =
           serviceCopy && (yield* selectedProvider).capabilities.serviceFileCopy === "native";
         const body = streamFromEndpoint(selectedProvider, spec.from);
-        const result = yield* writeStreamToEndpoint(
-          selectedProvider,
-          spec,
-          body,
-          persistence.paths.transferStagingDir,
-        );
+        const result = yield* writeStreamToEndpoint(selectedProvider, spec, body, {
+          transferStagingDir: persistence.paths.transferStagingDir,
+          privateFileAccess: persistence.privateFileAccess,
+        });
         const adjusted = nativeServiceCopy ? { ...result, accelerated: true } : result;
         const progress: DataTransferProgress = {
           phase: "completed",
@@ -1294,7 +1293,10 @@ export const makeDataMoverService = (
                     app: store.app,
                     store: store.store,
                   }),
-                  persistence.paths.transferStagingDir,
+                  {
+                    transferStagingDir: persistence.paths.transferStagingDir,
+                    privateFileAccess: persistence.privateFileAccess,
+                  },
                 )
               : undefined;
           const archiveIntegrity =
@@ -1436,6 +1438,7 @@ export const makeDataMoverService = (
         const staged = yield* stageVerifiedStream({
           body: byteStreamFromHost(archivePath),
           transferStagingDir: persistence.paths.transferStagingDir,
+          privateFileAccess: persistence.privateFileAccess,
           prefix: "snapshot",
           expectedSha256: info.digest,
           expectedSizeBytes: info.sizeBytes,
@@ -1469,7 +1472,10 @@ export const makeDataMoverService = (
             path: absolutePath(staged.path),
             format: info.format ?? "tar",
           }),
-          persistence.paths.transferStagingDir,
+          {
+            transferStagingDir: persistence.paths.transferStagingDir,
+            privateFileAccess: persistence.privateFileAccess,
+          },
         ).pipe(Effect.asVoid);
       }
       const targetGeneration = physicalVolumeGeneration(target);
@@ -1566,21 +1572,27 @@ export const makeDataMoverService = (
     ),
   });
 
-export const layer: Layer.Layer<
+export const layerWithPrivateFileAccess: Layer.Layer<
   DataMover,
   never,
-  RuntimeProviderRegistry | PathsService | StateStore | EventService | RedactionService
+  | RuntimeProviderRegistry
+  | PathsService
+  | StateStore
+  | EventService
+  | RedactionService
+  | PrivateFileAccessService
 > = Layer.suspend(() =>
   Layer.effect(
     DataMover,
     Effect.gen(function* () {
       const paths = yield* PathsService;
       const stateStore = yield* StateStore;
+      const privateFileAccess = yield* PrivateFileAccessService;
       const providerRegistry = yield* RuntimeProviderRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
-      const persistence = { paths, stateStore, providerRegistry };
+      const persistence = { paths, stateStore, providerRegistry, privateFileAccess };
       const service = (app?: import("@lando/sdk/schema").AppId, providerId?: ProviderId) => {
         const selected = Effect.gen(function* () {
           // Explicit call-time bindings come from operations that already selected
@@ -1646,3 +1658,5 @@ export const layer: Layer.Layer<
     }),
   ),
 );
+
+export const layer = layerWithPrivateFileAccess.pipe(Layer.provide(PrivateFileAccessService.layer));

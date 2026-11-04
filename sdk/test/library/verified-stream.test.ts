@@ -15,6 +15,40 @@ import {
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
 
+test("failed temp-file preparation leaves the destination unchanged without consuming payload", async () => {
+  const directory = await fs.mkdtemp(join(tmpdir(), "lando-prepare-stream-"));
+  const target = join(directory, "artifact");
+  let consumed = false;
+  const denied = new Error("private access unavailable");
+  try {
+    await fs.writeFile(target, "original");
+    const error = await Effect.runPromise(
+      Effect.scoped(
+        persistVerifiedStream({
+          destinationPath: target,
+          beforeWrite: async (path) => {
+            expect((await fs.stat(path)).size).toBe(0);
+            throw denied;
+          },
+          body: Stream.fromEffect(
+            Effect.sync(() => {
+              consumed = true;
+              return bytes("secret");
+            }),
+          ),
+        }),
+      ).pipe(Effect.flip),
+    );
+    expect(error.reason).toBe("persist");
+    expect(error.cause).toBe(denied);
+    expect(consumed).toBe(false);
+    expect(await fs.readFile(target, "utf8")).toBe("original");
+    expect(await fs.readdir(directory)).toEqual(["artifact"]);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 describe("verified stream size ceilings", () => {
   for (const mode of ["collect", "persist"] as const) {
     test(`${mode} stops at the first chunk exceeding the expected size`, async () => {
