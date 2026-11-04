@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Schema } from "effect";
 
 import type {
@@ -8,6 +11,11 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import {
+  classifySocketProxyArtifacts,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "../src/socket-proxy-helper.ts";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import {
@@ -29,6 +37,7 @@ import {
   renderPolkitRule,
   startSockets,
 } from "../src/socket-proxy-install.ts";
+import { resolveNeedsHelper } from "../src/socket-proxy-setup.ts";
 import { buildInstallScript } from "../src/socket-proxy-units.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
@@ -99,7 +108,7 @@ const hostFiles = (present: Readonly<Record<string, string>> = {}) => {
   };
 };
 
-const markedUnit = "[Unit]\n# lando-proxy-socket-helper\n";
+const markedUnit = `${socketProxyUnitHeader("/lando")}\n[Unit]\n`;
 const [packagedProxyd] = PROXYD_CANDIDATES;
 
 describe("discoverProxydBinary", () => {
@@ -170,7 +179,7 @@ describe("renderPolkitRule", () => {
   test("allows only matching lando-proxy units and omits manage-unit-files", () => {
     // Given: the invoking user.
     // When: the polkit rule is rendered.
-    const rule = renderPolkitRule("lando-dev");
+    const rule = renderPolkitRule("lando-dev", "/lando");
 
     // Then: the unit regex and manage-units action are present; manage-unit-files is not.
     expect(rule).toContain("org.freedesktop.systemd1.manage-units");
@@ -181,11 +190,82 @@ describe("renderPolkitRule", () => {
 });
 
 describe("buildInstallScript", () => {
+  test("locked elevated script rejects another root before any mutation", () => {
+    const temp = mkdtempSync(join(tmpdir(), "lando-helper-install-"));
+    const bin = join(temp, "bin");
+    const units = join(temp, "units");
+    const rules = join(temp, "rules");
+    const log = join(temp, "mutation.log");
+    mkdirSync(bin);
+    mkdirSync(units);
+    mkdirSync(rules);
+    for (const name of ["systemctl", "chown", "chmod"]) {
+      writeFileSync(join(bin, name), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$MUTATION_LOG"\n', { mode: 0o755 });
+    }
+    const foreignPath = join(units, "lando-proxy-http.socket");
+    const foreign = socketProxyUnitHeader("/another-root");
+    writeFileSync(foreignPath, foreign);
+    const script = buildInstallScript({
+      user: "lando-dev",
+      userDataRoot: "/lando",
+      binary: "/usr/lib/systemd/systemd-socket-proxyd",
+      serviceType: "notify",
+      httpTarget: 48080,
+      httpsTarget: 48443,
+    });
+    try {
+      const child = Bun.spawnSync(
+        [
+          "/bin/sh",
+          "-c",
+          script
+            .replaceAll("/etc/systemd/system", units)
+            .replaceAll("/etc/polkit-1/rules.d", rules)
+            .replaceAll("/run/lock/lando-proxy-helper.lock", join(temp, "helper.lock")),
+        ],
+        {
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, MUTATION_LOG: log },
+        },
+      );
+      expect(child.exitCode).toBe(3);
+      expect(existsSync(log)).toBe(false);
+      expect(readFileSync(foreignPath, "utf8")).toBe(foreign);
+      expect(existsSync(join(rules, "10-lando-proxy.rules"))).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  test("stamps all five artifacts and renders valid polkit JavaScript", () => {
+    const root = '/lando/quoted "root"';
+    const script = buildInstallScript({
+      user: "lando-dev",
+      userDataRoot: root,
+      binary: "/usr/lib/systemd/systemd-socket-proxyd",
+      serviceType: "notify",
+      httpTarget: 38080,
+      httpsTarget: 38443,
+    });
+    const artifacts = [...script.matchAll(/cat > (\S+) <<'LANDO_PROXY_EOF'\n([\s\S]*?)LANDO_PROXY_EOF/gu)];
+    expect(artifacts).toHaveLength(5);
+    expect(
+      classifySocketProxyArtifacts(
+        artifacts.map((match) => match[2]),
+        root,
+        [],
+      ),
+    ).toEqual({ kind: "owned" });
+    const polkit = artifacts.find((match) => match[1] === POLKIT_RULE_PATH)?.[2] ?? "";
+    expect(polkit.startsWith("// lando-proxy-socket-helper\n")).toBe(true);
+    expect(() => new Bun.Transpiler({ loader: "js" }).transformSync(polkit)).not.toThrow();
+  });
+
   test("hops to supplied targets while listening on 80 and 443", () => {
     // Given: hop targets 8080/8443.
     // When: buildInstallScript is called with those hop targets.
     const script = buildInstallScript({
       user: "lando-dev",
+      userDataRoot: "/lando",
       binary: "/usr/lib/systemd/systemd-socket-proxyd",
       serviceType: "notify",
       httpTarget: 8080,
@@ -202,7 +282,113 @@ describe("buildInstallScript", () => {
   });
 });
 
+describe("isSocketProxyInstalled", () => {
+  test("recognizes this root's helper when the polkit rule is readable only by root", async () => {
+    const files = new Map<string, string>(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    const installed = await Effect.runPromise(
+      isSocketProxyInstalled({
+        userDataRoot: "/lando",
+        exists: (path) => Effect.succeed(files.has(path) || path === POLKIT_RULE_PATH),
+        readText: (path) => {
+          const text = files.get(path);
+          return text === undefined ? Effect.fail(new Error(`EACCES ${path}`)) : Effect.succeed(text);
+        },
+      }),
+    );
+    expect(installed).toBe(true);
+  });
+});
+
 describe("installSocketProxy", () => {
+  test.each(["/another-root", undefined])("leaves foreign helper %s untouched", async (owner) => {
+    const content = owner === undefined ? "# lando-proxy-socket-helper" : socketProxyUnitHeader(owner);
+    const access = hostFiles(Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, content])));
+    const runner = makeRunner(() => ok());
+    const privilege = makePrivilege(ok());
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        ...access,
+        user: "lando-dev",
+        userDataRoot: "/lando",
+        processRunner: runner.service,
+        privilege: privilege.service,
+        httpTarget: 48080,
+        httpsTarget: 48443,
+      }),
+    );
+    expect(outcome.kind).toBe("foreign");
+    expect(runner.calls()).toEqual([]);
+    expect(privilege.calls()).toEqual([]);
+  });
+
+  test("maps an ownership race detected under the install lock to foreign", async () => {
+    const privilege = makePrivilege(fail(3, ""));
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        ...hostFiles({ [packagedProxyd]: "binary" }),
+        user: "lando-dev",
+        userDataRoot: "/lando",
+        processRunner: makeRunner(() => ok()).service,
+        privilege: privilege.service,
+        httpTarget: 48080,
+        httpsTarget: 48443,
+      }),
+    );
+    expect(outcome.kind).toBe("foreign");
+    const script = privilege.calls()[0]?.[2] ?? "";
+    expect(script).toContain("command -v flock");
+    expect(script).toMatch(/exit 4/);
+    expect(script).toContain("flock -x 9");
+    expect(script.indexOf("command -v flock")).toBeLessThan(script.indexOf("flock -x 9"));
+    expect(script.indexOf("flock -x 9")).toBeLessThan(script.indexOf("cat >"));
+  });
+
+  test("setup never prompts, installs, or starts a foreign helper", async () => {
+    const runner = makeRunner(() => ok());
+    const privilege = makePrivilege(ok());
+    const owner = "/another-root";
+    const access = hostFiles({
+      ...Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, socketProxyUnitHeader(owner)])),
+      [POLKIT_RULE_PATH]: socketProxyPolkitHeader(owner),
+      [owner]: "directory",
+    });
+    const resolved = await Effect.runPromise(
+      resolveNeedsHelper(
+        {
+          ...access,
+          user: "lando-dev",
+          userDataRoot: "/lando",
+          hasHostSystemd: () => true,
+          autoApprove: true,
+          processRunner: runner.service,
+          privilege: privilege.service,
+        },
+        { httpTarget: 48080, httpsTarget: 48443 },
+      ),
+    );
+    expect(resolved.helperInstalled).toBe(false);
+    expect(resolved.socketsActive).toBe(false);
+    expect(resolved.decision.notices.join(" ")).toContain(owner);
+    expect(runner.calls()).toEqual([]);
+    expect(privilege.calls()).toEqual([]);
+  });
+
+  test("recognizes a helper stamped with the canonical root behind an alias", async () => {
+    const files = {
+      ...Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit])),
+      [POLKIT_RULE_PATH]: socketProxyPolkitHeader("/lando"),
+    };
+    expect(
+      await Effect.runPromise(
+        isSocketProxyInstalled({
+          ...hostFiles(files),
+          userDataRoot: "/alias",
+          realpath: () => Effect.succeed("/lando"),
+        }),
+      ),
+    ).toBe(true);
+  });
+
   test("elevates one script with units, polkit path, daemon-reload, and no enable", async () => {
     // Given: proxyd is at the first packaged path and units are not installed.
     const privilege = makePrivilege(ok());
@@ -211,6 +397,7 @@ describe("installSocketProxy", () => {
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
+        userDataRoot: "/lando",
         exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
@@ -239,7 +426,12 @@ describe("installSocketProxy", () => {
 
   test("skips a second elevate when unit files already carry the marker", async () => {
     // Given: all four unit files exist with the content marker.
-    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    const present = {
+      ...Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit])),
+      [POLKIT_RULE_PATH]: socketProxyPolkitHeader("/lando"),
+      "/etc/systemd/system/lando-proxy-http.service": `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
+      "/etc/systemd/system/lando-proxy-https.service": `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
+    };
     const privilege = makePrivilege(ok());
     const installedHost = hostFiles(present);
     const installHost = hostFiles({ ...present, [packagedProxyd]: "binary" });
@@ -247,6 +439,7 @@ describe("installSocketProxy", () => {
     // When: install checks idempotency.
     const installed = await Effect.runPromise(
       isSocketProxyInstalled({
+        userDataRoot: "/lando",
         exists: installedHost.exists,
         readText: installedHost.readText,
       }),
@@ -254,6 +447,7 @@ describe("installSocketProxy", () => {
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
+        userDataRoot: "/lando",
         exists: installHost.exists,
         readText: installHost.readText,
         processRunner: makeRunner(() => ok()).service,
@@ -273,7 +467,10 @@ describe("installSocketProxy", () => {
     // Given: marked units whose ExecStart still hops to 38080/38443.
     const staleHttp = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:38080\n`;
     const staleHttps = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:38443\n`;
-    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    const present = Object.fromEntries([
+      ...SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]),
+      [POLKIT_RULE_PATH, socketProxyPolkitHeader("/lando")],
+    ]);
     present["/etc/systemd/system/lando-proxy-http.service"] = staleHttp;
     present["/etc/systemd/system/lando-proxy-https.service"] = staleHttps;
     const privilege = makePrivilege(ok());
@@ -283,6 +480,7 @@ describe("installSocketProxy", () => {
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
+        userDataRoot: "/lando",
         exists: installHost.exists,
         readText: installHost.readText,
         processRunner: makeRunner(() => ok()).service,
@@ -305,7 +503,10 @@ describe("installSocketProxy", () => {
     // Given: marked units hopping to 4443/8080.
     const httpUnit = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`;
     const httpsUnit = `${markedUnit}ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:4443\n`;
-    const present = Object.fromEntries(SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]));
+    const present = Object.fromEntries([
+      ...SOCKET_UNIT_PATHS.map((path) => [path, markedUnit]),
+      [POLKIT_RULE_PATH, socketProxyPolkitHeader("/lando")],
+    ]);
     present["/etc/systemd/system/lando-proxy-http.service"] = httpUnit;
     present["/etc/systemd/system/lando-proxy-https.service"] = httpsUnit;
     const privilege = makePrivilege(ok());
@@ -315,6 +516,7 @@ describe("installSocketProxy", () => {
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
+        userDataRoot: "/lando",
         exists: installHost.exists,
         readText: installHost.readText,
         processRunner: makeRunner(() => ok()).service,
@@ -337,6 +539,7 @@ describe("installSocketProxy", () => {
     const outcome = await Effect.runPromise(
       installSocketProxy({
         user: "lando-dev",
+        userDataRoot: "/lando",
         exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
@@ -364,6 +567,13 @@ describe("startSockets", () => {
     // When: sockets are started.
     const outcome = await Effect.runPromise(
       startSockets({
+        userDataRoot: "/lando",
+        ...hostFiles({
+          ...Object.fromEntries(
+            SOCKET_UNIT_PATHS.map((path) => [path, `${socketProxyUnitHeader("/lando")}\n[Unit]\n`]),
+          ),
+          [POLKIT_RULE_PATH]: `${socketProxyPolkitHeader("/lando")}\npolkit.addRule(function () {});\n`,
+        }),
         processRunner: runner.service,
         privilege: privilege.service,
         probeForward: (_host, port) =>
@@ -377,8 +587,11 @@ describe("startSockets", () => {
     // Then: unelevated systemctl ran first, then one elevate, then forward probes.
     expect(outcome.kind).toBe("started");
     const first = runner.calls()[0];
-    expect(first?.cmd).toBe("systemctl");
-    expect(first?.args).toEqual(["start", "lando-proxy-http.socket", "lando-proxy-https.socket"]);
+    expect(first?.cmd).toBe("/bin/sh");
+    expect(first?.args?.[1]).toContain("flock -x 9");
+    expect(first?.args?.[1]).toContain(
+      "systemctl start 'lando-proxy-http.socket' 'lando-proxy-https.socket'",
+    );
     expect(privilege.calls()).toHaveLength(1);
     expect(privilege.calls()[0]?.join(" ")).toContain("systemctl");
     expect(privilege.calls()[0]?.join(" ")).toContain("start");
@@ -411,6 +624,7 @@ describe("setup classification after helper install", () => {
       },
       socketProxy: {
         user: "lando-dev",
+        userDataRoot: "/lando",
         hasHostSystemd: () => true,
         autoApprove: true,
         exists: (path) => Effect.succeed(path === packagedProxyd),
@@ -468,6 +682,7 @@ describe("setup classification after helper install", () => {
       },
       socketProxy: {
         user: "lando-dev",
+        userDataRoot: "/lando",
         hasHostSystemd: () => true,
         autoApprove: true,
         exists: (path) => Effect.succeed(path === packagedProxyd),
