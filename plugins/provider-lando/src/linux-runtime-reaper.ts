@@ -15,6 +15,7 @@ import { type PodmanServiceRunner, buildPodmanServiceArgs } from "./podman-servi
 export interface LinuxRuntimeReaperDeps extends LinuxRuntimeGenerationDeps {
   readonly serviceRunner: PodmanServiceRunner;
   readonly podmanBin: string;
+  readonly privateRuntimeDir: string | undefined;
   readonly terminationPolicy?: RetryPolicy;
 }
 

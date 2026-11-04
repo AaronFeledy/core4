@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+import { landoManagedPodmanRuntimeDirCommands } from "../../../scripts/build-ci-workflow.ts";
 import { renderNightlyWorkflow } from "../../../scripts/build-nightly-workflow.ts";
 import { isShardedUnitTest } from "../../../scripts/test-shards.ts";
 
@@ -258,4 +259,13 @@ test("source-store acceptance jobs compile the platform binary and run the suite
 
 test("source-store acceptance suite stays out of PR unit-test shards", () => {
   expect(isShardedUnitTest("core/test/build/source-store-acceptance.integration.test.ts")).toBe(false);
+});
+
+test("managed podman CLI steps join the service's private runtime dir", () => {
+  const steps = renderNightlyWorkflow().split("\n      - name: ");
+  const podmanSteps = steps.filter((step) =>
+    step.includes('LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"'),
+  );
+  expect(podmanSteps.length).toBeGreaterThan(0);
+  for (const step of podmanSteps) expect(step).toContain(landoManagedPodmanRuntimeDirCommands);
 });
