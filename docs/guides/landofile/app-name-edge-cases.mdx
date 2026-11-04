@@ -78,3 +78,20 @@ Automatic default routes use `<service>.<slug>.<domain>`, where `<domain>` is `p
 Set `proxy.defaultDomain` to a plain DNS domain like `lndo.test`, without a scheme, port, path, or wildcard. `lando config set` rejects other values with an issue naming `proxy.defaultDomain`. See [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
 
 A 100-character lowercase name is preserved in `lando app:config`, but its runtime slug is the first 57 characters. The network and route stay valid instead of producing an overlong label.
+
+## Change an app's name
+
+Containers, generated volumes, and the default database name follow the app name, and Lando doesn't move them to a new name. Retire the old name first, from the app folder:
+
+```sh
+lando destroy
+```
+
+`lando destroy` keeps named data volumes unless you add `--volumes`. Then edit `name:` in `.lando.yml` (or `.lando.local.yml`) and start the app under its new name:
+
+```sh
+lando start
+lando info
+```
+
+`lando info` lists URLs built from the new name, like `web.new-name.lndo.site`, and hostnames built from the old name no longer route. Routes and certificates belong to the app folder, not the name, so you never restart the proxy or delete router files by hand. Hostnames you authored without the app name keep routing because they're still in your Landofile.
