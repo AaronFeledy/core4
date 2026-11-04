@@ -35,6 +35,7 @@ type FlagDefinition = {
   readonly name: string;
   readonly boolean: boolean;
   readonly integer: boolean;
+  readonly min: number | undefined;
   readonly multiple: boolean;
   readonly options: ReadonlyArray<string>;
 };
@@ -49,6 +50,7 @@ const flagDefinitionsByToken = (
       name,
       boolean: "type" in candidate && candidate.type === "boolean",
       integer: "valueType" in candidate && candidate.valueType === "integer",
+      min: "min" in candidate && typeof candidate.min === "number" ? candidate.min : undefined,
       multiple: "multiple" in candidate && candidate.multiple === true,
       options:
         "options" in candidate && Array.isArray(candidate.options)
@@ -153,11 +155,14 @@ const malformedFlagValue = (
   flag: string,
   issue: FlagValueIssue,
   options: ReadonlyArray<string> = [],
+  min?: number,
 ): MalformedCliFlagValueError => {
   const option = `--${flag}`;
   const remediation =
     issue === "invalid_integer"
-      ? `Supply ${option} with a whole integer.`
+      ? min === undefined
+        ? `Supply ${option} with a whole integer.`
+        : `Supply ${option} with a whole integer of at least ${min}.`
       : issue === "invalid_option"
         ? options.length > 0
           ? `Supply ${option} with one of: ${options.join(", ")}.`
@@ -206,8 +211,13 @@ export const validateCliFlagValues = (
     if (equalsIndex === -1 && byToken.has(flagToken(value))) {
       return malformedFlagValue(definition.name, "missing");
     }
-    if (definition.integer && (!/^-?\d+$/.test(value) || !Number.isInteger(Number(value)))) {
-      return malformedFlagValue(definition.name, "invalid_integer");
+    if (
+      definition.integer &&
+      (!/^-?\d+$/.test(value) ||
+        !Number.isInteger(Number(value)) ||
+        (definition.min !== undefined && Number(value) < definition.min))
+    ) {
+      return malformedFlagValue(definition.name, "invalid_integer", [], definition.min);
     }
     if (definition.options.length > 0 && !definition.options.includes(value)) {
       return malformedFlagValue(definition.name, "invalid_option", definition.options);
