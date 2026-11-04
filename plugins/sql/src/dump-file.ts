@@ -336,8 +336,25 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
  * A file export replaces its destination atomically. A directory, named pipe, socket, or device
  * there would be lost or never receive the dump, so refuse it before any database work.
  */
-export const ensureExportDestination = (path: string): Effect.Effect<void, CommandInputValidationError> =>
-  Effect.promise(() => stat(path).catch(() => undefined)).pipe(
+export const ensureExportDestination = (
+  path: string,
+): Effect.Effect<void, CommandInputValidationError | DataTransferError> =>
+  Effect.tryPromise({
+    try: () =>
+      stat(path).catch((cause: unknown) => {
+        const code = errnoCode(cause);
+        if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+        throw cause;
+      }),
+    catch: (cause) =>
+      new DataTransferError({
+        message: `Failed to inspect the export destination: ${path}`,
+        toEndpoint: "hostPath",
+        operation: "inspect",
+        remediation: "Check that the destination's directory exists and is readable, then retry the export.",
+        cause,
+      }),
+  }).pipe(
     Effect.flatMap((info) => {
       if (info === undefined || info.isFile()) return Effect.void;
       const directory = info.isDirectory();

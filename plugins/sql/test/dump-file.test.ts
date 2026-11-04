@@ -280,6 +280,23 @@ describe("dump files", () => {
       ).toBe(true);
     });
 
+    test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
+      "fails closed when the destination cannot be inspected",
+      async () => {
+        const locked = join(root, "locked");
+        await mkdir(locked);
+        await chmod(locked, 0o000);
+        try {
+          const error = failureOf(
+            await Effect.runPromiseExit(ensureExportDestination(join(locked, "dump.sql"))),
+          );
+          expect(error).toMatchObject({ _tag: "DataTransferError", operation: "inspect" });
+        } finally {
+          await chmod(locked, 0o755);
+        }
+      },
+    );
+
     test("refuses a directory", async () => {
       const error = failureOf(await Effect.runPromiseExit(ensureExportDestination(root)));
       expect(error).toBeInstanceOf(CommandInputValidationError);
