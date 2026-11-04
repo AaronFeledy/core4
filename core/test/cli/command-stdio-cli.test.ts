@@ -144,3 +144,25 @@ test("invalid plugin input still fails inside the command lifecycle", async () =
   expect(stderr).toContain("cli-db:import-error");
   expect(stderr).toContain("CommandInputValidationError");
 });
+
+test("routes an unsupported-format refusal to stderr when stdout carries the dump", async () => {
+  // Given a dash export with a format plugin commands don't support.
+  const child = Bun.spawn([process.execPath, cli, "db:export", "-", "--format=ndjson"], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+
+  // Then stdout stays empty and the refusal envelope is on stderr.
+  expect(exitCode).toBe(2);
+  expect(stdout).toBe("");
+  expect(JSON.parse(stderr.trim().split("\n").at(-1) ?? "")).toMatchObject({
+    ok: false,
+    command: "db:export",
+  });
+});

@@ -251,6 +251,7 @@ const dispatchPluginOwnedCommand = async (
   const row = await catalog.resolve(commandId);
   if (row === undefined) return "not-found";
   if ("unavailable" in row || row.loadError !== undefined) {
+    // Without a loaded spec there is no stdio declaration, so stdout keeps its usual role.
     await renderPluginOwnedPreCommandFailure("unavailable" in row ? row.unavailable : row.loadError);
     return "dispatched";
   }
@@ -265,15 +266,12 @@ const dispatchPluginOwnedCommand = async (
   }
   // A plugin-owned command declares no opt-in format, so it honors exactly the
   // universal set. Refuse before --json key listing can report success.
-  if (await rejectUnsupportedResultFormat(spec.id, undefined)) return "dispatched";
+  const payloadStdout =
+    commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, argv).args).stdout === true;
+  if (await rejectUnsupportedResultFormat(spec.id, undefined, { payloadStdout })) return "dispatched";
   const flagError = pluginOwnedCliFlagError(spec, argv);
   if (flagError !== undefined) {
-    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
-    await renderPluginOwnedPreCommandFailure(
-      flagError,
-      undefined,
-      commandStdioRequest(spec, parsed.args).stdout === true,
-    );
+    await renderPluginOwnedPreCommandFailure(flagError, undefined, payloadStdout);
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
