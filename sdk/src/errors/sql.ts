@@ -58,8 +58,7 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
 }) {}
 
 /**
- * An import or seed dump is empty, or a dump-tool dump (mysqldump, mariadb-dump,
- * pg_dump) ends before its completion marker because the tool stopped early.
+ * An import or seed dump is empty or lacks its dump tool's completion marker.
  * Raised before the recovery snapshot, so the database is untouched.
  */
 export class SqlDumpIncompleteError extends Schema.TaggedError<SqlDumpIncompleteError>()(

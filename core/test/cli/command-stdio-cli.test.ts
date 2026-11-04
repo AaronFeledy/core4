@@ -94,9 +94,15 @@ test("invalid plugin input still fails inside the command lifecycle", async () =
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
 
   expect(exitCode).toBe(2);
+  expect(stdout).toBe("");
   expect(stderr).toContain("cli-db:import-init");
+  expect(stderr).toContain("cli-db:import-error");
   expect(stderr).toContain("CommandInputValidationError");
 });

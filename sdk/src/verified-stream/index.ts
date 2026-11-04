@@ -13,7 +13,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Effect, Ref, Schema, type Scope, Stream } from "effect";
+import { Effect, Predicate, Ref, Schema, type Scope, Stream } from "effect";
 
 /** Failure raised while persisting/verifying a streamed artifact. */
 export class VerifiedStreamError extends Schema.TaggedError<VerifiedStreamError>()("VerifiedStreamError", {
@@ -90,6 +90,37 @@ const verify = (
   return undefined;
 };
 
+const isMissing = (cause: unknown): boolean =>
+  Predicate.hasProperty(cause, "code") && (cause.code === "ENOENT" || cause.code === "ENOTDIR");
+
+const notReplaceable = (): VerifiedStreamError =>
+  new VerifiedStreamError({
+    reason: "persist",
+    message: "The destination exists and is not a regular file.",
+  });
+
+/** Throws unless the destination is absent or resolves to a regular file. Inspection errors fail closed. */
+const assertReplaceableDestination = async (path: string): Promise<void> => {
+  const info = await stat(path).catch((cause: unknown) => {
+    if (isMissing(cause)) return undefined;
+    throw cause;
+  });
+  if (info !== undefined && !info.isFile()) throw notReplaceable();
+};
+
+const requireReplaceableDestination = (path: string): Effect.Effect<void, VerifiedStreamError> =>
+  Effect.tryPromise({
+    try: () => assertReplaceableDestination(path),
+    catch: (cause) =>
+      cause instanceof VerifiedStreamError
+        ? cause
+        : new VerifiedStreamError({
+            reason: "persist",
+            message: "Failed to inspect the destination.",
+            cause,
+          }),
+  });
+
 /**
  * Stream `body` into `destinationPath` atomically with checksum/size
  * verification. Requires an ambient `Scope`: a finalizer removes the temp file
@@ -102,15 +133,7 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
   const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
   if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
-  const existing = yield* Effect.promise(() => stat(params.destinationPath).catch(() => undefined));
-  if (existing !== undefined && !existing.isFile()) {
-    return yield* Effect.fail(
-      new VerifiedStreamError({
-        reason: "persist",
-        message: "The destination exists and is not a regular file.",
-      }),
-    );
-  }
+  yield* requireReplaceableDestination(params.destinationPath);
   const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
   const committed = yield* Ref.make(false);
 
@@ -194,10 +217,14 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
       try: async () => {
         await handle.sync().catch(() => undefined);
         await handle.close();
+        // The destination can change while the body streams; check again right before replacing it.
+        await assertReplaceableDestination(params.destinationPath);
         await rename(tempPath, params.destinationPath);
       },
       catch: (cause) =>
-        new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
+        cause instanceof VerifiedStreamError
+          ? cause
+          : new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
     }),
   );
   yield* Ref.set(committed, true);

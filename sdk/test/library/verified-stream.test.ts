@@ -217,3 +217,36 @@ describe("verified stream destinations", () => {
     },
   );
 });
+
+describe("verified stream destination recheck", () => {
+  test.skipIf(process.platform === "win32")(
+    "refuses a named pipe that appears while the body streams and removes its temp file",
+    async () => {
+      // Given: the destination is absent when persistence starts, then becomes a pipe mid-stream.
+      const dir = await fs.mkdtemp(join(tmpdir(), "lando-fifo-race-"));
+      const destination = join(dir, "dump.sql");
+      const body = Stream.make(bytes("first")).pipe(
+        Stream.concat(
+          Stream.fromEffect(
+            Effect.sync(() => {
+              expect(Bun.spawnSync(["mkfifo", destination]).exitCode).toBe(0);
+              return bytes("second");
+            }),
+          ),
+        ),
+      );
+      try {
+        // When
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(persistVerifiedStream({ body, destinationPath: destination })),
+        );
+        // Then
+        expect(exit._tag === "Failure" && Cause.squash(exit.cause)).toBeInstanceOf(VerifiedStreamError);
+        expect((await fs.stat(destination)).isFIFO()).toBe(true);
+        expect(await fs.readdir(dir)).toEqual(["dump.sql"]);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});

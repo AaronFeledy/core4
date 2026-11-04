@@ -88,7 +88,9 @@ test.skipIf(!liveEnabled)(
       const gzipped = await dash(["db:export", "-", "--service=database", "--compression=gzip"]);
       expect(gzipped.exitCode, gzipped.stderr).toBe(0);
       expect([...gzipped.stdout.subarray(0, 2)]).toEqual([0x1f, 0x8b]);
-      expect(new TextDecoder().decode(Bun.gunzipSync(gzipped.stdout)).includes(marker)).toBe(true);
+      expect(new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(gzipped.stdout))).includes(marker)).toBe(
+        true,
+      );
 
       // When the gzip dump comes back on stdin after the data changed.
       const changed = await lando([...query, "UPDATE stdio_probe SET marker = 'changed'"]);
@@ -99,6 +101,8 @@ test.skipIf(!liveEnabled)(
       expect(restored.stdout.trim() === marker, restored.artifact).toBe(true);
 
       // When a dump cut off before pg_dump's completion trailer arrives on stdin.
+      const before = await lando([...query, "UPDATE stdio_probe SET marker = 'before-cut'"]);
+      expect(before.exitCode, before.artifact).toBe(0);
       const cut = plain.stdout.subarray(0, text.indexOf("-- PostgreSQL database dump complete"));
       const refused = await dash(["db:import", "-", "--service=database", "--yes", "--format=json"], cut);
       // Then it is refused before a recovery snapshot, and the data is untouched.
@@ -107,7 +111,7 @@ test.skipIf(!liveEnabled)(
       const failure = Schema.decodeUnknownSync(incomplete)(envelope.error);
       expect(failure.recoverySnapshotId).toBeUndefined();
       const untouched = await lando([...query, "SELECT marker FROM stdio_probe"]);
-      expect(untouched.stdout.trim() === marker, untouched.artifact).toBe(true);
+      expect(untouched.stdout.trim(), untouched.artifact).toBe("before-cut");
 
       // When the reader closes early, the export stops with the SIGPIPE convention.
       const pipeline = Bun.spawn(
@@ -134,7 +138,7 @@ test.skipIf(!liveEnabled)(
             '"$@" db:export - --service=database > "$fifo" 2>/dev/null &',
             "writer=$!",
             'exec 3<"$fifo"',
-            // Wait for the first dump byte, then keep fd 3 open and unread so the writer stalls.
+            // Wait for the first dump byte, then keep fd 3 open and unread so the dump cannot finish.
             "head -c 1 <&3 >/dev/null",
             'kill -INT "$writer"',
             'wait "$writer"; echo "exit=$?"',

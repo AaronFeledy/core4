@@ -140,7 +140,7 @@ describe("db dump stdio", () => {
       stdio: { stdout: () => Effect.interrupt },
     });
     // Then
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(released).toBe(true);
   });
 

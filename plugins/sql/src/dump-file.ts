@@ -68,47 +68,101 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return output;
 };
 
-/** Keeps the first and last bytes of a dump so completeness can be checked without a second read. */
+const lastBytes = (bytes: Uint8Array): Uint8Array =>
+  bytes.byteLength > EDGE_BYTES ? bytes.slice(-EDGE_BYTES) : bytes;
+
+const isAsciiWhitespace = (byte: number): boolean =>
+  byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
+
+const lastContentIndex = (chunk: Uint8Array): number => {
+  for (let index = chunk.byteLength - 1; index >= 0; index -= 1) {
+    if (!isAsciiWhitespace(chunk[index] ?? 0x20)) return index;
+  }
+  return -1;
+};
+
+/**
+ * Keeps the first bytes of a dump and the last bytes before any trailing whitespace, so
+ * completeness can be checked during the single read without buffering the dump.
+ */
 const trackDumpEdges = () => {
   let head: Uint8Array = new Uint8Array();
   let tail: Uint8Array = new Uint8Array();
+  let trailingWhitespace: Uint8Array = new Uint8Array();
   let size = 0;
   return {
     push: (chunk: Uint8Array) => {
       size += chunk.byteLength;
       if (head.byteLength < EDGE_BYTES)
         head = concatBytes(head, chunk.subarray(0, EDGE_BYTES - head.byteLength));
+      const last = lastContentIndex(chunk);
+      if (last === -1) {
+        trailingWhitespace = lastBytes(concatBytes(trailingWhitespace, chunk));
+        return;
+      }
+      const content = chunk.subarray(0, last + 1);
       tail =
-        chunk.byteLength >= EDGE_BYTES
-          ? chunk.slice(-EDGE_BYTES)
-          : concatBytes(tail, chunk).slice(-EDGE_BYTES);
+        content.byteLength >= EDGE_BYTES
+          ? content.slice(-EDGE_BYTES)
+          : lastBytes(concatBytes(concatBytes(tail, trailingWhitespace), content));
+      trailingWhitespace = lastBytes(chunk.subarray(last + 1));
     },
     edges: () => ({ head, tail, size }),
   };
 };
 
-// Dump tools stamp a header and a completion trailer; a header without its trailer means the tool
-// stopped early. Hand-written SQL has neither, so it is never rejected here.
-const DUMP_MARKERS = [
-  { header: /^-- (?:MySQL|MariaDB) dump /mu, trailer: "-- Dump completed" },
-  { header: /^-- PostgreSQL database dump\r?$/mu, trailer: "-- PostgreSQL database dump complete" },
-] as const;
+const MONGO_ARCHIVE_MAGIC = [0x6d, 0xe2, 0x99, 0x81] as const;
+const MONGO_ARCHIVE_TERMINATOR = [0xff, 0xff, 0xff, 0xff] as const;
+
+const startsWithBytes = (bytes: Uint8Array, prefix: ReadonlyArray<number>): boolean =>
+  bytes.byteLength >= prefix.length && prefix.every((byte, index) => bytes[index] === byte);
+
+const endsWithBytes = (bytes: Uint8Array, suffix: ReadonlyArray<number>): boolean =>
+  startsWithBytes(bytes.subarray(bytes.byteLength - suffix.length), suffix);
+
+type DumpEdgeText = { readonly bytes: Uint8Array; readonly text: string };
+
+// Dump tools stamp a header near the start and a completion trailer at the end; a header without
+// its trailer means the tool stopped early. Trailers must be whole lines, so a SQL string that
+// happens to contain one doesn't count. Hand-written SQL has no header and is never rejected here.
+const DUMP_FORMATS: ReadonlyArray<{
+  readonly header: (head: DumpEdgeText) => boolean;
+  readonly complete: (tail: DumpEdgeText) => boolean;
+}> = [
+  {
+    // mysqldump and mariadb-dump end with "-- Dump completed" (plus " on <date>" unless skipped).
+    header: (head) => /^-- (?:MySQL|MariaDB) dump /mu.test(head.text),
+    complete: (tail) => /(?:^|\n)-- Dump completed(?: on [^\n]*)?\r?$/u.test(tail.text),
+  },
+  {
+    // pg_dump's trailer may be followed by \unrestrict and comment lines.
+    header: (head) => /^-- PostgreSQL database dump\r?$/mu.test(head.text),
+    complete: (tail) => /^-- PostgreSQL database dump complete\r?$/mu.test(tail.text),
+  },
+  {
+    header: (head) => startsWithBytes(head.bytes, MONGO_ARCHIVE_MAGIC),
+    complete: (tail) => endsWithBytes(tail.bytes, MONGO_ARCHIVE_TERMINATOR),
+  },
+];
 
 export type DumpEdges = { readonly head: Uint8Array; readonly tail: Uint8Array; readonly size: number };
 
 export const dumpIncompleteReason = (edges: DumpEdges): "empty" | "truncated" | undefined => {
   if (edges.size === 0) return "empty";
   const decoder = new TextDecoder();
-  const head = decoder.decode(edges.head);
-  const marker = DUMP_MARKERS.find((candidate) => candidate.header.test(head));
-  if (marker !== undefined && !decoder.decode(edges.tail).includes(marker.trailer)) return "truncated";
-  return undefined;
+  const head = { bytes: edges.head, text: decoder.decode(edges.head) };
+  const format = DUMP_FORMATS.find((candidate) => candidate.header(head));
+  if (format === undefined) return undefined;
+  return format.complete({ bytes: edges.tail, text: decoder.decode(edges.tail) }) ? undefined : "truncated";
 };
 
 const requireCompleteDump = (label: string, fromStdin: boolean, edges: DumpEdges) => {
   const reason = dumpIncompleteReason(edges);
   if (reason === undefined) return Effect.void;
   const source = fromStdin ? "the command feeding stdin" : "the dump file";
+  const truncatedRemediation = fromStdin
+    ? "Recreate the dump and check that the export command succeeded (in bash, set -o pipefail), then retry."
+    : "Recreate the dump file and check that the export command succeeded, then retry.";
   return Effect.fail(
     new SqlDumpIncompleteError({
       message:
@@ -118,11 +172,7 @@ const requireCompleteDump = (label: string, fromStdin: boolean, edges: DumpEdges
       path: label,
       reason,
       remediation:
-        reason === "empty"
-          ? `Check that ${source} produced a dump, then retry.`
-          : fromStdin
-            ? "Recreate the dump and check that the export command succeeded (in bash, set -o pipefail), then retry."
-            : "Recreate the dump file and check that the export command succeeded, then retry.",
+        reason === "empty" ? `Check that ${source} produced a dump, then retry.` : truncatedRemediation,
     }),
   );
 };
@@ -146,16 +196,37 @@ const decompressError = (label: string, compression: Exclude<DumpCompression, "n
     remediation: `The ${compression} data is corrupt or cut short. Recreate the dump, then retry the import.`,
   });
 
-/** Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0. */
-const peekCompression = async (source: ReadableStream<Uint8Array>) => {
+/**
+ * Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0.
+ * Aborting `signal` cancels the source, and `sourceFailure` remembers a read error so it isn't
+ * mistaken for corrupt compression after it passes through a decompressor.
+ */
+const peekCompression = async (source: ReadableStream<Uint8Array>, signal: AbortSignal) => {
   const reader = source.getReader();
+  const cancel = () => {
+    reader.cancel(signal.reason).catch(() => undefined);
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  let sourceFailure: { readonly cause: unknown } | undefined;
+  const read = async () => {
+    try {
+      return await reader.read();
+    } catch (cause) {
+      sourceFailure = { cause };
+      throw cause;
+    }
+  };
   const pending: Uint8Array[] = [];
   let prefix: Uint8Array = new Uint8Array();
-  while (prefix.byteLength < 4) {
-    const next = await reader.read();
-    if (next.done) break;
-    pending.push(next.value);
-    prefix = collectDumpPrefix(next.value, prefix);
+  try {
+    while (prefix.byteLength < 4) {
+      const next = await read();
+      if (next.done) break;
+      pending.push(next.value);
+      prefix = collectDumpPrefix(next.value, prefix);
+    }
+  } finally {
+    signal.removeEventListener("abort", cancel);
   }
   const body = new ReadableStream<Uint8Array>({
     pull: async (controller) => {
@@ -164,13 +235,13 @@ const peekCompression = async (source: ReadableStream<Uint8Array>) => {
         controller.enqueue(queued);
         return;
       }
-      const next = await reader.read();
+      const next = await read();
       if (next.done) controller.close();
       else controller.enqueue(next.value);
     },
     cancel: (reason) => reader.cancel(reason),
   });
-  return { compression: detectDumpCompression(prefix), body };
+  return { compression: detectDumpCompression(prefix), body, sourceFailure: () => sourceFailure };
 };
 
 export type PreparedDump = {
@@ -192,32 +263,38 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
 }) {
   const fromStdin = input.stdin !== undefined;
   const label = fromStdin ? "stdin" : input.file;
-  const readFailure = (cause: unknown) =>
-    cause instanceof CommandStdioError
-      ? cause
-      : fromStdin
-        ? stageError(cause)
-        : dumpNotFound(input.file, input.appRoot, dumpMissKind(cause));
-  const opened = yield* Effect.tryPromise({
-    try: () =>
-      peekCompression(
-        input.stdin === undefined ? Bun.file(input.file).stream() : Stream.toReadableStream(input.stdin),
-      ),
-    catch: readFailure,
-  });
+  const readFailure = (cause: unknown) => {
+    if (cause instanceof CommandStdioError) return cause;
+    if (fromStdin) return stageError(cause);
+    return dumpNotFound(input.file, input.appRoot, dumpMissKind(cause));
+  };
+  // Peeking stays interruptible (aborting cancels the source). The release cancels a source nothing
+  // consumed; a consumed one is cancelled by its consumer.
+  const opened = yield* Effect.acquireRelease(
+    Effect.interruptible(
+      Effect.tryPromise({
+        try: (signal) =>
+          peekCompression(
+            input.stdin === undefined ? Bun.file(input.file).stream() : Stream.toReadableStream(input.stdin),
+            signal,
+          ),
+        catch: readFailure,
+      }),
+    ),
+    ({ body }) => Effect.promise(() => body.cancel().catch(() => undefined)),
+  );
   const tracker = trackDumpEdges();
 
   if (opened.compression === "none" && !fromStdin) {
     const hash = new Bun.CryptoHasher("sha256");
-    yield* Effect.tryPromise({
-      try: async () => {
-        for await (const chunk of opened.body) {
+    yield* Stream.runForEach(
+      Stream.fromReadableStream({ evaluate: () => opened.body, onError: readFailure }),
+      (chunk) =>
+        Effect.sync(() => {
           hash.update(chunk);
           tracker.push(chunk);
-        }
-      },
-      catch: readFailure,
-    });
+        }),
+    );
     yield* requireCompleteDump(label, fromStdin, tracker.edges());
     return { path: input.file, digest: hash.digest("hex") } satisfies PreparedDump;
   }
@@ -241,13 +318,12 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
             },
           }),
         ),
-      onError: (cause) =>
-        cause instanceof CommandStdioError
-          ? cause
-          : compression === "none"
-            ? stageError(cause)
-            : decompressError(label, compression),
-      releaseLockOnEnd: true,
+      onError: (cause) => {
+        const source = opened.sourceFailure();
+        if (source !== undefined) return readFailure(source.cause);
+        if (cause instanceof CommandStdioError) return cause;
+        return compression === "none" ? stageError(cause) : decompressError(label, compression);
+      },
     }),
     destinationPath: path,
     mode: 0o600,

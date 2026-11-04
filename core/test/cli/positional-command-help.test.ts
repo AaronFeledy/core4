@@ -27,6 +27,7 @@ test("#2040 command help lists positional metadata after flags in declared order
     `  target ${entry.spec.args.target.description} (local, remote) [required]\n` +
       `  artifact ${entry.spec.args.artifact.description}\n  extra`,
   );
+  expect(help).toContain("\nFLAGS\n");
   expect(help.indexOf("\nARGUMENTS\n")).toBeGreaterThan(help.indexOf("\nFLAGS\n"));
 });
 

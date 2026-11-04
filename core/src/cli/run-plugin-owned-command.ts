@@ -190,8 +190,7 @@ const runPluginOwnedCommand = (
       }
       let normalizedInput: ExecutableCommandInput;
       const operation = Effect.gen(function* () {
-        if (Exit.isFailure(validated)) return yield* Effect.failCause(validated.cause);
-        normalizedInput = validated.value;
+        normalizedInput = yield* validated;
         if (options.deprecation !== undefined) {
           const service = yield* Effect.serviceOption(DeprecationService);
           if (service._tag === "Some")

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import {
   CommandInputValidationError,
@@ -169,6 +169,47 @@ describe("dump files", () => {
       expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated", path: "stdin" });
     });
 
+    test("ignores trailing whitespace after a trailer, even past the edge window", async () => {
+      const exit = await prepare({
+        file: "-",
+        appRoot: root,
+        stdin: Stream.make(new TextEncoder().encode(MYSQL_DUMP), new TextEncoder().encode(" \n".repeat(600))),
+      });
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
+
+    test("accepts a CRLF pg_dump and a trailer split across chunks", async () => {
+      const crlf = new TextEncoder().encode(PG_DUMP.replaceAll("\n", "\r\n"));
+      const split = crlf.length - 40;
+      const exit = await prepare({
+        file: "-",
+        appRoot: root,
+        stdin: Stream.make(crlf.subarray(0, split), crlf.subarray(split)),
+      });
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
+
+    test("does not count a trailer quoted inside SQL data", async () => {
+      const cut = `${MYSQL_DUMP.split("CREATE")[0]}INSERT INTO t VALUES ('-- Dump completed on 2026-11-04');\n`;
+      const error = failureOf(
+        await prepare({ file: "-", appRoot: root, stdin: Stream.make(new TextEncoder().encode(cut)) }),
+      );
+      expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
+    });
+
+    test("checks a mongodump archive for its terminator", async () => {
+      const archive = Uint8Array.from([
+        0x6d, 0xe2, 0x99, 0x81, 0x01, 0x02, 0x03, 0x04, 0xff, 0xff, 0xff, 0xff,
+      ]);
+      expect(Exit.isSuccess(await prepare({ file: "-", appRoot: root, stdin: Stream.make(archive) }))).toBe(
+        true,
+      );
+      const error = failureOf(
+        await prepare({ file: "-", appRoot: root, stdin: Stream.make(archive.subarray(0, 8)) }),
+      );
+      expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
+    });
+
     test("accepts hand-written SQL that carries no dump-tool header", async () => {
       const exit = await prepare({
         file: "-",
@@ -184,6 +225,36 @@ describe("dump files", () => {
       const error = failureOf(await prepare({ file: path, appRoot: root }));
       expect(error).toBeInstanceOf(SqlDumpCompressionError);
       expect(error).toMatchObject({ operation: "decompress", compression: "gzip" });
+    });
+
+    test.each([
+      ["before the first byte", Stream.never],
+      [
+        "while staging",
+        Stream.make(Bun.gzipSync(MYSQL_DUMP).subarray(0, 8)).pipe(Stream.concat(Stream.never)),
+      ],
+    ] as const)("interruption %s releases the stdin source", async (_label, source) => {
+      // Given: stdin that never ends, and a signal when it starts and when it is released.
+      const started = Promise.withResolvers<void>();
+      let released = false;
+      const stdin = Stream.unwrap(
+        Effect.sync(() => {
+          started.resolve();
+          return source;
+        }),
+      ).pipe(
+        Stream.ensuring(
+          Effect.sync(() => {
+            released = true;
+          }),
+        ),
+      );
+      // When
+      const fiber = Effect.runFork(Effect.scoped(prepareImportDump({ file: "-", appRoot: root, stdin })));
+      await started.promise;
+      await Effect.runPromise(Fiber.interrupt(fiber));
+      // Then
+      expect(released).toBe(true);
     });
 
     test("keeps a stdin read failure's own error", async () => {
@@ -220,8 +291,7 @@ describe("dump files", () => {
       expect(Bun.spawnSync(["mkfifo", fifo]).exitCode).toBe(0);
       const error = failureOf(await Effect.runPromiseExit(ensureExportDestination(fifo)));
       expect(error).toBeInstanceOf(CommandInputValidationError);
-      if (error instanceof CommandInputValidationError)
-        expect(error.remediation).toContain("lando db:export -");
+      expect(error).toMatchObject({ field: "file", kind: "arg", reason: "constraint" });
       expect((await stat(fifo)).isFIFO()).toBe(true);
     });
   });
