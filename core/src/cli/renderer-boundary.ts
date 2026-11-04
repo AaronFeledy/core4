@@ -48,6 +48,7 @@ import {
   withCommandEventService,
 } from "./command-lifecycle";
 import { FinishCommandProgress, finishCommandProgress } from "./command-progress";
+import { commandStdioExitCode } from "./command-stdio";
 import { type CommandTraceCapture, formatCommandTrace } from "./command-tracer";
 import { withCommandTracing } from "./command-tracing";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
@@ -360,7 +361,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(2);
           return;
         }
-        setExitCode(options.failureExitCode?.(failure.error) ?? 1);
+        setExitCode(commandStdioExitCode(failure.error) ?? options.failureExitCode?.(failure.error) ?? 1);
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);

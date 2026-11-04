@@ -2,7 +2,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { Effect, Match } from "effect";
 
-import { CommandInputValidationError } from "@lando/sdk/errors";
+import { CommandInputValidationError, CommandStdioError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 
 import type { EnvironmentValue } from "@lando/sdk/schema";
@@ -18,6 +18,8 @@ export const hostFile = (
   input: { readonly service: string; readonly file?: string; readonly hostCwd?: string },
 ): string => {
   const file = input.file ?? `${input.service}.sql.gz`;
+  // Keep dash as the stdio sentinel; never resolve it as a host path.
+  if (file === "-") return "-";
   if (isAbsolute(file)) return file;
   const hostCwd = input.hostCwd ?? process.cwd();
   const rel = relative(resolve(plan.root), resolve(hostCwd));
@@ -88,6 +90,37 @@ export const secretTokens = (
   return tokens;
 };
 
+export const requireDashStdioGrant = (input: DbCommandInput): Effect.Effect<void, CommandStdioError> => {
+  if (input.file !== "-") return Effect.void;
+  const command = `db:${input.action}`;
+  const remediation = "Run this command from the terminal CLI, or pass a file path instead of -.";
+  if (input.action === "export") {
+    if (input.stdio?.stdout !== undefined) return Effect.void;
+    return Effect.fail(
+      new CommandStdioError({
+        message: `${command} requested stdout for -, but no stdout stream was granted.`,
+        command,
+        stream: "stdout",
+        reason: "unavailable",
+        remediation,
+      }),
+    );
+  }
+  if (input.action === "import" || input.action === "seed") {
+    if (input.stdio?.stdin !== undefined) return Effect.void;
+    return Effect.fail(
+      new CommandStdioError({
+        message: `${command} requested stdin for -, but no stdin stream was granted.`,
+        command,
+        stream: "stdin",
+        reason: "unavailable",
+        remediation,
+      }),
+    );
+  }
+  return Effect.void;
+};
+
 export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {
   if (typeof result !== "object" || result === null || !("redactionTokens" in result)) return [];
   const tokens = result.redactionTokens;
@@ -100,6 +133,7 @@ export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInp
   hostCwd: process.cwd(),
   ...(typeof input.flags.service === "string" ? { service: input.flags.service } : {}),
   ...(typeof input.args.file === "string" ? { file: input.args.file } : {}),
+  ...(input.stdio === undefined ? {} : { stdio: input.stdio }),
   ...(typeof input.args.snapshot === "string"
     ? { snapshotId: input.args.snapshot }
     : typeof input.flags.snapshot === "string"

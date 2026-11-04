@@ -16,7 +16,7 @@ import {
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
 
-import { validateExportCompressionLevel } from "./command-input.ts";
+import { requireDashStdioGrant, validateExportCompressionLevel } from "./command-input.ts";
 import { providerSqlExec } from "./dispatch.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
 import { resolveSqlTarget } from "./target.ts";
@@ -24,6 +24,8 @@ import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
   yield* validateExportCompressionLevel(input);
+  // Fail closed on missing stdio grants before provider selection, readiness, or staging.
+  yield* requireDashStdioGrant(input);
   const landofiles = yield* LandofileService;
   const environmentResolver = yield* EnvironmentValueResolver;
   const registry = yield* RuntimeProviderRegistry;
@@ -54,6 +56,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       plan,
       environmentResolver,
       transfer: (spec) => Effect.scoped(mover.transfer(spec)),
+      read: (from) => mover.read(from),
       snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
       restore: (handle, store, opts) => Effect.scoped(mover.restore(handle, store, opts)),
       listSnapshots: (filter) => mover.listSnapshots(filter),

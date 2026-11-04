@@ -56,6 +56,29 @@ then copies the backup to your host. Import uploads the backup before running
 file. Export never creates a missing database; the
 [catalog service startup](../services/mssql.mdx) owns default database creation.
 
+## Stream a dump through stdout or stdin
+
+Pass `-` instead of a file name to send a dump through your shell. Run these on the host from the app directory, in a POSIX shell such as bash or zsh:
+
+```sh
+lando db:export - > dump.sql
+lando db:export - | gzip > dump.sql.gz
+```
+
+`db:export -` writes the uncompressed dump to stdout byte for byte, and progress stays on stderr. SQL Server writes its `.bak` backup the same way. Host compression doesn't apply to `-`, so `--compression-level` is rejected; pipe through `gzip` or `zstd` instead. Lando refuses to write a dump to a terminal, so redirect or pipe stdout. `--format=json` and `--format=yaml` need stdout for their result and are refused with `-`; export to a file when you need the structured result.
+
+A dump that fails partway has already sent part of its bytes downstream, and Lando exits non-zero. In a pipeline, check the export's exit status before trusting the output, for example with `set -o pipefail` in bash. If the reader closes early, as `| head` does, Lando stops the dump and exits with status 141.
+
+To import from stdin, pass `-` and `--yes`. Lando can't ask for confirmation because stdin carries the dump:
+
+```sh
+lando db:import - --yes < dump.sql
+```
+
+Lando saves stdin to a private temporary file before it touches the database, then imports it exactly like a dump file: gzip and zstd input is detected from its bytes, a recovery snapshot is taken first, and failures report the same errors. Make sure the host temp directory has room for the dump, plus its uncompressed size when the input is compressed. `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
+
+`-` works only from the `lando` CLI in a terminal session. MCP tools and event commands can't use Lando's stdin or stdout for a dump, so they fail with `CommandStdioError`; pass a file path there.
+
 ## Inspect a failed database command
 
 Request JSON when you need structured diagnostics:
@@ -146,7 +169,7 @@ Before `db:import`, `db:reset`, or `db:restore` changes your data, Lando takes a
 
 ## Confirm destructive work
 
-`db:import` into a non-empty database and every `db:reset` ask first. `--yes` skips the prompt. Non-interactive runs without `--yes` fail with `SqlConfirmRequiredError` and list the steps.
+`db:import` into a non-empty database and every `db:reset` ask first. `--yes` skips the prompt. Non-interactive runs without `--yes` fail with `SqlConfirmRequiredError` and list the steps. `db:import -` always needs `--yes`, and fails before it reads stdin without it.
 
 ```sh
 lando db:reset --yes
@@ -167,6 +190,26 @@ lando db:reset --yes
     <Step name="help">
       <Run command="lando db:export --help" />
       <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="export-stdout-refuses-machine-format" render={false} reason="Regression for a dump and an envelope both claiming stdout">
+    <Step name="export-json">
+      <UseFixture name="one-db" />
+      <Run command="lando db:export - --format=json" expectExit={2} />
+      <Verify errorTag="CommandStdioError" expect={{ regex: "stdout" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="import-stdin-requires-yes" render={false} reason="Regression for stdin import confirmation">
+    <Step name="import-stdin">
+      <UseFixture name="one-db" />
+      <Run command="lando start" />
+      <Run command="lando db:import - --format=json" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "--yes" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
     </Step>
   </Scenario>
 

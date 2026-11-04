@@ -1,5 +1,15 @@
 import { Schema } from "effect";
 
+/** A command's requested process data stream cannot be used or could not be read. */
+export class CommandStdioError extends Schema.TaggedError<CommandStdioError>()("CommandStdioError", {
+  message: Schema.String,
+  command: Schema.String,
+  stream: Schema.Literals(["stdin", "stdout"]),
+  reason: Schema.Literals(["terminal", "machine-output", "unavailable", "read"]),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 /**
  * A plugin- or tooling-contributed top-level alias collides with a reserved
  * built-in top-level alias (for example the bare `run` alias reserved for

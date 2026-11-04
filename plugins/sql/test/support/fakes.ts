@@ -14,6 +14,7 @@ import {
   SqlRecoveryUnavailableError,
 } from "@lando/sdk/errors";
 import type {
+  DataEndpoint,
   DataTransferResult,
   DataTransferSpec,
   SnapshotFilter,
@@ -48,6 +49,7 @@ const liveHarnesses: SqlTestHarness[] = [];
 
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
+  const reads: DataEndpoint[] = [];
   const snapshots: RecordedSnapshot[] = [];
   const restores: Array<ReturnType<SqlTestHarness["restores"]>[number]> = [];
   const execs: RecordedExec[] = [];
@@ -199,6 +201,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         }
         return { accelerated: true, sizeBytes: 12 };
       }),
+    read: (from) => {
+      reads.push(from);
+      const payload = options.readPayload ?? new TextEncoder().encode("dump");
+      return Stream.succeed(payload);
+    },
     snapshot: (store, opts) =>
       Effect.sync((): SnapshotHandle => {
         lifecycle.push("snapshot");
@@ -361,6 +368,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     root,
     deps,
     transfers: () => transfers,
+    reads: () => reads,
     snapshots: () => snapshots,
     restores: () => restores,
     execs: () => execs,

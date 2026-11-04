@@ -1,11 +1,24 @@
 import { constants } from "node:fs";
-import { access, stat } from "node:fs/promises";
+import { access, mkdtemp, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, type Stream } from "effect";
 
-import { SqlDumpNotFoundError, errnoCode } from "@lando/sdk/errors";
+import {
+  type CommandStdioError,
+  DataTransferError,
+  SqlDumpNotFoundError,
+  errnoCode,
+} from "@lando/sdk/errors";
+import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 
-import { type DumpCompression, collectDumpPrefix, detectDumpCompression } from "./compression.ts";
+import {
+  type DumpCompression,
+  collectDumpPrefix,
+  detectDumpCompression,
+  releaseStagedDump,
+} from "./compression.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
 
@@ -58,3 +71,28 @@ export const ensureReadableDump = (
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),
   });
+
+const stdinStageError = (cause: unknown): DataTransferError =>
+  new DataTransferError({
+    message: "Failed to save the dump from stdin to a temporary file.",
+    fromEndpoint: "stdin",
+    toEndpoint: "hostPath",
+    operation: "stage",
+    remediation: "Check that the host temp directory is writable and has room for the dump, then retry.",
+    cause,
+  });
+
+/** Saves a stdin dump to an owner-only temporary file that lives until the surrounding scope closes. */
+export const stageStdinDump = Effect.fnUntraced(function* (
+  stdin: Stream.Stream<Uint8Array, CommandStdioError>,
+) {
+  const directory = yield* Effect.acquireRelease(
+    Effect.tryPromise({ try: () => mkdtemp(join(tmpdir(), "lando-dump-")), catch: stdinStageError }),
+    releaseStagedDump,
+  );
+  const path = join(directory, "dump");
+  yield* persistVerifiedStream({ body: stdin, destinationPath: path, mode: 0o600 }).pipe(
+    Effect.catchTag("VerifiedStreamError", (error) => Effect.fail(stdinStageError(error))),
+  );
+  return path;
+});

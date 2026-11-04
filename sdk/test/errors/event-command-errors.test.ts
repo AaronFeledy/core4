@@ -2,7 +2,45 @@ import { describe, expect, test } from "bun:test";
 
 import { Result, Schema } from "effect";
 
-import { CommandInputValidationError, ToolingCommandLookupError } from "@lando/sdk/errors";
+import { CommandInputValidationError, CommandStdioError, ToolingCommandLookupError } from "@lando/sdk/errors";
+
+describe("CommandStdioError", () => {
+  test("preserves stream refusal and read diagnostics through the public schema", () => {
+    for (const stream of ["stdin", "stdout"] as const) {
+      for (const reason of ["terminal", "machine-output", "unavailable", "read"] as const) {
+        const payload = {
+          _tag: "CommandStdioError",
+          message: "Cannot use the requested data stream.",
+          command: "db:export",
+          stream,
+          reason,
+          remediation: "Redirect stdout or pass a file path.",
+          cause: { code: "EIO" },
+        } as const;
+
+        const error = Schema.decodeUnknownSync(CommandStdioError)(payload);
+
+        expect(error).toBeInstanceOf(CommandStdioError);
+        expect(Schema.encodeSync(CommandStdioError)(error)).toEqual(payload);
+      }
+    }
+  });
+
+  test.each([
+    { stream: "stderr", reason: "terminal", remediation: "Retry." },
+    { stream: "stdin", reason: "write", remediation: "Retry." },
+    { stream: "stdin", reason: "read", remediation: " " },
+  ])("rejects invalid stdio diagnostics %#", (fields) => {
+    const decoded = Schema.decodeUnknownResult(CommandStdioError)({
+      _tag: "CommandStdioError",
+      message: "Invalid stream.",
+      command: "db:import",
+      ...fields,
+    });
+
+    expect(Result.isFailure(decoded)).toBe(true);
+  });
+});
 
 describe("ToolingCommandLookupError", () => {
   test("is a tagged error with exact adjudicated fields", () => {

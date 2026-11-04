@@ -3,18 +3,29 @@ import { DateTime, Effect, Stream, absurd, flow } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlRecoveryOperationError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import {
+  SqlConfirmRequiredError,
+  SqlRecoveryOperationError,
+  SqlSeedSourceError,
+  SqlServiceNotFoundError,
+} from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
-import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
+import {
+  hostFile,
+  parseCount,
+  requireDashStdioGrant,
+  secretTokens,
+  validateExportCompressionLevel,
+} from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
-import { ensureReadableDump } from "./dump-file.ts";
+import { ensureReadableDump, stageStdinDump } from "./dump-file.ts";
 import {
   SqlEnvironmentSession,
   classifySqlPlan,
@@ -44,6 +55,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   input: DbCommandInput,
 ) {
   yield* validateExportCompressionLevel(input);
+  yield* requireDashStdioGrant(input);
   const rawSession = yield* rawDeps.environmentResolver.openSession();
   const redaction = yield* RedactionService;
   const resolved = resolveSqlTarget(rawDeps.plan, input.service);
@@ -121,13 +133,6 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     if (action === "snapshots" || action === "prune")
       yield* registerSqlLiteralCredentials(classifySqlPlan(deps.plan), selectedCredentials);
     let restoreSource: SnapshotInfo | undefined;
-    const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
-    const dump =
-      action === "import" || (action === "seed" && input.file !== undefined)
-        ? yield* ensureReadableDump(file, deps.plan.root)
-        : undefined;
-    const expectedDigest = dump?.digest;
-    const compression = dump?.compression ?? compressionFromExportPath(file);
     const steps: DbCommandStep[] = [
       {
         id: action,
@@ -136,6 +141,29 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         destructive: action === "import" || action === "reset" || action === "restore",
       },
     ];
+
+    // Stdin carries the dump, so a stdin import cannot prompt. Refuse before reading stdin.
+    if (action === "import" && file === "-" && !input.yes) {
+      return yield* Effect.fail(
+        new SqlConfirmRequiredError({
+          message: `Import from stdin into ${target.name} requires --yes.`,
+          service: target.name,
+          steps,
+          remediation: "Pass --yes. Stdin carries the dump, so Lando cannot prompt for confirmation.",
+        }),
+      );
+    }
+    // A stdin dump is staged first so digest, magic detection, and recovery treat it like a file.
+    const stdin = file === "-" && action !== "export" ? input.stdio?.stdin : undefined;
+    const dumpPath = stdin === undefined ? file : yield* stageStdinDump(stdin);
+
+    const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
+    const dump =
+      action === "import" || (action === "seed" && input.file !== undefined)
+        ? yield* ensureReadableDump(dumpPath, deps.plan.root)
+        : undefined;
+    const expectedDigest = dump?.digest;
+    const compression = dump?.compression ?? compressionFromExportPath(file);
 
     if (action === "import") {
       const command = countCommand(target.family, creds);
@@ -231,10 +259,11 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       creds,
       env,
       secrets: protectedEnvironment.secrets,
-      file,
+      file: dumpPath,
       compression,
       ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
       ...(expectedDigest === undefined ? {} : { expectedDigest }),
+      ...(action === "export" && input.stdio?.stdout !== undefined ? { stdout: input.stdio.stdout } : {}),
     };
     let snapshotId: string | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;

@@ -1,9 +1,10 @@
-import { Effect, type Scope, type Stream } from "effect";
+import { Effect, type Scope, Stream } from "effect";
 
-import type { VolumeNotFoundError } from "@lando/sdk/errors";
+import { CommandStdioError, type VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
+  type DataEndpoint,
   type DataTransferResult,
   type DataTransferSpec,
   type Environment,
@@ -43,6 +44,7 @@ export type SqlExec = (
 
 export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
+  readonly read: (from: DataEndpoint) => Stream.Stream<Uint8Array, unknown, Scope.Scope>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (
     handle: SnapshotHandle,
@@ -79,10 +81,66 @@ export const runExport = Effect.fn("Sql.export")(function* (
     readonly file: string;
     readonly compression: DumpCompression;
     readonly compressionLevel?: number;
+    readonly stdout?: (chunk: Uint8Array) => Effect.Effect<void>;
   },
 ) {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
+  if (input.file === "-") {
+    const write = input.stdout;
+    if (write === undefined) {
+      return yield* Effect.fail(
+        new CommandStdioError({
+          message: "db:export requested stdout for -, but no stdout stream was granted.",
+          command: "db:export",
+          stream: "stdout",
+          reason: "unavailable",
+          remediation: "Run this command from the terminal CLI, or pass a file path instead of -.",
+        }),
+      );
+    }
+    const from: DataEndpoint = yield* Effect.gen(function* () {
+      if (input.family === "mssql") {
+        const bak = mssqlBackupServicePath(input.creds.database);
+        const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
+        const prepare = mssqlPrepareBackupCommand(input.creds.database);
+        yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
+          ...input,
+          command: prepare,
+          stdout: "discard",
+        });
+        yield* checkedSqlExecution(exec(input.service, backup, input.env), {
+          ...input,
+          command: backup,
+          stdout: "discard",
+        });
+        return {
+          _tag: "servicePath" as const,
+          app,
+          service,
+          path: PortablePath.make(bak),
+        };
+      }
+      const env = yield* resolveSqlEnvironment(input.env);
+      const secrets = input.secrets();
+      return {
+        _tag: "serviceCmd" as const,
+        app,
+        service,
+        command: dumpCommand(input.family, input.creds),
+        env,
+        secrets,
+      };
+    });
+    let sizeBytes = 0;
+    yield* Stream.runForEach(mover.read(from), (chunk) =>
+      Effect.gen(function* () {
+        sizeBytes += chunk.byteLength;
+        yield* write(chunk);
+      }),
+    );
+    return { accelerated: false, sizeBytes } satisfies DataTransferResult;
+  }
   return yield* withHostDumpCompression({
     path: input.file,
     compression: input.compression,

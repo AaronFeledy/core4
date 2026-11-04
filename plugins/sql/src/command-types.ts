@@ -1,6 +1,7 @@
 import type { Effect } from "effect";
 
 import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import type { ExecutableCommandStdio } from "@lando/sdk/plugins";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver, RuntimeProvider } from "@lando/sdk/services";
 
@@ -34,6 +35,7 @@ export type DbCommandInput = {
   readonly hostCwd?: string;
   readonly keepLatest?: number;
   readonly preview?: boolean;
+  readonly stdio?: ExecutableCommandStdio;
 };
 
 export type SqlCommandDeps = SqlMover &

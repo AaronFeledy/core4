@@ -1,5 +1,6 @@
-import type { Effect, Schema } from "effect";
+import type { Effect, Schema, Stream } from "effect";
 
+import type { CommandStdioError } from "../errors/command.ts";
 import type { CommandCompletion } from "../schema/machine-output.ts";
 import type { BootstrapLevel } from "../schema/primitives.ts";
 
@@ -43,11 +44,28 @@ export interface ExecutableCommandArgSpec {
   readonly multiple?: boolean;
 }
 
+/** Per-invocation declaration of process streams used for the command's data payload. */
+export interface ExecutableCommandStdioRequest {
+  readonly stdin?: boolean;
+  readonly stdout?: boolean;
+}
+
+/**
+ * Streams granted only by the CLI. MCP, event, and library invocations never grant them.
+ * A command must fail with CommandStdioError reason "unavailable" when a requested stream is absent.
+ * Granted stdout is byte-exact, without payload redaction; the command must write nothing else to stdout.
+ */
+export interface ExecutableCommandStdio {
+  readonly stdin?: Stream.Stream<Uint8Array, CommandStdioError>;
+  readonly stdout?: (chunk: Uint8Array) => Effect.Effect<void>;
+}
+
 export interface ExecutableCommandInput {
   readonly argv: ReadonlyArray<string>;
   readonly parsedArgv: ReadonlyArray<string>;
   readonly flags: Readonly<Record<string, unknown>>;
   readonly args: Readonly<Record<string, unknown>>;
+  readonly stdio?: ExecutableCommandStdio;
 }
 
 /**
@@ -81,6 +99,13 @@ export interface ExecutableCommandSpec<
   readonly flags?: Readonly<Record<string, ExecutableCommandFlagSpec>>;
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;
   readonly strict?: boolean;
+  /**
+   * Pure declaration of the data payload's process streams for this invocation.
+   * Only the CLI grants streams; MCP, event, and library surfaces never do.
+   * Missing requested streams must fail with CommandStdioError reason "unavailable".
+   * Granted stdout bypasses payload redaction and must contain only the data payload.
+   */
+  readonly stdio?: (input: Input) => ExecutableCommandStdioRequest | undefined;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;
   readonly resultSchema: Schema.Codec<A, unknown>;
   readonly completion?: {

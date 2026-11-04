@@ -1,18 +1,26 @@
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import type { DeprecationNotice } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
-import { DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer } from "effect";
 import { commandDescriptorNotice } from "./command-catalog";
 
 import type { RendererIO } from "@lando/renderer/io";
-import type { CommandInputValidationError, ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import type { Renderer } from "@lando/sdk/services";
+import type {
+  CommandInputValidationError,
+  CommandStdioError,
+  ConfigError,
+  LandoRuntimeBootstrapError,
+} from "@lando/sdk/errors";
+import type { ExecutableCommandInput, ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { Renderer } from "@lando/sdk/services";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { makeLandoRuntime } from "../runtime/layer";
+import { type CommandStdioStdin, commandStdioRequestError, grantCommandStdio } from "./command-stdio";
 import {
+  activeRendererMode,
+  activeResultFormat,
   emitJsonListModeIfRequested,
   resetActiveCommandInvocation,
   runCompiledCommand,
@@ -39,8 +47,20 @@ export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_C
 
 export interface RunPluginOwnedCommandOptions {
   readonly io?: RendererIO;
+  /** Injectable stdin for stdio grants; defaults to `process.stdin`. */
+  readonly stdin?: CommandStdioStdin;
   readonly signal?: AbortSignal;
   readonly deprecation?: { readonly id: string; readonly notice: DeprecationNotice };
+}
+
+export interface PluginOwnedCommandEffectOptions {
+  readonly stdin?: CommandStdioStdin;
+  readonly stdoutIsTTY?: boolean;
+  readonly stdinIsTTY?: boolean;
+  readonly resultFormat?: import("./format-flags").ResultFormat;
+  readonly rendererMode?: import("./renderer-selection").RendererMode;
+  readonly declaresStreaming?: boolean;
+  readonly live?: boolean;
 }
 
 type PluginOwnedRuntime = Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
@@ -61,16 +81,44 @@ const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOw
     : { redactionTokens: (result: unknown) => spec.redactionTokens?.(result) ?? [] }),
 });
 
+const withGrantedStdio = Effect.fnUntraced(function* <A, E, R>(
+  spec: Pick<ExecutableCommandSpec<A, E, R>, "id" | "stdio" | "run">,
+  input: ExecutableCommandInput,
+  grantOptions: PluginOwnedCommandEffectOptions,
+): Effect.fn.Return<A, E | CommandStdioError, R | Renderer> {
+  const renderer = yield* Renderer;
+  // Capture base stdout before the redacted wrapper so granted payload bytes stay exact.
+  const baseStdout = renderer.output.stdout;
+  const request = spec.stdio?.(input);
+  const stdio = yield* grantCommandStdio({
+    command: spec.id,
+    request,
+    baseStdout,
+    stdoutIsTTY: grantOptions.stdoutIsTTY === true,
+    stdinIsTTY: grantOptions.stdinIsTTY === true,
+    ...(grantOptions.stdin === undefined ? {} : { stdin: grantOptions.stdin }),
+    resultFormat: grantOptions.resultFormat ?? "text",
+    rendererMode: grantOptions.rendererMode ?? "lando",
+    ...(grantOptions.declaresStreaming === undefined
+      ? {}
+      : { declaresStreaming: grantOptions.declaresStreaming }),
+    ...(grantOptions.live === undefined ? {} : { live: grantOptions.live }),
+  });
+  const grantedInput: ExecutableCommandInput = stdio === undefined ? input : { ...input, stdio };
+  return yield* withRedactedRenderer(spec.run(grantedInput));
+});
+
 export const pluginOwnedCommandEffect = <A, E, R>(
   spec: Pick<
     ExecutableCommandSpec<A, E, R>,
-    "id" | "flags" | "args" | "strict" | "run" | "render" | "redactionTokens" | "completion"
+    "id" | "flags" | "args" | "strict" | "run" | "render" | "redactionTokens" | "completion" | "stdio"
   >,
   argv: ReadonlyArray<string>,
   renderResult: boolean,
+  options: PluginOwnedCommandEffectOptions = {},
 ): Effect.Effect<
   A,
-  E | CommandInputValidationError | MalformedCliFlagValueError | UnknownCliFlagError,
+  E | CommandInputValidationError | MalformedCliFlagValueError | UnknownCliFlagError | CommandStdioError,
   R | Renderer
 > => {
   const flagError = pluginOwnedCliFlagError(spec, argv);
@@ -78,7 +126,7 @@ export const pluginOwnedCommandEffect = <A, E, R>(
   const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
   return validateEventCommandInput(spec, parsed).pipe(
     Effect.flatMap((input) =>
-      withRedactedRenderer(spec.run(input)).pipe(
+      withGrantedStdio(spec, input, options).pipe(
         Effect.tap((result) => {
           if (!renderResult || spec.render === undefined) return Effect.void;
           const render = spec.render;
@@ -126,25 +174,49 @@ const runPluginOwnedCommand = (
       }
       const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
       const completion = spec.completion;
-      let normalizedInput: import("@lando/sdk/plugins").ExecutableCommandInput;
-      const operation = validateEventCommandInput(spec, parsed).pipe(
-        Effect.flatMap((input) => {
-          normalizedInput = input;
-          return Effect.gen(function* () {
-            if (options.deprecation !== undefined) {
-              const service = yield* Effect.serviceOption(DeprecationService);
-              if (service._tag === "Some")
-                yield* service.value.use({
-                  kind: "command",
-                  id: options.deprecation.id,
-                  notice: options.deprecation.notice,
-                  timestamp: DateTime.nowUnsafe(),
-                });
-            }
-            return yield* withRedactedRenderer(spec.run(input));
-          });
-        }),
+      const stdinSource = options.stdin ?? process.stdin;
+      const stdoutIsTTY =
+        options.io?.stdoutIsTTY === true || (options.io === undefined && process.stdout.isTTY === true);
+      const stdinIsTTY = stdinSource.isTTY === true;
+      const validated = await Effect.runPromiseExit(
+        validateEventCommandInput(spec, parsed).pipe(
+          Effect.flatMap((input) => {
+            const error = commandStdioRequestError({
+              command: spec.id,
+              request: spec.stdio?.(input),
+              stdoutIsTTY,
+              stdinIsTTY,
+              resultFormat: activeResultFormat,
+              rendererMode: activeRendererMode,
+            });
+            return error === undefined ? Effect.succeed(input) : Effect.fail(error);
+          }),
+        ),
       );
+      if (Exit.isFailure(validated)) {
+        await renderPluginOwnedPreCommandFailure(Cause.squash(validated.cause), options.io);
+        return;
+      }
+      const normalizedInput = validated.value;
+      const operation = Effect.gen(function* () {
+        if (options.deprecation !== undefined) {
+          const service = yield* Effect.serviceOption(DeprecationService);
+          if (service._tag === "Some")
+            yield* service.value.use({
+              kind: "command",
+              id: options.deprecation.id,
+              notice: options.deprecation.notice,
+              timestamp: DateTime.nowUnsafe(),
+            });
+        }
+        return yield* withGrantedStdio(spec, normalizedInput, {
+          ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
+          stdoutIsTTY,
+          stdinIsTTY,
+          resultFormat: activeResultFormat,
+          rendererMode: activeRendererMode,
+        });
+      });
       const cwd = await Effect.runPromise(discoveryCwd());
       await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap, cwd), () => undefined, {
         ...compiledPluginOptions(spec, options),
@@ -200,6 +272,7 @@ const dispatchPluginOwnedCommand = async (
     await renderPluginOwnedPreCommandFailure(flagError);
     return "dispatched";
   }
+  // Preserve bare --json list mode before run (keys only, no command body).
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
   const notice = commandDescriptorNotice(row.descriptor, commandId);
   await runPluginOwnedCommand(spec, argv, {

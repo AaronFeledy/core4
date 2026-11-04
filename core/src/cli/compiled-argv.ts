@@ -121,7 +121,8 @@ export interface ParsedFlagsAndPositionals {
  * - `--flag=value` and `--flag value` both bind `value`; a boolean flag never consumes the next token.
  * - A recognized flag whose inline value is missing at the end of argv is dropped, not errored; the
  *   caller validates values beforehand with `validateCommandFlagValues`.
- * - Unrecognized `-x` tokens are kept as positionals only when `strict` is false.
+ * - Bare `-` is always kept as a positional (stdio selector), even when `strict` is true.
+ * - Other unrecognized `-x` tokens are kept as positionals only when `strict` is false.
  *
  * `storeValue` lets a caller coerce a non-boolean value differently from `setParsedFlag` (plugin-owned
  * commands parse non-integer `number` flags as floats); boolean flags always go through `setParsedFlag`.
@@ -168,7 +169,8 @@ export const parseFlagsAndPositionals = (
       continue;
     }
 
-    if (!options.strict || !arg.startsWith("-")) positionals.push(arg);
+    // Bare `-` is a positional stdio selector (e.g. db:export -), never an unknown flag.
+    if (arg === "-" || !options.strict || !arg.startsWith("-")) positionals.push(arg);
   }
 
   return { flags, positionals };

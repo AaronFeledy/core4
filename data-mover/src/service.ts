@@ -1104,6 +1104,82 @@ export const makeDataMoverService = (
             ),
         ),
       ),
+    // Source bytes for a caller-owned sink: success is source EOF + clean producer exit, not sink receipt.
+    read: (from) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const startedAt = yield* Clock.currentTimeMillis;
+          const fromEndpoint = events.redactText(endpointName(from));
+          const toEndpoint = events.redactText(endpointName({ _tag: "stream" }));
+          const app = appFromEndpoint(from);
+          const service = serviceFromEndpoint(from);
+          const publishFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
+            yield* events.publish(
+              PostDataTransferEvent.make({
+                eventName: "post-data-transfer",
+                fromEndpoint,
+                toEndpoint,
+                outcome: "failure",
+                accelerated: false,
+                failureDetail: events.redactText(failureDetail(cause)),
+                durationMs: (yield* Clock.currentTimeMillis) - startedAt,
+                timestamp: yield* DateTime.now,
+              }),
+            );
+          });
+          yield* events.publish(
+            PreDataTransferEvent.make({
+              eventName: "pre-data-transfer",
+              fromEndpoint,
+              toEndpoint,
+              ...(app === undefined ? {} : { app }),
+              ...(service === undefined ? {} : { service }),
+              timestamp: yield* DateTime.now,
+            }),
+          );
+          return yield* Effect.gen(function* () {
+            yield* validateHostEndpoints({ from, to: { _tag: "stream" } }, persistence.paths.scratchDir);
+            let sizeBytes = 0;
+            let settled = false;
+            return streamFromEndpoint(selectedProvider, from).pipe(
+              Stream.tap((chunk) =>
+                Effect.sync(() => {
+                  sizeBytes += chunk.byteLength;
+                }),
+              ),
+              Stream.onEnd(
+                Effect.gen(function* () {
+                  settled = true;
+                  yield* events.publish(
+                    PostDataTransferEvent.make({
+                      eventName: "post-data-transfer",
+                      fromEndpoint,
+                      toEndpoint,
+                      outcome: "success",
+                      accelerated: false,
+                      sizeBytes,
+                      durationMs: (yield* Clock.currentTimeMillis) - startedAt,
+                      timestamp: yield* DateTime.now,
+                    }),
+                  );
+                }),
+              ),
+              Stream.tapCause(
+                Effect.fnUntraced(function* (cause) {
+                  settled = true;
+                  yield* publishFailure(cause);
+                }),
+              ),
+              Stream.ensuring(
+                Effect.gen(function* () {
+                  if (settled) return;
+                  yield* publishFailure(Cause.interrupt());
+                }),
+              ),
+            );
+          }).pipe(Effect.tapCause(publishFailure));
+        }),
+      ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
       const provider = yield* selectedProvider;
       if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
@@ -1555,6 +1631,7 @@ export const layer: Layer.Layer<
         ),
         transferStream: (spec) =>
           service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transferStream(spec),
+        read: (from) => service(appFromEndpoint(from)).read(from),
         snapshot: (store, opts) => service(store.app).snapshot(store, opts),
         restore: (handle, store, opts) => service(store.app).restore(handle, store, opts),
         listSnapshots: (filter) => service().listSnapshots(filter),

@@ -251,6 +251,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
               )
             : Effect.die("unused transfer"),
         transferStream: () => Stream.empty,
+        read: () => Stream.empty,
         snapshot: () => Effect.die("unused snapshot"),
         restore: () => Effect.die("unused restore"),
         resolveSnapshot: () => Effect.die("unused resolve"),
