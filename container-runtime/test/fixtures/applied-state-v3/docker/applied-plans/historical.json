@@ -1,0 +1,378 @@
+{
+  "version": 3,
+  "data": {
+    "valueModel": 1,
+    "id": "historical",
+    "name": "historical",
+    "slug": "historical",
+    "root": "/srv/apps/historical",
+    "provider": "docker",
+    "services": {
+      "web": {
+        "name": "web",
+        "type": "lando",
+        "serviceTypeId": "lando",
+        "provider": "docker",
+        "primary": true,
+        "artifact": {
+          "kind": "ref",
+          "ref": "busybox:1.37"
+        },
+        "init": true,
+        "environment": {
+          "LANDO": "ON",
+          "LANDO_APP_KIND": "user",
+          "LANDO_APP_NAME": "historical",
+          "LANDO_HOST_GID": "1000",
+          "LANDO_HOST_HOME": "/home/aaron",
+          "LANDO_HOST_IP": "host.lando.internal",
+          "LANDO_HOST_OS": "linux",
+          "LANDO_HOST_UID": "1000",
+          "LANDO_HOST_USER": "aaron",
+          "LANDO_MAIL_HOST": "mailpit.global.internal",
+          "LANDO_MAIL_PORT": "1025",
+          "LANDO_PROJECT": "historical",
+          "LANDO_SERVICE_API": "4",
+          "LANDO_SERVICE_CERT": "/etc/lando/certs/leaf/web.crt",
+          "LANDO_SERVICE_KEY": "/etc/lando/certs/leaf/web.key",
+          "LANDO_SERVICE_NAME": "web",
+          "LANDO_SERVICE_TYPE": "lando"
+        },
+        "home": {
+          "state": "disabled"
+        },
+        "mounts": [
+          {
+            "type": "bind",
+            "source": "/tmp/test-certs/web.historical.internal.crt",
+            "target": "/etc/lando/certs/leaf/web.crt",
+            "readOnly": true,
+            "realization": "passthrough",
+            "origin": "service"
+          },
+          {
+            "type": "bind",
+            "source": "/tmp/test-certs/web.historical.internal.key",
+            "target": "/etc/lando/certs/leaf/web.key",
+            "readOnly": true,
+            "realization": "passthrough",
+            "origin": "service"
+          }
+        ],
+        "endpoints": [
+          {
+            "_tag": "internal",
+            "protocol": "http",
+            "port": 8080,
+            "scan": {
+              "path": "/",
+              "okCodes": []
+            }
+          }
+        ],
+        "routes": [
+          {
+            "index": 0
+          },
+          {
+            "index": 1
+          },
+          {
+            "index": 2
+          },
+          {
+            "index": 3
+          }
+        ],
+        "dependsOn": [],
+        "scanner": {
+          "enabled": true,
+          "path": "/",
+          "okCodes": [],
+          "retries": 2,
+          "timeoutMs": 20000
+        },
+        "certs": {
+          "cn": "web.historical.internal",
+          "sans": [
+            "web",
+            "web.historical.internal",
+            "exact.lndo.site",
+            "*.x.lndo.site",
+            "*-x.lndo.site",
+            "wild.*.x.lndo.site",
+            "localhost",
+            "127.0.0.1"
+          ],
+          "caId": "test"
+        },
+        "hostAliases": [
+          {
+            "hostname": "valid_alias",
+            "ip": "127.0.0.2"
+          },
+          {
+            "hostname": "bad host",
+            "ip": "127.0.0.3"
+          },
+          {
+            "hostname": "host.lando.internal",
+            "ip": "host-gateway"
+          }
+        ],
+        "metadata": {
+          "resolvedAt": "2026-11-04T18:54:51.965Z",
+          "source": "/srv/apps/historical/.lando.yml",
+          "runtime": 4
+        },
+        "extensions": {
+          "@lando/core/service-features": {
+            "featureIds": [
+              "lando.boot",
+              "lando.user-id",
+              "lando.storage",
+              "service-lando.lando",
+              "lando.env",
+              "lando.app-mount",
+              "lando.healthcheck",
+              "lando.certs",
+              "lando.security",
+              "lando.ssh-agent",
+              "lando.host-proxy",
+              "lando.user"
+            ],
+            "buildSteps": [
+              {
+                "id": "lando.boot:scaffold",
+                "phase": "build",
+                "command": {
+                  "directories": [
+                    "/etc/lando",
+                    "/etc/lando/env.d",
+                    "/etc/lando/certs"
+                  ]
+                }
+              }
+            ],
+            "dataTrees": []
+          },
+          "@lando/core/ssh-agent": {
+            "mode": "sidecar"
+          }
+        }
+      },
+      "worker": {
+        "name": "worker",
+        "type": "lando",
+        "serviceTypeId": "lando",
+        "provider": "docker",
+        "primary": false,
+        "artifact": {
+          "kind": "ref",
+          "ref": "busybox:1.37"
+        },
+        "init": true,
+        "environment": {
+          "LANDO": "ON",
+          "LANDO_APP_KIND": "user",
+          "LANDO_APP_NAME": "historical",
+          "LANDO_HOST_GID": "1000",
+          "LANDO_HOST_HOME": "/home/aaron",
+          "LANDO_HOST_IP": "host.lando.internal",
+          "LANDO_HOST_OS": "linux",
+          "LANDO_HOST_UID": "1000",
+          "LANDO_HOST_USER": "aaron",
+          "LANDO_MAIL_HOST": "mailpit.global.internal",
+          "LANDO_MAIL_PORT": "1025",
+          "LANDO_PROJECT": "historical",
+          "LANDO_SERVICE_API": "4",
+          "LANDO_SERVICE_NAME": "worker",
+          "LANDO_SERVICE_TYPE": "lando"
+        },
+        "home": {
+          "state": "disabled"
+        },
+        "mounts": [],
+        "endpoints": [],
+        "routes": [],
+        "dependsOn": [],
+        "scanner": {
+          "enabled": true,
+          "path": "/",
+          "okCodes": [],
+          "retries": 2,
+          "timeoutMs": 20000
+        },
+        "hostAliases": [
+          {
+            "hostname": "valid_alias",
+            "ip": "127.0.0.2"
+          },
+          {
+            "hostname": "bad host",
+            "ip": "127.0.0.3"
+          },
+          {
+            "hostname": "host.lando.internal",
+            "ip": "host-gateway"
+          }
+        ],
+        "metadata": {
+          "resolvedAt": "2026-11-04T18:54:51.965Z",
+          "source": "/srv/apps/historical/.lando.yml",
+          "runtime": 4
+        },
+        "extensions": {
+          "@lando/core/service-features": {
+            "featureIds": [
+              "lando.boot",
+              "lando.user-id",
+              "lando.storage",
+              "service-lando.lando",
+              "lando.env",
+              "lando.app-mount",
+              "lando.healthcheck",
+              "lando.certs",
+              "lando.security",
+              "lando.ssh-agent",
+              "lando.host-proxy",
+              "lando.user"
+            ],
+            "buildSteps": [
+              {
+                "id": "lando.boot:scaffold",
+                "phase": "build",
+                "command": {
+                  "directories": [
+                    "/etc/lando",
+                    "/etc/lando/env.d",
+                    "/etc/lando/certs"
+                  ]
+                }
+              }
+            ],
+            "dataTrees": []
+          },
+          "@lando/core/certs": "none",
+          "@lando/core/ssh-agent": {
+            "mode": "sidecar"
+          }
+        }
+      }
+    },
+    "routes": [
+      {
+        "priority": 65540,
+        "hostname": "exact.lndo.site",
+        "scheme": "https",
+        "service": "web",
+        "backend": {
+          "service": "web",
+          "protocol": "http",
+          "port": 8080
+        }
+      },
+      {
+        "priority": 3,
+        "hostname": "*.x.lndo.site",
+        "scheme": "https",
+        "service": "web",
+        "backend": {
+          "service": "web",
+          "protocol": "http",
+          "port": 8080
+        }
+      },
+      {
+        "priority": 3,
+        "hostname": "*-x.lndo.site",
+        "scheme": "https",
+        "service": "web",
+        "backend": {
+          "service": "web",
+          "protocol": "http",
+          "port": 8080
+        }
+      },
+      {
+        "priority": 3,
+        "hostname": "wild.*.x.lndo.site",
+        "scheme": "http",
+        "service": "web",
+        "backend": {
+          "service": "web",
+          "protocol": "http",
+          "port": 8080
+        }
+      }
+    ],
+    "networking": {
+      "perAppBridge": {
+        "name": "lando-historical",
+        "driver": "bridge"
+      },
+      "sharedNetworkMembership": {
+        "name": "lando_bridge_network",
+        "aliases": {
+          "web": [
+            "web.historical.internal"
+          ],
+          "worker": [
+            "worker.historical.internal"
+          ]
+        }
+      }
+    },
+    "stores": [],
+    "fileSync": [],
+    "fileSyncPolicy": {
+      "reason": "absent-app-mount",
+      "services": {
+        "web": {
+          "mode": "absent",
+          "reason": "absent-app-mount"
+        },
+        "worker": {
+          "mode": "absent",
+          "reason": "absent-app-mount"
+        }
+      }
+    },
+    "metadata": {
+      "resolvedAt": "2026-11-04T18:54:51.965Z",
+      "source": "/srv/apps/historical/.lando.yml",
+      "runtime": 4
+    },
+    "extensions": {
+      "@lando/core/ssh-agent": {
+        "mode": "sidecar"
+      },
+      "@lando/core/gpg-agent": {
+        "forward": false
+      },
+      "@lando/core/host-proxy": {
+        "runLando": {
+          "availability": "unavailable",
+          "reason": "Provider declares no host-proxy Linux container target; host-proxy runLando is disabled."
+        }
+      },
+      "@lando/core/effective-tooling": {
+        "tasks": {},
+        "internalNames": [],
+        "connectionClients": {},
+        "disabledSources": {}
+      },
+      "@lando/core/invocation-authority": {
+        "sites": []
+      }
+    },
+    "router": {
+      "enabled": true
+    },
+    "requires": {
+      "globalServices": [
+        "traefik"
+      ]
+    }
+  }
+}

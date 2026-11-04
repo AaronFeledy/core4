@@ -1,32 +1,32 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
-import { type TunnelSession, TunnelSession as TunnelSessionSchema } from "@lando/sdk/schema";
+import type { TunnelSession } from "@lando/sdk/schema";
 import { PathsService, StateStore } from "@lando/sdk/services";
 
-const TunnelRegistryEntry = Schema.Struct({
-  session: TunnelSessionSchema,
-  pid: Schema.Number.pipe(Schema.check(Schema.isInt())),
-  updatedAt: Schema.String,
-});
+import {
+  TUNNEL_REGISTRY_VERSION,
+  type TunnelRegistryEntries,
+  TunnelRegistryEntriesSchema,
+  type TunnelRegistryEntry,
+  migrateTunnelRegistryEntries,
+} from "./registry-migrate.ts";
 
-const TunnelRegistryEntries = Schema.Array(TunnelRegistryEntry);
-
-type TunnelRegistryEntry = typeof TunnelRegistryEntry.Type;
-type TunnelRegistryEntries = typeof TunnelRegistryEntries.Type;
+export { TUNNEL_REGISTRY_VERSION } from "./registry-migrate.ts";
 
 const registrySpec = {
   root: "userData",
   namespace: "tunnels",
   key: "registry.bin",
-  schema: TunnelRegistryEntries,
-  version: 1,
+  schema: TunnelRegistryEntriesSchema,
+  version: TUNNEL_REGISTRY_VERSION,
   codec: "binary",
   lock: "advisory",
   default: [] as TunnelRegistryEntries,
+  onVersionMismatch: migrateTunnelRegistryEntries,
 } as const;
 
 const stateError = (operation: string, path: string, cause: unknown): StateStoreError =>

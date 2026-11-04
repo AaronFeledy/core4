@@ -1,5 +1,9 @@
 import { resolve } from "node:path";
 
+import {
+  CompatibilityExceptionsError,
+  loadCompatibilityExceptionsFile,
+} from "./schema-compatibility/exceptions.ts";
 import type {
   CompatibilityException,
   JsonSchema,
@@ -124,31 +128,12 @@ export const loadWorkingSchemaArtifacts = async (repoRoot: string): Promise<Sche
 export const loadCompatibilityExceptions = async (
   path: string,
 ): Promise<ReadonlyArray<CompatibilityException>> => {
-  const parsed = parseJson(await Bun.file(path).text(), path);
-  if (!Array.isArray(parsed)) throw new SchemaCompatibilityInputError(`${path} must contain an array.`);
-  const seen = new Set<string>();
-  return parsed.map((entry) => {
-    if (
-      !isJsonObject(entry) ||
-      typeof entry.surface !== "string" ||
-      typeof entry.changeKind !== "string" ||
-      typeof entry.path !== "string" ||
-      typeof entry.justification !== "string" ||
-      entry.justification.trim().length === 0
-    ) {
-      throw new SchemaCompatibilityInputError(`${path} contains an invalid compatibility exception.`);
+  try {
+    return await loadCompatibilityExceptionsFile(path);
+  } catch (error) {
+    if (error instanceof CompatibilityExceptionsError) {
+      throw new SchemaCompatibilityInputError(error.message, error.detail);
     }
-    const key = `${entry.surface}\0${entry.changeKind}\0${entry.path}`;
-    if (seen.has(key))
-      throw new SchemaCompatibilityInputError(
-        `${path} contains duplicate exception ${entry.surface} ${entry.path}.`,
-      );
-    seen.add(key);
-    return {
-      surface: entry.surface,
-      changeKind: entry.changeKind,
-      path: entry.path,
-      justification: entry.justification,
-    };
-  });
+    throw error;
+  }
 };

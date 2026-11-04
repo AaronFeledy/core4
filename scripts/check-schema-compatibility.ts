@@ -11,12 +11,16 @@ import {
   SCHEMA_SNAPSHOT_GENERATOR_PATH,
   regenerateBaseSchemaArtifacts,
 } from "./schema-compatibility-baseline.ts";
+import type { AcceptCompatibilityOptions } from "./schema-compatibility/accept-exceptions.ts";
 import {
   type CompatibilityException,
   type CompatibilityFinding,
   acceptCompatibilityExceptions,
   classifySchemaChange,
 } from "./schema-compatibility/classifier.ts";
+import type { JsonSchema } from "./schema-compatibility/model.ts";
+import { buildPersistedSurfaceStores, readPersistedStoreVersions } from "./schema-compatibility/persisted.ts";
+import { loadBasePersistedStoreVersions } from "./schema-compatibility/store-versions.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_BASE_REF = "origin/main";
@@ -70,10 +74,27 @@ const comparableArtifacts = (
   );
 };
 
+const rootSchemasFromArtifacts = (artifacts: SchemaArtifactSet): Map<string, JsonSchema> => {
+  const roots = new Map<string, JsonSchema>();
+  for (const [surface, artifact] of artifacts) {
+    if (!surface.startsWith("schema:")) continue;
+    roots.set(surface.slice("schema:".length), artifact.schema);
+  }
+  return roots;
+};
+
+const publishedSchemaIdsFromArtifacts = (artifacts: SchemaArtifactSet): Set<string> => {
+  const ids = new Set<string>();
+  for (const surface of artifacts.keys()) {
+    if (surface.startsWith("schema:")) ids.add(surface.slice("schema:".length));
+  }
+  return ids;
+};
+
 const compareArtifactSets = (
   before: SchemaArtifactSet,
   after: SchemaArtifactSet,
-  exceptions: ReadonlyArray<CompatibilityException>,
+  policy: AcceptCompatibilityOptions & { readonly exceptions: ReadonlyArray<CompatibilityException> },
 ): ReadonlyArray<SurfaceCompatibilityFinding> => {
   const surfaces = [...new Set([...before.keys(), ...after.keys()])].sort();
   return surfaces.flatMap((surface) => {
@@ -105,7 +126,7 @@ const compareArtifactSets = (
     } else {
       findings = [];
     }
-    return acceptCompatibilityExceptions(surface, findings, exceptions).map((entry) => ({
+    return acceptCompatibilityExceptions(surface, findings, policy.exceptions, policy).map((entry) => ({
       ...entry,
       surface,
     }));
@@ -119,12 +140,22 @@ export const checkSchemaCompatibility = async (
     loadWorkingSchemaArtifacts(REPO_ROOT),
     loadCompatibilityExceptions(EXCEPTIONS_PATH),
   ]);
+  const storeVersions = readPersistedStoreVersions();
   const before = await regenerateBaseSchemaArtifacts({ repoRoot: REPO_ROOT, baseRef });
+  const baseStoreVersions = await loadBasePersistedStoreVersions(REPO_ROOT, baseRef);
   const skips = skippedFamilyNotices(after, baseRef, before.unavailableFamilies);
+  const persistedStoresBySurface = buildPersistedSurfaceStores(
+    rootSchemasFromArtifacts(after),
+    new Set([
+      ...publishedSchemaIdsFromArtifacts(after),
+      ...publishedSchemaIdsFromArtifacts(before.artifacts),
+    ]),
+    rootSchemasFromArtifacts(before.artifacts),
+  );
   const findings = compareArtifactSets(
     before.artifacts,
     comparableArtifacts(after, before.unavailableFamilies),
-    exceptions,
+    { exceptions, persistedStoresBySurface, storeVersions, baseStoreVersions },
   );
   return {
     baseRef,
