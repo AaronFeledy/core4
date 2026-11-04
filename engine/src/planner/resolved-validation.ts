@@ -6,6 +6,7 @@ import {
   HostAliasName,
   LANDO_SHARED_CROSS_APP_NETWORK,
   type LandofileShape,
+  RouteHostname,
   type RouteInput,
   ServiceName,
   type ValidationIssue,
@@ -18,6 +19,7 @@ import { dnsNameIssues } from "./dns-name-validation.ts";
 import { hostReadinessShellIssues } from "./host-shell-issues.ts";
 import { deferredSiteKey } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
+import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
 export type PlannerIssue = ValidationIssue & { readonly rule: ConfigLintRuleId };
 
@@ -45,6 +47,26 @@ export const validateResolvedLandofile = (input: {
     const descendant = `${key.slice(0, -1)},`;
     return Iterable.some(blocked, (site) => path.length === 0 || site === key || site.startsWith(descendant));
   };
+  // Certificate coverage depends only on the hostname and scheme, so another failing or unresolved field doesn't hide it.
+  const certificateCoverageIssue = (
+    entry: RouteInput,
+    result: ReturnType<typeof normalizeRoute>,
+    path: ValidationIssuePath,
+  ): PlannerIssue | undefined => {
+    const shorthand = typeof entry === "string";
+    const hostnamePath = shorthand ? path : [...path, "hostname"];
+    if (isBlocked(hostnamePath) || (!shorthand && isBlocked([...path, "scheme"]))) return undefined;
+    const route = shorthand ? (Result.isSuccess(result) ? result.success : undefined) : entry;
+    if (route === undefined || !Schema.is(RouteHostname)(route.hostname)) return undefined;
+    const gap = httpsRouteCoverageGap(route.hostname, route.scheme);
+    if (gap === undefined) return undefined;
+    return {
+      path: hostnamePath,
+      rule: "landofile.route",
+      message: gap.message,
+      suggestion: `${httpsAlternative(gap)}, or keep this pattern ${shorthand ? "in the object form " : ""}with scheme: http.`,
+    };
+  };
   const checkRoutes = (entries: readonly RouteInput[] | undefined, prefix: ValidationIssuePath) => {
     const normalized: NormalizedRoute[] = [];
     for (const [index, entry] of (entries ?? []).entries()) {
@@ -55,6 +77,8 @@ export const validateResolvedLandofile = (input: {
         file: source?.file ?? input.landofilePath,
         ...(source === undefined ? {} : { provenance: source }),
       });
+      const coverage = certificateCoverageIssue(entry, result, path);
+      if (coverage !== undefined) issues.push(coverage);
       // A blocked value still holds expression text; report only the fields that were evaluated.
       if (Result.isFailure(result)) {
         for (const issue of result.failure)

@@ -1,0 +1,10 @@
+name: certificate-routes
+services:
+  web:
+    type: nginx
+    certs: true
+    routes:
+      - certificate-routes.lndo.site
+      - "*-certificate-routes.lndo.site"
+      - hostname: "wild.*.certificate-routes.lndo.site"
+        scheme: http

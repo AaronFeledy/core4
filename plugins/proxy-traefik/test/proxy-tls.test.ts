@@ -7,6 +7,38 @@ import { ServiceName } from "@lando/sdk/schema";
 import { app, httpsRoutes, makeHarness } from "./proxy-tls-harness.ts";
 
 describe("Traefik RouterService TLS", () => {
+  test("maps partial leftmost HTTPS route wildcards into certificate SANs", async () => {
+    const harness = makeHarness();
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+
+    await Effect.runPromise(
+      harness.service.applyRoutes(
+        [
+          {
+            hostname: "x.lndo.site",
+            priority: 2,
+            scheme: "https",
+            service: ServiceName.make("web"),
+            backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
+          },
+          {
+            hostname: "*-x.lndo.site",
+            priority: 2,
+            scheme: "https",
+            service: ServiceName.make("web"),
+            backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
+          },
+        ],
+        app,
+      ),
+    );
+
+    expect(harness.calls.at(-1)).toEqual({
+      cn: "x.lndo.site",
+      sans: ["x.lndo.site", "*.lndo.site"],
+    });
+  });
+
   test("issues exact default and sorted per-app SANs for HTTPS routes", async () => {
     // Given: a configured proxy with no certificate material.
     const harness = makeHarness();
