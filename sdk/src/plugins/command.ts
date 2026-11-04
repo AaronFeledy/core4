@@ -101,9 +101,7 @@ export interface ExecutableCommandSpec<
   readonly strict?: boolean;
   /**
    * Pure declaration of the data payload's process streams for this invocation.
-   * Only the CLI grants streams; MCP, event, and library surfaces never do.
-   * Missing requested streams must fail with CommandStdioError reason "unavailable".
-   * Granted stdout bypasses payload redaction and must contain only the data payload.
+   * See {@link ExecutableCommandStdio} for grant restrictions and payload requirements.
    */
   readonly stdio?: (input: Input) => ExecutableCommandStdioRequest | undefined;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;

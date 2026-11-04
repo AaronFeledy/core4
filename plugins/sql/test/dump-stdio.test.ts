@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { CommandStdioError, SqlConfirmRequiredError } from "@lando/sdk/errors";
@@ -44,8 +45,8 @@ describe("db dump stdio", () => {
       stdin: true,
     });
     expect(exportSpec.stdio?.({ ...exportInput, args: { file: "dump.sql" } })).toBeUndefined();
-    expect(dbInputFromCommand("export", exportInput).stdio?.stdout).toBeDefined();
-    expect(dbInputFromCommand("import", importInput).stdio?.stdin).toBeDefined();
+    expect(dbInputFromCommand("export", exportInput).stdio?.stdout).toBe(exportInput.stdio.stdout);
+    expect(dbInputFromCommand("import", importInput).stdio?.stdin).toBe(importInput.stdio.stdin);
   });
 
   test("exports exact bytes including a registered secret and invalid UTF-8 through granted stdout", async () => {
@@ -80,7 +81,7 @@ describe("db dump stdio", () => {
     if (from?._tag === "serviceCmd") {
       expect(from.command).toEqual(dumpCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }));
       expect(Object.values(from.env ?? {}).join(" ")).toContain(SECRET);
-      expect(from.secrets?.substring ?? from.secrets?.wholeToken).toBeDefined();
+      expect([...(from.secrets?.substring ?? []), ...(from.secrets?.wholeToken ?? [])]).toContain(SECRET);
     }
   });
 
@@ -143,7 +144,7 @@ describe("db dump stdio", () => {
     const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlConfirmRequiredError);
     if (!(error instanceof SqlConfirmRequiredError)) return;
-    expect(error.remediation).toContain("Pass --yes");
+    expect(error.remediation).toContain("--yes");
     expect(error.remediation.toLowerCase()).toContain("stdin");
     expect(stdinPulled).toBe(false);
     expect(harness.countAttempts()).toBe(0);
@@ -185,7 +186,9 @@ describe("db dump stdio", () => {
       expect(Exit.isSuccess(exit)).toBe(true);
       if (!Exit.isSuccess(exit)) throw new Error(`${label} import failed`);
       expect(exit.value.file).toBe("-");
-      expect(workingPath.length).toBeGreaterThan(1);
+      expect(isAbsolute(workingPath)).toBe(true);
+      // The staged copy lives only as long as the command scope.
+      expect(existsSync(workingPath)).toBe(false);
       expect(new TextDecoder().decode(workingBytes)).toBe(expectedWorking);
     }
   });
@@ -217,6 +220,7 @@ describe("db dump stdio", () => {
     if (!Exit.isSuccess(exit)) return;
     expect(exit.value.seedStatus).toBe("seeded");
     expect(stagedBytes).toEqual(new Uint8Array(payload));
+    expect(exit.value.file).toBe("-");
   });
 
   test("missing stdio grant fails unavailable before provider work or exec", async () => {
@@ -259,6 +263,14 @@ describe("db dump stdio", () => {
     });
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "db:export",
+      field: "compression-level",
+      kind: "flag",
+      reason: "constraint",
+    });
     expect(harness.reads()).toEqual([]);
     expect(harness.execs()).toEqual([]);
   });

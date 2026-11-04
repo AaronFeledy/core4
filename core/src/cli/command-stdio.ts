@@ -7,19 +7,8 @@ import type { ResultFormat } from "./format-flags";
 import { resolveOutputRouting } from "./output-routing";
 import type { RendererMode } from "./renderer-selection";
 
-/** Injectable stdin shape for CLI grants; defaults to `process.stdin`. */
-export type CommandStdioStdin = {
+export type CommandStdioStdin = Parameters<typeof cancellableTerminalStdin>[0] & {
   readonly isTTY?: boolean;
-  readonly readableEnded?: boolean;
-  readonly readableFlowing?: boolean | null;
-  on(event: "data", listener: (chunk: Uint8Array) => void): unknown;
-  on(event: "end", listener: () => void): unknown;
-  on(event: "error", listener: (error: Error) => void): unknown;
-  off(event: "data", listener: (chunk: Uint8Array) => void): unknown;
-  off(event: "end", listener: () => void): unknown;
-  off(event: "error", listener: (error: Error) => void): unknown;
-  pause(): unknown;
-  resume(): unknown;
 };
 
 export interface GrantCommandStdioOptions {
@@ -32,11 +21,8 @@ export interface GrantCommandStdioOptions {
   readonly stdin?: CommandStdioStdin;
   readonly resultFormat: ResultFormat;
   readonly rendererMode: RendererMode;
-  readonly declaresStreaming?: boolean;
-  readonly live?: boolean;
 }
 
-/** Exit codes for CommandStdioError: read → 1, terminal/machine-output/unavailable → 2. */
 export const commandStdioExitCode = (error: unknown): number | undefined => {
   if (!(error instanceof CommandStdioError)) return undefined;
   return error.reason === "read" ? 1 : 2;
@@ -91,8 +77,8 @@ export const commandStdioRequestError = (
     const routing = resolveOutputRouting({
       rendererMode: options.rendererMode,
       format: options.resultFormat,
-      declaresStreaming: options.declaresStreaming === true,
-      live: options.live === true,
+      declaresStreaming: false,
+      live: false,
     });
     if (routing.stdout === "envelope" || routing.stdout === "frames") {
       return stdoutMachineOutputError(options.command);
@@ -131,10 +117,16 @@ export const grantCommandStdio = (
   if (request.stdin === true) {
     const source = options.stdin ?? process.stdin;
     const command = options.command;
-    // Suspend so cancellableTerminalStdin attaches only when the stream is pulled.
-    granted.stdin = Stream.suspend(() =>
-      Stream.fromAsyncIterable(cancellableTerminalStdin(source), (cause) => stdinReadError(command, cause)),
-    );
+    let claimed = false;
+    // Suspend so cancellableTerminalStdin attaches only when the stream is pulled. Stdin is one
+    // shared byte source, so a second consumer would silently split the payload; refuse it instead.
+    granted.stdin = Stream.suspend(() => {
+      if (claimed) return Stream.fail(stdinReadError(command, new Error("stdin was already consumed")));
+      claimed = true;
+      return Stream.fromAsyncIterable(cancellableTerminalStdin(source), (cause) =>
+        stdinReadError(command, cause),
+      );
+    });
   }
 
   return Effect.succeed(granted);

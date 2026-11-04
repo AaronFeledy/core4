@@ -438,7 +438,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           : protectedEnvironment.tokens()),
         ...(seedSource?.redactionTokens ?? []),
       ],
-      ...(action === "import" || action === "export" ? { file } : {}),
+      ...(action === "import" || action === "export" || (action === "seed" && input.file !== undefined)
+        ? { file }
+        : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
       ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
       ...(pruneCandidates === undefined

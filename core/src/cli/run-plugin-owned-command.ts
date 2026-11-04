@@ -47,7 +47,6 @@ export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_C
 
 export interface RunPluginOwnedCommandOptions {
   readonly io?: RendererIO;
-  /** Injectable stdin for stdio grants; defaults to `process.stdin`. */
   readonly stdin?: CommandStdioStdin;
   readonly signal?: AbortSignal;
   readonly deprecation?: { readonly id: string; readonly notice: DeprecationNotice };
@@ -59,8 +58,6 @@ export interface PluginOwnedCommandEffectOptions {
   readonly stdinIsTTY?: boolean;
   readonly resultFormat?: import("./format-flags").ResultFormat;
   readonly rendererMode?: import("./renderer-selection").RendererMode;
-  readonly declaresStreaming?: boolean;
-  readonly live?: boolean;
 }
 
 type PluginOwnedRuntime = Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
@@ -99,10 +96,6 @@ const withGrantedStdio = Effect.fnUntraced(function* <A, E, R>(
     ...(grantOptions.stdin === undefined ? {} : { stdin: grantOptions.stdin }),
     resultFormat: grantOptions.resultFormat ?? "text",
     rendererMode: grantOptions.rendererMode ?? "lando",
-    ...(grantOptions.declaresStreaming === undefined
-      ? {}
-      : { declaresStreaming: grantOptions.declaresStreaming }),
-    ...(grantOptions.live === undefined ? {} : { live: grantOptions.live }),
   });
   const grantedInput: ExecutableCommandInput = stdio === undefined ? input : { ...input, stdio };
   return yield* withRedactedRenderer(spec.run(grantedInput));
@@ -272,7 +265,6 @@ const dispatchPluginOwnedCommand = async (
     await renderPluginOwnedPreCommandFailure(flagError);
     return "dispatched";
   }
-  // Preserve bare --json list mode before run (keys only, no command body).
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
   const notice = commandDescriptorNotice(row.descriptor, commandId);
   await runPluginOwnedCommand(spec, argv, {

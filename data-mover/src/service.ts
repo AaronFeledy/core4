@@ -11,6 +11,7 @@ import {
   type Context,
   DateTime,
   Effect,
+  Exit,
   Layer,
   Option,
   Schema,
@@ -1137,47 +1138,46 @@ export const makeDataMoverService = (
               timestamp: yield* DateTime.now,
             }),
           );
-          return yield* Effect.gen(function* () {
-            yield* validateHostEndpoints({ from, to: { _tag: "stream" } }, persistence.paths.scratchDir);
-            let sizeBytes = 0;
-            let settled = false;
-            return streamFromEndpoint(selectedProvider, from).pipe(
+          yield* validateHostEndpoints({ from, to: { _tag: "stream" } }, persistence.paths.scratchDir).pipe(
+            Effect.tapCause(publishFailure),
+          );
+          let sizeBytes = 0;
+          let reachedEnd = false;
+          // The source gets its own scope, and the outcome is published from the outermost exit, so
+          // producer cleanup has finished first. An early stop (EOF never reached) counts as a failure.
+          return Stream.scoped(
+            streamFromEndpoint(selectedProvider, from).pipe(
               Stream.tap((chunk) =>
                 Effect.sync(() => {
                   sizeBytes += chunk.byteLength;
                 }),
               ),
               Stream.onEnd(
-                Effect.gen(function* () {
-                  settled = true;
-                  yield* events.publish(
-                    PostDataTransferEvent.make({
-                      eventName: "post-data-transfer",
-                      fromEndpoint,
-                      toEndpoint,
-                      outcome: "success",
-                      accelerated: false,
-                      sizeBytes,
-                      durationMs: (yield* Clock.currentTimeMillis) - startedAt,
-                      timestamp: yield* DateTime.now,
-                    }),
-                  );
+                Effect.sync(() => {
+                  reachedEnd = true;
                 }),
               ),
-              Stream.tapCause(
-                Effect.fnUntraced(function* (cause) {
-                  settled = true;
-                  yield* publishFailure(cause);
-                }),
-              ),
-              Stream.ensuring(
-                Effect.gen(function* () {
-                  if (settled) return;
-                  yield* publishFailure(Cause.interrupt());
-                }),
-              ),
-            );
-          }).pipe(Effect.tapCause(publishFailure));
+            ),
+          ).pipe(
+            Stream.onExit((exit) =>
+              Exit.isSuccess(exit) && reachedEnd
+                ? Effect.gen(function* () {
+                    yield* events.publish(
+                      PostDataTransferEvent.make({
+                        eventName: "post-data-transfer",
+                        fromEndpoint,
+                        toEndpoint,
+                        outcome: "success",
+                        accelerated: false,
+                        sizeBytes,
+                        durationMs: (yield* Clock.currentTimeMillis) - startedAt,
+                        timestamp: yield* DateTime.now,
+                      }),
+                    );
+                  })
+                : publishFailure(Exit.isFailure(exit) ? exit.cause : Cause.interrupt()),
+            ),
+          );
         }),
       ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {

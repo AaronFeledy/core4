@@ -169,7 +169,6 @@ export const parseFlagsAndPositionals = (
       continue;
     }
 
-    // Bare `-` is a positional stdio selector (e.g. db:export -), never an unknown flag.
     if (arg === "-" || !options.strict || !arg.startsWith("-")) positionals.push(arg);
   }
 

@@ -92,33 +92,28 @@ export const secretTokens = (
 
 export const requireDashStdioGrant = (input: DbCommandInput): Effect.Effect<void, CommandStdioError> => {
   if (input.file !== "-") return Effect.void;
+  const stream = Match.value(input.action).pipe(
+    Match.when("export", () => "stdout" as const),
+    Match.when("import", () => "stdin" as const),
+    Match.when("seed", () => "stdin" as const),
+    Match.when("snapshot", () => undefined),
+    Match.when("snapshots", () => undefined),
+    Match.when("prune", () => undefined),
+    Match.when("restore", () => undefined),
+    Match.when("reset", () => undefined),
+    Match.exhaustive,
+  );
+  if (stream === undefined || input.stdio?.[stream] !== undefined) return Effect.void;
   const command = `db:${input.action}`;
-  const remediation = "Run this command from the terminal CLI, or pass a file path instead of -.";
-  if (input.action === "export") {
-    if (input.stdio?.stdout !== undefined) return Effect.void;
-    return Effect.fail(
-      new CommandStdioError({
-        message: `${command} requested stdout for -, but no stdout stream was granted.`,
-        command,
-        stream: "stdout",
-        reason: "unavailable",
-        remediation,
-      }),
-    );
-  }
-  if (input.action === "import" || input.action === "seed") {
-    if (input.stdio?.stdin !== undefined) return Effect.void;
-    return Effect.fail(
-      new CommandStdioError({
-        message: `${command} requested stdin for -, but no stdin stream was granted.`,
-        command,
-        stream: "stdin",
-        reason: "unavailable",
-        remediation,
-      }),
-    );
-  }
-  return Effect.void;
+  return Effect.fail(
+    new CommandStdioError({
+      message: `${command} requested ${stream} for -, but no ${stream} stream was granted.`,
+      command,
+      stream,
+      reason: "unavailable",
+      remediation: "Run this command from the terminal CLI, or pass a file path instead of -.",
+    }),
+  );
 };
 
 export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {

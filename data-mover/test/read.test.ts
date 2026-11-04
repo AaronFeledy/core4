@@ -13,7 +13,7 @@ import {
   DataSourceOutsideRootError,
   DataTransferError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import {
   DataMover,
   type EventFor,
@@ -93,6 +93,46 @@ const concatChunks = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
 };
 
 describe("DataMover.read", () => {
+  test("reports failure, not success, when the producer's cleanup fails after EOF", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a servicePath producer whose scoped cleanup dies after the last byte.
+      const outcomes: Array<string | undefined> = [];
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const provider = RuntimeProvider.of({
+            ...TestRuntimeProvider,
+            capabilities: { ...TestRuntimeProvider.capabilities, serviceFileCopy: "native" },
+            copyFromService: () =>
+              Stream.fromEffect(
+                Effect.acquireRelease(Effect.succeed(bytes("bak")), () =>
+                  Effect.die(new Error("cleanup failed")),
+                ),
+              ),
+          });
+          const mover = makeDataMoverService(
+            Effect.succeed(provider),
+            {
+              redactText: (text) => text,
+              publish: (event) =>
+                Effect.sync(() => {
+                  if (event._tag === "post-data-transfer") outcomes.push(event.outcome);
+                }),
+            },
+            { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          );
+          // When
+          return yield* mover
+            .read({ _tag: "servicePath", app, service, path: PortablePath.make("/backup/app.bak") })
+            .pipe(Stream.runCollect, Effect.exit);
+        }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+      );
+      // Then
+      expect(result._tag).toBe("Failure");
+      expect(outcomes).toEqual(["failure"]);
+    });
+  });
+
   test("streams exact serviceCmd bytes and publishes stream destination events", async () => {
     await withTempDir(async (_dir) => {
       const payload = new Uint8Array([0, 255, 195, 169, 0, ...bytes("exact-serviceCmd-bytes")]);

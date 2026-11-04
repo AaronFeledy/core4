@@ -95,7 +95,8 @@ describe("grantCommandStdio", () => {
   });
 
   test("allows --renderer=json with text format (routing stays human)", async () => {
-    const base = capturingRenderer({ stdout: "", stderr: "" });
+    const output = { stdout: "", stderr: "" };
+    const base = capturingRenderer(output);
     const granted = await Effect.runPromise(
       grantCommandStdio({
         command: "db:export",
@@ -107,7 +108,9 @@ describe("grantCommandStdio", () => {
         rendererMode: "json",
       }),
     );
-    expect(granted?.stdout).toBeDefined();
+    if (granted?.stdout === undefined) throw new Error("expected stdout grant");
+    await Effect.runPromise(granted.stdout(bytes("dump-bytes")));
+    expect(output).toEqual({ stdout: "dump-bytes", stderr: "" });
   });
 
   test("refuses stdout and stdin when the requested stream is a TTY", async () => {
@@ -227,11 +230,44 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
     expect(received).toBe("dump-bytes");
   });
 
+  test("granted stdin refuses a second consumer instead of splitting the payload", async () => {
+    // Given
+    const stdin = new PassThrough();
+    const granted = await Effect.runPromise(
+      grantCommandStdio({
+        command: "db:import",
+        request: { stdin: true },
+        baseStdout: () => Effect.void,
+        stdoutIsTTY: false,
+        stdinIsTTY: false,
+        stdin,
+        resultFormat: "text",
+        rendererMode: "plain",
+      }),
+    );
+    const stream = granted?.stdin;
+    if (stream === undefined) throw new Error("expected stdin grant");
+    const first = Effect.runPromise(Stream.runCollect(stream));
+    // When
+    const second = await Effect.runPromiseExit(Stream.runCollect(stream));
+    stdin.end("payload");
+    // Then
+    expect([...(await first)].map(decode).join("")).toBe("payload");
+    expect(Exit.isFailure(second)).toBe(true);
+    if (Exit.isFailure(second)) {
+      const error = Cause.squash(second.cause);
+      expect(error).toBeInstanceOf(CommandStdioError);
+      if (error instanceof CommandStdioError) expect(error.reason).toBe("read");
+    }
+  });
+
   test("stdin read errors surface as CommandStdioError reason read", async () => {
     const stdin = new FakeStdin(false);
     const listening = new Promise<void>((resolve) => {
-      stdin.once("newListener", (event) => {
-        if (event === "data") resolve();
+      stdin.on("newListener", function onListener(event) {
+        if (event !== "error") return;
+        stdin.off("newListener", onListener);
+        resolve();
       });
     });
     const spec = stdioSpec("db:import", {
