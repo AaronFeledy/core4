@@ -12,7 +12,6 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { rabbitmqProbes } from "./rabbitmq-probes.ts";
@@ -76,7 +75,6 @@ export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, RABBITMQ_LISTENER);
   assertDistributionPort(service);
   const port = plannedPort(service, RABBITMQ_LISTENER);
@@ -86,7 +84,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addEnv("RABBITMQ_NODE_PORT", String(port));
   ctx.addStorage({
-    store: `${appName}-rabbitmq-data`,
+    store: ctx.serviceStoreName("rabbitmq-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

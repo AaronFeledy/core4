@@ -91,6 +91,7 @@ import { metaRecipesValidateSpec } from "./command-specs/meta/recipes/validate";
 import { setupSpec } from "./command-specs/meta/setup";
 import { shellenvSpec } from "./command-specs/meta/shellenv";
 import { metaSnapshotsGcSpec } from "./command-specs/meta/snapshots/gc";
+import { metaSourcesGcSpec } from "./command-specs/meta/sources/gc";
 import { metaUninstallSpec } from "./command-specs/meta/uninstall";
 import { updateSpec } from "./command-specs/meta/update";
 import { versionSpec } from "./command-specs/meta/version";
@@ -201,6 +202,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaConfigSpec,
       metaDoctorSpec,
       metaSnapshotsGcSpec,
+      metaSourcesGcSpec,
       metaEventsFollowSpec,
       metaGlobalConfigSpec,
       metaGlobalConfigSetSpec,

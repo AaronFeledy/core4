@@ -7,7 +7,11 @@ import { isShardedUnitTest } from "../../../scripts/test-shards.ts";
 const workflowPath = resolve(import.meta.dirname, "../../../.github/workflows/nightly.yml");
 
 type Step = Record<string, unknown>;
-type Job = { readonly needs?: ReadonlyArray<string>; readonly steps: ReadonlyArray<Step> };
+type Job = {
+  readonly needs?: ReadonlyArray<string>;
+  readonly "runs-on"?: string;
+  readonly steps: ReadonlyArray<Step>;
+};
 type Workflow = { readonly jobs: Record<string, Job> };
 
 const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, command: string]>> = {
@@ -33,6 +37,9 @@ const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, comm
   "service-listener-matrix-linux-x64": ["Compile current matrix CLI", "build:manifest"],
   "published-manifest-setup-linux-x64": ["Build Linux x64 binary", "build:manifest"],
   "mysql-arm-client-linux-arm64": ["Build Linux arm64 binary", "build:manifest"],
+  "source-store-acceptance-linux-x64": ["Build command registry manifest", "build:manifest"],
+  "source-store-acceptance-darwin-arm64": ["Build command registry manifest", "build:manifest"],
+  "source-store-acceptance-windows-x64": ["Build command registry manifest", "build:manifest"],
   "nightly-tier-unit-tests-linux-x64": [
     "Run nightly-tier unit tests",
     "bun test core/test/scripts/codegen-ci.test.ts",
@@ -168,4 +175,87 @@ test.each([
     });
     expect(consumer).toBeGreaterThan(restore);
   }
+});
+
+test("source-store acceptance jobs compile the platform binary and run the suite against it", () => {
+  const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const expected = {
+    "source-store-acceptance-linux-x64": {
+      runsOn: "ubuntu-26.04",
+      binary: "lando",
+      bunTarget: "bun-linux-x64",
+      windowsHttpBackend: false,
+    },
+    "source-store-acceptance-darwin-arm64": {
+      runsOn: "macos-15",
+      binary: "lando",
+      bunTarget: "bun-darwin-arm64",
+      windowsHttpBackend: false,
+    },
+    "source-store-acceptance-windows-x64": {
+      runsOn: "windows-2022",
+      binary: "lando-windows-x64.exe",
+      bunTarget: "bun-windows-x64",
+      windowsHttpBackend: true,
+    },
+  } as const;
+
+  for (const [id, want] of Object.entries(expected)) {
+    const job = jobs[id];
+    expect(job).toBeDefined();
+    if (job === undefined) throw new Error(`Missing nightly job: ${id}`);
+    expect(job.needs).toContain("container-helper");
+    expect(job["runs-on"]).toBe(want.runsOn);
+
+    const steps = job.steps;
+    const download = steps.findIndex((step) => step.name === "Download container helper");
+    const restore = steps.findIndex((step) => step.name === "Restore container helper permissions");
+    const manifest = steps.findIndex((step) => step.name === "Build command registry manifest");
+    const compile = steps.findIndex(
+      (step) => step.name === `Build ${id.replace("source-store-acceptance-", "")} binary`,
+    );
+    const suite = steps.findIndex((step) => step.name === "Run source-store acceptance");
+    const git = steps.findIndex(
+      (step) => step.name === "Verify git" || step.name === "Verify git and git-http-backend",
+    );
+
+    expect(download).toBeGreaterThanOrEqual(0);
+    expect(restore).toBeGreaterThan(download);
+    expect(git).toBeGreaterThan(restore);
+    expect(manifest).toBeGreaterThan(git);
+    expect(compile).toBeGreaterThan(manifest);
+    expect(suite).toBeGreaterThan(compile);
+
+    const compileRun = steps[compile]?.run;
+    expect(steps[compile]?.shell).toBe("bash");
+    expect(typeof compileRun).toBe("string");
+    if (typeof compileRun !== "string") throw new Error(`Missing compile run for ${id}`);
+    expect(compileRun).toContain(`--target ${want.bunTarget}`);
+    expect(compileRun).toContain(`--outfile ./dist/${want.binary}`);
+    expect(compileRun).toContain("build-compiled-binary.ts");
+    expect(compileRun).toContain("sanitize-compiled-binary.ts");
+    expect(compileRun).toContain("bun install --frozen-lockfile --os='*' --cpu='*'");
+
+    const suiteStep = steps[suite];
+    expect(suiteStep).toMatchObject({
+      name: "Run source-store acceptance",
+      env: { LANDO_TEST_COMPILED_CLI: `./dist/${want.binary}` },
+      run: "bun test core/test/build/source-store-acceptance.integration.test.ts",
+    });
+
+    const gitRun = steps[git]?.run;
+    expect(typeof gitRun).toBe("string");
+    if (typeof gitRun !== "string") throw new Error(`Missing git check for ${id}`);
+    expect(gitRun).toContain("git --version");
+    if (want.windowsHttpBackend) {
+      expect(gitRun).toContain("git-http-backend");
+      expect(steps[git]?.shell).toBe("bash");
+    } else {
+      expect(gitRun).not.toContain("git-http-backend");
+    }
+  }
+});
+
+test("source-store acceptance suite stays out of PR unit-test shards", () => {
+  expect(isShardedUnitTest("core/test/build/source-store-acceptance.integration.test.ts")).toBe(false);
 });

@@ -4,7 +4,8 @@ import { LandofileLockMismatchError } from "@lando/sdk/errors";
 import type { TaggedErrorJson } from "@lando/sdk/schema";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { displaySource } from "@lando/source-acquisition";
+import { Effect, Schema, type Scope } from "effect";
 import {
   LOCK_REMEDIATION,
   type LandofileIncludeDeps,
@@ -15,6 +16,7 @@ import {
 import { inspectIncludeComposition } from "./include-load-stage.ts";
 import { byCodepointString, lockValue, parseLockEntries } from "./include-lockfile.ts";
 import { loadIncludePins } from "./include-pins.ts";
+import { withIncludeSourceSession } from "./include-sources.ts";
 import { resolveTree } from "./include-tree.ts";
 import { includeVerifyConditions } from "./include-verify-conditions.ts";
 import type { PresentLandofileLayer } from "./layers.ts";
@@ -72,7 +74,7 @@ const verifyMismatchMessage = (source: string, status: IncludeVerifyStatus): str
 };
 export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(function* (
   options: VerifyLandofileIncludesOptions,
-): Effect.fn.Return<IncludeVerifyReport, ResolveIncludesError> {
+): Effect.fn.Return<IncludeVerifyReport, ResolveIncludesError, Scope.Scope> {
   const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
   const recorder = options.loadScope.recorder ?? createLoadFailureRecorder();
   const pins = yield* loadIncludePins({
@@ -98,47 +100,61 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
     })),
     options.loadScope,
   );
-  const ctx: ResolveContext = {
-    observeInclude: conditions.observeInclude,
-    recorder,
-    pendingSites: options.loadScope.pendingSites,
-    lockAvailable: pins.available,
-    appRoot: options.appRoot,
-    sourceRoot: options.appRoot,
-    userOwned: false,
-    cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
-    lockfilePath,
-    deps: options.deps ?? {},
-    maxDepth: options.maxDepth ?? 8,
-    mode: "verify",
-    lockEntries: existing,
-    loadScope: { ...options.loadScope, includeMode: "all" },
-    stagedLocks: new Map(),
-    walk: {
-      selectors: new Map(),
-      issues: new Map(),
-      complete: pins.available && recorder.failures.length === 0,
+  const cacheRoot = yield* resolveCacheRoot(options.cacheRoot, options.ports);
+  const ctx = yield* withIncludeSourceSession(
+    {
+      cacheRoot,
+      stateStore: options.stateStore,
+      ports: options.ports,
+      deps: options.deps,
     },
-    noNetwork: false,
-    loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
-    ...(options.ports === undefined ? {} : { ports: options.ports }),
-  };
-  const resolved = [];
-  for (const item of layers)
-    resolved.push(
-      yield* resolveTree(item.landofile, ctx, {
-        depth: 0,
-        stack: [options.appRoot],
-        source: item.layer.filePath,
-        layer: item.layer.layer,
-        order: item.layer.order,
+    (sourceSession) =>
+      Effect.gen(function* () {
+        const ctx: ResolveContext = {
+          observeInclude: conditions.observeInclude,
+          recorder,
+          pendingSites: options.loadScope.pendingSites,
+          lockAvailable: pins.available,
+          appRoot: options.appRoot,
+          sourceRoot: options.appRoot,
+          userOwned: false,
+          cacheRoot,
+          lockfilePath,
+          deps: options.deps ?? {},
+          maxDepth: options.maxDepth ?? 8,
+          mode: "verify",
+          lockEntries: existing,
+          loadScope: { ...options.loadScope, includeMode: "all" },
+          stagedLocks: new Map(),
+          walk: {
+            selectors: new Map(),
+            issues: new Map(),
+            complete: pins.available && recorder.failures.length === 0,
+          },
+          noNetwork: false,
+          loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
+          ...(options.ports === undefined ? {} : { ports: options.ports }),
+          ...(sourceSession === undefined ? {} : { sourceSession }),
+        };
+        const resolved = [];
+        for (const item of layers)
+          resolved.push(
+            yield* resolveTree(item.landofile, ctx, {
+              depth: 0,
+              stack: [options.appRoot],
+              source: item.layer.filePath,
+              layer: item.layer.layer,
+              order: item.layer.order,
+            }),
+          );
+        yield* inspectIncludeComposition(resolved, {
+          appRoot: options.appRoot,
+          scope: { ...options.loadScope, includeMode: "all" },
+          recorder,
+        });
+        return ctx;
       }),
-    );
-  yield* inspectIncludeComposition(resolved, {
-    appRoot: options.appRoot,
-    scope: { ...options.loadScope, includeMode: "all" },
-    recorder,
-  });
+  );
   const staged = ctx.stagedLocks;
   const sources = [
     ...new Set([...(ctx.walk.complete ? existing.keys() : []), ...staged.keys(), ...ctx.walk.issues.keys()]),
@@ -174,9 +190,9 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
       mismatches.push(
         encodeLockMismatch(
           new LandofileLockMismatchError({
-            message: verifyMismatchMessage(source, status),
+            message: displaySource(verifyMismatchMessage(source, status)),
             lockfile: lockfilePath,
-            source,
+            source: displaySource(source),
             expected: expected ?? MISSING_LOCK_VALUE,
             actual: actual ?? MISSING_LOCK_VALUE,
             remediation:
@@ -200,4 +216,4 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
     failures,
     ok,
   };
-});
+}, Effect.scoped);

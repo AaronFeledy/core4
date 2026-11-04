@@ -12,6 +12,7 @@ import {
   ServiceName,
   type ServicePlan,
   landoAppNetworkName,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
@@ -123,7 +124,7 @@ const rewritePlanIdentity = (plan: CurrentExecutableAppPlan, slug: string): Curr
 };
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  landoServiceContainerName(plan.slug, String(service.name));
 
 const inspectContainers = async (plan: AppPlan, api: ReturnType<typeof makePodmanApiClient>) => {
   const request = api.request;

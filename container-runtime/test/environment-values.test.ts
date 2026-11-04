@@ -176,6 +176,8 @@ test("resource-only legacy apply cannot create a missing volume", async () => {
         api: {
           request: (request) => {
             calls.push(request.method);
+            if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             return Effect.succeed({ status: 404, body: "{}" });
           },
         },
@@ -198,6 +200,8 @@ test("service-less legacy apply creates no network because no service joins one"
       api: {
         request: (request) => {
           calls.push(`${request.method} ${request.path}`);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+            return Effect.succeed({ status: 200, body: "[]" });
           return Effect.succeed({ status: 404, body: "{}" });
         },
       },
@@ -223,6 +227,8 @@ test("resource-only legacy reuse observes existing volumes without recreating th
       api: {
         request: (request) => {
           calls.push(request.method);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+            return Effect.succeed({ status: 200, body: "[]" });
           return Effect.succeed({ status: 200, body: "{}" });
         },
       },

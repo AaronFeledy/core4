@@ -75,7 +75,7 @@ test("old reachable managed runtime serves rescue requests without repair or ext
       if (path.endsWith("/json"))
         return Response.json({
           Id: "exact-owned-id",
-          Name: "lando-offline-rescue-web",
+          Name: "lando-offline-rescue--web",
           Config: {
             Labels: { "dev.lando.app": app, "dev.lando.app-root": plan.root, "dev.lando.service": service },
           },

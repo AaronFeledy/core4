@@ -1,4 +1,5 @@
 import { RedactionService } from "@lando/redaction/service";
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { REDACTED, isSecretFieldName } from "@lando/sdk/secrets";
@@ -52,7 +53,7 @@ const execError = (input: ProcessSpawnOptions, cause: unknown): ProcessExecError
   });
 };
 
-const redactorForInput = Effect.fnUntraced(function* (context: CapturedHostExecutionContext) {
+export const redactorForInput = Effect.fnUntraced(function* (context: CapturedHostExecutionContext) {
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return identityRedactor;
   const carrier = yield* ProcessRedactionTokens;
@@ -70,7 +71,7 @@ type ProcessEvent = ReturnType<typeof processEventShape> &
     readonly _tag: "pre-process-exec" | "post-process-exec";
   };
 
-const publishRedactedProcessEvent = Effect.fnUntraced(function* (
+export const publishRedactedProcessEvent = Effect.fnUntraced(function* (
   context: CapturedHostExecutionContext,
   event: ProcessEvent,
 ) {
@@ -178,7 +179,7 @@ const scopedProcessStream = (
     }),
   );
 
-const service = (bunCommandEnv: boolean): Context.Service.Shape<typeof ProcessRunner> =>
+const makeService = (bunCommandEnv: boolean): Context.Service.Shape<typeof ProcessRunner> =>
   ProcessRunner.of({
     run: Effect.fn("ProcessRunner.run")(function* (input) {
       const snapshot = {
@@ -194,26 +195,18 @@ const service = (bunCommandEnv: boolean): Context.Service.Shape<typeof ProcessRu
           _tag: "pre-process-exec",
           ...processEventShape(snapshot),
         });
-      let running: Promise<ProcessResult> | undefined;
-      const result = yield* Effect.tryPromise({
-        try: (signal) => {
-          running = runProcess(snapshot, captured, {
+      const result = yield* tryPromiseSettled({
+        try: (signal) =>
+          runProcess(snapshot, captured, {
             signal,
             bunCommandEnv,
             ...(prepared === undefined ? {} : { prepared: prepared.spawn }),
-          });
-          return running;
-        },
+          }),
         catch: (cause) =>
           cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
             ? cause
             : execError(snapshot, cause),
       }).pipe(
-        Effect.onInterrupt(() =>
-          Effect.promise(async () => {
-            if (running !== undefined) await Promise.allSettled([running]);
-          }),
-        ),
         Effect.catch((error) =>
           Effect.flatMap(redactProcessError(captured, error, snapshot.capture === true), Effect.fail),
         ),
@@ -233,5 +226,6 @@ const service = (bunCommandEnv: boolean): Context.Service.Shape<typeof ProcessRu
     streamWithExit: (input) => scopedProcessStream(input, true, { bunCommandEnv }),
   });
 
-export const layer = Layer.succeed(ProcessRunner, service(false));
-export const layerWithBunCommandEnv = Layer.succeed(ProcessRunner, service(true));
+export const service = makeService(false);
+export const layer = Layer.succeed(ProcessRunner, service);
+export const layerWithBunCommandEnv = Layer.succeed(ProcessRunner, makeService(true));

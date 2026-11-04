@@ -6,19 +6,29 @@ export class CommandInterruptedError extends Schema.TaggedError<CommandInterrupt
   {
     message: Schema.String,
     remediation: Schema.String,
-    signal: Schema.optional(Schema.Literals(["SIGINT", "SIGTERM"])),
+    signal: Schema.optional(Schema.Literals(["SIGINT", "SIGTERM", "SIGHUP"])),
   },
 ) {}
 
-const interruptionSignal = (signal?: AbortSignal): "SIGINT" | "SIGTERM" | undefined =>
-  signal?.aborted === true && (signal.reason === "SIGINT" || signal.reason === "SIGTERM")
+const interruptionSignal = (signal?: AbortSignal): "SIGINT" | "SIGTERM" | "SIGHUP" | undefined =>
+  signal?.aborted === true &&
+  (signal.reason === "SIGINT" || signal.reason === "SIGTERM" || signal.reason === "SIGHUP")
     ? signal.reason
     : undefined;
 
 /** Read at failure time: the signal may have been live when dispatch began. */
 export const commandInterruptionExitCode = (signal?: AbortSignal): number => {
   const received = interruptionSignal(signal);
-  return received === "SIGINT" ? 130 : received === "SIGTERM" ? 143 : 1;
+  switch (received) {
+    case "SIGINT":
+      return 130;
+    case "SIGTERM":
+      return 143;
+    case "SIGHUP":
+      return 129;
+    case undefined:
+      return 1;
+  }
 };
 
 /** Presentation only; the original Cause remains available to tracing and callers. */

@@ -39,6 +39,10 @@ The default provider is `lando` (managed Podman).
 
 Use the service key inside the app. Use `<service>.<app>.internal` across apps and for Traefik backends. Use `LANDO_MAIL_HOST` for Mailpit. Use `*.lndo.site` only in the host browser.
 
+Inside a container, `hostname` prints the container name, `lando-<app>--<service>`, such as `lando-service-dns-demo--database`. The double hyphen separates the app from the service, so app `foo` with service `bar-web` and app `foo-bar` with service `web` get different names. The name stays the same when Lando recreates the container, so software that ties its data to the hostname, such as RabbitMQ's node name, keeps it across `lando rebuild`. A service key that isn't lowercase letters and digits joined by single hyphens, or a name longer than 63 characters, gets a shortened form ending in a short hash, such as `lando-foo--web-1--07ea653d` for service `web_1` in app `foo`. Connect with the names in the table, not the hostname.
+
+Every name a service answers to must be its own. Lando stops before anything starts when two services in one app claim the same name, such as a `hostnames:` entry that matches another service's key, or keys like `Web` and `web` that differ only in case, since DNS ignores case. `lando app:config:lint` reports these as `landofile.dns-name`, at the entry to rename. Names shaped like `lando-<app>--<service>` are reserved for Lando's containers.
+
 ## Connect with the service key
 
 Configure the MySQL client in your app service to connect to `database`. Do not

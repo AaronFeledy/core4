@@ -109,6 +109,7 @@ describe("Landofile package seam", () => {
     expect(workspaceDependencies).toEqual([
       ["@lando/paths", "workspace:*"],
       ["@lando/sdk", "workspace:*"],
+      ["@lando/source-acquisition", "workspace:*"],
       ["@lando/state-store", "workspace:*"],
     ]);
     expect(workspaceDevDependencies).toEqual([]);

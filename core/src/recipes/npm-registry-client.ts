@@ -1,11 +1,12 @@
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { DownloadFetchError, RecipeSourceError, causeMessage } from "@lando/sdk/errors";
+import { displaySource } from "@lando/source-acquisition";
+import type { NpmRegistryTransport } from "@lando/source-acquisition/npm";
 import { Schema } from "effect";
+import { type AuthenticatedArchiveTransport, defaultArchiveTransport } from "./archive-transport";
 import { npmRegistryConfigSnapshot } from "./npm-registry-config";
 import type { NpmRegistryConfig } from "./npm-registry-config";
-import type { NpmRegistryClient } from "./npm-source";
-import { defaultTarballRecipeFetcher } from "./tarball-source";
 
 const Packument = Schema.Struct({
   "dist-tags": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -37,21 +38,25 @@ const failureDetail = (cause: unknown, config: NpmRegistryConfig): string =>
     causeMessage(cause),
   );
 
-const displayRegistry = (registry: string): string => {
-  const url = new URL(registry);
-  url.username = "";
-  url.password = "";
-  return url.href;
-};
+const displayRegistry = displaySource;
 
 const isAuthStatus = (status: number | undefined): boolean => status === 401 || status === 403;
 
 export const defaultNpmRegistryClient = (
-  registryUrl?: string,
-  fetchJson: typeof httpJsonFetch = httpJsonFetch,
-  snapshot: () => Promise<NpmRegistryConfig> = npmRegistryConfigSnapshot(),
-): NpmRegistryClient => ({
-  fetchPackument: async (packageName) => {
+  options: {
+    readonly registryUrl?: string;
+    readonly fetchJson?: typeof httpJsonFetch;
+    readonly snapshot?: () => Promise<NpmRegistryConfig>;
+    readonly archive?: AuthenticatedArchiveTransport;
+  } = {},
+): NpmRegistryTransport => {
+  const {
+    registryUrl,
+    fetchJson = httpJsonFetch,
+    snapshot = npmRegistryConfigSnapshot(),
+    archive = defaultArchiveTransport,
+  } = options;
+  const fetchPackument: NpmRegistryTransport["packument"] = async (packageName, options) => {
     const config = await snapshot();
     const registry = config.registryFor(packageName, registryUrl);
     const encoded = packageName.replace(/\//gu, "%2f");
@@ -66,6 +71,7 @@ export const defaultNpmRegistryClient = (
         ],
         redactionTokens: config.redactionTokens,
         redirect: "follow",
+        ...(options?.signal === undefined ? {} : { signal: options.signal }),
       });
     } catch (cause) {
       throw new RecipeSourceError({
@@ -103,15 +109,17 @@ export const defaultNpmRegistryClient = (
         remediation: "Check that your npm registry returns full package metadata as JSON, then retry.",
       });
     }
-  },
-  fetchTarball: async (resolved, fetcher = defaultTarballRecipeFetcher) => {
+  };
+
+  const fetchTarball: NpmRegistryTransport["tarball"] = async (resolved) => {
     const config = await snapshot();
     const registry = config.registryFor(resolved.packageName, registryUrl);
     const authorization = config.authorizationFor(resolved.dist.tarball, registry);
     try {
-      return await fetcher.fetch(resolved.dist.tarball, {
+      return await archive.fetch(resolved.dist.tarball, {
         ...(authorization === undefined ? {} : { authorization }),
         redactionTokens: config.redactionTokens,
+        ...(resolved.signal === undefined ? {} : { signal: resolved.signal }),
       });
     } catch (cause) {
       const auth = cause instanceof DownloadFetchError && isAuthStatus(cause.status);
@@ -124,5 +132,16 @@ export const defaultNpmRegistryClient = (
           : "Check the tarball URL, network access, and certificate trust, then retry.",
       });
     }
-  },
-});
+  };
+
+  const registryFor: NpmRegistryTransport["registryFor"] = async (name) => {
+    const config = await snapshot();
+    return config.registryFor(name, registryUrl);
+  };
+
+  return {
+    registryFor,
+    packument: fetchPackument,
+    tarball: fetchTarball,
+  };
+};

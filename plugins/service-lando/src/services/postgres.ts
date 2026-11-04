@@ -70,7 +70,6 @@ const credsFor = (input: {
 
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -82,7 +81,7 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   // The server, the image's init scripts, and in-container clients all read PGPORT.
   ctx.addEnv("PGPORT", String(port));
   ctx.addStorage({
-    store: `${appName}-postgresql-data`,
+    store: ctx.serviceStoreName("postgresql-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

@@ -1,50 +1,18 @@
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import type { ManagedFileTransactionGuard, StateStoreShape } from "@lando/sdk/services";
+import type { SourceTransports } from "@lando/source-acquisition";
 import type { Context } from "effect";
 
-export interface GitAcquisitionPort {
-  readonly clone: (input: {
-    readonly url: string;
-    readonly ref?: string;
-    readonly stagingDir: string;
-    readonly dest: string;
-  }) => Promise<{ readonly commitSha: string }>;
-}
-
-export interface NpmRecipePackageDist {
-  readonly tarball: string;
-  readonly integrity?: string;
-  readonly shasum?: string;
-}
-
-export interface ResolvedNpmRecipePackage {
-  readonly packageName: string;
-  readonly version: string;
-  readonly dist: NpmRecipePackageDist;
-}
-
-export interface NpmRecipeSourcePort {
-  readonly resolve: (packageSpec: string) => Promise<ResolvedNpmRecipePackage>;
-  readonly fetchTarball: (resolved: ResolvedNpmRecipePackage) => Promise<Uint8Array>;
-}
-
-export interface TarballAcquisitionPort {
-  readonly fetch: (url: string) => Promise<Uint8Array>;
-  readonly extract: (archiveBytes: Uint8Array, destDir: string) => Promise<void>;
-}
-
-export interface PublicationPort {
-  readonly publish: (stagingDir: string, publishedDir: string) => Promise<void>;
-}
-
+/**
+ * Runtime ports for Landofile resolution. Remote acquisition goes through
+ * `sources` (injected transports); landofile builds a SourceStore per walk.
+ */
 export interface LandofileRuntimePorts {
   readonly resolveUserCacheRoot: () => string;
   readonly resolveUserIncludesDir: () => string;
-  readonly npmRecipeSource: NpmRecipeSourcePort;
-  readonly git: GitAcquisitionPort;
-  readonly tarball: TarballAcquisitionPort;
-  readonly publication: PublicationPort;
+  /** Base transports for makeSourceStore; test deps may override individual members. */
+  readonly sources: SourceTransports;
 }
 
 export interface TemplateEngineInputs {
@@ -61,4 +29,4 @@ export interface LandofileRuntimeInputs {
   readonly templates: TemplateEngineInputs;
 }
 
-export type LandofileEvaluationInputs = Pick<LandofileRuntimeInputs, "ports" | "templates">;
+export type LandofileEvaluationInputs = Pick<LandofileRuntimeInputs, "ports" | "templates" | "stateStore">;

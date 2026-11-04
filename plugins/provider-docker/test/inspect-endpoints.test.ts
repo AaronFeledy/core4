@@ -87,7 +87,7 @@ test("Docker list leaves planless TCP bindings as TCP rather than guessing HTTP"
           ? JSON.stringify([
               {
                 Id: "test-container",
-                Names: ["/lando-endpoint-test-web"],
+                Names: ["/lando-endpoint-test--web"],
                 State: "running",
                 Labels: { "dev.lando.app": plan.id, "dev.lando.service": name },
               },

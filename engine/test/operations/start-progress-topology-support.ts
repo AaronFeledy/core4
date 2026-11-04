@@ -284,10 +284,12 @@ export const makeHarness = (
             bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
           },
         })),
-    stop: (target) =>
-      Effect.sync(() => {
-        options.onStop?.(target);
-      }),
+    stop:
+      options.providerOverrides?.stop ??
+      ((target) =>
+        Effect.sync(() => {
+          options.onStop?.(target);
+        })),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),

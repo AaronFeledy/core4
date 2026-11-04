@@ -27,6 +27,7 @@ const composeCerts = (config: Readonly<Record<string, unknown>> = {}, serviceNam
     },
     baseKind: "lando",
     appName: "certs-test",
+    appSlug: "certs-test",
     appRoot: "/srv/apps/certs-test",
     normalizedConfig: { type: "node:22" },
     features: [{ id: LANDO_CERTS_FEATURE_ID, config, definition: certsFeature() }],

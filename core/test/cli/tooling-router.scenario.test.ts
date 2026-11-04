@@ -447,7 +447,7 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
   }
 }, 30_000);
 
-test("Given missing caches, when a script name is invoked, then neither dispatcher bypasses policy or runs it", async () => {
+test("Given missing caches, when a script name is invoked, then both dispatchers rebuild and run it silently", async () => {
   const source = await makeFixture("source-missing");
   const compiled = await makeFixture("compiled-missing");
   const sourceMarker = join(source.root, "task-ran");
@@ -464,12 +464,21 @@ test("Given missing caches, when a script name is invoked, then neither dispatch
     ]);
 
     // Then
-    expect(sourceResult.exitCode).not.toBe(0);
-    expect(compiledResult.exitCode).not.toBe(0);
-    expect(`${sourceResult.stdout}\n${sourceResult.stderr}`).toContain("lando app:cache:refresh");
-    expect(`${compiledResult.stdout}\n${compiledResult.stderr}`).toContain("lando app:cache:refresh");
-    expect(await Bun.file(sourceMarker).exists()).toBe(false);
-    expect(await Bun.file(compiledMarker).exists()).toBe(false);
+    for (const result of [sourceResult, compiledResult]) {
+      expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: true,
+        command: "app:offline",
+        result: { exitCode: 0, stderr: "" },
+      });
+      expect(result.stderr).toBe("");
+    }
+    expect(await Bun.file(sourceMarker).text()).toBe("ran\n");
+    expect(await Bun.file(compiledMarker).text()).toBe("ran\n");
+    expect(await Bun.file(appToolingCompilationCachePath(source.cacheRoot, source.root)).exists()).toBe(true);
+    expect(await Bun.file(appToolingCompilationCachePath(compiled.cacheRoot, compiled.root)).exists()).toBe(
+      true,
+    );
   } finally {
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }

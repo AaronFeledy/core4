@@ -19,6 +19,7 @@
       "redaction",
       "http-client",
       "managed-file",
+      "source-acquisition",
       "data-mover",
       "telemetry",
       "renderer",

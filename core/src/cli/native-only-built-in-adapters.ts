@@ -5,7 +5,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeInteractionPrompter } from "../interaction/prompter";
-import { retainedRecipeSources } from "../recipes/runtime-sources";
+import { retainedRecipeSourceStore } from "../recipes/runtime-sources";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { runSetup } from "./cli-adapters/app-lifecycle";
@@ -47,9 +47,12 @@ export const runNativeOnlyBuiltIn = async (
                 nonInteractive,
                 ...(process.stderr.columns === undefined ? {} : { columns: process.stderr.columns }),
               });
-              const sources = yield* retainedRecipeSources(options.registryUrl);
+              const { store: recipeSourceStore, registryClient } = yield* retainedRecipeSourceStore(
+                options.registryUrl,
+              );
               return yield* initApp({
-                ...sources,
+                recipeSourceStore,
+                registryClient,
                 ...options,
                 nonInteractive,
                 interaction,

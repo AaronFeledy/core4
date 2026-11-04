@@ -191,7 +191,7 @@ describe("minio ServiceType", () => {
     ]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-minio-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--storage--minio-data");
     expect(String(volumes[0]?.target)).toBe("/data");
     expect(volumes[0]?.readOnly).toBe(false);
   });

@@ -731,9 +731,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       base: AbsolutePath.make("/test-runtime/scratch"),
       instanceRoot,
       root: AbsolutePath.make(`${instanceRoot}/root`),
-      planCache: AbsolutePath.make(`${instanceRoot}/plan.json`),
-      infoCache: AbsolutePath.make(`${instanceRoot}/info.json`),
-      buildResults: AbsolutePath.make(`${instanceRoot}/build-results`),
+      planCache: AbsolutePath.make(`${instanceRoot}/plan.bin`),
     };
   };
   const scratchRegistryEntryFromSummary = (

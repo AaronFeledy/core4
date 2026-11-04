@@ -12,6 +12,7 @@ import {
   landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
 import { Iterable, Result, Schema } from "effect";
+import { dnsNameIssues } from "./dns-name-validation.ts";
 import { hostReadinessShellIssues } from "./host-shell-issues.ts";
 import { deferredSiteKey } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
@@ -122,6 +123,7 @@ export const validateResolvedLandofile = (input: {
       );
     else physicalNames.set(name, key);
   }
+  issues.push(...dnsNameIssues({ landofile, isBlocked, appSlug: input.appSlug }));
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
     for (const key of Object.keys(service.networks ?? {})) {
       if (key !== "default" && !Object.hasOwn(landofile.networks ?? {}, key))

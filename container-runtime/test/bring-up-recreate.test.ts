@@ -27,7 +27,7 @@ const metadata = {
   source: "container-runtime/bring-up-recreate.test.ts",
   runtime: 4 as const,
 };
-const containerName = "lando-recreate-ports-web";
+const containerName = "lando-recreate-ports--web";
 
 const hostProxySessionDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
 const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
@@ -201,6 +201,9 @@ const makeFakeApi = (input: {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
@@ -1014,7 +1017,7 @@ describe("Podman publish-port recreate", () => {
 
     const fake = makeFakeApi({
       deleteStatus: 204,
-      existingContainerName: "lando-global-web",
+      existingContainerName: "lando-global--web",
       existingPlan: plan,
     });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));

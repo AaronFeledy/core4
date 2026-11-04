@@ -183,7 +183,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     globalConfig.defaultFileSyncEngine !== "passthrough"
   )
     yield* selectFileSyncEngine;
-  const cacheRoot = resolveUserCacheRoot();
+  const cacheRoot = pathsService?.roots.userCacheRoot ?? resolveUserCacheRoot();
   const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
     Effect.catch(() => Effect.succeed(undefined)),
   );
@@ -299,13 +299,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(hostEvents === undefined ? {} : { hostEvents }),
     skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
   };
-  const executableSites = yield* compilePlanInvocationSites({
-    sites: invocationSites,
-    hostEvents,
-    env: authoredLandofile.context.env,
-  });
   // Every hostEvents name is a lifecycle event, so a bad host step stops this app's plan like a
-  // project lifecycle step would; commands that only read config are unaffected.
+  // project lifecycle step would; commands that only read config are unaffected. Checked before
+  // the steps compile, so an unreadable expression is reported against config.yml.
   if (hostEvents !== undefined && !hostEventCompileBase.skipHostEvents) {
     const configFile = pathsService?.configFile ?? "config.yml";
     const hostShellIssues = hostEventsShellIssues(hostEvents).map((issue) => ({
@@ -315,11 +311,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     if (hostShellIssues.length > 0)
       return yield* Effect.fail(
         landofileValidationError(configFile, hostShellIssues, {
-          headline: "Global config hostEvents has host commands Bun Shell cannot run",
+          headline: "Global config hostEvents has steps that cannot run as written",
           remediation: "Fix each listed hostEvents step in config.yml, then rerun the command.",
         }),
       );
   }
+  const executableSites = yield* compilePlanInvocationSites({
+    sites: invocationSites,
+    hostEvents: hostEventCompileBase.skipHostEvents ? undefined : hostEvents,
+    env: authoredLandofile.context.env,
+  });
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
   const planServices = (services: Readonly<Record<string, unknown>>) =>

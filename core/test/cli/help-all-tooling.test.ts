@@ -117,7 +117,6 @@ test.each([...policies])(
       expect(outside).not.toContain("THIS APP");
       expect(outside).not.toContain("app:known");
 
-      // A stale index, then a missing index, preserve the built-in-only catalog.
       await writeFile(landofile, "name: changed-all-help\n");
       const stale = await runCli(["help", "--all"], root, env);
       expect(stale).toContain("stale-cache");
@@ -128,7 +127,7 @@ test.each([...policies])(
       await rm(cachePath);
       await rm(appToolingCompilationCachePath(cacheRoot, root));
       const missing = await runCli(["help", "--all"], root, env);
-      expect(missing).toContain("missing-cache");
+      expect(missing).not.toContain("missing-cache");
       expect(missing).not.toContain("app:known");
       expect(missing).toContain("app:start");
     } finally {

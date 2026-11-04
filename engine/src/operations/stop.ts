@@ -22,7 +22,6 @@ import {
   verifyActiveVolumeCoordination,
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
@@ -127,18 +126,17 @@ const stopAppWithResolvedPlan = (
           }
         }
       }
-      const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
-      const provider = yield* registry.select(resolvedTarget.plan);
+      const provider = yield* registry.select(validatedTarget.plan);
       const stopped = yield* withPlanVolumeCoordination({
-        plan: resolvedTarget.plan,
+        plan: validatedTarget.plan,
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
           yield* verifyActiveVolumeCoordination(provider);
-          const preflight = yield* preflightStopApp(resolvedTarget);
+          const preflight = yield* preflightStopApp(validatedTarget);
           return yield* stopAppWithPlanUnlocked(
             options ?? {},
-            resolvedTarget,
+            validatedTarget,
             execution.runInitEvents !== false,
             preflight,
           );

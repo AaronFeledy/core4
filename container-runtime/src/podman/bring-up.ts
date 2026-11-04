@@ -91,6 +91,11 @@ import {
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec, execStream } from "./exec.ts";
 import { logs } from "./logs.ts";
+import {
+  listLabeledServiceContainers,
+  removeStaleServiceContainers,
+  selectStaleServiceContainers,
+} from "./stale-service-containers.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
 
@@ -1069,6 +1074,13 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     yield* preflightExternalNetwork(api, name, options.ctx);
   }
 
+  let staleNameChanged = false;
+  if (options.forbidRecreate !== true) {
+    const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
+    const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+    staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
+  }
+
   for (const service of Object.values(plan.services)) {
     const inspected = yield* inspectContainer(deps, containerName(plan, service));
     const replacing =
@@ -1234,5 +1246,5 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     );
   }
 
-  return { changed: result.changed || createdVolumes.length > 0, createdVolumes };
+  return { changed: result.changed || staleNameChanged || createdVolumes.length > 0, createdVolumes };
 });

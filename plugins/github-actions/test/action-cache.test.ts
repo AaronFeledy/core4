@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { StateStoreError } from "@lando/sdk/errors";
-import type { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Schema } from "effect";
 import {
   cacheVerifiedSource,
@@ -119,7 +120,8 @@ describe("controlled verified fixture cache orchestration", () => {
       version: 1,
       mode: 0o600,
       lock: "advisory",
-      onCorrupt: "fail",
+      onCorrupt: "quarantine",
+      default: { selections: {} },
     });
     const loaded = await run(provide(loadCachedSource(resolved, manifest)));
     expect(loaded.receipt).toEqual(verified.receipt);
@@ -131,6 +133,23 @@ describe("controlled verified fixture cache orchestration", () => {
     expect(
       await failure(Effect.provideService(loadCachedSource(resolved, manifest), StateStore, store.service)),
     ).toMatchObject({ reason: "offline-miss", source: location });
+  });
+  it("quarantines a malformed envelope and reports an offline miss through the real backend", async () => {
+    const store = makeTestStateStore();
+    const { resolved, manifest, verified } = await fixture();
+    await run(Effect.provideService(cacheVerifiedSource(verified), StateStore, store.service));
+    const storedPath = store.snapshot().keys().next().value;
+    if (storedPath === undefined) throw new Error("Expected stored source");
+    const path = Schema.decodeUnknownSync(AbsolutePath)(storedPath);
+    await run(store.writeRaw(path, "malformed envelope"));
+
+    expect(
+      await failure(Effect.provideService(loadCachedSource(resolved, manifest), StateStore, store.service)),
+    ).toMatchObject({ reason: "offline-miss", source: location });
+    const quarantined = [...store.snapshot().entries()];
+    expect(quarantined).toEqual([
+      [expect.stringContaining(`${storedPath}.corrupt-`), new TextEncoder().encode("malformed envelope")],
+    ]);
   });
   it("does not alias tag movement, subpaths, repositories or origins", async () => {
     const first = await fixture();

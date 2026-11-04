@@ -23,6 +23,7 @@ import {
   AppPlanner,
   DeprecationService,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   SecretStore,
@@ -30,6 +31,7 @@ import {
   ShellRunner,
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/config/agent-env";
+import { makeLandoPaths } from "@lando/paths";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
@@ -178,6 +180,7 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
       LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, plan.root)) }),
@@ -209,6 +212,7 @@ const layer = (
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -902,6 +906,7 @@ describe("shellApp — shell modes", () => {
   test("default host mode persists history under a per-app HISTFILE path", async () => {
     const spec = await hostSpec();
     expect(spec.historyFile).toMatch(/[/\\]shell[/\\].+[/\\]history$/);
+    expect(spec.historyFile).toStartWith("/tmp/shell-configured-data/");
     expect(spec.env?.HISTFILE).toBeUndefined();
   });
 

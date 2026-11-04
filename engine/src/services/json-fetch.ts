@@ -28,6 +28,8 @@ export interface HttpJsonOptions {
   readonly redirect?: "follow" | "error" | "manual";
   /** Optional overall deadline applied with `Effect.timeout` around get + body. */
   readonly timeoutMs?: number;
+  /** Abort the in-flight get + body collection when aborted. */
+  readonly signal?: AbortSignal;
 }
 
 const collectBytes = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
@@ -56,8 +58,9 @@ export const httpJsonFetch = async (
   url: string,
   options: HttpJsonOptions = {},
   client?: HttpClient.HttpClient,
-): Promise<HttpJsonResult> =>
-  Effect.runPromise(
+): Promise<HttpJsonResult> => {
+  options.signal?.throwIfAborted();
+  return Effect.runPromise(
     Effect.fn("HttpClient.jsonFetch")(
       function* () {
         const client = yield* HttpClient.HttpClient;
@@ -77,4 +80,6 @@ export const httpJsonFetch = async (
         : Effect.timeout(Duration.millis(options.timeoutMs)),
       Effect.provide(client === undefined ? httpClientLayer : Layer.succeed(HttpClient.HttpClient, client)),
     )(),
+    options.signal === undefined ? undefined : { signal: options.signal },
   );
+};

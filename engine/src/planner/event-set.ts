@@ -153,6 +153,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   }
   const validated = validateResolvedLandofile({ landofile, landofilePath, blocked, appSlug });
   const projection = yield* projectEndpoints({
+    appSlug,
     services: seeds.services,
     unavailable: seeds.unavailable,
     landofile,

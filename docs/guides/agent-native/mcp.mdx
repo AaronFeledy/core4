@@ -167,15 +167,18 @@ catalog after a refresh, and rejected calls are not automatically replayed.
 Review the new declaration before retrying.
 
 If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`:
-`missing-cache`, `stale-cache`, or `invalid-cache` requires an explicit refresh;
-`unknown-command` means a fresh index has no matching command, so check the name
-and aliases. `lando help --format=json` exposes `result.toolingMetadata` with
-`status` and, when unavailable, `reason` and `remediation`. Neither help nor a
-failed lookup repairs metadata by planning or starting a provider. You do not
-need `lando start` or `lando rebuild` just to repair discovery. The same help
-JSON lists plugin commands as `result.all[]` rows with `source: "plugin"` and
-reports plugin discovery in `result.pluginMetadata`. Plugin commands can be MCP
-tools too; see [Expose plugin commands](#expose-plugin-commands).
+`stale-cache` or `invalid-cache` needs an explicit `lando app:cache:refresh`.
+On the host CLI, a missing index rebuilds once before dispatch or help when the
+app source is already resolved; a failed rebuild keeps the original
+`missing-cache` remediation. `unknown-command` means a fresh index has no
+matching command, so check the name and aliases. `lando help --format=json`
+exposes `result.toolingMetadata` with `status` and, when unavailable, `reason`
+and `remediation`. Host-proxy calls do not rebuild. Neither path starts a
+provider only to repair discovery. You do not need `lando start` or
+`lando rebuild` just for that. The same help JSON lists plugin commands as
+`result.all[]` rows with `source: "plugin"` and reports plugin discovery in
+`result.pluginMetadata`. Plugin commands can be MCP tools too; see
+[Expose plugin commands](#expose-plugin-commands).
 
 ## Protect sensitive tooling values
 

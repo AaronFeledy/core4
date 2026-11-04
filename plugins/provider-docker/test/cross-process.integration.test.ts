@@ -31,7 +31,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("crossprocessapp");
 const appRoot = AbsolutePath.make("/tmp/docker-crossprocess-app");
 const webName = ServiceName.make("web");
-const containerName = "lando-crossprocessapp-web";
+const containerName = "lando-crossprocessapp--web";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
@@ -193,6 +193,19 @@ const makeFakeApi = () => {
       labels.delete(name);
       running.delete(name);
       return { status: deleted ? 204 : 404, body: "" };
+    }
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      return {
+        status: 200,
+        body: JSON.stringify(
+          Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: labels.get(name) ?? { "dev.lando.app": "crossprocessapp" },
+          })),
+        ),
+      };
     }
     return { status: 500, body: `unexpected ${method} ${path}` };
   };

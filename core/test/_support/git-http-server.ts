@@ -2,6 +2,7 @@ export interface GitHttpRequest {
   readonly method: string;
   readonly path: string;
   readonly protocol: string;
+  readonly fetch: boolean;
 }
 
 export interface GitHttpServer {
@@ -13,14 +14,20 @@ export interface GitHttpServer {
 /** Serve caller-owned bare repositories; stop before removing the project root. */
 export const startGitHttpServer = (root: string): GitHttpServer => {
   const requests: GitHttpRequest[] = [];
+  const backends = new Set<Bun.Subprocess>();
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
       const url = new URL(request.url);
       const protocol = request.headers.get("git-protocol") ?? "";
-      requests.push({ method: request.method, path: url.pathname, protocol });
       const body = request.method === "POST" ? new Uint8Array(await request.arrayBuffer()) : new Uint8Array();
+      requests.push({
+        method: request.method,
+        path: url.pathname,
+        protocol,
+        fetch: new TextDecoder().decode(body).includes("command=fetch"),
+      });
       const proc = Bun.spawn(["git", "http-backend"], {
         env: {
           ...process.env,
@@ -38,6 +45,8 @@ export const startGitHttpServer = (root: string): GitHttpServer => {
         stdout: "pipe",
         stderr: "pipe",
       });
+      backends.add(proc);
+      void proc.exited.then(() => backends.delete(proc));
       const [output, stderr, exitCode] = await Promise.all([
         new Response(proc.stdout).arrayBuffer(),
         new Response(proc.stderr).text(),
@@ -63,6 +72,11 @@ export const startGitHttpServer = (root: string): GitHttpServer => {
   return {
     url: (repoName) => `${origin}/${encodeURIComponent(repoName)}`,
     requests,
-    stop: () => server.stop(true),
+    // Reap in-flight backends so callers can remove the repositories they still hold open.
+    stop: async () => {
+      await server.stop(true);
+      for (const backend of backends) backend.kill();
+      await Promise.allSettled([...backends].map((backend) => backend.exited));
+    },
   };
 };

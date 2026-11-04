@@ -10,7 +10,7 @@ import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-wr
 import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { parseNpmPackageSpec } from "../../recipes/npm-source";
+import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
 import { bunSelfRun } from "./bun-self-runner";
 import { redactPluginPackageError } from "./plugin-package-error";
 import { updateManagedRootManifest } from "./plugin-remove-manifest";
