@@ -13,6 +13,7 @@ import { LandofileService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 
@@ -58,6 +59,9 @@ const retainedDispatch = (root: string, entry: McpCommandEntry, input: McpToolIn
       const context = yield* Layer.build(
         Layer.mergeAll(
           BunProcessRunner.layer,
+          BunShellRunner.layer(() => {
+            throw new TypeError("Interactive host tooling is unavailable in tests.");
+          }),
           Layer.succeed(Context.Service<unknown>("script-mcp-runtime"), {}),
           environmentResolverLayer(),
           PrivateFileAccessService.layer,

@@ -45,7 +45,7 @@
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/host-shell-syntax",
-      "digest": "7bd1c8efb4b8ca58ea8f0988d9f0f15ed8802272c7f4276a308fad3bd998194c"
+      "digest": "0da69b54cfe54934103fb84df6699f992f7803dd0557a05be31d9cc2df35e96f"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/host-task",

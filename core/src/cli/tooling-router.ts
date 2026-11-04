@@ -12,10 +12,7 @@ import {
 } from "@lando/sdk/errors";
 
 import { compileBunShellScriptCommand } from "@lando/engine/cache/command-compiler";
-import {
-  readAppCommandCacheForCwdDetailed,
-  readFreshAppCommandCacheForCwd,
-} from "@lando/engine/cache/command-index-writer";
+import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
 import { findAppRoot } from "@lando/landofile/discovery";
 import {
@@ -28,6 +25,7 @@ import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { toolingCacheRecovery } from "./tooling-cache-status";
+import { readCliAppCommandCache } from "./tooling-command-cache";
 import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
 export { type ToolingRoute, type NormalizedToolingRoute, toolingHelpRequested } from "./tooling-route";
@@ -40,6 +38,7 @@ const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;
+  readonly rebuildMissing?: boolean;
   /** The invocation's plugin catalog; routing never acquires a second one. */
   readonly catalog?: PluginCommandCatalog;
 }
@@ -94,8 +93,11 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return { _tag: "not-tooling" } as const;
 
-  const receipt = yield* readAppCommandCacheForCwdDetailed({
+  const receipt = yield* readCliAppCommandCache({
     cwd: appRoot,
+    // A missing index already yields to a built-in alias below; rebuilding first would only run
+    // app compile side effects (include pinning) ahead of a command that owns its own policy.
+    rebuildMissing: options.rebuildMissing !== false && resolveBuiltInCommand(token) === undefined,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(
     // A built-in owns its Landofile policy (teardown tolerates the conflict, start reports it),

@@ -258,7 +258,7 @@ const scratchLayerFor = async (
           ? Deferred.succeed(gates.waiting, undefined).pipe(Effect.asVoid)
           : events.publish(event),
     }),
-    ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(f.layer)),
+    ScratchRegistry.layer.pipe(Layer.provide(f.layer)),
     ScratchResourceScanner.layer.pipe(Layer.provide(f.layer)),
     Layer.succeed(
       Scratch.ScratchInitAppPort,

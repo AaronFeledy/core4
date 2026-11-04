@@ -55,7 +55,7 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
   });
   const scratchDeps = Layer.mergeAll(
     appLayer,
-    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(appLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
     ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
   );

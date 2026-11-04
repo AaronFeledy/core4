@@ -8,6 +8,7 @@
  * #47822 (`>&2`), #47823 (a distinct status for parse failures).
  */
 
+import { BunShellCommandPosition } from "./bun-shell-command-position.ts";
 import { isDigit, readRedirection } from "./bun-shell-redirection.ts";
 
 export interface BunShellDialectIssue {
@@ -37,6 +38,7 @@ interface Frame {
   redirections: number;
   /** Whether the next character continues a word (a `#` there is not a comment). */
   inWord: boolean;
+  readonly command: BunShellCommandPosition;
 }
 
 const FORWARDED = "Remove it. Lando appends forwarded arguments to the end of a host command.";
@@ -65,7 +67,14 @@ export const bunShellDialectIssues = (
     });
   const frames: Frame[] = [];
   const push = (kind: Frame["kind"]) =>
-    frames.push({ kind, double: undefined, parens: 0, redirections: 0, inWord: false });
+    frames.push({
+      kind,
+      double: undefined,
+      parens: 0,
+      redirections: 0,
+      inWord: false,
+      command: new BunShellCommandPosition(source, issues),
+    });
   push("top");
   let index = 0;
 
@@ -158,6 +167,7 @@ export const bunShellDialectIssues = (
     }
 
     if (char === "'") {
+      frame.command.begin(index, true);
       const close = source.indexOf("'", index + 1);
       if (close === -1) {
         report(index, "'", "This ' quote is never closed.", "Close the quote.");
@@ -168,12 +178,14 @@ export const bunShellDialectIssues = (
       continue;
     }
     if (char === '"') {
+      frame.command.begin(index, true);
       frame.double = index;
       frame.inWord = true;
       index += 1;
       continue;
     }
     if (char === "\\") {
+      frame.command.escape(index, frame.inWord);
       frame.inWord = source[index + 1] !== "\n";
       index += 2;
       continue;
@@ -184,23 +196,35 @@ export const bunShellDialectIssues = (
       continue;
     }
     if (char === " " || char === "\t" || char === "\r" || char === "\n") {
-      if (char === "\n") frame.redirections = 0;
+      frame.command.finish(index);
+      if (char === "\n") {
+        frame.redirections = 0;
+        frame.command.separator();
+      }
       frame.inWord = false;
       index += 1;
       continue;
     }
     if (char === "`") {
-      if (frame.kind === "backtick") frames.pop();
-      else push("backtick");
+      if (frame.kind === "backtick") {
+        frame.command.finish(index);
+        frames.pop();
+      } else {
+        frame.command.begin(index, true);
+        push("backtick");
+      }
       index += 1;
       continue;
     }
     if (char === ")" && frame.kind === "paren" && frame.parens === 0) {
+      frame.command.finish(index);
       frames.pop();
       index += 1;
       continue;
     }
     if (char === "(" || char === ")") {
+      frame.command.finish(index);
+      frame.command.parenthesis(char);
       frame.parens += char === "(" ? 1 : frame.parens > 0 ? -1 : 0;
       frame.redirections = 0;
       frame.inWord = false;
@@ -208,41 +232,45 @@ export const bunShellDialectIssues = (
       continue;
     }
 
-    const redirection = readRedirection(source, index);
+    const redirection = readRedirection(source, index, {
+      count: frame.redirections + 1,
+      groupClosed: frame.command.groupClosed,
+    });
     if (redirection !== undefined) {
+      frame.command.finish(index);
       const text = source.slice(index, redirection.end);
       frame.redirections += 1;
       if (redirection.kind === "issue")
         report(index, text, redirection.message, redirection.suggestion, redirection.replacement);
-      else if (frame.redirections > 1)
-        report(
-          index,
-          text,
-          `Bun Shell accepts one redirection per command, and ${text} is a second one.`,
-          "Write &>file or &>>file to send stdout and stderr to one file, or split the command.",
-        );
+      frame.command.redirect(!/[&](?:\d+|-)$/u.test(text));
       frame.inWord = false;
       index = redirection.end;
       continue;
     }
     if (char === ";" || char === "|" || char === "&") {
+      frame.command.finish(index);
+      frame.command.separator();
       frame.redirections = 0;
       frame.inWord = false;
       index += source[index + 1] === char ? 2 : 1;
       continue;
     }
     if (char === "$") {
+      frame.command.begin(index, true);
       frame.inWord = true;
       index = expansion();
       continue;
     }
+    frame.command.begin(index);
     frame.inWord = true;
     index += 1;
   }
 
-  for (const frame of frames)
+  for (const frame of frames) {
+    frame.command.finish(source.length);
     if (frame.double !== undefined)
       report(frame.double, '"', 'This " quote is never closed.', "Close the quote.");
+  }
   return issues.sort((left, right) => left.index - right.index);
 };
 

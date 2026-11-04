@@ -113,20 +113,38 @@ describe("cwd-aware THIS APP overlay", () => {
     }
   });
 
-  test("Given an app cwd without a cache, when help runs, then THIS APP is omitted", async () => {
-    // Given
-    const fixture = await makeAppFixture();
-    try {
-      // When
-      const result = await runCli(["help"], { cwd: fixture.root, env: fixture.env });
+  test.each([{ argv: [] }, { argv: ["help"] }, { argv: ["help", "--format=json"] }])(
+    "Given an app cwd without a cache, when help runs with $argv, then tooling is rebuilt and listed",
+    async ({ argv }: { readonly argv: readonly string[] }) => {
+      // Given
+      const fixture = await makeAppFixture();
+      try {
+        await writeFile(
+          join(fixture.root, ".lando.yml"),
+          "name: native-help\nservices:\n  web:\n    type: nginx\ntooling:\n  greet:\n    service: web\n    cmd: echo hello\n    description: Echo hello\n",
+        );
+        // When
+        const result = await runCli(argv, { cwd: fixture.root, env: fixture.env });
 
-      // Then
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).not.toContain("THIS APP");
-    } finally {
-      await fixture.cleanup();
-    }
-  });
+        // Then
+        expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+        expect(result.stderr).toBe("");
+        if (argv.includes("--format=json")) {
+          expect(JSON.parse(result.stdout)).toMatchObject({
+            ok: true,
+            result: {
+              toolingMetadata: { status: "fresh" },
+              sections: { thisApp: [expect.objectContaining({ canonicalId: "app:greet" })] },
+            },
+          });
+        } else {
+          expect(sectionBody(result.stdout, "THIS APP")).toContain("greet");
+        }
+      } finally {
+        await fixture.cleanup();
+      }
+    },
+  );
 
   test("Given a non-app cwd, when bin/lando.ts --help runs, then THIS APP is omitted", async () => {
     // Given

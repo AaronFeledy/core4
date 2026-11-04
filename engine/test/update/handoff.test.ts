@@ -1,8 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { updateHandoffDir } from "@lando/paths";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { StateStore } from "@lando/sdk/services";
+import * as StateStoreLayer from "@lando/state-store/service";
+import { Effect, Schema } from "effect";
 
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
+
+const roots: string[] = [];
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 describe("update replacement handoff", () => {
   test("preserves the abort reason alongside completed plugin receipts", async () => {
@@ -52,5 +64,48 @@ describe("update replacement handoff", () => {
     expect(first).toEqual(result);
     expect(second).toBeUndefined();
     expect(stateStore.snapshot().size).toBe(0);
+  });
+
+  test("persists under userData and survives user cache deletion", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-handoff-durable-"));
+    roots.push(root);
+    const cache = join(root, "cache");
+    const data = Schema.decodeUnknownSync(AbsolutePath)(join(root, "data"));
+    await Bun.write(join(cache, "disposable"), "scratch");
+    const previous = {
+      LANDO_USER_CACHE_ROOT: process.env.LANDO_USER_CACHE_ROOT,
+      LANDO_USER_DATA_ROOT: process.env.LANDO_USER_DATA_ROOT,
+      LANDO_USER_CONF_ROOT: process.env.LANDO_USER_CONF_ROOT,
+    };
+    process.env.LANDO_USER_CACHE_ROOT = cache;
+    process.env.LANDO_USER_DATA_ROOT = data;
+    process.env.LANDO_USER_CONF_ROOT = join(root, "conf");
+    try {
+      const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
+      const handoff = makeUpdateHandoff(live);
+      const result = {
+        updatedCore: false,
+        updatedPlugins: ["durable-plugin"],
+        hasFailures: true,
+        coreFailure: {
+          tag: "UpdatePermissionError",
+          message: "aborted",
+          remediation: "retry",
+        },
+      };
+      const token = await Effect.runPromise(handoff.save(result));
+      const receiptPath = join(updateHandoffDir(data), `${token}.json`);
+      await rm(cache, { recursive: true, force: true });
+      expect(await Bun.file(receiptPath).exists()).toBe(true);
+      const first = await Effect.runPromise(handoff.consume(token));
+      const second = await Effect.runPromise(handoff.consume(token));
+      expect(first).toEqual(result);
+      expect(second).toBeUndefined();
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) Reflect.deleteProperty(process.env, key);
+        else process.env[key] = value;
+      }
+    }
   });
 });

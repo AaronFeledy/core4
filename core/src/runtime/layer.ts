@@ -121,6 +121,7 @@ type MinimalRuntimeServices =
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner
+  | ShellRunner
   | PrivateFileAccessService
   | RedactionService
   | SecretStore
@@ -139,7 +140,6 @@ type CommandRuntimeServices = PluginRuntimeServices | LandofileService | Command
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
-  | ShellRunner
   | RuntimeProvider
   | RuntimeProviderRegistry
   | CertificateAuthorityResolver

@@ -272,19 +272,3 @@ test("preserves escapes, bare shell parameters, genuine environment secrets and 
     "x-literal": "{{ not an expression",
   });
 });
-
-test("unsupported expression remediation is context-neutral for host and container shells", async () => {
-  // Given / When
-  const result = await Effect.runPromise(
-    Effect.result(resolve({ tooling: { test: { cmd: "echo ${HOME}" } } })),
-  );
-  // Then
-  expect(Result.isFailure(result)).toBe(true);
-  if (!Result.isFailure(result)) throw new Error("expected failure");
-  expect(result.failure).toBeInstanceOf(LandofileValidationError);
-  if (!(result.failure instanceof LandofileValidationError)) throw result.failure;
-  expect(result.failure.remediation).toBe(
-    "Use {{ env.NAME }} for a host value. In a container command write $${NAME} for the shell's value; in a :host command write $NAME.",
-  );
-  expect(result.failure.issues[0]?.suggestion).toBe(result.failure.remediation);
-});

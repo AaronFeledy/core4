@@ -174,16 +174,22 @@ test.each(["fresh", "missing", "stale"])(
         await rm(appToolingCompilationCachePath(f.env.LANDO_USER_CACHE_ROOT, f.root));
       }
       if (state === "stale") await writeFile(join(f.root, ".lando.yml"), "name: changed-help\n");
-      for (const args of [
-        ["help", "db"],
-        ["db", "--help"],
-      ]) {
+      // A missing index is rebuilt from the Landofile, whose `cmd` task forwards `--help` to the tool,
+      // so only `lando help db` is help there.
+      const helpInvocations =
+        state === "missing"
+          ? [["help", "db"]]
+          : [
+              ["help", "db"],
+              ["db", "--help"],
+            ];
+      for (const args of helpInvocations) {
         const result = await f.invoke(args);
         expect(result.exit, result.stderr).toBe(0);
-        expect(result.stdout).toContain(state === "fresh" ? "Owned tooling DB" : "db:export");
-        if (state === "fresh") expect(result.stdout).not.toContain("db:export");
+        expect(result.stdout).toContain(state === "stale" ? "db:export" : "Owned tooling DB");
+        if (state !== "stale") expect(result.stdout).not.toContain("db:export");
       }
-      if (state !== "fresh") {
+      if (state === "stale") {
         const bare = await f.invoke(["db", "--format", "json"]);
         expect(bare.exit).toBe(1);
         expect(JSON.parse(bare.stdout).error).toMatchObject({
@@ -353,7 +359,7 @@ test.each([
 });
 
 test.each(["fresh", "missing"])(
-  "app namespace plugin respects %s tooling ownership",
+  "app namespace plugin resolves with a %s tooling index",
   async (state) => {
     // Given
     const f = await fixture();
@@ -373,10 +379,9 @@ test.each(["fresh", "missing"])(
       for (const args of [["app:inspect"], ["app:inspect", "--help"], ["help", "app:inspect"]]) {
         const result = await f.invoke([...args, "--format=json"]);
         // Then
-        expect(result.exit, result.stderr).toBe(state === "fresh" ? 0 : 1);
+        expect(result.exit, result.stderr).toBe(0);
         const envelope = JSON.parse(result.stdout);
-        if (state === "missing") expect(envelope.error._tag).toBe("ToolingCommandUnavailableError");
-        else if (args.length === 1) expect(envelope.result).toBe(f.root);
+        if (args.length === 1) expect(envelope.result).toBe(f.root);
         else expect(envelope.result.target).toMatchObject({ canonicalId: "app:inspect", source: "plugin" });
       }
     } finally {

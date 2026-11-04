@@ -9,12 +9,13 @@ import type { AbsolutePath } from "../schema/index.ts";
  * Paths/Roots primitive; `{ app }` scopes the bucket under an app root and
  * `{ path }` pins an explicit absolute directory for host/test isolation.
  */
-export type StateRoot =
+export type DurableStateRoot =
   | "userData"
-  | "userCache"
   | "userConf"
   | { readonly app: AbsolutePath }
   | { readonly path: AbsolutePath };
+
+export type StateRoot = DurableStateRoot | "userCache";
 
 /**
  * How a bucket's payload is encoded on disk. `json` wraps `{ version, data }`,
@@ -41,8 +42,7 @@ export type StateMigrator<A> = (raw: unknown, fromVersion: number) => A;
  * version, and the corruption / version-mismatch / locking policies the store
  * enforces. `open` resolves and containment-checks the path without IO.
  */
-export interface StateBucketSpec<A, I> {
-  readonly root: StateRoot;
+interface StateBucketFields<A, I> {
   readonly namespace?: string;
   readonly key: string;
   readonly schema: Schema.Codec<A, I>;
@@ -51,10 +51,27 @@ export interface StateBucketSpec<A, I> {
   /** Exact permissions applied to each atomic replacement, after umask. */
   readonly mode?: number;
   readonly lock?: "none" | "advisory";
+}
+
+export interface DurableStateBucketSpec<A, I> extends StateBucketFields<A, I> {
+  readonly root: DurableStateRoot;
   readonly onCorrupt?: "discard" | "quarantine" | "fail";
   readonly onVersionMismatch?: "discard" | StateMigrator<A>;
-  readonly default?: A;
+  readonly default?: NoInfer<A>;
 }
+
+/**
+ * Contents must be regenerable. The user cache root can disappear between any
+ * two operations, so a cache read must tolerate absence and corruption.
+ */
+export interface CacheStateBucketSpec<A, I> extends StateBucketFields<A, I> {
+  readonly root: "userCache";
+  readonly default: NoInfer<A>;
+  readonly onCorrupt?: "discard" | "quarantine";
+  readonly onVersionMismatch?: "discard";
+}
+
+export type StateBucketSpec<A, I> = DurableStateBucketSpec<A, I> | CacheStateBucketSpec<A, I>;
 
 /**
  * A handle to exactly one durable file. `get` reads (returning `null`/`default`

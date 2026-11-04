@@ -1,4 +1,3 @@
-import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-index-writer";
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
 import { resolveBuiltInCommand } from "./built-in-command-registry";
@@ -32,12 +31,13 @@ import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-
 import { pluginHelpRows, printPluginTopicHelp, tryPluginCommandHelp } from "./plugin-command-help";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { toolingMetadataStatus } from "./tooling-cache-status";
+import { readCliAppCommandCache } from "./tooling-command-cache";
 import { resolveToolingRoute, toolingRouteError } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 const readHelpCache = async () => {
   const exit = await Effect.runPromiseExit(
-    Effect.result(readAppCommandCacheForCwdDetailed({ includeScriptInventory: true })),
+    Effect.result(readCliAppCommandCache({ includeScriptInventory: true })),
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   const result = exit.value;
