@@ -10,7 +10,7 @@
  * a bad fetch.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, rename, stat, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect, Predicate, Ref, Schema, type Scope, Stream } from "effect";
@@ -101,9 +101,15 @@ const notReplaceable = (): VerifiedStreamError =>
 
 /** Throws unless the destination is absent or resolves to a regular file. Inspection errors fail closed. */
 const assertReplaceableDestination = async (path: string): Promise<void> => {
-  const info = await stat(path).catch((cause: unknown) => {
-    if (isMissing(cause)) return undefined;
-    throw cause;
+  const info = await stat(path).catch(async (cause: unknown) => {
+    if (!isMissing(cause)) throw cause;
+    // A dangling symlink exists even though its target doesn't; renaming would replace the link.
+    const link = await lstat(path).catch((linkCause: unknown) => {
+      if (isMissing(linkCause)) return undefined;
+      throw linkCause;
+    });
+    if (link !== undefined) throw notReplaceable();
+    return undefined;
   });
   if (info !== undefined && !info.isFile()) throw notReplaceable();
 };

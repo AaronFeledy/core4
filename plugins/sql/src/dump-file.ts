@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, mkdtemp, stat } from "node:fs/promises";
+import { access, lstat, mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -137,7 +137,9 @@ const DUMP_FORMATS: ReadonlyArray<{
   {
     // pg_dump's trailer may be followed by \unrestrict and comment lines.
     header: (head) => /^-- PostgreSQL database dump\r?$/mu.test(head.text),
-    complete: (tail) => /^-- PostgreSQL database dump complete\r?$/mu.test(tail.text),
+    // The footer is a three-line comment block, so a single COPY data row can't impersonate it.
+    complete: (tail) =>
+      /(?:^|\n)--\r?\n-- PostgreSQL database dump complete\r?\n--\r?(?:\n|$)/u.test(tail.text),
   },
   {
     header: (head) => startsWithBytes(head.bytes, MONGO_ARCHIVE_MAGIC),
@@ -198,15 +200,18 @@ const decompressError = (label: string, compression: Exclude<DumpCompression, "n
 
 /**
  * Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0.
- * Aborting `signal` cancels the source, and `sourceFailure` remembers a read error so it isn't
- * mistaken for corrupt compression after it passes through a decompressor.
+ * `sourceFailure` remembers a read error so it isn't mistaken for corrupt compression after it
+ * passes through a decompressor.
  */
-const peekCompression = async (source: ReadableStream<Uint8Array>, signal: AbortSignal) => {
-  const reader = source.getReader();
-  const cancel = () => {
-    reader.cancel(signal.reason).catch(() => undefined);
-  };
-  signal.addEventListener("abort", cancel, { once: true });
+type DumpSourceReader = {
+  readonly read: () => Promise<
+    | { readonly done: true; readonly value?: Uint8Array | undefined }
+    | { readonly done: false; readonly value: Uint8Array }
+  >;
+  readonly cancel: (reason?: unknown) => Promise<void>;
+};
+
+const peekCompression = async (reader: DumpSourceReader) => {
   let sourceFailure: { readonly cause: unknown } | undefined;
   const read = async () => {
     try {
@@ -218,15 +223,11 @@ const peekCompression = async (source: ReadableStream<Uint8Array>, signal: Abort
   };
   const pending: Uint8Array[] = [];
   let prefix: Uint8Array = new Uint8Array();
-  try {
-    while (prefix.byteLength < 4) {
-      const next = await read();
-      if (next.done) break;
-      pending.push(next.value);
-      prefix = collectDumpPrefix(next.value, prefix);
-    }
-  } finally {
-    signal.removeEventListener("abort", cancel);
+  while (prefix.byteLength < 4) {
+    const next = await read();
+    if (next.done) break;
+    pending.push(next.value);
+    prefix = collectDumpPrefix(next.value, prefix);
   }
   const body = new ReadableStream<Uint8Array>({
     pull: async (controller) => {
@@ -268,21 +269,15 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
     if (fromStdin) return stageError(cause);
     return dumpNotFound(input.file, input.appRoot, dumpMissKind(cause));
   };
-  // Peeking stays interruptible (aborting cancels the source). The release cancels a source nothing
-  // consumed; a consumed one is cancelled by its consumer.
-  const opened = yield* Effect.acquireRelease(
-    Effect.interruptible(
-      Effect.tryPromise({
-        try: (signal) =>
-          peekCompression(
-            input.stdin === undefined ? Bun.file(input.file).stream() : Stream.toReadableStream(input.stdin),
-            signal,
-          ),
-        catch: readFailure,
-      }),
-    ),
-    ({ body }) => Effect.promise(() => body.cancel().catch(() => undefined)),
+  // The scope owns the source reader: interruption at any point, even mid-peek, waits for the
+  // source to cancel (closing the file or releasing stdin) before the import moves on.
+  const source =
+    input.stdin === undefined ? Bun.file(input.file).stream() : Stream.toReadableStream(input.stdin);
+  const reader = yield* Effect.acquireRelease(
+    Effect.sync(() => source.getReader()),
+    (owned) => Effect.promise(() => owned.cancel().catch(() => undefined)),
   );
+  const opened = yield* Effect.tryPromise({ try: () => peekCompression(reader), catch: readFailure });
   const tracker = trackDumpEdges();
 
   if (opened.compression === "none" && !fromStdin) {
@@ -341,10 +336,11 @@ export const ensureExportDestination = (
 ): Effect.Effect<void, CommandInputValidationError | DataTransferError> =>
   Effect.tryPromise({
     try: () =>
-      stat(path).catch((cause: unknown) => {
+      stat(path).catch(async (cause: unknown) => {
         const code = errnoCode(cause);
-        if (code === "ENOENT" || code === "ENOTDIR") return undefined;
-        throw cause;
+        if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
+        // A dangling symlink still exists, and the export would replace the link itself.
+        return lstat(path).catch(() => undefined);
       }),
     catch: (cause) =>
       new DataTransferError({
@@ -357,19 +353,27 @@ export const ensureExportDestination = (
   }).pipe(
     Effect.flatMap((info) => {
       if (info === undefined || info.isFile()) return Effect.void;
-      const directory = info.isDirectory();
+      const refusal = info.isDirectory()
+        ? {
+            message: `Export destination is a directory: ${path}`,
+            remediation: "Pass a file path, for example a dump.sql.gz inside that directory.",
+          }
+        : info.isSymbolicLink()
+          ? {
+              message: `Export destination is a symbolic link to a missing file: ${path}`,
+              remediation: "Point the link at an existing file, remove it, or pass another path.",
+            }
+          : {
+              message: `Export destination is not a regular file: ${path}`,
+              remediation: `To stream into a pipe or another program, pass - and redirect stdout: lando db:export - > ${path}`,
+            };
       return Effect.fail(
         new CommandInputValidationError({
-          message: directory
-            ? `Export destination is a directory: ${path}`
-            : `Export destination is not a regular file: ${path}`,
+          ...refusal,
           target: "db:export",
           field: "file",
           kind: "arg",
           reason: "constraint",
-          remediation: directory
-            ? "Pass a file path, for example a dump.sql.gz inside that directory."
-            : `To stream into a pipe or another program, pass - and redirect stdout: lando db:export - > ${path}`,
         }),
       );
     }),

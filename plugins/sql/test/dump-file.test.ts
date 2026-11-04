@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -197,6 +197,15 @@ describe("dump files", () => {
       expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
     });
 
+    test("does not count a pg_dump footer line inside unfinished COPY data", async () => {
+      const head = PG_DUMP.split("CREATE")[0];
+      const cut = `${head}COPY public.t (v) FROM stdin;\n-- PostgreSQL database dump complete\n`;
+      const error = failureOf(
+        await prepare({ file: "-", appRoot: root, stdin: Stream.make(new TextEncoder().encode(cut)) }),
+      );
+      expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
+    });
+
     test("checks a mongodump archive for its terminator", async () => {
       const archive = Uint8Array.from([
         0x6d, 0xe2, 0x99, 0x81, 0x01, 0x02, 0x03, 0x04, 0xff, 0xff, 0xff, 0xff,
@@ -243,10 +252,15 @@ describe("dump files", () => {
           return source;
         }),
       ).pipe(
+        // Cleanup that finishes asynchronously, like closing a pipe, must still finish first.
         Stream.ensuring(
-          Effect.sync(() => {
-            released = true;
-          }),
+          Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve))).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                released = true;
+              }),
+            ),
+          ),
         ),
       );
       // When
@@ -294,6 +308,21 @@ describe("dump files", () => {
         } finally {
           await chmod(locked, 0o755);
         }
+      },
+    );
+
+    test.skipIf(process.platform === "win32")(
+      "refuses a dangling symlink and leaves it in place",
+      async () => {
+        const link = join(root, "dump.sql");
+        await symlink(join(root, "missing-target.sql"), link);
+        const error = failureOf(await Effect.runPromiseExit(ensureExportDestination(link)));
+        expect(error).toMatchObject({
+          _tag: "CommandInputValidationError",
+          field: "file",
+          reason: "constraint",
+        });
+        expect((await lstat(link)).isSymbolicLink()).toBe(true);
       },
     );
 

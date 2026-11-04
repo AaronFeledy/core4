@@ -218,6 +218,23 @@ describe("verified stream destinations", () => {
   );
 });
 
+describe("verified stream dangling links", () => {
+  test.skipIf(process.platform === "win32")("refuses to replace a dangling symlink", async () => {
+    const dir = await fs.mkdtemp(join(tmpdir(), "lando-dangling-"));
+    const link = join(dir, "artifact.bin");
+    await fs.symlink(join(dir, "missing"), link);
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(persistVerifiedStream({ body: Stream.make(bytes("x")), destinationPath: link })),
+      );
+      expect(exit._tag === "Failure" && Cause.squash(exit.cause)).toBeInstanceOf(VerifiedStreamError);
+      expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("verified stream destination recheck", () => {
   test.skipIf(process.platform === "win32")(
     "refuses a named pipe that appears while the body streams and removes its temp file",
