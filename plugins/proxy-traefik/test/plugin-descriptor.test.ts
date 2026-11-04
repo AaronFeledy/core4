@@ -5,6 +5,7 @@ import {
   advertisedProxyPortsCheck,
   globalServices,
   leftoverProxyPortsCheck,
+  legacyRouteFilesCheck,
   manifest,
   plugin,
   preferredHostPortsCheck,
@@ -50,7 +51,7 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     expect(plugin.globalServices).toBe(globalServices);
   });
 
-  test("wires the proxy TLS, leftover loopback-port, preferred-host-port, advertised-port, router-file-watcher, and bind-address doctor contributions", () => {
+  test("wires the proxy TLS, leftover loopback-port, preferred-host-port, advertised-port, router-file-watcher, legacy-route-files, and bind-address doctor contributions", () => {
     // Given / When
     const doctorChecks = plugin.doctorChecks ?? [];
 
@@ -61,6 +62,7 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
       "preferred-host-ports",
       "proxy-advertised-ports",
       "router-file-watcher",
+      "legacy-route-files",
       "router-bind-address",
     ]);
     expect(doctorChecks.at(0)).toBe(proxyTlsDoctorCheck);
@@ -68,11 +70,13 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     expect(doctorChecks.at(2)).toBe(preferredHostPortsCheck);
     expect(doctorChecks.at(3)).toBe(advertisedProxyPortsCheck);
     expect(doctorChecks.at(4)).toBe(routerFileWatcherCheck);
-    expect(doctorChecks.at(5)).toBe(routerBindAddressCheck);
+    expect(doctorChecks.at(5)).toBe(legacyRouteFilesCheck);
+    expect(doctorChecks.at(6)).toBe(routerBindAddressCheck);
     expect(proxyTlsDoctorCheck.relevant).toBeUndefined();
     expect(leftoverProxyPortsCheck.relevant).toBeUndefined();
     expect(preferredHostPortsCheck.relevant).toBeUndefined();
     expect(routerFileWatcherCheck.relevant).toBeUndefined();
+    expect(legacyRouteFilesCheck.relevant).toBeUndefined();
     expect(routerBindAddressCheck.relevant).toBeUndefined();
   });
 });
