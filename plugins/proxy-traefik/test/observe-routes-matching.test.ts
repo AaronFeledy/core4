@@ -1,14 +1,23 @@
 import { expect, test } from "bun:test";
-import { AppId, type RoutePlan } from "@lando/sdk/schema";
+import type { RoutePlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { app, liveGraph, makeObserveFixture, route } from "./observe-routes-fixture.ts";
+import {
+  app,
+  demoNs7,
+  demoRouterHttp,
+  demoService,
+  liveGraph,
+  makeObserveFixture,
+  route,
+} from "./observe-routes-fixture.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 test.each([
   { rule: 'Host("other.example.test") && PathPrefix("/api")' },
   { rule: 'Host("demo.example.test") && PathPrefix("/wrong")' },
   { rule: 'Host("demo.example.test")' },
   { priority: 1 },
-  { service: "route-demo-7@docker" },
+  { service: `${demoNs7}@docker` },
   { entryPoints: ["websecure"] },
   { using: [] },
   { tls: {} },
@@ -20,9 +29,7 @@ test.each([
   const graph = liveGraph();
   const fixture = makeObserveFixture({
     ...graph,
-    routers: {
-      "route-demo-7-http@file": { ...graph.routers["route-demo-7-http@file"], ...patch },
-    },
+    routers: { [demoRouterHttp]: { ...graph.routers[demoRouterHttp], ...patch } },
   });
   const evidence = await Effect.runPromise(
     fixture.service.observeRoutes(app, [{ ...route, scheme: "http" }]),
@@ -31,13 +38,13 @@ test.each([
   expect(fixture.mutations).toEqual([]);
 });
 
-test.each(["route-other-7-http@file", "route-demo-7-http@docker", "route-demo-evil-http@file"])(
+test.each(["route-other-7-http@file", `${demoNs7}-http@docker`, "route-demo-evil-http@file"])(
   "does not trust an unowned router %s",
   async (name) => {
     const graph = liveGraph();
     const fixture = makeObserveFixture({
       ...graph,
-      routers: { [name]: graph.routers["route-demo-7-http@file"] },
+      routers: { [name]: graph.routers[demoRouterHttp] },
     });
     const evidence = await Effect.runPromise(
       fixture.service.observeRoutes(app, [{ ...route, scheme: "http" }]),
@@ -48,7 +55,7 @@ test.each(["route-other-7-http@file", "route-demo-7-http@docker", "route-demo-ev
 
 test("does not confuse app IDs sharing a prefix", async () => {
   const fixture = makeObserveFixture();
-  const evidence = await Effect.runPromise(fixture.service.observeRoutes(AppId.make("dem"), [route]));
+  const evidence = await Effect.runPromise(fixture.service.observeRoutes(routeOwner("dem"), [route]));
   expect(evidence.observation).toEqual({ status: "missing" });
 });
 
@@ -63,9 +70,7 @@ test.each([
   const graph = liveGraph();
   const fixture = makeObserveFixture({
     ...graph,
-    services: {
-      "route-demo-7@file": { ...graph.services["route-demo-7@file"], ...patch },
-    },
+    services: { [demoService]: { ...graph.services[demoService], ...patch } },
   });
   const evidence = await Effect.runPromise(fixture.service.observeRoutes(app, [route]));
   expect(evidence.observation).toEqual({ status: "missing" });
@@ -106,14 +111,12 @@ test.each(middlewareCases)(
   "matches effective middleware with provider defaults (%j)",
   async ({ filter, config }) => {
     const graph = liveGraph();
-    const middleware = `route-demo-7-f0-${filter.type}`;
+    const middleware = `${demoNs7}-f0-${filter.type}`;
     const fixture = makeObserveFixture({
       ...graph,
-      routers: {
-        "route-demo-7-http@file": { ...graph.routers["route-demo-7-http@file"], middlewares: [middleware] },
-      },
+      routers: { [demoRouterHttp]: { ...graph.routers[demoRouterHttp], middlewares: [middleware] } },
       middlewares: {
-        [`${middleware}@file`]: { ...config, status: "enabled", usedBy: ["route-demo-7-http@file"] },
+        [`${middleware}@file`]: { ...config, status: "enabled", usedBy: [demoRouterHttp] },
       },
     });
     const requested: RoutePlan = { ...route, scheme: "http", filters: [filter] };
@@ -133,12 +136,12 @@ test.each([
   const fixture = makeObserveFixture({
     ...graph,
     routers: {
-      "route-demo-7-http@file": {
-        ...graph.routers["route-demo-7-http@file"],
-        middlewares: ["route-demo-7-f0-addPrefix@file"],
+      [demoRouterHttp]: {
+        ...graph.routers[demoRouterHttp],
+        middlewares: [`${demoNs7}-f0-addPrefix@file`],
       },
     },
-    middlewares: { "route-demo-7-f0-addPrefix@file": middlewareConfig },
+    middlewares: { [`${demoNs7}-f0-addPrefix@file`]: middlewareConfig },
   });
   const evidence = await Effect.runPromise(
     fixture.service.observeRoutes(app, [
@@ -153,7 +156,7 @@ test("matches IPv6 backend authorities without discarding the requested path", a
   const fixture = makeObserveFixture({
     ...graph,
     services: {
-      "route-demo-7@file": { status: "enabled", loadBalancer: { servers: [{ url: "http://[::1]:8080" }] } },
+      [demoService]: { status: "enabled", loadBalancer: { servers: [{ url: "http://[::1]:8080" }] } },
     },
   });
   const requested = { ...route, backend: { ...route.backend, host: "::1" } };

@@ -66,7 +66,7 @@ const restartHarness = (failure?: string) => {
     Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+      removeRoutes: (owner) => Effect.sync(() => void routeRemovals.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );
@@ -89,7 +89,7 @@ const startHarness = (failure?: string) => {
     Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+      removeRoutes: (owner) => Effect.sync(() => void routeRemovals.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );

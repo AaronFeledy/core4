@@ -348,7 +348,8 @@ const makeInfoLayer = (
         capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
         setup: () => Effect.void,
         revalidateStartup: Effect.void,
-        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        applyRoutes: (routes, owner) =>
+          Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
         observeRoutes: (_app, routes) =>
           Effect.succeed({

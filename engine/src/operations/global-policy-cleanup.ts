@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { GlobalPolicyReconciliationError } from "../global-app/errors.ts";
 import { type GlobalReconciliationTarget, recordGlobalReconciliation } from "../global-app/reconciliation.ts";
 import type { GlobalResolution } from "../global-app/resolution.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { classifyGlobalCleanupInventory, dependencyError } from "./global-policy-cleanup-evidence.ts";
 import type { GlobalPolicyChangeResult } from "./global-policy.ts";
 import { resolveGlobalStopSelection, resolveGlobalTeardown } from "./global-teardown.ts";
@@ -212,7 +213,7 @@ export const cleanupDisabledGlobalResources = Effect.fn("GlobalPolicy.cleanupDis
           const withdrawn = yield* Effect.result(
             router.applyRoutes(
               selection.success.routes.filter((route) => !disabled.has(String(route.service))),
-              plan.id,
+              routeOwnerFromPlan(plan),
             ),
           );
           if (withdrawn._tag === "Failure") causes.push(withdrawn.failure);
@@ -235,7 +236,7 @@ export const cleanupDisabledGlobalResources = Effect.fn("GlobalPolicy.cleanupDis
           active.has(String(route.service)),
       );
       const router = yield* RouterService;
-      const withdrawn = yield* Effect.result(router.applyRoutes(routes, plan.id));
+      const withdrawn = yield* Effect.result(router.applyRoutes(routes, routeOwnerFromPlan(plan)));
       if (withdrawn._tag === "Failure") causes.push(withdrawn.failure);
       else receipt = { ...receipt, pending: receipt.pending.filter((entry) => entry.phase !== "routes") };
     }

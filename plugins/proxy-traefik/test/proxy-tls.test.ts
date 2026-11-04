@@ -5,6 +5,7 @@ import { CaError, ProxyApplyError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { app, httpsRoutes, makeHarness } from "./proxy-tls-harness.ts";
+import { routeFileBasename } from "./route-owner-fixture.ts";
 
 describe("Traefik RouterService TLS", () => {
   test("issues exact default and sorted per-app SANs for HTTPS routes", async () => {
@@ -38,15 +39,15 @@ describe("Traefik RouterService TLS", () => {
     await Effect.runPromise(harness.service.applyRoutes(httpsRoutes, app));
 
     // Then: the durable default store and per-app certificate use separate official TLS files.
-    const routePath = "/lando/global/proxy-traefik/dynamic/routes-demo%2Fapp.yml";
+    const routePath = `/lando/global/proxy-traefik/dynamic/${routeFileBasename(app)}`;
     const defaultPath = "/lando/global/proxy-traefik/dynamic/tls-default.yml";
     expect(Bun.YAML.parse(harness.files.get(routePath) ?? "")).toEqual(
       expect.objectContaining({
         tls: {
           certificates: [
             {
-              certFile: "/etc/traefik/dynamic/certs/demo%2Fapp.crt",
-              keyFile: "/etc/traefik/dynamic/certs/demo%2Fapp.key",
+              certFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.crt`,
+              keyFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.key`,
             },
           ],
         },
@@ -64,18 +65,22 @@ describe("Traefik RouterService TLS", () => {
         },
       },
     });
-    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.crt")).toBe("app cert");
+    expect(harness.files.get(`/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.crt`)).toBe(
+      "app cert",
+    );
     expect(harness.files.get("/lando/global/proxy-traefik/dynamic/certs/default-lndo.site.ca.crt")).toBe(
       "issuer cert",
     );
     expect(harness.operations.indexOf(`write:${routePath}`)).toBeGreaterThan(
-      harness.operations.indexOf("write-secret:/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key"),
+      harness.operations.indexOf(
+        `write-secret:/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.key`,
+      ),
     );
     expect(
       harness.operations.filter((operation) => operation.includes("/certs/") && operation.endsWith(".key")),
     ).toEqual([
       "write-secret:/lando/global/proxy-traefik/dynamic/certs/default-lndo.site.key",
-      "write-secret:/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key",
+      `write-secret:/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.key`,
     ]);
     expect(harness.operations.indexOf(`write:${routePath}`)).toBeGreaterThan(
       harness.operations.indexOf(`write:${defaultPath}`),
@@ -161,12 +166,12 @@ describe("Traefik RouterService TLS", () => {
 
     // Then: both deterministic app PEMs are removed before the HTTP route trigger.
     const routeWrite = harness.operations.indexOf(
-      "write:/lando/global/proxy-traefik/dynamic/routes-demo%2Fapp.yml",
+      `write:/lando/global/proxy-traefik/dynamic/${routeFileBasename(app)}`,
     );
-    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.crt")).toBe(false);
-    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key")).toBe(false);
+    expect(harness.files.has(`/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.crt`)).toBe(false);
+    expect(harness.files.has(`/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.key`)).toBe(false);
     expect(routeWrite).toBeGreaterThan(
-      harness.operations.indexOf("remove:/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key"),
+      harness.operations.indexOf(`remove:/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.key`),
     );
   });
 
@@ -178,7 +183,7 @@ describe("Traefik RouterService TLS", () => {
 
     // When: app routes are removed, then the proxy is stopped.
     await Effect.runPromise(harness.service.removeRoutes(app));
-    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.crt")).toBe(false);
+    expect(harness.files.has(`/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.crt`)).toBe(false);
     await Effect.runPromise(harness.service.stop);
 
     // Then: neither default configuration nor certificate material remains.

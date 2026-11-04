@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { DomainName } from "./hostname.ts";
 import { RoutePlan } from "./networking.ts";
 import { AppId, PortNumber } from "./primitives.ts";
+import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
 // ============================================================================
 // Proxy service contracts
@@ -40,6 +41,33 @@ export const routerPortPairFromAcquisition = (value: unknown): RouterPortPair =>
   }
   return LAST_FALLBACK;
 };
+
+// ==== App route ownership (rename-stable key for durable router artifacts)
+
+/**
+ * Rename-stable owner of one app's durable router artifacts.
+ *
+ * `id` is the current app identity (may change on rename); `ownerKey` is the
+ * lowercase SHA-256 ownership key derived from the canonical app root via
+ * {@link appIdentityKey} / {@link planAppIdentity}, and is the only key the
+ * router uses to replace or withdraw that app's routes and certificates.
+ */
+export const AppRouteOwner = Schema.Struct({
+  id: AppId.annotate({
+    description: "Current application identity associated with these routes.",
+  }),
+  ownerKey: patternString(SHA256_HEX_PATTERN, {
+    message: "Expected a lowercase SHA-256 hex digest.",
+    toJsonSchema: () => ({ pattern: SHA256_HEX_PATTERN.source }),
+  }).annotate({
+    description: "Rename-stable ownership key derived from the canonical app root.",
+  }),
+}).annotate({
+  identifier: "AppRouteOwner",
+  title: "App Route Owner",
+  description: "Rename-stable owner of durable router artifacts for one application.",
+});
+export type AppRouteOwner = typeof AppRouteOwner.Type;
 
 export const ProxyCapabilities = Schema.Struct({
   wildcardHostnames: Schema.Boolean.annotateKey({
@@ -146,7 +174,7 @@ export type RouteEvidence = typeof RouteEvidence.Type;
 
 export const ProxyApplyResult = Schema.Struct({
   app: AppId.annotateKey({
-    description: "App whose durable route set was replaced.",
+    description: "Current app id from the route owner whose durable route set was replaced.",
   }),
   appliedRoutes: Schema.Array(RoutePlan).annotateKey({
     description: "Complete route set accepted by the proxy.",

@@ -5,6 +5,7 @@ import { Cause, Effect } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
+import { routeOwnerFromScratch } from "./route-owner.ts";
 
 export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
   function* (request: {
@@ -18,7 +19,7 @@ export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
     const resolved = yield* resolveRouterConfigForApp(request.landofileRouter);
     yield* Effect.scoped(router.setup({ defaultDomain, ...resolved }));
     yield* verifyGlobalConsumerAdmission;
-    yield* router.applyRoutes(plan.routes, plan.id);
+    yield* router.applyRoutes(plan.routes, routeOwnerFromScratch(plan.id));
   },
   Effect.asVoid,
   (effect, request) =>

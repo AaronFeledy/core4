@@ -1,4 +1,4 @@
-import type { AppId, RoutePlan } from "@lando/sdk/schema";
+import type { AppRouteOwner, RoutePlan } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 import { Clock, Effect } from "effect";
 import { ensureDashboardFile, renderTraefikDashboardConfig } from "./dashboard.ts";
@@ -12,6 +12,7 @@ import {
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { acceptanceError, awaitRouteAcceptance, requireRouteAcceptance } from "./route-acceptance.ts";
+import { requireOwnedRouteFile } from "./route-file-ownership.ts";
 import { routeReloadSnapshot } from "./route-reload-snapshot.ts";
 import {
   acknowledge,
@@ -33,7 +34,12 @@ export const makeRouteApplication = (
   routes: Map<string, ReadonlyArray<RoutePlan>>,
   pendingReload: Set<string>,
 ) =>
-  Effect.fn("TraefikRouter.applyRoutes")(function* (nextRoutes: ReadonlyArray<RoutePlan>, app: AppId) {
+  Effect.fn("TraefikRouter.applyRoutes")(function* (
+    nextRoutes: ReadonlyArray<RoutePlan>,
+    owner: AppRouteOwner,
+  ) {
+    const app = owner.id;
+    yield* requireOwnedRouteFile(dependencies, owner);
     if (nextRoutes.length > 0) yield* requireRouteAcceptance(dependencies, app);
     const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
     const ports =
@@ -44,8 +50,8 @@ export const makeRouteApplication = (
       .readText(defaultDomainFile(dependencies.paths))
       .pipe(Effect.catch(() => Effect.succeed("")));
     const domain = normalizeDefaultDomain(persistedDomain) || "lndo.site";
-    const appKey = String(app);
-    const file = routeFile(dependencies.paths, app);
+    const appKey = owner.ownerKey;
+    const file = routeFile(dependencies.paths, owner);
     const windowsStore = dependencies.paths.platform === "win32" ? dependencies.stateStore : undefined;
     const restart = Effect.gen(function* () {
       if (dependencies.paths.platform !== "win32") return;
@@ -57,9 +63,9 @@ export const makeRouteApplication = (
     if (nextRoutes.length === 0) {
       yield* ensureDashboardFile(dependencies, domain);
       const hadFile = yield* dependencies.fileSystem.exists(file);
-      if (windowsStore !== undefined) yield* invalidateAcknowledgement(windowsStore, app);
+      if (windowsStore !== undefined) yield* invalidateAcknowledgement(windowsStore, appKey);
       yield* Effect.uninterruptible(dependencies.fileSystem.remove(file));
-      yield* removeAppCertificates(dependencies, app);
+      yield* removeAppCertificates(dependencies, owner);
       routes.delete(appKey);
       if (hadFile) pendingReload.add(appKey);
       if (pendingReload.has(appKey)) {
@@ -74,16 +80,15 @@ export const makeRouteApplication = (
       return { app, appliedRoutes: nextRoutes, authorities: authoritiesFor(nextRoutes, ports) };
     }
     const hostnames = httpsHostnames(nextRoutes);
-    const encoded = encodeURIComponent(appKey);
     const expectedTls =
       hostnames.length === 0
         ? undefined
         : {
-            certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encoded}.crt`,
-            keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encoded}.key`,
+            certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${appKey}.crt`,
+            keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${appKey}.key`,
           };
-    const expectedConfig = renderTraefikDynamicConfig(nextRoutes, app, expectedTls);
-    const snapshot = yield* routeReloadSnapshot(dependencies, app, domain);
+    const expectedConfig = renderTraefikDynamicConfig(nextRoutes, owner, expectedTls);
+    const snapshot = yield* routeReloadSnapshot(dependencies, owner, domain);
     const [persistedConfig, certificate, privateKey, defaultCertificate, defaultPrivateKey] = snapshot;
     const now = yield* Clock.currentTimeMillis;
     const appCurrent =
@@ -121,42 +126,43 @@ export const makeRouteApplication = (
       dependencies.paths.platform === "win32" &&
       unchanged &&
       (windowsStore !== undefined
-        ? yield* isAcknowledged(windowsStore, app, routeReloadDigest(snapshot))
+        ? yield* isAcknowledged(windowsStore, appKey, routeReloadDigest(snapshot))
         : routes.has(appKey) && !pendingReload.has(appKey));
     pendingReload.add(appKey);
-    if (windowsStore !== undefined && !warmAcknowledged) yield* invalidateAcknowledgement(windowsStore, app);
+    if (windowsStore !== undefined && !warmAcknowledged)
+      yield* invalidateAcknowledgement(windowsStore, appKey);
     if (!unchanged) {
       yield* ensureDashboardFile(dependencies, domain);
-      if (hostnames.length === 0) yield* removeAppCertificates(dependencies, app);
+      if (hostnames.length === 0) yield* removeAppCertificates(dependencies, owner);
       const tls =
         hostnames.length === 0
           ? undefined
           : yield* ensureTlsFiles(dependencies, {
-              app,
+              owner,
               defaultDomain: domain,
               hostnames,
               refreshAppCertificate: !appCurrent,
               refreshDefaultCertificate: !defaultCurrent,
             });
-      const config = renderTraefikDynamicConfig(nextRoutes, app, tls);
+      const config = renderTraefikDynamicConfig(nextRoutes, owner, tls);
       if (persistedConfig !== config) yield* dependencies.fileSystem.writeAtomic(file, config);
     }
     if (dependencies.paths.platform === "win32" && !warmAcknowledged) {
-      const before = routeReloadDigest(yield* routeReloadSnapshot(dependencies, app, domain));
+      const before = routeReloadDigest(yield* routeReloadSnapshot(dependencies, owner, domain));
       yield* restart;
-      if (routeReloadDigest(yield* routeReloadSnapshot(dependencies, app, domain)) !== before) {
+      if (routeReloadDigest(yield* routeReloadSnapshot(dependencies, owner, domain)) !== before) {
         return yield* Effect.fail(acceptanceError(app, "generation-changed"));
       }
-      yield* awaitRouteAcceptance(dependencies, app, nextRoutes);
-      if (routeReloadDigest(yield* routeReloadSnapshot(dependencies, app, domain)) !== before) {
+      yield* awaitRouteAcceptance(dependencies, owner, nextRoutes);
+      if (routeReloadDigest(yield* routeReloadSnapshot(dependencies, owner, domain)) !== before) {
         return yield* Effect.fail(acceptanceError(app, "generation-changed"));
       }
-      if (windowsStore !== undefined) yield* acknowledge(windowsStore, app, before);
+      if (windowsStore !== undefined) yield* acknowledge(windowsStore, appKey, before);
     } else {
-      yield* awaitRouteAcceptance(dependencies, app, nextRoutes);
+      yield* awaitRouteAcceptance(dependencies, owner, nextRoutes);
       if (
         warmAcknowledged &&
-        routeReloadDigest(yield* routeReloadSnapshot(dependencies, app, domain)) !==
+        routeReloadDigest(yield* routeReloadSnapshot(dependencies, owner, domain)) !==
           routeReloadDigest(snapshot)
       ) {
         return yield* Effect.fail(acceptanceError(app, "generation-changed"));

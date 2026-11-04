@@ -154,19 +154,19 @@ export const makeGlobalLifecycleFixture = (
     ),
     Layer.succeed(RouterService, {
       ...makeTestRouterService(),
-      applyRoutes: (routes, app) =>
+      applyRoutes: (routes, owner) =>
         Effect.suspend(() => {
           if (failRoutes)
             return Effect.fail(
               new ProxyApplyError({
                 message: "Router unavailable",
-                app,
+                app: owner.id,
                 proxyId: "test",
                 remediation: "Retry route publication",
               }),
             );
           published.push(routes.map((route) => String(route.service)));
-          return Effect.succeed({ app, appliedRoutes: routes, authorities: [] });
+          return Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] });
         }),
     }),
     Layer.succeed(

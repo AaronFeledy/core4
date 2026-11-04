@@ -22,6 +22,7 @@ import type {
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppPlan,
+  AppRouteOwner,
   EndpointRef,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -95,11 +96,11 @@ export class RouterService extends Context.Service<
     readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
     readonly applyRoutes: (
       routes: ReadonlyArray<RoutePlan>,
-      appId: AppId,
+      owner: AppRouteOwner,
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
-    readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly removeRoutes: (owner: AppRouteOwner) => Effect.Effect<void, ProxyError>;
     readonly observeRoutes: (
-      app: AppId,
+      owner: AppRouteOwner,
       requestedRoutes: ReadonlyArray<RoutePlan>,
     ) => Effect.Effect<RouteEvidence, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;

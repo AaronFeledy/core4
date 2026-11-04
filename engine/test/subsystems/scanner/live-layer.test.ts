@@ -99,7 +99,7 @@ describe("ProviderUrlScanner.layer", () => {
       };
       const router = RouterService.of({
         ...makeTestRouterService(),
-        observeRoutes: (_app, routes) =>
+        observeRoutes: (_owner, routes) =>
           Effect.succeed({
             configuredAuthorities: [],
             observation: {

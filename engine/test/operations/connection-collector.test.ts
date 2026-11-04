@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { ServiceName, StartedService } from "@lando/sdk/schema";
+import { AppId, ServiceName, StartedService, appIdentityKey } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { collectObservedConnections, observeService } from "../../src/operations/connection-collector.ts";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
 test("observes routes once for the plan and retains unmatched runtime rows without leaking runtime", async () => {
@@ -38,7 +39,7 @@ test("observes routes once for the plan and retains unmatched runtime rows witho
     collectObservedConnections(planned, observations).pipe(
       Effect.provideService(RouterService, {
         ...makeTestRouterService(),
-        observeRoutes: (_app, routes) =>
+        observeRoutes: (_owner, routes) =>
           Effect.sync(() => {
             calls++;
             expect(routes).toEqual(planned.routes);
@@ -86,4 +87,37 @@ test.each([false, true])("requires completion intent as well as exit zero (inten
     publications: { status: "missing" },
   });
   expect(row.state).toBe(intent ? "completed" : "stopped");
+});
+
+test("observes cwd scratch routes under the scratch owner instead of the source root", async () => {
+  const id = AppId.make("scratch-source-123456");
+  const route = {
+    hostname: "scratch.test",
+    scheme: "https" as const,
+    service: web.name,
+    priority: 2,
+    backend: { service: web.name, protocol: "http" as const, port: 3000 },
+  };
+  const scratch = { ...plan, id, routes: [route], extensions: { [SCRATCH_EXTENSION_KEY]: { id } } };
+  const router = makeTestRouterService();
+  await Effect.runPromise(Effect.scoped(router.setup({ defaultDomain: "lndo.site" })));
+  await Effect.runPromise(
+    router.applyRoutes([route], { id, ownerKey: appIdentityKey("owner", `scratch:${id}`) }),
+  );
+  const runtime = observeService(scratch, {
+    app: id,
+    providerId: plan.provider,
+    service: web.name,
+    status: "running",
+    publications: { status: "missing" },
+  });
+
+  const rows = await Effect.runPromise(
+    collectObservedConnections(scratch, [runtime]).pipe(Effect.provideService(RouterService, router)),
+  );
+
+  expect(rows[0]?.connections.find((connection) => connection.source === "route")).toMatchObject({
+    url: "https://scratch.test:38443",
+    state: "active",
+  });
 });

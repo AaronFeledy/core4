@@ -285,7 +285,8 @@ describe("doctor --fix recovery", () => {
         ...proxyService,
         id: "unavailable",
         setup: (config) => proxyService.setup(config),
-        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        applyRoutes: (routes, owner) =>
+          Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
       }),
     );
@@ -317,7 +318,8 @@ describe("doctor --fix recovery", () => {
               remediation: "Retry setup.",
             }),
           ),
-        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        applyRoutes: (routes, owner) =>
+          Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
       }),
     );
