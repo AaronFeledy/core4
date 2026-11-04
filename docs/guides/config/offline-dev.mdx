@@ -23,15 +23,15 @@ Stopping, inspecting, and removing an app you already started never needs the ne
 
 On Linux with the default `lando` provider, the init process that Lando runs in front of each service command ships inside the runtime payload. A runtime installed before that helper was part of the payload fetches the pinned helper once, during `lando setup` or the first `lando start` of a service that uses init, and reuses the verified copy offline from then on. Services with `init: false` never need it.
 
-Runtime bundle, tool, npm and tarball recipe downloads, and git recipes pinned to a full commit SHA first check the local cache. A cache hit never touches the network. A git recipe on a branch, tag, or default branch is fetched again on every init; `lando init --source=git` warns and uses the cached commit when that fetch fails. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
+Runtime bundle and tool downloads first check their local caches. Remote includes, recipe sources, and plugin packages share one source store under your user cache root at `sources/`, keyed by git commit or archive SHA-256. A git recipe pinned to a full commit SHA or a tarball recipe whose `--checksum` matches a stored archive is reused from there without touching the network. An npm recipe or plugin still asks the registry for package metadata, but skips the tarball download when the stored package matches that registry's published version and integrity. A git recipe on a branch, tag, or default branch is fetched again on every init; when that fetch fails for a reason other than authentication, `lando init` warns and uses the cached commit, for the `--source=git` recipe and for any remote git `extends:` parent it resolves. When a source download is actually required and the network is unavailable, the failure surfaces as the consumer's error instead of hanging or silently retrying: `RecipeSourceError` for a recipe, `LandofileIncludeError` for an include, `PluginPackageOperationError` for a plugin. Runtime bundle and tool downloads report `DownloadOfflineError`. Entries stay in the store until you remove them with [`lando sources:gc --prune`](../cli/sources-gc.mdx).
 
-Once a remote include has a lockfile entry and a cached copy, loading the app reads that copy instead of the network. `lando start`, `lando app:config`, tooling, `lando app:includes:verify`, and `lando app:includes:update --no-network` all work offline from then on. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include).
+Once a remote include has a lockfile entry and a source-store entry, loading the app reads that entry instead of the network. `lando start`, `lando app:config`, tooling, `lando app:includes:verify`, and `lando app:includes:update --no-network` all work offline from then on. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include).
 
 ## Honest limits
 
 A successful config or cache check does not prove that every build step can run offline. Build steps that download packages need network access when their cached layers are missing or their inputs change.
 
-An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. Changing an include's `version:` also needs network access, because the next load fetches the new version. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.
+An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a source-store entry from a prior online run. Changing an include's `version:` also needs network access, because the next load fetches the new version. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.
 
 Bun controls package resolution and cache use for `lando bun` and `lando x`.
 When one of them fails offline you get Bun's exit code and Bun's message, not
@@ -60,6 +60,6 @@ read Bun's `stderr` to tell a cache miss from a broken package. Under
   </Scenario>
 </Guide>
 
-The fixture above has no remote includes, so `--no-network` succeeds trivially. A remote include with no prior lockfile or cache entry fails with `LandofileIncludeError` instead of falling back to a network fetch. The error names the missing source and says `--no-network` blocked the fetch.
+The fixture above has no remote includes, so `--no-network` succeeds trivially. A remote include with no prior lockfile or source-store entry fails with `LandofileIncludeError` instead of falling back to a network fetch. The error names the missing source and says `--no-network` blocked the fetch.
 
-Run the same command once with network access (`lando app:includes:update`) to populate the lockfile and cache. `--no-network` works offline from that point on.
+Run the same command once with network access (`lando app:includes:update`) to populate the lockfile and source store. `--no-network` works offline from that point on.

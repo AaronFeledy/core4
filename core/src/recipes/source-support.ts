@@ -1,6 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { makeLandoPaths } from "@lando/paths";
 import { RecipeManifestNotFoundError } from "@lando/sdk/errors";
 import type { RecipeTransportEvidence } from "./resolved-source-types";
 import type { ResolvedRecipe } from "./source";
@@ -54,11 +53,6 @@ export const normalizeRecipeSubpath = (
     });
   }
   return normalized;
-};
-
-export const recipeUserDataRoot = async (override: string | undefined): Promise<string> => {
-  if (override !== undefined) return override;
-  return makeLandoPaths().roots.userDataRoot;
 };
 
 export const recipeFileExists = async (path: string): Promise<boolean> =>

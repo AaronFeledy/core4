@@ -1,7 +1,7 @@
 import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
+import type { StateStoreShape } from "@lando/sdk/services";
+import type { NpmRegistryTransport, SourceSession, SourceStore } from "@lando/source-acquisition";
 import type { InteractionPrompter } from "../../interaction/prompter";
-import type { NpmRegistryClient } from "../../recipes/npm-source";
-import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
 
 export interface PluginAddPrompter {
   readonly confirmTrust: (request: {
@@ -17,10 +17,14 @@ export interface PluginAddOptions {
   readonly pluginsRoot?: string;
   readonly userDataRoot?: string;
   readonly cacheRoot?: string;
+  /** Content-addressed source cache root; defaults to paths.sourceCacheDir. */
+  readonly sourceCacheRoot?: string;
   readonly registryUrl?: string;
-  readonly registryClient?: NpmRegistryClient;
-  readonly fetcher?: TarballRecipeFetcher;
-  readonly extractor?: TarballRecipeExtractor;
+  /** Use an existing store or session instead of constructing a source store. */
+  readonly sources?: SourceStore | SourceSession;
+  readonly npmRegistry?: NpmRegistryTransport;
+  /** State store for makeSourceStore when `sources` is omitted. */
+  readonly stateStore?: StateStoreShape;
   readonly prompter?: PluginAddPrompter;
   readonly interaction?: InteractionPrompter;
   readonly trustStore?: PluginTrustStore;

@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isPathWithin } from "@lando/paths";
 
 import { LandofileIncludeError } from "@lando/sdk/errors";
+import { displaySource } from "@lando/source-acquisition";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 
 export const INCLUDE_REMEDIATION =
@@ -25,10 +26,10 @@ export const includeError = (input: {
   readonly path?: LandofileIncludeError["path"];
 }): LandofileIncludeError =>
   new LandofileIncludeError({
-    message: withoutControlBytes(input.message),
-    source: withoutControlBytes(input.source),
+    message: displaySource(withoutControlBytes(input.message)),
+    source: displaySource(withoutControlBytes(input.source)),
     kind: input.kind,
-    remediation: withoutControlBytes(input.remediation ?? INCLUDE_REMEDIATION),
+    remediation: displaySource(withoutControlBytes(input.remediation ?? INCLUDE_REMEDIATION)),
     path: input.path,
   });
 

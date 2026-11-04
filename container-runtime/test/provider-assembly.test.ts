@@ -77,6 +77,7 @@ const paths = PathsService.of({
   logsDir: "",
   scratchDir: "",
   transferStagingDir: "",
+  sourceCacheDir: "",
   tunnelRunDir: "",
   appCacheDir: () => "",
   appPlanCacheFile: () => "",

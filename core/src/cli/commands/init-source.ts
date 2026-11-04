@@ -1,5 +1,5 @@
-import { gitCloneUrl, isLiteralGitRef, splitSourceRef } from "@lando/landofile/git-ref";
 import { RecipeSourceError } from "@lando/sdk/errors";
+import { gitCloneUrl, isLiteralGitRef, splitSourceRef } from "@lando/source-acquisition/locator";
 
 export interface InitSourceFlags {
   readonly source?: string | undefined;

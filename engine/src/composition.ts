@@ -2,7 +2,7 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import type { ContainerHelperUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { ContainerHelperArtifact, ContainerHelperTarget } from "@lando/sdk/schema";
-import type { Downloader } from "@lando/sdk/services";
+import type { Downloader, ProcessRunner } from "@lando/sdk/services";
 import type { Effect } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type { HostConfigReadPolicy } from "./services/config.ts";
@@ -15,7 +15,7 @@ export interface EngineCompositionInputs {
     client: HttpClient.HttpClient,
     downloader: typeof Downloader.Service,
     runtime?: LandofileSourcePortRuntime,
-  ) => Pick<LandofileRuntimeInputs["ports"], "npmRecipeSource" | "tarball">;
+  ) => Pick<LandofileRuntimeInputs["ports"], "sources">;
   readonly hostProxyWorkerEntry: () => HostProxyWorkerEntry;
   readonly resolveContainerHelper: (
     target: ContainerHelperTarget,
@@ -25,6 +25,7 @@ export interface EngineCompositionInputs {
 
 /** Runtime capabilities that host-side source acquisition must honor. */
 export interface LandofileSourcePortRuntime {
+  readonly processRunner?: typeof ProcessRunner.Service;
   readonly registerSecrets?: (values: ReadonlyArray<string>) => Promise<void>;
   readonly readPolicy?: HostConfigReadPolicy;
 }

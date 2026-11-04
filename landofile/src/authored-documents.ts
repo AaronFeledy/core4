@@ -85,4 +85,4 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
   });
   yield* publishIncludeProposals(session, inputs?.stateStore);
   return compiled;
-});
+}, Effect.scoped);

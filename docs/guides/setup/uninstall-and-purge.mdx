@@ -39,7 +39,7 @@ Any retained or failed entry fails the purge and preserves the managed runtime, 
 Only after that check passes, together with the ownership and Windows file-sync guards below, does `--purge` remove the Lando-owned managed VM, runtime service, provider bundle, and file-sync tools. This also removes built-in and residual network configuration inside the verified private installation roots. It does not authorize deletion of unverified networks in system Docker or Podman, or files outside those roots. Purge removes:
 
 - User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
-- User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
+- User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`), including the remote source store that [`lando sources:gc`](../cli/sources-gc.mdx) otherwise trims
 - User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
 
 On Windows, Podman keeps network definitions in the Windows host config outside its managed VM. Removing the VM does not remove those definitions. Current definitions have no Lando ownership label, so the purge plan reports them for manual review. Check `$env:APPDATA\containers\networks` after purge, and leave any entry whose ownership you cannot verify. Lando does not delete those files.

@@ -187,6 +187,8 @@ export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatfor
     logsDir: j(userCacheRoot, "logs"),
     toolDownloadsDir: (toolId: string) => j(userCacheRoot, "tool-downloads", toolId),
     transferStagingDir: j(userCacheRoot, "transfer-staging"),
+    /** Content-addressed remote source cache (git trees, npm/archive digests). */
+    sourceCacheDir: j(userCacheRoot, "sources"),
     appCacheDir,
     appPlanCacheFile: (appName: string, appRoot: string) => j(appCacheDir(appName, appRoot), "plan.bin"),
     // systemPluginRoot-scoped

@@ -102,6 +102,7 @@
     "@lando/redaction": "workspace:*",
     "@lando/renderer": "workspace:*",
     "@lando/sdk": "workspace:*",
+    "@lando/source-acquisition": "workspace:*",
     "@lando/state-store": "workspace:*",
     "@lando/telemetry": "workspace:*",
     "@types/mdast": "4.0.4",

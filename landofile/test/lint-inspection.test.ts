@@ -21,17 +21,22 @@ const lockfile = (version: string, checksum = sha256Hex(fragment)) =>
   `# Retain this existing pin verbatim.\nincludes:\n  - source: github:acme/shared/fragment.yml\n    version: ${version}\n    resolved: ${revision}\n    checksum: ${checksum}\n`;
 const fixture = (content = fragment) => {
   const refs: (string | undefined)[] = [];
+  const cacheRoot = join(root, "cache");
+  const basePorts = makeTestLandofilePorts(cacheRoot);
   const inputs: LandofileRuntimeInputs = {
     templates: { modules: [] },
-    stateStore: makeTestLandofileStateStore(),
+    stateStore: makeTestLandofileStateStore(cacheRoot),
     ports: {
-      ...makeTestLandofilePorts(join(root, "cache")),
-      git: {
-        clone: async ({ dest, ref }) => {
-          refs.push(ref);
-          await mkdir(dest, { recursive: true });
-          await writeFile(join(dest, "fragment.yml"), content);
-          return { commitSha: revision };
+      ...basePorts,
+      sources: {
+        ...basePorts.sources,
+        git: {
+          fetch: async ({ dest, ref }) => {
+            refs.push(ref);
+            await mkdir(dest, { recursive: true });
+            await writeFile(join(dest, "fragment.yml"), content);
+            return { commit: revision };
+          },
         },
       },
     },

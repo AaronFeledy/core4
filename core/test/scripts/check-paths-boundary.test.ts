@@ -22,7 +22,7 @@ describe("paths boundary lint gate", () => {
     );
   });
 
-  test("reports hand-rolled root joins for plugins, scratch, and bin", async () => {
+  test("reports hand-rolled root joins for plugins, scratch, sources, and bin", async () => {
     const root = await makeFixtureRoot();
     try {
       await write(
@@ -37,6 +37,11 @@ describe("paths boundary lint gate", () => {
       );
       await write(
         root,
+        "core/src/cli/bad-sources.ts",
+        'import { join } from "node:path";\nexport const c = (userCacheRoot: string) => join(userCacheRoot, "sources");\n',
+      );
+      await write(
+        root,
         "plugins/some-plugin/src/bad-bin.ts",
         'import { resolve } from "node:path";\nexport const b = (userDataRoot: string) => resolve(userDataRoot, "bin");\n',
       );
@@ -45,7 +50,12 @@ describe("paths boundary lint gate", () => {
 
       expect(result.ok).toBe(false);
       expect(result.offenders.map((offender) => relative(root, offender.file).replaceAll("\\", "/"))).toEqual(
-        ["core/src/cli/bad-plugins.ts", "core/src/cli/bad-scratch.ts", "plugins/some-plugin/src/bad-bin.ts"],
+        [
+          "core/src/cli/bad-plugins.ts",
+          "core/src/cli/bad-scratch.ts",
+          "core/src/cli/bad-sources.ts",
+          "plugins/some-plugin/src/bad-bin.ts",
+        ],
       );
     } finally {
       await fs.rm(root, { recursive: true, force: true });

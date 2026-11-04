@@ -64,7 +64,7 @@ const parseLockfileYaml = (content: string): { includes: Array<Record<string, un
   if (!header) throw invalidLock("Missing includes lockfile header.");
   return { includes };
 };
-const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
+export const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
   const parsed = parseLockfileYaml(content);
   const entries = Schema.decodeUnknownSync(LockEntriesSchema)(parsed.includes, { onExcessProperty: "error" });
   const sources = new Set<string>();

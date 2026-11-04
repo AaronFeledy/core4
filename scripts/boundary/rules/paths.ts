@@ -6,6 +6,7 @@ import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 const FORBIDDEN_JOINS: ReadonlyArray<{ readonly rootSuffix: string; readonly segment: string }> = [
   { rootSuffix: "userdataroot", segment: "plugins" },
   { rootSuffix: "usercacheroot", segment: "scratch" },
+  { rootSuffix: "usercacheroot", segment: "sources" },
   { rootSuffix: "userdataroot", segment: "bin" },
 ];
 

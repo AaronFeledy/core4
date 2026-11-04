@@ -84,23 +84,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      fetchTarball: async () => {
-        throw new Error("Unexpected npm download");
-      },
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -301,6 +285,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     stateStoreLayer,
@@ -315,7 +300,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
     ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
-    ScratchInitAppPortLayer.layer,
+    ScratchInitAppPortLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer, BunProcessRunner.layer)),
+    ),
     BunDataMover.layer.pipe(
       Layer.provide(registryLive),
       Layer.provide(

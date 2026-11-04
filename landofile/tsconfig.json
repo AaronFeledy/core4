@@ -11,11 +11,18 @@
       "@lando/paths/*": ["../paths/src/*.ts"],
       "@lando/sdk": ["../sdk/src/index.ts"],
       "@lando/sdk/*": ["../sdk/src/*/index.ts"],
+      "@lando/source-acquisition": ["../source-acquisition/src/index.ts"],
+      "@lando/source-acquisition/*": ["../source-acquisition/src/*.ts"],
       "@lando/state-store": ["../state-store/src/index.ts"],
       "@lando/state-store/*": ["../state-store/src/*.ts"]
     }
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["./dist", "./node_modules"],
-  "references": [{ "path": "../sdk" }, { "path": "../paths" }, { "path": "../state-store" }]
+  "references": [
+    { "path": "../sdk" },
+    { "path": "../paths" },
+    { "path": "../state-store" },
+    { "path": "../source-acquisition" }
+  ]
 }
