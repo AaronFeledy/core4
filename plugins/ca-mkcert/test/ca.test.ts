@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Schema } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
+import { CertificateName } from "@lando/sdk/schema";
 import { runCaContract } from "@lando/sdk/test";
 
 import { mkcertLeafCertificateName } from "../src/ca.ts";
@@ -25,6 +26,25 @@ describe("mkcertLeafCertificateName", () => {
     expect(mkcertLeafCertificateName("../../escape")).not.toContain("/");
     expect(mkcertLeafCertificateName("..")).not.toMatch(/^\.+$/u);
   });
+});
+
+// mkcert's own name check (hostnameRegexp in mkcert's main.go); IP literals take its separate IP path.
+const MKCERT_HOSTNAME = /^(\*\.)?[0-9a-z_-]([0-9a-z._-]*[0-9a-z_-])?$/iu;
+
+test("every DNS certificate name Lando can request passes mkcert's hostname check", () => {
+  let seed = 0x2057;
+  const next = (bound: number) => {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    return (seed >>> 16) % bound;
+  };
+  const label = () => Array.from({ length: 1 + next(8) }, () => "aZ09_-x*"[next(8)]).join("");
+  const names = Array.from(
+    { length: 4000 },
+    () => `${next(3) === 0 ? "*." : ""}${Array.from({ length: 1 + next(4) }, label).join(".")}`,
+  ).filter((name) => Schema.is(CertificateName)(name) && !/^[0-9.]+$/u.test(name));
+  expect(names.length).toBeGreaterThan(500);
+  for (const name of names)
+    expect({ name, accepted: MKCERT_HOSTNAME.test(name) }).toEqual({ name, accepted: true });
 });
 
 describe("mkcert CertificateAuthority", () => {

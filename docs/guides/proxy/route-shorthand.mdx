@@ -73,7 +73,7 @@ Three things a shorthand cannot say:
 
 Write an object route for a scheme (including HTTP-only deep wildcards) or filters. Neither form matches on a query string or fragment.
 
-`lando app:config:lint` and `lando start` report `landofile.route` when an HTTPS or `both` route cannot be covered by a certificate name. Move the wildcard into the leftmost label, or set `scheme: http` on the object form.
+`lando app:config:lint` and `lando start` report `landofile.route` when an HTTPS or `both` route cannot be covered by a certificate name, including routes a plugin generates. The finding names the nearest pattern a certificate can cover, such as `*.app.lndo.site` for `wild.*.app.lndo.site`. Use that pattern, or keep yours and set `scheme: http` on the object form.
 
 ## Object form
 
