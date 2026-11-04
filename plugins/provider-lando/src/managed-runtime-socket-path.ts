@@ -2,7 +2,7 @@ import {
   MANAGED_SOCKET_PATH_MAX_BYTES,
   managedSocketPathByteLength,
 } from "@lando/container-runtime/podman/managed-invocation";
-import { makeLandoPaths } from "@lando/paths";
+import { runtimeLayoutPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import { hostPlatformFamily } from "@lando/sdk/schema";
@@ -15,7 +15,7 @@ export const managedSocketMaxDataRootBytes =
   MANAGED_SOCKET_PATH_MAX_BYTES - managedSocketPathByteLength(MANAGED_SOCKET_DATA_ROOT_SUFFIX);
 
 export const managedSocketPathForDataRoot = (userDataRoot: string): string =>
-  makeLandoPaths({ platform: "linux", userDataRoot }).providerSocketPath;
+  runtimeLayoutPaths(userDataRoot, "linux").providerSocketPath;
 
 export const managedSocketPathOverLimitRemediation = (
   maxDataRootBytes: number = managedSocketMaxDataRootBytes,

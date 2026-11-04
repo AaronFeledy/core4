@@ -1,6 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 
-import { globalAppRootPath, makeLandoPaths } from "@lando/paths";
+import { globalAppRootPath, runtimeLayoutPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import type { HostPlatform, RouterPortPair } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
@@ -163,7 +163,7 @@ const resolveRuntimeBinDir = (input: {
   readonly platform: HostPlatform;
 }): Effect.Effect<string | undefined> => {
   if (input.userDataRoot === undefined) return Effect.succeed(undefined);
-  const bin = makeLandoPaths({ userDataRoot: input.userDataRoot, platform: input.platform }).runtimeBinDir;
+  const bin = runtimeLayoutPaths(input.userDataRoot, input.platform).runtimeBinDir;
   return Effect.tryPromise(() => realpath(bin)).pipe(Effect.catch(() => Effect.succeed(bin)));
 };
 

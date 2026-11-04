@@ -13,7 +13,7 @@ import {
   type ManagedRuntimeDirSeams,
   prepareLaunchedManagedRuntimeDir,
 } from "@lando/container-runtime/podman/managed-runtime-dir";
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { makeLandoPaths, normalizeHostPlatform, runtimeLayoutPaths } from "@lando/paths";
 import { Effect, Result } from "effect";
 
 import { classifyManagedProviderMachine } from "../runtime/managed-provider-machine.ts";
@@ -57,7 +57,7 @@ export type UninstallRuntimeSeams = {
 export const defaultRuntimeExec: RuntimeExec = promisify(execFile);
 
 const managedOverlayFor = (
-  paths: ReturnType<typeof makeLandoPaths>,
+  paths: ReturnType<typeof runtimeLayoutPaths>,
   hostEnv: Readonly<Record<string, string | undefined>>,
   privateRuntimeDir?: string,
 ): Readonly<Record<string, string>> =>
@@ -67,9 +67,6 @@ const managedOverlayFor = (
     ...(hostEnv.PATH === undefined ? {} : { hostPath: hostEnv.PATH }),
     ...(privateRuntimeDir === undefined ? {} : { privateRuntimeDir }),
   });
-
-const pathsForRuntimeDir = (runtimeDir: string): ReturnType<typeof makeLandoPaths> =>
-  makeLandoPaths({ userDataRoot: dirname(runtimeDir) });
 
 const spawnEnvForRuntime = (
   runtime: UninstallRuntime,
@@ -116,7 +113,7 @@ const prepareManagedLinuxRuntime = async (
     );
   }
   const hostEnv = seams.hostEnv ?? process.env;
-  const paths = pathsForRuntimeDir(runtime.runtimeDir);
+  const paths = runtimeLayoutPaths(dirname(runtime.runtimeDir));
   return {
     ...runtime,
     env: managedOverlayFor(paths, hostEnv, prepared.success),

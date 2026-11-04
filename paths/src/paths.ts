@@ -109,6 +109,34 @@ export const managedFileLedgerPath = (
 export const globalAppRootPath = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
   joinFor(platform)(userDataRoot, "global");
 
+type RuntimeLayoutPaths = Pick<
+  LandoPaths,
+  | "runtimeDir"
+  | "runtimeBinDir"
+  | "runtimeRunDir"
+  | "runtimeStorageDir"
+  | "runtimeConfigDir"
+  | "providerSocketPath"
+  | "providerPidPath"
+>;
+
+/** Runtime layout under one data root, for callers that know only `userDataRoot`. */
+export const runtimeLayoutPaths = (
+  userDataRoot: string,
+  platform = normalizeHostPlatform(),
+): RuntimeLayoutPaths => {
+  const j = joinFor(platform);
+  return {
+    runtimeDir: j(userDataRoot, "runtime"),
+    runtimeBinDir: j(userDataRoot, "runtime", "bin"),
+    runtimeRunDir: j(userDataRoot, "runtime", "run"),
+    runtimeStorageDir: j(userDataRoot, "runtime", "storage"),
+    runtimeConfigDir: j(userDataRoot, "runtime", "config"),
+    providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
+    providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
+  };
+};
+
 export const UPDATE_HANDOFF_NAMESPACE = "update-handoff";
 
 /** Durable deferred update receipts, discoverable before loading the runtime. */
@@ -162,18 +190,12 @@ export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatfor
     installRecordFile: j(userDataRoot, "install", "record.json"),
     keysDir: j(userDataRoot, "keys"),
     certsDir: j(userDataRoot, "certs"),
-    runtimeDir: j(userDataRoot, "runtime"),
-    runtimeBinDir: j(userDataRoot, "runtime", "bin"),
-    runtimeRunDir: j(userDataRoot, "runtime", "run"),
-    runtimeStorageDir: j(userDataRoot, "runtime", "storage"),
-    runtimeConfigDir: j(userDataRoot, "runtime", "config"),
+    ...runtimeLayoutPaths(userDataRoot, platform),
     hostProxyRunRoot: j(userDataRoot, "run"),
     hostProxyRunDir: (appId: string, appRoot: string) =>
       j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}`),
     agentRelayRunDir: (kind: "ssh" | "gpg", appId: string, appRoot: string) =>
       j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}-${kind}-agent`),
-    providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
-    providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
     globalAppRoot: globalAppRootPath(userDataRoot, platform),
     snapshotsDir: j(userDataRoot, "snapshots"),
     ownerSnapshotsDir: (ownerKey: string) => j(userDataRoot, "snapshots", ownerKey),

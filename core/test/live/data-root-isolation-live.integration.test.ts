@@ -180,6 +180,7 @@ describe.serial("two Lando data roots on one host", () => {
       const app = join(scratch, "app");
       const name = `isolation-${crypto.randomUUID().slice(0, 8)}`;
       const body = `second-root-${crypto.randomUUID()}`;
+      let passed = false;
       try {
         // Given: the first root's router holds its pair and its runtime has a pause process.
         await lando(first, scratch, ["global:start"], { timeout: 300_000 });
@@ -270,12 +271,25 @@ describe.serial("two Lando data roots on one host", () => {
           readFileSync(join(first.data, "global/proxy-traefik/dynamic/.lando-port-acquisition.json"), "utf8"),
         ).toBe(firstAcquisition);
         expect(helperDigests()).toEqual(helperBefore);
+        passed = true;
       } finally {
         if (existsSync(second.data)) {
           await spawnText([binary, "poweroff"], scratch, cliEnv(second), 300_000);
           await spawnText([binary, "uninstall", "--yes", "--purge"], scratch, cliEnv(second), 300_000);
         }
-        await rm(scratch, { recursive: true, force: true });
+        // A failed run can leave storage the purge never reached; keep that run's own error visible.
+        await rm(scratch, { recursive: true, force: true }).catch(async (error: unknown) => {
+          const uid = String(process.getuid?.() ?? 0);
+          const blockers = await spawnText(
+            ["find", scratch, "(", "!", "-uid", uid, "-o", "!", "-perm", "-u+w", ")"],
+            "/",
+            { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+            30_000,
+          );
+          const detail = `Could not remove ${scratch}; entries this user does not own or cannot write:\n${blockers.stdout}`;
+          if (passed) throw new Error(detail, { cause: error });
+          console.error(detail, error);
+        });
       }
     },
     1_800_000,
