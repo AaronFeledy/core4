@@ -77,7 +77,7 @@ lando db:import - --yes < dump.sql
 
 Lando saves stdin to a private temporary file before it touches the database, then imports it exactly like a dump file: gzip and zstd input is detected from its bytes, a recovery snapshot is taken first, and failures report the same errors. Make sure the host temp directory has room for the dump, plus its uncompressed size when the input is compressed. `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
 
-`-` works only from the `lando` CLI in a terminal session. MCP tools and event commands can't use Lando's stdin or stdout for a dump, so they fail with `CommandStdioError`; pass a file path there.
+`-` works only when you run the `lando` CLI yourself. MCP tools and event commands can't use Lando's stdin or stdout for a dump, so they fail with `CommandStdioError`; pass a file path there.
 
 ## Inspect a failed database command
 
