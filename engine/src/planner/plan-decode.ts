@@ -7,7 +7,7 @@ import {
   formatValidationIssueLine,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Predicate, Result, Schema } from "effect";
 import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
 export const encodeServicePlan = (appRoot: string, name: string, plan: ServicePlan) =>
@@ -49,7 +49,22 @@ export const decodeAppPlan = (
   const decoded = Schema.decodeUnknownResult(CurrentExecutableAppPlan)(plan);
   const issues = Result.isSuccess(decoded)
     ? uncoverableHttpsRouteIssues(decoded.success.routes)
-    : validationIssuesFromCause(decoded.failure, { fallback: "Invalid AppPlan." });
+    : validationIssuesFromCause(decoded.failure, { fallback: "Invalid AppPlan." }).map((issue) => {
+        if (
+          issue.path[0] !== "routes" ||
+          typeof issue.path[1] !== "number" ||
+          !Predicate.isObject(plan) ||
+          !Array.isArray(plan.routes)
+        )
+          return issue;
+        const route: unknown = plan.routes[issue.path[1]];
+        if (!Predicate.isObject(route)) return issue;
+        return {
+          ...issue,
+          rule: issue.rule ?? ("landofile.route" as const),
+          message: `Route for service ${String(route.service)} with hostname ${String(route.hostname)}: ${issue.message}`,
+        };
+      });
   if (Result.isSuccess(decoded) && issues.length === 0) return Effect.succeed(decoded.success);
   return Effect.fail(
     new LandofileValidationError({

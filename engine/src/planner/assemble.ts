@@ -72,7 +72,7 @@ import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
-import { resolveKnownEventSet } from "./event-set.ts";
+import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
@@ -93,6 +93,8 @@ export interface PlanAppInput {
   readonly landofile: LoadScopedLandofile;
   readonly providerCapabilities: ProviderCapabilities;
   readonly appRoot: string;
+  readonly mode?: "validate";
+  readonly resolution?: ResolvedLandofile;
 }
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
@@ -129,15 +131,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     topLevelEnvFiles,
     routes: resolvedRoutes,
     endpointProjection,
-  } = yield* resolveKnownEventSet({
-    pluginRegistry,
-    configService,
-    fileSystem,
-    pathsService,
-    landofile: authoredLandofile,
-    capabilities: providerCapabilities,
-    ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
-  });
+  } = yield* resolveKnownEventSet(
+    {
+      pluginRegistry,
+      configService,
+      fileSystem,
+      pathsService,
+      landofile: authoredLandofile,
+      capabilities: providerCapabilities,
+      ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
+    },
+    input.resolution,
+  );
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -184,9 +189,12 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   )
     yield* selectFileSyncEngine;
   const cacheRoot = pathsService?.roots.userCacheRoot ?? resolveUserCacheRoot();
-  const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
+  const sourceFingerprint =
+    input.mode === "validate"
+      ? undefined
+      : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
+          Effect.catch(() => Effect.succeed(undefined)),
+        );
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
 
@@ -248,6 +256,20 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             routes: routes ?? [],
             defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
             resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
+            ...(input.mode === "validate"
+              ? {
+                  validation: {
+                    authorities: manifests.flatMap((manifest) =>
+                      (manifest.contributes?.certificateAuthorities ?? []).map((authority) => ({
+                        ...authority,
+                        pluginName: String(manifest.name),
+                        source: "manifest",
+                      })),
+                    ),
+                    platform: policyOwner.platform,
+                  },
+                }
+              : {}),
             fileSystem,
           })
         : undefined;
@@ -383,7 +405,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       },
     },
   });
-  if (cacheService !== undefined) {
+  if (input.mode !== "validate" && cacheService !== undefined) {
     const cached = yield* readCachedAppPlan({
       cacheRoot,
       appName: appSlug,
@@ -549,6 +571,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);
   if (
+    input.mode !== "validate" &&
     cacheService !== undefined &&
     !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
   ) {

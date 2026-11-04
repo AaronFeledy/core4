@@ -24,10 +24,10 @@ export type ConfigLintRuleDescriptor = typeof ConfigLintRuleDescriptor.Type;
 
 export const CONFIG_LINT_RULES = {
   "landofile.validation": {
-    stages: ["fragment", "effective"],
+    stages: ["fragment", "effective", "planning"],
     severities: ["error"],
     summary:
-      "Unknown keys, wrong literal types, and missing required fields, in each authored file and in the effective configuration.",
+      "Unknown keys, wrong literal types, and missing required fields in authored files, effective configuration, or the final plan; unsupported planning operations.",
     examplePaths: ["services.web.imgae"],
   },
   "landofile.compose-rejection": {
@@ -74,7 +74,7 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation, and HTTPS routes with a wildcard below the leftmost label, which no certificate can cover.",
+      "Route syntax, final generated hostnames, authored HTTP endpoint selection, app and host router provider alignment, and HTTPS routes with a wildcard below the leftmost label, which no certificate can cover.",
     examplePaths: ["services.web.routes[1]", "services.web.routes[0].hostname", "proxy.web[0]"],
   },
   "landofile.network": {
@@ -85,17 +85,17 @@ export const CONFIG_LINT_RULES = {
     examplePaths: ["services.web.networks.backend", "networks.backend.name"],
   },
   "landofile.capability": {
-    stages: ["resolve"],
+    stages: ["resolve", "planning"],
     severities: ["error", "warning"],
     summary:
-      "Compose fields, routes, published ports, bind mounts, builds, storage, native `init`, and agent forwarding the selected provider cannot realize, checked against its offline capability declaration. Missing declarations and an unset `init` on a provider without native init are warnings; other findings are errors.",
+      "Compose fields, routes, published ports, bind mounts, builds, storage ownership, native `init`, agent forwarding, and file-sync selection the selected provider cannot realize, checked against its offline capability declaration and final plan. Missing declarations and an unset `init` on a provider without native init are warnings; other findings are errors.",
     examplePaths: ["services.web.networks.default.aliases", "services.web.ports", "services.web.init"],
   },
   "landofile.healthcheck": {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "An authored healthcheck `kind: http` or `kind: tcp`, which the healthcheck runner does not support.",
+      "An authored healthcheck `kind: http` or `kind: tcp`, or a final healthcheck execution target, which the healthcheck runner does not support.",
     examplePaths: ["services.web.healthcheck.kind"],
   },
   "landofile.readiness": {

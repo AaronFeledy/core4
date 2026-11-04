@@ -9,7 +9,7 @@
  */
 import { resolve } from "node:path";
 
-import { type Context, Effect, Schema } from "effect";
+import { type Context, Effect, Result, Schema } from "effect";
 
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@lando/sdk/errors";
 import {
   CertificateName,
+  type HostPlatform,
   type ServiceConfig,
   certificateNameForHostname,
   validationIssue,
@@ -27,6 +28,10 @@ import {
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
+import {
+  type CertificateAuthorityCandidateDefinition,
+  selectCertificateAuthorityCandidate,
+} from "../plugins/certificate-authority-resolver.ts";
 
 export const CERTS_FEATURE_ID = "lando.certs" as const;
 
@@ -56,6 +61,10 @@ interface ResolveCertsFeatureInput {
       >
     | undefined;
   readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
+  readonly validation?: {
+    readonly authorities: readonly CertificateAuthorityCandidateDefinition[];
+    readonly platform: HostPlatform;
+  };
 }
 
 const validationError = (
@@ -161,6 +170,19 @@ const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
   input: ResolveCertsFeatureInput,
 ): Effect.fn.Return<CertsFeatureConfig, LandofileValidationError> {
   yield* requireMandatoryCertificateIdentities(input);
+  const cn = internalAlias(input.serviceName, input.appName);
+  const sans = certificateSans(input);
+  if (input.validation !== undefined) {
+    const selected = selectCertificateAuthorityCandidate(
+      input.validation.authorities,
+      input.validation.platform,
+    );
+    if (Result.isFailure(selected))
+      return yield* Effect.fail(
+        validationError(input, `${selected.failure.message} ${selected.failure.remediation}`),
+      );
+    return { cn, sans, caId: selected.success.id };
+  }
   const resolveAuthority = input.resolveCertificateAuthority;
   if (resolveAuthority === undefined) {
     return yield* Effect.fail(
@@ -175,8 +197,6 @@ const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
       ),
     ),
   );
-  const cn = internalAlias(input.serviceName, input.appName);
-  const sans = certificateSans(input);
   const issued = yield* ca
     .issueCert({ cn, sans })
     .pipe(
