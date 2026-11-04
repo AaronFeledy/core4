@@ -331,7 +331,7 @@ lando app:config:lint
 
 Container commands are different. They run through the service's own `sh -c`, so `${NAME}` works there, and you write it as `$${NAME}` in a Landofile so Lando passes it through. See [Landofile expressions](../landofile/expressions.mdx#keep-var-and--as-text).
 
-A few differences depend on values or files, so Lando can't see them in the command. Bun Shell keeps a variable's value as one argument instead of splitting it at spaces and doesn't expand patterns inside it, expands `*` patterns you write but leaves `?` and `[...]` as written, and its `echo` prints backslashes as written and treats `-e` as an option. Like bash, it expands `{a,b}`. Quote your variables, match files with `*`, and use `printf` when you need escapes.
+A few differences depend on values or files, so Lando can't see them in the command. Bun Shell keeps a variable's value as one argument instead of splitting it at spaces and doesn't expand patterns inside it, expands `*` patterns you write but leaves `?` and `[...]` as written, and its `echo` prints backslashes as written and treats `-e` as an option. A `*` matches the same files `sh` would, but Bun Shell lists them in directory order instead of sorting them. Like bash, it expands `{a,b}`. Quote your variables, match files with `*`, name the files in order when order matters, such as migrations you pipe to a database, and use `printf` when you need escapes.
 
 #### Run sh or bash when you need them
 

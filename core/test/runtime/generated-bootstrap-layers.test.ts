@@ -102,7 +102,7 @@ describe("generated bootstrap layers", () => {
     const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
 
     expect(provider).toContain("ProviderUrlScanner.layer");
-    expect(provider).toContain("Layer.provide(Layer.mergeAll(providerRegistryLayer, pluginsRuntimeLayer))");
+    expect(provider).toContain("Layer.provide(Layer.mergeAll(providerRegistryLayer, commandsRuntimeLayer))");
     expect(provider).toContain("urlScannerLayer");
   });
 

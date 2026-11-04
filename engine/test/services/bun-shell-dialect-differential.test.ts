@@ -62,7 +62,6 @@ const POSIX_CASES = [
   ["merge stderr", "/bin/sh -c 'printf warning 1>&2' 2>&1"],
   ["stderr file", "printf hello 2> out; cat out"],
   ["stdin redirect", "cat < input.txt"],
-  ["star glob", "printf '%s\\n' *.txt"],
   ["quoted glob", "printf '%s\\n' '*.txt'"],
   ["cd", "cd sub && cat nested.txt"],
   ["cd home", "cd sub; cd; cat input.txt"],
@@ -203,6 +202,13 @@ describe.skipIf(!hasSh)("Bun Shell differential against accepted POSIX sh forms"
       const { bun, reference } = await compare(source, bash);
       expect(bun).toEqual(reference);
     });
+  });
+
+  test("star glob matches the same names as sh but in directory order", async () => {
+    const { bun, reference } = await compare("printf '%s\\n' *.txt");
+    const names = (stdout: Buffer) => stdout.toString().split("\n").filter((line) => line !== "");
+    expect(bun.exitCode).toBe(reference.exitCode);
+    expect(names(bun.stdout).toSorted()).toEqual(names(reference.stdout));
   });
 
   for (const [label, cases, enabled] of [
