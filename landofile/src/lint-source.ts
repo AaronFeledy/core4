@@ -1,10 +1,15 @@
-import type { ConfigLintViolation, LandofileShape, ValidationIssue } from "@lando/sdk/schema";
+import type {
+  ConfigLintRuleId,
+  ConfigLintViolation,
+  LandofileShape,
+  ValidationIssue,
+} from "@lando/sdk/schema";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import { getLandofileValueSource } from "./validation.ts";
 
 export const attributeEffectiveLintIssue = (
   landofile: LandofileShape,
-  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
+  issue: ValidationIssue & { readonly rule: ConfigLintRuleId; readonly severity?: "error" | "warning" },
 ): ConfigLintViolation => {
   const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
   return attributeLintIssue(

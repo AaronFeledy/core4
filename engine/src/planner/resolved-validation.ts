@@ -1,6 +1,7 @@
 import { type NormalizedRoute, normalizeRoute } from "@lando/landofile/route-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import {
+  type ConfigLintRuleId,
   DomainName,
   LANDO_SHARED_CROSS_APP_NETWORK,
   type LandofileShape,
@@ -17,7 +18,7 @@ import { hostReadinessShellIssues } from "./host-shell-issues.ts";
 import { deferredSiteKey } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
 
-export type PlannerIssue = ValidationIssue & { readonly rule: string };
+export type PlannerIssue = ValidationIssue & { readonly rule: ConfigLintRuleId };
 
 export const attributePlannerIssue = (landofile: LandofileShape, issue: PlannerIssue): PlannerIssue => {
   const source = getLandofileValueSource(landofile, issue.path);

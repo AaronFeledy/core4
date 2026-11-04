@@ -74,6 +74,7 @@ export { parseShortVolume } from "./compose-volumes.ts";
 export type { ComposeVolumeEntry } from "./compose-volumes.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
+export * from "./config-lint-rules.ts";
 export * from "./host-events.ts";
 export * from "./editor.ts";
 export * from "./validation-issue.ts";

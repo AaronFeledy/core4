@@ -30,26 +30,7 @@ For example, `tooling.old-build: disabled` is one finding at fragment and effect
 
 Lint reports every independent load failure in one run: broken layers, load expressions, includes, tooling includes, recipe/env expressions, and `lando:` ranges. It skips the failed entries and continues with what loaded, retaining fragment findings from those files. Checks that depend on a failed entry are skipped instead of producing follow-on errors. Effective configuration and service checks run only after the entire load stage succeeds.
 
-| Rule | What it checks | Example path |
-| --- | --- | --- |
-| `landofile.validation` | Unknown keys, wrong literal types, missing required fields | `services.web.imgae` |
-| `landofile.compose-rejection` | Compose keys Lando rejects, including network attachment fields other than `aliases` | `services.web.deploy.replicas`, `services.web.networks.backend.ipv4_address` |
-| `landofile.expression` | Unresolvable `{{ }}` sites, type mismatches after evaluation | `tooling.t.cmd` |
-| `landofile.service` | Service-type configuration: native port vars, reserved ports, unsupported versions, storage scopes, duplicate log source ids, `appMount`, `webroot` on a type without support | `services.db.environment.PGPORT` |
-| `landofile.hostname` | Each `services.<name>.hostnames:` entry is a plain DNS name after evaluation | `services.web.hostnames[0]` |
-| `landofile.dns-name` | No two services claim the same name on one network, ignoring case, no two services would share a container name, and no authored name takes Lando's container-name shape `lando-<app>--<service>` | `services.api.hostnames[0]` |
-| `landofile.route` | Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation | `services.web.routes[1]`, `proxy.web[0]` |
-| `landofile.network` | Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, valid keys | `services.web.networks.backend`, `networks.backend.name` |
-| `landofile.capability` | Compose fields, routes, published ports, bind mounts, builds, storage, native `init`, and agent forwarding the selected provider can't realize, checked against its offline capability declaration; one warning when that declaration is missing. An authored `init: true` on a provider without native init is an error; a service that leaves `init` unset on such a provider gets a warning instead, because lint checks authored intent only and `lando start` validates the effective value | `services.web.networks.default.aliases`, `services.web.ports`, `services.web.init` |
-| `landofile.healthcheck` | Authored `kind: http` or `kind: tcp` | `services.web.healthcheck.kind` |
-| `router.bind-address-global-only` | A Landofile `router.bindAddress` does not bind the shared router | `router.bindAddress` |
-| `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
-| `landofile.host-shell` | A `:host` tooling or event command, or a host readiness command, uses a form [Bun Shell](../tooling/bun-shell-scripts.mdx#write-host-commands-in-bun-shell-syntax) can't run, such as `${NAME}`, `$?`, `>&2`, or `>out 2>&1`. The message gives the column and the Bun Shell form to write instead | `tooling.deploy.cmd`, `events.pre-start[0].cmd`, `services.web.readiness.command` |
-| `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
-| `landofile.load` | Layer parse errors, failed load or recipe/env expressions, `${secret:...}` references outside a binding site, invalid include conditions, include and tooling include failures, lock mismatches, and invalid `lando:` ranges; `reason` names the cause | `includes[1].when`, `toolingIncludes.docs`, `lando` |
-| `env-file.read` | A declared env file is missing or cannot be read | `env_file[0]`, `services.web.envFile[0]` |
-| `env-file.syntax` | Invalid env-file entries, including a bare name without `=` or unmatched quotes | `env_file[0]`, `services.web.envFile[0]` |
-| `env-file.literal` | A warning when double-quoted escapes change a value, or an unquoted or double-quoted value contains `${` | `env_file[0]`, `services.web.envFile[0]` |
+Every finding carries a stable `rule` id. The full list of registered ids, the stages that emit them, their severities, and example paths lives in the [config lint rule reference](../../reference/config-lint-rules.mdx). Use that page when you need the complete inventory or a deep link such as [`landofile.hostname`](../../reference/config-lint-rules.mdx#landofile-hostname) or [`env-file.read`](../../reference/config-lint-rules.mdx#env-file-read).
 
 A service-type finding is reported at the field that is wrong, with the remediation in `suggestion`. A postgres service with `environment.PGPORT: "5433"` gets `PGPORT is 5433, but the service listens on 5432.` at `["services", "db", "environment", "PGPORT"]` and the suggestion `Set port: 5433 instead; Lando sets PGPORT from port:.` When a service's type fails to resolve, lint still reports every other service. Services that read its `creds.*` are skipped until you fix it, so you don't get a cascade of follow-on errors.
 
@@ -146,15 +127,15 @@ A rejected Compose key keeps its full authored path, for example `["services", "
 
 ## Fix healthcheck warnings
 
-`healthcheck.bare-compose-marker` means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
+[`healthcheck.bare-compose-marker`](../../reference/config-lint-rules.mdx#healthcheck-bare-compose-marker) means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
 
-`healthcheck.mixed-dialects` means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
+[`healthcheck.mixed-dialects`](../../reference/config-lint-rules.mdx#healthcheck-mixed-dialects) means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
 
-The same checks apply independently to `readiness`, using `readiness.bare-compose-marker` and `readiness.mixed-dialects`. Native `healthcheck` cannot select a host target or an explicit probe user; move that command to `readiness` instead of changing monitoring through execution metadata. Use `lando app:cache:refresh --format=json` to validate the effective plan without starting services. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults and disabling either policy.
+The same checks apply independently to `readiness`, using [`readiness.bare-compose-marker`](../../reference/config-lint-rules.mdx#readiness-bare-compose-marker) and [`readiness.mixed-dialects`](../../reference/config-lint-rules.mdx#readiness-mixed-dialects). Native `healthcheck` cannot select a host target or an explicit probe user; move that command to `readiness` instead of changing monitoring through execution metadata. Use `lando app:cache:refresh --format=json` to validate the effective plan without starting services. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults and disabling either policy.
 
 ## Fix a Landofile router bind
 
-`router.bind-address-global-only` means the Landofile set `router.bindAddress`. That key is installation-wide: set it in `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`, then run `lando start`. The Landofile value is ignored so one app cannot widen the shared listener. The Landofile stays valid.
+[`router.bind-address-global-only`](../../reference/config-lint-rules.mdx#router-bind-address-global-only) means the Landofile set `router.bindAddress`. That key is installation-wide: set it in `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`, then run `lando start`. The Landofile value is ignored so one app cannot widen the shared listener. The Landofile stays valid.
 
 ## Read unknown event names
 

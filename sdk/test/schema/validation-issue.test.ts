@@ -27,7 +27,7 @@ describe("validation issues", () => {
       rule: "landofile.event",
       path: ["events", "pre-buidl"],
       message: "Unknown app event pre-buidl.",
-    };
+    } satisfies ValidationIssue;
     const error = new LandofileValidationError({
       file: ".lando.yml",
       message: "Invalid events.",

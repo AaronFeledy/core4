@@ -1,5 +1,119 @@
 [
   {
+    "surface": "command:app:config:lint",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows config diagnostic rule strings to the 28 registered ConfigLintRuleId literals, preserving every existing producer id and publishing each rule's description. Unknown ids are rejected at decode; reasons remain open strings. Focused SDK and lint tests cover the contract."
+  },
+  {
+    "surface": "command:app:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "unsupported-construct",
+    "path": "$.failures.items.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally restricts additional validation diagnostic rule ids to ConfigLintRuleId. Plugins must use a registered id or omit rule; all existing producer ids remain unchanged."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "unsupported-construct",
+    "path": "$.failures.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally restricts validation diagnostic rule ids to ConfigLintRuleId. Plugins must use a registered id or omit rule; all existing producer ids remain unchanged."
+  },
+  {
+    "surface": "command:app:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.appConfig.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows doctor config lint rule ids to the shared ConfigLintRuleId registry, retaining all 28 producer ids and their existing severities. Focused doctor rendering and schema tests cover the narrowed contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.globalConfig.error.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows global config diagnostic rule ids to ConfigLintRuleId. Registered host-shell and unsupported-expression ids are preserved; plugins must use a registered id or omit rule."
+  },
+  {
+    "surface": "command:meta:global:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:meta:global:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows additional validation diagnostic rule ids to ConfigLintRuleId. Unknown rule ids are rejected at decode and the diagnostic projection retains the structured failure without invalid issues."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows validation diagnostic rule ids to ConfigLintRuleId. Unknown rule ids are rejected at decode and the bug-report regression proves the structured failure survives without invalid issues."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 replaces arbitrary lint rule strings with the 28 annotated ConfigLintRuleId literals from one authored registry. All existing producer ids remain unchanged and focused schema and lint tests cover acceptance and rejection."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.rule.anyOf",
+    "justification": "Pre-release #1648 replaces arbitrary lint rule strings with the 28 annotated ConfigLintRuleId literals from one authored registry. The SDK regression rejects unknown ids and checks that published per-rule descriptions match registry summaries."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:DestroyOutcome",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows nested shutdown inspection diagnostic rule ids to ConfigLintRuleId. The destroyed and no-op branches remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:FileSyncQuiesceResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:ObservedServiceRemoval",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows nested shutdown inspection diagnostic rule ids to ConfigLintRuleId. The removed and absent branches remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:ServiceShutdownObservation",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids in the inspect-failed branch's TaggedErrorJson ValidationIssue values to ConfigLintRuleId. Shutdown observations and their discriminators remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:StopAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
     "surface": "schema:ServiceFeatureValidationResult",
     "changeKind": "enum-widened",
     "path": "$.handledServiceFields.items",

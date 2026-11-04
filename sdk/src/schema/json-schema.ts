@@ -193,6 +193,7 @@ import {
   ServiceScopedLandofile,
   SourceCompiledLandofile,
 } from "./compiled-landofile.ts";
+import { ConfigLintRuleDescriptor, ConfigLintRuleId } from "./config-lint-rules.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -294,7 +295,7 @@ import {
   LifecycleCommandId,
 } from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
-import { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { CertificateName, DomainName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
   repairLandofileExtensions,
@@ -368,6 +369,7 @@ import {
   AppRef,
   AuthoredNetworkPlan,
   CertificatePlan,
+  CertificateSpec,
   CheckResult,
   DependencyPlan,
   EndpointPlan,
@@ -699,6 +701,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteHostname,
   RoutePathPrefix,
   DomainName,
+  HostAliasName,
+  CertificateName,
   InternalEndpoint,
   PublishedEndpoint,
   EndpointPlan,
@@ -723,6 +727,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
+  CertificateSpec,
   ListenerAuthority,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -781,6 +786,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostEvents,
   LifecycleCommandId,
   ConfigLintViolation,
+  ConfigLintRuleDescriptor,
+  ConfigLintRuleId,
   ConfigLintResult,
   DownloadRequest,
   DownloadResult,
