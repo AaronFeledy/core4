@@ -12,7 +12,7 @@ export class AppPlacementError extends Schema.TaggedError<AppPlacementError>()("
     }),
   ),
   message: Schema.String.annotate({ description: "Human-readable placement mismatch." }),
-  remediation: Schema.String.annotate({
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
     description: "Commands to retire or retain the existing realization.",
   }),
 }) {}
@@ -41,7 +41,7 @@ export class AppLockTimeoutError extends Schema.TaggedError<AppLockTimeoutError>
   message: Schema.String,
   app: Schema.String,
   timeoutMs: Schema.Number,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -50,6 +50,6 @@ export class AppResolveError extends Schema.TaggedError<AppResolveError>()("AppR
   reason: Schema.Literals(["ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"]),
   /** The selector field(s) involved in the failure, for diagnostics. */
   detail: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

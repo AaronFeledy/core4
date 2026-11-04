@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as LandoEventService from "@lando/engine/services/event-service";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -14,17 +10,10 @@ import { EventService } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 const frames = [
-  { _tag: "stdout", chunk: "ready", service: "web" },
-  { _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
+  { kind: "record", _tag: "stdout", chunk: "ready", service: "web" },
+  { kind: "record", _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
 ] satisfies readonly StreamFrameSinkFrame[];
-const redaction = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
-  }),
-);
+const redaction = RedactionService.layer;
 
 describe("renderer finite stream completion", () => {
   for (const bodies of [[], ["queued-one", "queued-two"]]) {
@@ -85,12 +74,11 @@ describe("renderer finite stream completion", () => {
         Effect.gen(function* () {
           const sink = yield* StreamFrameSink;
           yield* Stream.runForEach(stream, sink.emit);
-          if (sink.flush !== undefined) yield* sink.flush();
         }).pipe(Effect.provide(layer)),
       );
 
       expect(finalized).toBe(1);
-      expect(io.stderr()).toBe("");
+      expect(io.stderr()).toBe(format === "text" ? "web stderr [error-log]: warning\n" : "");
       if (format === "json") {
         expect(
           io
@@ -99,13 +87,11 @@ describe("renderer finite stream completion", () => {
             .split("\n")
             .map((line) => JSON.parse(line)),
         ).toEqual([
-          { _tag: "stdout", chunk: "ready", service: "web" },
-          { _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
+          { _tag: "stdout", chunk: "ready\n", service: "web" },
+          { _tag: "stderr", chunk: "warning\n", service: "web", source: "error-log" },
         ]);
       } else {
-        expect(io.stdout()).toBe(
-          format === "yaml" ? "" : "web stdout: ready\nweb stderr [error-log]: warning\n",
-        );
+        expect(io.stdout()).toBe(format === "yaml" ? "" : "web stdout: ready\n");
       }
     });
   }

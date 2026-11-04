@@ -1,7 +1,15 @@
 import { Effect, type Scope } from "effect";
 
 import { type ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type AppRef,
+  type HostPlatform,
+  type ProviderCapabilities,
+  type ServicePlan,
+  duplicateMountTarget,
+  orderMounts,
+} from "@lando/sdk/schema";
 import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 
@@ -9,10 +17,15 @@ import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveContainerHelper } from "../composition.ts";
+import {
+  HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_MOUNT_TARGETS,
+} from "../subsystems/host-proxy/transport-feature.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
   hostProxyRunLandoFeature,
+  isHostProxyRunLandoEnvName,
 } from "../subsystems/host-proxy/transport.ts";
 import {
   hostProxyEligibleServices,
@@ -61,13 +74,19 @@ const hostProxyShimTargetFor = (
   return Effect.succeed(target);
 };
 
-export const withHostProxyRunLando = (plan: AppPlan, session: HostProxyRunLandoSession): AppPlan => {
+export const withHostProxyRunLando = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  session: HostProxyRunLandoSession,
+): Effect.fn.Return<AppPlan, HostProxyTransportUnavailableError> {
   const feature = hostProxyRunLandoFeature(session);
-  const services = Object.fromEntries(
+  const services: AppPlan["services"] = Object.fromEntries(
     Object.values(plan.services).map((service) => {
       if (!serviceHasHostProxyFeature(service)) return [service.name, service];
-      const environment = Object.entries(service.environment);
+      const environment = Object.entries(service.environment).filter(
+        ([name]) => !isHostProxyRunLandoEnvName(name),
+      );
       const mounts: Array<ServicePlan["mounts"][number]> = [...service.mounts];
+      const extensions = { ...service.extensions };
       feature.apply({
         addEnv: (name, value) => {
           environment.push([name, value]);
@@ -75,12 +94,29 @@ export const withHostProxyRunLando = (plan: AppPlan, session: HostProxyRunLandoS
         addMount: (mount) => {
           mounts.push(mount);
         },
+        addExtension: (name, value) => {
+          extensions[name] = value;
+        },
       });
-      return [service.name, { ...service, environment: Object.fromEntries(environment), mounts }];
+      return [
+        service.name,
+        { ...service, environment: Object.fromEntries(environment), mounts: orderMounts(mounts), extensions },
+      ];
     }),
   );
+  for (const service of Object.values(services)) {
+    const duplicate = duplicateMountTarget(service.mounts);
+    if (duplicate !== undefined)
+      return yield* Effect.fail(
+        new HostProxyTransportUnavailableError({
+          message: `Host-proxy mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+          socketPath: duplicate,
+          remediation: "Remove the conflicting mount or disable the host-proxy feature for this service.",
+        }),
+      );
+  }
   return { ...plan, services };
-};
+});
 
 const validateHostProxyTransportCapability = (
   platform: HostPlatform,
@@ -98,11 +134,46 @@ const validateHostProxyTransportCapability = (
   );
 };
 
+export const validateHostProxyOverlay = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  capabilities: ProviderCapabilities,
+  platform: HostPlatform,
+) {
+  if (
+    capabilities.hostReachability === "none" ||
+    hostProxyEligibleServices(plan).length === 0 ||
+    (capabilities.hostProxy?.containerTargets.length ?? 0) === 0
+  )
+    return;
+  yield* hostProxyShimTargetFor(capabilities);
+  yield* validateHostProxyTransportCapability(platform, capabilities);
+  for (const service of Object.values(plan.services)) {
+    const duplicate =
+      duplicateMountTarget(orderMounts(service.mounts)) ??
+      (serviceHasHostProxyFeature(service)
+        ? service.mounts.find(
+            (mount) =>
+              HOST_PROXY_MOUNT_TARGETS.has(mount.target) &&
+              (platform !== "win32" || mount.target !== HOST_PROXY_CONTAINER_SOCKET),
+          )?.target
+        : undefined);
+    if (duplicate !== undefined)
+      return yield* Effect.fail(
+        new HostProxyTransportUnavailableError({
+          message: `Host-proxy mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+          socketPath: duplicate,
+          remediation: "Remove the conflicting mount or disable the host-proxy feature for this service.",
+        }),
+      );
+  }
+});
+
 export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
   options: RootOverrides & {
+    readonly transportPlatform?: HostPlatform;
     readonly workerPlan?: AppPlan;
     readonly reusePolicy?: "exact" | "adopt";
     readonly managed?: { readonly scope: Scope.Scope };
@@ -115,7 +186,10 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   const shimTarget = yield* hostProxyShimTargetFor(capabilities);
   const landoPaths = makeLandoPaths(options);
   const platform = landoPaths.platform;
-  const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
+  const hostGatewayName = yield* validateHostProxyTransportCapability(
+    options.transportPlatform ?? platform,
+    capabilities,
+  );
   const events = yield* EventService;
   const privateFileAccess = yield* PrivateFileAccessService;
   return yield* runWithTaskTree(
@@ -185,10 +259,11 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
   const paths = yield* PathsService;
   const session = yield* startHostProxyRunLandoSession(plan, app, capabilities, {
     ...paths.roots,
-    platform: options.platform ?? paths.platform,
+    platform: paths.platform,
+    transportPlatform: options.platform ?? paths.platform,
     workerPlan: options.workerPlan ?? plan,
     reusePolicy: options.reusePolicy ?? "exact",
     ...(options.managed === undefined ? {} : { managed: options.managed }),
   });
-  return yield* options.use(session === undefined ? plan : withHostProxyRunLando(plan, session));
+  return yield* options.use(session === undefined ? plan : yield* withHostProxyRunLando(plan, session));
 });

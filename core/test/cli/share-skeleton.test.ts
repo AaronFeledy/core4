@@ -168,7 +168,7 @@ describe("share command skeleton", () => {
           .pipe(Effect.provide(layer), Effect.scoped),
       )) as TunnelSession;
       const paths = makeLandoPaths();
-      expect(await exists(paths.tunnelRegistryFile)).toBe(true);
+      expect(await exists(join(paths.roots.userDataRoot, "tunnels", "registry.bin"))).toBe(true);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.json`))).toBe(true);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.pid`))).toBe(true);
       const otherSession = await Effect.runPromise(
@@ -188,9 +188,10 @@ describe("share command skeleton", () => {
       expect(session.detached).toBe(true);
       expect(listed.map((entry) => entry.id)).toContain(session.id);
       expect(listed.map((entry) => entry.id)).not.toContain(otherSession.id);
-      expect(stopped).toMatchObject({ sessionId: session.id, status: "stopped" });
+      expect(stopped).toMatchObject({ sessionId: session.id });
+      expect(stopped).not.toHaveProperty("status");
       expect(detached.map((entry) => entry.operation)).toEqual(expect.arrayContaining(["record", "remove"]));
-      expect(await exists(paths.tunnelRegistryFile)).toBe(true);
+      expect(await exists(join(paths.roots.userDataRoot, "tunnels", "registry.bin"))).toBe(true);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.json`))).toBe(false);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.pid`))).toBe(false);
     });
@@ -239,7 +240,8 @@ describe("share command skeleton", () => {
 
       expect(result.session.status).toBe("ready");
       expect(result.listed.map((entry) => entry.id)).toContain(result.session.id);
-      expect(result.stopped).toMatchObject({ sessionId: result.session.id, status: "stopped" });
+      expect(result.stopped).toMatchObject({ sessionId: result.session.id });
+      expect(result.stopped).not.toHaveProperty("status");
     });
   });
 

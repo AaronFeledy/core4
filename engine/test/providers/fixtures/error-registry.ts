@@ -30,7 +30,6 @@ export const plan = Schema.decodeUnknownSync(AppPlan)({
   provider: "test",
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -48,7 +47,7 @@ export const errorFields = {
 
 interface RegistryOptions {
   readonly contribution?: Partial<RuntimeProviderContribution>;
-  readonly redaction?: RedactionServiceShape | null;
+  readonly redaction?: RedactionServiceShape;
 }
 
 export const registryLayer = (provider: RuntimeProviderShape, options: RegistryOptions = {}) => {
@@ -78,7 +77,13 @@ export const registryLayer = (provider: RuntimeProviderShape, options: RegistryO
   ];
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: id });
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const dependencies = Layer.mergeAll(
     Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
     Layer.succeed(PluginRegistry, {
@@ -102,21 +107,9 @@ export const registryLayer = (provider: RuntimeProviderShape, options: RegistryO
       HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null)))),
     ),
   );
-  const redaction =
-    options.redaction === null
-      ? Layer.empty
-      : Layer.succeed(
-          RedactionService,
-          options.redaction ??
-            makeRedactionService({
-              id: "empty",
-              list: Effect.succeed([]),
-              get: () => Effect.die("unused secret store"),
-              has: () => Effect.succeed(false),
-            }),
-        );
+  const redaction = Layer.succeed(RedactionService, options.redaction ?? makeRedactionService());
   return makeRuntimeProviderRegistry(modules, {
     enforce: async () => undefined,
     verify: async () => undefined,
-  }).pipe(Layer.provide(Layer.merge(dependencies, redaction)));
+  }).pipe(Layer.provide(dependencies), Layer.provideMerge(redaction));
 };

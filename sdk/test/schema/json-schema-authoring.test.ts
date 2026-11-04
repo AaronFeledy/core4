@@ -9,16 +9,24 @@ import { Schema } from "effect";
 
 describe("authoring JSON Schema publication", () => {
   test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    "preserves non-JSON runtime numbers in maps: %s",
+    "preserves non-JSON runtime numbers in non-environment maps: %s",
     (value) => {
       // Given values accepted by the runtime number schema but not representable as JSON numbers.
-      const input = { sysctls: { key: value }, environment: { KEY: value }, labels: { key: value } };
+      const input = { sysctls: { key: value }, labels: { key: value } };
       // When decoded through the runtime service contract.
       const decoded = Schema.decodeUnknownSync(ServiceConfig)(input);
       // Then JSON-only projection constraints do not narrow runtime acceptance.
       expect(decoded.sysctls?.key).toBe(value);
-      expect(decoded.environment?.KEY).toBe(String(value));
       expect(decoded.labels?.key).toBe(String(value));
+    },
+  );
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite environment scalars: %s",
+    (value) => {
+      // Given a numeric environment value outside the finite scalar contract.
+      const input = { environment: { KEY: value } };
+      // When / Then: the runtime boundary refuses it instead of stringifying it.
+      expect(() => Schema.decodeUnknownSync(ServiceConfig)(input)).toThrow("Expected a finite number");
     },
   );
   test.each([
@@ -38,7 +46,9 @@ describe("authoring JSON Schema publication", () => {
     const decode = () => Schema.decodeUnknownSync(ServiceConfig)({ [field]: value });
     // Then the existing reserved-key remediation remains intact.
     expect(decode).toThrow(
-      'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
+      field === "environment"
+        ? 'The key "__proto__" is reserved and cannot be used in an environment map.'
+        : 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
     );
   });
 
@@ -64,7 +74,15 @@ describe("authoring JSON Schema publication", () => {
   });
   test.each([
     ["sysctls", [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }]],
-    ["environment", [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }]],
+    [
+      "environment",
+      [
+        { $ref: "#/$defs/EnvironmentValueEncoded" },
+        { type: "number" },
+        { type: "boolean" },
+        { type: "null" },
+      ],
+    ],
     ["labels", [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }]],
     ["extra_hosts", [{ type: "string" }, { type: "array", items: { type: "string" } }]],
   ])("publishes the bounded map branch when projecting %s", (field, values) => {
@@ -80,6 +98,13 @@ describe("authoring JSON Schema publication", () => {
       },
       { type: "array", items: { type: "string" } },
     ]);
+    if (field === "environment") {
+      expect(schema).toHaveProperty("$defs.EnvironmentValueEncoded.anyOf", [
+        { type: "string" },
+        { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
+        { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
+      ]);
+    }
   });
 
   test.each(["AppEnvironmentDefaults", "AppLabelDefaults"] as const)(

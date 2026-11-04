@@ -19,6 +19,7 @@ const EXPECTED_CATALOG_PATHS = [
   "plugins/file-sync-mutagen/mutagen-versions.json",
   "plugins/file-sync-mutagen/docker-cli-versions.json",
   "plugins/service-lando/src/services/php-msmtp-pins.json",
+  "plugins/github-actions/src/pins.json",
   "plugins/service-lando/tomcat/pins.json",
   "plugins/service-lando/tomcat/server-*.xml",
   "recipes/*/.scaffold/*",
@@ -313,9 +314,9 @@ describe("check:codegen-drift package wiring", () => {
     const gatePr = scripts["gate:pr"];
     if (gatePr === undefined) throw new TypeError("package.json is missing gate:pr");
 
-    // When / Then: the chain runs typecheck, lint, codegen:check, boundaries, then guide-drift.
+    // When / Then: the chain runs check:types, typecheck, lint, codegen:check, boundaries, then guide-drift.
     expect(gatePr).toBe(
-      "bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
+      "bun run check:types && bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
     );
   });
 });

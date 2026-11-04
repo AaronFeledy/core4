@@ -3,10 +3,12 @@ import { Effect, Graph, Option, Schema } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, DependencyPlan, HealthcheckPlan } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import { effectiveReadiness } from "@lando/sdk/schema";
 
 const DependencyServicePlan = Schema.Struct({
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optionalKey(HealthcheckPlan),
+  readiness: Schema.optionalKey(HealthcheckPlan),
 });
 
 const DependencyServicePlans = Schema.Record(Schema.String, DependencyServicePlan);
@@ -45,19 +47,16 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
 
       if (
         dependency.condition === "service_healthy" &&
-        (target.healthcheck === undefined || target.healthcheck.kind === "none")
+        (effectiveReadiness(target) === undefined || effectiveReadiness(target)?.kind === "none")
       ) {
+        const remediation = `Configure an enabled command readiness for service ${targetName}, remove readiness: false to inherit its healthcheck, or use condition service_started.`;
+        const message = `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled readiness probe. ${remediation} Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`;
         return yield* Effect.fail(
           new LandofileValidationError({
-            message: `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled healthcheck. Add a healthcheck with kind: command to service ${targetName}, or relax the dependency condition to service_started. Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`,
-            remediation: `Add a command healthcheck to service ${targetName}, or relax the dependency condition to service_started.`,
+            message,
+            remediation,
             file: `${appRoot}/.lando.yml`,
-            issues: [
-              validationIssue(
-                ["services", dependentName, "dependsOn"],
-                `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled healthcheck. Add a healthcheck with kind: command to service ${targetName}, or relax the dependency condition to service_started. Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`,
-              ),
-            ],
+            issues: [validationIssue(["services", dependentName, "dependsOn"], message)],
           }),
         );
       }

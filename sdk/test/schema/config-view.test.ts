@@ -30,6 +30,11 @@ test("public view keeps hostEvents when encoding loaded config", () => {
   expect(encoded.hostEvents).toEqual(hostEvents);
 });
 
+test("public view exposes the configured file-sync engine policy", () => {
+  const loaded = Schema.decodeUnknownSync(GlobalConfig)({ defaultFileSyncEngine: "passthrough" });
+  expect(Schema.encodeSync(GlobalConfigView)(loaded).defaultFileSyncEngine).toBe("passthrough");
+});
+
 test("public view participates in snapshot generation", () => {
   // Given / When
   const names = JSON_SCHEMA_NAMES;

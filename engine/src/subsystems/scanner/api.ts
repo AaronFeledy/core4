@@ -29,10 +29,22 @@ export const layerUnavailable = Layer.succeed(
   UrlScanner.of({
     id: UNAVAILABLE_ID,
     scan: unavailableOperation(
-      () => new ScannerError({ message: SCANNER_UNAVAILABLE_MESSAGE, scannerId: UNAVAILABLE_ID }),
+      () =>
+        new ScannerError({
+          message: SCANNER_UNAVAILABLE_MESSAGE,
+          scannerId: UNAVAILABLE_ID,
+          remediation:
+            "Start the app services and ensure a scanner implementation is installed, then re-run URL checks.",
+        }),
     ),
     detectCollisions: unavailableOperation(
-      () => new ScannerError({ message: SCANNER_UNAVAILABLE_MESSAGE, scannerId: UNAVAILABLE_ID }),
+      () =>
+        new ScannerError({
+          message: SCANNER_UNAVAILABLE_MESSAGE,
+          scannerId: UNAVAILABLE_ID,
+          remediation:
+            "Start the app services and ensure a scanner implementation is installed, then re-run URL checks.",
+        }),
     ),
   }),
 );

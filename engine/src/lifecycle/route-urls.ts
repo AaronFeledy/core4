@@ -1,24 +1,13 @@
-import type { ProxyApplyResult, ProxyAuthority, RoutePlan, ServiceName } from "@lando/sdk/schema";
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
-};
-
-const defaultPortForScheme = (scheme: ProxyAuthority["scheme"]): number => {
-  switch (scheme) {
-    case "http":
-      return 80;
-    case "https":
-      return 443;
-    default:
-      return assertNever(scheme);
-  }
-};
+import type { ProxyAuthority, RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { connectionUrl } from "../operations/connection-url.ts";
 
 const authorityUrl = (authority: ProxyAuthority, pathPrefix?: string): string => {
-  const hostname = authority.hostname.includes(":") ? `[${authority.hostname}]` : authority.hostname;
-  const portSuffix = authority.port === defaultPortForScheme(authority.scheme) ? "" : `:${authority.port}`;
-  return `${authority.scheme}://${hostname}${portSuffix}${pathPrefix ?? ""}`;
+  return connectionUrl({
+    host: authority.hostname,
+    port: authority.port,
+    protocol: authority.scheme,
+    ...(pathPrefix === undefined ? {} : { pathPrefix }),
+  });
 };
 
 const routeAcceptsAuthority = (route: RoutePlan, authority: ProxyAuthority): boolean =>
@@ -40,8 +29,3 @@ export const proxyUrlsByService = (
   }
   return urls;
 };
-
-export const appliedProxyUrlsByService = (
-  result: ProxyApplyResult,
-): ReadonlyMap<ServiceName, ReadonlyArray<string>> =>
-  proxyUrlsByService(result.appliedRoutes, result.authorities);

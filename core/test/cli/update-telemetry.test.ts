@@ -169,6 +169,7 @@ describe("update telemetry", () => {
       message: "network failed at https://example.invalid/home/alice",
       commandId: "meta:update",
       cause: { _tag: "UpdateNetworkError", url: "https://example.invalid/home/alice" },
+      remediation: "Correct the `meta:update` invocation (flags, args, and cwd), then re-run it.",
     });
 
     const exit = await Effect.runPromiseExit(

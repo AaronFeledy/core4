@@ -50,7 +50,7 @@ for (const { serviceType, port, client, config } of cases) {
                   ? [
                       "sh",
                       "-c",
-                      `exec mongosh --host 127.0.0.1 --port ${port} -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --quiet --eval 'print(db.runCommand({ping:1}).ok)'`,
+                      `exec env HOME=/tmp mongosh --host 127.0.0.1 --port ${port} -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --quiet --eval 'print(db.runCommand({ping:1}).ok)'`,
                     ]
                   : [
                       "sh",

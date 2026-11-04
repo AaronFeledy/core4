@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { ConfigExpressionError, LandofileValidationError, ServiceTypeError } from "@lando/sdk/errors";
+import { LandofileShape } from "@lando/sdk/schema";
 import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { emitYamlDocument } from "@lando/sdk/yaml";
 import { Effect, Layer, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { resolveKnownEventSet } from "../../src/planner/event-set.ts";
+import { deferredSiteKey } from "../../src/planner/landofile-scopes.ts";
+import { validateResolvedLandofile } from "../../src/planner/resolved-validation.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
@@ -30,11 +33,13 @@ const serviceType: ServiceType = {
                 suggestion: "Choose another port.",
               },
             ],
+            remediation: "Choose another port.",
           }),
         )
       : Effect.succeed({
           base: "l337",
-          normalizedConfig: { ...service, creds: { user: "valid", password: "secret", database: "test" } },
+          normalizedConfig: { ...service },
+          nonSqlCreds: { user: "valid", password: "secret", database: "test" },
           features: [],
         }),
 };
@@ -97,6 +102,58 @@ const compareIssues = async (root: string, paths: readonly (readonly (string | n
     );
   return { lint };
 };
+
+for (const [yaml, path, count] of [
+  ["services: {web: {type: validation, networks: [ghost]}}", ["services", "web", "networks", "ghost"], 1],
+  ["networks: {default: {}}", ["networks", "default"], 1],
+  ["networks: {peer: {external: true, driver: bridge}}", ["networks", "peer", "driver"], 1],
+  ["networks: {peer: {name: chosen}}", ["networks", "peer", "name"], 1],
+  ["networks: {'bad/key': {}}", ["networks", "bad/key"], 1],
+  ["networks: {peer: {external: true, name: lando_bridge_network}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando-validation}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando-validation_former-owned}}", ["networks", "peer"], 1],
+  [
+    "networks: {lando-validation_former-owned: {external: true}}",
+    ["networks", "lando-validation_former-owned"],
+    1,
+  ],
+  [
+    "networks: {first: {external: true, name: sibling_net}, second: {external: true, name: sibling_net}}\nservices: {web: {type: validation, networks: [first, second]}}",
+    ["networks", "second"],
+    1,
+  ],
+  [
+    "networks: {extra: {}, peer: {external: true, name: lando-validation_extra}}\nservices: {web: {type: validation, networks: [extra, peer]}}",
+    ["networks", "peer"],
+    2,
+  ],
+] as const)
+  test(`lint and planning reject invalid network at ${path.join(".")} (${yaml})`, async () => {
+    await withApp(yaml, async (root) => {
+      const { lint } = await compareIssues(
+        root,
+        Array.from({ length: count }, () => path),
+      );
+      expect(lint.violations[0]).toMatchObject({
+        rule: "landofile.network",
+        path,
+        message: expect.any(String),
+        suggestion: expect.any(String),
+      });
+    });
+  });
+
+test("lint permits service default membership and declared external networks", async () => {
+  await withApp(
+    "networks: {peer: {external: true}}\nservices: {web: {type: validation, networks: [default, peer]}}",
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
+      );
+      expect(lint.valid).toBe(true);
+    },
+  );
+});
 
 test("top-level env file failures aggregate with independent service and route issues", async () => {
   await withApp(
@@ -218,6 +275,63 @@ test("blocked route fields are skipped while sibling fields and static routes st
   );
 });
 
+test("blocked routes preserve later binding indexes while independent failures accumulate", async () => {
+  // Given
+  await withApp(
+    `services:
+  db:
+    type: validation
+    environment: {FAIL: yes}
+  web:
+    type: validation
+    routes:
+      - hostname: static.lndo.site
+proxy:
+  web:
+    - hostname: "{{ services.db.creds.user }}.lndo.site"
+    - proxy.lndo.site
+`,
+    async (root) => {
+      // When / Then
+      await compareIssues(root, [
+        ["services", "db", "port"],
+        ["services", "web", "routes", 0],
+        ["proxy", "web", 1],
+      ]);
+    },
+  );
+});
+
+test("undeclared proxy targets retain indexed findings beside invalid and unavailable services", async () => {
+  // Given
+  await withApp(
+    `services:
+  web:
+    type: validation
+    routes: []
+  unavailable:
+    type: validation
+    environment: {FAIL: yes}
+proxy:
+  typo:
+    - bad_host!
+    - first.lndo.site
+    - second.lndo.site
+  unavailable:
+    - unavailable.lndo.site
+`,
+    async (root) => {
+      // When / Then
+      await compareIssues(root, [
+        ["services", "unavailable", "port"],
+        ["proxy", "typo", 0],
+        ["proxy", "typo", 1],
+        ["proxy", "typo", 2],
+      ]);
+    },
+  );
+});
+
 test("unknown services in top-level tooling remain expression failures", async () => {
   await withApp(
     `services:
@@ -263,6 +377,34 @@ test("all unsupported authored healthcheck kinds are reported together", async (
   );
 });
 
+test.each([{ target: "host" }, { target: "host", command: "true", user: "root" }])(
+  "lint reports unsupported host healthcheck execution",
+  async (healthcheck) => {
+    // Given
+    await withApp(
+      emitYamlDocument({ services: { web: { type: "validation", healthcheck } } }),
+      async (root) => {
+        // When
+        const lint = await Effect.runPromise(
+          appConfigLint({ cwd: root }).pipe(
+            Effect.provide(registryLayer),
+            Effect.provide(BunFileSystem.layer),
+          ),
+        );
+        // Then
+        expect(lint.valid).toBe(false);
+        expect(lint.violations).toContainEqual(
+          expect.objectContaining({
+            rule: "healthcheck.execution-target",
+            path: ["services", "web", "healthcheck"],
+            severity: "error",
+          }),
+        );
+      },
+    );
+  },
+);
+
 test("declared timestamped log sources lint and resolve successfully", async () => {
   await withApp(
     "services:\n  web: {type: validation, logs: [{id: app, path: /tmp/app.log, timestamps: true}]}\n",
@@ -273,6 +415,40 @@ test("declared timestamped log sources lint and resolve successfully", async () 
       expect(resolved.services[0]?.logSources).toContainEqual(
         expect.objectContaining({ id: "app", timestamps: true }),
       );
+    },
+  );
+});
+
+test("a blocked descendant site suppresses checks on its ancestor path", () => {
+  // Given two external networks whose names collide only while one name is still unresolved
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    services: { web: { networks: { a: {}, b: {} } } },
+    networks: { a: { external: true, name: "shared" }, b: { external: true, name: "shared" } },
+  });
+  const validate = (blocked: ReadonlySet<string>) =>
+    validateResolvedLandofile({
+      landofile,
+      landofilePath: "/app/.lando.yml",
+      blocked,
+      appSlug: "app",
+    }).issues.filter((issue) => issue.rule === "landofile.network");
+  // When the second network's name is a blocked deferred site / Then its ancestor check is skipped
+  expect(validate(new Set())).toHaveLength(1);
+  expect(validate(new Set([deferredSiteKey(["networks", "b", "name"])]))).toEqual([]);
+  // And a sibling key that only shares a prefix is not treated as a descendant
+  expect(validate(new Set([deferredSiteKey(["networks", "bb", "name"])]))).toHaveLength(1);
+});
+
+test("authored host readiness string command is scanned for Bun Shell dialect", async () => {
+  await withApp(
+    'services:\n  web:\n    type: validation\n    readiness:\n      target: host\n      command: "test -f $${READY}"\n',
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
+      );
+      expect(lint.valid).toBe(false);
+      const hit = lint.violations.find((v) => v.rule === "landofile.host-shell");
+      expect(hit?.path).toEqual(["services", "web", "readiness", "command"]);
     },
   );
 });

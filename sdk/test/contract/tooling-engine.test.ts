@@ -70,7 +70,6 @@ const baseServicePlan = (name: string, primary = false): ServicePlan => ({
   primary,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -90,7 +89,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -169,6 +167,7 @@ const syntheticEngine: ToolingEngineUnderTest = {
         new ToolingExecError({
           message: `Tooling task ${invocation.tool} has no commands.`,
           tool: invocation.tool,
+          remediation: `Add commands under tooling.${invocation.tool} for the contract fixture.`,
         }),
       );
     }

@@ -489,7 +489,8 @@ const installBytes = (
         ...(input.manifest.artifacts[input.key]?.member === undefined
           ? {}
           : { member: input.manifest.artifacts[input.key]?.member }),
-        remediation: "Retry `lando setup`; if it persists report the artifact URL.",
+        remediation:
+          "Ensure the bin directory is writable and the install path is free of partial files, then re-run setup for this tool.",
         cause,
       }),
   });
@@ -555,7 +556,8 @@ export const provisionTool = Effect.fn("ToolProvisioning.provision")(function* (
       new ToolExtractError({
         message: `Failed to read the verified archive for "${input.key}".`,
         toolId: input.toolId,
-        remediation: "Retry `lando setup`.",
+        remediation:
+          "Confirm the verified download still exists under the tool cache directory, then re-run setup for this tool.",
         cause,
       }),
   }).pipe(Effect.map((buf) => new Uint8Array(buf)));
@@ -629,7 +631,8 @@ export const provisionTool = Effect.fn("ToolProvisioning.provision")(function* (
       new ToolExtractError({
         message: `Failed to record the installed ${input.toolId} version.`,
         toolId: input.toolId,
-        remediation: "Retry `lando setup`.",
+        remediation:
+          "Ensure the bin directory is writable so the version marker can be recorded, then re-run setup for this tool.",
         cause,
       }),
   });

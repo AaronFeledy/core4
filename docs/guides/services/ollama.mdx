@@ -9,7 +9,7 @@ tags: [beta, docs, ollama, llm, compose, service, node]
 
 Run Ollama beside your app, download a small model, and get a response from the command line, the HTTP API, or a Node service. This example uses CPU inference and doesn't need a hosted API key.
 
-You need Lando 4 with a working Linux-container provider. Run `lando doctor`; follow [Pick a container provider](../setup/provider-selection.mdx) if setup is incomplete. The default is `lando` (managed Podman). On an Intel Mac, use Docker Desktop with `lando setup --provider=docker` instead.
+Complete [Lando setup](../setup/provider-selection.mdx) before continuing, then run `lando doctor` to check the runtime. The setup guide covers the Intel Mac prerequisite; other supported hosts can use Lando's managed runtime without Docker.
 
 Before starting:
 
@@ -31,7 +31,6 @@ services:
     type: compose
     image: ollama/ollama:latest
     appMount: false
-    home: false
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
@@ -92,7 +91,7 @@ In a POSIX script without interactive input, append `</dev/null` to `lando ollam
 The Landofile keeps a few responsibilities separate:
 
 - `router.enabled: false` skips shared routing. Host requests use the published port; services use the app network.
-- `appMount: false` keeps your source out of the Ollama container. `home: false` disables Lando's managed home for this custom image; the named volume supplies Ollama's storage instead.
+- `appMount: false` keeps your source out of the Ollama container. Lando plans no home store for this Landofile-supplied image; the named volume supplies Ollama's storage instead.
 - `ollama-models:/root/.ollama` stores downloaded models in the provider's named volume, not your project directory or a native host Ollama installation.
 - The `ollama list` healthcheck checks that the server answers, not that a model can generate text. `lando start` waits for that check, and `service_healthy` holds the dependent `app` service until it succeeds. Model downloads remain a separate step.
 - The `ollama` and `node` tooling commands run inside their named services and append your arguments. The Node service mounts your project at `/app`; `endpoints: []` avoids advertising a web server that this example doesn't run.
@@ -261,4 +260,4 @@ The `ollama-models` volume stays. Starting the same app again on the same provid
 - [Run vector search on Postgres with pgvector](./postgres-pgvector.mdx) for a vector store next to your model
 - [Reach services by name](../subsystems/service-dns.mdx) for service keys and `.internal` names
 - [Turn the router off and tune the post-start URL scanner](./router-and-scanner.mdx) for what `router.enabled` changes
-- [Make start wait for your app](./wait-for-your-app.mdx) for how healthchecks hold `lando start`
+- [Make start wait for your app](./wait-for-your-app.mdx) for separate native health and lifecycle readiness policies

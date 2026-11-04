@@ -3,6 +3,26 @@ import { Result, Schema } from "effect";
 
 import * as errors from "@lando/sdk/errors";
 
+test.each(["socket-not-socket", "socket-owner-mismatch", "env-socket-dangling"] as const)(
+  "SshAgentUnavailableError encodes %s",
+  (reason) => {
+    // Given
+    const fields = {
+      message: "Agent unavailable",
+      mode: "host",
+      reason,
+      socketPath: "/tmp/agent.sock",
+      remediation: "Start the agent.",
+    } as const;
+    // When
+    const encoded = Schema.encodeSync(errors.SshAgentUnavailableError)(
+      new errors.SshAgentUnavailableError(fields),
+    );
+    // Then
+    expect(encoded).toEqual({ ...fields, _tag: "SshAgentUnavailableError" });
+  },
+);
+
 test("SshAgentUnavailableError and GpgAgentUnavailableError encode tag, reason and remediation", () => {
   // Given
   const fields = {
@@ -12,7 +32,12 @@ test("SshAgentUnavailableError and GpgAgentUnavailableError encode tag, reason a
   } as const;
   // When
   const ssh = Schema.encodeSync(errors.SshAgentUnavailableError)(
-    new errors.SshAgentUnavailableError({ ...fields, mode: "host", socketPath: "/tmp/agent.sock" }),
+    new errors.SshAgentUnavailableError({
+      ...fields,
+      mode: "host",
+      socketPath: "/tmp/agent.sock",
+      detail: "Socket connection refused",
+    }),
   );
   const gpg = Schema.encodeSync(errors.GpgAgentUnavailableError)(new errors.GpgAgentUnavailableError(fields));
   // Then
@@ -21,6 +46,7 @@ test("SshAgentUnavailableError and GpgAgentUnavailableError encode tag, reason a
     _tag: "SshAgentUnavailableError",
     mode: "host",
     socketPath: "/tmp/agent.sock",
+    detail: "Socket connection refused",
   });
   expect(gpg).toEqual({ ...fields, _tag: "GpgAgentUnavailableError" });
 });

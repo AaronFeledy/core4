@@ -1,0 +1,29 @@
+name: lando-solr-10
+services:
+  defaults:
+    type: solr:10
+    portforward: true
+    config:
+      dir: '10.x-conf'
+  patch:
+    type: solr:10.0
+    core: solo
+    portforward: true
+    config:
+      dir: '10.x-conf'
+  helper:
+    type: php
+    via: cli
+tooling:
+  post-record-defaults:
+    cmd: "curl http://defaults:8983/solr/lando/update -H 'Content-Type: text/xml' -T '/app/test.xml' -X POST"
+    service: defaults
+  post-record-patch:
+    cmd: "curl http://patch:8983/solr/solo/update -H 'Content-Type: text/xml' -T '/app/test.xml' -X POST"
+    service: patch
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/solr": ./../../
+  "@lando/php": ./../../node_modules/@lando/php

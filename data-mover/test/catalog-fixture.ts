@@ -108,12 +108,14 @@ const catalogFixture = async (root: string) => {
               providerId: String(id),
               message: "Missing fixture provider",
               operation: "select",
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `select`.",
             }),
           ),
   });
   const mover = (selected = recording, storage: StateStoreShape = stateStore, providers = registry) =>
     makeDataMoverService(
-      selected,
+      Effect.succeed(selected),
       { publish: () => Effect.void, redactText: (text) => text },
       { paths, stateStore: storage, providerRegistry: providers },
     );

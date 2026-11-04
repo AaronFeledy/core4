@@ -454,6 +454,14 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         return () => {};
       },
     };
+    // The bus hands subscribers a copy of each published event, never the published object;
+    // the consumer must recognise its own expand/collapse echoes without object identity.
+    const copyingEvents = Layer.effect(
+      EventService,
+      Effect.map(EventService, (events) =>
+        EventService.of({ ...events, publish: (event) => events.publish({ ...event }) }),
+      ),
+    ).pipe(Layer.provide(LandoEventService.layer));
 
     const published = await Effect.runPromise(
       Effect.scoped(
@@ -482,7 +490,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              LandoEventService.layer,
+              copyingEvents,
             ),
           ),
         ),
@@ -491,6 +499,8 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
 
     expect(published.filter((event) => event._tag === "task.detail.collapse")).toHaveLength(1);
     expect(controller.calls.filter((call) => call.kind === "exitFullTail")).toHaveLength(1);
+    expect(transcriptReader.opened).toEqual([transcriptPath]);
+    expect(transcriptReader.closed).toEqual([transcriptPath]);
   });
 
   test("the default transcript reader captures the injected PathsService root", async () => {
@@ -673,14 +683,18 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       const svc = yield* EventService;
       yield* svc.publish(treeStart(["web"]));
       yield* svc.publish(taskStart("web", transcriptPath));
+      yield* svc.publish(taskComplete("web"));
       yield* Effect.sleep("20 millis");
       inject?.("\r");
       yield* Effect.sleep("20 millis");
       inject?.("\x1b");
       yield* Effect.sleep("20 millis");
+      expect(transcriptReader.closed).toEqual([transcriptPath]);
       footerCountAfterCollapse = controller.calls.filter((call) => call.kind === "setFooter").length;
+      const readsAfterCollapse = transcriptReader.reads.length;
       yield* transcriptReader.fireLateChange();
       yield* Effect.sleep("20 millis");
+      expect(transcriptReader.reads).toHaveLength(readsAfterCollapse);
     });
 
     await Effect.runPromise(

@@ -5,18 +5,15 @@ import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
-import { withShellRedactionTokens } from "@lando/engine/services/shell-runner";
+import { type ShellRedactionCarrier, withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import {
-  RedactionService,
-  collectSecretEnvValues,
-  createPayloadValues,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
+import { classifyLoweredEnvRedaction, planRedactionValues } from "@lando/redaction/plan-values";
+import { RedactionService } from "@lando/redaction/service";
 import * as RendererOutput from "@lando/renderer/output";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
 import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
@@ -42,39 +39,6 @@ const silentRenderer = Renderer.of({
   },
 });
 
-const redactorFor = Effect.fnUntraced(function* (tokens: ReadonlyArray<string>) {
-  const service = yield* Effect.serviceOption(RedactionService);
-  return service._tag === "Some"
-    ? yield* service.value.forProfile("secrets", { sourceEnv: process.env, redactionTokens: tokens })
-    : createStandaloneRedactor("secrets", { sourceEnv: process.env, redactionTokens: tokens });
-});
-
-const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
-  Effect.serviceOption(RedactionService).pipe(
-    Effect.map(
-      (service): Context.Service.Shape<typeof RedactionService> =>
-        RedactionService.of({
-          registerValues: (values) =>
-            service._tag === "Some" ? service.value.registerValues(values) : registerRedactionValues(values),
-          payloadValues: (options) => {
-            const scoped = { ...options, redactionTokens: [...(options?.redactionTokens ?? []), ...tokens] };
-            return service._tag === "Some"
-              ? service.value.payloadValues(scoped)
-              : Effect.succeed(createPayloadValues([], scoped));
-          },
-          forProfile: (profile, options) => {
-            const scoped = {
-              ...options,
-              redactionTokens: [...(options?.redactionTokens ?? []), ...tokens],
-            };
-            return service._tag === "Some"
-              ? service.value.forProfile(profile, scoped)
-              : Effect.succeed(createStandaloneRedactor(profile, scoped));
-          },
-        }),
-    ),
-  );
-
 export const makeEventCommandExecutor = (
   runtimeContext: Context.Context<unknown>,
   fixedEntries: ReadonlyArray<BuiltInCommandEntry> = [],
@@ -93,11 +57,12 @@ export const makeEventCommandExecutor = (
       if (target.kind === "built-in" && target.builtIn.status.kind === "embedding-exempt") {
         return yield* Effect.fail(embeddingExemptErrorForCommand(target.builtIn));
       }
-      yield* validateEventCommandInput(target.spec, {
-        flags: resolved.flags,
-        args: resolved.args,
-        raw: resolved.argv,
-      });
+      if (target.kind !== "tooling")
+        yield* validateEventCommandInput(target.spec, {
+          flags: resolved.flags,
+          args: resolved.args,
+          raw: resolved.argv,
+        });
     }),
     run: Effect.fn("EventCommandExecutor.run")(function* (
       this: Context.Service.Shape<typeof EventCommandExecutor>,
@@ -116,23 +81,59 @@ export const makeEventCommandExecutor = (
         if (target.kind === "built-in" && target.builtIn.status.kind === "embedding-exempt") {
           return yield* Effect.fail(embeddingExemptErrorForCommand(target.builtIn));
         }
-        const input = yield* validateEventCommandInput(target.spec, {
-          flags: resolved.flags,
-          args: resolved.args,
-          raw: resolved.argv,
-        });
+        const input =
+          target.kind === "tooling"
+            ? {
+                flags: resolved.flags,
+                args: resolved.args,
+                argv: resolved.argv,
+                parsedArgv: [],
+                interaction: "non-interactive" as const,
+              }
+            : yield* validateEventCommandInput(target.spec, {
+                flags: resolved.flags,
+                args: resolved.args,
+                raw: resolved.argv,
+              });
 
-        const toolingEnvTokens =
-          target.kind === "tooling" && target.toolingTask.env !== undefined
-            ? collectSecretEnvValues(
-                Object.fromEntries(
-                  Object.entries(target.toolingTask.env).map(([name, value]) => [name, String(value)]),
-                ),
+        const toolingEnv =
+          target.kind === "tooling" && target.toolingTask?.env !== undefined
+            ? Object.fromEntries(
+                Object.entries(target.toolingTask.env).map(([name, value]) => [name, String(value)]),
               )
+            : undefined;
+        const planValues = resolved.plan === undefined ? undefined : planRedactionValues(resolved.plan);
+        const wholeToken = planValues?.wholeTokenValues ?? new Set<string>();
+        const classifiedToolingEnv = classifyLoweredEnvRedaction(toolingEnv, {
+          wholeToken,
+          ...(planValues === undefined ? {} : { publicValues: planValues.publicValues }),
+        });
+        const inputTokens =
+          target.kind === "tooling"
+            ? toolingInputRedactionTokens([target.toolingInput], {
+                _tag: "NamedMaps",
+                flags: input.flags,
+                args: input.args,
+                passthroughArgv: input.argv,
+              })
             : [];
-        const redactionTokens = [...(resolved.redactionTokens ?? []), ...toolingEnvTokens];
-        const inputRedactor = yield* redactorFor(redactionTokens);
-        const lifecycleRedaction = yield* redactionServiceFor(redactionTokens);
+        const shellRedaction: ShellRedactionCarrier = {
+          substring: [...(resolved.redactionTokens ?? []), ...classifiedToolingEnv.substring, ...inputTokens],
+          wholeToken,
+          ...(planValues === undefined ? {} : { publicValues: planValues.publicValues }),
+        };
+        const lifecycleRedaction = yield* RedactionService;
+        if (planValues !== undefined) {
+          yield* lifecycleRedaction.registerValues(planValues.substring);
+          yield* lifecycleRedaction.registerValues(planValues.wholeToken, { match: "whole-token" });
+        }
+        yield* lifecycleRedaction.registerValues(shellRedaction.substring);
+        yield* lifecycleRedaction.registerValues(classifiedToolingEnv.wholeToken, { match: "whole-token" });
+        const inputRedactor = yield* lifecycleRedaction.forProfile("secrets", {
+          sourceEnv: process.env,
+          redactionTokens: shellRedaction.substring,
+          wholeTokenValues: [...(planValues?.wholeToken ?? []), ...classifiedToolingEnv.wholeToken],
+        });
         const baseRenderer = yield* Renderer;
         const renderer = resolved.silent === true ? silentRenderer : baseRenderer;
 
@@ -144,45 +145,51 @@ export const makeEventCommandExecutor = (
             : typeof target.spec.streamingMode === "function"
               ? target.spec.streamingMode(input)
               : target.spec.streamingMode;
-        const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink("text").pipe(
-          Layer.provide(
-            Layer.merge(
-              Layer.succeed(Renderer, resolved.silent === true ? silentRenderer : baseRenderer),
-              Layer.succeed(RedactionService, lifecycleRedaction),
-            ),
-          ),
-        );
+        const streamOwner =
+          streamingMode === "live"
+            ? yield* RendererOutput.makeStreamFrameSink("text").pipe(
+                Effect.provideService(Renderer, renderer),
+                Effect.provideService(RedactionService, lifecycleRedaction),
+              )
+            : undefined;
         const streamingCommand =
-          streamingMode === "live" ? inCwd.pipe(Effect.provide(streamFrameSinkLayer)) : inCwd;
+          streamOwner === undefined
+            ? inCwd
+            : inCwd.pipe(
+                Effect.provideService(StreamFrameSink, streamOwner.sink),
+                Effect.scoped,
+                Effect.ensuring(streamOwner.finish()),
+              );
+        const redactionTokens = shellRedaction.substring;
         const command = withRedactedRenderer(streamingCommand, { redactionTokens }).pipe(
           Effect.provideService(Renderer, renderer),
         );
-        const redactedCommand = withShellRedactionTokens(redactionTokens, command);
+        const redactedCommand = withShellRedactionTokens(shellRedaction, command);
         const invocation = yield* makeNestedCommandInvocation(target.spec.id, {
-          argv: input.argv,
-          args: input.args,
-          flags: input.flags,
+          argv: target.kind === "tooling" ? [] : input.argv,
+          args: target.kind === "tooling" ? {} : input.args,
+          flags: target.kind === "tooling" ? {} : input.flags,
           cwd: resolved.cwd,
         });
+        const completion = target.spec.completion;
         const exit = yield* runCommandLifecycle(redactedCommand, {
           invocation,
-          ...(target.spec.successExitCode === undefined
-            ? {}
-            : { successExitCode: (value) => target.spec.successExitCode?.(value, input) }),
+          ...(completion === undefined ? {} : { completion: (value) => completion(value, input) }),
         }).pipe(Effect.provideService(RedactionService, lifecycleRedaction));
         if (exit._tag === "Success") {
-          const exitCode = target.spec.successExitCode?.(exit.value, input) ?? 0;
+          // Hooks only receive the value produced by this same spec's run.
+          const completed = exit.value;
+          const exitCode = completed.exitCode;
+          const value = completed.value;
           if (resolved.silent !== true) {
-            const resultTokens =
-              target.kind === "built-in" ? (target.spec.redactionTokens?.(exit.value) ?? []) : [];
+            const resultTokens = target.spec.redactionTokens?.(value) ?? [];
             const outputRenderer = yield* Renderer;
             if (target.kind === "built-in" && target.spec.render !== undefined) {
-              const rendered = target.spec.render(exit.value, input, {
+              const rendered = target.spec.render(value, input, {
                 mode: isRendererMode(outputRenderer.id) ? outputRenderer.id : DEFAULT_RENDERER_MODE,
                 format: "text",
                 ...(yield* ResultTerminal),
                 proxyDefaultDomain: yield* resolveProxyDefaultDomain,
-                env: process.env,
               });
               if (rendered !== undefined && rendered.length > 0) {
                 yield* withRedactedRenderer(
@@ -192,7 +199,7 @@ export const makeEventCommandExecutor = (
               }
             } else if (target.kind === "plugin" && target.spec.render !== undefined) {
               yield* withRedactedRenderer(
-                target.spec.render({ input, result: exit.value, stdout: "", stderr: "", exitCode }),
+                target.spec.render({ input, result: value, stdout: "", stderr: "", exitCode }),
                 { redactionTokens: [...redactionTokens, ...resultTokens] },
               );
             }
@@ -201,26 +208,29 @@ export const makeEventCommandExecutor = (
             exitCode,
             stdout:
               target.kind === "tooling" &&
-              typeof exit.value === "object" &&
-              exit.value !== null &&
-              "stdout" in exit.value &&
-              typeof exit.value.stdout === "string"
-                ? inputRedactor.redactString(exit.value.stdout)
+              typeof value === "object" &&
+              value !== null &&
+              "stdout" in value &&
+              typeof value.stdout === "string"
+                ? inputRedactor.redactString(value.stdout)
                 : "",
             stderr:
               target.kind === "tooling" &&
-              typeof exit.value === "object" &&
-              exit.value !== null &&
-              "stderr" in exit.value &&
-              typeof exit.value.stderr === "string"
-                ? inputRedactor.redactString(exit.value.stderr)
+              typeof value === "object" &&
+              value !== null &&
+              "stderr" in value &&
+              typeof value.stderr === "string"
+                ? inputRedactor.redactString(value.stderr)
                 : "",
           };
         }
         if (Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.interrupt;
         // Nested defects stay typed failures so event-step error mapping still applies.
         return yield* Effect.failCause(commandFailureCause(exit.cause));
-      }).pipe(Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)));
+      }).pipe(
+        Effect.provide(RedactionService.layer),
+        Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)),
+      );
     }),
   });
 

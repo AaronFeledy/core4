@@ -22,7 +22,12 @@ import { mongodbServiceType } from "../src/services/mongodb.ts";
 import { mssql2019ServiceType, mssql2022ServiceType, mssqlServiceType } from "../src/services/mssql.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
+import {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+} from "../src/services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "../src/services/opensearch.ts";
 import {
   php82ServiceType,
@@ -83,7 +88,10 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: meilisearchServiceType, landofileService: { type: "meilisearch" } },
   { serviceType: meilisearch1ServiceType, landofileService: { type: "meilisearch:1" } },
   { serviceType: memcachedServiceType, landofileService: { type: "memcached" } },
-  { serviceType: minioServiceType, landofileService: { type: "minio", database: "uploads" } },
+  {
+    serviceType: minioServiceType,
+    landofileService: { type: "minio", image: "example.test/minio:fixture", database: "uploads" },
+  },
   { serviceType: mongodbServiceType, landofileService: { type: "mongodb" } },
   { serviceType: mssqlServiceType, landofileService: { type: "mssql" } },
   { serviceType: mssql2019ServiceType, landofileService: { type: "mssql:2019" } },
@@ -92,6 +100,8 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: nginxServiceType, landofileService: { type: "nginx" } },
   { serviceType: nodeLtsServiceType, landofileService: { type: "node:lts" } },
   { serviceType: node22ServiceType, landofileService: { type: "node:22" } },
+  { serviceType: node24ServiceType, landofileService: { type: "node:24" } },
+  { serviceType: node26ServiceType, landofileService: { type: "node:26" } },
   { serviceType: opensearchServiceType, landofileService: { type: "opensearch" } },
   { serviceType: opensearch2ServiceType, landofileService: { type: "opensearch:2" } },
   { serviceType: phpmyadminServiceType, landofileService: { type: "phpmyadmin" } },
@@ -209,6 +219,8 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "mysql",
       "nginx",
       "node:22",
+      "node:24",
+      "node:26",
       "node:lts",
       "opensearch",
       "opensearch:2",

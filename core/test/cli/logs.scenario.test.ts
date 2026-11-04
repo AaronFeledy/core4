@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
-import { logsAppForTarget } from "@lando/engine/operations/logs";
+import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
 
 import {
@@ -23,8 +23,8 @@ import {
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -37,35 +37,19 @@ interface RunResult {
 }
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceLogSources: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
+  ...Struct.omit(TestRuntimeProvider.capabilities, [
+    "composeKnobs",
+    "composeServiceFields",
+    "authoredNetworks",
+    "composeProjectFields",
+  ]),
   volumeSnapshot: "none",
   serviceFileCopy: "none",
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
-  providerExtensions: [],
 };
 
 const metadata = {
@@ -83,7 +67,6 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [{ _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } }]
@@ -113,7 +96,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -156,6 +138,7 @@ const makeLogsLayer = (
   } = {},
 ) => {
   const effectivePlan = overrides.appPlan ?? plan;
+  const currentPlan = currentTestPlan(effectivePlan);
   const logCalls: Array<{ readonly target: LogTarget; readonly options: LogOptions }> = [];
   const effectiveCapabilities: ProviderCapabilities = {
     ...capabilities,
@@ -185,6 +168,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -193,6 +177,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -224,7 +209,7 @@ const makeLogsLayer = (
         providerId,
         status: "running",
         state: "running",
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
@@ -242,9 +227,11 @@ const makeLogsLayer = (
   const layer = Layer.mergeAll(
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-logs", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-logs", services: {} }, effectivePlan.root)),
+      }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(effectivePlan) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -258,7 +245,7 @@ const makeLogsLayer = (
     ),
   );
 
-  return { layer, logCalls };
+  return { layer, currentPlan, logCalls };
 };
 
 describe("lando logs", () => {
@@ -267,7 +254,7 @@ describe("lando logs", () => {
     const result = await Effect.runPromise(logsApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls.map((call) => String(call.target.service))).toEqual(["web", "database"]);
-    expect(harness.logCalls.every((call) => call.target.plan === plan)).toBe(true);
+    expect(harness.logCalls.every((call) => call.target.plan === harness.currentPlan)).toBe(true);
     expect(harness.logCalls.every((call) => call.options.follow === false)).toBe(true);
     expect(result.lines.map((line) => `${line.service}/${line.stream}/${line.line}`)).toEqual([
       "web/stdout/web line 1",
@@ -413,7 +400,33 @@ describe("lando logs", () => {
     expect(harness.logCalls[0]?.options.source).toBeUndefined();
   });
 
-  test("--source for a redirected source keeps the console-backed stream available", async () => {
+  test.each([false, true])(
+    "--source selects native aliases without file capability, follow=%s",
+    async (follow) => {
+      // Given an alias on web, but not on the database service.
+      const access = Schema.decodeUnknownSync(LogSource)({
+        id: "access",
+        strategy: "console",
+        stream: "stdout",
+      });
+      const harness = makeLogsLayer({ appPlan: withWebSources([access]), serviceLogSources: false });
+      // When selecting that source across the app.
+      await Effect.runPromise(
+        (follow ? followLogsApp({ source: "access" }) : logsApp({ source: "access" })).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      // Then only web is subscribed, with the descriptor and selected logical id.
+      expect(harness.logCalls.map((call) => String(call.target.service))).toEqual(["web"]);
+      expect(harness.logCalls[0]?.options).toEqual({
+        follow,
+        sources: [access],
+        source: LogSourceId.make("access"),
+      });
+    },
+  );
+
+  test("--source for a redirected source keeps its descriptor and logical selection", async () => {
     const access = Schema.decodeUnknownSync(LogSource)({
       id: "access",
       path: "/var/log/apache/access.log",
@@ -426,8 +439,8 @@ describe("lando logs", () => {
       logsApp({ service: "web", source: "access" }).pipe(Effect.provide(harness.layer)),
     );
 
-    expect(harness.logCalls[0]?.options.sources).toEqual([]);
-    expect(harness.logCalls[0]?.options.source).toBeUndefined();
+    expect(harness.logCalls[0]?.options.sources).toEqual([access]);
+    expect(harness.logCalls[0]?.options.source).toBe(LogSourceId.make("access"));
     expect(result.lines.map((line) => line.line)).toContain("web line 1");
   });
 
@@ -524,7 +537,7 @@ describe("lando logs", () => {
       rendererMode: "json",
       resultFormat: "json",
       command: "app:logs",
-      resultSchema: EmptyResultSchema,
+      resultSchema: LogsAppResult,
       streaming: StreamFrame,
       streamingMode: "live",
       io,
@@ -651,9 +664,9 @@ describe("lando logs", () => {
       followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),
     );
 
-    expect(result.lines).toEqual([]);
+    expect(result).toEqual({ app: harness.currentPlan.name });
     expect(harness.logCalls.every((call) => call.options.follow === true)).toBe(true);
-    expect(harness.logCalls.every((call) => call.target.plan === plan)).toBe(true);
+    expect(harness.logCalls.every((call) => call.target.plan === harness.currentPlan)).toBe(true);
     expect(emitted.map((frame) => `${frame.service}/${frame._tag}/${frame.chunk}`).sort()).toEqual(
       [
         "database/stderr/database warn",
@@ -672,7 +685,7 @@ describe("lando logs", () => {
       rendererMode: "json",
       resultFormat: "json",
       command: "app:logs",
-      resultSchema: EmptyResultSchema,
+      resultSchema: LogsAppResult,
       streaming: StreamFrame,
       streamingMode: "live",
       io,
@@ -684,6 +697,10 @@ describe("lando logs", () => {
     expect(tags.filter((tag) => tag === "stdout").length).toBe(2);
     expect(tags.filter((tag) => tag === "stderr").length).toBe(2);
     expect(tags[tags.length - 1]).toBe("result");
+    const terminal = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(io.stdoutLines().at(-1) ?? "null"));
+    if (terminal._tag !== "result") throw new Error("expected terminal result frame");
+    expect(terminal.envelope.result).toEqual({ app: harness.currentPlan.name });
+    expect(Schema.is(LogsAppResult)(terminal.envelope.result)).toBe(true);
   });
 
   test("follow mode interrupts the provider stream and runs Scope cleanup on abort", async () => {
@@ -718,7 +735,7 @@ describe("lando logs", () => {
       ),
     );
 
-    expect(result.lines).toEqual([]);
+    expect(result).toEqual({ app: harness.currentPlan.name });
     expect(seen).toBeGreaterThanOrEqual(3);
     expect(released).toBe(true);
   });
@@ -759,7 +776,7 @@ describe("lando logs", () => {
     expect(released).toBe(true);
   });
 
-  test("follow mode streams human lines live to stdout under text format", async () => {
+  test("follow mode preserves stdout and stderr for live human lines under text format", async () => {
     const harness = makeLogsLayer();
     const io = createBufferedRendererIO({ isTTY: false });
     await runWithRendererHandling(followLogsApp({ follow: true }), {
@@ -767,16 +784,21 @@ describe("lando logs", () => {
       rendererMode: "plain",
       resultFormat: "text",
       command: "app:logs",
-      resultSchema: EmptyResultSchema,
+      resultSchema: LogsAppResult,
       streaming: StreamFrame,
       streamingMode: "live",
       io,
       formatError: ({ error }) => String(error),
     });
 
-    const out = io.stdout();
-    expect(out).toContain("web stdout: web line 1");
-    expect(out).toContain("database stderr: database warn");
+    expect(io.stdout().trim().split("\n").sort()).toEqual([
+      "database stdout: database line 1",
+      "web stdout: web line 1",
+    ]);
+    expect(io.stderr().trim().split("\n").sort()).toEqual([
+      "database stderr: database warn",
+      "web stderr: web warn",
+    ]);
   });
 
   test("fails outside an app directory with init remediation", async () => {
@@ -831,3 +853,4 @@ describe("lando logs", () => {
     });
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Exit } from "effect";
 
+import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore, stripHostProxyRunLando } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { layer as makeProviderLayer, persistAppliedPlan } from "@lando/provider-lando";
@@ -40,7 +41,6 @@ const web: ServicePlan = {
   command: ["nginx"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 80, protocol: "http", name: "http" }],
   routes: [],
   dependsOn: [],
@@ -57,7 +57,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -67,7 +66,12 @@ const plan: AppPlan = {
 const missingPodmanApi = {
   info: Effect.void,
   ping: Effect.void,
-  request: () => Effect.succeed({ status: 404, body: "" }),
+  request: (request: EngineHttpRequest) =>
+    Effect.succeed(
+      request.method === "GET" && request.path.startsWith("/containers/json?")
+        ? { status: 200, body: "[]" }
+        : { status: 404, body: "" },
+    ),
 };
 
 const withUserDataRoot = async <T>(run: (userDataRoot: string) => Promise<T>): Promise<T> => {

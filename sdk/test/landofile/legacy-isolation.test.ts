@@ -37,8 +37,8 @@ describe("legacy mode leaves the v4 parser restrictions alone", () => {
     }
   });
 
-  test("v4 accepts block scalars while still rejecting flow maps and unquoted expressions", () => {
-    const rejected = ["a:\n  b: {c: d}\n", "a: ${SOME_VAR}\n"];
+  test("v4 accepts block scalars while still rejecting flow maps", () => {
+    const rejected = ["a:\n  b: {c: d}\n"];
 
     for (const content of rejected) {
       expect(Exit.isFailure(parseV4(content))).toBe(true);

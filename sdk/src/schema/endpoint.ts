@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { PortNumber, PortablePath } from "./primitives.ts";
+import { scanFields } from "./scan-fields.ts";
 
 const NETWORK_PROTOCOL = Schema.Literals(["http", "https", "tcp", "udp"]);
 const IPV4_PATTERN = /^(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}$/u;
@@ -40,6 +41,9 @@ const commonFields = {
   name: Schema.optionalKey(Schema.String).annotate({ description: "Optional endpoint name." }),
 };
 const applicationProtocolField = {
+  primary: Schema.optionalKey(Schema.Literal(true)).annotate({
+    description: "Marks the logical primary network listener, independently of publication count.",
+  }),
   appProtocol: Schema.optionalKey(Schema.String).annotate({
     description: "Optional application-layer protocol metadata.",
   }),
@@ -66,6 +70,7 @@ const InternalNetworkEndpointInput = Schema.Struct({
   protocol: networkProtocol,
   port: PortNumber,
   ...commonFields,
+  ...applicationProtocolField,
 });
 const InternalUnixEndpointInput = Schema.Struct({
   _tag: internalTag,
@@ -93,17 +98,34 @@ export const EndpointInput = Schema.Union([InternalEndpointInput, PublishedEndpo
 });
 export type EndpointInput = typeof EndpointInput.Type;
 
+export const EndpointScan = Schema.Struct(scanFields).annotate({
+  identifier: "EndpointScan",
+  description:
+    "Sparse plan-only startup scan defaults for a logical listener; omitted fields inherit policy.",
+  examples: [{}, { path: "/health", okCodes: [200, 204] }],
+});
+export type EndpointScan = typeof EndpointScan.Type;
+
+const scanField = {
+  scan: Schema.optionalKey(EndpointScan).annotate({
+    description: "Plan-only startup HTTP scan defaults; not endpoint authoring or readiness settings.",
+  }),
+};
+
 const InternalNetworkEndpoint = Schema.Struct({
   _tag: internalTag,
   protocol: networkProtocol,
   port: PortNumber,
   ...commonFields,
+  ...applicationProtocolField,
+  ...scanField,
 });
 const InternalUnixEndpoint = Schema.Struct({
   _tag: internalTag,
   protocol: unixProtocol,
   socketPath: PortablePath,
   ...commonFields,
+  ...scanField,
 });
 export const InternalEndpoint = Schema.Union([InternalNetworkEndpoint, InternalUnixEndpoint]);
 export type InternalEndpoint = typeof InternalEndpoint.Type;
@@ -115,22 +137,51 @@ export const PublishedEndpoint = Schema.Struct({
   publication: publicationField,
   ...commonFields,
   ...applicationProtocolField,
+  ...scanField,
 });
 export type PublishedEndpoint = typeof PublishedEndpoint.Type;
 
 export const EndpointPlan = Schema.Union([InternalEndpoint, PublishedEndpoint]);
 export type EndpointPlan = typeof EndpointPlan.Type;
 
-export const EndpointMaterialization = Schema.Struct({
-  bindAddress: BindAddress,
-  hostPort: PortNumber,
+export const ObservedPublication = Schema.Struct({
+  port: PortNumber.annotate({ description: "Observed container listener port." }),
+  transport: Schema.Literals(["tcp", "udp"]).annotate({ description: "Observed publication transport." }),
+  bindAddress: BindAddress.annotate({ description: "Actual host bind address." }),
+  hostPort: PortNumber.annotate({ description: "Actual assigned host port." }),
 });
-export type EndpointMaterialization = typeof EndpointMaterialization.Type;
+export type ObservedPublication = typeof ObservedPublication.Type;
 
-export const PublishedEndpointInfo = PublishedEndpoint.pipe(
-  Schema.fieldsAssign({ materialization: Schema.optionalKey(EndpointMaterialization) }),
-);
-export type PublishedEndpointInfo = typeof PublishedEndpointInfo.Type;
+export const PublicationObservation = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("unknown").annotate({
+      description: "Publication evidence could not be established.",
+    }),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("missing").annotate({ description: "The runtime resource is proven absent." }),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("present").annotate({
+      description: "The runtime resource was inspected successfully.",
+    }),
+    bindings: Schema.Array(ObservedPublication).annotate({
+      description: "Actual publications; an empty array proves no bindings.",
+    }),
+  }),
+]);
+export type PublicationObservation = typeof PublicationObservation.Type;
 
-export const EndpointInfo = Schema.Union([InternalEndpoint, PublishedEndpointInfo]);
-export type EndpointInfo = typeof EndpointInfo.Type;
+export const EndpointRef = Schema.Struct({
+  port: PortNumber.annotate({ description: "Logical listener port." }),
+  transport: Schema.Literals(["tcp", "udp"]).annotate({
+    description: "Logical listener transport; HTTP and HTTPS use TCP.",
+  }),
+  names: Schema.Array(Schema.String).annotate({
+    description: "Sorted unique aliases of this logical listener.",
+  }),
+  primary: Schema.Boolean.annotate({
+    description: "Whether any facet explicitly marks this logical listener primary.",
+  }),
+});
+export type EndpointRef = typeof EndpointRef.Type;

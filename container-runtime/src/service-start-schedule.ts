@@ -1,6 +1,14 @@
 import { Effect } from "effect";
 
-import type { AppPlan, HealthcheckPlan, ServiceDependencyCondition, ServicePlan } from "@lando/sdk/schema";
+import type { HealthcheckTargetUnsupportedError } from "@lando/sdk/errors";
+import {
+  type AppPlan,
+  type HealthcheckPlan,
+  type ServiceDependencyCondition,
+  type ServicePlan,
+  effectiveReadiness,
+  probeTargetError,
+} from "@lando/sdk/schema";
 
 import { gateId, gateNodeId } from "./dependency-gates.ts";
 import { type ScheduleEdge, type ScheduleGraph, runDependencySchedule } from "./dependency-schedule.ts";
@@ -29,6 +37,7 @@ export interface BlockedService {
   readonly dependency: string;
   readonly lastExitCode?: number;
   readonly timedOut?: boolean;
+  readonly lastError?: string;
 }
 
 export type ServiceStartResult =
@@ -40,32 +49,20 @@ export type ServiceStartResult =
     };
 
 export interface ServiceStartHandlers<E, R> {
+  readonly redactProbeError?: (error: unknown) => string;
   /** Brings one service up. Only optional-only start failures are tolerated. */
   readonly startService: (service: ServicePlan) => Effect.Effect<{ readonly changed: boolean }, E, R>;
-  /** Runs one healthcheck attempt inside the service. */
+  /** Runs one healthcheck attempt at its declared execution target. */
   readonly execHealthcheck: (
     service: ServicePlan,
-    command: ReadonlyArray<string>,
-  ) => Effect.Effect<{ readonly exitCode: number }, unknown, R>;
+    probe: HealthcheckPlan,
+  ) => Effect.Effect<{ readonly exitCode: number; readonly stderr?: string }, unknown, R>;
   /** Waits for a one-shot service to exit. */
   readonly waitForExit: (service: ServicePlan) => Effect.Effect<{ readonly exitCode: number }, unknown, R>;
 }
 
 /** The schedule node id that starts `service`. */
 export const serviceStartNodeId = (service: string): string => `svc:${service}`;
-
-/**
- * Only `kind: "command"` healthchecks are verifiable through the provider exec
- * channel. Every other shape fails closed.
- */
-const gateVerifiableCommand = (
-  healthcheck: HealthcheckPlan | undefined,
-): ReadonlyArray<string> | undefined => {
-  if (healthcheck === undefined || healthcheck.kind !== "command") return undefined;
-  const command = healthcheck.command;
-  if (command === undefined) return undefined;
-  return typeof command === "string" ? ["sh", "-c", command] : [...command];
-};
 
 export const buildServiceStartGraph = (plan: AppPlan): ScheduleGraph<ServiceStartNode> => {
   const services = Object.values(plan.services).sort((left, right) =>
@@ -110,25 +107,38 @@ interface GateProbeResult {
   readonly ok: boolean;
   readonly lastExitCode?: number;
   readonly timedOut?: boolean;
+  readonly lastError?: string;
 }
 
 const probeHealthy = Effect.fnUntraced(function* <E, R>(
   service: ServicePlan,
   handlers: ServiceStartHandlers<E, R>,
 ): Effect.fn.Return<GateProbeResult, never, R> {
-  const healthcheck = service.healthcheck;
-  const command = gateVerifiableCommand(healthcheck);
-  if (healthcheck === undefined || command === undefined) return { ok: false };
+  const healthcheck = effectiveReadiness(service);
+  if (healthcheck === undefined || healthcheck.kind !== "command" || healthcheck.command === undefined)
+    return { ok: false };
 
   let lastExitCode: number | undefined;
   let timedOut = false;
+  let lastError: string | undefined;
   const attempt = Effect.gen(function* () {
-    const result = yield* Effect.result(handlers.execHealthcheck(service, command));
+    const result = yield* Effect.result(handlers.execHealthcheck(service, healthcheck));
     timedOut = false;
     if (result._tag === "Success") {
+      lastError =
+        result.success.exitCode === 0 || !result.success.stderr
+          ? undefined
+          : (handlers.redactProbeError?.(result.success.stderr) ?? "Readiness command failed.").slice(
+              0,
+              2048,
+            );
       lastExitCode = result.success.exitCode;
       return result.success.exitCode === 0 ? "green" : "red";
     }
+    lastExitCode = undefined;
+    lastError = (
+      handlers.redactProbeError?.(result.failure) ?? "Readiness attempt infrastructure failure."
+    ).slice(0, 2048);
     return "red";
   });
   const ok = yield* runHealthcheckProbe(
@@ -146,13 +156,22 @@ const probeHealthy = Effect.fnUntraced(function* <E, R>(
     ok,
     ...(lastExitCode === undefined ? {} : { lastExitCode }),
     ...(timedOut ? { timedOut: true } : {}),
+    ...(lastError === undefined ? {} : { lastError }),
   };
 });
 
 export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule")(function* <E, R>(
   plan: AppPlan,
   handlers: ServiceStartHandlers<E, R>,
-): Effect.fn.Return<ServiceStartResult, E, R> {
+): Effect.fn.Return<ServiceStartResult, E | HealthcheckTargetUnsupportedError, R> {
+  for (const service of Object.values(plan.services)) {
+    for (const role of ["healthcheck", "readiness"] as const) {
+      const probe = service[role];
+      if (probe === undefined) continue;
+      const invalid = probeTargetError(probe, service.name, role);
+      if (invalid !== undefined) return yield* Effect.fail(invalid);
+    }
+  }
   const graph = buildServiceStartGraph(plan);
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node.value]));
   const optionalOnlyServices = new Set(
@@ -167,13 +186,14 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
     }),
   );
   const blocked: Array<BlockedService> = [];
-  const gateOutcomes = new Map<string, Pick<BlockedService, "lastExitCode" | "timedOut">>();
+  const gateOutcomes = new Map<string, Pick<BlockedService, "lastExitCode" | "timedOut" | "lastError">>();
   let changed = false;
 
   const recordGateOutcome = (nodeId: string, outcome: GateProbeResult): "succeeded" | "failed" => {
     gateOutcomes.set(nodeId, {
       ...(outcome.lastExitCode === undefined ? {} : { lastExitCode: outcome.lastExitCode }),
       ...(outcome.timedOut === true ? { timedOut: true } : {}),
+      ...(outcome.lastError === undefined ? {} : { lastError: outcome.lastError }),
     });
     return outcome.ok ? "succeeded" : "failed";
   };

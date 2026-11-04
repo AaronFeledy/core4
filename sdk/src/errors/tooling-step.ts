@@ -5,7 +5,7 @@ export class ToolingStepSelectorUnavailableError extends Schema.TaggedError<Tool
   {
     message: Schema.String,
     selector: Schema.Literals(["sources", "generates"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -14,7 +14,7 @@ export class ToolingStepConditionError extends Schema.TaggedError<ToolingStepCon
   {
     message: Schema.String,
     condition: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}

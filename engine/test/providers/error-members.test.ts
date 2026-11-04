@@ -1,5 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService } from "@lando/redaction/service";
 import { ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { type ProviderError, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Result, Schema, type Scope } from "effect";
@@ -8,8 +8,6 @@ import { assertRedactedError } from "./fixtures/assert-redacted-error.ts";
 import { canary, plan, registryLayer } from "./fixtures/error-registry.ts";
 import { availabilityError, failingProvider, memberError } from "./fixtures/failing-provider.ts";
 import { memberCalls } from "./fixtures/member-calls.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 const calls: Readonly<
   Record<
@@ -31,7 +29,7 @@ test.each(Object.entries(providerMemberPolicy).filter(([, [, errors]]) => errors
       Effect.scoped(
         Effect.gen(function* () {
           const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-          yield* registerRedactionValues([canary]);
+          yield* (yield* RedactionService).registerValues([canary]);
           return yield* Effect.result(invoke(selected));
         }),
       ).pipe(Effect.provide(registryLayer(provider))),

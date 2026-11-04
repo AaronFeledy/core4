@@ -1,261 +1,123 @@
-# Lando Core v4
+# Lando 4
 
-> **Experimental proof of concept.** This repository is a ground-up, from-scratch
-> reimagining of [Lando](https://lando.dev) Core for v4 — an experiment in
-> rebuilding the tool on Bun + Effect. It is not an official release and is not
-> production-ready. Treat it as a research prototype, not the Lando you install
-> today.
+Lando builds containerized local development environments without requiring Docker.
+Define your services, development tools, local URLs, and HTTPS certificates in
+a `.lando.yml` file, then start the environment with `lando start`.
 
-Lando v4 is a local development environment and DevOps tool that defines your
-whole stack — services, proxy, certificates, file sync, and tooling — from a
-single `.lando.yml` Landofile, then realizes it on a container runtime you
-control (Lando-managed Podman by default, or system Docker/Podman).
+This repository is the experimental v4 rewrite of [Lando](https://lando.dev).
+**Public Alpha 1 is not an official Lando release or production-ready.** Commands,
+APIs, and configuration may change without migration support. Use the Alpha to
+try the new version and report what breaks.
 
-This repository is the v4 implementation, structured as a [Bun](https://bun.sh)
-workspace. The runtime is built on [Effect](https://effect.website): every
-meaningful operation returns a typed `Effect.Effect<A, E, R>`, and every public
-contract is an Effect Schema. Plugins are the unit of extension — providers,
-services, the proxy, the certificate authority, file sync, loggers, renderers,
-and template engines all ship as separate packages.
+## Install the Alpha
 
-> **Work in progress.** This codebase is actively changing and unstable. APIs,
-> command behavior, generated artifacts, and install flows may change without
-> migration support while the experiment is still being shaped.
+Download the latest `v4.0.0-dev.N` prerelease from
+[Releases](https://github.com/AaronFeledy/core4/releases). Binaries are available
+for Linux, macOS, and Windows on x64 and ARM64. They are unsigned; installers and
+self-update are not available in this Alpha.
 
-## Status & roadmap
+Download your platform's binary and `SHA256SUMS`, then follow the
+[installation instructions](./docs/alpha-install-and-bug-reports.md) to verify
+the checksum and put `lando` on PATH. Check that `lando` resolves to the Alpha
+binary, especially if you also have Lando 3 installed:
 
-Public Alpha 1 is current. Historical internal phases are pre-alpha. Beta is later.
-
-Public artifacts are unsigned `4.0.0-dev.N` on the `dev` channel. This Alpha does not ship signing, installers, or self-update; those come later.
-
-The compile set is six targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. The GitHub prerelease ships unsigned binaries for all six named targets (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md).
-
-On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stays `lando` on every other target.
-
-Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the public recipe source of truth.
-
-Rails is bundled for Alpha 1 (id `rails`). Public source of truth is `recipes/rails/`; the existing builtin stub is upgraded rather than duplicated. Services are Ruby/Rails, PostgreSQL, and Redis. Tooling is `rails` and `bundle`. Every prompt has a non-interactive default. The public tree requires an executable README.mdx.
-
-Alpha 1 exits when every compile target has live `lando setup`, live `lando doctor`, a live Drupal canonical journey, and a live Rails canonical journey. Compile smoke is not an exit. A long-term roadmap rewrite is not an Alpha 1 exit.
-
-## Layout
-
-```text
-.
-├── core/              # @lando/core — runtime, planner, single native CLI dispatcher, library API
-├── sdk/               # @lando/sdk — schemas, tags, types only (plugin authors import this)
-├── container-runtime/ # @lando/container-runtime — private provider-agnostic runtime helpers
-├── plugins/           # Bundled reference plugins (separate packages, optional at runtime)
-│   ├── service-lando/        # opinionated `lando` service base (env, packages, mounts, healthchecks, certs, SSH, hooks)
-│   ├── provider-lando/       # Lando-managed Podman runtime (default provider)
-│   ├── provider-docker/      # system Docker (opt-in)
-│   ├── provider-podman/      # system / rootless Podman (opt-in)
-│   ├── proxy-traefik/        # Traefik-backed ProxyService (the global `traefik` service)
-│   ├── ca-mkcert/            # mkcert-backed CertificateAuthority
-│   ├── file-sync-mutagen/    # Mutagen-accelerated bind mounts on slow-bind-mount providers
-│   ├── template-handlebars/  # Handlebars whole-file Landofile template engine
-│   ├── template-mustache/    # Mustache whole-file Landofile template engine
-│   └── renderer-lando/       # bundled default Lando Renderer plugin
-├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
-├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact — may be deleted
-├── scripts/           # Codegen, release orchestrator, guide/scenario + CI workflow tooling
-├── docs/              # CI runbook, install guide, embedding guide, executable guides (MDX)
-├── test/              # Cross-package and generated scenario tests
-├── biome.json         # Lint + format config (Biome — replaces ESLint + Prettier)
-├── tsconfig.base.json # Shared strict TS settings
-├── tsconfig.json      # Workspace project references
-└── package.json       # Bun workspace root
+```sh
+lando version
 ```
 
-## Architecture at a glance
+Lando manages its own Podman runtime, so you do not need to install a container
+runtime separately.
 
-- **`@lando/sdk`** is a types-and-contracts-only package. Plugin authors import
-  it for schemas, service tags, the event taxonomy, and error types. Its public
-  surface is compatibility-locked (see `sdk/AGENTS.md`).
-- **`@lando/core`** owns the runtime: it discovers and validates a Landofile,
-  *plans* it into an `AppPlan`, and hands that plan to a `RuntimeProvider` to
-  apply. It exposes two imperative shells — the CLI and the embeddable
-  [library API](./docs/embedding.md).
-- **Providers** (`provider-lando`, `provider-docker`, `provider-podman`)
-  implement the same `RuntimeProvider` contract and declare capabilities
-  (e.g. `bindMountPerformance`, `sharedCrossAppNetwork`) that the planner and
-  subsystems adapt to.
-- **The global app** is a reserved, host-level Lando app that hosts
-  cross-cutting services (the Traefik proxy today). User apps that need a global
-  service auto-start it on `lando start`.
-- **Scratch apps** are short-lived apps whose lifetime is bound to an Effect
-  `Scope` — their state is purged when the scope closes.
-- **Bootstrap layers** are code-generated per bootstrap level under
-  `core/src/runtime/generated/layers/` so the runtime composes only the services
-  a given command tier needs (the CLI cold-start / first-byte path stays free of
-  Effect/OCLIF/plugin imports).
+**Intel Mac limitation:** the managed provider is not supported on Intel Macs in
+this Alpha. Check the [platform guidance](./docs/alpha-install-and-bug-reports.md#choose-setup-for-your-platform)
+before continuing.
 
-## Try the Alpha
+Run setup and follow the prompts:
 
-**Want to try Lando v4 Alpha?** See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md) for:
-
-- How to download the unsigned `v4.0.0-dev.N` GitHub prerelease binaries for all six compile targets
-- How to build from source
-- Running `lando setup` and `lando doctor` for first-time configuration
-- Where to file bug reports with the right diagnostic files
-
-> The default provider's runtime bundle manifest pins real published release
-> assets, so `lando setup` works end-to-end. To test an unpublished runtime
-> bundle, build it locally with `scripts/build-runtime-bundle.ts` and point
-> `LANDO_RUNTIME_BUNDLE_MANIFEST` at it.
-
-## Toolchain
-
-- **Runtime:** Bun (>=1.4.2, see `engines` and `.bun-version`). Node is not supported.
-- **Package manager:** `bun install`. `package-lock.json` and `yarn.lock` are forbidden.
-- **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
-- **Lint + format:** Biome.
-- **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
-- **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. The CLI surface lives in `core/src/cli/spec/` (spec machinery), `core/src/cli/command-specs/` (per-command declarations), and `core/src/cli/commands/` (operation invocation and render helpers). OCLIF is not a shipping engine.
-- **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
-- **Schema:** Effect Schema — single source of truth for every public contract.
-- **In-container helper:** a small static Go program in `core/container-helper/`, built with Lando itself (`bun run build:container-helper`). You don't need Go installed.
-
-## Building from source
-
-```bash
-# Install all workspace deps (creates the workspace symlinks)
-bun install
-
-# Materialize generated sources from the codegen catalog
-bun run codegen
-
-# Configure a working provider, then build the helper (no host Go needed)
-bun core/bin/lando.ts setup
-bun run --filter='@lando/core' build:container-helper
-
-# Type check the whole workspace
-bun run typecheck
-
-# Lint
-bun run lint
-
-# Format
-bun run format
-
-# Run the full test suite
-bun test
+```sh
+lando setup
 ```
 
-On Linux, the full test suite needs the built helper; compiling `lando` needs it on every host. Rebuild after editing `core/container-helper/` sources or `.lando.yml`; compilation refuses stale helpers. See [the helper build instructions](./docs/contributing/ci.md#in-container-helper) for provider prerequisites and verification.
+After setup, check the environment before starting an app:
 
-> The combined CI gate is `bun run typecheck` **and** `bun test` — root `tsc -b`
-> typechecks source and non-docs test trees, while Astro owns `docs/**` through `docs:check` and `docs:test`.
-> Run a focused test by path, e.g.
-> `bun test core/test/unit/bootstrap.test.ts`.
+```sh
+lando doctor
+```
 
-### Common scripts
+Resolve any reported issues first. See the
+[setup troubleshooting steps](./docs/alpha-install-and-bug-reports.md#run-lando-setup)
+if the managed runtime cannot start. Use [another provider](./docs/guides/setup/provider-selection.mdx)
+only as a fallback when the managed provider does not work on your machine.
 
-| Script | What it does |
-| --- | --- |
-| `bun run typecheck` | `tsc -b` across the workspace |
-| `bun run lint` / `bun run format` | Biome check / format-write |
-| `bun test` | Full test suite (`bun run test:unit` skips integration tests) |
-| `bun run build` | Build every workspace package |
-| `bun run codegen` | Run all code generators |
-| `bun run dev:guides` | TDD driver for executable guides (regenerate + typecheck + re-run affected scenarios on change) |
-| `bun run lint:guides` | Lint executable-guide MDX |
-| `bun run check:boundaries` | Run every boundary rule in one shared scan |
-| `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
-| `bun run release` | 14-stage release orchestrator (container helper, compile, sign, SBOM, provenance, publish) |
+## Start a Drupal project
 
-### Executable guides vs integration tests
+For a new local project, create an empty directory and initialize it
+there. Prefer WordPress? Follow the [WordPress quickstart](./docs/guides/recipes/wordpress-workflow.mdx).
 
-Both run in CI, but they guard different contracts. **Executable guides**
-(MDX under `docs/guides/**` and `recipes/<id>/README.mdx`) are
-documentation first: each guide compiles into generated scenario tests that
-prove every command, output, and verification shown to readers actually works,
-and failures source-map back to the MDX line. A failing guide means *a promise
-we publish to users is broken*. **Integration tests**
-(`*.integration.test.ts`, env-gated, serial) verify our code against real
-external systems — a failing one means *our model of the outside world is
-broken*. Coverage that validates a user-visible workflow belongs in a guide
-scenario; boundary checks and regressions with no docs home belong in
-integration or standalone fixture-scenario tests, not in a rendered page.
+```sh
+mkdir drupal-demo
+cd drupal-demo
+lando init
+```
 
-CI failures can be reproduced locally with the [CI runbook](./docs/contributing/ci.md).
-Embedding `@lando/core` as a library? See the [embedding guide](./docs/embedding.md).
+Choose **Drupal**, use `drupal-demo` as the app name, and keep the remaining
+defaults for this example. Lando writes `.lando.yml` into the current directory.
+Start the services, download Drupal and its project-local Drush, then find the
+app URL:
 
-## CLI surface
+```sh
+lando start
+lando drupal-scaffold
+lando info
+```
 
-The CLI is grouped into app, multi-app, scratch, and meta namespaces. A sample:
+Check that `appserver` and `database` appear in `lando info`. You now have the
+local services and Drupal project files, including project-local Drush. The
+Drupal site is not installed yet. Continue with the
+[Drupal guide](./docs/guides/recipes/drupal-workflow.mdx) to install the site or
+bring in an existing project's data.
 
-- **Per-app:** `lando start`, `stop`, `restart`, `rebuild`, `destroy`, `info`,
-  `logs`, `exec`, `ssh`, `shell`, `config`, `config:lint`, `config:translate`,
-  `app:includes:update`, `app:includes:verify`, `app:cache:refresh`
-- **Multi-app:** `lando init`, `apps:list`, `apps:poweroff`
-- **Scratch apps:** `lando scratch start`/`stop`/`list`/`info`/`logs`/`destroy`/`gc`
-- **Host integration:** `lando setup`, `lando uninstall`, `lando shellenv`,
-  `lando update`, `lando doctor`
-- **Meta:** `meta:config` (incl. `config telemetry`), `meta:bun`, `meta:x`,
-  plugin management (`plugin:add`/`remove`/`trust`) plus the authoring toolkit
-  (`plugin:new`/`test`/`build`/`link`/`unlink`/`publish`), and the global app
-  lifecycle (`meta:global:install`/`start`/`stop`/`status`/`config`/`destroy`/`uninstall`)
+When you finish, stop the environment without deleting its data:
 
-All command output flows through the `Renderer` service; pick a mode with
-`--renderer=lando|json|plain|verbose` (default `lando`; precedence: flag >
-`LANDO_RENDERER` env > config > default). `--verbose` flips the default renderer to `verbose`. `--debug` also raises `--log-level=debug`. An explicit `--renderer` stays put.
+```sh
+lando stop
+```
 
-## Building from source
+## Use Lando in your project
 
-The compiled binary is produced with `bun build --compile --bytecode` targeting
-`core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for six
-platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
-`windows-x64`, and `windows-arm64`, with bytecode enabled for native and cross-platform builds alike.
-Bun 1.4.2 includes the cross-platform bytecode fix released in 1.4.1, so Windows
-cross-compilation no longer needs a bytecode exception. Source and compiled entries now share the native dispatcher in
-`core/src/cli/run.ts`. The retired split existed because `@oclif/core`'s
-`execute()` cannot dispatch inside a compiled Bun binary:
-a probe importing only `@oclif/core` and calling `execute()` was compiled with
-`bun build --compile` and run outside the source tree, and it failed before any
-command ran — `Config.load`'s `findRoot()` walk expects an adjacent `package.json`
-that a relocated single-file binary doesn't have, and even with a static manifest,
-command dispatch still resolves a runtime `import(pathToFileURL(filePath))` that
-`bun build --compile` never embeds (a runtime-computed path isn't statically
-analyzable). That finding no longer justifies keeping two engines: the target
-architecture uses **one** native command registry and dispatcher for both
-source and compiled modes. Registry completeness, machine-output conformance,
-and relocated-binary smoke replace the retired dual-path parity layer.
+- **Coming from Lando 3?** Follow the [migration guide](./docs/guides/tutorial/from-lando-3.mdx).
+  Lando 4 does not automatically adopt Lando 3 configuration, containers, or data.
+- **Start with a stack:** browse the [bundled recipes](./recipes/) and their walkthroughs.
+- **Build your own environment:** explore the [service guides](./docs/guides/services/)
+  and [Landofile guides](./docs/guides/landofile/).
+- **Run project commands:** add [tooling](./docs/guides/tooling/) for commands inside your services.
+- **Find a command or option:** use the [CLI reference](./docs/reference/commands.mdx).
 
-## Docs
+## Extend Lando
 
-The Starlight preview is at <https://aaronfeledy.github.io/core4/>.
-Build it locally with `bun run docs:dev` or `bun run docs:build`.
+Plugin authors can [scaffold a plugin](./docs/guides/plugins/authoring-new-plugin.mdx)
+and use the public contracts in `@lando/sdk`. To drive Lando from your own
+application instead of the CLI, start with the [embedding guide](./docs/embedding.md).
 
-## Contributing
+<a id="building-from-source"></a>
+<a id="building-from-source-1"></a>
+<a id="compile-a-standalone-binary"></a>
 
-Repo-specific quirks and conventions that agents and contributors must follow
-live in [`AGENTS.md`](./AGENTS.md) and the per-package `AGENTS.md` files.
+## Contribute
 
-## Known limitations
+Lando 4 is a Bun and TypeScript monorepo built on Effect. Read the
+[contributor source map](./docs/contributing/repository.md) for source builds,
+package boundaries, tests, and compiled binaries, then follow the repository
+conventions in [AGENTS.md](./AGENTS.md). You do not need the contributor toolchain
+to use a prebuilt Alpha binary.
 
-This repository is unstable by design. A few practical caveats:
+## Get help and report bugs
 
-- **Runtime-bundle overrides are for local testing.** `@lando/provider-lando`
-  resolves its Podman runtime bundle from a per-platform manifest that pins real
-  published release assets, so default-provider `lando setup` completes out of
-  the box. To exercise an unpublished bundle, build it locally with
-  `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST`
-  at it.
-- **Installer trust roots are placeholders.** The embedded GPG public key
-  and cosign identity/issuer used by the installers are verification-test
-  placeholders, not production release keys.
-- **`tsconfig.skipLibCheck: true`.** `@types/bun@1.4` still clashes with
-  `@types/node` on `stream/web` and other globals, so `skipLibCheck` stays on
-  after the Bun 1.4 pin.
-- **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
-  version `0.0.0` in the working tree; the publish pipeline
-  (`scripts/prepare-npm-dev-packages.ts` plus the manual `scripts/release.ts`
-  orchestrator) rewrites versions and `workspace:*` ranges before publishing.
-- **Some command surfaces are not implemented.** A subset of commands still
-  throw `NotImplementedError`/`Effect.die`; deferred ids are tracked in
-  `core/src/cli/deferred-commands.ts`.
+Search [existing issues](https://github.com/AaronFeledy/core4/issues) before filing
+a new one. Include the command, its output, your platform and provider, and
+`lando doctor` results. The [bug report checklist](./docs/alpha-install-and-bug-reports.md#bug-report-checklist)
+lists useful diagnostics. Remove secrets and credentials before sharing logs.
 
 ## License
 
-MIT © Lando Alliance
+The [package metadata](./package.json) declares MIT. Copyright Lando Alliance.

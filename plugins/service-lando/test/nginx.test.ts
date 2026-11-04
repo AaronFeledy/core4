@@ -8,6 +8,8 @@ import type {
   AppFeatureServiceView,
 } from "@lando/sdk/services";
 
+import { ServiceConfigIssue } from "../src/services/_feature-helpers.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import {
   NGINX_FEATURE_ID,
@@ -15,6 +17,7 @@ import {
   nginxServiceFeature,
   nginxServiceType,
 } from "../src/services/nginx.ts";
+import { uploadDirRegex } from "../src/services/upload-dirs.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
@@ -51,6 +54,23 @@ const composeNginxPlan = (raw: unknown, serviceName = "web"): Promise<ServicePla
 
 const planCommandText = (command: ServicePlan["command"]): string =>
   Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
+
+const uploadDirGuard = (globs: readonly string[]): string =>
+  `    if ($fastcgi_script_name ~* "^/(?:${globs.map(uploadDirRegex).join("|")})/") { return 403; }`;
+
+const expectUploadDirGuard = (command: string, globs = ["sites/*/files"]): void => {
+  const deny = uploadDirGuard(globs);
+  const phpLocation = "location ~ [^/]\\.php(/|$) {";
+  expect(command).toContain(deny);
+  expect(command.split(deny)).toHaveLength(2);
+  expect(command.indexOf(deny)).toBeGreaterThan(command.indexOf(phpLocation));
+  expect(command.indexOf(deny)).toBeGreaterThan(command.indexOf("fastcgi_split_path_info"));
+  expect(command.indexOf(deny)).toBeLessThan(command.indexOf("if (!-f"));
+  const pattern = deny.split('"')[1];
+  expect(pattern).not.toContain(".*");
+  expect(pattern).not.toContain("$");
+  expect(command).not.toContain("deny all;");
+};
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;
@@ -137,8 +157,10 @@ describe("nginx ServiceType", () => {
     const command = planCommandText(plan.command);
     expect(command).toContain("listen 8080;");
     expect(command).not.toContain("listen 80;");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
   });
 
   test("omits the worker user directive when standalone runs as non-root", async () => {
@@ -193,20 +215,28 @@ describe("nginx ServiceType", () => {
       LANDO_WEBROOT: "/app",
     });
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.mounts).toEqual([]);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
   });
 
   test("uses the authored service name in endpoint and lando env", async () => {
     const plan = await composeNginxPlan({ type: "nginx" }, "proxy");
 
     expect(plan.primary).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "proxy" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "proxy", primary: true },
+    ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "proxy",
       LANDO_SERVICE_TYPE: "nginx",
@@ -235,6 +265,7 @@ describe("nginx PHP FastCGI preset", () => {
     const command = planCommandText(plan.command);
     expect(command).toContain("fastcgi_pass appserver:9000");
     expect(command).toContain("root /app/web");
+    expect(command).not.toContain("location ~* ^/");
     expectPhpFpmPathInfoWire(command);
     expectSharedErrorPagesBuildStep(plan);
     expect(command).toContain("alias /usr/share/lando/errors/;");
@@ -272,6 +303,19 @@ describe("nginx PHP FastCGI preset", () => {
     expect(script).not.toContain("user nginx;");
     expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-nginx.conf"]);
   });
+
+  test("denies PHP under authored uploadDirs inside the FastCGI location", async () => {
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      backend: "appserver",
+      webroot: "/app/web",
+      uploadDirs: ["sites/*/files", "uploads"],
+    });
+
+    const command = planCommandText(plan.command);
+    expectUploadDirGuard(command, ["sites/*/files", "uploads"]);
+    expectPhpFpmPathInfoWire(command);
+  });
 });
 
 describe("nginx PHP FPM app-feature wire", () => {
@@ -281,13 +325,14 @@ describe("nginx PHP FPM app-feature wire", () => {
     setAppMount: () => undefined,
     addBuildStep: () => undefined,
     addStorage: () => undefined,
-    addEndpoint: () => undefined,
     addDependency: () => undefined,
     addHostAlias: () => undefined,
     setHealthcheck: () => undefined,
+    setReadiness: () => undefined,
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,
+    setInit: () => undefined,
     setUser: () => undefined,
     setWorkingDirectory: () => undefined,
   } satisfies Omit<AppFeatureServiceMutators, "service" | "setCommand">;
@@ -301,6 +346,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     readonly webroot?: string;
     readonly command?: ReadonlyArray<string>;
     readonly user?: string;
+    readonly uploadDirs?: ReadonlyArray<string>;
   }): AppFeatureServiceView => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
@@ -313,6 +359,7 @@ describe("nginx PHP FPM app-feature wire", () => {
           ...(input.webroot === undefined ? {} : { webroot: input.webroot }),
           ...(input.command === undefined ? {} : { command: input.command }),
           ...(input.user === undefined ? {} : { user: input.user, home: false }),
+          ...(input.uploadDirs === undefined ? {} : { uploadDirs: input.uploadDirs }),
         },
       },
     });
@@ -370,8 +417,47 @@ describe("nginx PHP FPM app-feature wire", () => {
     expect(commandText(commands.get("edge"))).toContain("error_page 404 /_lando/errors/404.html;");
     expect(commandText(commands.get("edge"))).not.toContain("fastcgi_intercept_errors");
     expectPhpFpmPathInfoWire(commandText(commands.get("edge")));
+    expect(commandText(commands.get("edge"))).not.toContain("location ~* ^/");
     expect(commands.get("appserver")).toBeUndefined();
   });
+
+  test("wired FastCGI command denies authored uploadDirs inside the PHP location", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
+      viewOf({
+        serviceName: "edge",
+        serviceType: "nginx",
+        backend: "appserver",
+        webroot: "web",
+        uploadDirs: ["sites/*/files"],
+      }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    const command = commandText(commands.get("edge"));
+    expectUploadDirGuard(command);
+    expectPhpFpmPathInfoWire(command);
+  });
+
+  test.each([{ uploadDirs: undefined }, { uploadDirs: [] }])(
+    "wired FastCGI omits upload protection for %j",
+    async ({ uploadDirs }) => {
+      const { context, commands } = applyWire([
+        viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm" }),
+        viewOf({
+          serviceName: "edge",
+          serviceType: "nginx",
+          backend: "appserver",
+          ...(uploadDirs === undefined ? {} : { uploadDirs }),
+        }),
+      ]);
+
+      await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+      expect(commandText(commands.get("edge"))).not.toContain("return 403;");
+    },
+  );
 
   test("wired FastCGI command carries PATH_INFO after fastcgi_params and 404s a missing script file", async () => {
     const { context, commands } = applyWire([
@@ -438,3 +524,67 @@ describe("nginx PHP FPM app-feature wire", () => {
     expect(commands.get("edge")).toBeUndefined();
   });
 });
+
+describe("uploadDirs glob translation", () => {
+  test("defensive interpolation validation identifies the invalid list entry", () => {
+    try {
+      ["uploads", "files; injected"].map(uploadDirRegex);
+      throw new Error("Expected unsafe interpolation rejection");
+    } catch (error) {
+      if (!(error instanceof ServiceConfigIssue)) throw error;
+      expect(error.path).toEqual(["uploadDirs", 1]);
+      expect(error.suggestion).toBeDefined();
+    }
+  });
+  test("escapes dots and limits each * to characters within one path segment", () => {
+    expect(uploadDirRegex("sites/*/files")).toBe("sites/[^/]*/files");
+    expect(uploadDirRegex("uploads")).toBe("uploads");
+    expect(uploadDirRegex("sites/default.files")).toBe("sites/default\\.files");
+  });
+
+  test.each(["uploads", "uploads-old"])("uploads* protects %s itself", (directory) => {
+    const deny = new RegExp(`^/${uploadDirRegex("uploads*")}/`, "i");
+    expect(deny.test(`/${directory}/payload.PHP/extra`)).toBe(true);
+    expect(deny.test("/uploads/other/payload.php")).toBe(true);
+    expect(deny.test("/other/uploads/payload.php")).toBe(false);
+  });
+
+  test.each([{ uploadDirs: undefined }, { uploadDirs: [] }])(
+    "omits the guard when uploadDirs is %j",
+    async ({ uploadDirs }) => {
+      const plan = await composeNginxPlan({
+        type: "nginx",
+        backend: "appserver",
+        ...(uploadDirs === undefined ? {} : { uploadDirs }),
+      });
+      expect(planCommandText(plan.command)).not.toContain("return 403;");
+    },
+  );
+
+  test.each([
+    "files; } location / {",
+    "sites/**/files",
+    "files;x",
+    "files#x",
+    "files\nx",
+    "files\rx",
+    "fïles",
+    "files%x",
+    "files,x",
+    "files~x",
+    "files=x",
+    "files@x",
+    "files!x",
+    "files&x",
+    "files:x",
+    "files<x",
+    "files`x",
+    ".",
+    "a/./b",
+    "a//b",
+    "*",
+  ])("rejects %j instead of interpolating it", (path) => {
+    expect(() => uploadDirRegex(path)).toThrow(/uploadDirs path is not a safe webroot-relative directory/);
+  });
+});
+import { serviceAppMount } from "@lando/sdk/schema";

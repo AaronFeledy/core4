@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import {
   isGlobalScopedVolume,
@@ -6,9 +6,15 @@ import {
   volumeClassFromLabels,
 } from "@lando/container-runtime/volume-classes";
 import type { AppLockTimeoutError, AppResolveError, StateStoreError } from "@lando/sdk/errors";
-import type { AbsolutePath, AppPlan, OwnedResourcesCleanupResult } from "@lando/sdk/schema";
+import type {
+  AbsolutePath,
+  AppPlan,
+  OwnedResourcesCleanupResult,
+  ServiceShutdownObservation,
+} from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
+  EventService,
   PathsService,
   type ProviderError,
   type ProviderSelectionError,
@@ -19,6 +25,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { ownedCleanupChanged, prepareOwnedResourceCleanup } from "./owned-resource-teardown.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export interface OrphanTeardownOptions {
   /** Remove the data volumes recorded against the root; `stop` never does. */
@@ -33,6 +40,8 @@ export interface OrphanTeardownResult {
   readonly services: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
   readonly ownedChanged: boolean;
+  /** Provider-contributed shutdown facts; omitted when no removal supplied observations. */
+  readonly shutdownObservations?: readonly ServiceShutdownObservation[];
 }
 
 export type OrphanTeardownError =
@@ -58,7 +67,6 @@ const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan =
   provider: group.providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: now(), source: "orphan-teardown", runtime: 4 },
@@ -90,16 +98,19 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
       const removeVolumes = input.options.volumes || input.options.purgeCaches;
       const volumeClasses = teardownVolumeClasses(input.options);
       const services: string[] = [];
+      const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
       let volumesRemoved = false;
       for (const group of input.groups) {
         const plan = selectionPlan(group, input.root);
         const ref = { id: group.appId, root: input.root };
+        let protectedState = false;
         yield* withAppMutationLock(
           appLockTarget(plan),
           Effect.gen(function* () {
             const provider = yield* registry.select(plan);
             for (const service of group.services) {
               const removal = yield* provider.removeObservedService(service);
+              observationSources.push(removal.shutdownObservations);
               if (removal.kind === "removed") services.push(String(service.service));
             }
             if (!removeVolumes) return;
@@ -113,18 +124,51 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
               volumesRemoved = true;
             }
           }).pipe(
-            Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
-            Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
+            Effect.tapError((error) =>
+              Effect.sync(() => {
+                protectedState =
+                  error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read";
+              }),
+            ),
+            Effect.ensuring(
+              Effect.suspend(() =>
+                protectedState ? Effect.void : cleanupAgentRelayState(ref, relayRoots, "ssh"),
+              ),
+            ),
+            Effect.ensuring(
+              Effect.suspend(() =>
+                protectedState ? Effect.void : cleanupAgentRelayState(ref, relayRoots, "gpg"),
+              ),
+            ),
+          ),
+        ).pipe(
+          Effect.catchIf(
+            (error) => error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read",
+            (error) =>
+              Effect.gen(function* () {
+                const events = yield* Effect.serviceOption(EventService);
+                if (Option.isSome(events))
+                  yield* events.value
+                    .publish({
+                      _tag: "message.warn",
+                      body: `Skipped resources for app ${group.appId}: ${error.message}`,
+                      timestamp: now(),
+                    })
+                    .pipe(Effect.orDie);
+              }),
           ),
         );
       }
       const owned = yield* cleanup;
-      return {
-        app: String(input.groups[0]?.appId ?? ""),
-        services: [...new Set([...services, ...owned.servicesRemoved])],
-        volumesRemoved: volumesRemoved || owned.volumesRemoved > 0,
-        ownedChanged: ownedCleanupChanged(owned),
-      };
+      return withShutdownObservations(
+        {
+          app: String(input.groups[0]?.appId ?? ""),
+          services: [...new Set([...services, ...owned.servicesRemoved])],
+          volumesRemoved: volumesRemoved || owned.volumesRemoved > 0,
+          ownedChanged: ownedCleanupChanged(owned),
+        },
+        ...observationSources,
+      );
     }),
   );
 });

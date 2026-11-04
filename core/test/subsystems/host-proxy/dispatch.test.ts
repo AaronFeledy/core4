@@ -11,22 +11,13 @@ import {
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
-import {
-  RedactionService,
-  type RedactionServiceShape,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };
 
-const standaloneRedactionService: RedactionServiceShape = {
-  registerValues: registerRedactionValues,
-  payloadValues: () => Effect.succeed(() => []),
-  forProfile: (_profile, options) => Effect.succeed(createStandaloneRedactor(_profile, options)),
-};
+const standaloneRedactionService: RedactionServiceShape = makeRedactionService();
 
 const standaloneRedactionLayer = Layer.succeed(
   RedactionService,
@@ -54,7 +45,7 @@ const recordingEvents = () => {
 const okExecutor =
   (envelope: unknown, exitCode = 0): HostProxyRunLandoExecutor =>
   (_input) =>
-    Effect.succeed({ envelope: envelope as never, exitCode });
+    Effect.succeed({ stdout: JSON.stringify(envelope), stderr: "", exitCode });
 
 const baseEnvelope = {
   apiVersion: "v4" as const,
@@ -122,7 +113,7 @@ describe("dispatchRunLando", () => {
     let captured: { commandId: string; cwd: string; env: Readonly<Record<string, string>> } | undefined;
     const executor: HostProxyRunLandoExecutor = (input) => {
       captured = { commandId: input.commandId, cwd: input.cwd, env: input.env };
-      return Effect.succeed({ envelope: baseEnvelope as never, exitCode: 0 });
+      return Effect.succeed({ stdout: JSON.stringify(baseEnvelope), stderr: "", exitCode: 0 });
     };
     const request = buildRunLandoRequest({ argv: ["open", "--print"], cwd: "/app/web", tty: false });
 
@@ -138,15 +129,11 @@ describe("dispatchRunLando", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.envelope).toEqual(baseEnvelope);
+    expect(JSON.parse(result.stdout)).toEqual(baseEnvelope);
     expect(captured?.commandId).toBe("app:open");
     expect(captured?.cwd).toBe("/home/u/demo/web");
     expect(captured?.env.LANDO_HOST_PROXY_DEPTH).toBe("1");
-    const tags = events.map((event) => event._tag);
-    expect(tags).toContain("pre-host-proxy-call");
-    expect(tags).toContain("post-host-proxy-call");
-    const post = events.find((event) => event._tag === "post-host-proxy-call");
-    if (post?._tag === "post-host-proxy-call") expect(post.outcome).toBe("success");
+    expect(events).toEqual([]);
   });
 
   test("reconstructs host-proxy depth without forwarding container session material", async () => {
@@ -154,7 +141,7 @@ describe("dispatchRunLando", () => {
     let capturedEnv: Readonly<Record<string, string>> | undefined;
     const executor: HostProxyRunLandoExecutor = (input) => {
       capturedEnv = input.env;
-      return Effect.succeed({ envelope: baseEnvelope as never, exitCode: 0 });
+      return Effect.succeed({ stdout: JSON.stringify(baseEnvelope), stderr: "", exitCode: 0 });
     };
     const request = buildRunLandoRequest({
       argv: ["open", "--print"],
@@ -184,12 +171,11 @@ describe("dispatchRunLando", () => {
     );
 
     expect(capturedEnv).toEqual({
-      LANDO_APP_NAME: "demo",
       LANDO_HOST_PROXY_DEPTH: "3",
     });
   });
 
-  test("rejects a command outside the allowlist and still publishes pre+post events", async () => {
+  test("rejects a command outside the allowlist without execution hooks", async () => {
     const { events, layer } = recordingEvents();
     const request = buildRunLandoRequest({ argv: ["destroy"], cwd: "/app", tty: false });
 
@@ -209,14 +195,7 @@ describe("dispatchRunLando", () => {
       const error = Cause.squash(exit.cause);
       expect(error).toBeInstanceOf(HostProxyCommandNotAllowedError);
     }
-    const tags = events.map((event) => event._tag);
-    expect(tags).toContain("pre-host-proxy-call");
-    expect(tags).toContain("post-host-proxy-call");
-    const post = events.find((event) => event._tag === "post-host-proxy-call");
-    if (post?._tag === "post-host-proxy-call") {
-      expect(post.outcome).toBe("failure");
-      expect(post.failureDetail).toBe("HostProxyCommandNotAllowedError");
-    }
+    expect(events).toEqual([]);
   });
 
   test("rejects app:open when it is stripped from the passed allowlist", async () => {

@@ -1,16 +1,6 @@
 import { type Context, Effect, Layer, Option } from "effect";
 
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import {
-  AppPlanner,
-  CacheService,
-  ConfigService,
-  FileSystem,
-  PathsService,
-  PluginRegistry,
-  ProcessRunner,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { AppPlanner, type PluginRegistry, ProcessRunner } from "@lando/sdk/services";
 
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
@@ -20,10 +10,8 @@ import {
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
-import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
-import { carryPlanAttachments } from "../planner/plan-attachments.ts";
-import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import { FileSyncPolicy } from "../plugins/file-sync-policy.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 export {
@@ -38,33 +26,20 @@ export {
 export const layer = Layer.effect(
   AppPlanner,
   Effect.gen(function* () {
-    const pluginRegistry = yield* PluginRegistry;
-    const providerRegistry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    const cacheService = yield* Effect.serviceOption(CacheService);
-    const configService = yield* Effect.serviceOption(ConfigService);
-    const fileSystem = yield* Effect.serviceOption(FileSystem);
-    const pathsService = yield* Effect.serviceOption(PathsService);
     const processRunner = yield* Effect.serviceOption(ProcessRunner);
-    const certificateAuthorityResolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
+    const policy = yield* FileSyncPolicy.make;
+    const context = yield* Effect.context<PluginRegistry>();
     return AppPlanner.of({
       plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities) {
         const identity = yield* resolveAppIdentity(
-          getLandofileAppRoot(landofile) ?? process.cwd(),
+          landofile.context.appRoot,
           Option.getOrUndefined(processRunner),
         );
-        const plan = yield* planApp(
-          pluginRegistry,
-          Option.getOrUndefined(cacheService),
-          Option.getOrUndefined(configService),
-          Option.getOrUndefined(fileSystem),
-          Option.getOrUndefined(pathsService),
-          Option.getOrUndefined(certificateAuthorityResolver),
-          landofile,
-          providerCapabilities,
-          identity.appRoot,
+        const plan = yield* planApp({ landofile, providerCapabilities, appRoot: identity.appRoot }).pipe(
+          Effect.provide(context),
+          Effect.provideService(FileSyncPolicy, policy),
         );
-        const identified = carryPlanAttachments(plan, { ...plan, root: identity.appRoot, identity });
-        return yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
+        return { ...plan, root: identity.appRoot, identity };
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),

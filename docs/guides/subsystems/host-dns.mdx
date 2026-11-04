@@ -1,0 +1,46 @@
+---
+id: host-dns
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, host-dns, dns, lndo-site]
+---
+
+# Resolve lndo.site on this machine
+
+Run `lando doctor` to check whether your app domain resolves to `127.0.0.1` on this machine.
+
+```sh
+lando doctor
+```
+
+Public DNS answers `*.lndo.site`, the default app domain, with `127.0.0.1`. Lando does not write host DNS rules. Offline hosts, unreachable public DNS, or a LAN resolver/router with DNS-rebinding protection can prevent those answers from reaching you.
+
+On another device, `127.0.0.1` points at that device, not your app host. To reach an app from another device, bind a port on purpose. See [Reach an app from another device](./external-access.mdx).
+
+## Manage DNS yourself
+
+If the lookup fails, configure dnsmasq or an OS resolver rule so `*.lndo.site` resolves to `127.0.0.1`. Hosts files do not support wildcards; add an entry for each hostname you use instead.
+
+If you set `proxy.defaultDomain` to a custom domain such as `lndo.test`, configure the same local rule for that domain. `lando setup` does not change host DNS. DNS-rebinding protection can affect both default and custom domains. See [Reach an app from another device](./external-access.mdx).
+
+## Verify
+
+```sh
+lando doctor
+```
+
+Doctor's `host-dns` check probes `lando-doctor-probe.<domain>` using your configured `proxy.defaultDomain` (default `lndo.site`). It passes only when the answer is nonempty and every address is `127.0.0.1`. If it fails, add a local DNS rule for that domain and run `lando doctor` again.
+
+For a script, read the DNS observations in the JSON report instead of parsing terminal text:
+
+<Guide>
+  <Scenario id="inspect-host-dns" render>
+    <Step name="inspect">
+      <Run command="lando doctor --format=json" />
+      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "name.:.host-dns.*dnsHostname.*dnsResolved" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+To open a URL or reveal an app file in your host's file manager from a service, use [`xdg-open` or `open` through the host proxy](./host-open.mdx). Those callbacks are separate from DNS resolution.

@@ -14,6 +14,7 @@ import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { PROXYD_CANDIDATES, SOCKET_UNIT_PATHS } from "../src/socket-proxy-install.ts";
+import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });
@@ -110,12 +111,16 @@ describe("acquisition authority ports", () => {
   test("status authorities use 80/443 after setup in mocked-direct mode", async () => {
     // Given: classification is forced to a successful privileged bind.
     const store = memoryFiles();
+    const runtime = makeApplyRuntime(store.files);
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
+      httpClient: runtime.httpClient,
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,
       globalApp: {
+        ownedPublishPorts: runtime.ownedPublishPorts,
         ensureRunning: () =>
           Effect.succeed([
             {
@@ -155,13 +160,17 @@ describe("acquisition authority ports", () => {
   test("status authorities use 80/443 after setup in socket-helper mode", async () => {
     // Given: EACCES on 80/443, proxyd present, elevate and forward succeed.
     const store = memoryFiles();
+    const runtime = makeApplyRuntime(store.files);
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
+      httpClient: runtime.httpClient,
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,
       globalApp: {
+        ownedPublishPorts: runtime.ownedPublishPorts,
         ensureRunning: () =>
           Effect.succeed([
             {
@@ -220,6 +229,7 @@ describe("stale socketsActive restart", () => {
     const privilege = makePrivilege();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,

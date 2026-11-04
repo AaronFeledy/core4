@@ -1,10 +1,12 @@
 export * from "./app.ts";
 export * from "./build.ts";
+export * from "./bun-self.ts";
 export * from "./cause-message.ts";
 export * from "./command.ts";
 export * from "./config.ts";
 export * from "./data-transfer.ts";
 export * from "./deprecation.ts";
+export * from "./debugger-host.ts";
 export * from "./download.ts";
 export * from "./errno.ts";
 export * from "./file-sync.ts";
@@ -17,6 +19,7 @@ export * from "./http-client.ts";
 export * from "./interaction.ts";
 export * from "./keymap.ts";
 export * from "./landofile.ts";
+export * from "./landofile-load.ts";
 export * from "./landofile-events.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
@@ -47,3 +50,6 @@ export {
 } from "./tooling.ts";
 export * from "./tooling-step.ts";
 export * from "./tunnel.ts";
+export * from "./environment-value.ts";
+export { LandoInternalError } from "./internal.ts";
+export { ToolingCommandUnavailableError } from "./tooling-command-unavailable.ts";

@@ -1,8 +1,9 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
 import { runProbe } from "@lando/sdk/probe";
+import { effectiveReadiness } from "@lando/sdk/schema";
 import type { HealthcheckRunnerShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Clock, DateTime, Duration, Effect, Ref, Result } from "effect";
-import { startedServiceRow } from "./authority-url.ts";
+import { reconcileReadinessState } from "./connection-state.ts";
 import {
   type ReadinessTarget,
   failReadiness,
@@ -20,7 +21,8 @@ export const waitForService = Effect.fn("ServiceReadiness.waitForService")(funct
   if (service === undefined) return yield* Effect.die("Readiness service is absent from the full plan.");
   yield* guardServiceRunning(target, initial);
   const job = completionIntentServices(target.plan).has(String(target.service));
-  const healthcheck = job || service.healthcheck?.kind === "none" ? undefined : service.healthcheck;
+  const readiness = effectiveReadiness(service);
+  const healthcheck = job || readiness?.kind === "none" ? undefined : readiness;
   const started =
     initial.lastStartedAt === undefined
       ? yield* Clock.currentTimeMillis
@@ -65,7 +67,7 @@ export const waitForService = Effect.fn("ServiceReadiness.waitForService")(funct
     healthcheck === undefined
       ? undefined
       : Effect.gen(function* () {
-          const result = yield* runner.run(healthcheck, target.plan.id, target.service).pipe(
+          const result = yield* runner.run(healthcheck, target.plan.id, target.service, target.plan).pipe(
             Effect.catchTag("HealthcheckTimeoutError", (error) =>
               Effect.gen(function* () {
                 return yield* failReadiness(target, {
@@ -106,5 +108,6 @@ export const waitForService = Effect.fn("ServiceReadiness.waitForService")(funct
       : Effect.sleep(
           Duration.millis(Math.min(2_000, Math.max(0, started + 2_000 - (yield* Clock.currentTimeMillis)))),
         ).pipe(Effect.as("running" as const));
-  return { ...startedServiceRow(service, yield* inspect), state, initial };
+  const runtime = yield* inspect;
+  return { name: String(service.name), state: reconcileReadinessState(state, runtime), runtime, initial };
 });

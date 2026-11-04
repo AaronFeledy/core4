@@ -35,16 +35,12 @@ import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrat
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ContainerHelperAssets } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 import "../../src/runtime/engine-composition.ts";
@@ -70,6 +66,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -110,7 +107,6 @@ const servicePlan = (name: string): ServicePlan => ({
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [
@@ -142,7 +138,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -220,6 +215,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 };
 
 const requiredStartServicesLayer = Layer.mergeAll(
+  environmentResolverLayer(),
   Layer.succeed(
     ContainerHelperAssets,
     ContainerHelperAssets.of({ resolve: () => Effect.die("unused container helper") }),
@@ -241,14 +237,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
       loadAppFeature: () => Effect.die("not used"),
     }),
   ),
-  Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-  ),
+  Layer.succeed(RedactionService, makeRedactionService()),
   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
   shellRunnerLive,
 );
@@ -298,7 +287,10 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+        publications: {
+          status: "present",
+          bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+        },
       }),
   };
 
@@ -307,11 +299,13 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     stateStoreLayer,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-rebuild", services: {} }, plannedApp.root)),
+      }),
     ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       BuildOrchestrator,
       BuildOrchestrator.of({
@@ -360,6 +354,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
@@ -384,7 +379,10 @@ const makeCachedBuildLayer = () => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: planWithAppBuild.services[target.service]?.endpoints ?? [],
+        publications: {
+          status: "present",
+          bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+        },
       }),
     execStream: () => {
       appBuildCalls += 1;
@@ -410,6 +408,7 @@ const makeCachedBuildLayer = () => {
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("not used"),
       query: () => Effect.die("not used"),
     }),
@@ -426,10 +425,15 @@ const makeCachedBuildLayer = () => {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-rebuild", services: {} }),
+        discover: Effect.succeed(
+          literalLandofile({ name: "test-rebuild", services: {} }, planWithAppBuild.root),
+        ),
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithAppBuild) })),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithAppBuild)) }),
+    ),
     dependencies,
     BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
   );
@@ -451,7 +455,7 @@ describe("lando rebuild", () => {
     ).toEqual(["pre-rebuild", "destroy", "apply", "post-rebuild"]);
     expect(result.servicesRebuilt).toEqual(["web"]);
     expect(renderRebuildAppResult(result)).toBe(
-      "rebuilt: test-rebuild - web (running) http://localhost:3000",
+      "rebuilt: test-rebuild - web (running) Host: http://localhost:3000 App Network: http://web:3000",
     );
   });
 
@@ -586,3 +590,4 @@ describe("lando rebuild", () => {
     });
   });
 });
+import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

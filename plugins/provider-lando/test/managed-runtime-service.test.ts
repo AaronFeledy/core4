@@ -208,6 +208,7 @@ describe("terminateOwnedRuntimeService", () => {
     providerId: "lando",
     operation: "cleanup",
     message: "unavailable",
+    remediation: "Install or start the `lando` provider and confirm it can perform `cleanup`.",
   });
   const storageList = { status: 200, body: '[{"Id":"leftover","State":"storage"}]' };
   const reclaimFailures: ReadonlyArray<
@@ -266,7 +267,7 @@ describe("terminateOwnedRuntimeService", () => {
         { pid: 10, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "orphaned-id", "--exec-attach"] },
         {
           pid: 11,
-          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global-traefik"],
+          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global--traefik"],
         },
         { pid: 12, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "--exec-attach"] },
       ]),

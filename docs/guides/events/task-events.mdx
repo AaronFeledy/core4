@@ -7,7 +7,11 @@ tags: [beta, docs, landofile, events, tooling]
 
 # Run steps before and after a tooling task
 
-Every tooling task you declare gets two event names for free: `pre-<task>` and `post-<task>`. Hook them under `events:` and Lando runs your steps around the task body every time someone calls `lando <task>`.
+Use `pre-<task>` and `post-<task>` under `events:` to run steps before and after
+a public tooling task. Lando runs these steps when someone calls `lando <task>`.
+
+Save the following as `.lando.yml` in an example app directory. The `build` task
+and its event steps run on the host because they use `service: ":host"`.
 
 ```yaml
 name: task-events-demo
@@ -30,14 +34,16 @@ events:
       service: ":host"
 ```
 
-Refresh the command cache after you add a task, then call it:
+From that directory, refresh the command cache after adding the task, then run it:
 
 ```sh
 lando app:cache:refresh
 lando build
 ```
 
-The order is fixed: `pre-build`, then the task's own steps in the order you wrote them, then `post-build`. No config knob reorders that.
+Check that the messages appear in this order: `before build`, `build step one`,
+`build step two`, then `after build`. Lando runs `pre-build`, the task's own steps,
+and `post-build` in that fixed order.
 
 Each `events.<name>` step list replaces its inherited list across Landofile layers, just like tooling `cmds`. A step's `service` is an execution target, not a merge identity. Set `[]` to clear inherited steps. See [Override a list in a local layer](../landofile/your-landofile.mdx#override-a-list-in-a-local-layer).
 
@@ -57,7 +63,7 @@ events:
 
 ## What happens on failure
 
-Three rules, no exceptions:
+A failed step affects the remaining steps as follows:
 
 | Failure | Result |
 | --- | --- |
@@ -81,6 +87,13 @@ events:
 `task: lint` is an inline invocation. Lando runs `lint`'s steps right there and does not fire `pre-lint` or `post-lint`.
 
 `command: app:lint` re-enters the top-level command path, exactly as if you had typed `lando lint`. That fires `pre-lint` and `post-lint` too.
+
+`command:` runs in the current Lando process. Nested commands and SDK calls can
+reuse that process's app mutation lock, subject to their admission and event
+recursion checks. A shell step that starts a child `lando` needs a separate lock;
+it cannot borrow its parent's ownership. Recognized parent ownership causes an
+immediate refusal, while other contention uses the normal bounded wait. Run a
+separate mutation after the parent finishes.
 
 Pass declared inputs by name. Positional `order` controls the argument sequence,
 not the order of keys in your Landofile:
@@ -108,7 +121,9 @@ the positional delimiter for named event and MCP inputs, so a leading hyphen
 stays part of the value. Tasks without declared flags or args keep raw arguments
 unchanged.
 
-Because `command:` re-enters, a `pre-build` step that runs `command: app:build` is a loop. Lando rejects it with `LandofileEventLifecycleReentryError` before anything runs. Nesting is also capped at 16 active event frames; blow past that and you get `LandofileEventInvocationDepthError`. When you want one task to reuse another from inside an event, write `task:` and move on.
+Because `command:` re-enters, a `pre-build` step that runs `command: app:build` is a loop. Lando rejects it with `LandofileEventLifecycleReentryError` before anything runs. Nesting is also capped at 16 active event frames; exceeding that limit produces
+`LandofileEventInvocationDepthError`. Use `task:` when you want to reuse another
+task's steps without firing its own events.
 
 ## Restart is bracketed too
 
@@ -185,10 +200,10 @@ Typo'd `pre-buidl`? Lint and `lando start` both ask `Did you mean "pre-build"?`.
   <Scenario id="unknown-event-lists-valid-set" render={false} reason="Regression coverage: lint reports an unknown event key as a finding and planning rejects it, both naming the valid set">
     <Step name="lint-unknown-event">
       <UseFixture name="unknown-event" />
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.event\"" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-deploy\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "pre-build" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.event\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-deploy\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "pre-build" } }} />
     </Step>
     <Step name="refresh-unknown-event">
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />

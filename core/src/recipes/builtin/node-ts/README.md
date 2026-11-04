@@ -1,15 +1,20 @@
 # node-ts
 
-Scaffolds a canonical `.lando.yml` for a Node app. The generated
-Landofile uses environment expressions for the Node image and
-`NODE_ENV`, so you can change either value without regenerating it.
+Use this recipe to create a `.lando.yml` for a Node app. The generated
+Landofile reads environment expressions for the Node image and `NODE_ENV`,
+so you can change either value without regenerating the file. Add tooling
+and storage to the Landofile as your app needs them.
+
+## Host prerequisites
+
+- Lando v4 alpha install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
-- `web`: `image: node:<LANDO_NODE_VERSION ?? "lts">`
+- `web`: `image: node:<LANDO_NODE_VERSION ?? "24">`
 
 The Node major version is resolved from `LANDO_NODE_VERSION` at
-`LandofileService` load time, with `lts` as the default. `NODE_ENV`
+`LandofileService` load time, with `24` as the default. `NODE_ENV`
 defaults to `development` and can be overridden the same way.
 
 ## Alpha limitations
@@ -18,7 +23,3 @@ defaults to `development` and can be overridden the same way.
   rest of your stack.
 - Host environment values are resolved when Lando loads the
   generated Landofile.
-
-## Host prerequisites
-
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.

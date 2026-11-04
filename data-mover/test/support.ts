@@ -4,10 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { layer as dataMoverLayer } from "@lando/data-mover/service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, type VolumeRef, appIdentityKey } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  type VolumeRef,
+  appIdentityKey,
+} from "@lando/sdk/schema";
+import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 
 const rootKeys = [
   "LANDO_USER_DATA_ROOT",
@@ -60,7 +67,42 @@ export const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
             providerId: typeof target === "string" ? target : "unknown",
             operation: "select",
             message: "Provider is not installed in this test fixture.",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `select`.",
           }),
         ),
 });
-export const layer = dataMoverLayer.pipe(Layer.provide(registryLayer));
+export const layer = dataMoverLayer.pipe(
+  Layer.provide(
+    Layer.effect(
+      RuntimeProviderRegistry,
+      Effect.map(RuntimeProvider, (provider) => ({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        list: Effect.succeed([ProviderId.make(provider.id)]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () =>
+          Effect.succeed({
+            ...provider,
+            appliedPlans: Effect.succeed([
+              {
+                valueModel: 1,
+                id: AppId.make("data-app"),
+                name: "Data app",
+                slug: "data-app",
+                root: fixtureOwnerRoot,
+                provider: ProviderId.make(provider.id),
+                services: {},
+                routes: [],
+                stores: [],
+                fileSync: [],
+                metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+                extensions: {},
+              } satisfies AppPlan,
+            ]),
+          }),
+      })),
+    ),
+  ),
+);

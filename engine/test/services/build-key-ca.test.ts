@@ -16,7 +16,6 @@ test("keys CA descriptors by digest and archive name but not host path", async (
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

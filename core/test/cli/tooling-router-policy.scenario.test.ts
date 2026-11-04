@@ -121,11 +121,21 @@ test("Given a fresh cached task with an unsatisfied version constraint, command-
     expect(compiledResult.exitCode).toBe(1);
     expect(errorEnvelope(sourceResult.stdout)).toMatchObject({
       command: "app:guarded",
-      error: { _tag: "ToolingCompileError", remediation: expect.any(String) },
+      error: {
+        _tag: "ToolingCommandUnavailableError",
+        reason: "stale-cache",
+        staleReason: "version-constraint",
+        remediation: expect.any(String),
+      },
     });
     expect(errorEnvelope(compiledResult.stdout)).toMatchObject({
       command: "app:guarded",
-      error: { _tag: "ToolingCompileError", remediation: expect.any(String) },
+      error: {
+        _tag: "ToolingCommandUnavailableError",
+        reason: "stale-cache",
+        staleReason: "version-constraint",
+        remediation: expect.any(String),
+      },
     });
     expect(await Bun.file(sourceMarker).exists()).toBe(false);
     expect(await Bun.file(compiledMarker).exists()).toBe(false);
@@ -168,11 +178,19 @@ test("Given a remote include and no command cache, command-not-found performs no
     expect(compiledResult.exitCode).toBe(1);
     expect(errorEnvelope(sourceResult.stdout)).toMatchObject({
       command: "app:offline",
-      error: { _tag: "ToolingCompileError", remediation: expect.any(String) },
+      error: {
+        _tag: "ToolingCommandUnavailableError",
+        reason: "missing-cache",
+        remediation: expect.any(String),
+      },
     });
     expect(errorEnvelope(compiledResult.stdout)).toMatchObject({
       command: "app:offline",
-      error: { _tag: "ToolingCompileError", remediation: expect.any(String) },
+      error: {
+        _tag: "ToolingCommandUnavailableError",
+        reason: "missing-cache",
+        remediation: expect.any(String),
+      },
     });
     expect(requests).toBe(0);
     expect(await Bun.file(sourceMarker).exists()).toBe(false);

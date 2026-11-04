@@ -65,7 +65,12 @@ export const memberCalls = {
   waitForExit: (p) => p.waitForExit(target),
   destroy: (p) => p.destroy(target, { volumes: false }),
   removeObservedService: (p) =>
-    p.removeObservedService({ ...target, providerId: plan.provider, status: "running" }),
+    p.removeObservedService({
+      ...target,
+      providerId: plan.provider,
+      status: "running",
+      publications: { status: "unknown" },
+    }),
   quiesceForFileSync: (p) => required(p.quiesceForFileSync)(target),
   readAppEnvironment: (p) => p.readAppEnvironment(target, {}),
   exec: (p) => p.exec(target, command),

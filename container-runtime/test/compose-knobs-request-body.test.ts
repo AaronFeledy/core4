@@ -16,9 +16,10 @@ import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
@@ -38,7 +39,6 @@ const planWithCompose = (
     artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -49,13 +49,13 @@ const planWithCompose = (
 
   return {
     id: AppId.make("compose-knob-request-body"),
+    valueModel: 1,
     name: "Compose Knob Request Body",
     slug: "compose-knob-request-body",
     root: AbsolutePath.make("/tmp/lando-compose-knob-request-body"),
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "compose-knob-request-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -67,8 +67,9 @@ const planWithCompose = (
 const captureCreateRequest = async (
   compose: Record<string, unknown>,
   hostAliases: ServicePlan["hostAliases"] = [],
-  dialect: LifecycleDialect = libpodLifecycleDialect,
+  options: { readonly dialect?: LifecycleDialect; readonly init?: boolean } = {},
 ): Promise<EngineHttpRequest> => {
+  const { dialect = libpodLifecycleDialect, init } = options;
   let createRequest: EngineHttpRequest | undefined;
   let running = false;
   const api: PodmanApiClient = {
@@ -76,8 +77,15 @@ const captureCreateRequest = async (
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 200, body: "{}" };
+          const name = decodeURIComponent(request.path.slice("/networks/".length));
+          return {
+            status: 200,
+            body: JSON.stringify(ownedNetworkInspection(planWithCompose(compose, hostAliases), name)),
+          };
         }
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return createRequest === undefined
@@ -96,7 +104,14 @@ const captureCreateRequest = async (
       }),
   };
 
-  await Effect.runPromise(bringUp(planWithCompose(compose, hostAliases), { api, ctx, dialect }));
+  const plan = planWithCompose(compose, hostAliases);
+  const service = plan.services[serviceName];
+  if (service === undefined) throw new Error("missing service fixture");
+  const canonical = {
+    ...plan,
+    services: { [serviceName]: { ...service, ...(init === undefined ? {} : { init }) } },
+  };
+  await Effect.runPromise(bringUp(canonical, { api, ctx, dialect }));
   if (createRequest === undefined) throw new Error("bringUp did not issue a container create request");
   return createRequest;
 };
@@ -118,13 +133,22 @@ describe("Podman Compose knob create request", () => {
   );
 
   for (const dialect of [libpodLifecycleDialect, dockerLifecycleDialect]) {
+    test.each([true, false, undefined])(`${dialect.engine}: realizes canonical init %s`, async (init) => {
+      // Given / When
+      const request = await captureCreateRequest({}, [], {
+        dialect,
+        ...(init === undefined ? {} : { init }),
+      });
+      // Then
+      expect(field(field(request.body, "HostConfig"), "Init")).toBe(init);
+    });
     const fixtures = new Map(Object.entries(KNOB_FIXTURES));
     for (const knob of composeKnobsForDialect(dialect.engine)) {
       test(`${dialect.engine}: ${knob} produces its expected Engine request fields`, async () => {
         const fixture = fixtures.get(knob);
         expect(fixture).toBeDefined();
         if (fixture === undefined) throw new Error(`Missing independent fixture for ${knob}`);
-        const request = await captureCreateRequest(fixture.input, [], dialect);
+        const request = await captureCreateRequest(fixture.input, [], { dialect });
         const hostConfig = field(request.body, "HostConfig");
         const searchParams = new URL(`http://localhost${request.path}`).searchParams;
 

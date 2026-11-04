@@ -1,5 +1,5 @@
 /**
- * Env names injected only to connect the in-container shim to its host session.
+ * Current and historical env names used to connect the shim to its host session.
  * They carry live transport/auth material and must never be persisted or
  * forwarded back inside a serialized runLando request env.
  */

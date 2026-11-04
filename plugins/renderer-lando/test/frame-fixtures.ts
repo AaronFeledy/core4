@@ -149,7 +149,7 @@ interface PromptFixture {
   readonly request: Record<string, unknown>;
 }
 
-/** Prompt-chrome fixtures for every prompt type the renderer draws; only secret falls back to the line reader. */
+/** Prompt-chrome fixtures for rendered controls; secrets and confirmations use the line reader. */
 export const PROMPT_FIXTURES: ReadonlyArray<PromptFixture> = [
   { id: "prompt.text", request: promptRequest("text", { default: "myapp" }) },
   { id: "prompt.number", request: promptRequest("number", { default: 8080 }) },
@@ -158,14 +158,6 @@ export const PROMPT_FIXTURES: ReadonlyArray<PromptFixture> = [
   { id: "prompt.select", request: promptRequest("select") },
   { id: "prompt.multiselect", request: multiselectRequest() },
   { id: "prompt.multiselect-checked", request: multiselectRequest("1,3") },
-  {
-    id: "prompt.confirm",
-    request: {
-      prompt: { name: "trust", type: "confirm", message: "Trust this plugin?" },
-      mode: "confirm",
-      defaultRaw: "no",
-    },
-  },
 ];
 
 /** Narrow (40-column) prompt fixtures: ASCII title and a Korean+emoji title that must stay visible and within width. */

@@ -12,7 +12,6 @@ import {
 import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
@@ -149,8 +148,8 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
   const authored =
     applied !== undefined && retained === undefined ? yield* resolveLandofileEventPlan(applied) : undefined;
   const registry = yield* RuntimeProviderRegistry;
-  const disposal = retained ?? applied;
-  const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);
+  if (desired !== undefined) yield* registry.assertAppliedStateReadable?.(desired.plan) ?? Effect.void;
+  const target = retained ?? applied;
   const refs = uniqueDestroyRefs([...recorded, ...(retained === undefined ? [] : [retained.app])]);
   if (inventory.length > 0 && refs.length === 0)
     return yield* Effect.fail(

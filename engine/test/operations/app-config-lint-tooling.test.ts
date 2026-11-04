@@ -60,7 +60,7 @@ test.each([
     message:
       "Service type reserved-tooling-test task run can't use the name run, which belongs to the built-in apps:scratch:run command.",
     suggestion:
-      "Set tooling.run.disabled: true in the Landofile to drop service type reserved-tooling-test's task, or redefine it under another name.",
+      "Set tooling.run: false in the Landofile to drop service type reserved-tooling-test's task, or redefine it under another name.",
     sourcePath: ["services", "web", "type"],
   },
 ])(
@@ -98,15 +98,37 @@ test.each([
   },
 );
 
-test("a disabled overlay drops a service type's reserved task", async () => {
+test.each(["false", "\n    disabled: true"])(
+  "overlay %s drops a service type's reserved task",
+  async (task) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-tooling-disabled-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n`,
+      );
+      await writeFile(join(root, ".lando.local.yml"), `tooling:\n  run: ${task}\n`);
+      // When
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      // Then
+      expect(result).toMatchObject({ valid: true, violations: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("lint accepts all tooling task shorthands", async () => {
   // Given
-  const root = await mkdtemp(join(tmpdir(), "lando-lint-tooling-disabled-"));
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-tooling-shorthand-"));
   try {
     await writeFile(
       join(root, ".lando.yml"),
-      `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n`,
+      "name: shorthand\ntooling:\n  foo: false\n  bar:\n    cmd: disabled\n  baz: echo hi\n",
     );
-    await writeFile(join(root, ".lando.local.yml"), "tooling:\n  run:\n    disabled: true\n");
     // When
     const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
     // Then
@@ -144,12 +166,64 @@ test.each([true, false])("reserved scratch include task with internal=%s", async
       lintLandofileSnapshot({ cwd: root }).pipe(Effect.provide(layers)),
     );
     // Then
-    expect(snapshot.resolved?.tooling).toHaveProperty(["scratch:check"]);
+    expect(snapshot.resolved?.document.tooling).toHaveProperty(["scratch:check"]);
     expect(getInternalToolingTasks(snapshot.resolved ?? {}).includes("scratch:check")).toBe(internal);
     expect(result.valid).toBe(internal);
     expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(
       internal ? [] : [{ rule: "landofile.tooling", path: ["tooling", "scratch:check"] }],
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("flags host tooling Bun Shell dialect on cmd path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-tooling-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\ntooling:\n  bad:\n    service: ":host"\n    cmd: "echo $${NAME}"\n  ok:\n    service: ":host"\n    cmd: "echo $NAME 1>&2"\n  container:\n    service: web\n    cmd: "echo $${NAME}"\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.valid).toBe(false);
+    const hostShell = result.violations.filter((v) => v.rule === "landofile.host-shell");
+    expect(hostShell.map((v) => v.path)).toEqual([["tooling", "bad", "cmd"]]);
+    expect(hostShell[0]?.message).toContain("Column ");
+    expect(hostShell[0]?.suggestion).toBeTruthy();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skips host tooling cmd that still has pending {{ args.* }} sites", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-pending-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\ntooling:\n  greet:\n    service: ":host"\n    args:\n      name:\n        order: 0\n        required: true\n    cmd: "echo {{ args.name }} $${BROKEN}"\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.violations.filter((v) => v.rule === "landofile.host-shell")).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skips argv host tooling commands", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-argv-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\ntooling:\n  argv:\n    service: ":host"\n    cmd: ["echo", "$${NAME}"]\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.violations.filter((v) => v.rule === "landofile.host-shell")).toEqual([]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

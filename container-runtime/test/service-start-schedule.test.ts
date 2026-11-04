@@ -35,7 +35,10 @@ const commandHealthcheck: HealthcheckPlan = {
   retries: 1,
 };
 
-const service = (name: string, overrides: Partial<ServicePlan> = {}): readonly [string, ServicePlan] => {
+const service = (
+  name: string,
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
+): readonly [string, ServicePlan] => {
   const serviceName = ServiceName.make(name);
   return [
     name,
@@ -46,7 +49,6 @@ const service = (name: string, overrides: Partial<ServicePlan> = {}): readonly [
       primary: name === "web",
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -72,7 +74,6 @@ const planOf = (services: ReadonlyArray<readonly [string, ServicePlan]>): AppPla
   provider,
   services: Object.fromEntries(services),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -96,6 +97,25 @@ const recordingHandlers = (record: Array<string>, overrides: Record<string, unkn
       return { exitCode: 0 };
     }),
   ...overrides,
+});
+
+test("retains bounded redacted stderr when a readiness executable exits nonzero", async () => {
+  const plan = planOf([
+    service("db", { healthcheck: commandHealthcheck }),
+    service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+  ]);
+  const result = await Effect.runPromise(
+    runServiceStartSchedule(plan, {
+      ...recordingHandlers([]),
+      redactProbeError: (error) => String(error).replaceAll("secret", "[REDACTED]"),
+      execHealthcheck: () =>
+        Effect.succeed({ exitCode: 127, stderr: `probe: not found secret ${"x".repeat(3000)}` }),
+    }),
+  );
+  expect(result).toMatchObject({ _tag: "Settled", blocked: [{ dependency: "db", lastExitCode: 127 }] });
+  if (result._tag !== "Settled") throw new TypeError("Expected settled schedule");
+  expect(result.blocked[0]?.lastError).toStartWith("probe: not found [REDACTED]");
+  expect(result.blocked[0]?.lastError).toHaveLength(2048);
 });
 
 describe("buildServiceStartGraph", () => {

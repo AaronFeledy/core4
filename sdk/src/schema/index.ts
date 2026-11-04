@@ -1,5 +1,14 @@
 export * from "./agent-forwarding.ts";
+export * from "./tooling-input.ts";
 export * from "./app-plan.ts";
+export * from "./physical-names.ts";
+export * from "./file-sync-policy.ts";
+export * from "./image-reference.ts";
+export * from "./service-probe.ts";
+export * from "./listener-observation.ts";
+export * from "./environment-value.ts";
+export * from "./compiled-landofile.ts";
+export * from "./database-connection.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
@@ -72,13 +81,15 @@ export * from "./container-destination.ts";
 export * from "./data-transfer.ts";
 export * from "./volume-identity.ts";
 export {
-  EndpointInfo,
-  EndpointMaterialization,
+  EndpointRef,
+  ObservedPublication,
+  PublicationObservation,
   EndpointPublication,
+  EndpointScan,
   InternalEndpointInput,
   PublishedEndpointInput,
-  PublishedEndpointInfo,
 } from "./endpoint.ts";
+export * from "./endpoint-selection.ts";
 export * from "./downloader.ts";
 export {
   DeprecationNotice,
@@ -138,15 +149,22 @@ export * from "./recipe-decompose.ts";
 export * from "./recipe-identity.ts";
 export * from "./recipe-provenance.ts";
 export * from "./recipe-snapshot.ts";
+export * from "./recipe-source.ts";
+export { RecipeSourceCompileError } from "./recipe-source-error.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
+export * from "./app-results.ts";
+export * from "./service-shutdown.ts";
 export * from "./renderer-capabilities.ts";
 export * from "./renderer-panel.ts";
 export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./subscriber.ts";
 export * from "./service-info.ts";
+export * from "./service-mount.ts";
+export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
+export * from "./service-feature-validation.ts";
 export * from "./services/index.ts";
 export * from "./template.ts";
 export * from "./tool-manifest.ts";
@@ -160,3 +178,5 @@ export {
   getLayerMergeRule,
 } from "./layer-merge.ts";
 export * from "./resource-ownership.ts";
+export * from "./applied-state.ts";
+export { ListenerAuthority, formatListenerAuthority } from "./listener.ts";

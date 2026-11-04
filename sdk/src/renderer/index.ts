@@ -79,6 +79,8 @@ export interface RendererNarrationIO {
   readonly externalOutputStream?: NodeJS.WriteStream;
   /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */
   readonly isTTY?: boolean;
+  /** Resolved host color opt-out; injected IO is authoritative. */
+  readonly noColor?: boolean;
   /** Terminal width used by the TTY tail to account for wrapped rows. */
   readonly terminalColumns?: number | undefined;
   /** Terminal height used to bound the expanded task-detail tail. */
@@ -90,6 +92,7 @@ export interface RendererNarrationIO {
 const NARRATION_OPTIONAL_KEYS = [
   "externalOutputStream",
   "isTTY",
+  "noColor",
   "terminalColumns",
   "terminalRows",
   "subscribeInput",
@@ -147,5 +150,8 @@ export interface RendererContribution {
   readonly id: string;
   readonly makeService: (io: RendererIO) => Layer.Layer<Renderer>;
   readonly makeEventConsumer: (io: RendererNarrationIO) => Layer.Layer<never, never, EventService>;
-  readonly loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>;
+  readonly makeNotificationConsumer?: (io: RendererNarrationIO) => Layer.Layer<never, never, EventService>;
+  readonly loadInteractivePromptDriver?: (options?: {
+    readonly noColor?: boolean;
+  }) => Promise<InteractivePromptDriver>;
 }

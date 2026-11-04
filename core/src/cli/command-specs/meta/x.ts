@@ -1,7 +1,8 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { Args } from "../../spec/metadata";
 
-import { NotImplementedError } from "@lando/sdk/errors";
+import { CommandInputValidationError } from "@lando/sdk/errors";
 
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../commands/bun";
 
@@ -19,8 +20,8 @@ const splitSpecAndArgs = (
 export const metaXSpec: LandoCommandSpec<MetaXResult> = {
   resultSchema: MetaXResultSchema,
   id: "meta:x",
-  summary: "One-shot package execution via BunSelfRunner.x (bunx-equivalent).",
-  description: "One-shot package execution via BunSelfRunner.x (bunx-equivalent).",
+  summary: "Run a package with the embedded Bun executable (bunx-equivalent).",
+  description: "Run a package with the embedded Bun executable (bunx-equivalent).",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
@@ -34,15 +35,18 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
     const { spec, args } = splitSpecAndArgs(argv);
     if (spec === undefined) {
       return yield* Effect.fail(
-        new NotImplementedError({
+        new CommandInputValidationError({
           message: "meta:x requires a package spec as the first positional argument.",
-          commandId: "meta:x",
+          target: "meta:x",
+          field: "spec",
+          kind: "arg",
+          reason: "required",
           remediation: "Example: lando x prettier",
         }),
       );
     }
     return yield* metaX({ spec, argv: args });
   }),
-  successExitCode: (result) => result.exitCode,
-  render: (result) => renderMetaXResult(result as MetaXResult),
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
+  render: (result) => renderMetaXResult(result),
 };

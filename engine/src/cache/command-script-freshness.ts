@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { isBunShellScriptMetadataFailure, normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { readBunShellScript } from "@lando/landofile/bun-sh-script";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { canonicalCacheJson } from "./canonical.ts";
 
 export interface CommandScriptFingerprint {
@@ -9,12 +10,21 @@ export interface CommandScriptFingerprint {
   readonly sha256: string;
 }
 
-const fingerprint = (script: DiscoveredBunShellScript): CommandScriptFingerprint => ({
-  relativePath: script.relativePath,
-  sha256: createHash("sha256")
-    .update(canonicalCacheJson({ relativePath: script.relativePath, frontMatter: script.frontMatter }))
-    .digest("hex"),
-});
+const fingerprint = (script: DiscoveredBunShellScript): CommandScriptFingerprint => {
+  const task = Result.getOrThrowWith(normalizeBunShellScript(script), (error) => error);
+  return {
+    relativePath: script.relativePath,
+    sha256: createHash("sha256")
+      .update(
+        canonicalCacheJson({
+          relativePath: script.relativePath,
+          frontMatter: script.frontMatter,
+          input: task.input,
+        }),
+      )
+      .digest("hex"),
+  };
+};
 
 export const commandScriptFingerprints = async (
   appRoot: string,
@@ -34,6 +44,7 @@ export const commandScriptsFresh = async (
       const result = await Effect.runPromise(Effect.result(readBunShellScript(appRoot, cached.relativePath)));
       switch (result._tag) {
         case "Failure":
+          if (!isBunShellScriptMetadataFailure(result.failure)) throw result.failure;
           return false;
         case "Success":
           return result.success === undefined || fingerprint(result.success).sha256 === cached.sha256;

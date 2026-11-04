@@ -1,10 +1,15 @@
-import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
+import type { ListenerObservation } from "@lando/sdk/schema";
+import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
+import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
+import { observeTcpListener } from "../listener-observation.ts";
 
 import {
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
   ProviderInternalError,
   ProviderUnavailableError,
-  type ServiceRestartWouldRecreateError,
+  ServiceExecError,
   ServiceStartError,
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
@@ -16,13 +21,16 @@ import {
   type HostPlatform,
   ProviderId,
   ServiceName,
+  type ServiceNetworkAttachment,
   type ServicePlan,
-  landoServiceNetworkAliases,
-  landoSharedNetworkName,
+  landoAppNetworkName,
+  landoExternalNetworkNames,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -32,11 +40,17 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
+import { literalServiceEnvironment, requireCurrentCreationPlan } from "../environment-values.ts";
+import { prepareFileModeMounts } from "../file-mode-mounts.ts";
+import {
+  interruptOnAbort,
+  unsupportedHealthcheckTarget,
+  validateHealthcheckExecution,
+} from "../healthcheck-attempt.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
   isSharedNetwork,
-  networkOwnershipLabels,
   verifiedNativeId,
 } from "../native-ownership.ts";
 import {
@@ -47,7 +61,8 @@ import {
   fingerprintPlannedPublishPorts,
   serviceContainerName,
 } from "../plan.ts";
-import { StartFailureLogRedactor, redactDetails, withApiReason } from "../redact.ts";
+import { StartFailureLogRedactor, redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import { compileServiceProbe } from "../service-probe.ts";
 import {
   type ServicePublishProbe,
   classifyServicePublishHost,
@@ -62,6 +77,11 @@ import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
+  ensureAuthoredNetwork,
+  ensurePrivateNetwork,
+  preflightExternalNetwork,
+} from "./bring-up-networks.ts";
+import {
   bringUpRecreateReasons,
   inspectBindSources,
   inspectContainerLabels,
@@ -69,22 +89,18 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
-import { exec } from "./exec.ts";
+import { exec, execStream } from "./exec.ts";
 import { logs } from "./logs.ts";
-import { podmanNetworkNames } from "./networks.ts";
-
-const networkNames = podmanNetworkNames;
-const serviceNetworkAliases = landoServiceNetworkAliases;
-const sharedNetworkName = landoSharedNetworkName;
+import {
+  listLabeledServiceContainers,
+  removeStaleServiceContainers,
+  selectStaleServiceContainers,
+} from "./stale-service-containers.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
-type BringUpError =
-  | ServiceStartError
-  | ServiceRestartWouldRecreateError
-  | ProviderUnavailableError
-  | ProviderInternalError;
+type BringUpError = ProviderError;
 
 /**
  * Neutral fallback used whenever a host has not installed a provider-specific
@@ -96,6 +112,26 @@ export const APPLY_REMEDIATION =
 
 export const GLOBAL_APPLY_REMEDIATION =
   "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists.";
+
+export const SCRATCH_APPLY_REMEDIATION =
+  "Fix the reported error, then retry the scratch command. Run `lando doctor` if the failure persists.";
+
+const isScratchPlan = (plan: AppPlan): boolean => plan.extensions["@lando/core/scratch"] !== undefined;
+
+const applyRemediationFor = (plan: AppPlan): string =>
+  plan.id === "global"
+    ? GLOBAL_APPLY_REMEDIATION
+    : isScratchPlan(plan)
+      ? SCRATCH_APPLY_REMEDIATION
+      : APPLY_REMEDIATION;
+
+export const dependencyGateRemediation = (plan: AppPlan, dependency: string): string => {
+  if (plan.id === "global")
+    return `Run \`lando global:logs -s ${dependency}\` to diagnose dependency ${dependency}, fix it, then run \`lando global:start\`.`;
+  if (isScratchPlan(plan))
+    return `Run \`lando scratch logs ${plan.id}\` to diagnose dependency ${dependency}, fix it, then retry the scratch command.`;
+  return `Run \`lando logs -s ${dependency}\` to diagnose dependency ${dependency}, fix it, then run \`lando start\`; it reuses what this attempt created.`;
+};
 
 interface InspectResult {
   readonly exists: boolean;
@@ -124,6 +160,7 @@ export type StartFailureRemediation = (input: {
 }) => string | undefined;
 
 export interface BringUpOptions {
+  readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
   readonly dialect?: LifecycleDialect;
@@ -137,20 +174,54 @@ export interface BringUpOptions {
   readonly signal?: AbortSignal;
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
-  readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
+  readonly resolveServiceEnvironment?: ApplyOptions["resolveServiceEnvironment"];
   readonly onVolumeCreated?: ApplyOptions["onVolumeCreated"];
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
   readonly forbidRecreate?: boolean;
   readonly completionPlan?: AppPlan;
+  readonly userDataRoot?: string | undefined;
 }
 
 interface BringUpDeps {
   readonly api: EngineHttpApi;
   readonly options: BringUpOptions;
   readonly remediation: string;
+  readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
+  /** Cached once per bringUp; never construct per failure/inspect line. */
+  readonly redactor: ReturnType<typeof redactorFor>;
 }
+
+const creationEligibility = (plan: AppPlan) =>
+  Effect.try({
+    try: () => requireCurrentCreationPlan(plan),
+    catch: (error) => {
+      if (error instanceof PlanReplanRequiredError) return error;
+      throw error;
+    },
+  });
+
+const prepareCreationEnvironment = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+): Effect.fn.Return<Readonly<Record<string, string>>, ProviderError> {
+  const prepared = deps.creationEnvironments.get(service.name);
+  if (prepared !== undefined) return prepared;
+  yield* creationEligibility(plan);
+  const environment = yield* deps.options.resolveServiceEnvironment === undefined
+    ? Effect.try({
+        try: () => literalServiceEnvironment(service),
+        catch: (error) => {
+          if (error instanceof EnvironmentValueResolutionError) return error;
+          throw error;
+        },
+      })
+    : deps.options.resolveServiceEnvironment(service);
+  deps.creationEnvironments.set(service.name, environment);
+  return environment;
+});
 
 interface StartFailureInput {
   readonly service: ServicePlan;
@@ -159,6 +230,8 @@ interface StartFailureInput {
   readonly details?: unknown;
   readonly cause?: unknown;
   readonly logTail?: ServiceStartLogTail;
+  readonly listener?: ListenerObservation;
+  readonly remediation?: string;
 }
 
 const appRef = (plan: AppPlan): AppRef => ({
@@ -176,23 +249,27 @@ const containerRunning = (body: object): boolean => {
 };
 
 const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
-  const message = withApiReason(input.message, input.details);
+  const redactor = deps.redactor;
+  const message = withApiReason(input.message, input.details, redactor);
   const remediation =
     deps.options.startFailureRemediation?.({
       service: String(input.service.name),
       operation: input.operation,
       message,
       ...(input.details === undefined ? {} : { details: input.details }),
-    }) ?? deps.remediation;
+    }) ??
+    input.remediation ??
+    deps.remediation;
   return new ServiceStartError({
     providerId: input.service.provider,
     operation: input.operation,
     service: input.service.name,
     message,
     remediation,
-    ...(input.details === undefined ? {} : { details: redactDetails(input.details) }),
+    ...(input.details === undefined ? {} : { details: redactDetails(input.details, redactor) }),
     ...(input.cause === undefined ? {} : { cause: input.cause }),
     ...(input.logTail === undefined ? {} : { logTail: input.logTail }),
+    ...(input.listener === undefined ? {} : { listener: input.listener }),
   });
 };
 
@@ -232,14 +309,15 @@ const inspectContainer = Effect.fnUntraced(function* (
             status: response.status,
             body: response.body,
           },
+          deps.redactor,
         ),
-        details: redactDetails({ name, status: response.status, body: response.body }),
+        details: redactDetails({ name, status: response.status, body: response.body }, deps.redactor),
         remediation: deps.remediation,
       }),
     );
   }
   const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
-    details: redactDetails({ status: response.status, body: response.body }),
+    details: redactDetails({ status: response.status, body: response.body }, deps.redactor),
     remediation: deps.remediation,
   });
   if (typeof body !== "object" || body === null || !("State" in body)) {
@@ -264,25 +342,6 @@ const inspectContainer = Effect.fnUntraced(function* (
   };
 });
 
-const hostConfig = (
-  deps: BringUpDeps,
-  plan: AppPlan,
-  service: ServicePlan,
-  endpoints: ReadonlyArray<EndpointPlan>,
-) => {
-  return containerHostConfigFragment(plan, service, {
-    endpoints,
-    onMissingBindMountSource: (mount) => {
-      throw podmanFailure(deps, {
-        service,
-        operation: "bringUp.mount",
-        message: `provider-${deps.options.ctx.providerId} bind mounts require a source.`,
-        details: { mount },
-      });
-    },
-  });
-};
-
 const createContainerRequest = (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -296,37 +355,11 @@ const createContainerRequest = (
       throw podmanFailure(deps, { service, operation: "bringUp.knobs", message, details });
     },
   });
-  const baseHostConfig = hostConfig(deps, plan, service, endpoints);
-  const mountTargets = new Set<string>();
-  const binds = baseHostConfig.Binds;
-  if (Array.isArray(binds)) {
-    for (const bind of binds) {
-      if (typeof bind !== "string") continue;
-      const withoutOptions = bind.endsWith(":ro") ? bind.slice(0, -3) : bind;
-      const separator = withoutOptions.lastIndexOf(":");
-      if (separator >= 0) mountTargets.add(withoutOptions.slice(separator + 1));
-    }
-  }
-  const mounts = baseHostConfig.Mounts;
-  if (Array.isArray(mounts)) {
-    for (const mount of mounts) {
-      if (typeof mount !== "object" || mount === null) continue;
-      const target = Reflect.get(mount, "Target");
-      if (typeof target === "string") mountTargets.add(target);
-    }
-  }
-  const tmpfs = knobs.hostConfig.Tmpfs;
-  if (typeof tmpfs === "object" && tmpfs !== null && !Array.isArray(tmpfs)) {
-    const collision = Object.keys(tmpfs).find((target) => mountTargets.has(target));
-    if (collision !== undefined) {
-      throw podmanFailure(deps, {
-        service,
-        operation: "bringUp.knobs",
-        message: "Compose tmpfs destination conflicts with a planned container mount.",
-        details: { knob: "tmpfs", target: collision },
-      });
-    }
-  }
+  const baseHostConfig = containerHostConfigFragment(plan, service, { endpoints });
+  const attachments = createBodyAttachments(deps, plan, service);
+  const gatewayPriority =
+    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
+    attachments.length > 0;
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
@@ -337,11 +370,12 @@ const createContainerRequest = (
       },
       networkingConfig: {
         EndpointsConfig: Object.fromEntries(
-          createBodyNetworkNames(deps, plan).map((name) => [
+          attachments.map(({ name, aliases }) => [
             name,
-            name === sharedNetworkName(plan)
-              ? { Aliases: serviceNetworkAliases(plan, service) }
-              : { Aliases: [service.name] },
+            {
+              Aliases: aliases,
+              ...(gatewayPriority ? { GwPriority: 1 } : {}),
+            },
           ]),
         ),
       },
@@ -353,62 +387,82 @@ const createContainerRequest = (
           details: { artifact },
         });
       },
-      environment: { ...service.environment, ...deps.options.serviceEnvironment?.[service.name] },
+      environment: deps.creationEnvironments.get(service.name) ?? literalServiceEnvironment(service),
     }),
     ...knobs.topLevel,
   };
   const searchParams = new URLSearchParams({ name, ...knobs.query });
   const path: EngineHttpRequest["path"] = `/containers/create?${searchParams.toString()}`;
-  return { body, path };
+  return {
+    body,
+    path,
+    ...(gatewayPriority ? { minimumApiVersion: "1.48" as const } : {}),
+  };
 };
 
 const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
   plan: AppPlan,
-): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
+): Effect.Effect<void, ProviderError> => {
+  const driver =
+    (plan.networking?.perAppBridge?.name === name ? plan.networking.perAppBridge.driver : undefined) ??
+    "bridge";
+  const preferredBridge =
+    (deps.options.dialect ?? libpodLifecycleDialect).engine === "libpod" &&
+    landoAppNetworkName(plan) === name &&
+    !isSharedNetwork(plan, name);
+  const createFailure = (response: EngineHttpResponse) => {
+    const details = { status: response.status, body: response.body };
+    const message = withApiReason(
+      `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
+      details,
+      deps.redactor,
+    );
+    return new ProviderUnavailableError({
+      providerId: deps.options.ctx.providerId,
+      operation: "bringUp.network",
+      message,
+      details: redactDetails(details, deps.redactor),
+      remediation:
+        deps.options.startFailureRemediation?.({ operation: "bringUp.network", message, details }) ??
+        deps.remediation,
+    });
+  };
+  const create = (labels?: Readonly<Record<string, string>>) =>
+    creationEligibility(plan).pipe(
+      Effect.andThen(() =>
+        request(deps, {
+          method: "POST",
+          path: preferredBridge ? "/libpod/networks/create" : "/networks/create",
+          body: preferredBridge
+            ? { name, driver, dns_enabled: true, options: { metric: "50" }, labels }
+            : { Name: name, Driver: driver, ...(labels === undefined ? {} : { Labels: labels }) },
+        }),
+      ),
+    );
+  if (!isSharedNetwork(plan, name)) {
+    return ensurePrivateNetwork(
+      (input) => request(deps, input),
+      {
+        plan,
+        name,
+        driver,
+        create,
+        createFailure,
+      },
+      deps.options.ctx,
+    );
+  }
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
-      if (inspectResponse.status === 200) {
-        return Effect.void;
-      }
-      return request(deps, {
-        method: "POST",
-        path: "/networks/create",
-        body: {
-          Name: name,
-          Driver: "bridge",
-          ...(isSharedNetwork(plan, name)
-            ? {}
-            : {
-                Labels: networkOwnershipLabels(plan),
-              }),
-        },
-      }).pipe(
-        Effect.flatMap((response) => {
-          if (response.status === 201 || response.status === 200 || response.status === 409) {
-            return Effect.void;
-          }
-          const details = { status: response.status, body: response.body };
-          const message = withApiReason(
-            `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
-            details,
-          );
-          return Effect.fail(
-            new ProviderUnavailableError({
-              providerId: deps.options.ctx.providerId,
-              operation: "bringUp.network",
-              message,
-              details: redactDetails(details),
-              remediation:
-                deps.options.startFailureRemediation?.({
-                  operation: "bringUp.network",
-                  message,
-                  details,
-                }) ?? deps.remediation,
-            }),
-          );
-        }),
+      if (inspectResponse.status === 200) return Effect.void;
+      return create().pipe(
+        Effect.flatMap((response) =>
+          response.status === 200 || response.status === 201 || response.status === 409
+            ? Effect.void
+            : Effect.fail(createFailure(response)),
+        ),
       );
     }),
   );
@@ -426,38 +480,51 @@ const ensureVolume = (
   deps: BringUpDeps,
   plan: AppPlan,
   store: AppPlan["stores"][number],
-): Effect.Effect<readonly VolumeCreationFact[], ProviderUnavailableError | ProviderInternalError> => {
-  const labels = podmanVolumeCreationLabels(plan, store);
-  return request(deps, {
-    method: "POST",
-    path: "/volumes/create",
-    body: {
-      Name: store.name,
-      Labels: labels,
-    },
-  }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 201 || response.status === 200)
-        return Effect.succeed(volumeCreationFact({ body: response.body, name: store.name, labels }));
-      if (response.status === 409) return Effect.succeed([]);
-      return Effect.fail(
-        new ProviderUnavailableError({
-          providerId: deps.options.ctx.providerId,
-          operation: "bringUp.volume",
-          message: withApiReason(
-            `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
-            {
-              status: response.status,
-              body: response.body,
-            },
-          ),
-          details: redactDetails({ name: store.name, status: response.status, body: response.body }),
-          remediation: deps.remediation,
-        }),
-      );
-    }),
-  );
-};
+): Effect.Effect<readonly VolumeCreationFact[], ProviderError> =>
+  Effect.gen(function* () {
+    if (plan.valueModel !== 1) {
+      const observed = yield* request(deps, {
+        method: "GET",
+        path: `/volumes/${encodeURIComponent(store.name)}`,
+      });
+      if (observed.status === 200) return [];
+      yield* creationEligibility(plan);
+    }
+    const labels = podmanVolumeCreationLabels(plan, store);
+    return yield* request(deps, {
+      method: "POST",
+      path: "/volumes/create",
+      body: {
+        Name: store.name,
+        Labels: labels,
+      },
+    }).pipe(
+      Effect.flatMap((response) => {
+        if (response.status === 201 || response.status === 200)
+          return Effect.succeed(volumeCreationFact({ body: response.body, name: store.name, labels }));
+        if (response.status === 409) return Effect.succeed([]);
+        return Effect.fail(
+          new ProviderUnavailableError({
+            providerId: deps.options.ctx.providerId,
+            operation: "bringUp.volume",
+            message: withApiReason(
+              `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
+              {
+                status: response.status,
+                body: response.body,
+              },
+              deps.redactor,
+            ),
+            details: redactDetails(
+              { name: store.name, status: response.status, body: response.body },
+              deps.redactor,
+            ),
+            remediation: deps.remediation,
+          }),
+        );
+      }),
+    );
+  });
 
 export const isMissingImageCreateResponse = (response: EngineHttpResponse): boolean =>
   response.status === 404 || /no such image/iu.test(response.body);
@@ -490,6 +557,7 @@ const createContainer = Effect.fnUntraced(function* (
   endpoints: ReadonlyArray<EndpointPlan>,
   reassign: (exclude: ReadonlySet<number>) => Effect.Effect<ReadonlyArray<EndpointPlan>, BringUpError>,
 ): Effect.fn.Return<ReadonlyArray<EndpointPlan>, BringUpError> {
+  yield* prepareCreationEnvironment(deps, plan, service);
   if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
   }
@@ -563,35 +631,31 @@ const isAlreadyConnectedResponse = (response: EngineHttpResponse): boolean =>
   response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
 
 /** Docker accepts one network in the create body; the rest are connected after create. */
-const createBodyNetworkNames = (deps: BringUpDeps, plan: AppPlan): ReadonlyArray<string> =>
+const createBodyAttachments = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan) =>
   (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
-    ? networkNames(plan).slice(0, 1)
-    : networkNames(plan);
+    ? landoServiceNetworkAttachments(plan, service).slice(0, 1)
+    : landoServiceNetworkAttachments(plan, service);
 
 /** Existing Docker containers need an idempotent connect even when create would attach the shared network. */
-const sharedNetworkAfterCreate = (deps: BringUpDeps, plan: AppPlan, created: boolean): string | undefined => {
-  const shared = sharedNetworkName(plan);
-  if (
-    !created &&
-    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
-  )
-    return shared;
-  return shared === undefined || createBodyNetworkNames(deps, plan).includes(shared) ? undefined : shared;
-};
+const attachmentsAfterCreate = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan, created: boolean) =>
+  (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+    ? landoServiceNetworkAttachments(plan, service).slice(
+        created || plan.networking?.perAppBridge !== null ? 1 : 0,
+      )
+    : [];
 
-const connectSharedNetwork = (
+const connectNetwork = (
   deps: BringUpDeps,
-  plan: AppPlan,
   service: ServicePlan,
   name: string,
-  sharedNetwork: string,
+  attachment: ServiceNetworkAttachment,
 ): Effect.Effect<void, BringUpError> =>
   request(deps, {
     method: "POST",
-    path: `/networks/${encodeURIComponent(sharedNetwork)}/connect`,
+    path: `/networks/${encodeURIComponent(attachment.name)}/connect`,
     body: {
       Container: name,
-      EndpointConfig: { Aliases: serviceNetworkAliases(plan, service) },
+      EndpointConfig: { Aliases: attachment.aliases },
     },
   }).pipe(
     Effect.flatMap((response) =>
@@ -620,23 +684,16 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
     Effect.catch(() => Effect.void),
   );
 
-const removeContainer = (
-  deps: BringUpDeps,
-  service: ServicePlan,
-  name: string,
-): Effect.Effect<void, BringUpError> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.flatMap((response) =>
-      response.status === 204 || response.status === 200 || response.status === 404
-        ? Effect.void
-        : Effect.fail(
-            podmanFailure(deps, {
-              service,
-              operation: "bringUp.remove",
-              message: `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
-              details: { status: response.status, body: response.body },
-            }),
-          ),
+const removeContainer = (deps: BringUpDeps, service: ServicePlan, name: string) =>
+  removeRuntimeContainer(deps.api, name, { ...deps.options.ctx, operation: "bringUp.remove" }).pipe(
+    Effect.mapError((cause) =>
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp.remove",
+        message: cause.message,
+        details: cause.details,
+        cause,
+      }),
     ),
   );
 
@@ -728,6 +785,7 @@ const startService = Effect.fnUntraced(function* (
         }),
       );
     }
+    yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
       yield* removeContainer(deps, service, existingId);
@@ -767,9 +825,8 @@ const startService = Effect.fnUntraced(function* (
     createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
     changed = true;
   }
-  const sharedNetwork = sharedNetworkAfterCreate(deps, plan, !before.exists);
-  if (sharedNetwork !== undefined) {
-    yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+  for (const attachment of attachmentsAfterCreate(deps, plan, service, !before.exists)) {
+    yield* connectNetwork(deps, service, name, attachment);
   }
   if (!before.running) {
     const response = yield* startContainer(deps, name);
@@ -792,6 +849,7 @@ const startService = Effect.fnUntraced(function* (
             }),
           );
         }
+        yield* prepareCreationEnvironment(deps, plan, service);
         const recoveryId = yield* inspectOwnedNativeId(
           deps.api,
           { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
@@ -803,9 +861,8 @@ const startService = Effect.fnUntraced(function* (
         }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
-        const retrySharedNetwork = sharedNetworkAfterCreate(deps, plan, true);
-        if (retrySharedNetwork !== undefined) {
-          yield* connectSharedNetwork(deps, plan, service, name, retrySharedNetwork);
+        for (const attachment of attachmentsAfterCreate(deps, plan, service, true)) {
+          yield* connectNetwork(deps, service, name, attachment);
         }
         retry = yield* startContainer(deps, name);
       }
@@ -922,7 +979,8 @@ const captureServiceLogTail = Effect.fnUntraced(
       ),
     );
     if (collected.length === 0) return undefined;
-    const redactor = yield* StartFailureLogRedactor;
+    const provided = yield* Effect.serviceOption(StartFailureLogRedactor);
+    const redactor = Option.isSome(provided) ? provided.value : deps.redactor;
     const redacted = redactor.redactString(collected.map((chunk) => chunk.line).join("\n"));
     const { lines, truncated } = capRedactedLogLines(redacted.split("\n"));
     return {
@@ -939,7 +997,7 @@ const captureServiceLogTail = Effect.fnUntraced(
   ),
 );
 
-const withServiceStartLogTail = (
+export const withServiceStartLogTail = (
   error: ServiceStartError,
   logTail: ServiceStartLogTail | undefined,
 ): ServiceStartError =>
@@ -951,9 +1009,10 @@ const withServiceStartLogTail = (
         message: error.message,
         service: error.service,
         ...(error.details === undefined ? {} : { details: error.details }),
-        ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
+        remediation: error.remediation,
         ...(error.cause === undefined ? {} : { cause: error.cause }),
         logTail,
+        ...(error.listener === undefined ? {} : { listener: error.listener }),
       });
 
 const captureStartFailure = (
@@ -977,9 +1036,10 @@ const captureStartFailure = (
 };
 
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
-  plan: AppPlan,
+  logicalPlan: AppPlan,
   options: BringUpOptions,
 ): Effect.fn.Return<ApplyResult, ProviderError> {
+  yield* validateHealthcheckExecution(logicalPlan, options.executeReadinessAttempt);
   const api = options.api;
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
@@ -994,14 +1054,52 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
+  const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
   const deps: BringUpDeps = {
     api,
     options,
-    remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
+    remediation: applyRemediationFor(plan),
+    creationEnvironments: new Map(),
+    redactor: redactorFor(options.ctx),
   };
 
-  for (const name of networkNames(plan)) {
-    yield* ensureNetwork(deps, name, plan);
+  const networkNames = new Set(
+    Object.values(plan.services).flatMap((service) =>
+      landoServiceNetworkAttachments(plan, service).map(({ name }) => name),
+    ),
+  );
+  const externalNames = new Set(landoExternalNetworkNames(plan));
+  for (const name of networkNames) {
+    if (!externalNames.has(name)) continue;
+    yield* preflightExternalNetwork(api, name, options.ctx);
+  }
+
+  let staleNameChanged = false;
+  if (options.forbidRecreate !== true) {
+    const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
+    const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+    staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
+  }
+
+  for (const service of Object.values(plan.services)) {
+    const inspected = yield* inspectContainer(deps, containerName(plan, service));
+    const replacing =
+      inspected.exists &&
+      (options.reconcile === true || bringUpRecreateReasons(plan, service, inspected).length > 0);
+    if ((!inspected.exists || replacing) && options.forbidRecreate !== true) {
+      yield* prepareCreationEnvironment(deps, plan, service);
+    }
+  }
+
+  for (const name of networkNames) {
+    const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+    if (authored?.external === true) continue;
+    if (authored !== undefined) {
+      yield* creationEligibility(plan);
+      yield* ensureAuthoredNetwork(api, { plan, network: authored }, options.ctx);
+    } else {
+      yield* ensureNetwork(deps, name, plan);
+    }
   }
   const createdVolumes: VolumeCreationFact[] = [];
   for (const store of plan.stores) {
@@ -1011,6 +1109,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const result = yield* runServiceStartSchedule(plan, {
+    redactProbeError: (error) =>
+      deps.redactor.redactString(
+        typeof error === "string"
+          ? error
+          : typeof error === "object" &&
+              error !== null &&
+              "message" in error &&
+              typeof error.message === "string"
+            ? error.message
+            : "Readiness attempt infrastructure failure.",
+      ),
     startService: Effect.fnUntraced(function* (service) {
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
@@ -1019,13 +1128,43 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
     }),
-    execHealthcheck: (service, command) =>
-      exec(
-        plan,
-        { app: plan.id, service: service.name },
-        { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
-        { api, ctx: options.ctx },
-      ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+    execHealthcheck: (service, probe) =>
+      interruptOnAbort(
+        options.executeReadinessAttempt !== undefined
+          ? options.executeReadinessAttempt(service.name, probe)
+          : Effect.try({
+              try: () => compileServiceProbe(probe, plan, service),
+              catch: () =>
+                new ServiceExecError({
+                  providerId: options.ctx.providerId,
+                  service: String(service.name),
+                  operation: "readiness",
+                  message: "The service readiness command could not be compiled.",
+                  remediation: "Supply a command and a declared listener in the application plan.",
+                }),
+            }).pipe(
+              Effect.flatMap((command) =>
+                command === undefined
+                  ? Effect.fail(unsupportedHealthcheckTarget(service.name, probe))
+                  : exec(
+                      plan,
+                      {
+                        app: plan.id,
+                        service: service.name,
+                        plan,
+                        ...(probe.user === undefined ? {} : { user: probe.user }),
+                      },
+                      {
+                        command: [...command],
+                        raw: true,
+                        ...(options.signal === undefined ? {} : { signal: options.signal }),
+                      },
+                      { api, ctx: options.ctx },
+                    ),
+              ),
+            ),
+        options.signal,
+      ),
     waitForExit: (service) =>
       waitForExit(
         plan,
@@ -1046,7 +1185,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         operation: "bringUp.schedule",
         message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
         remediation: deps.remediation,
-        details: redactDetails({ edges: result.edges }),
+        details: redactDetails({ edges: result.edges }, deps.redactor),
       }),
     );
   }
@@ -1062,8 +1201,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ...(blocked.lastExitCode === undefined ? {} : { exitCode: blocked.lastExitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
-    return yield* capture.pipe(
-      Effect.flatMap((logTail): Effect.Effect<never, BringUpError> => {
+    const observation =
+      aborted || dependency === undefined || !blocked.unmetGate.endsWith(":healthy")
+        ? Effect.succeed(undefined)
+        : observeTcpListener(dependency, (command) =>
+            execStream(plan, { app: plan.id, service: dependency.name, plan }, command, {
+              api,
+              ctx: options.ctx,
+            }),
+          );
+    return yield* Effect.all([capture, observation], { concurrency: "unbounded" }).pipe(
+      Effect.flatMap(([logTail, listener]): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {
           return Effect.fail(
@@ -1072,15 +1220,25 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
               operation: "bringUp.schedule",
               message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
               remediation: deps.remediation,
-              details: redactDetails(blocked),
+              details: redactDetails(blocked, deps.redactor),
             }),
           );
         }
+        const diagnostic =
+          listener !== undefined && dependency !== undefined
+            ? listenerDiagnostic(listener, dependency)
+            : undefined;
+        const action =
+          diagnostic?.action ??
+          (blocked.unmetGate.endsWith(":healthy") ? listenerAuthorityAction(dependency) : undefined);
         return Effect.fail(
           podmanFailure(deps, {
             service,
             operation: "bringUp.schedule",
-            message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+            message: `${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+            remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+            ...(listener === undefined ? {} : { listener }),
+            ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
             ...(logTail === undefined ? {} : { logTail }),
           }),
         );
@@ -1088,5 +1246,5 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     );
   }
 
-  return { changed: result.changed || createdVolumes.length > 0, createdVolumes };
+  return { changed: result.changed || staleNameChanged || createdVolumes.length > 0, createdVolumes };
 });

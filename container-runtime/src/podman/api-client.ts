@@ -1,5 +1,5 @@
 import { createConnection } from "node:net";
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 
@@ -10,9 +10,10 @@ import {
   type ProviderErrorContext,
   isSuccessStatus,
 } from "../engine-api.ts";
+import { engineByteStream } from "../engine-byte-stream.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
-import { redactResponseDetails, redactString } from "../redact.ts";
+import { redactResponseDetails, redactString, redactorFor } from "../redact.ts";
 import {
   type SocketHttpConnection,
   connectSocket,
@@ -42,7 +43,7 @@ const unavailableStatus = (
     providerId: ctx.providerId,
     operation,
     message,
-    details: redactResponseDetails(response),
+    details: redactResponseDetails(response, redactorFor(ctx)),
     remediation: ctx.remediation,
   });
 
@@ -62,9 +63,7 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
       catch: (cause) => engineApiFailure(ctx, "podman-api", input, cause),
     });
   const stream = (input: EngineHttpRequest) =>
-    Stream.fromAsyncIterable(client.stream(input), (cause) =>
-      engineApiFailure(ctx, "podman-api", input, cause),
-    );
+    engineByteStream(input, client.stream, (cause) => engineApiFailure(ctx, "podman-api", input, cause));
   const infoRequest = { method: "GET", path: "/libpod/info" } as const;
   const pingRequest = { method: "GET", path: "/libpod/_ping" } as const;
 
@@ -95,7 +94,7 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
               message: "Podman API returned malformed JSON — could not parse info response.",
               capability: "podman-info",
               requiredValue: "valid JSON Podman API info response",
-              actualValue: redactString(body),
+              actualValue: redactString(body, redactorFor(ctx)),
               remediation: ctx.remediation,
               cause,
             }),

@@ -1,9 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
-import {
-  makeRedactionService,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   type AppResolveError,
   type NoProviderInstalledError,
@@ -16,7 +12,6 @@ import { Cause, type Context, Effect, Exit, Result, Stream } from "effect";
 import { assertRedactedError } from "./fixtures/assert-redacted-error.ts";
 import { canary, errorFields, plan, registryLayer, target } from "./fixtures/error-registry.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
 type Registry = Context.Service.Shape<typeof RuntimeProviderRegistry>;
 type RegistryCall = (
   registry: Registry,
@@ -41,7 +36,7 @@ test.each(Object.entries(evidenceCalls))(
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* registerRedactionValues([canary]);
+        yield* (yield* RedactionService).registerValues([canary]);
         return yield* Effect.result(invoke(yield* RuntimeProviderRegistry));
       }).pipe(Effect.provide(layer)),
     );
@@ -71,7 +66,7 @@ test.each(Object.entries(ownershipCalls))(
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* registerRedactionValues([canary]);
+        yield* (yield* RedactionService).registerValues([canary]);
         return yield* Effect.result(invoke(yield* RuntimeProviderRegistry));
       }).pipe(Effect.provide(layer)),
     );
@@ -89,7 +84,7 @@ test("provider construction failures are reconstructed before being returned", a
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      yield* registerRedactionValues([canary]);
+      yield* (yield* RedactionService).registerValues([canary]);
       return yield* Effect.result((yield* RuntimeProviderRegistry).select(plan));
     }).pipe(Effect.provide(layer)),
   );
@@ -110,7 +105,7 @@ test("capability construction failures retain their original debug cause after c
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      yield* registerRedactionValues([canary]);
+      yield* (yield* RedactionService).registerValues([canary]);
       return yield* Effect.result((yield* RuntimeProviderRegistry).select(plan));
     }).pipe(
       Effect.provide(
@@ -139,7 +134,7 @@ test.each(["effect", "stream"] as const)("%s defects are not sanitized", async (
   const exit = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        yield* registerRedactionValues([canary]);
+        yield* (yield* RedactionService).registerValues([canary]);
         const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
         return yield* Effect.exit(
           kind === "effect"
@@ -177,7 +172,7 @@ test("the original cause is debug-only and untouched", async () => {
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      yield* registerRedactionValues([canary]);
+      yield* (yield* RedactionService).registerValues([canary]);
       const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
       return yield* Effect.result(selected.start(target));
     }).pipe(Effect.provide(registryLayer({ ...TestRuntimeProvider, start: () => Effect.fail(original) }))),
@@ -189,7 +184,7 @@ test("the original cause is debug-only and untouched", async () => {
   expect(result.failure.message).toBe("failed [redacted]");
 });
 
-test.each(["live", "standalone"] as const)(
+test.each(["live", "retained"] as const)(
   "%s redactors mask values registered after provider selection",
   async (mode) => {
     // Given
@@ -199,9 +194,13 @@ test.each(["live", "standalone"] as const)(
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-        yield* registerRedactionValues([canary]);
+        yield* (yield* RedactionService).registerValues([canary]);
         return yield* Effect.result(selected.start(target));
-      }).pipe(Effect.provide(registryLayer(provider, mode === "standalone" ? { redaction: null } : {}))),
+      }).pipe(
+        Effect.provide(
+          registryLayer(provider, mode === "retained" ? { redaction: makeRedactionService() } : {}),
+        ),
+      ),
     );
     // Then
     if (Result.isSuccess(result)) throw new Error("Expected provider failure");
@@ -209,15 +208,11 @@ test.each(["live", "standalone"] as const)(
   },
 );
 
-test("the live redactor includes store-only values", async () => {
+test("the live redactor includes explicitly registered resolved values", async () => {
   // Given
   const original = new ProviderUnavailableError(errorFields);
-  const redaction = makeRedactionService({
-    id: "store",
-    list: Effect.succeed(["canary"]),
-    get: () => Effect.succeed(canary),
-    has: () => Effect.succeed(true),
-  });
+  const redaction = makeRedactionService();
+  await Effect.runPromise(redaction.registerValues([canary]));
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {

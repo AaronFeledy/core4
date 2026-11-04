@@ -32,6 +32,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -39,6 +40,7 @@ const discover = () =>
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -127,8 +129,8 @@ describe("LandofileService layer", () => {
       await writeFile(layerPath, "name: dist-only\n");
       process.chdir(nested);
 
-      expect(await findLandofilePath(nested)).toBe(layerPath);
-      expect(await findAppRoot(nested)).toBe(appRoot);
+      expect(await Effect.runPromise(findLandofilePath(nested))).toBe(layerPath);
+      expect(await Effect.runPromise(findAppRoot(nested))).toBe(appRoot);
       expect((await discover()).name).toBe("dist-only");
     });
   });
@@ -290,20 +292,9 @@ describe("LandofileService layer", () => {
           expect(error).toBeInstanceOf(LandofileNotFoundError);
           if (error._tag === "LandofileNotFoundError") {
             expect(error.cwd).toBe(join(dir, "nested"));
-            expect(error.message).toStartWith("No .lando.yml or .lando.ts found. Searched:");
-            for (const root of [join(dir, "nested"), dir]) {
-              for (const basename of [
-                ".lando.base",
-                ".lando.dist",
-                ".lando.upstream",
-                ".lando",
-                ".lando.local",
-                ".lando.user",
-              ]) {
-                expect(error.message).toContain(join(root, `${basename}.yml`));
-                expect(error.message).toContain(join(root, `${basename}.ts`));
-              }
-            }
+            expect(error.message).toContain(`Searched from ${join(dir, "nested")} through`);
+            expect(error.message).toContain("stopped at the filesystem root");
+            expect(error.remediation).toContain("lando init");
           }
         }
       }
@@ -363,7 +354,7 @@ describe("LandofileService layer", () => {
               "services.web.unsupported",
             );
             expect(error.message).toContain("unsupported Compose-subset keys");
-            expect(error.message).toContain("providers.<provider-id>");
+            expect(error.remediation).toContain("providers.<provider-id>");
           }
         }
       }
@@ -443,7 +434,7 @@ describe("LandofileService layer", () => {
               "services.web.unsupported",
             ]);
             expect(error.message).toContain("unsupported service keys");
-            expect(error.message).toContain("Compose compatibility is limited to the supported subset");
+            expect(error.remediation).toContain("Compose compatibility is limited to the supported subset");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
           }
         }
@@ -502,7 +493,7 @@ describe("LandofileService layer", () => {
             expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
               "services.web.certs.key",
             );
-            expect(error.message).toContain("Fix each listed value.");
+            expect(error.remediation).toContain("Fix each listed value.");
           }
         }
       }
@@ -629,10 +620,16 @@ describe("LandofileService layer — mounts, storage, and excludes (US-014)", ()
 
 describe("LandofileService layer — reserved section rejection (US-014)", () => {
   const assertUnsupportedRejection = (error: unknown): void => {
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (!(error instanceof NotImplementedError)) return;
-    expect(error._tag).toBe("NotImplementedError");
-    expect(error.remediation).toContain("not supported yet");
+    expect(error).toBeInstanceOf(LandofileValidationError);
+    expect(error).toMatchObject({
+      issues: [
+        {
+          path: ["services", "web", "environment", "APP_HOST"],
+          source: expect.objectContaining({ path: ["services", "web", "environment", "APP_HOST"] }),
+          message: expect.stringContaining('Unsupported shell parameter operator ".HOST"'),
+        },
+      ],
+    });
   };
 
   test("resolves top-level `includes:` during layered discovery", async () => {
@@ -660,7 +657,7 @@ describe("LandofileService layer — reserved section rejection (US-014)", () =>
     });
   });
 
-  test("rejects configuration expressions ${...} with NotImplementedError + remediation", async () => {
+  test("rejects configuration expressions ${...} as a located validation issue", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),

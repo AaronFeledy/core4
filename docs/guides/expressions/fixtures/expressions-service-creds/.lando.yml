@@ -4,7 +4,8 @@ services:
     type: "node:22"
     primary: true
     environment:
-      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ services.database.creds.database }}"
       DB_LABEL: "{{ app.name }}:{{ services.database.creds.user }}"
   database:
     type: "postgres:16"
+    port: 5433

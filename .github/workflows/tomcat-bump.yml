@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -64,7 +64,8 @@ jobs:
             git commit -m "$TITLE" --only -- 'plugins/service-lando/tomcat'
           fi
           git push origin "HEAD:$BRANCH"
-          if [ -z "$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')" ]; then
+          PR_NUMBER="$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')"
+          if [ -z "$PR_NUMBER" ]; then
             gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
           else
             gh pr edit "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"

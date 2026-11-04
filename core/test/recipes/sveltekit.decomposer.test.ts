@@ -1,23 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { sveltekitDecomposer } from "../../src/recipes/builtin/sveltekit/decomposer.ts";
-import { sveltekitRecipeSource, sveltekitRecipeYaml } from "../../src/recipes/builtin/sveltekit/manifest.ts";
-import {
-  SVELTEKIT_CONTENT_DIGEST,
-  sveltekitDefaults,
-  sveltekitProducer,
-  sveltekitSnapshot,
-} from "../../src/recipes/builtin/sveltekit/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: sveltekitDecomposer,
+  defaults: sveltekitDefaults,
+  producer: sveltekitProducer,
+  snapshot: sveltekitSnapshot,
+  contentDigest: SVELTEKIT_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("sveltekit");
 
 const defaults = { ...sveltekitDefaults };
 const alternatives = { node: "22", adapter: "auto", database: "postgres" };
@@ -34,10 +29,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: sveltekitRecipeSource, content: sveltekitRecipeYaml })),
-);
 
 describe("sveltekit decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -105,7 +96,7 @@ describe("sveltekit decomposition", () => {
 
   test("tolerates the app-name answer the translator forwards alongside declared options", () => {
     const result = decompose({ ...defaults, name: "probe" });
-    expect(result.provenance.options).toEqual({ ...defaults, name: "probe" });
+    expect(result.provenance.options).toEqual(defaults);
     expect(authoringOf({ ...defaults, name: "probe" })).toEqual(authoringOf(defaults));
   });
 
@@ -128,21 +119,15 @@ describe("sveltekit decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(
-      SVELTEKIT_CONTENT_DIGEST,
-    );
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(SVELTEKIT_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(sveltekitSnapshot);
-    expect(sveltekitSnapshot.identity.contentDigest).toBe(
-      "sha256:f8a23c071d0f1b1528573a6514c9927ab5f2a64a286be3d5a7e58f9c5bfec469",
-    );
+    expect(sveltekitSnapshot.identity.contentDigest).toBe(SVELTEKIT_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 

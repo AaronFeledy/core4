@@ -27,6 +27,9 @@
       "path": "./managed-file"
     },
     {
+      "path": "./source-acquisition"
+    },
+    {
       "path": "./data-mover"
     },
     {
@@ -79,6 +82,9 @@
     },
     {
       "path": "./plugins/sql"
+    },
+    {
+      "path": "./plugins/github-actions"
     },
     {
       "path": "./plugins/lando4"

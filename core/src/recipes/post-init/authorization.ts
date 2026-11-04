@@ -41,8 +41,7 @@ export const postInitAuthorizationIssue = (
         return "app:start requires a declared opt-in prompt.";
       if (
         prompt !== undefined &&
-        (prompt.type !== "confirm" ||
-          (prompt.default !== undefined && prompt.default !== false && prompt.default !== "false"))
+        (prompt.type !== "confirm" || (prompt.default !== undefined && prompt.default !== false))
       ) {
         return "The app:start opt-in prompt must be confirm with a false default.";
       }
@@ -81,21 +80,15 @@ export const shouldRunPostInitAction = (
   if (when === undefined) return true;
   if (when.length === 0 || when.length > 8192) return fail("Invalid when expression size.");
   const name = action.type === "command" && action.cmd === "app:start" ? answerGuard(when) : undefined;
-  if (name !== undefined && context.answers[name] !== true && context.answers[name] !== "true") return false;
+  if (name !== undefined && context.answers[name] !== true) return false;
   const parsed = parseExpressionEither(when.startsWith("{{") ? when : `{{ ${when} }}`, {
     filePath: context.recipeId,
   });
   if (Result.isFailure(parsed) || !expressionTouchesOnlyScopes(parsed.success, ["options"]))
     return fail("Invalid when expression or forbidden scope.");
-  const options = Object.fromEntries(
-    Object.entries(context.answers).map(([key, value]) => [
-      key,
-      value === "true" ? true : value === "false" ? false : value,
-    ]),
-  );
   const result = evaluateTemplateEither(
     parsed.success,
-    { options },
+    { options: context.answers },
     {
       budget: {
         maxSteps: 10000,

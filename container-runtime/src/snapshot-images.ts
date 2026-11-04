@@ -33,7 +33,7 @@ export const listNativeSnapshots = Effect.fn("ProviderDataPlane.listVolumeSnapsh
     path: `/images/json?filters=${encodeURIComponent(JSON.stringify({ reference: [`${repository}:*`] }))}`,
   });
   if (response.status < 200 || response.status >= 300) {
-    return yield* Effect.fail(failure(options.redactDetails(response)));
+    return yield* Effect.fail(failure(options.redactor.redactValue(response)));
   }
   const images = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ImageList))(response.body).pipe(
     Effect.mapError(failure),

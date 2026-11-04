@@ -1,100 +1,36 @@
-import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
-import { Predicate } from "effect";
+import { committedSensitiveLiterals, sensitiveLandofileOccurrences } from "@lando/landofile/authored-literal";
+import { RedactionService, collectPublicCredentialValues } from "@lando/redaction/service";
+import { isLandofileOverride, isLandofileReset, isPlainRecord } from "@lando/sdk/landofile";
+import type { ValidationIssuePath } from "@lando/sdk/schema";
+import { isPublicDefaultCredential, isUsableExactRedactionValue } from "@lando/sdk/secrets";
+import { Effect, Option } from "effect";
 
-import {
-  collectPublicCredentialValues,
-  collectSecretEnvValues,
-  collectSecretStructuralValues,
-} from "@lando/redaction/service";
-import { isLandofileOverride, isLandofileReset } from "@lando/sdk/landofile";
-
-type EnvMap = Readonly<Record<string, unknown>> | undefined;
-
-type ServiceEnvSource = {
-  readonly environment?: EnvMap;
-  readonly extensions?: Readonly<Record<string, unknown>>;
-  readonly password?: string;
-  readonly labels?: EnvMap;
-  readonly creds?: Readonly<Record<string, unknown>>;
+export type LandofileRedactionValues = {
+  readonly substring: readonly string[];
+  readonly wholeToken: readonly string[];
+  readonly publicValues: ReadonlySet<string>;
 };
 
-type LandofileTokenSource = {
-  readonly services?: Readonly<Record<string, ServiceEnvSource | undefined>>;
-  readonly tooling?: Readonly<Record<string, { readonly env?: EnvMap } | undefined>>;
-  readonly toolingDefaults?: { readonly env?: EnvMap };
-};
+const finalizeTiers = (
+  substring: Set<string>,
+  wholeToken: Set<string>,
+  publicValues: ReadonlySet<string>,
+): LandofileRedactionValues => ({
+  substring: [...substring],
+  wholeToken: [...wholeToken].filter((value) => !substring.has(value)),
+  publicValues,
+});
 
-const stringEnv = (env: EnvMap): Record<string, string | undefined> | undefined => {
-  if (env === undefined) return undefined;
-  const collected: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(env)) {
-    collected[key] = value === undefined || value === null ? undefined : String(value);
-  }
-  return collected;
-};
-
-export const collectAppPlanPublicCredentialValues = (plan: {
-  readonly services?: Readonly<Record<string, ServiceEnvSource | undefined>>;
-}): ReadonlySet<string> =>
-  new Set(
-    Object.values(plan.services ?? {}).flatMap((service) => [
-      ...collectPublicCredentialValues(service?.environment, service?.creds),
-    ]),
-  );
-
-export const collectAppPlanRedactionTokens = (
-  plan: Pick<AppPlan, "services"> | { readonly services: Readonly<Record<string, ServiceEnvSource>> },
-): ReadonlyArray<string> => {
-  const publicValues = collectAppPlanPublicCredentialValues(plan);
-  return Object.values(plan.services).flatMap((service) => {
-    const compose = service?.extensions?.compose;
-    const labels =
-      Predicate.isObject(compose) && Predicate.isObject(compose.labels) ? compose.labels : undefined;
-    return [
-      ...collectSecretEnvValues(stringEnv(service?.environment), publicValues),
-      ...collectSecretEnvValues(stringEnv(labels), publicValues),
-    ];
-  });
-};
-
-export const collectLandofileRedactionTokens = (
-  landofile: LandofileTokenSource | LandofileShape,
-): ReadonlyArray<string> => {
-  const publicValues = collectAppPlanPublicCredentialValues(landofile);
-  const serviceTokens = Object.values(landofile.services ?? {}).flatMap((service) => {
-    const compose = service?.extensions?.compose;
-    const composeLabels =
-      Predicate.isObject(compose) && Predicate.isObject(compose.labels) ? compose.labels : undefined;
-    return [
-      ...collectSecretEnvValues(stringEnv(service?.environment), publicValues),
-      ...collectSecretStructuralValues(stringEnv(service?.creds), publicValues),
-      ...collectSecretStructuralValues(
-        service?.password === undefined ? undefined : { password: service.password },
-        publicValues,
-      ),
-      ...collectSecretEnvValues(stringEnv(service?.labels), publicValues),
-      ...collectSecretEnvValues(stringEnv(composeLabels), publicValues),
-    ];
-  });
-  const toolingTokens = Object.values(landofile.tooling ?? {}).flatMap((task) =>
-    collectSecretEnvValues(stringEnv(task?.env), publicValues),
-  );
-  return [
-    ...serviceTokens,
-    ...toolingTokens,
-    ...collectSecretEnvValues(stringEnv(landofile.toolingDefaults?.env), publicValues),
-  ];
-};
-
-export const collectAuthoredRedactionTokens = (document: unknown): readonly string[] => {
+export const collectAuthoredRedactionTokens = (document: unknown): LandofileRedactionValues => {
   const publicValues = new Set<string>();
-  const discover = (node: unknown): void => {
+  const discover = (node: unknown, path: ValidationIssuePath): void => {
     if (isLandofileReset(node)) return;
     if (isLandofileOverride(node)) {
-      discover(node.value);
+      discover(node.value, path);
       return;
     }
     if (Array.isArray(node)) {
+      if (path.length !== 3 || path[0] !== "services" || path[2] !== "environment") return;
       const env = Object.fromEntries(
         node.flatMap((entry) => {
           if (typeof entry !== "string") return [];
@@ -103,44 +39,59 @@ export const collectAuthoredRedactionTokens = (document: unknown): readonly stri
         }),
       );
       for (const value of collectPublicCredentialValues(env)) publicValues.add(value);
-      for (const entry of node) discover(entry);
       return;
     }
-    if (!Predicate.isObject(node)) return;
-    // A service node carries its authored `creds` block beside its environment.
-    const authoredCreds = isLandofileOverride(node.creds) ? node.creds.value : node.creds;
-    const creds = Predicate.isObject(authoredCreds) ? authoredCreds : undefined;
-    for (const value of collectPublicCredentialValues(node, creds)) publicValues.add(value);
-    for (const value of Object.values(node)) discover(value);
-  };
-  discover(document);
-  const isEnvMap = (path: readonly string[]): boolean =>
-    (path.length === 1 && (path[0] === "appEnv" || path[0] === "appLabels")) ||
-    (path.length === 2 && path[0] === "toolingDefaults" && path[1] === "env") ||
-    (path.length === 3 && path[0] === "tooling" && path[2] === "env") ||
-    (path[0] === "services" &&
-      ((path.length === 3 && (path[2] === "environment" || path[2] === "labels")) ||
-        (path.length === 5 && path[2] === "extensions" && path[3] === "compose" && path[4] === "labels")));
-  const collect = (node: unknown, path: readonly string[]): readonly string[] => {
-    if (isLandofileReset(node)) return [];
-    if (isLandofileOverride(node)) return collect(node.value, path);
-    if (typeof node === "string") {
-      const key = path.at(-1);
-      const collectValues = isEnvMap(path.slice(0, -1))
-        ? collectSecretEnvValues
-        : collectSecretStructuralValues;
-      return key === undefined ? [] : collectValues({ [key]: node }, publicValues);
+    if (!isPlainRecord(node)) return;
+    if (path.length === 2 && path[0] === "services") {
+      const authoredCreds = isLandofileOverride(node.creds) ? node.creds.value : node.creds;
+      const creds = isPlainRecord(authoredCreds) ? authoredCreds : undefined;
+      const password = isLandofileOverride(node.password) ? node.password.value : node.password;
+      for (const value of collectPublicCredentialValues(undefined, creds)) publicValues.add(value);
+      for (const value of collectPublicCredentialValues(undefined, { ...creds, password }))
+        publicValues.add(value);
     }
-    if (Array.isArray(node))
-      return node.flatMap((entry) => {
-        if (!isEnvMap(path) || typeof entry !== "string") return collect(entry, [...path, ""]);
-        const equals = entry.indexOf("=");
-        return equals < 0
-          ? []
-          : collectSecretEnvValues({ [entry.slice(0, equals)]: entry.slice(equals + 1) }, publicValues);
-      });
-    if (!Predicate.isObject(node)) return [];
-    return Object.entries(node).flatMap(([key, value]) => collect(value, [...path, key]));
+    if (path.length === 3 && path[0] === "services" && path[2] === "environment") {
+      for (const value of collectPublicCredentialValues(node)) publicValues.add(value);
+    }
+    for (const [key, value] of Object.entries(node)) discover(value, [...path, key]);
   };
-  return collect(document, []);
+  discover(document, []);
+
+  const committed = isPlainRecord(document) ? committedSensitiveLiterals(document) : new Set<string>();
+  const substring = new Set<string>();
+  const wholeToken = new Set<string>();
+  for (const { value } of sensitiveLandofileOccurrences(document)) {
+    if (isPublicDefaultCredential(value) || publicValues.has(value) || !isUsableExactRedactionValue(value))
+      continue;
+    if (committed.has(value)) wholeToken.add(value);
+    else substring.add(value);
+  }
+  return finalizeTiers(substring, wholeToken, publicValues);
 };
+
+export const mergeLandofileRedactionValues = (
+  ...parts: readonly LandofileRedactionValues[]
+): LandofileRedactionValues => {
+  const substring = new Set<string>();
+  const wholeToken = new Set<string>();
+  const publicValues = new Set<string>();
+  for (const part of parts) {
+    for (const value of part.substring) substring.add(value);
+    for (const value of part.wholeToken) wholeToken.add(value);
+    for (const value of part.publicValues) publicValues.add(value);
+  }
+  // These parts are authored config: disclosed bytes cover copies in other layers.
+  // Explicit runtime registrations still take precedence in RedactionService.
+  for (const value of wholeToken) substring.delete(value);
+  return finalizeTiers(substring, wholeToken, publicValues);
+};
+
+/** Register Landofile tiers on the live service; command-result tokens stay substring-only. */
+export const registerLandofileRedaction = Effect.fnUntraced(function* (values: LandofileRedactionValues) {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (Option.isSome(redaction)) {
+    yield* redaction.value.registerValues(values.substring);
+    yield* redaction.value.registerValues(values.wholeToken, { match: "whole-token" });
+  }
+  return values;
+});

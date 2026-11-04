@@ -89,6 +89,6 @@ export const withWorkerRecordLock = <A, E>(
   privateFileAccess: PrivateFileAccess,
 ) =>
   withDetachedWorkerLock(
-    { path: workerStatePath(app, paths), label: "host-proxy-worker", privateFileAccess },
+    { path: workerStatePath(app, paths), label: "host-proxy-worker", paths, privateFileAccess },
     body,
   );

@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
-import { AppId, type ProxyApplyResult, type RoutePlan, ServiceName } from "../schema/index.ts";
+import { AppId, type ProxyApplyResult, RouteEvidence, type RoutePlan, ServiceName } from "../schema/index.ts";
 import type { RouterServiceShape } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
 
@@ -70,6 +70,19 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
 
   const app = AppId.make("contract-test-app");
   const routes = contractRoutes();
+  const beforeObservation = yield* harness.readRoutes(app);
+  const evidence = yield* proxy
+    .observeRoutes(app, routes)
+    .pipe(Effect.mapError((cause) => failure("read-only route observation resolves", cause)));
+  yield* requireContract(
+    Schema.is(RouteEvidence)(evidence),
+    "observation returns explicit route evidence",
+    evidence,
+  );
+  yield* requireContract(
+    JSON.stringify(yield* harness.readRoutes(app)) === JSON.stringify(beforeObservation),
+    "observation does not configure requested routes",
+  );
   const result = yield* proxy
     .applyRoutes(routes, app)
     .pipe(Effect.mapError((cause) => failure("applyRoutes resolves", cause)));
@@ -125,6 +138,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
 } => {
   const routesByApp = new Map<string, ReadonlyArray<RoutePlan>>();
   let running = false;
+  let observed = false;
   return {
     id: "test",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
@@ -132,6 +146,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
     setup: () =>
       Effect.sync(() => {
         running = true;
+        observed = true;
       }),
     revalidateStartup: Effect.void,
     applyRoutes: (routes, app) =>
@@ -150,6 +165,45 @@ export const makeTestRouterService = (): RouterServiceShape & {
         };
       }),
     removeRoutes: (app) => Effect.sync(() => void routesByApp.delete(String(app))),
+    observeRoutes: (app, requestedRoutes) =>
+      Effect.sync((): RouteEvidence => {
+        const configured = routesByApp.get(String(app)) ?? [];
+        const publications = configured
+          .filter((route) =>
+            requestedRoutes.some(
+              (requested) =>
+                requested.hostname === route.hostname &&
+                requested.scheme === route.scheme &&
+                requested.service === route.service &&
+                requested.pathPrefix === route.pathPrefix &&
+                requested.priority === route.priority &&
+                requested.backend.service === route.backend.service &&
+                requested.backend.protocol === route.backend.protocol &&
+                requested.backend.port === route.backend.port &&
+                requested.backend.host === route.backend.host,
+            ),
+          )
+          .flatMap((route) =>
+            (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
+              route,
+              authority: { scheme, hostname: route.hostname, port: scheme === "https" ? 38443 : 38080 },
+            })),
+          );
+        return {
+          configuredAuthorities: configured.flatMap((route) =>
+            (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
+              scheme,
+              hostname: route.hostname,
+              port: scheme === "https" ? 38443 : 38080,
+            })),
+          ),
+          observation: observed
+            ? running && publications.length > 0
+              ? { status: "present", publications }
+              : { status: "missing" }
+            : { status: "unknown" },
+        };
+      }),
     status: Effect.sync(() => ({
       state: running ? ("running" as const) : ("stopped" as const),
       authorities: [],
@@ -157,6 +211,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
     })),
     stop: Effect.sync(() => {
       running = false;
+      observed = true;
       routesByApp.clear();
     }),
     readRoutes: (app) => Effect.succeed(routesByApp.get(String(app)) ?? []),

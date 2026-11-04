@@ -157,6 +157,8 @@ test("refuses removal when the tag now names another image or the runtime stoppe
             providerId: "test",
             operation: "listVolumeSnapshots",
             message: "runtime stopped",
+            remediation:
+              "Install or start the `test` provider and confirm it can perform `listVolumeSnapshots`.",
           }),
         ),
       ),
@@ -188,6 +190,8 @@ test("fails without restarting when the runtime stops after the removal recheck"
                   providerId: "test",
                   operation: "removeVolumeSnapshot",
                   message: "Runtime stopped after recheck.",
+                  remediation:
+                    "Install or start the `test` provider and confirm it can perform `removeVolumeSnapshot`.",
                 }),
               );
         }),

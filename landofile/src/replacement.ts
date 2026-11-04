@@ -1,14 +1,17 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   LandofileFormConflictError,
-  LandofileParseError,
+  LandofileLoadFailure,
   LandofileWriteValidationError,
 } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
-import { type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
-import { ensureConsistentRoot, loadContext } from "./load-context.ts";
+import { createIncludeResolutionSession } from "./include-session.ts";
+import { type PresentLandofileLayer, landofileLayerPaths, presentLandofileLayers } from "./layers.ts";
+import { assertReadableRoot, loadContext } from "./load-context.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
+import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
@@ -20,42 +23,52 @@ export interface LandofileReplacement {
   readonly content: string;
 }
 
-export const validateLandofileReplacement = Effect.fn("Landofile.validateReplacement")(
-  function* (replacement: LandofileReplacement, inputs: LandofileRuntimeInputs) {
-    yield* ensureConsistentRoot(replacement.appRoot, inputs);
-    const runtime = yield* loadContext(replacement.appRoot);
-    const layers = yield* Effect.tryPromise({
-      try: () => presentLandofileLayers(replacement.appRoot),
-      catch: (cause) =>
-        cause instanceof LandofileFormConflictError
-          ? cause
-          : new LandofileParseError({
-              message: "Failed to enumerate Landofile layers.",
-              filePath: replacement.appRoot,
-              line: undefined,
-              column: undefined,
-              cause,
-            }),
-    });
+export const compileLandofileReplacement = Effect.fn("Landofile.compileReplacement")(
+  function* (
+    replacement: LandofileReplacement,
+    inputs: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
+  ) {
+    if (existsSync(replacement.appRoot)) yield* assertReadableRoot(replacement.appRoot, inputs);
+    const layers = yield* presentLandofileLayers(replacement.appRoot);
     const target = layers.find((layer) => layer.filePath === replacement.targetFile);
+    const position = landofileLayerPaths(replacement.appRoot).find(
+      (layer) => layer.yamlPath === replacement.targetFile || layer.typescriptPath === replacement.targetFile,
+    );
+    if (
+      target === undefined &&
+      position !== undefined &&
+      layers.some((layer) => layer.layer === position.layer)
+    ) {
+      return yield* Effect.fail(
+        new LandofileFormConflictError({
+          message: `The ${position.layer} Landofile layer already has another file form.`,
+          layer: position.layer,
+          yamlPath: position.yamlPath,
+          typescriptPath: position.typescriptPath,
+          remediation: "Keep exactly one YAML or TypeScript file for each Landofile layer, then retry.",
+        }),
+      );
+    }
     const ordered: readonly PresentLandofileLayer[] =
       target === undefined
         ? [
             ...layers,
             {
               filePath: replacement.targetFile,
-              layer: "canonical",
-              order: 3,
-              basename: ".lando",
+              layer: position?.layer ?? "canonical",
+              order: position?.order ?? 3,
+              basename: position?.basename ?? ".lando",
             } satisfies PresentLandofileLayer,
           ].sort((a, b) => a.order - b.order)
         : layers;
+    const session = yield* createIncludeResolutionSession({ appRoot: replacement.appRoot, ...inputs });
+    const runtime = yield* loadContext(replacement.appRoot, inputs.templates.context?.env);
     const acquired = yield* Effect.forEach(ordered, (layer) =>
       prepareLandofileSource(
         layer.filePath,
         { ...runtime, layer: layer.layer },
         {
-          ...inputs,
+          templates: inputs.templates,
           sourceReplacement: layer.filePath === replacement.targetFile ? replacement : undefined,
         },
       ).pipe(
@@ -77,10 +90,18 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
                 }),
           ),
         ),
-        Effect.map((source) => ({ source, layer })),
+        Effect.map((source) => [{ source, layer }]),
+        Effect.catch((error) => {
+          if (layer.filePath === replacement.targetFile || !Schema.is(LandofileLoadFailure)(error))
+            return Effect.fail(error);
+          runtime.recorder?.record(error);
+          if (runtime.recorder !== undefined) runtime.recorder.recipeAvailable = false;
+          return Effect.succeed([]);
+        }),
       ),
     );
-    const candidate = acquired.find(({ layer }) => layer.filePath === replacement.targetFile);
+    const sources = acquired.flat();
+    const candidate = sources.find(({ layer }) => layer.filePath === replacement.targetFile);
     if (candidate === undefined) return yield* Effect.die("Replacement source was not acquired.");
     const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(candidate.source.value, {
       onExcessProperty: "error",
@@ -98,16 +119,31 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
         ),
       );
     }
-    const prepared = yield* Effect.forEach(acquired, ({ source, layer }) =>
-      prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
+    const prepared = yield* Effect.forEach(sources, ({ source, layer }) =>
+      prepareLandofileValue(source).pipe(
+        Effect.map(({ value }) => [{ layer, landofile: value }]),
+        Effect.catch((error) => {
+          if (!Schema.is(LandofileLoadFailure)(error)) return Effect.fail(error);
+          runtime.recorder?.record(error);
+          return Effect.succeed([]);
+        }),
+      ),
     );
-    const merged = yield* composePreparedLayers(prepared, runtime, inputs);
-    yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
+    const { document: merged, scope } = yield* composePreparedLayers(prepared.flat(), runtime, {
+      session,
+      inputs,
+    });
+    const landofile = yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
+      scope,
       appRoot: replacement.appRoot,
+      recorder: runtime.recorder,
+      overrides: inputs.overrides,
+      pendingSites: runtime.pendingSites,
       loadPolicy: runtime.policy,
       logger: runtime.logger,
       ...(inputs?.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),
     });
+    return { landofile, session };
   },
   Effect.catchTag("LandofileValidationError", (error) =>
     Effect.fail(
@@ -120,3 +156,12 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     ),
   ),
 );
+
+export const validateLandofileReplacement = (
+  replacement: LandofileReplacement,
+  inputs: Parameters<typeof compileLandofileReplacement>[1],
+) =>
+  compileLandofileReplacement(replacement, inputs).pipe(
+    Effect.map(({ landofile }) => landofile),
+    Effect.scoped,
+  );

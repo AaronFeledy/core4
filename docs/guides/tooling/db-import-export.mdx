@@ -9,7 +9,9 @@ tags: [beta, docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
+`lando help db` lists every database command with a one-line summary, and `lando db:export --help` shows one command's flags. Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target. Over [MCP](../../agent-native/mcp/), agents can list snapshots with `db:snapshots` by default and need an explicit `--allow` for every other `db:*` command.
+
+Export a backup before importing into a database that contains data. Import can change or delete existing data, and `--yes` skips confirmation. The examples show gzip and zstd alternatives; choose one rather than importing the same dump twice.
 
 ```sh
 lando db:export dump.sql.gz
@@ -31,13 +33,71 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
-MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.
+MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
+
+Postgres exports include `DROP IF EXISTS` statements for the objects in the dump,
+so importing a Lando export recreates those objects and their saved data. Objects
+absent from the dump are not automatically removed. Source ownership and grants
+are omitted; the restoring user owns the recreated objects. Postgres imports stop
+at the first SQL error instead of reporting partial work as success. Earlier
+statements may already have changed data, so use the reported recovery snapshot
+if needed.
+
+For SQL Server, use a `.bak` path to make the file type clear:
+
+```sh
+lando db:export backups/app.bak --service database
+lando db:import backups/app.bak --service database --yes
+```
+
+Lando prepares a server-readable backup directory, completes `BACKUP DATABASE`,
+then copies the backup to your host. Import uploads the backup before running
+`RESTORE DATABASE` from `master`. A failed backup stops before copying a stale
+file. Export never creates a missing database; the
+[catalog service startup](../services/mssql.mdx) owns default database creation.
+
+## Inspect a failed database command
+
+Request JSON when you need structured diagnostics:
+
+```sh
+lando db:export backups/app.sql.gz --service database --format=json
+```
+
+Failed service-command transfers report `DataTransferError`; failed SQL actions
+report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
+`stderrTail` preserve its exit status and redacted stderr. The tail is limited to
+8 KiB, including its truncation marker. Oversized unfinished lines may be
+suppressed. A provider failure without an exit status does not invent one.
+Database payloads and stdout are never included in these command failures.
+
+`lando db:*` commands mask only the target database's credential password or
+root password in their output and errors, following the same rules as other
+commands: a secret-store or generated password is masked wherever it appears,
+and a password you wrote as a literal in a committed YAML layer is masked only
+where it stands alone as a whole token. The database user, database name, host,
+port, and file paths stay readable, including paths that contain `lando`. See
+[What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where).
+
+A failed export leaves an existing host destination unchanged. After a snapshot
+is captured, failures during database resume, readiness, import, reset, or restore
+report `recoverySnapshotId` with recovery guidance. Command failures keep their
+tag and diagnostics. A manual snapshot also remains available when restarting
+the database fails; that failure reports the captured snapshot instead of losing
+its handle. Failures outside command execution may use a different error tag.
+Fix the reported problem before retrying. Restore the snapshot only if recovery
+is needed. A failed capture never invents a snapshot ID.
+
+Import and seed stop with the same diagnostics if their emptiness query fails.
+`--yes` skips confirmation, not a failed database check.
 
 ## Take and restore a snapshot
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
 
 Each snapshot has an owner recorded from the source volume's physical identity, not just the app name. Lando keeps its catalog entry at `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json`, with a copy-mode archive beside it or a reference to a native image on the recording provider. There is no separate index. If Lando cannot prove the volume's identity, capture fails before copying data. `db:snapshot` can adopt a legacy database volume after verifying its mounted target.
+
+Take and list the snapshot first. Run `db:restore` only when you intend to replace the current database with the saved state; it is not part of taking a backup.
 
 ```sh
 lando db:snapshot --label before-change
@@ -100,6 +160,10 @@ lando db:reset --yes
     </Step>
   </Scenario>
   <Scenario id="export-help" render>
+    <Step name="topic">
+      <Run command="lando help db --format=json" />
+      <Verify command="lando help db --format=json" expect={{ stdout: { regex: "\"canonicalId\":\"db:export\",[^}]*\"source\":\"plugin\",\"plugin\":\"@lando/sql\"" } }} />
+    </Step>
     <Step name="help">
       <Run command="lando db:export --help" />
       <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />
@@ -109,6 +173,7 @@ lando db:reset --yes
   <Scenario id="ambiguous-service" render={false} reason="Regression for multi-database --service">
     <Step name="import-ambiguous">
       <UseFixture name="two-db" />
+      <Run command="lando start" />
       <Run command="lando db:import dump.sql --format=json" expectExit={1} />
       <Verify errorTag="SqlServiceAmbiguousError" expect={{ regex: "Pass --service" }} />
     </Step>
@@ -120,6 +185,7 @@ lando db:reset --yes
   <Scenario id="restore-unknown-snapshot" render={false} reason="Regression for an unknown snapshot id or label">
     <Step name="restore-unknown">
       <UseFixture name="one-db" />
+      <Run command="lando start" />
       <Run command="lando db:restore no-such-snapshot --yes --format=json" expectExit={1} />
       <Verify errorTag="SnapshotNotFoundError" expect={{ regex: "lando db:snapshots" }} />
     </Step>
@@ -131,6 +197,7 @@ lando db:reset --yes
   <Scenario id="reset-requires-yes" render={false} reason="Regression for reset confirmation">
     <Step name="reset">
       <UseFixture name="one-db" />
+      <Run command="lando start" />
       <Run command="lando db:reset --format=json" expectExit={1} />
       <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Reset will destroy" }} />
     </Step>

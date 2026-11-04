@@ -10,7 +10,8 @@ import {
   appConfigExplain,
   renderAppConfigExplainResult,
 } from "../../src/cli/commands/app-config-explain.ts";
-import { lampProducer } from "../../src/recipes/builtin/lamp/snapshot.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { producer: lampProducer } = bundledRecipe("lamp");
 
 const PRODUCER_YAML = (overrides: Partial<typeof lampProducer> = {}): string => {
   const producer = { ...lampProducer, ...overrides };

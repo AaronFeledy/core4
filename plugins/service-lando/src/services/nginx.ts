@@ -16,22 +16,31 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import {
-  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
+import { uploadDirRegex } from "./upload-dirs.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
-const DEFAULT_PORT = 80;
+export const NGINX_LISTENER = {
+  port: 80,
+  daemon: "nginx",
+  when: "All nginx services",
+  launcher: { setting: (port: number) => `listen ${port};` },
+} as const;
+export const DEFAULT_PORT = NGINX_LISTENER.port;
+export const APP_MOUNT_TARGET = "/app";
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -63,6 +72,7 @@ const phpFastcgiCommand = (
   webroot: string,
   ports: { readonly listen: number; readonly fpm: number },
   user: string | undefined,
+  uploadDirs: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> =>
   nginxLauncherCommand({
     user,
@@ -80,6 +90,13 @@ const phpFastcgiCommand = (
       // Non-greedy: the first `.php` is the script. A greedy `.+\\.php` lets a
       // later `.php` in the extra path win and run the wrong file.
       "    fastcgi_split_path_info ^(.+?\\.php)(/.*)$;",
+      // Decide on the same variable FastCGI executes, avoiding URI-regex drift
+      // such as the %0A newline bypass.
+      ...(uploadDirs.length === 0
+        ? []
+        : [
+            `    if ($fastcgi_script_name ~* "^/(?:${uploadDirs.map(uploadDirRegex).join("|")})/") { return 403; }`,
+          ]),
       "    if (!-f $document_root$fastcgi_script_name) { return 404; }",
       `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
       "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
@@ -98,14 +115,13 @@ const phpFastcgiCommand = (
 
 const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, NGINX_LISTENER);
   const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (backend.length > 0) {
     ctx.addDependency({
@@ -119,9 +135,17 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
     ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
     ctx.setCommand(
       backend.length > 0
-        ? phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user)
+        ? phpFastcgiCommand(
+            backend,
+            webroot,
+            { listen: port, fpm: PHP_FPM_PORT },
+            service.user,
+            service.uploadDirs,
+          )
         : defaultStaticCommand("nginx", webroot, port, service.user),
     );
+  } else {
+    ctx.setListenerAuthority(launcherAuthority(NGINX_LISTENER, port));
   }
 
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
@@ -131,6 +155,20 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
   id: NGINX_FEATURE_ID,
   schema: Schema.Unknown,
   priority: NGINX_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(NGINX_FEATURE_ID, (ctx) => {
+    const service = ctx.normalizedConfig;
+    if (service.command !== undefined || service.entrypoint !== undefined)
+      return { handledServiceFields: [] };
+    resolveWebroot("nginx", service.webroot, service.appMount);
+    return { handledServiceFields: service.backend?.trim() ? ["webroot", "uploadDirs"] : ["webroot"] };
+  }),
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, NGINX_LISTENER),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(NGINX_FEATURE_ID, "service-lando.nginx failed to apply", applyNginxFeature),
 };
 
@@ -152,11 +190,13 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     if (backend.length === 0) return;
     const fpm = fpmPortByService.get(backend);
     if (fpm === undefined) return;
-    const listen = service.port ?? DEFAULT_PORT;
+    const listen = plannedPort(service, NGINX_LISTENER);
     const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
     mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
-    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user));
+    mutator.setCommand(
+      phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user, service.uploadDirs),
+    );
   });
 };
 
@@ -176,6 +216,10 @@ export const nginxServiceType: ServiceType = {
   id: "nginx",
   name: "nginx",
   base: "lando",
+  // Verified /etc/passwd in nginx:1.26-alpine (linux/amd64), config:
+  // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111.
+  // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin
+  // Its passwd home is a cache directory, intentionally excluded from home persistence.
   identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
@@ -195,7 +239,7 @@ export const nginxServiceType: ServiceType = {
           },
           {
             id: "lando.app-mount",
-            config: { target: "/app", workingDirectory: webroot },
+            config: { target: APP_MOUNT_TARGET, workingDirectory: webroot },
           },
         ],
       };

@@ -85,26 +85,31 @@ export const tryMapHostCwd = (
 };
 
 type CwdRemapService = {
-  readonly appMount?: { readonly source: string; readonly target: string } | undefined;
   readonly mounts: ReadonlyArray<{
     readonly type: string;
     readonly source?: string | undefined;
     readonly target: string;
+    readonly role?: "app" | undefined;
   }>;
   readonly workingDirectory?: string | undefined;
 };
 
+/** Every bind on the service; nested binds participate in longest-prefix mapping. */
 export const bindMountsFromService = (service: CwdRemapService): ReadonlyArray<HostProxyMountInfo> => {
   const mounts: HostProxyMountInfo[] = [];
-  if (service.appMount !== undefined) {
-    mounts.push({ hostRoot: service.appMount.source, containerRoot: service.appMount.target });
-  }
   for (const mount of service.mounts) {
     if (mount.type === "bind" && mount.source !== undefined) {
       mounts.push({ hostRoot: mount.source, containerRoot: mount.target });
     }
   }
   return mounts;
+};
+
+const serviceAppBindTarget = (service: CwdRemapService): string | undefined => {
+  for (const mount of service.mounts) {
+    if (mount.type === "bind" && mount.role === "app") return mount.target;
+  }
+  return undefined;
 };
 
 /**
@@ -116,8 +121,8 @@ export const bindMountsFromService = (service: CwdRemapService): ReadonlyArray<H
  *    (authored `dir`, relative paths, container paths, and `--cwd` values that
  *    do not sit on a host root).
  * 2. Otherwise map `hostCwd` (the caller-supplied `process.cwd()`) the same way.
- * 3. If `hostCwd` is not under any bind mount, use `service.appMount.target`,
- *    then `service.workingDirectory`.
+ * 3. If `hostCwd` is not under any bind mount, use the app bind target
+ *    (`role: "app"`), then `service.workingDirectory`.
  *
  * `hostCwd` is an argument so this helper stays pure and unit-testable.
  */
@@ -130,5 +135,5 @@ export const resolveContainerCwd = (
   if (explicitCwd !== undefined) {
     return tryMapHostCwd(explicitCwd, mounts) ?? explicitCwd;
   }
-  return tryMapHostCwd(hostCwd, mounts) ?? service.appMount?.target ?? service.workingDirectory;
+  return tryMapHostCwd(hostCwd, mounts) ?? serviceAppBindTarget(service) ?? service.workingDirectory;
 };

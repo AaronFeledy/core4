@@ -6,6 +6,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -38,16 +39,18 @@ const node: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
-  appMount: {
-    source: appRoot,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: appRoot,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -57,6 +60,7 @@ const node: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Exec App",
   slug: "execapp",
@@ -64,7 +68,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -96,7 +99,7 @@ const makeFakeApi = (
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
-        if (request.method === "POST" && request.path === "/containers/lando-execapp-node/exec") {
+        if (request.method === "POST" && request.path === "/containers/lando-execapp--node/exec") {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
         }
         if (request.method === "GET" && request.path === "/exec/exec-1/json") {
@@ -104,6 +107,9 @@ const makeFakeApi = (
         }
         if (request.method === "POST" && request.path.startsWith("/exec/exec-1/resize?")) {
           return { status: 200, body: "" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -117,6 +123,7 @@ const makeFakeApi = (
       }),
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -170,7 +177,7 @@ describe("provider-lando exec", () => {
       ).pipe(Stream.runCollect, Effect.scoped),
     );
 
-    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp-node/exec");
+    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp--node/exec");
     const start = fake.calls.find((call) => call.path === "/exec/exec-1/start");
     expect(create?.body).toMatchObject({ AttachStdin: true, Tty: true });
     expect(start?.body).toMatchObject({ Tty: true });

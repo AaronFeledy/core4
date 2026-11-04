@@ -18,13 +18,13 @@ You need working system Podman.
 lando setup --provider=podman
 ```
 
-Then verify:
+Then verify the saved selection:
 
 ```sh
-lando doctor --provider=podman
+lando doctor
 ```
 
-Later commands stay on Podman without repeating the flag. See [What persists](./provider-selection.mdx#what-persists).
+Confirm Podman is selected and the runtime is running. Later commands stay on Podman without repeating the flag. See [What persists](./provider-selection.mdx#what-persists).
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 

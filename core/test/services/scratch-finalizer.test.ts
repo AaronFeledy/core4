@@ -11,7 +11,6 @@ import {
   type LandoEvent,
   PathsService,
   RuntimeProvider,
-  RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
@@ -31,16 +30,16 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
+import { scratchGlobalAdmissionFixture } from "../_support/scratch-global-admission.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -48,20 +47,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -69,14 +55,7 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets")),
-  }),
-);
+const redactionLive = RedactionService.layer;
 
 const scratchInitAppPortLive = Layer.succeed(
   ScratchInitAppPort,
@@ -92,6 +71,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -208,6 +188,8 @@ const makeRecordingLayer = (
                     providerId: String(providerId),
                     operation: "apply",
                     message: "injected apply failure",
+                    remediation:
+                      "Install or start the selected runtime provider and confirm it can perform `apply`.",
                   }),
                 )
               : Effect.succeed({ changed: true }),
@@ -238,6 +220,7 @@ const makeRecordingLayer = (
           service: target.service,
           providerId,
           status: "running",
+          publications: { status: "present", bindings: [] },
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
         })),
     list: () => Effect.succeed([]),
@@ -246,18 +229,13 @@ const makeRecordingLayer = (
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const registryLive = Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-  );
+  const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
+    admissionLayer,
+    environmentResolverLayer(),
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.effect(
       EventService,
       Effect.map(EventService, (events) =>
@@ -278,7 +256,7 @@ const makeRecordingLayer = (
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
@@ -317,6 +295,14 @@ const waitUntil = Effect.fnUntraced(function* (predicate: () => boolean) {
   }
 });
 
+const waitForScratchPhase = <A, E>(entered: Deferred.Deferred<void>, fiber: Fiber.Fiber<A, E>) =>
+  Effect.raceFirst(
+    Deferred.await(entered),
+    Fiber.join(fiber).pipe(
+      Effect.andThen(Effect.die("Scratch acquisition completed before the expected phase.")),
+    ),
+  ).pipe(Effect.onExit((exit) => (Exit.isFailure(exit) ? Fiber.interrupt(fiber) : Effect.void)));
+
 describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
   test.each([false, true])("apply interrupt obeys scratch keep-on-failure=%s", async (keepOnFailure) => {
     await withTempProject(async () => {
@@ -329,7 +315,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           const fiber = yield* Effect.forkChild(
             Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: false, keepOnFailure })),
           );
-          yield* Deferred.await(created);
+          yield* waitForScratchPhase(created, fiber);
           yield* Fiber.interrupt(fiber);
           return yield* Fiber.await(fiber);
         }).pipe(
@@ -348,7 +334,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -382,6 +368,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
                   providerId,
                   status: "stopped",
                   exitCode: 17,
+                  publications: { status: "present", bindings: [] },
                 }),
             }),
           ),
@@ -392,7 +379,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -415,7 +402,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
               }),
             ),
           );
-          yield* Deferred.await(inspecting);
+          yield* waitForScratchPhase(inspecting, fiber);
           yield* Fiber.interrupt(fiber);
           return yield* Fiber.await(fiber);
         }).pipe(
@@ -430,7 +417,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -460,7 +447,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -478,7 +465,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           ),
         )
           .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events })))
-          .pipe(Effect.map((id) => join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id))),
+          .pipe(Effect.map((id) => join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", id))),
       );
 
       expect(appliedPlans).toHaveLength(1);
@@ -490,6 +477,8 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls[1]?.volumes).toBe(true);
       expect(await directoryExists(instanceRoot)).toBe(false);
       expect(events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag)).toEqual([
+        "pre-global-start",
+        "post-global-start",
         "pre-scratch-destroy",
         "pre-stop",
         "post-stop",
@@ -497,7 +486,10 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
         "post-destroy",
         "post-scratch-destroy",
       ]);
-      expect(events.at(0)).toMatchObject({ reason: "scope-close", app: { kind: "scratch" } });
+      expect(events.find((event) => event._tag === "pre-scratch-destroy")).toMatchObject({
+        reason: "scope-close",
+        app: { kind: "scratch" },
+      });
       expect(events.at(-1)).toMatchObject({ reason: "scope-close", app: { kind: "scratch" } });
     });
   });
@@ -515,7 +507,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
             const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
             const registry = yield* ScratchRegistry;
             yield* registry.remove(handle.id);
-            return join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", handle.id);
+            return join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", handle.id);
           }),
         ).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events }))),
       );
@@ -561,7 +553,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           ),
         )
           .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls)))
-          .pipe(Effect.map((id) => join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id))),
+          .pipe(Effect.map((id) => join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", id))),
       );
 
       expect(appliedPlans).toHaveLength(1);
@@ -586,7 +578,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
               ),
             ),
           );
-          yield* Deferred.await(ready);
+          yield* waitForScratchPhase(ready, fiber);
           yield* Fiber.interrupt(fiber);
           return yield* Fiber.await(fiber);
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
@@ -646,3 +638,4 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

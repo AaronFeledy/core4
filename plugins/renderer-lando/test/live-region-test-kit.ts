@@ -204,6 +204,8 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     dim: fakeStyle,
     brightMagenta: fakeStyle,
     RGBA: {
+      defaultForeground: () => ({ buffer: new Uint16Array(4) }),
+      defaultBackground: () => ({ buffer: new Uint16Array(4) }),
       fromIndex: (index: number): { readonly intent: "indexed"; readonly slot: number } => ({
         intent: "indexed",
         slot: index,

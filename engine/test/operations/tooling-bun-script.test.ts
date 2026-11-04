@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   ConfigService,
@@ -9,11 +10,11 @@ import {
   RuntimeProviderRegistry,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
+import { scriptHostLayer } from "./tooling-bun-script-support.ts";
 
 const frameText = (frame: StreamFrameSinkFrame) =>
   typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
@@ -66,8 +67,8 @@ test("emits both output streams before the script can finish", async () => {
     );
     // When: the child cannot exit until its first stdout/stderr lines release the server.
     const result = await Effect.runPromise(
-      runBunShellTooling({ name: "probe", args: ["b c"] }, root).pipe(
-        Effect.provide(PrivateFileAccessService.layer),
+      runBunShellTooling({ name: "probe", input: { _tag: "RawArgv", argv: ["b c"] } }, root).pipe(
+        Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
         Effect.provideService(StreamFrameSink, sink),
         Effect.timeout("5 seconds"),
       ),
@@ -75,9 +76,9 @@ test("emits both output streams before the script can finish", async () => {
     // Then
     expect(result).toMatchObject({
       exitCode: 3,
-      stdout: "",
-      stderr: "",
     });
+    expect(result).not.toHaveProperty("stdout");
+    expect(result).not.toHaveProperty("stderr");
     expect(
       frames
         .filter((frame) => frame._tag === "stdout")
@@ -108,7 +109,9 @@ test("returns nonzero script exits with both output streams intact", async () =>
     );
     // When
     const result = await Effect.runPromise(
-      runBunShellTooling({ name: "probe" }, root).pipe(Effect.provide(PrivateFileAccessService.layer)),
+      runBunShellTooling({ name: "probe" }, root).pipe(
+        Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+      ),
     );
     // Then
     expect(result).toEqual({
@@ -135,12 +138,17 @@ test.each(["direct", "fallback"] as const)(
         join(root, ".lando/scripts/probe.bun.sh"),
         '# ---\n# desc: Args probe\n# ---\necho "<$1>"; echo "<$2>"; echo "<$3>"; echo "<$4>"\n',
       );
-      const options = { name: "probe", args: ["a", "b c", "$(echo injected)", "*.ts"], cwd: root };
+      const options = {
+        name: "probe",
+        input: { _tag: "RawArgv" as const, argv: ["a", "b c", "$(echo injected)", "*.ts"] },
+        cwd: root,
+      };
       const fallbackLayer = Layer.mergeAll(
-        PrivateFileAccessService.layer,
+        testEnvironmentResolverLayer,
+        scriptHostLayer,
         Layer.succeed(
           LandofileService,
-          LandofileService.of({ discover: Effect.succeed({ name: "script-args" }) }),
+          LandofileService.of({ discover: Effect.succeed(literalTestLandofile({ name: "script-args" })) }),
         ),
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("script must skip planning") })),
         Layer.succeed(
@@ -163,7 +171,9 @@ test.each(["direct", "fallback"] as const)(
       // When
       const result = await Effect.runPromise(
         path === "direct"
-          ? runBunShellTooling(options, root).pipe(Effect.provide(PrivateFileAccessService.layer))
+          ? runBunShellTooling(options, root).pipe(
+              Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+            )
           : runTooling(options).pipe(Effect.provide(fallbackLayer)),
       );
       // Then
@@ -188,7 +198,7 @@ test("reports an interrupted script as exit 130 instead of a tooling failure", a
     // When
     const result = await Effect.runPromise(
       runBunShellTooling({ name: "slow", signal: controller.signal }, root).pipe(
-        Effect.provide(PrivateFileAccessService.layer),
+        Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
         Effect.timeout("5 seconds"),
       ),
     );
@@ -198,3 +208,58 @@ test("reports an interrupted script as exit 130 instead of a tooling failure", a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("rejects Bun Shell dialect gaps in a .bun.sh body before the script runs", async () => {
+  // Given a script that uses unsupported braced expansion (positional $1 remains allowed)
+  const root = await mkdtemp(join(tmpdir(), "lando-script-dialect-"));
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    const body = ["# ---", "# desc: Dialect reject", "# ---", 'echo "${NAME}"', "echo ok", ""].join("\n");
+    await writeFile(join(root, ".lando/scripts/probe.bun.sh"), body);
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(
+        runBunShellTooling({ name: "probe" }, root).pipe(
+          Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+        ),
+      ),
+    );
+    // Then
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("expected dialect rejection");
+    expect(result.failure).toBeInstanceOf(ToolingCompileError);
+    if (!(result.failure instanceof ToolingCompileError)) throw result.failure;
+    expect(result.failure.tool).toBe("app:probe");
+    expect(result.failure.message).toMatch(/probe\.bun\.sh:\d+:\d+:/);
+    expect(result.failure.message).toContain("Bun Shell does not");
+    expect(result.failure.message).not.toContain(body);
+    expect(result.failure.remediation.length).toBeGreaterThan(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("allows positional $1 through $9 in a .bun.sh body", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-positional-ok-"));
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    await writeFile(
+      join(root, ".lando/scripts/probe.bun.sh"),
+      '# ---\n# desc: Positional ok\n# ---\necho "<$1>"\n',
+    );
+    // When
+    const result = await Effect.runPromise(
+      runBunShellTooling({ name: "probe", input: { _tag: "RawArgv", argv: ["arg"] } }, root).pipe(
+        Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+      ),
+    );
+    // Then
+    expect(result).toMatchObject({ exitCode: 0, stdout: "<arg>\n" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

@@ -63,13 +63,13 @@ describe("db command machine output", () => {
     expect(encoded).not.toContain("target-secret");
   });
 
-  test("preserves export file paths containing the public default password", async () => {
-    const harness = makeSqlTestDeps({ password: "lando" });
+  test("preserves lando in export file paths when it is not a connection password", async () => {
+    const harness = makeSqlTestDeps({ password: "export-credential" });
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         executeDbCommand(harness.deps, {
           action: "export",
-          file: "backups/Drupal backup with spaces.sql",
+          file: "backups/lando Drupal backup with spaces.sql",
           yes: true,
         }),
       ),
@@ -79,6 +79,7 @@ describe("db command machine output", () => {
 
     const tokens = dbCommandRedactionTokens(exit.value);
     expect(tokens).not.toContain("lando");
+    expect(tokens).toContain("export-credential");
     const encoded = await Effect.runPromise(
       encodeCommandResult({
         command: "db:export",
@@ -91,7 +92,7 @@ describe("db command machine output", () => {
     expect(encoded).not.toContain("[redacted]");
   });
 
-  test("redacts explicitly authored default-valued SQL passwords", async () => {
+  test("omits published default SQL passwords from command redaction tokens", async () => {
     for (const authored of [
       { creds: { password: "lando" } },
       { creds: { rootPassword: "lando" } },
@@ -108,11 +109,11 @@ describe("db command machine output", () => {
       );
       expect(Exit.isSuccess(exit)).toBe(true);
       if (Exit.isFailure(exit)) throw new Error("expected export success");
-      expect(dbCommandRedactionTokens(exit.value)).toContain("lando");
+      expect(dbCommandRedactionTokens(exit.value)).not.toContain("lando");
     }
   });
 
-  test("always redacts a root password from the planned service environment", async () => {
+  test("omits published default root password from command redaction tokens", async () => {
     const harness = makeSqlTestDeps({ password: "lando", rootPassword: "lando" });
     const landofile = {
       ...harness.deps.landofile,
@@ -123,7 +124,7 @@ describe("db command machine output", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isFailure(exit)) throw new Error("expected export success");
-    expect(dbCommandRedactionTokens(exit.value)).toContain("lando");
+    expect(dbCommandRedactionTokens(exit.value)).not.toContain("lando");
   });
 
   test("continues masking configured passwords in export file paths", async () => {

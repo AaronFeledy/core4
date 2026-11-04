@@ -7,17 +7,9 @@ import { z } from "astro/zod";
 
 import { normalizeContentMetadata } from "./lib/titles.ts";
 
-export const docsPatterns = [
-  "reference/**/*.mdx",
-  "contributing/*.md",
-  "telemetry/*.md",
-  "*.md",
-  "guides/**/*.mdx",
-  "!src/**",
-  "!dist/**",
-  "!node_modules/**",
-  "!.astro/**",
-] as const;
+import { docsPatterns } from "./lib/source-links.ts";
+
+export { docsPatterns };
 
 const RECIPE_PATTERN = "*/README.mdx";
 const RECIPE_ID_PREFIX = "recipes/";

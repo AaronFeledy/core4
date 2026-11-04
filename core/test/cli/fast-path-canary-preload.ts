@@ -9,7 +9,7 @@ const CANARY_MODULES = [
   {
     marker: "plugins",
     filter:
-      /[\\/](?:plugins[\\/](?!renderer-lando[\\/])|node_modules[\\/]@lando[\\/](?!sdk[\\/]|renderer-lando[\\/]|renderer[\\/]|core[\\/]|engine[\\/]|paths[\\/]|state-store[\\/]|container-runtime[\\/])).*\.ts$/,
+      /[\\/](?:plugins[\\/](?!renderer-lando[\\/])|node_modules[\\/]@lando[\\/](?!sdk[\\/]|renderer-lando[\\/]|renderer[\\/]|core[\\/]|engine[\\/]|paths[\\/]|state-store[\\/]|container-runtime[\\/]|landofile[\\/]src[\\/]traversal-policy\.ts$)).*\.ts$/,
   },
 ] as const satisfies readonly { readonly marker: string; readonly filter: RegExp }[];
 
@@ -18,6 +18,7 @@ Bun.plugin({
   setup(build) {
     for (const { marker, filter } of CANARY_MODULES) {
       build.onLoad({ filter }, (args) => {
+        process.stderr.write(`[FAST_PATH_CANARY] ${marker} was imported on the fast path\n`);
         throw new Error(`[FAST_PATH_CANARY] ${marker} was imported on the fast path: ${args.path}`);
       });
     }

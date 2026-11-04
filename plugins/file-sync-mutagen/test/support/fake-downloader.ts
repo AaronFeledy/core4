@@ -54,14 +54,25 @@ export const makeFakeDownloader = (): FakeDownloaderHandle => {
       }
       if (request.offline === true) {
         return yield* Effect.fail(
-          new DownloadFetchError({ message: "offline and not cached", urlOrigin: request.url, status: 0 }),
+          new DownloadFetchError({
+            message: "offline and not cached",
+            urlOrigin: request.url,
+            status: 0,
+            remediation: "Disable offline mode or seed the verified cache for this URL, then retry.",
+          }),
         );
       }
       calls += 1;
       const body = sources.get(request.url);
       if (body === undefined) {
         return yield* Effect.fail(
-          new DownloadFetchError({ message: "no source", urlOrigin: request.url, status: 404 }),
+          new DownloadFetchError({
+            message: "no source",
+            urlOrigin: request.url,
+            status: 404,
+            remediation:
+              "Publish the artifact at this URL or point the manifest at a reachable https origin.",
+          }),
         );
       }
       const result = yield* persistVerifiedStream({
@@ -70,7 +81,15 @@ export const makeFakeDownloader = (): FakeDownloaderHandle => {
         ...(request.expectedSha256 === undefined ? {} : { expectedSha256: request.expectedSha256 }),
       }).pipe(
         Effect.catch((cause) =>
-          Effect.fail(new DownloadFetchError({ message: "persist failed", urlOrigin: request.url, cause })),
+          Effect.fail(
+            new DownloadFetchError({
+              message: "persist failed",
+              urlOrigin: request.url,
+              cause,
+              remediation:
+                "Repair the destination directory permissions and free disk space, then retry the download.",
+            }),
+          ),
         ),
       );
       return {

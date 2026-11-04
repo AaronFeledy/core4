@@ -21,7 +21,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("docker"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -32,7 +31,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const fakeApi = (failurePath?: string) => {
+const fakeApi = (failurePath?: string, containerId = "relay-id") => {
   const requests: EngineHttpRequest[] = [];
   const api: EngineApiClient = {
     info: Effect.succeed({}),
@@ -44,8 +43,10 @@ const fakeApi = (failurePath?: string) => {
           return { status: 304, body: "" };
         }
         if (request.path === "/volumes/create") return { status: 201, body: JSON.stringify(request.body) };
-        if (request.path.startsWith("/containers/create")) return { status: 201, body: '{"Id":"relay-id"}' };
-        if (request.path === "/containers/relay-id/exec") return { status: 201, body: '{"Id":"exec-id"}' };
+        if (request.path.startsWith("/containers/create"))
+          return { status: 201, body: JSON.stringify({ Id: containerId }) };
+        if (request.path === `/containers/${encodeURIComponent(containerId)}/exec`)
+          return { status: 201, body: '{"Id":"exec-id"}' };
         if (request.path === "/exec/exec-id/json")
           return { status: 200, body: '{"Running":false,"ExitCode":0}' };
         if (request.method === "GET" && request.path.startsWith("/volumes/"))
@@ -113,8 +114,21 @@ test("release removes container and volume", async () => {
   // Then
   expect(fake.requests.slice(-3).map(({ method, path }) => [method, path])).toEqual([
     ["POST", "/containers/relay-id/stop?t=1"],
-    ["DELETE", "/containers/relay-id?force=true"],
+    ["DELETE", "/containers/relay-id?force=true&v=true"],
     ["DELETE", "/volumes/lando-agent-ssh-test-app"],
+  ]);
+});
+
+test("encodes the raw relay ID once at each container endpoint", async () => {
+  const fake = fakeApi(undefined, "relay/raw%2F?#");
+  await Effect.runPromise(Effect.scoped(open(fake.api)));
+  expect(
+    fake.requests.filter(({ path }) => path.startsWith("/containers/relay")).map(({ path }) => path),
+  ).toEqual([
+    "/containers/relay%2Fraw%252F%3F%23/start",
+    "/containers/relay%2Fraw%252F%3F%23/exec",
+    "/containers/relay%2Fraw%252F%3F%23/stop?t=1",
+    "/containers/relay%2Fraw%252F%3F%23?force=true&v=true",
   ]);
 });
 
@@ -148,7 +162,7 @@ test("cleans up when starting the relay fails without exposing the token", async
   expect(JSON.stringify(result)).not.toContain("secret-token");
   expect(
     fake.requests.filter((request) => request.method === "DELETE").map((request) => request.path),
-  ).toEqual(["/containers/relay-id?force=true", "/volumes/lando-agent-ssh-test-app"]);
+  ).toEqual(["/containers/relay-id?force=true&v=true", "/volumes/lando-agent-ssh-test-app"]);
 });
 
 test("rejects missing canonical ownership context before creating resources", async () => {
@@ -211,7 +225,10 @@ const relayApi = (seed: "owned" | "foreign") => {
                 body: JSON.stringify({ Id: "stale-relay", Config: { Labels: ownedRelayLabels } }),
               };
         }
-        if (request.method === "DELETE" && request.path === `/containers/${relayContainer}?force=true`) {
+        if (
+          request.method === "DELETE" &&
+          request.path === `/containers/${relayContainer}?force=true&v=true`
+        ) {
           container = "absent";
           return { status: 204, body: "" };
         }
@@ -254,7 +271,7 @@ test("stale owned relay volume and container from a previous session are reclaim
   expect(fake.requests.slice(0, createAt).map(({ method, path }) => [method, path])).toEqual([
     ["GET", `/volumes/${relayVolume}`],
     ["GET", `/containers/${relayContainer}/json`],
-    ["DELETE", `/containers/${relayContainer}?force=true`],
+    ["DELETE", `/containers/${relayContainer}?force=true&v=true`],
     ["DELETE", `/volumes/${relayVolume}`],
   ]);
 });

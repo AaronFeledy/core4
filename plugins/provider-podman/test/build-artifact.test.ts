@@ -29,7 +29,6 @@ const servicePlan: ServicePlan = {
   artifact: { kind: "ref", ref: "debian:12.11-slim" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -52,7 +51,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -143,5 +141,5 @@ test("provider-podman pullArtifact failures report providerId podman", async () 
   );
 
   expect(error).toBeInstanceOf(ProviderUnavailableError);
-  expect(error.providerId).toBe("podman");
+  expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
 });

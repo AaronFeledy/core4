@@ -1,10 +1,10 @@
 import { Effect, Layer } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import type { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider, type makeTestCertificateAuthority } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
@@ -57,7 +57,7 @@ export const planAppPlannerCertsEffect = (input: AppPlannerCertsPlanInput) => {
   );
   const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.flatMap(AppPlanner, (service) =>
-    service.plan(rememberLandofileAppRoot(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
+    service.plan(literalTestLandofile(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(planner));
 };
 

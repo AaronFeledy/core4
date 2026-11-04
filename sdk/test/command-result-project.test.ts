@@ -5,6 +5,7 @@ import {
   encodeCommandResult,
   listSelectableResultKeys,
   projectEncodedResult,
+  resolveCommandCompletion,
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -201,6 +202,25 @@ describe("projectEncodedResult", () => {
 });
 
 describe("encodeCommandResult nested projection", () => {
+  test("preserves typed projection errors for a completed command failure", () => {
+    const outcome = resolveCommandCompletion("app:exec", { name: "ada" }, () => ({ ok: false, exitCode: 7 }));
+    const error = Effect.runSync(
+      encodeCommandResult({
+        command: "app:exec",
+        resultSchema: Schema.Struct({ name: Schema.String }),
+        outcome,
+        redactor: plainRedactor,
+        projectResultKeys: ["missing"],
+      }).pipe(Effect.catch((error) => Effect.succeed(error))),
+    );
+    expect(error).toMatchObject({
+      _tag: "JsonProjectionError",
+      reason: "unknown_key",
+      keys: ["missing"],
+      available: ["name"],
+    });
+  });
+
   test("projects urls.appserver inside the success envelope", () => {
     const line = Effect.runSync(
       encodeCommandResult({
@@ -266,7 +286,7 @@ describe("encodeCommandResult union projection", () => {
   ] as const)("preserves projection errors for keys %j", (keys, value, reason) => {
     // Given a union admitting both object and scalar results.
     const resultSchema = Schema.Union([UnionResultSchema, Schema.String]);
-    // When the encoder attempts an invalid projection, capture its defect.
+    // When the encoder attempts an invalid projection, capture its typed failure.
     const error = Effect.runSync(
       encodeCommandResult({
         command: "app:info",
@@ -274,7 +294,7 @@ describe("encodeCommandResult union projection", () => {
         outcome: { _tag: "success", value },
         redactor: plainRedactor,
         projectResultKeys: keys,
-      }).pipe(Effect.catchDefect((defect) => Effect.succeed(defect))),
+      }).pipe(Effect.catch((error) => Effect.succeed(error))),
     );
     // Then the tagged failure retains its reason, requested keys and public allowlist.
     expect(error).toMatchObject({

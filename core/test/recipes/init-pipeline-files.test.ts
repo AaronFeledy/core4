@@ -114,3 +114,39 @@ test("rejects a source when its validated parent is replaced before open", async
   if (openedHandle === undefined) throw new TypeError("Expected the injected source opener to run.");
   expect(openedHandle.stat()).rejects.toThrow();
 });
+
+test("rejects a source below an in-tree parent symlink", async () => {
+  // Given a source reached through an in-tree directory link.
+  const sourceRoot = await temporary();
+  await mkdir(join(sourceRoot, "real"));
+  await Bun.write(join(sourceRoot, "real/asset"), "bytes");
+  await symlink(join(sourceRoot, "real"), join(sourceRoot, "linked"));
+  // When acquiring its bytes, then the parent link is rejected even inside the root.
+  expect(
+    readAuxiliaryScaffoldContent({
+      sourceRoot,
+      appName: "app",
+      file: { src: "linked/asset", dest: "asset" },
+    }),
+  ).rejects.toThrow("symlink");
+});
+
+test("rejects a regular source replaced between validation and open", async () => {
+  // Given a source with a validated inode.
+  const sourceRoot = await temporary();
+  const path = join(sourceRoot, "asset");
+  await Bun.write(path, "trusted");
+  // When the pathname is replaced with a different regular file before open.
+  expect(
+    readAuxiliaryScaffoldContent({
+      sourceRoot,
+      appName: "app",
+      file: { src: "asset", dest: "asset" },
+      openSource: async (source, flags) => {
+        await rename(path, join(sourceRoot, "parked"));
+        await Bun.write(path, "replacement");
+        return open(source, flags);
+      },
+    }),
+  ).rejects.toThrow("changed during open");
+});

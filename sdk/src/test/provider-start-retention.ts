@@ -10,6 +10,7 @@ import {
   type ServicePlan,
   appIdentityKey,
   landoAppNetworkName,
+  landoServiceContainerName,
 } from "../schema/index.ts";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "../services/index.ts";
 import {
@@ -47,9 +48,9 @@ export interface ProviderStartRetentionHooks {
   readonly hasVolume: (volumeName: string) => boolean;
 }
 
-/** Native container name convention shared by bundled providers (`lando-<slug>-<service>`). */
+/** Native container name shared by bundled providers (see `landoServiceContainerName`). */
 const retentionContainerName = (slug: string, service: string): string =>
-  `lando-${slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  landoServiceContainerName(slug, String(service));
 
 const DB = ServiceName.make("db");
 const WEB = ServiceName.make("web");
@@ -57,7 +58,7 @@ const WEB = ServiceName.make("web");
 const makeService = (
   providerId: ProviderId,
   name: ServiceName,
-  overrides: Partial<Pick<ServicePlan, "dependsOn" | "primary" | "storage">> = {},
+  overrides: Partial<Pick<ServicePlan, "dependsOn" | "primary" | "mounts">> = {},
 ): ServicePlan => ({
   ...makeTestServicePlan(providerId),
   name,
@@ -74,8 +75,9 @@ const makeRetentionPlan = (providerId: ProviderId): AppPlan => {
   const db = makeService(providerId, DB, { primary: false });
   const web = makeService(providerId, WEB, {
     dependsOn: [{ service: DB, condition: "service_started", required: true }],
-    storage: [
+    mounts: [
       {
+        type: "volume",
         store: dataStore,
         target: PortablePath.make("/data"),
         readOnly: false,

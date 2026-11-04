@@ -1,0 +1,16 @@
+name: lando-ruby-4
+services:
+  defaults:
+    type: ruby:4.0
+    command: ruby /app/server.rb
+  custom:
+    type: ruby:4.0
+    port: 8080
+    command: ruby /app/server-custom.rb
+  cli:
+    type: ruby:4.0
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/ruby": ./../../

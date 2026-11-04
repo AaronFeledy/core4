@@ -3,11 +3,11 @@ import { Schema } from "effect";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { ServiceConfigIssue, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
-import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
+export const APP_MOUNT_TARGET = "/app";
 
 const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -23,10 +23,6 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
 
   if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
   applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
-
-  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-    ctx.addEndpoint(endpoint);
-  }
 };
 
 export const landoServiceFeature: ServiceFeatureDefinition = {
@@ -54,7 +50,7 @@ export const landoServiceType: ServiceType = {
         { id: LANDO_FEATURE_ID },
         {
           id: "lando.app-mount",
-          config: { target: "/app" },
+          config: { target: APP_MOUNT_TARGET },
         },
       ],
     })),

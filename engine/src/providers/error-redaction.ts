@@ -1,6 +1,9 @@
 import {
   ArtifactBuildError,
   ArtifactTransferError,
+  EnvironmentValueResolutionError,
+  HealthcheckTargetUnsupportedError,
+  PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
@@ -9,6 +12,9 @@ import {
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
+  SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
@@ -31,7 +37,7 @@ const baseFields = (
   operation: redactor.redactString(error.operation),
   message: redactor.redactString(error.message),
   ...(error.details === undefined ? {} : { details: redactor.redactValue(error.details) }),
-  ...(error.remediation === undefined ? {} : { remediation: redactor.redactString(error.remediation) }),
+  remediation: redactor.redactString(error.remediation),
   ...(error.cause === undefined ? {} : { cause: error.cause }),
 });
 
@@ -54,6 +60,42 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
 export function redactProviderError(error: ProviderError, redactor: Redactor): ProviderError {
   // Reconstruct, never clone: TaggedError serialization retains its constructor arguments.
   switch (error._tag) {
+    case "SecretNotFoundError":
+      return new SecretNotFoundError({
+        ...error,
+        message: redactor.redactString(error.message),
+        secret: redactor.redactString(error.secret),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "SecretReferenceInvalidError":
+      return new SecretReferenceInvalidError({
+        ...error,
+        message: redactor.redactString(error.message),
+        reference: redactor.redactString(error.reference),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "SecretStoreUnavailableError":
+      return new SecretStoreUnavailableError({
+        ...error,
+        message: redactor.redactString(error.message),
+        storeId: redactor.redactString(error.storeId),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "EnvironmentValueResolutionError":
+      return new EnvironmentValueResolutionError({
+        ...error,
+        message: redactor.redactString(error.message),
+        ...(error.variable === undefined ? {} : { variable: redactor.redactString(error.variable) }),
+        ...(error.reference === undefined ? {} : { reference: redactor.redactString(error.reference) }),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "PlanReplanRequiredError":
+      return new PlanReplanRequiredError({
+        ...error,
+        message: redactor.redactString(error.message),
+        app: redactor.redactString(error.app),
+        remediation: redactor.redactString(error.remediation),
+      });
     case "ProviderUnavailableError":
       return new ProviderUnavailableError(baseFields(error, redactor));
     case "ProviderCapabilityError":
@@ -69,6 +111,13 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
       return new ProviderInternalError(baseFields(error, redactor));
     case "ArtifactBuildError":
       return new ArtifactBuildError(baseFields(error, redactor));
+    case "HealthcheckTargetUnsupportedError":
+      return new HealthcheckTargetUnsupportedError({
+        message: redactor.redactString(error.message),
+        service: redactor.redactString(error.service),
+        target: error.target,
+        remediation: redactor.redactString(error.remediation),
+      });
     case "ServiceExecError":
       return new ServiceExecError({
         ...baseFields(error, redactor),
@@ -98,6 +147,9 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
                 lines: error.logTail.lines.map(redactor.redactString),
               },
             }),
+        ...(error.listener === undefined
+          ? {}
+          : { listener: { ...error.listener, service: redactor.redactString(error.listener.service) } }),
       });
     case "VolumeOperationError":
       return new VolumeOperationError({

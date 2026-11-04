@@ -33,7 +33,6 @@ const makeService = (name: string, ref: string, compose?: Record<string, unknown
   artifact: { kind: "ref", ref },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -43,6 +42,7 @@ const makeService = (name: string, ref: string, compose?: Record<string, unknown
 });
 
 const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Mailpit App",
   slug: "mailpit-app",
@@ -50,7 +50,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-mailpit-app", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -146,6 +145,19 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     }
     if (path.endsWith("/stop")) return { status: 204, body: "" };
     if (method === "DELETE") return { status: 204, body: "" };
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      return {
+        status: 200,
+        body: JSON.stringify(
+          Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: { "dev.lando.app": "mailpit-app" },
+          })),
+        ),
+      };
+    }
     return { status: 500, body: '{"message":"unexpected request"}' };
   };
   const api = {
@@ -192,13 +204,13 @@ describe("provider-docker pullArtifact", () => {
     },
   );
 
-  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+  test("apply forwards the complete resolved environment callback", async () => {
     // Given
     const service = {
       ...makeService("mailpit", mailpitRef),
       environment: {
         PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } as const,
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       },
     };
@@ -221,7 +233,8 @@ describe("provider-docker pullArtifact", () => {
       Effect.scoped(
         provider.apply(makePlan([service]), {
           reconcile: false,
-          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+          resolveServiceEnvironment: () =>
+            Effect.succeed({ ...service.environment, TOKEN: "resolved-canary" }),
         }),
       ),
     );
@@ -302,7 +315,7 @@ describe("provider-docker apply image pull", () => {
 
     const inspect = fake.requests.indexOf(`GET /images/${encodeURIComponent(mailpitRef)}/json`);
     const pull = fake.requests.indexOf(`POST ${buildImagePullRequest(mailpitRef, dockerPullDialect).path}`);
-    const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app-mailpit");
+    const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app--mailpit");
     expect(inspect).toBeGreaterThan(-1);
     expect(pull).toBeGreaterThan(inspect);
     expect(create).toBeGreaterThan(pull);

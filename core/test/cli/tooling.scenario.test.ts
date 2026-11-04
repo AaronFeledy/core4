@@ -11,7 +11,7 @@ import {
   AppId,
   type AppPlan,
   GlobalConfig,
-  type LandofileShape,
+  LandofileShape,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -30,6 +30,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 
 import {
   deriveAppPlanCacheKey,
@@ -40,11 +41,12 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
-import { resolveLandofileIncludes } from "@lando/landofile/includes";
-import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import * as BunShellRunner from "../_support/shell-runner.ts";
+import { currentTestPlan, environmentResolverLayer } from "../_support/value-contracts.ts";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -56,6 +58,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -95,7 +98,6 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -114,7 +116,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
     services.map((service) => [String(service.name), service]),
   ) as AppPlan["services"],
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -191,7 +192,15 @@ const makeLayer = (options: {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: loadAuthoredDocuments(
+        [
+          {
+            file: `${options.plan.root}/.lando.yml`,
+            value: Schema.encodeSync(LandofileShape)(options.landofile),
+          },
+        ],
+        { appRoot: options.plan.root, file: `${options.plan.root}/.lando.yml` },
+      ),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -201,7 +210,7 @@ const makeLayer = (options: {
         options.planCalls?.push(1);
         options.planCwds?.push(process.cwd());
         return options.planError === undefined
-          ? Effect.succeed(options.plan)
+          ? Effect.succeed(currentTestPlan(options.plan))
           : Effect.fail(options.planError);
       },
     }),
@@ -218,11 +227,15 @@ const makeLayer = (options: {
     }),
   );
   return Layer.mergeAll(
+    BunProcessRunner.layer,
+    BunShellRunner.layer(() => {
+      throw new TypeError("Interactive host tooling is unavailable in tests.");
+    }),
     PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
     registryLayer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provideMerge(environmentResolverLayer())),
     options.configLayer ?? emptyConfigServiceLayer,
   );
 };
@@ -293,6 +306,7 @@ const recordingEventLayer = (events: LandoEvent[]) =>
           ),
         subscribeQueue: Effect.succeed(queue),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       };
@@ -490,7 +504,11 @@ describe("runTooling — CLI rendering", () => {
           PluginRegistry,
           PluginRegistry.of({
             list: Effect.fail(
-              new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+              new PluginManifestError({
+                message: "plugin registry unavailable",
+                issues: [{ path: [], message: "not used" }],
+                remediation: "Correct the plugin manifest.",
+              }),
             ),
             load: () => Effect.die("not used"),
             loadServiceType: () => Effect.die("not used"),
@@ -589,20 +607,26 @@ describe("runTooling — CLI rendering", () => {
     const landofile: LandofileShape = {
       name: "scenario",
       toolingDefaults: {
-        env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 },
+        env:
+          Schema.decodeUnknownSync(LandofileShape)({
+            toolingDefaults: { env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 } },
+          }).toolingDefaults?.env ?? {},
       },
       tooling: {
         composer: {
           service: "appserver",
           cmd: "composer",
-          env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true },
+          env:
+            Schema.decodeUnknownSync(LandofileShape)({
+              tooling: { task: { env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true } } },
+            }).tooling?.task?.env ?? {},
         },
       },
     };
     const layer = makeLayer({ landofile, plan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "composer", args: ["install"] }).pipe(runtimeFor(layer)),
+      runTooling({ name: "composer", input: { _tag: "RawArgv", argv: ["install"] } }).pipe(runtimeFor(layer)),
     );
 
     expect(result.tool).toBe("composer");
@@ -636,11 +660,10 @@ describe("runTooling — CLI rendering", () => {
       tooling: { inspect: { cmd: "env" } },
     };
     const landofile = await Effect.runPromise(
-      buildLandofileLoadScope([{ file: "/tmp/scenario/.lando.yml", value: authoredLandofile }]).pipe(
-        Effect.flatMap((loadScope) =>
-          resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario", loadScope }),
-        ),
-      ),
+      loadAuthoredDocuments(
+        [{ file: "/tmp/scenario/.lando.yml", value: Schema.encodeSync(LandofileShape)(authoredLandofile) }],
+        { appRoot: "/tmp/scenario", file: "/tmp/scenario/.lando.yml" },
+      ).pipe(Effect.map((compiled) => compiled.document)),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -676,11 +699,10 @@ describe("runTooling — CLI rendering", () => {
       },
     };
     const landofile = await Effect.runPromise(
-      buildLandofileLoadScope([{ file: "/tmp/scenario/.lando.yml", value: authoredLandofile }]).pipe(
-        Effect.flatMap((loadScope) =>
-          resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario", loadScope }),
-        ),
-      ),
+      loadAuthoredDocuments(
+        [{ file: "/tmp/scenario/.lando.yml", value: Schema.encodeSync(LandofileShape)(authoredLandofile) }],
+        { appRoot: "/tmp/scenario", file: "/tmp/scenario/.lando.yml" },
+      ).pipe(Effect.map((compiled) => compiled.document)),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -709,7 +731,11 @@ describe("runTooling — CLI rendering", () => {
     };
     const layer = makeLayer({ landofile, plan, provider });
 
-    await Effect.runPromise(runTooling({ name: "phpunit", args: ["--testdox"] }).pipe(runtimeFor(layer)));
+    await Effect.runPromise(
+      runTooling({ name: "phpunit", input: { _tag: "RawArgv", argv: ["--testdox"] } }).pipe(
+        runtimeFor(layer),
+      ),
+    );
 
     expect(calls[0]?.command).toEqual(["phpunit", "--colors=always", "--testdox"]);
   });
@@ -732,7 +758,7 @@ describe("runTooling — CLI rendering", () => {
     const layer = makeLayer({ landofile, plan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "test", args: ["--testdox"] }).pipe(runtimeFor(layer)),
+      runTooling({ name: "test", input: { _tag: "RawArgv", argv: ["--testdox"] } }).pipe(runtimeFor(layer)),
     );
 
     expect(calls.map((call) => call.command)).toEqual([
@@ -1178,7 +1204,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(flat).toContain("are not supported");
       expect(flat).not.toContain("Alpha");
       expect(flat).not.toContain("Beta");
-      expect(flat).toContain("Remove the `service:` field");
+      expect(flat).toContain("Remove the service field");
       expect(calls).toHaveLength(0);
     });
   });

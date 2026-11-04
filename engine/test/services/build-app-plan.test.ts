@@ -23,7 +23,6 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
         artifact: { kind: "ref", ref: "node:22", digest: "sha256:first" },
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -37,7 +36,6 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {

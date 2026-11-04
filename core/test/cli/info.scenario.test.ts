@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream, Struct } from "effect";
 
 import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -12,9 +12,11 @@ import {
   type AppPlan,
   LogSource,
   type LogSource as LogSourceShape,
+  PortNumber,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
+  ServiceInfo,
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
@@ -25,8 +27,8 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -42,35 +44,19 @@ interface RunResult {
 }
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceLogSources: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
+  ...Struct.omit(TestRuntimeProvider.capabilities, [
+    "composeKnobs",
+    "composeServiceFields",
+    "authoredNetworks",
+    "composeProjectFields",
+  ]),
   volumeSnapshot: "none",
   serviceFileCopy: "none",
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
-  providerExtensions: [],
 };
 
 const metadata = {
@@ -105,11 +91,20 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
           : ["valkey-server"],
   environment:
     name === "postgres" ? { POSTGRES_USER: "lando", POSTGRES_DB: "appdb", POSTGRES_PASSWORD: "secret" } : {},
-  mounts: [],
-  storage:
+  ...(name === "postgres"
+    ? {
+        connection: {
+          family: "postgres",
+          port: PortNumber.make(5432),
+          creds: { user: "lando", database: "appdb", password: { _tag: "SecretRef", reference: "POSTGRES" } },
+        },
+      }
+    : {}),
+  mounts:
     name === "postgres"
       ? [
           {
+            type: "volume",
             store: "test_info_postgres_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -184,7 +179,6 @@ const plan: AppPlan = {
     [valkey.name]: valkey,
   },
   routes: [],
-  networks: [],
   stores: [{ name: "test_info_postgres_data", kind: "data", scope: "app" }],
   fileSync: [],
   metadata,
@@ -231,6 +225,7 @@ const makeInfoLayer = (
       readonly port: number;
     }>;
     readonly inspectCalls?: ServiceName[];
+    readonly mounts?: ServiceRuntimeInfo["mounts"];
   },
 ) => {
   const plannedApp = options?.plannedApp ?? plan;
@@ -252,6 +247,7 @@ const makeInfoLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -260,6 +256,7 @@ const makeInfoLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -285,7 +282,25 @@ const makeInfoLayer = (
           providerId,
           status: state,
           state,
-          endpoints: state === "running" ? (plannedApp.services[target.service]?.endpoints ?? []) : [],
+          ...(options?.mounts === undefined ? {} : { mounts: options.mounts }),
+          publications: {
+            status: "present",
+            bindings:
+              state === "running"
+                ? (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
+                    endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+                      ? [
+                          {
+                            port: endpoint.port,
+                            transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                            bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                            hostPort: endpoint.publication.hostPort,
+                          },
+                        ]
+                      : [],
+                  )
+                : [],
+          },
         };
       }),
     list: () => Effect.succeed([]),
@@ -307,11 +322,14 @@ const makeInfoLayer = (
       LandofileService.of({
         discover: Effect.sync(() => {
           options?.onDiscover?.();
-          return { name: "test-info", services: {}, ...options?.landofile };
+          return literalLandofile(
+            { name: "test-info", services: {}, ...options?.landofile },
+            plannedApp.root,
+          );
         }),
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -332,6 +350,25 @@ const makeInfoLayer = (
         revalidateStartup: Effect.void,
         applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
+        observeRoutes: (_app, routes) =>
+          Effect.succeed({
+            configuredAuthorities: options?.proxyAuthorities ?? [],
+            observation: {
+              status: "present",
+              publications:
+                state === "running"
+                  ? routes.flatMap((route) =>
+                      (options?.proxyAuthorities ?? [])
+                        .filter(
+                          (authority) =>
+                            authority.hostname === route.hostname &&
+                            (route.scheme === "both" || authority.scheme === route.scheme),
+                        )
+                        .map((authority) => ({ route, authority })),
+                    )
+                  : [],
+            },
+          }),
         status: Effect.succeed({
           state,
           authorities: options?.proxyAuthorities ?? [],
@@ -395,29 +432,100 @@ describe("lando info", () => {
     expect(inspectCalls).toEqual([]);
   });
 
-  test("prints running services with endpoint URLs as plain text", async () => {
+  test("prints running services with host URLs and app-network addresses as plain text", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("running"))));
     const output = renderInfoAppResult(result);
 
-    expect(output).toMatch(/node\s+running\s+http:\/\/localhost:3000/);
-    expect(output).toMatch(/postgres\s+running\s+postgresql:\/\/lando@localhost:5432\/appdb/);
-    expect(output).toMatch(/memcached\s+running\s+memcached:\/\/localhost:11211/);
-    expect(output).toMatch(/valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379/);
+    expect(output).toContain("service\tstate\tHost\tApp Network");
+    expect(output).toContain("node\trunning\thttp://localhost:3000\thttp://node:3000");
+    expect(output).toContain(
+      "postgres\trunning\tpostgresql://lando@localhost:5432/appdb\tpostgresql://lando@postgres:5432/appdb",
+    );
+    expect(output).toMatch(
+      /memcached\trunning\tmemcached:\/\/localhost:11211\tmemcached:\/\/memcached:11211/,
+    );
+    expect(output).toMatch(
+      /valkey\trunning\tvalkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379\tvalkey:\/\/valkey:6379,\s*redis:\/\/valkey:6379/,
+    );
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
   });
 
-  test("prints stopped services without endpoints", async () => {
+  test("retains storage observations and resolved app mounts across the info JSON contract", async () => {
+    const appMount = {
+      type: "bind" as const,
+      source: plan.root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      includes: [".git"],
+      excludes: ["vendor"],
+      realization: "passthrough" as const,
+      role: "app" as const,
+    };
+    const plannedApp = { ...plan, services: { [node.name]: { ...node, mounts: [appMount] } } };
+    const inspectCalls: ServiceName[] = [];
+    const result = await Effect.runPromise(
+      infoApp().pipe(
+        Effect.provide(
+          makeInfoLayer("running", {
+            plannedApp,
+            inspectCalls,
+            mounts: {
+              status: "present",
+              mounts: [
+                { type: "bind", source: plan.root, target: "/app", readOnly: false },
+                { type: "volume", source: "runtime-volume", target: "/data", readOnly: false },
+              ],
+            },
+          }),
+        ),
+      ),
+    );
+    const wire = result.services.map((row) => Schema.encodeSync(ServiceInfo)(row));
+    expect(inspectCalls).toEqual([node.name]);
+    expect(wire[0]?.appMount).toEqual(appMount);
+    expect(wire[0]?.mounts).toEqual([
+      {
+        type: "bind",
+        source: plan.root,
+        target: "/app",
+        readOnly: false,
+        origin: "planned",
+        observation: "present",
+        lifetime: "retained",
+      },
+      {
+        type: "volume",
+        source: "runtime-volume",
+        target: "/data",
+        readOnly: false,
+        origin: "runtime",
+        observation: "present",
+        lifetime: "unknown",
+      },
+    ]);
+    expect(wire[0]?.connections).toHaveLength(2);
+  });
+
+  test("retains configured addresses as inactive for stopped services", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("stopped"))));
     const output = renderInfoAppResult(result);
 
-    expect(output).toMatch(/node\s+stopped\s+no endpoints/);
-    expect(output).toMatch(/postgres\s+stopped\s+no endpoints/);
-    expect(output).toMatch(/memcached\s+stopped\s+no endpoints/);
-    expect(output).toMatch(/valkey\s+stopped\s+no endpoints/);
-    expect(output).not.toContain("localhost");
+    expect(
+      result.services.map((service) => service.connections.map((connection) => connection.state)),
+    ).toEqual([
+      ["inactive", "inactive"],
+      ["inactive", "inactive"],
+      ["inactive", "inactive"],
+      ["inactive", "inactive"],
+    ]);
+    expect(output).toContain("node\tstopped\thttp://localhost:3000 [inactive]\thttp://node:3000 [inactive]");
+    expect(output).toContain("postgres\tstopped\tpostgresql://lando@localhost:5432/appdb [inactive]");
+    expect(output).toContain("memcached\tstopped\tmemcached://localhost:11211 [inactive]");
+    expect(output).toContain("valkey\tstopped\tvalkey://localhost:6379, redis://localhost:6379 [inactive]");
+    expect(output).not.toContain(`${String.fromCharCode(27)}]8;`);
   });
 
-  test("renders routed authorities from proxy status without exposing internal endpoints", async () => {
+  test("keeps routed host URLs and app-network addresses in separate lists", async () => {
     // Given
     const routedPlan: AppPlan = {
       ...plan,
@@ -452,15 +560,30 @@ describe("lando info", () => {
       ),
     );
 
-    // Then
+    // Then the unpublished listener never becomes a bogus host URL: it is reported
+    // only as the address other services dial on the app network.
     const nodeInfo = result.services.find((service) => service.service === "node");
-    expect(nodeInfo?.endpoints).toEqual(["https://node.test-info.lndo.site:7443"]);
-    expect(renderInfoAppResult(result)).not.toContain("localhost:3000");
+    expect(nodeInfo?.connections.filter((connection) => connection.scope === "host")).toMatchObject([
+      { source: "route", binding: "assigned", state: "active", url: "https://node.test-info.lndo.site:7443" },
+    ]);
+    expect(nodeInfo?.connections.filter((connection) => connection.scope === "app")).toMatchObject([
+      { source: "listener", binding: "assigned", state: "active", url: "http://node:3000" },
+    ]);
+    const output = renderInfoAppResult(result);
+    expect(output).not.toContain("localhost:3000");
+    expect(output).toContain("node\trunning\thttps://node.test-info.lndo.site:7443\thttp://node:3000");
   });
 
   test("prints a visible host-proxy unavailable notice from the plan extension", async () => {
     const plannedApp: AppPlan = {
       ...plan,
+      services: {
+        ...plan.services,
+        [node.name]: {
+          ...node,
+          extensions: { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } },
+        },
+      },
       extensions: {
         ...plan.extensions,
         "@lando/core/host-proxy": {
@@ -599,7 +722,10 @@ describe("lando info --deep — agent-context env audit", () => {
             plan,
             root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: plan.id, root: plan.root },
-            landofile: { name: "test-info", ...(enabled ? {} : { agentEnv: false }) },
+            landofile: literalLandofile(
+              { name: "test-info", ...(enabled ? {} : { agentEnv: false }) },
+              plan.root,
+            ),
           },
         ).pipe(
           Effect.provide(
@@ -629,10 +755,14 @@ describe("lando info --deep — agent-context env audit", () => {
 });
 
 describe("lando info — resolved log sources", () => {
-  const makeLogSourceLayer = (logSources: ReadonlyArray<LogSourceShape>, serviceLogSources: boolean) => {
+  const makeLogSourceLayer = (
+    logSources: ReadonlyArray<LogSourceShape>,
+    serviceLogSources: boolean,
+    serviceLogs = true,
+  ) => {
     const svc: ServicePlan = { ...postgres, logSources };
     const logPlan: AppPlan = { ...plan, services: { [svc.name]: svc } };
-    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources };
+    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources, serviceLogs };
     const provider: RuntimeProviderShape = {
       id: "lando",
       displayName: "Lando Runtime Provider",
@@ -646,11 +776,21 @@ describe("lando info — resolved log sources", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: false }),
@@ -673,7 +813,7 @@ describe("lando info — resolved log sources", () => {
           providerId,
           status: "running",
           state: "running" as const,
-          endpoints: logPlan.services[target.service]?.endpoints ?? [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
       snapshotVolume: () => Effect.die("not used"),
@@ -690,9 +830,11 @@ describe("lando info — resolved log sources", () => {
     return Layer.mergeAll(
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-info", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(literalLandofile({ name: "test-info", services: {} }, logPlan.root)),
+        }),
       ),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(logPlan) })),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(logPlan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -715,6 +857,37 @@ describe("lando info — resolved log sources", () => {
     stream: "stderr",
     strategy: "follow",
   });
+  test.each([false, true])(
+    "reports pathless console aliases using serviceLogs=%s, not file capability",
+    async (serviceLogs) => {
+      // Given a native alias and a provider with the opposite file capability.
+      const source = Schema.decodeUnknownSync(LogSource)({
+        id: "error",
+        strategy: "console",
+        stream: "stderr",
+      });
+      // When projecting info through the operation.
+      const result = await Effect.runPromise(
+        infoApp().pipe(Effect.provide(makeLogSourceLayer([source], !serviceLogs, serviceLogs))),
+      );
+      // Then JSON stays pathless and presentation names the actual pipe.
+      const log = result.services[0]?.logSources?.[0];
+      expect(log).toMatchObject({
+        id: "error",
+        strategy: "console",
+        stream: "stderr",
+        availability: serviceLogs ? "available" : "unavailable",
+      });
+      expect(log).not.toHaveProperty("path");
+      expect(renderInfoAppResult(result)).toContain(
+        `log-source\terror\tconsole/stderr\tconsole\t${serviceLogs ? "available" : "unavailable"}`,
+      );
+      expect(
+        buildInfoSummary(result).sections[0]?.rows[0]?.fields?.find((field) => field.label === "log sources")
+          ?.value,
+      ).toContain("error (console/stderr)");
+    },
+  );
   const redirectSource = Schema.decodeUnknownSync(LogSource)({
     id: "access",
     path: "/var/log/apache/access.log",
@@ -757,3 +930,4 @@ describe("lando info — resolved log sources", () => {
     expect(svc?.logSources?.[0]?.availability).toBe("redirected-to-console");
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

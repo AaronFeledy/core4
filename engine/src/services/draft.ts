@@ -10,7 +10,15 @@
  */
 import { DateTime } from "effect";
 
-import type { ServicePlan } from "@lando/sdk/schema";
+import type {
+  DatabaseConnection,
+  Environment,
+  EnvironmentValue,
+  ListenerAuthority,
+  ServiceCreds,
+  ServicePlan,
+  VolumeMountPlan,
+} from "@lando/sdk/schema";
 import type {
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
@@ -21,22 +29,96 @@ import type {
 export interface BaseSeed {
   readonly name: ServicePlan["name"];
   readonly type: ServicePlan["type"];
+  readonly serviceTypeId?: string;
   readonly provider: ServicePlan["provider"];
   readonly primary: ServicePlan["primary"];
-  readonly environment?: Readonly<Record<string, string>>;
+  readonly environment?: Environment;
+  readonly connection?: DatabaseConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
 }
+
+/**
+ * Optional ServicePlan keys the draft path copies without transformation when
+ * present. Keys that need mounts/credentials/extensions handling stay outside.
+ */
+export const DRAFT_OPTIONAL_PASS_THROUGH_KEYS = [
+  "serviceTypeId",
+  "artifact",
+  "command",
+  "entrypoint",
+  "init",
+  "user",
+  "workingDirectory",
+  "healthcheck",
+  "readiness",
+  "readinessSource",
+  "listenerAuthority",
+  "certs",
+  "provenance",
+] as const satisfies ReadonlyArray<keyof ServicePlan>;
+
+export type DraftOptionalPassThroughKey = (typeof DRAFT_OPTIONAL_PASS_THROUGH_KEYS)[number];
+
+/**
+ * Optional ServicePlan keys owned outside the shared draft pass-through:
+ * planner-only fields and mutual-exclusion credentials.
+ */
+type DraftExternalOptionalServicePlanKey = "home" | "scanner" | "logSources" | "connection" | "nonSqlCreds";
+
+type OptionalServicePlanKey = {
+  [K in keyof ServicePlan]-?: undefined extends ServicePlan[K] ? K : never;
+}[keyof ServicePlan];
+
+type MissingOptionalServicePlanKey = Exclude<
+  OptionalServicePlanKey,
+  DraftOptionalPassThroughKey | DraftExternalOptionalServicePlanKey
+>;
+type ExtraPassThroughKey = Exclude<DraftOptionalPassThroughKey, OptionalServicePlanKey>;
+
+// Compile-time: every optional ServicePlan key is either pass-through or external.
+const _optionalServicePlanCoverage: [MissingOptionalServicePlanKey] extends [never]
+  ? [ExtraPassThroughKey] extends [never]
+    ? true
+    : never
+  : never = true;
+void _optionalServicePlanCoverage;
+
+/**
+ * Source shape for draft optional pass-through. Explicit `| undefined` is
+ * required under exactOptionalPropertyTypes so draft fields and plan optionals
+ * both assign.
+ */
+export type DraftOptionalPassThroughSource = {
+  readonly [K in DraftOptionalPassThroughKey]?: ServicePlan[K] | undefined;
+};
+
+/** Copy defined optional ServicePlan pass-through fields from a draft or plan. */
+export const pickDraftOptionalServicePlanFields = (
+  source: DraftOptionalPassThroughSource,
+): Partial<Pick<ServicePlan, DraftOptionalPassThroughKey>> => {
+  const picked: Partial<Pick<ServicePlan, DraftOptionalPassThroughKey>> = {};
+  for (const key of DRAFT_OPTIONAL_PASS_THROUGH_KEYS) {
+    const value = source[key];
+    if (value !== undefined) Object.assign(picked, { [key]: value });
+  }
+  return picked;
+};
 
 /** The mutable plan draft a feature mutates before finalization. */
 export interface DraftServicePlan {
   name: ServicePlan["name"];
   type: string;
+  readonly serviceTypeId?: string;
   provider: ServicePlan["provider"];
   primary: boolean;
   artifact?: ServicePlan["artifact"];
   command?: ServicePlan["command"];
   entrypoint?: ServicePlan["entrypoint"];
-  environment: Record<string, string>;
+  init?: boolean;
+  environment: Record<string, EnvironmentValue>;
+  readonly connection?: DatabaseConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];
   appMount?: ServiceAppMountIntent;
@@ -44,12 +126,15 @@ export interface DraftServicePlan {
   featureIds?: ReadonlyArray<string>;
   buildSteps: ServiceBuildStepIntent[];
   extensions?: Record<string, unknown>;
-  storage: Array<ServicePlan["storage"][number]>;
+  storage: Array<Omit<VolumeMountPlan, "type">>;
   /** Mounted trees the planned service user must own, by container target. */
   storageOwnership?: Array<{ target: string; seededOwners: ReadonlyArray<string> }>;
   endpoints: Array<ServicePlan["endpoints"][number]>;
   dependsOn: Array<ServicePlan["dependsOn"][number]>;
   healthcheck?: ServicePlan["healthcheck"];
+  readiness?: ServicePlan["readiness"];
+  readinessSource?: ServicePlan["readinessSource"];
+  listenerAuthority?: ListenerAuthority;
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];
@@ -75,9 +160,12 @@ export const sortRecord = <V>(input: Readonly<Record<string, V>>): Record<string
 export const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   name: base.name,
   type: base.type,
+  ...(base.serviceTypeId === undefined ? {} : { serviceTypeId: base.serviceTypeId }),
   provider: base.provider,
   primary: base.primary,
   environment: sortRecord(base.environment ?? {}),
+  ...(base.connection === undefined ? {} : { connection: base.connection }),
+  ...(base.nonSqlCreds === undefined ? {} : { nonSqlCreds: base.nonSqlCreds }),
   mounts: [],
   featureIds: base.defaultFeatures.map((feature) => feature.id),
   buildSteps: [],

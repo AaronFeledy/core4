@@ -18,7 +18,7 @@ const compareUses = (left: ComposePreservedPathUse, right: ComposePreservedPathU
 };
 
 export const collectComposePreservedPaths = (
-  services: Readonly<Record<string, ServicePlan>>,
+  services: Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>,
 ): ReadonlyArray<ComposePreservedPathUse> => {
   const uses: ComposePreservedPathUse[] = [];
 

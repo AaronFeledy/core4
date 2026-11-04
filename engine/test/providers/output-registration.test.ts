@@ -1,12 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PluginLoadError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
@@ -39,8 +34,6 @@ import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 const plan = Schema.decodeUnknownSync(AppPlan)({
   id: "output-boundary",
   name: "output-boundary",
@@ -49,7 +42,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
   provider: "test",
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -59,7 +51,7 @@ const target = { app: plan.id, service: ServiceName.make("web") };
 const command = { command: ["printenv"] };
 const spec = { owner: target, image: "test", command: ["printenv"] };
 const canary = "registry-environment-private";
-const registryLayer = (provider: RuntimeProviderShape) => {
+const registryLayer = (provider: RuntimeProviderShape, redaction = makeRedactionService()) => {
   const id = ProviderId.make(provider.id);
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
     name: "@test/output",
@@ -85,7 +77,13 @@ const registryLayer = (provider: RuntimeProviderShape) => {
   ];
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: id });
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   return makeRuntimeProviderRegistry(modules, {
     enforce: async () => undefined,
     verify: async () => undefined,
@@ -118,15 +116,7 @@ const registryLayer = (provider: RuntimeProviderShape) => {
             Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null))),
           ),
         ),
-        Layer.succeed(
-          RedactionService,
-          makeRedactionService({
-            id: "empty",
-            list: Effect.succeed([]),
-            get: () => Effect.die("must not resolve stores"),
-            has: () => Effect.succeed(false),
-          }),
-        ),
+        Layer.succeed(RedactionService, redaction),
       ),
     ),
   );
@@ -155,11 +145,12 @@ const outputProvider = (emit: () => string): RuntimeProviderShape => ({
 });
 
 test.each(Object.entries(calls))("%s registers before its first output", async (_member, invoke) => {
-  resetRegisteredRedactionValuesForTesting();
+  const redaction = makeRedactionService();
+  const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
   const observations: string[] = [];
   let reads = 0;
   const emit = () => {
-    observations.push(createStandaloneRedactor("secrets").redactString(canary));
+    observations.push(redactor.redactString(canary));
     return canary;
   };
   const provider: RuntimeProviderShape = {
@@ -175,7 +166,7 @@ test.each(Object.entries(calls))("%s registers before its first output", async (
       Effect.flatMap(RuntimeProviderRegistry, (registry) =>
         registry.select(plan).pipe(Effect.flatMap(invoke)),
       ),
-    ).pipe(Effect.provide(registryLayer(provider))),
+    ).pipe(Effect.provide(registryLayer(provider, redaction))),
   );
   expect(observations).toEqual(["[redacted]"]);
   expect(reads).toBe(1);
@@ -184,7 +175,6 @@ test.each(Object.entries(calls))("%s registers before its first output", async (
 test.each(Object.entries(calls))(
   "%s fails closed on read failure with no output",
   async (_member, invoke) => {
-    resetRegisteredRedactionValuesForTesting();
     let outputs = 0;
     const emit = () => {
       outputs++;
@@ -198,6 +188,8 @@ test.each(Object.entries(calls))(
             providerId: "test",
             operation: "readAppEnvironment",
             message: "Read denied",
+            remediation:
+              "Install or start the `test` provider and confirm it can perform `readAppEnvironment`.",
           }),
         ),
     };

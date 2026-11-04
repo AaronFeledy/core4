@@ -13,6 +13,17 @@ export const ResourceOwnership = Schema.Struct({
 export type ResourceOwnership = typeof ResourceOwnership.Type;
 
 export const OwnedResourcesCleanupResult = Schema.Struct({
+  skipped: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        appId: AppId.annotate({ description: "App whose unreadable state protects this resource." }),
+        resource: Schema.String.annotate({ description: "Native resource name retained without mutation." }),
+        reason: Schema.String.annotate({
+          description: "Unreadable-state refusal explaining why cleanup skipped this resource.",
+        }),
+      }),
+    ).annotate({ description: "Protected resources skipped because their applied state is unreadable." }),
+  ),
   servicesRemoved: Schema.Array(ServiceName).annotate({
     description: "Services whose observed containers were removed.",
   }),

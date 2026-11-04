@@ -1,5 +1,5 @@
 import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
@@ -13,6 +13,7 @@ import type {
 import type { VolumeInitialization } from "@lando/sdk/services";
 
 import type { SqlMover } from "./actions.ts";
+import { normalizeCommandFailure } from "./command-failure.ts";
 import type { SqlCreds } from "./creds.ts";
 import type { SqlFamily } from "./families.ts";
 import {
@@ -64,7 +65,7 @@ export type SqlPhysicalContextInput = {
   readonly serviceName: string;
   readonly family: SqlFamily;
   readonly creds: SqlCreds;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: import("@lando/sdk/schema").Environment;
   readonly label?: string;
   readonly format?: "tar" | "tar.gz" | "tar.zst";
   readonly preflight?: (context: SqlRecoveryContext) => Effect.Effect<void, unknown>;
@@ -214,15 +215,17 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
   );
   const exactTransition = (running: boolean, transition: Effect.Effect<void, unknown>) =>
     transition.pipe(
-      Effect.mapError(() =>
-        recoveryUnavailable(
-          input.serviceName,
-          running
-            ? "The inspected database runtime could not be resumed after recovery."
-            : "The inspected database runtime could not be stopped before recovery.",
-          running
-            ? "Leave the database stopped and restore the reported recovery snapshot before retrying."
-            : "Leave the database stopped, inspect the service container, and retry recovery.",
+      Effect.mapError((error) =>
+        Option.getOrElse(normalizeCommandFailure(error), () =>
+          recoveryUnavailable(
+            input.serviceName,
+            running
+              ? "The inspected database runtime could not be resumed after recovery."
+              : "The inspected database runtime could not be stopped before recovery.",
+            running
+              ? "Inspect the database runtime before retrying or restoring the reported recovery snapshot."
+              : "Leave the database stopped, inspect the service container, and retry recovery.",
+          ),
         ),
       ),
       Effect.andThen(verifyRuntimeState(input.deps, input.serviceName, target.runtime, running)),

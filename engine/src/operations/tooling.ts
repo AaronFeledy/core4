@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { Clock, Effect, Option, Result } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
@@ -11,31 +11,39 @@ import {
   type ToolingDisabledError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { HostTerminal, LandofileShape } from "@lando/sdk/schema";
+import type {
+  Environment,
+  HostTerminal,
+  ToolingInputRevision,
+  ToolingInvocationInput,
+} from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import {
-  AppPlanner,
+  type AppPlanner,
   ConfigService,
+  type EnvironmentValueResolver,
   EventService,
   LandofileService,
-  RuntimeProviderRegistry,
+  type ProcessRunner,
+  type RuntimeProviderRegistry,
   type ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
+import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import {
   type ResolvedAppTarget,
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
-import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
+import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
-import {
-  collectAppPlanPublicCredentialValues,
-  collectAppPlanRedactionTokens,
-} from "../services/app-plan-redaction.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
+import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
@@ -45,14 +53,16 @@ import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
 import { withToolingOutput } from "./tooling-output.ts";
+import { resolveToolingPlan } from "./tooling-plan.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
-  readonly args?: ReadonlyArray<string>;
+  readonly expectedInputRevision?: ToolingInputRevision;
+  readonly input?: ToolingInvocationInput;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   readonly cacheRoot?: string;
   readonly tty?: boolean;
   readonly hostTerminal?: HostTerminal;
@@ -77,46 +87,14 @@ type RunToolingError =
   | ToolingInputError;
 
 type RunToolingServices =
+  | ProcessRunner
+  | EnvironmentValueResolver
   | AppPlanner
   | ConfigService
   | LandofileService
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | ToolingEngine;
-
-const withProcessCwd = <A, E, R>(
-  cwd: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ToolingCompileError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(cwd);
-        return original;
-      },
-      catch: (cause) =>
-        new ToolingCompileError({
-          message: `Unable to enter the app directory at ${cwd}.`,
-          tool: "tooling",
-          cause,
-        }),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
-
-const resolveToolingPlan = Effect.fnUntraced(function* (input: {
-  readonly landofile: LandofileShape;
-  readonly appRoot: string | undefined;
-}) {
-  const planner = yield* AppPlanner;
-  const registry = yield* RuntimeProviderRegistry;
-  const capabilities = yield* registry.capabilities;
-  return yield* input.appRoot === undefined
-    ? planner.plan(input.landofile, capabilities)
-    : withProcessCwd(input.appRoot, () => planner.plan(input.landofile, capabilities));
-});
 
 export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   options: RunToolingOptions,
@@ -128,10 +106,10 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     target === undefined
       ? yield* loadUserLandofile(landofileService)
       : (target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root)));
-  const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
+  const appRoot = yield* findAppRoot(options.cwd ?? target?.root);
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
-  const authoredTaskNames = new Set(Object.keys(loadedLandofile.tooling ?? {}));
-  const servicesCanContributeTooling = Object.keys(loadedLandofile.services ?? {}).length > 0;
+  const authoredTaskNames = new Set(Object.keys(loadedLandofile.document.tooling ?? {}));
+  const servicesCanContributeTooling = Object.keys(loadedLandofile.document.services ?? {}).length > 0;
 
   if (
     target === undefined &&
@@ -161,8 +139,8 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   // once a plan exists so the script fallback above keeps its old inputs.
   const config = yield* ConfigService;
   const globalConfig = yield* config.load;
-  const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
-  const landofile = yield* materializeLandofileScopesForPlan(
+  const landofileRoot = loadedLandofile.context.appRoot;
+  const serviceScoped = yield* materializeLandofileScopesForPlan(
     {
       landofile: loadedLandofile,
       appRoot: landofileRoot,
@@ -171,8 +149,12 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     },
     plan,
   );
-  const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
-  const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
+  const landofile = serviceScoped.document;
+  const { tooling, sites } = yield* invocationToolingForPlan(
+    serviceScoped,
+    plan,
+    readProxyDefaultDomain(globalConfig),
+  );
   const task = tooling[toolingLookupKey];
   const reservedConflict = reservedToolingNameConflict(toolingLookupKey);
 
@@ -196,27 +178,43 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   }
 
   const source = {
-    path: join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
+    path:
+      getLandofileValueSource(loadedLandofile.document, ["tooling", toolingLookupKey, "disabled"])?.file ??
+      join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
     task: toolingLookupKey,
   };
   const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+  const client = yield* resolveConnectionClientTask({
+    plan,
+    name: toolingLookupKey,
+    task,
+    sites: sitesUnder(sites, ["tooling", toolingLookupKey]),
+    currentLandofile: landofile,
+  });
+  const resolvedTask = yield* resolveToolingTaskShape(client.task, {}, client.sites);
   const compiled = yield* compileToolingInvocations({
     ...options,
     lookupKey: toolingLookupKey,
-    task,
+    task: resolvedTask,
     source,
     agentEnvAllowlist,
   });
   const invocations = compiled.invocations;
-  const publicValues = collectAppPlanPublicCredentialValues(plan);
-  const redactionTokens = [
-    ...new Set([
-      ...collectAppPlanRedactionTokens(plan),
-      ...invocations.flatMap((invocation) => collectSecretEnvValues(invocation.env, publicValues)),
-    ]),
-  ];
+  const planValues = yield* registerPlanRedaction(
+    plan,
+    invocations.map((invocation) =>
+      Object.fromEntries(
+        Object.entries(invocation.env ?? {}).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+    ),
+  );
+  const redactionTokens = [...new Set([...planValues.substring, ...compiled.redactionTokens])];
   const redaction = yield* Effect.serviceOption(RedactionService);
-  if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokens);
+  if (Option.isSome(redaction)) {
+    yield* redaction.value.registerValues(redactionTokens);
+  }
 
   const events = yield* Effect.serviceOption(EventService);
   const progressEvents = Option.getOrUndefined(events);
@@ -244,13 +242,24 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   }
   if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
   const result = exit.success;
+  const inputRedactor = createRedactor("secrets", { values: compiled.redactionTokens });
 
   return {
     tool: result.tool,
     service: String(result.service),
     exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    ...(result.stdout === undefined
+      ? {}
+      : {
+          stdout:
+            compiled.redactionTokens.length === 0 ? result.stdout : inputRedactor.redactString(result.stdout),
+        }),
+    ...(result.stderr === undefined
+      ? {}
+      : {
+          stderr:
+            compiled.redactionTokens.length === 0 ? result.stderr : inputRedactor.redactString(result.stderr),
+        }),
     redactionTokens,
   };
 });

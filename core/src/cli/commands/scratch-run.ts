@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from "effect";
 
 import {
   type AppPlacementError,
+  type DebuggerHostUnavailableError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -16,6 +17,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
   type ScratchAppService,
+  type StateStore,
 } from "@lando/sdk/services";
 
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
@@ -30,7 +32,6 @@ import {
 } from "@lando/engine/scratch-app/service";
 import { RedactionService } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { finishCommandProgress } from "../command-progress";
 import { withInheritedStdinRawMode } from "../exec-host-io";
 import type { ScratchRunOptions } from "./scratch-run-input";
@@ -74,29 +75,26 @@ export type ScratchRunError =
   | ScratchAppError
   | ScratchAppNotFoundError
   | ScratchRunTargetError
+  | DebuggerHostUnavailableError
   | LandofileVersionConstraintError;
 
 export type ScratchRunServices =
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | ScratchAppService
   | ConfigService
   | FileSystem
-  | PrivateFileAccessService
+  | StateStore
   | RuntimeProviderRegistry;
 
 export interface ScratchRunDeps {
   readonly acquireWithPlan: typeof acquireScratchAppWithPlan;
-  readonly detach: (
-    id: string,
-  ) => Effect.Effect<void, ScratchAppError | ScratchAppNotFoundError, PrivateFileAccessService>;
+  readonly detach: (id: string) => Effect.Effect<void, ScratchAppError | ScratchAppNotFoundError, StateStore>;
   readonly readLandofile: typeof readScratchLandofile;
 }
 
 export const defaultScratchRunDeps: ScratchRunDeps = {
   acquireWithPlan: acquireScratchAppWithPlan,
-  detach: (id) =>
-    PrivateFileAccessService.pipe(
-      Effect.flatMap((privateFileAccess) => detachScratchApp(id, privateFileAccess)),
-    ),
+  detach: detachScratchApp,
   readLandofile: readScratchLandofile,
 };
 
@@ -176,6 +174,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
               message: `Unable to select a provider for scratch app ${handle.id}.`,
               operation: "run",
               cause,
+              remediation:
+                "Run `lando doctor` and ensure a runtime provider is installed before `lando run`.",
             }),
         ),
       );
@@ -206,6 +206,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
               message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
               operation: "run",
               cause,
+              remediation:
+                "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
             }),
         ),
       );
@@ -222,13 +224,10 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         command: options.command,
         exitCode: result.exitCode,
         kept: options.keep,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
         redactionTokens: redactionTokensFromEnv(env),
       } satisfies ScratchRunResult;
     }),
   );
 });
-
-export const scratchRunSuccessExitCode = (result: ScratchRunResult): number | undefined =>
-  result.exitCode === 0 ? undefined : result.exitCode;

@@ -6,7 +6,7 @@ import { HOST_PROXY_CREDENTIAL_ENV_NAMES } from "@lando/sdk/secrets";
 import { type AppSelector, PathsService, type RuntimeProviderShape } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Option, Redacted } from "effect";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { isOwnerOnlyRecordFile } from "../subsystems/detached-worker/state-file.ts";
 import { serviceHasHostProxyFeature } from "../subsystems/host-proxy/worker-service-plan.ts";
 import { readWorkerRecordAt, workerStatePath } from "../subsystems/host-proxy/worker-state-file.ts";
@@ -21,6 +21,10 @@ export const appOutputEnvironmentNames = (
     for (const service of Object.values(plan.services)) {
       const keys = names.get(service.name) ?? new Set<string>();
       for (const [key, value] of Object.entries(service.environment)) {
+        if (typeof value !== "string") {
+          keys.add(key);
+          continue;
+        }
         const reference = exactSecretReference(value);
         if (reference !== undefined && !(reference instanceof SecretReferenceInvalidError)) keys.add(key);
       }
@@ -45,7 +49,7 @@ export const registerProviderOutput = Effect.fnUntraced(function* (input: {
     ...(target.plan === undefined ? [] : [target.plan]),
     ...input.appliedPlans.filter((plan) => plan.id === target.app),
   ];
-  for (const plan of plans) yield* register(collectAppPlanRedactionTokens(plan));
+  for (const plan of plans) yield* registerPlanRedaction(plan);
   const paths = yield* Effect.serviceOption(PathsService);
   const access = yield* Effect.serviceOption(PrivateFileAccessService);
   if (Option.isSome(paths) && Option.isSome(access)) {

@@ -4,6 +4,7 @@ import type { Lando3Path } from "../src/contract.ts";
 import type { ServiceLoweringContext } from "../src/lowering-contract.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: {},
   serviceName: "app",
   keyPath: ["services", "app"],
   fallbackSourceId: "canonical",
@@ -112,6 +113,7 @@ describe("Compose field lowering", () => {
     [{ container_name: "app" }, ["container_name"]],
     [{ ports: ["80:80", { target: 80, mode: "host" }] }, ["ports", 1, "mode"]],
     [{ volumes: [{ source: ".", target: "/app", consistency: "cached" }] }, ["volumes", 0, "consistency"]],
+    [{ networks: { backend: { ipv4_address: "10.9.9.9" } } }, ["networks", "backend", "ipv4_address"]],
     ...["ssh", "secrets", "cache_from"].map((key): readonly [Record<string, unknown>, Lando3Path] => [
       { build: { context: ".", [key]: true } },
       ["build", key],

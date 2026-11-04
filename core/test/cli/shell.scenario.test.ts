@@ -3,11 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type Context, DateTime, Effect, Layer, Redacted, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
@@ -27,6 +23,7 @@ import {
   AppPlanner,
   DeprecationService,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   SecretStore,
@@ -34,14 +31,17 @@ import {
   ShellRunner,
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/config/agent-env";
+import { makeLandoPaths } from "@lando/paths";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
+import { DEFAULT_SERVICE_LOGIN_SHELL, SESSION_NO_HISTORY_ENV } from "../../src/cli/service-login-shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
+import { withEnvVar } from "../_support/temp-cwd.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -54,6 +54,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -94,7 +95,6 @@ const servicePlan = (name: "web"): ServicePlan => ({
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -113,7 +113,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -181,8 +180,12 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, plan.root)) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -209,11 +212,14 @@ const layer = (
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "shell-scenario" }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "shell-scenario" }, appPlan.root)),
+      }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(appPlan) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(appPlan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -293,7 +299,29 @@ describe("shellApp — shell modes", () => {
     expect(result.exitCode).toBe(0);
     expect(result.cwd).toBe("/app");
     expect(stdout).toBe("inside\n");
-    expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
+    expect(calls).toEqual([
+      { service: "web", command: DEFAULT_SERVICE_LOGIN_SHELL, tty: true, stdin: "inherit" },
+    ]);
+  });
+
+  test("service mode respects an explicit shell override", async () => {
+    const calls: Array<{ command: ReadonlyArray<string> }> = [];
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        calls.push({ command: command.command });
+        return Stream.make({ exitCode: 0 });
+      },
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        args: ["zsh", "-l"],
+        io: { writeStdout: () => {}, writeStderr: () => {} },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(calls).toEqual([{ command: ["zsh", "-l"] }]);
   });
 
   test.each([undefined, "/work"])(
@@ -407,6 +435,58 @@ describe("shellApp — shell modes", () => {
     expect(captured).toEqual({ CLAUDECODE: "1" });
   });
 
+  test.each([
+    { noHistory: undefined, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: false, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: true, serviceEnv: {}, env: {}, expected: "" },
+    {
+      noHistory: true,
+      serviceEnv: Object.fromEntries(
+        Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/service/history"]),
+      ),
+      env: {},
+      expected: "",
+    },
+    {
+      noHistory: true,
+      serviceEnv: { HISTFILE: "/home/node/service-history" },
+      env: {
+        ...Object.fromEntries(Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/exec/history"])),
+        KEEP: "value",
+      },
+      expected: "",
+    },
+  ])(
+    "service mode applies the session history policy %j",
+    async ({ noHistory, serviceEnv, env, expected }) => {
+      const appPlan = { ...plan, services: { [web.name]: { ...web, environment: serviceEnv } } };
+      const calls: Array<Readonly<Record<string, string>> | undefined> = [];
+      const provider = fakeProvider({
+        execStream: (_target, command) => {
+          calls.push(command.env);
+          return Stream.make({ exitCode: 0 });
+        },
+      });
+
+      await Effect.runPromise(
+        shellApp({
+          service: "web",
+          ...(noHistory === undefined ? {} : { noHistory }),
+          env,
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(appPlan, provider))),
+      );
+
+      expect(calls).toHaveLength(1);
+      if (expected === undefined) {
+        for (const key of Object.keys(SESSION_NO_HISTORY_ENV)) expect(calls[0] ?? {}).not.toHaveProperty(key);
+      } else {
+        expect(calls[0]).toMatchObject(SESSION_NO_HISTORY_ENV);
+        if ("KEEP" in env) expect(calls[0]?.KEEP).toBe("value");
+      }
+    },
+  );
+
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {
     let stdout = "";
     const decoder = new TextDecoder();
@@ -435,7 +515,6 @@ describe("shellApp — shell modes", () => {
   });
 
   test("service mode masks fresh provider values split across independent output streams", async () => {
-    resetRegisteredRedactionValuesForTesting();
     const secret = "fresh-shell-private-value";
     let stdout = "";
     let stderr = "";
@@ -450,39 +529,26 @@ describe("shellApp — shell modes", () => {
           { exitCode: 0 },
         ]),
     });
-    const redaction = makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.die("No secret-store access expected"),
-      has: () => Effect.succeed(false),
-    });
-    try {
-      await Effect.runPromise(
-        shellApp({
-          service: "web",
-          io: {
-            writeStdout: (text) => {
-              stdout += typeof text === "string" ? text : new TextDecoder().decode(text);
-            },
-            writeStderr: (text) => {
-              stderr += typeof text === "string" ? text : new TextDecoder().decode(text);
-            },
+    const redaction = makeRedactionService();
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (text) => {
+            stdout += typeof text === "string" ? text : new TextDecoder().decode(text);
           },
-        }).pipe(
-          Effect.provide(layer(undefined, provider)),
-          Effect.provideService(RedactionService, redaction),
-        ),
-      );
-      expect(stdout).toBe("[redacted]!");
-      expect(stderr).toBe("[redacted]?");
-    } finally {
-      resetRegisteredRedactionValuesForTesting();
-    }
+          writeStderr: (text) => {
+            stderr += typeof text === "string" ? text : new TextDecoder().decode(text);
+          },
+        },
+      }).pipe(Effect.provide(layer(undefined, provider)), Effect.provideService(RedactionService, redaction)),
+    );
+    expect(stdout).toBe("[redacted]!");
+    expect(stderr).toBe("[redacted]?");
   });
 
   test("service mode preserves invalid UTF-8 bytes while masking a secret split across chunks", async () => {
     // Given: binary output on both streams surrounding a provider secret split across frames.
-    resetRegisteredRedactionValuesForTesting();
     const secret = "binary-shell-private-value";
     const output = { stdout: [] as number[], stderr: [] as number[] };
     const encoder = new TextEncoder();
@@ -501,34 +567,22 @@ describe("shellApp — shell modes", () => {
           { exitCode: 0 },
         ]),
     });
-    const redaction = makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.die("No secret-store access expected"),
-      has: () => Effect.succeed(false),
-    });
-    try {
-      // When: the service shell streams and flushes both payload redactors.
-      await Effect.runPromise(
-        shellApp({
-          service: "web",
-          io: {
-            writeStdout: (chunk) =>
-              output.stdout.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
-            writeStderr: (chunk) =>
-              output.stderr.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
-          },
-        }).pipe(
-          Effect.provide(layer(undefined, provider)),
-          Effect.provideService(RedactionService, redaction),
-        ),
-      );
-      // Then: only the secret bytes change; invalid and incomplete UTF-8 survives exactly.
-      expect(output.stdout).toEqual([0xff, 0xc3, 0x28, ...encoder.encode("[redacted]"), 0xe2]);
-      expect(output.stderr).toEqual([0x80, ...encoder.encode("[redacted]"), 0xfe]);
-    } finally {
-      resetRegisteredRedactionValuesForTesting();
-    }
+    const redaction = makeRedactionService();
+    // When: the service shell streams and flushes both payload redactors.
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (chunk) =>
+            output.stdout.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
+          writeStderr: (chunk) =>
+            output.stderr.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
+        },
+      }).pipe(Effect.provide(layer(undefined, provider)), Effect.provideService(RedactionService, redaction)),
+    );
+    // Then: only the secret bytes change; invalid and incomplete UTF-8 survives exactly.
+    expect(output.stdout).toEqual([0xff, 0xc3, 0x28, ...encoder.encode("[redacted]"), 0xe2]);
+    expect(output.stderr).toEqual([0x80, ...encoder.encode("[redacted]"), 0xfe]);
   });
 
   test("service mode enables raw stdin for interactive TTY and restores it on exit", async () => {
@@ -584,6 +638,7 @@ describe("shellApp — shell modes", () => {
             providerId: "lando",
             operation: "execStream",
             message: "boom",
+            remediation: "Install or start the `lando` provider and confirm it can perform `execStream`.",
           }),
         ),
     });
@@ -802,6 +857,27 @@ describe("shellApp — shell modes", () => {
     expect(spec.cwd).toBe("/tmp/other");
   });
 
+  test.each([undefined, "caller-pwd", ""])(
+    "host mode leaves inheritance to ShellRunner while preserving explicit PWD %j",
+    async (pwd) => {
+      // Given
+      const env = { CALLER_VALUE: "kept", ...(pwd === undefined ? {} : { PWD: pwd }) };
+      // When
+      const spec = await withEnvVar("PWD", "/inherited-launch-directory", () =>
+        hostSpec({ cwd: "/tmp/other", env }),
+      );
+      // Then
+      expect(spec.cwd).toBe("/tmp/other");
+      expect(spec.env?.PWD).toBe(pwd);
+      expect(spec.env?.CALLER_VALUE).toBe("kept");
+      expect(
+        Object.keys(spec.env ?? {})
+          .filter((key) => !key.startsWith("LANDO_") && key !== "LANDO")
+          .sort(),
+      ).toEqual(Object.keys(env).sort());
+    },
+  );
+
   test("reserved LANDO_* env wins over caller options.env", async () => {
     const spec = await hostSpec({
       env: {
@@ -830,6 +906,7 @@ describe("shellApp — shell modes", () => {
   test("default host mode persists history under a per-app HISTFILE path", async () => {
     const spec = await hostSpec();
     expect(spec.historyFile).toMatch(/[/\\]shell[/\\].+[/\\]history$/);
+    expect(spec.historyFile).toStartWith("/tmp/shell-configured-data/");
     expect(spec.env?.HISTFILE).toBeUndefined();
   });
 
@@ -953,3 +1030,4 @@ describe("lando shell — CLI argv parsing", () => {
     });
   }, 30_000);
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

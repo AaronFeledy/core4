@@ -1,460 +1,232 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
-import type { Root, Text } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
-import {
-  type MdxJsxAttribute,
-  type MdxJsxFlowElement,
-  type MdxJsxTextElement,
-  mdxFromMarkdown,
-} from "mdast-util-mdx";
-import { mdxjs } from "micromark-extension-mdxjs";
-import type { Node, Parent } from "unist";
+import { resolve } from "node:path";
+import { parseGuideScenarioAst, processor } from "@lando/core/docs/guide-compiler";
+import type { Root } from "mdast";
+import type { MdxJsxFlowElement } from "mdast-util-mdx";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import { VFile } from "vfile";
-
+import { serializeDocsPage } from "../src/lib/llms.ts";
 import { remarkGuideContext } from "../src/plugins/remark-guide-context.ts";
 
-type MdxElement = MdxJsxFlowElement | MdxJsxTextElement;
-
-const isParent = (node: Node): node is Parent => "children" in node && Array.isArray(node.children);
-
-const isMdxElement = (node: Node): node is MdxElement =>
-  node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
-
-const isText = (node: Node): node is Text => node.type === "text";
-
-const parseAndTransform = (
-  source: string,
-  guideId = "guide-one",
-  frontmatter: Readonly<Record<string, unknown>> = {},
-): Root => {
-  const tree = fromMarkdown(source, {
-    extensions: [mdxjs()],
-    mdastExtensions: [mdxFromMarkdown()],
-  });
-  const file = new VFile({
-    value: source,
-    path: join(process.cwd(), "docs", "guides", "fixture.mdx"),
-    data: { astro: { frontmatter: { id: guideId, ...frontmatter } } },
-  });
-
-  remarkGuideContext()(tree, file);
-
-  return tree;
+const file = resolve(import.meta.dirname, "../guides/fixture.mdx");
+const document = (body: string, extra = "") =>
+  `---\nid: context-guide\n${extra}---\n\n<Guide>\n${body}\n</Guide>`;
+const scenario = (body: string) => `<Scenario id="reader">\n${body}\n</Scenario>`;
+const step = (body: string, name = "action") => `<Step name="${name}">${body}</Step>`;
+const transform = (source: string): Root => {
+  const root = processor.parse(source);
+  // Astro supplies enriched frontmatter; authored YAML is still available in this fixture.
+  const fm = { id: "context-guide" };
+  remarkGuideContext()(root, new VFile({ path: file, value: source, data: { astro: { frontmatter: fm } } }));
+  return root;
 };
-
-const descendants = (tree: Root): readonly Node[] => {
-  const nodes: Node[] = [];
-  const collect = (node: Node): void => {
-    nodes.push(node);
-    if (!isParent(node)) return;
-    for (const child of node.children) collect(child);
+const elements = (root: Root, name: string): MdxJsxFlowElement[] => {
+  const found: MdxJsxFlowElement[] = [];
+  const visit = (node: { type: string; name?: string | null; children?: readonly unknown[] }) => {
+    if (node.type === "mdxJsxFlowElement" && node.name === name) found.push(node as MdxJsxFlowElement);
+    for (const child of node.children ?? []) visit(child as Parameters<typeof visit>[0]);
   };
-  collect(tree);
-  return nodes;
+  visit(root);
+  return found;
 };
+const attr = (node: MdxJsxFlowElement | undefined, name: string) =>
+  node?.attributes.find((attr) => attr.type === "mdxJsxAttribute" && attr.name === name)?.value;
 
-const elementsNamed = (tree: Root, name: string): readonly MdxElement[] =>
-  descendants(tree).filter((node): node is MdxElement => isMdxElement(node) && node.name === name);
+const matrix = document(
+  scenario(`
+<Tabs axis="a">
+<Tab name="a1">${step('<Variable name="target" value="private-one" display="public-one" />', "binding")}</Tab>
+<Tab name="a2">${step('<Variable name="target" value="private-two" display="public-two" />', "binding")}</Tab>
+</Tabs>
+${step('<Run command="echo {{target}}" answers={{ token: "private-answer" }} /><Run command="second {{target}}" />', "common")}
+<Tabs axis="b">
+<Tab name="b1">${step('<Run command="b1 {{target}}" />', "other")}</Tab>
+<Tab name="b2">${step('<Run command="b2 {{target}}" />', "other")}</Tab>
+</Tabs>`),
+  "axes:\n  a: [a1, a2]\n  b: [b1, b2]\n",
+);
 
-const elementNamed = (tree: Root, name: string): MdxElement => {
-  const element = elementsNamed(tree, name)[0];
-  if (element === undefined) throw new RangeError(`Expected an MDX element named ${name}.`);
-  return element;
-};
-
-const attributeNamed = (element: MdxElement, name: string): MdxJsxAttribute | undefined =>
-  element.attributes.find(
-    (attribute): attribute is MdxJsxAttribute =>
-      attribute.type === "mdxJsxAttribute" && attribute.name === name,
-  );
-
-const stringAttribute = (element: MdxElement, name: string): string | undefined => {
-  const value = attributeNamed(element, name)?.value;
-  return typeof value === "string" ? value : undefined;
-};
-
-const text = (tree: Root): string =>
-  descendants(tree)
-    .filter(isText)
-    .map((node) => node.value)
-    .join("");
-
-describe("remark guide context", () => {
-  test("injects guide and enclosing scenario ids across multiple scenarios", () => {
-    // Given: two scenarios containing the reader-facing guide vocabulary.
-    const source = `<Scenario id="first">
-  <Step><Run /><Verify /></Step>
-</Scenario>
-
-<Scenario id="second">
-  <Inspect /><Cleanup /><Inline />
-</Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "context-guide");
-
-    // Then: each component receives the authoritative guide and nearest scenario ids.
-    expect(
-      ["Step", "Run", "Verify", "Inspect", "Cleanup", "Inline"].map((name) => {
-        const element = elementNamed(tree, name);
-        return [
-          name,
-          stringAttribute(element, "data-guide-id"),
-          stringAttribute(element, "data-scenario-id"),
-          stringAttribute(element, "data-source-file"),
-          stringAttribute(element, "data-source-line"),
-        ];
-      }),
-    ).toEqual([
-      ["Step", "context-guide", "first", "docs/guides/fixture.mdx", "2"],
-      ["Run", "context-guide", "first", "docs/guides/fixture.mdx", "2"],
-      ["Verify", "context-guide", "first", "docs/guides/fixture.mdx", "2"],
-      ["Inspect", "context-guide", "second", "docs/guides/fixture.mdx", "6"],
-      ["Cleanup", "context-guide", "second", "docs/guides/fixture.mdx", "6"],
-      ["Inline", "context-guide", "second", "docs/guides/fixture.mdx", "6"],
+describe("canonical guide presentation", () => {
+  test("keeps every tab and chooses matching display values and complete transcript variants", () => {
+    const root = transform(matrix);
+    expect(elements(root, "Tab").map((tab) => attr(tab, "name"))).toEqual(["a1", "a2", "b1", "b2"]);
+    const runs = elements(root, "Run");
+    expect(runs.map((run) => [attr(run, "command"), attr(run, "data-variant")])).toEqual([
+      ["echo public-one", "a=a1 b=b1"],
+      ["second public-one", "a=a1 b=b1"],
+      ["b1 public-one", "a=a1 b=b1"],
+      ["b2 public-one", "a=a1 b=b2"],
     ]);
-  });
-
-  test("injects only the guide id outside a scenario", () => {
-    // Given: guide components that are not enclosed by a Scenario.
-    const source = `<Run />
-
-<Tab name="Outside">content</Tab>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "outside-guide");
-
-    // Then: components receive guide context without invented scenario context.
-    expect(
-      ["Run", "Tab"].map((name) => {
-        const element = elementNamed(tree, name);
-        return [stringAttribute(element, "data-guide-id"), attributeNamed(element, "data-scenario-id")];
-      }),
-    ).toEqual([
-      ["outside-guide", undefined],
-      ["outside-guide", undefined],
+    expect(runs.map((run) => attr(run, "data-scenario-id"))).toEqual([
+      "reader",
+      "reader",
+      "reader",
+      "reader",
     ]);
-  });
-
-  test("removes Hidden subtrees in flow and inline positions", () => {
-    // Given: public prose surrounding inline and flow Hidden blocks.
-    const source = `Visible before <Hidden reason="internal">inline secret</Hidden> visible after.
-
-<Hidden reason="internal">
-flow secret
-<Run />
-</Hidden>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source);
-
-    // Then: Hidden elements and all descendants are absent while public prose survives.
-    expect({ hiddenCount: elementsNamed(tree, "Hidden").length, renderedText: text(tree) }).toEqual({
-      hiddenCount: 0,
-      renderedText: "Visible before  visible after.",
-    });
-  });
-
-  test("removes only scenarios whose render expression is false", () => {
-    // Given: hidden, explicitly rendered, and default-rendered scenarios.
-    const source = `<Scenario id="hidden" render={false}><Run command="test-only-secret" /></Scenario>
-
-<Scenario id="explicit" render><Run /></Scenario>
-
-<Scenario id="default"><Verify /></Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source);
-
-    // Then: the false-render subtree is gone and both public render forms survive.
-    expect(elementsNamed(tree, "Scenario").map((element) => stringAttribute(element, "id"))).toEqual([
-      "explicit",
-      "default",
+    expect(attr(runs[0], "data-source-file")).toBe("docs/guides/fixture.mdx");
+    expect(attr(runs[0], "data-source-line")).toBeDefined();
+    expect(attr(runs[0], "answers")).toBeUndefined();
+    expect(elements(root, "Variable").map((node) => attr(node, "value"))).toEqual([
+      "public-one",
+      "public-two",
     ]);
-    expect(text(tree)).not.toContain("test-only-secret");
+    const markdown = serializeDocsPage(matrix, { file });
+    for (const value of ["public-one", "public-two", "b1 public-one", "b2 public-one"])
+      expect(markdown).toContain(value);
+    expect(JSON.stringify(root) + markdown).not.toContain("private-");
   });
 
-  test("preserves Tabs and annotates each Tab with its static axis and name", () => {
-    // Given: synchronized tabs nested in a rendered scenario.
-    const source = `<Scenario id="database-choice">
-  <Tabs axis="database">
-    <Tab name="Postgres"><Run /></Tab>
-    <Tab name="MySQL"><Verify /></Tab>
-  </Tabs>
-</Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "tabs-guide");
-
-    // Then: the tab structure and authored attributes survive with frame context added.
-    expect({
-      axis: stringAttribute(elementNamed(tree, "Tabs"), "axis"),
-      tabs: elementsNamed(tree, "Tab").map((element) => ({
-        name: stringAttribute(element, "name"),
-        guideId: stringAttribute(element, "data-guide-id"),
-        scenarioId: stringAttribute(element, "data-scenario-id"),
-        dataAxis: stringAttribute(element, "data-axis"),
-        tabName: stringAttribute(element, "data-tab-name"),
-        variant: stringAttribute(element, "data-variant"),
-      })),
-    }).toEqual({
-      axis: "database",
-      tabs: [
-        {
-          name: "Postgres",
-          guideId: "tabs-guide",
-          scenarioId: "database-choice",
-          dataAxis: "database",
-          tabName: "Postgres",
-          variant: "database=Postgres",
-        },
-        {
-          name: "MySQL",
-          guideId: "tabs-guide",
-          scenarioId: "database-choice",
-          dataAxis: "database",
-          tabName: "MySQL",
-          variant: "database=MySQL",
-        },
-      ],
-    });
-  });
-
-  test("turns flow and text expressions into prose without changing attribute expressions", () => {
-    // Given: stray prose expressions beside valid code and render attribute expressions.
-    const source = `Use { RuntimeProvider } here.
-
-{
-  RuntimeProvider
-}
-
-<Run code={\`x\`} />
-
-<Scenario id="kept" render={true}><Verify /></Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source);
-
-    // Then: prose braces render literally and attribute expressions retain their AST values.
-    expect(descendants(tree).map((node) => node.type)).not.toContain("mdxTextExpression");
-    expect(descendants(tree).map((node) => node.type)).not.toContain("mdxFlowExpression");
-    expect(text(tree)).toContain("Use { RuntimeProvider } here.");
-    expect(text(tree)).toContain("{\n  RuntimeProvider\n}");
-    expect(attributeNamed(elementNamed(tree, "Run"), "code")?.value).toMatchObject({
-      type: "mdxJsxAttributeValueExpression",
-      value: "`x`",
-    });
-    expect(attributeNamed(elementNamed(tree, "Scenario"), "render")?.value).toMatchObject({
-      type: "mdxJsxAttributeValueExpression",
-      value: "true",
-    });
-  });
-
-  test("derives default axis from frontmatter tabs for axisless Tabs", () => {
-    // Given: frontmatter tabs declaration and Tabs without an axis attribute.
-    const source = `<Scenario id="pick">
-  <Tabs>
-    <Tab name="Postgres"><Run /></Tab>
-    <Tab name="MySQL"><Verify /></Tab>
-  </Tabs>
-</Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "tabs-default-guide", {
-      tabs: ["Postgres", "MySQL"],
-    });
-
-    // Then: Tab and descendant Run receive default-axis data-axis and data-variant.
-    const postgresTab = elementsNamed(tree, "Tab").find(
-      (element) => stringAttribute(element, "name") === "Postgres",
+  test("never reinterpolates inserted display text", () => {
+    const source = document(
+      scenario(
+        step(
+          '<Variable name="target" value="execution" display="{{literal}}" /><Run command="echo {{target}}" />',
+        ),
+      ),
     );
-    if (postgresTab === undefined) throw new RangeError("Expected Postgres Tab.");
-    expect({
-      tabAxis: stringAttribute(postgresTab, "data-axis"),
-      tabVariant: stringAttribute(postgresTab, "data-variant"),
-      tabName: stringAttribute(postgresTab, "data-tab-name"),
-      run: {
-        axis: stringAttribute(elementNamed(tree, "Run"), "data-axis"),
-        variant: stringAttribute(elementNamed(tree, "Run"), "data-variant"),
-        scenarioId: stringAttribute(elementNamed(tree, "Run"), "data-scenario-id"),
-      },
-      mysql: (() => {
-        const mysqlTab = elementsNamed(tree, "Tab").find(
-          (element) => stringAttribute(element, "name") === "MySQL",
-        );
-        if (mysqlTab === undefined) throw new RangeError("Expected MySQL Tab.");
-        return {
-          axis: stringAttribute(mysqlTab, "data-axis"),
-          variant: stringAttribute(mysqlTab, "data-variant"),
-        };
-      })(),
-    }).toEqual({
-      tabAxis: "default",
-      tabVariant: "default=Postgres",
-      tabName: "Postgres",
-      run: {
-        axis: undefined,
-        variant: "default=Postgres",
-        scenarioId: "pick",
-      },
-      mysql: {
-        axis: "default",
-        variant: "default=MySQL",
-      },
-    });
+    expect(serializeDocsPage(source, { file })).toContain("echo {{literal}}");
+    expect(attr(elements(transform(source), "Run")[0], "command")).toBe("echo {{literal}}");
   });
 
-  test("infers the sole declared axes key when Tabs omits axis", () => {
-    // Given: a single axes entry and axisless Tabs under a scenario.
-    const source = `<Scenario id="database-choice">
-  <Tabs>
-    <Tab name="Postgres"><Run /></Tab>
-  </Tabs>
-</Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "single-axis-guide", {
-      axes: { database: ["Postgres", "MySQL"] },
-    });
-
-    // Then: Tab and descendant Run use the inferred axis token in data attributes.
-    expect({
-      tabs: elementsNamed(tree, "Tab").map((element) => ({
-        dataAxis: stringAttribute(element, "data-axis"),
-        tabName: stringAttribute(element, "data-tab-name"),
-        variant: stringAttribute(element, "data-variant"),
-      })),
-      run: {
-        variant: stringAttribute(elementNamed(tree, "Run"), "data-variant"),
-        guideId: stringAttribute(elementNamed(tree, "Run"), "data-guide-id"),
-        scenarioId: stringAttribute(elementNamed(tree, "Run"), "data-scenario-id"),
-      },
-    }).toEqual({
-      tabs: [
-        {
-          dataAxis: "database",
-          tabName: "Postgres",
-          variant: "database=Postgres",
-        },
-      ],
-      run: {
-        variant: "database=Postgres",
-        guideId: "single-axis-guide",
-        scenarioId: "database-choice",
-      },
-    });
+  test("drops private shell answers from the site tree and public Markdown", () => {
+    const source = document(
+      scenario(step('<Run shell="echo public" answers={{ token: "shell-answer-secret" }} />')),
+    );
+    const root = transform(source);
+    expect(attr(elements(root, "Run")[0], "shell")).toBe("echo public");
+    expect(attr(elements(root, "Run")[0], "answers")).toBeUndefined();
+    expect(JSON.stringify(root)).not.toContain("shell-answer-secret");
+    expect(serializeDocsPage(source, { file })).not.toContain("shell-answer-secret");
   });
 
-  test("completes sibling multi-axis Tabs with first declared values in declaration order", () => {
-    // Given: two sibling Tabs axes and multi-axis frontmatter in declaration order.
-    const source = `<Scenario id="matrix">
-  <Tabs axis="os">
-    <Tab name="macos"><Run /></Tab>
-    <Tab name="linux"><Verify /></Tab>
-  </Tabs>
-  <Tabs axis="package-manager">
-    <Tab name="npm"><Run /></Tab>
-    <Tab name="composer"><Inspect /></Tab>
-  </Tabs>
-</Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "matrix-guide", {
-      axes: {
-        os: ["linux", "macos"],
-        "package-manager": ["composer", "npm"],
-      },
-    });
-
-    // Then: each tab fills unresolved axes with first declared values; pairs stay declaration-ordered.
-    const tabByName = (name: string): MdxElement => {
-      const tab = elementsNamed(tree, "Tab").find((element) => stringAttribute(element, "name") === name);
-      if (tab === undefined) throw new RangeError(`Expected Tab name=${name}.`);
-      return tab;
-    };
-    const runUnder = (tabName: string): MdxElement => {
-      const tab = tabByName(tabName);
-      const run = tab.children.find(
-        (child): child is MdxElement => isMdxElement(child) && child.name === "Run",
-      );
-      if (run === undefined) throw new RangeError(`Expected Run under Tab ${tabName}.`);
-      return run;
-    };
-    expect({
-      macos: {
-        tab: stringAttribute(tabByName("macos"), "data-variant"),
-        run: stringAttribute(runUnder("macos"), "data-variant"),
-        axis: stringAttribute(tabByName("macos"), "data-axis"),
-      },
-      npm: {
-        tab: stringAttribute(tabByName("npm"), "data-variant"),
-        run: stringAttribute(runUnder("npm"), "data-variant"),
-        axis: stringAttribute(tabByName("npm"), "data-axis"),
-      },
-      linux: stringAttribute(tabByName("linux"), "data-variant"),
-      composer: stringAttribute(tabByName("composer"), "data-variant"),
-    }).toEqual({
-      macos: {
-        tab: "os=macos package-manager=composer",
-        run: "os=macos package-manager=composer",
-        axis: "os",
-      },
-      npm: {
-        tab: "os=linux package-manager=npm",
-        run: "os=linux package-manager=npm",
-        axis: "package-manager",
-      },
-      linux: "os=linux package-manager=composer",
-      composer: "os=linux package-manager=composer",
-    });
+  test("removes test-only content and exposes only library display code without transcripts", () => {
+    const source = document(
+      `<Scenario id="reader">\n${step('<Run runtime="library" code={`expect(true).toBe(true); /* execution-secret */`} displayCode={`read("{{opaque}}");`} />')}\n<Hidden reason="private setup">${step('<Run runtime="library" code="private-hidden" displayCode="hidden" />', "hidden")}</Hidden>\n</Scenario>\n<Scenario id="private" render={false} reason="Only for internal regression">${step('<Run command="private-command" />')}</Scenario>`,
+    );
+    const root = transform(source);
+    expect(elements(root, "Scenario")).toHaveLength(1);
+    expect(elements(root, "Hidden")).toHaveLength(0);
+    expect(attr(elements(root, "Run")[0], "code")).toBe('read("{{opaque}}");');
+    expect(JSON.stringify(root) + serializeDocsPage(source, { file })).not.toMatch(
+      /execution-secret|private-command|private-hidden/,
+    );
   });
 
-  test("nested multi-axis Tabs emit declaration-ordered complete variants", () => {
-    // Given: nested Tabs whose DOM axis order differs from frontmatter declaration order.
-    const source = `<Scenario id="nested">
-  <Tabs axis="package-manager">
-    <Tab name="npm">
-      <Tabs axis="os">
-        <Tab name="macos"><Run /></Tab>
-      </Tabs>
-    </Tab>
-  </Tabs>
-</Scenario>`;
-
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source, "nested-guide", {
-      axes: {
-        os: ["linux", "macos"],
-        "package-manager": ["composer", "npm"],
-      },
+  test.each([
+    ["malformed run", document(scenario(step('<Run command="x" shell="y" />')))],
+    [
+      "identical duplicates",
+      document(
+        scenario(
+          step('<Variable name="x" value="same" /><Variable name="x" value="same" /><Run command="{{x}}" />'),
+        ),
+      ),
+    ],
+    [
+      "hidden reference",
+      document(
+        scenario(
+          `<Hidden reason="private setup">${step('<Variable name="x" value="secret" />', "binding")}</Hidden>\n${step('<Run command="{{x}}" />')}`,
+        ),
+      ),
+    ],
+    [
+      "invalid nondefault cell",
+      matrix.replace(
+        'value="private-two" display="public-two" />',
+        'value="private-two" display="public-two" /><Variable name="target" value="same" />',
+      ),
+    ],
+    ["nested Guide", document(scenario(`<Guide>\n${scenario(step('<Run command="x" />'))}\n</Guide>`))],
+  ])("aligns source-located failures for %s", (_name, source) => {
+    const failures = [
+      () => parseGuideScenarioAst(file, source),
+      () => serializeDocsPage(source, { file }),
+      () => transform(source),
+    ].map((run) => {
+      try {
+        run();
+        throw new Error("Expected rejection");
+      } catch (error) {
+        return error as { code: string; line: number; sourcePath: string };
+      }
     });
-
-    // Then: data-variant uses declaration order even though package-manager wraps os in the DOM.
-    const tabNamed = (name: string): MdxElement => {
-      const tab = elementsNamed(tree, "Tab").find((element) => stringAttribute(element, "name") === name);
-      if (tab === undefined) throw new RangeError(`Expected Tab name=${name}.`);
-      return tab;
-    };
-    expect({
-      outer: stringAttribute(tabNamed("npm"), "data-variant"),
-      inner: stringAttribute(tabNamed("macos"), "data-variant"),
-      run: stringAttribute(elementNamed(tree, "Run"), "data-variant"),
-    }).toEqual({
-      outer: "os=linux package-manager=npm",
-      inner: "os=macos package-manager=npm",
-      run: "os=macos package-manager=npm",
-    });
+    expect(failures[0]?.code).toBeDefined();
+    for (const failure of failures.slice(1))
+      expect([failure.code, failure.line, failure.sourcePath]).toEqual([
+        failures[0]?.code,
+        failures[0]?.line,
+        file,
+      ]);
   });
 
-  test("does not introduce MDX import or export nodes", () => {
-    // Given: guide MDX with no authored ESM nodes.
-    const source = `<Scenario id="plain"><Run /></Scenario>`;
+  test("allows rich non-guide MDX beside a valid Guide and preserves standalone prose behavior", () => {
+    const source = document(scenario(step('<Run command="version" />'))).replace(
+      "<Guide>",
+      '<div className="note"><span>Rich **prose**</span></div>\n\n<Guide>',
+    );
+    expect(serializeDocsPage(source, { file })).toContain("Rich **prose**");
+    expect(JSON.stringify(transform(source))).toContain('"value":"Rich "');
+    expect(JSON.stringify(transform(source))).toContain('"value":"prose"');
+    const standalone = transform("Use { RuntimeProvider } here.\n\n<div><span>Ordinary prose</span></div>");
+    expect(JSON.stringify(standalone)).toContain("{ RuntimeProvider }");
+    expect(JSON.stringify(standalone)).toContain("Ordinary prose");
+  });
 
-    // When: the guide context transformer processes the MDX tree.
-    const tree = parseAndTransform(source);
+  test("preserves prose expressions, annotates exact source lines, and adds no ESM", () => {
+    const source = document(scenario(`Use { RuntimeProvider } here.\n${step('<Run command="version" />')}`));
+    const root = transform(source);
+    const run = elements(root, "Run")[0];
+    expect(JSON.stringify(root)).toContain("{ RuntimeProvider }");
+    expect(attr(run, "data-guide-id")).toBe("context-guide");
+    expect(attr(run, "data-source-file")).toBe("docs/guides/fixture.mdx");
+    expect(attr(run, "data-source-line")).toBe(String(run?.position?.start.line));
+    expect(attr(run, "data-scenario-id")).toBe("reader");
+    expect(JSON.stringify(root)).not.toContain("mdxjsEsm");
+  });
 
-    // Then: context injection remains an AST-only attribute transformation.
-    expect(descendants(tree).map((node) => node.type)).not.toContain("mdxjsEsm");
+  test("uses the sole declared axis for axisless Tabs and removes Skip", () => {
+    const source = document(
+      scenario(
+        `<Tabs>\n<Tab name="linux">${step('<Run command="linux" />')}</Tab>\n<Tab name="macos">${step('<Run command="macos" />')}</Tab>\n</Tabs>\n<Skip reason="Future coverage">${step('<Run command="private-skip" />', "skipped")}</Skip>`,
+      ),
+      "tabs: [linux, macos]\n",
+    );
+    const root = transform(source);
+    expect(
+      elements(root, "Tab").map((tab) => [
+        attr(tab, "data-axis"),
+        attr(tab, "data-tab-name"),
+        attr(tab, "data-variant"),
+      ]),
+    ).toEqual([
+      ["default", "linux", "default=linux"],
+      ["default", "macos", "default=macos"],
+    ]);
+    expect(elements(root, "Skip")).toHaveLength(0);
+    expect(JSON.stringify(root)).not.toContain("private-skip");
+  });
+
+  test("validates a Guide even when Astro metadata has no id", () => {
+    const source =
+      '<Guide><Scenario id="reader"><Step name="run"><Run command="version" /></Step></Scenario></Guide>';
+    const root = processor.parse(source);
+    expect(() =>
+      remarkGuideContext()(
+        root,
+        new VFile({ path: file, value: source, data: { astro: { frontmatter: {} } } }),
+      ),
+    ).toThrow();
+  });
+
+  test("keeps ordinary Markdown with an id outside the guide MDX parser", () => {
+    const source = "---\nid: prose-page\n---\n\nOrdinary Markdown: {not JavaScript} and 2 < 3.";
+    const root = unified().use(remarkParse).parse(source);
+    remarkGuideContext()(
+      root,
+      new VFile({ path: file, value: source, data: { astro: { frontmatter: { id: "prose-page" } } } }),
+    );
+    expect(JSON.stringify(root)).toContain("{not JavaScript} and 2 < 3.");
   });
 });

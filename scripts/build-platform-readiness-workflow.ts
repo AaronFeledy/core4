@@ -30,7 +30,7 @@ ${renderCadenceIf(cell.cadence)}    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${renderRunsOn(cell.runsOn)}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateRootsStep}
 
@@ -64,7 +64,6 @@ export const renderPlatformReadinessWorkflow = (): string => `${GENERATED_HEADER
 name: platform-readiness
 
 on:
-  pull_request:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:

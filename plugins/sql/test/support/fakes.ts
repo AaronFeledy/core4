@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
-import { DateTime, Effect } from "effect";
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
+import { PortNumber } from "@lando/sdk/schema";
+import { DateTime, Effect, Stream } from "effect";
+import { familyFromServiceType } from "../../src/families.ts";
 
 import {
   SnapshotAmbiguousError,
@@ -62,12 +65,25 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     database: {
       name: "database",
       type: options.type ?? "mysql:8.0",
+      connection: options.connection ?? {
+        family: familyFromServiceType(options.type ?? "mysql:8.0") ?? "mysql",
+        port: PortNumber.make(
+          DATABASE_FAMILY_DEFAULT_PORTS[familyFromServiceType(options.type ?? "mysql:8.0") ?? "mysql"],
+        ),
+        creds: {
+          user: options.type?.startsWith("mssql") ? "sa" : "lando",
+          database: "sql-app",
+          password: options.password,
+          ...(options.rootPassword === undefined ? {} : { rootPassword: options.rootPassword }),
+        },
+      },
       environment: options.environment ?? {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
         MYSQL_DATABASE: "sql-app",
         ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
+      extensions: {},
       storage,
     },
   };
@@ -76,6 +92,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
+      extensions: {},
       storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
   }
@@ -116,6 +133,21 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     landofile,
     plan,
     providerId: "test",
+    environmentResolver: {
+      openSession: () =>
+        Effect.succeed({
+          resolveEnvironment: (environment) =>
+            Effect.sync(() =>
+              Object.fromEntries(
+                Object.entries(environment).map(([key, value]) => {
+                  if (typeof value !== "string")
+                    throw new Error("Fixture resolver requires an explicit binding implementation");
+                  return [key, value];
+                }),
+              ),
+            ),
+        }),
+    },
     ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
     inspectSource:
       options.inspectSource ??
@@ -125,6 +157,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           service: target.service,
           providerId: ProviderId.make("test"),
           status: "running",
+          publications: { status: "unknown" as const },
         })),
     resolveSnapshot(reference, scope) {
       const list = this.listSnapshots;
@@ -239,19 +272,24 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
-        return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });
+        return sqlResult({ exitCode: 0, stdout: options.observedVersion ?? "8.0", stderr: "" });
       }
       if (isCount) {
-        return Effect.sync(() => {
-          countAttempts += 1;
-          if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
-            return { ok: false, stdout: "" };
-          }
-          return { ok: true, stdout: options.countStdout ?? "0" };
-        });
+        return Stream.unwrap(
+          Effect.map(
+            Effect.sync(() => {
+              countAttempts += 1;
+              if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
+                return { exitCode: 1, stdout: "", stderr: "" };
+              }
+              return { exitCode: 0, stdout: options.countStdout ?? "0", stderr: "" };
+            }),
+            sqlResult,
+          ),
+        );
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
+      return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
     resume: Effect.fnUntraced(function* () {
@@ -341,3 +379,14 @@ export const cleanupSqlTestDeps = (): void => {
     harness.dispose();
   }
 };
+
+export const sqlResult = (result: {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}) =>
+  Stream.make(
+    { kind: "stdout" as const, chunk: new TextEncoder().encode(result.stdout) },
+    { kind: "stderr" as const, chunk: new TextEncoder().encode(result.stderr) },
+    { exitCode: result.exitCode },
+  );

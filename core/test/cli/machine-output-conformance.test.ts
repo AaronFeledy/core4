@@ -6,18 +6,38 @@ import { Arbitrary, Effect, Option, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
 import type { AppConfigResult } from "@lando/engine/operations/app-config-result";
+import type { GlobalPolicyChangeResult } from "@lando/engine/operations/global-policy";
+import type { LogsAppResult } from "@lando/engine/operations/logs";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, LandofileShape, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { builtInCommandEntries, resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { compiledCommandTransportOptions } from "../../src/cli/compiled-runtime.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { compiledCommandOptionsFromSpec } from "../../src/cli/run-built-in-command.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const decodeEnvelope = (line: string): CommandResultEnvelope =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
+
+const transportFor = (spec: LandoCommandSpec) =>
+  compiledCommandTransportOptions(spec, compiledCommandOptionsFromSpec(spec, {}).streamingMode);
+
+const terminalEnvelope = (spec: LandoCommandSpec, lines: ReadonlyArray<string>): CommandResultEnvelope => {
+  const transport = transportFor(spec);
+  if (transport.streaming === undefined && transport.streamingMode !== "live") {
+    expect(lines).toHaveLength(1);
+    return decodeEnvelope(lines[0] ?? "{}");
+  }
+  const frames = lines.map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+  expect(frames.filter((frame) => frame._tag === "result")).toHaveLength(1);
+  const terminal = frames.at(-1);
+  if (terminal?._tag !== "result") throw new Error(`Missing terminal result frame for ${spec.id}`);
+  return Schema.decodeUnknownSync(CommandResultEnvelope)(terminal.envelope);
+};
 
 const specFor = (id: string): LandoCommandSpec => {
   const spec = resolveBuiltInCommand(id)?.spec;
@@ -86,6 +106,37 @@ const globalConfigResultCommandIds = new Set<string>([
   "meta:global:config:validate",
 ]);
 
+// Large nested policy results exhaust the YAML-safe arbitrary filter; use valid no-op previews.
+const globalPolicySuccessValues = new Map<string, GlobalPolicyChangeResult>(
+  (["enable", "disable", "reconcile"] as const).map((operation) => [
+    `meta:global:${operation}`,
+    {
+      operation,
+      dryRun: true,
+      revision: 1,
+      policySaved: false,
+      contributions: [],
+      plugins: [],
+      states: [],
+      servicesRemoved: [],
+      pending: [],
+      impact: {
+        desired: operation === "reconcile" ? "unchanged" : operation === "enable" ? "enabled" : "disabled",
+        policyChanges: false,
+        contributions: [],
+        plugins: [],
+        dependencyBlockers: [],
+        consumers: [],
+        allowDisruption: false,
+        routes: [],
+        volumes: "retained",
+        uncertainties: [],
+        validationErrors: [],
+      },
+    },
+  ]),
+);
+
 // Effect 4's string arbitrary can emit lone surrogates, which no YAML document can carry.
 const isWellFormedDeep = (value: unknown): boolean => {
   if (typeof value === "string") return value.isWellFormed();
@@ -100,8 +151,16 @@ const successValueFor = (spec: LandoCommandSpec): unknown => {
   const appConfigValue = appConfigSuccessValues.get(spec.id);
   if (appConfigValue !== undefined) return appConfigValue;
   if (globalConfigResultCommandIds.has(spec.id)) return {};
+  const globalPolicyValue = globalPolicySuccessValues.get(spec.id);
+  if (globalPolicyValue !== undefined) return globalPolicyValue;
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
+  if (spec.id === "app:logs" || spec.id === "meta:global:logs") {
+    return {
+      app: "demo-app",
+      lines: [{ service: "web", stream: "stdout", line: "ready" }],
+    } satisfies LogsAppResult;
+  }
   const arbitrary = Arbitrary.schema(spec.resultSchema).pipe(Arbitrary.filter(isWellFormedDeep));
   const [sample] = Effect.runSync(Arbitrary.sampleEffect(arbitrary, { count: 1, seed: 7 }));
   return sample;
@@ -155,15 +214,15 @@ describe("machine-output conformance", () => {
         resultFormat: "json",
         command: spec.id,
         resultSchema: spec.resultSchema,
+        ...transportFor(spec),
         io,
         render: () => undefined,
         formatError: ({ error }) => `diagnostic: ${String(error)}`,
       });
-      const line = io.stdoutLines()[0] ?? "{}";
-      const envelope = decodeEnvelope(line);
+      const envelope = terminalEnvelope(spec, io.stdoutLines());
       expect(envelope.apiVersion).toBe("v4");
       expect(envelope.command).toBe(spec.id);
-      expect(envelope.ok).toBe(true);
+      expect(envelope.ok, `${spec.id}: ${JSON.stringify(envelope.error)}`).toBe(true);
       expect(io.stderr()).toBe("");
     }
   });
@@ -180,6 +239,7 @@ describe("machine-output conformance", () => {
           resultFormat,
           command: spec.id,
           resultSchema: spec.resultSchema,
+          ...transportFor(spec),
           io,
           render: () => undefined,
           formatError: ({ error }) => `diagnostic: ${String(error)}`,
@@ -189,13 +249,12 @@ describe("machine-output conformance", () => {
 
       const jsonIo = await emit("json");
       const yamlIo = await emit("yaml");
-      const jsonLine = jsonIo.stdoutLines()[0] ?? "{}";
-      const jsonEnvelope = decodeEnvelope(jsonLine);
+      const jsonEnvelope = terminalEnvelope(spec, jsonIo.stdoutLines());
       const yamlValue = Bun.YAML.parse(yamlIo.stdout());
       const yamlEnvelope = Schema.decodeUnknownSync(CommandResultEnvelope)(yamlValue);
-      expect(jsonEnvelope.ok).toBe(true);
+      expect(jsonEnvelope.ok, `${spec.id}: ${JSON.stringify(jsonEnvelope.error)}`).toBe(true);
       expect(yamlEnvelope.ok).toBe(true);
-      expect(yamlValue).toEqual(JSON.parse(jsonLine));
+      expect(yamlValue).toEqual(jsonEnvelope);
       expect(yamlIo.stderr()).toBe("");
     }
   });
@@ -212,6 +271,7 @@ describe("machine-output conformance", () => {
           resultFormat,
           command: spec.id,
           resultSchema: spec.resultSchema,
+          ...transportFor(spec),
           io,
           formatError: ({ error }) => `diagnostic: ${String(error)}`,
           setExitCode: (code) => {
@@ -223,7 +283,10 @@ describe("machine-output conformance", () => {
 
       const json = await emit("json");
       const yaml = await emit("yaml");
-      expect(Bun.YAML.parse(yaml.io.stdout())).toEqual(JSON.parse(json.io.stdoutLines()[0] ?? "{}"));
+      const jsonEnvelope = terminalEnvelope(spec, json.io.stdoutLines());
+      const yamlValue = Bun.YAML.parse(yaml.io.stdout());
+      Schema.decodeUnknownSync(CommandResultEnvelope)(yamlValue);
+      expect(yamlValue).toEqual(jsonEnvelope);
       expect(yaml.exitCode).toBe(json.exitCode);
       expect(yaml.io.stderr()).toBe("");
     }
@@ -265,14 +328,14 @@ describe("machine-output conformance", () => {
         resultFormat: "json",
         command: spec.id,
         resultSchema: spec.resultSchema,
+        ...transportFor(spec),
         io,
         formatError: ({ error }) => `diagnostic: ${String(error)}`,
         setExitCode: (code) => {
           exitCode = code;
         },
       });
-      const line = io.stdoutLines()[0] ?? "{}";
-      const envelope = decodeEnvelope(line);
+      const envelope = terminalEnvelope(spec, io.stdoutLines());
       expect(envelope.apiVersion).toBe("v4");
       expect(envelope.command).toBe(spec.id);
       expect(envelope.ok).toBe(false);
@@ -298,11 +361,14 @@ describe("machine-output conformance", () => {
         resultFormat: "json",
         command: spec.id,
         resultSchema: spec.resultSchema,
-        ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
-        ...(spec.streamingMode === "live" ? { streamingMode: "live" as const } : {}),
-        ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+        ...transportFor(spec),
         ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
-        ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
+        ...(spec.completion === undefined
+          ? {}
+          : {
+              completion: (value: unknown) =>
+                spec.completion?.(value, {}) ?? { ok: true as const, exitCode: 0 },
+            }),
         io,
         render: () => undefined,
         formatError: ({ error }) => `diagnostic: ${String(error)}`,
@@ -328,13 +394,11 @@ describe("machine-output conformance", () => {
         if (Option.isSome(redaction)) yield* redaction.value.registerValues(value.redactionTokens ?? []);
         const sink = yield* Effect.serviceOption(StreamFrameSink);
         if (Option.isSome(sink)) {
-          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, raw: true });
-          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, raw: true });
+          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, kind: "bytes" });
+          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, kind: "bytes" });
         }
         return value;
       });
-
-    afterEach(resetRegisteredRedactionValuesForTesting);
 
     test("success emits stdout/stderr frames terminated by a result frame with scratch id and exit code", async () => {
       const io = await runScratchRunSpec(streamedResult(successValue(0)));
@@ -379,7 +443,7 @@ describe("machine-output conformance", () => {
       expect(exitCode).toBe(1);
     });
 
-    test("a non-zero tool exit stays ok:true in the result frame and propagates the exit code", async () => {
+    test("a non-zero tool exit retains the failed result and propagates the exit code", async () => {
       let exitCode: number | undefined;
       const io = await runScratchRunSpec(streamedResult(successValue(7)), (code) => {
         exitCode = code;
@@ -387,7 +451,7 @@ describe("machine-output conformance", () => {
       const frames = io.stdoutLines().map(decodeFrame);
       const result = frames.at(-1);
       if (result?._tag !== "result") throw new Error("expected a terminal result frame");
-      expect(result.envelope.ok).toBe(true);
+      expect(result.envelope.ok).toBe(false);
       const payload = result.envelope.result as { exitCode: number };
       expect(payload.exitCode).toBe(7);
       expect(exitCode).toBe(7);

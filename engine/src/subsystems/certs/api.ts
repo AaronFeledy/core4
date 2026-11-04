@@ -31,9 +31,23 @@ export const layerUnavailable = Layer.succeed(
   CertificateAuthority,
   CertificateAuthority.of({
     id: UNAVAILABLE_ID,
-    setup: unavailableOperation(() => new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: UNAVAILABLE_ID })),
+    setup: unavailableOperation(
+      () =>
+        new CaError({
+          message: CA_UNAVAILABLE_MESSAGE,
+          caId: UNAVAILABLE_ID,
+          remediation:
+            "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
+        }),
+    ),
     issueCert: unavailableOperation(
-      () => new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: UNAVAILABLE_ID }),
+      () =>
+        new CaError({
+          message: CA_UNAVAILABLE_MESSAGE,
+          caId: UNAVAILABLE_ID,
+          remediation:
+            "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
+        }),
     ),
   }),
 );

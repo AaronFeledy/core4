@@ -13,25 +13,24 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
-import {
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
   authoredPmaCreds,
-  credentialsFor,
-  portsForHosts,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
-import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
-const PHPMYADMIN_LISTENER = { port: DEFAULT_PORT, variable: "APACHE_PORT", daemon: "phpMyAdmin" } as const;
+export const PHPMYADMIN_LISTENER = {
+  port: DEFAULT_PORT,
+  variables: ["APACHE_PORT"],
+  daemon: "phpMyAdmin",
+  when: "All phpMyAdmin services",
+} as const;
 const DB_TYPES = ["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "mariadb"] as const;
 const VERSIONS = ["5", "latest"] as const;
 const ARTIFACTS = {
@@ -49,13 +48,7 @@ const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
   ctx.addEnv("APACHE_PORT", String(port));
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(port),
-    protocol: "http",
-    name: ctx.serviceName,
-  });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
+  ctx.setHealthcheck(tcpProbe(port, 20));
 
   applyAuthoredProcessFields(ctx);
 };
@@ -64,6 +57,13 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   id: PHPMYADMIN_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, PHPMYADMIN_LISTENER),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(
     PHPMYADMIN_FEATURE_ID,
     "phpmyadmin service feature failed to apply",
@@ -135,11 +135,11 @@ const addSiblingDependencies = (
 
 const applyPmaEnv = (
   mutator: AppFeatureServiceMutators,
-  target: { readonly hosts: ReadonlyArray<string>; readonly siblings: ReadonlyArray<AppFeatureServiceView> },
+  target: { readonly hosts: ReadonlyArray<string>; readonly ports: readonly number[] },
   creds: PmaCreds,
 ): void => {
   mutator.addEnv("PMA_HOSTS", target.hosts.join(","));
-  mutator.addEnv("PMA_PORTS", portsForHosts(target.hosts, target.siblings).join(","));
+  mutator.addEnv("PMA_PORTS", target.ports.join(","));
   mutator.addEnv("PMA_USER", creds.user);
   mutator.addEnv("PMA_PASSWORD", creds.password);
 };
@@ -151,8 +151,7 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
   const authored = new Map<string, AuthoredHostsOk>();
   for (const view of ctx.selected) {
     if (view.serviceType !== "phpmyadmin") continue;
-    const hosts = authoredHosts(view.normalizedConfig);
-    if (hosts === undefined) continue;
+    const hosts = authoredHosts(view.normalizedConfig) ?? siblings.map((sibling) => sibling.serviceName);
     const resolved = resolveAuthoredHosts({
       hosts,
       siblings,
@@ -174,16 +173,10 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
     if (mutator.service.serviceType !== "phpmyadmin") return;
     const override = authored.get(mutator.service.serviceName);
     if (override !== undefined) {
-      applyPmaEnv(mutator, { hosts: override.hosts, siblings: override.matched }, override.creds);
+      applyPmaEnv(mutator, override, override.creds);
       addSiblingDependencies(mutator, override.matched);
       return;
     }
-    applyPmaEnv(
-      mutator,
-      { hosts: siblings.map((sibling) => sibling.serviceName), siblings },
-      credentialsFor(siblings),
-    );
-    addSiblingDependencies(mutator, siblings);
   });
   return Effect.void;
 };

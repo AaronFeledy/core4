@@ -1,7 +1,8 @@
+import type { InvocationProgram, InvocationSite } from "@lando/landofile/compiled-sites";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { EventCommandInputValue, ToolingVarLiteral } from "@lando/sdk/schema";
+import type { EventCommandInputValue, EventForSelector, ToolingVarLiteral } from "@lando/sdk/schema";
 
-export type ToolingStepCondition = boolean | string;
+export type ToolingStepCondition = boolean | string | InvocationSite;
 
 interface ToolingStepLeafBase {
   readonly authoredIndex: number;
@@ -9,13 +10,14 @@ interface ToolingStepLeafBase {
   readonly condition?: ToolingStepCondition;
   readonly silent: boolean;
   readonly ignoreError: boolean;
+  readonly invocationSites?: InvocationProgram;
 }
 
 export interface ToolingCmdStepLeaf extends ToolingStepLeafBase {
   readonly kind: "cmd";
   readonly command: string;
   readonly service?: string;
-  readonly env?: Readonly<Record<string, ToolingVarLiteral>>;
+  readonly env?: import("@lando/sdk/schema").Environment;
   readonly user?: string;
   readonly dir?: string;
 }
@@ -62,6 +64,7 @@ export interface ToolingStepForNode {
   readonly authoredIndex: number;
   readonly selector: ToolingStepSelector;
   readonly body: ToolingStepLeafNode | ToolingStepDeferNode;
+  readonly selectorInvocation?: { readonly value: EventForSelector; readonly sites: InvocationProgram };
 }
 
 export type ToolingStepNode = ToolingStepLeafNode | ToolingStepDeferNode | ToolingStepForNode;

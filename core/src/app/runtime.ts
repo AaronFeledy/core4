@@ -55,7 +55,7 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
   });
   const scratchDeps = Layer.mergeAll(
     appLayer,
-    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(appLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
     ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
   );
@@ -77,6 +77,8 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
                   message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,
                   operation: "acquire",
                   cause,
+                  remediation:
+                    "Run from a scratch app directory created by `lando apps:scratch:start`, or pass an explicit scratch id.",
                 })
               : cause,
           ),

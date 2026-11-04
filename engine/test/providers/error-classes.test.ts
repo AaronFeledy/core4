@@ -1,12 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
-import {
-  createStandaloneRedactor,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   ArtifactBuildError,
   ArtifactTransferError,
+  EnvironmentValueResolutionError,
+  HealthcheckTargetUnsupportedError,
+  PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
@@ -15,6 +14,9 @@ import {
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
+  SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
@@ -30,8 +32,6 @@ import { assertRedactedError } from "./fixtures/assert-redacted-error.ts";
 import { canary, errorFields, plan, registryLayer, target } from "./fixtures/error-registry.ts";
 import { memberError } from "./fixtures/failing-provider.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 const errorCase = <E extends ProviderError, I>(schema: Schema.Codec<E, I>, original: E) => ({
   original,
   encode: (error: ProviderError) => Schema.encodeUnknownSync(schema)(error),
@@ -42,6 +42,60 @@ const setupFields = {
   remediation: errorFields.remediation,
 };
 const cases = {
+  HealthcheckTargetUnsupportedError: errorCase(
+    HealthcheckTargetUnsupportedError,
+    new HealthcheckTargetUnsupportedError({
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+      service: canary,
+      target: "host",
+    }),
+  ),
+  EnvironmentValueResolutionError: errorCase(
+    EnvironmentValueResolutionError,
+    new EnvironmentValueResolutionError({
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+      variable: canary,
+      reference: canary,
+      reason: "unresolved-binding",
+    }),
+  ),
+  PlanReplanRequiredError: errorCase(
+    PlanReplanRequiredError,
+    new PlanReplanRequiredError({
+      providerId: "test",
+      operation: "apply",
+      app: canary,
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+    }),
+  ),
+  SecretNotFoundError: errorCase(
+    SecretNotFoundError,
+    new SecretNotFoundError({
+      secret: canary,
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+    }),
+  ),
+  SecretReferenceInvalidError: errorCase(
+    SecretReferenceInvalidError,
+    new SecretReferenceInvalidError({
+      reference: canary,
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+    }),
+  ),
+  SecretStoreUnavailableError: errorCase(
+    SecretStoreUnavailableError,
+    new SecretStoreUnavailableError({
+      storeId: canary,
+      reason: "locked",
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+    }),
+  ),
   ProviderUnavailableError: errorCase(ProviderUnavailableError, new ProviderUnavailableError(errorFields)),
   ProviderCapabilityError: errorCase(
     ProviderCapabilityError,
@@ -115,7 +169,7 @@ test.each(Object.entries(cases))(
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* registerRedactionValues([canary]);
+        yield* (yield* RedactionService).registerValues([canary]);
         const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
         return yield* Effect.result(selected.start(target));
       }).pipe(Effect.provide(registryLayer(provider))),
@@ -124,7 +178,9 @@ test.each(Object.entries(cases))(
     if (Result.isSuccess(result)) throw new Error("Expected provider failure");
     await assertRedactedError(result.failure, original);
     const encoded = JSON.stringify(encode(result.failure));
-    expect(createStandaloneRedactor("secrets").redactValue(encode(original))).toEqual(encode(result.failure));
+    expect(
+      createStandaloneRedactor("secrets", { redactionTokens: [canary] }).redactValue(encode(original)),
+    ).toEqual(encode(result.failure));
     expect(encoded).not.toContain(canary);
     expect(encoded).toContain("[redacted]");
   },

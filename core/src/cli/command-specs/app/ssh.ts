@@ -1,25 +1,26 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { Args, Flags } from "../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
-import { StreamFrame } from "@lando/sdk/schema";
+import { type ExecAppError, type ExecAppServices, execApp } from "@lando/engine/operations/exec";
+import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../../service-login-shell";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { execInputUsesCliHostIo } from "./exec";
 
-const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
-
-export const sshSpec: LandoCommandSpec<ExecAppResult> = {
-  resultSchema: EmptyResultSchema,
+export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplementedError, ExecAppServices> = {
+  resultSchema: ExecAppResult,
   id: "app:ssh",
   helpGroup: "common",
-  summary: "Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).",
+  summary:
+    "Open an interactive shell in a Lando service (alias of `exec --tty --interactive` with bash when present, otherwise sh).",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
@@ -28,6 +29,9 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   flags: {
     service: Flags.string({ char: "s", description: "Service to open a shell in." }),
     user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
+    "no-history": Flags.boolean({
+      description: "Do not persist shell or client history for this session.",
+    }),
     subsystem: Flags.string({
       description: "SSH subsystem to invoke; not supported.",
     }),
@@ -53,7 +57,8 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     const user = stringFlag(flags, "user");
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
-      command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
+      command: serviceLoginShellCommand(parsedArgv),
+      ...(booleanFlag(flags, "no-history") ? { env: withSessionNoHistoryEnv({}) } : {}),
       ...(service === undefined ? {} : { service }),
       ...(user === undefined ? {} : { user }),
     };
@@ -63,8 +68,8 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     const attached = attachExecHostIo({ ...base, tty: true, interactive });
     return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
-  successExitCode: (result) => result.exitCode,
-  render: (result) => renderExecAppResult(result as ExecAppResult),
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
+  render: (result) => renderExecAppResult(result),
 };
 
 const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =>
@@ -72,5 +77,5 @@ const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =
     message: `\`lando ssh --${kind}\`: SSH ${kind} is not supported. Default ssh is provider-exec TTY command behavior only.`,
     commandId: "app:ssh",
     remediation:
-      "Drop the unsupported flag. `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec.",
+      "Drop the unsupported flag. `lando ssh` runs the default service login shell (bash when present, otherwise sh) inside the selected service via provider-exec.",
   });

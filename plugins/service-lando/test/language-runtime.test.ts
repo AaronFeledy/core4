@@ -57,7 +57,7 @@ const fixtures = [
     serviceType: python312ServiceType,
     serviceFeature: pythonServiceFeature,
     baseEnv: { PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
-    excludes: ["__pycache__"],
+    excludes: ["__pycache__", ".venv"],
     includeWebroot: false,
     resolution: {
       base: "lando",
@@ -70,7 +70,7 @@ const fixtures = [
         { id: "lando.env", config: {} },
         {
           id: "lando.app-mount",
-          config: { target: "/app", excludes: ["__pycache__"] },
+          config: { target: "/app", excludes: ["__pycache__", ".venv"] },
         },
       ],
     },
@@ -81,7 +81,7 @@ const fixtures = [
           source: "/srv/apps/myapp",
           target: "/app",
           readOnly: false,
-          excludes: ["__pycache__"],
+          excludes: ["__pycache__", ".venv"],
           includes: [],
         },
       ],
@@ -164,6 +164,8 @@ for (const fixture of fixtures) {
     frameworks: ["none"],
     presets: {
       none: {
+        daemon: fixture.displayName,
+        variables: ["PORT"],
         port: fixture.resolution.features[0].config.port,
         webroot: "/app",
         env: new Map(),
@@ -205,6 +207,20 @@ for (const fixture of fixtures) {
       expect(JSON.stringify(mounts)).toBe(JSON.stringify(fixture.mounts));
     });
 
+    test(`${fixture.language} ${source} idle default runs without a shell`, async () => {
+      // Given
+      const input = inputFor(serviceType);
+      // When
+      const plan = await composeServicePlan({
+        serviceType,
+        service: input.service,
+        appRoot: input.appRoot,
+        metadata: input.metadata,
+      });
+      // Then
+      expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+    });
+
     test(`${fixture.language} ${source} intermediate composition projects webroot only when enabled`, async () => {
       // Given: an authored webroot on each shared-runtime consumer.
       const input = inputFor(serviceType);
@@ -218,7 +234,7 @@ for (const fixture of fixtures) {
       });
       // Then: only webroot-enabled consumers project it into env and extension metadata.
       const expected = fixture.includeWebroot ? { webroot: "/app/frontend/public" } : {};
-      expect<string | undefined>(plan.environment.LANDO_WEBROOT).toBe(expected.webroot);
+      expect(plan.environment.LANDO_WEBROOT).toBe(expected.webroot);
       expect(plan.extensions[`lando-service-${fixture.language}`]).toEqual({
         ...fixture.resolution.features[0].config,
         ...expected,

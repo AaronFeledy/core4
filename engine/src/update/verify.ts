@@ -140,6 +140,8 @@ export const verifyManifestSignature = (
           message: `Update manifest signature verification failed for ${input.manifestUrl}.`,
           manifestUrl: input.manifestUrl,
           signatureUrl: input.signatureUrl,
+          remediation:
+            "Download matching signed official update assets for this channel and ensure cosign is installed and trusted for keyless verification, then retry `lando update`.",
           cause,
         }),
     ),
@@ -156,6 +158,8 @@ export const verifyChecksumSignature = (
           message: `Update checksum signature verification failed for ${input.checksumsUrl}.`,
           checksumsUrl: input.checksumsUrl,
           signatureUrl: input.signatureUrl,
+          remediation:
+            "Download matching signed official checksum assets for this release and ensure cosign is installed and trusted for keyless verification, then retry `lando update`.",
           cause,
         }),
     ),
@@ -210,6 +214,8 @@ export const verifyBinaryChecksum = ({
           new UpdateChecksumVerificationError({
             message: `Update checksums do not contain an entry for ${artifact}.`,
             artifact,
+            remediation:
+              "The signed checksum manifest has no entry for this artifact; use a complete official release for your platform and retry `lando update`.",
           }),
         );
       }
@@ -220,6 +226,8 @@ export const verifyBinaryChecksum = ({
             artifact,
             expected,
             actual: manifestSha256.toLowerCase(),
+            remediation:
+              "The update manifest checksum does not match the signed checksum manifest; refuse this inconsistent release and retry `lando update` from a trusted channel once a coherent official release is published.",
           }),
         );
       }
@@ -232,6 +240,8 @@ export const verifyBinaryChecksum = ({
               artifact,
               expected,
               actual,
+              remediation:
+                "Delete the partial download and retry `lando update` from a trusted channel so the artifact bytes match the signed checksum.",
             }),
           );
     }),

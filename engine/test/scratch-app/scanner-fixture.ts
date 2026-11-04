@@ -13,6 +13,7 @@ export const service = {
   service: ServiceName.make("app"),
   providerId: ProviderId.make("other"),
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
   labels,
 };
@@ -31,6 +32,7 @@ export const unavailable = new ProviderUnavailableError({
   providerId: "other",
   operation: "test",
   message: "offline",
+  remediation: "Install or start the `other` provider and confirm it can perform `test`.",
 });
 
 export const fixture = (overrides: Partial<RuntimeProviderShape> = {}) => {

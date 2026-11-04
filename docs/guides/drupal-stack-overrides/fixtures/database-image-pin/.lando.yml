@@ -13,7 +13,6 @@ services:
   database:
     type: mysql
     image: mysql:8.4
-    home: false
 tooling:
   drush:
     service: appserver

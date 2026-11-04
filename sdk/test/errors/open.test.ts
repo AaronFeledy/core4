@@ -57,6 +57,7 @@ describe("HostProxyOpenUrlSchemeError", () => {
       message: "bad scheme",
       scheme: "file",
       url: "file:///etc/passwd",
+      remediation: "Open only http:// or https:// URLs.",
     });
 
     expect(Result.isSuccess(decoded)).toBe(true);

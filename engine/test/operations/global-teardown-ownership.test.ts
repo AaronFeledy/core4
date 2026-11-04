@@ -55,7 +55,6 @@ const harnessAt = (
     provider: providerId,
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},
@@ -82,6 +81,7 @@ const harnessAt = (
                 providerId,
                 service: ServiceName.make("orphan"),
                 status: "running" as const,
+                publications: { status: "unknown" as const },
                 containerId: "owned-container",
               },
             ]

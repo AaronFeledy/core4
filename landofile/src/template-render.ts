@@ -102,12 +102,18 @@ const parseError = (
   line: number | undefined,
   column: number | undefined,
   cause?: unknown,
+  remediation?: string,
 ): LandofileParseError =>
   new LandofileParseError({
     message,
     filePath,
     line,
     column,
+    remediation:
+      remediation ??
+      (line === undefined
+        ? `Correct the template in ${filePath}.`
+        : `Correct the template in ${filePath} at line ${line}.`),
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -155,6 +161,8 @@ export const renderLandofileTemplate = (
         `Unknown template engine "${directive.engineId}". ${remediation}`,
         directiveLine,
         1,
+        undefined,
+        remediation,
       ),
     );
   }

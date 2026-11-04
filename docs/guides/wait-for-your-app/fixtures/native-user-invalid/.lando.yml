@@ -1,0 +1,8 @@
+name: wait-native-user-invalid
+services:
+  app:
+    type: "node:22"
+    healthcheck:
+      target: service
+      user: "1000:1000"
+      command: [curl, -fsS, http://localhost:3000/health]

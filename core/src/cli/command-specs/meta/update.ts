@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { Flags } from "../../spec/metadata";
 
 import {
+  type UpdateExecve,
   type UpdateOptions,
   type UpdateResult,
   UpdateResultSchema,
@@ -11,8 +12,12 @@ import {
 } from "@lando/engine/operations/update";
 import { StateStore } from "@lando/sdk/services";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
+import { execProcess } from "../../process-lifecycle";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf } from "../../spec/input-coercion";
+
+const execve: UpdateExecve = (input) =>
+  Effect.try({ try: () => execProcess(input), catch: (cause) => cause });
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   const flags = specFlagsOf(input);
@@ -24,7 +29,7 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
     ...(only === "core" || only === "plugins" ? { only } : {}),
     // The CLI shell owns process-entry facts; the engine operation must not
     // read process.argv itself (engine-closure), so supply the re-exec argv here.
-    selfUpdate: { argv: process.argv },
+    selfUpdate: { argv: process.argv, execve },
   };
 };
 
@@ -78,7 +83,8 @@ export const updateSpec: LandoCommandSpec<UpdateResult> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "plugins",
-  successExitCode: (result) => (result.hasFailures === true ? 1 : undefined),
+  completion: (result) =>
+    result.hasFailures === true ? { ok: false, exitCode: 1 } : { ok: true, exitCode: 0 },
   flags: {
     channel: Flags.string({
       description: "Release channel to resolve.",
@@ -94,5 +100,5 @@ export const updateSpec: LandoCommandSpec<UpdateResult> = {
     }),
   },
   run: runUpdateCommand,
-  render: (result) => renderUpdateResult(result as UpdateResult),
+  render: (result) => renderUpdateResult(result),
 };

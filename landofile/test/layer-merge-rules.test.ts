@@ -4,8 +4,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { loadLandofileLayers } from "../src/service.ts";
+import { loadTestLandofileLayers as loadLandofileLayers } from "./support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+
+test("environment list normalization happens after list replacement across layers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-list-replacement-"));
+  try {
+    await Bun.write(
+      join(root, ".lando.base.yml"),
+      "services:\n  web:\n    environment:\n      LOWER: lower\n",
+    );
+    await Bun.write(
+      join(root, ".lando.yml"),
+      'services:\n  web:\n    environment:\n      - "UPPER={{ app.name }}"\n',
+    );
+    const loaded = await Effect.runPromise(
+      loadLandofileLayers(root, join(root, ".lando.yml"), {
+        ports: makeTestLandofilePorts(root),
+        templates: { modules: [] },
+      }),
+    );
+    expect(loaded.services?.[ServiceName.make("web")]?.environment).toEqual({ UPPER: "{{ app.name }}" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test.each([
   {

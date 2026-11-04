@@ -53,7 +53,6 @@ test.each(["pre-scratch-destroy", "post-scratch-destroy"] as const)(
       provider: "lando",
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: { resolvedAt: "2026-10-21T00:00:00.000Z", source: "test", runtime: 4 },

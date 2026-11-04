@@ -9,7 +9,7 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   ServiceName,
@@ -109,7 +109,8 @@ describe("memcached service type — live integration: text protocol set/get", (
           serviceName: "cache",
           metadata,
         });
-        const plan: AppPlan = {
+        const plan = CurrentExecutableAppPlan.make({
+          valueModel: 1,
           id: appId,
           name: "Memcached Integration App",
           slug: "memcachedinttest",
@@ -117,12 +118,11 @@ describe("memcached service type — live integration: text protocol set/get", (
           provider: providerId,
           services: { [cache.name]: cache },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: cache.metadata,
           extensions: {},
-        };
+        });
 
         const api = makePodmanApiClient(socketPath);
         try {

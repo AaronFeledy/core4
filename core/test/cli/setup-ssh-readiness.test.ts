@@ -47,6 +47,7 @@ test.each([
           service: ServiceName.make("ssh-agent"),
           providerId: ProviderId.make("lando"),
           status: scenario.state,
+          publications: { status: "present" as const, bindings: [] },
         }).pipe(Effect.tap(() => Deferred.succeed(inspecting, undefined))),
       exec: () =>
         Effect.sync(() => {
@@ -66,6 +67,7 @@ test.each([
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("unused subscription"),
       waitFor: () => Effect.die("unused event wait"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("unused event wait"),
       query: () => Effect.succeed([]),
     });
@@ -140,6 +142,12 @@ test.each([
         expect(warnings[0]).toContain(shell?.evidence ?? "missing evidence");
         expect(warnings[0]).toContain(shell?.remediation ?? "missing remediation");
         expect(shell?.evidence).toContain(scenario.state === "exited" ? "stopped" : "30 seconds");
+        expect(shell?.evidence).toContain("Last probe failure:");
+        expect(shell?.evidence).toContain(
+          scenario.state === "exited"
+            ? "container status: exited"
+            : "SSH readiness shell probe exited with code 2",
+        );
         expect(shell?.remediation).toContain("lando setup");
       } else {
         expect(warnings).toEqual([]);

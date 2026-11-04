@@ -9,7 +9,8 @@ import {
 } from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
-const SCHEDULE_IF = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
+const SCHEDULE_IF =
+  "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
 
 export const createJourneyWorkflowBuilder = (workflow: string) => {
   const assertNever = (value: never): never => {
@@ -29,8 +30,6 @@ export const createJourneyWorkflowBuilder = (workflow: string) => {
 
   const renderCadenceIf = (cadence: PlatformReadinessCell["cadence"]): string => {
     switch (cadence) {
-      case "pr+evidence":
-        return "";
       case "evidence":
         return `    if: ${SCHEDULE_IF}\n`;
       default:
@@ -72,7 +71,7 @@ ${containerHelperDownloadStep}
 
   const renderLinuxSourceBuildPrereqs = (): string => `
       - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v5.5.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 

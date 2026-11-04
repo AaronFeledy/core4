@@ -1,22 +1,26 @@
 import { dirname } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileParseError } from "@lando/sdk/errors";
+import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
+import { captureCompilationContext, sourceCarrier } from "./compilation.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
+import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { type LegacyFailureSource, legacyLoadFailure } from "./legacy-load-failure.ts";
-import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
+import type { LandofileLoadContext } from "./load-context.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
+import { parseLandofile } from "./parser.ts";
 import { checkDocumentData } from "./pipeline/data.ts";
 import { rememberOrigins } from "./pipeline/origins.ts";
 import { prepareOverlay } from "./pipeline/prepare.ts";
 import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { parseSupportedLandofileSource } from "./source-scan.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
+import { validationErrorFromCause } from "./validation.ts";
 
 export const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
   Effect.tryPromise({
@@ -27,6 +31,7 @@ export const readFileContent = (filePath: string): Effect.Effect<string, Landofi
         filePath,
         line: undefined,
         column: undefined,
+        remediation: `Ensure ${filePath} exists and is readable.`,
         cause,
       }),
   });
@@ -43,7 +48,7 @@ const parseLandofileSource = (
     ...(inputs?.templates.context === undefined ? {} : { context: inputs.templates.context }),
   }).pipe(
     Effect.flatMap((rendered) =>
-      parseSupportedLandofileSource(source.sourceFile, rendered).pipe(
+      parseLandofile({ file: source.sourceFile, content: rendered, cwd: dirname(source.sourceFile) }).pipe(
         Effect.catchTag("LandofileParseError", (error) => legacyLoadFailure(error, content, source)),
       ),
     ),
@@ -52,16 +57,21 @@ const parseLandofileSource = (
 export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(function* (
   filePath: string,
   context?: LandofileLoadContext,
-  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard"> & {
+  inputs?: Pick<LandofileRuntimeInputs, "templates"> & {
     readonly sourceReplacement?: { readonly content: string } | undefined;
   },
 ) {
-  const resolvedContext = context ?? {
-    appRoot: dirname(filePath),
-    layer: "canonical" as const,
-    policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+  const resolvedContext: LandofileLoadContext = {
+    ...(context ?? {
+      appRoot: dirname(filePath),
+      layer: "canonical" as const,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    }),
+    pendingSites: context?.pendingSites ?? [],
+    compilationContext:
+      context?.compilationContext ??
+      captureCompilationContext(context?.appRoot ?? dirname(filePath), inputs?.templates.context?.env),
   };
-  yield* ensureConsistentRoot(resolvedContext.appRoot, inputs);
   const content = inputs?.sourceReplacement?.content ?? (yield* readFileContent(filePath));
   const form = filePath.endsWith(".ts") ? ("typescript" as const) : ("yaml" as const);
   const parsed = yield* form === "typescript"
@@ -107,6 +117,8 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     value,
     source: { appRoot: context.appRoot, sourcePath: file, sourceRoot: dirname(file), layer: context.layer },
     policy: context.policy,
+    pendingSites: context.pendingSites,
+    recorder: context.recorder,
   });
   if (context.logger !== undefined) {
     const logger = context.logger;
@@ -122,6 +134,7 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     );
   }
   const prepared = yield* prepareOverlay(resolved.value, { file, layer: context.layer }, value);
+  if (isPlainRecord(value)) copyLandofileProvenance(value, prepared.value);
   const document = rememberLandofileReferencedFiles(
     rememberOrigins(prepared.value, prepared.origins),
     resolved.dependencies,
@@ -142,7 +155,21 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
           },
         ];
   rememberSourceDocuments(document, documents);
-  return { ...source, value: document, dependencies: resolved.dependencies };
+  return {
+    ...source,
+    value: document,
+    pendingSites: resolved.pendingSites,
+    dependencies: resolved.dependencies,
+    compiled: yield* Effect.try({
+      try: () =>
+        sourceCarrier({
+          document,
+          pendingSites: resolved.pendingSites,
+          context: context.compilationContext ?? captureCompilationContext(context.appRoot),
+        }),
+      catch: (cause) => validationErrorFromCause(file, document, cause),
+    }),
+  };
 });
 
 export const prepareLandofileValue = Effect.fnUntraced(function* <
@@ -153,20 +180,18 @@ export const prepareLandofileValue = Effect.fnUntraced(function* <
     readonly context: LandofileLoadContext;
   },
 >(source: S) {
-  const checked = yield* checkLandofileSource(source.file, source.value);
-  return yield* resolveLandofileSourceExpressions({ ...source, value: checked });
-});
-
-const checkLandofileSource = Effect.fnUntraced(function* (file: string, value: unknown) {
-  return yield* rejectUnsupportedToolingFeatures(file, value).pipe(
-    Effect.flatMap((supported) => rejectComposeKeys(file, supported)),
+  const check = rejectUnsupportedToolingFeatures(source.file, source.value).pipe(
+    Effect.flatMap((value) => rejectComposeKeys(source.file, value)),
   );
+  if (source.context.recorder === undefined) yield* check;
+  else source.context.recorder.effectiveChecks.push(check);
+  return yield* resolveLandofileSourceExpressions(source);
 });
 
 export const prepareLandofileLayer = Effect.fn("Landofile.prepareLayer")(function* (
   filePath: string,
   context?: LandofileLoadContext,
-  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
+  inputs?: Pick<LandofileRuntimeInputs, "templates">,
 ) {
   const source = yield* prepareLandofileSource(filePath, context, inputs);
   return yield* prepareLandofileValue(source);

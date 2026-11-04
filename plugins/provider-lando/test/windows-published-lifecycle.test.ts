@@ -16,6 +16,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -45,7 +46,6 @@ const makePlan = (id: string): AppPlan => {
     artifact: { kind: "ref", ref: "nginx:alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -55,13 +55,13 @@ const makePlan = (id: string): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: id,
     slug: id,
     root: AbsolutePath.make(`/tmp/${id}`),
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -119,6 +119,7 @@ describe("managed Windows published lifecycle", () => {
           providerId,
           status: "running",
           containerId: "exact-global-id",
+          publications: { status: "unknown" },
         }),
       ),
     );
@@ -136,13 +137,13 @@ describe("managed Windows published lifecycle", () => {
 
     const other = makePlan("other");
     await Effect.runPromise(windows.stop({ app: other.id, service: serviceName, plan: other }));
-    expect(calls).toEqual(["POST /containers/lando-other-traefik/stop"]);
+    expect(calls).toEqual(["POST /containers/lando-other--traefik/stop"]);
 
     const linux = await Effect.runPromise(
       makeRuntimeProvider({ ...options, platform: "linux", providerSocketPath: "/tmp/podman.sock" }),
     );
     await Effect.runPromise(linux.stop({ app: global.id, service: serviceName, plan: global }));
-    expect(calls.at(-1)).toBe("POST /containers/lando-global-traefik/stop");
+    expect(calls.at(-1)).toBe("POST /containers/lando-global--traefik/stop");
   });
 
   for (const action of ["quiesce", "destroy"] as const) {
@@ -169,12 +170,32 @@ describe("managed Windows published lifecycle", () => {
         ping: Effect.void,
         request: (request) => {
           calls.push(`${request.method} ${request.path}`);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+            return Effect.succeed({
+              status: 200,
+              body: JSON.stringify(
+                Object.values(newer.services).map((service) => {
+                  const name = landoServiceContainerName(newer.slug, service.name);
+                  return {
+                    Id: `${name}-id`,
+                    Names: [`/${name}`],
+                    State: "running",
+                    Labels: {
+                      "dev.lando.app": newer.id,
+                      "dev.lando.app-root": newer.root,
+                      "dev.lando.service": service.name,
+                    },
+                  };
+                }),
+              ),
+            });
+          }
           if (request.method === "GET" && request.path.startsWith("/containers/")) {
             const reference = decodeURIComponent(
               request.path.slice("/containers/".length).split("/")[0] ?? "",
             );
             const service = Object.values(newer.services).find((service) => {
-              const name = `lando-${newer.slug}-${service.name}`;
+              const name = landoServiceContainerName(newer.slug, service.name);
               return reference === name || reference === `${name}-id`;
             });
             return Effect.succeed(
@@ -183,7 +204,7 @@ describe("managed Windows published lifecycle", () => {
                 : {
                     status: 200,
                     body: JSON.stringify({
-                      Id: `lando-${newer.slug}-${service.name}-id`,
+                      Id: `${landoServiceContainerName(newer.slug, service.name)}-id`,
                       Config: {
                         Labels: {
                           "dev.lando.app": newer.id,
@@ -253,8 +274,13 @@ describe("managed Windows published lifecycle", () => {
         expect(calls).toEqual([]);
         await Effect.runPromise(persistAppliedPlan(stateStore, newer));
         releaseLock.resolve();
-        await teardown;
-        expect(calls).toContain("POST /containers/lando-global-metrics-id/stop");
+        const receipt = await teardown;
+        expect(receipt.shutdownObservations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ service: "metrics", containerId: "lando-global--metrics-id" }),
+          ]),
+        );
+        expect(calls).toContain("POST /containers/lando-global--metrics-id/stop");
       } finally {
         releaseLock.resolve();
         await hold;
@@ -287,7 +313,12 @@ describe("managed Windows published lifecycle", () => {
               status: 200,
               body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
             };
-          if (request.method === "POST" && path === "/networks/create") return { status: 201, body: "{}" };
+          if (request.method === "GET" && path.startsWith("/networks/")) return { status: 404, body: "" };
+          if (
+            request.method === "POST" &&
+            (path === "/networks/create" || path === "/libpod/networks/create")
+          )
+            return { status: 201, body: "{}" };
           if (request.method === "DELETE" && path.startsWith("/networks/")) return { status: 204, body: "" };
           if (request.method === "GET" && path === "/containers/router-id/json")
             return {
@@ -316,7 +347,7 @@ describe("managed Windows published lifecycle", () => {
             return { status: 201, body: "{}" };
           }
           if (request.method === "POST" && action === "start") {
-            if (name === "lando-global-traefik") {
+            if (name === "lando-global--traefik") {
               enteredGlobalStart.resolve();
               yield* Effect.promise(() => releaseGlobalStart.promise);
             }
@@ -335,6 +366,9 @@ describe("managed Windows published lifecycle", () => {
             existing.delete(name);
             running.delete(name);
             return { status: 204, body: "" };
+          }
+          if (request.method === "GET" && path.startsWith("/containers/json?")) {
+            return { status: 200, body: "[]" };
           }
           return { status: 500, body: `unexpected ${request.method} ${path}` };
         }),
@@ -385,10 +419,10 @@ describe("managed Windows published lifecycle", () => {
     try {
       await restartRequestedLock.promise;
       await matchingRequestedLock.promise;
-      expect(calls.some((call) => call.endsWith("/containers/lando-global-traefik/restart"))).toBe(false);
+      expect(calls.some((call) => call.endsWith("/containers/lando-global--traefik/restart"))).toBe(false);
       expect(calls.some((call) => call === "GET /containers/router-id/json")).toBe(false);
       await Effect.runPromise(Effect.scoped(provider.apply(other, { reconcile: true })));
-      expect(running.has("lando-other-traefik")).toBe(true);
+      expect(running.has("lando-other--traefik")).toBe(true);
       expect(lockCalls.filter((call) => call.key === "windows-published-lifecycle")).toHaveLength(3);
     } finally {
       releaseGlobalStart.resolve();
@@ -397,7 +431,7 @@ describe("managed Windows published lifecycle", () => {
     await restart;
     expect(await matching).toEqual([38080]);
     expect(
-      calls.filter((call) => call.includes("lando-global-traefik") && call.endsWith("/restart")),
+      calls.filter((call) => call.includes("lando-global--traefik") && call.endsWith("/restart")),
     ).toHaveLength(1);
     expect(lockCalls.filter((call) => call.key === "windows-published-lifecycle")).toEqual([
       { key: "windows-published-lifecycle", timeoutMs: 120_000 },

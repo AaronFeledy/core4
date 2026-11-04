@@ -39,7 +39,6 @@ const planAt = (root: AbsolutePath): AppPlan => ({
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "applied-state", runtime: 4 },
@@ -63,6 +62,7 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
   providerId,
   service: ServiceName.make("orphan"),
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
 });
 

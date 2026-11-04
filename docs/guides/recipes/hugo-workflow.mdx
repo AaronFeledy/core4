@@ -7,13 +7,34 @@ tags: [beta, docs, recipes, hugo, static, node]
 
 # Run the Hugo recipe
 
+Start a Hugo development server with a generated starter site. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe hugo --name=hugo-demo --yes
 cd hugo-demo
 lando start
 ```
 
-`--yes` skips prompts. Hugo declares no recipe options, so the only prompt is the app name. The first start builds the `builder` image with a pinned official Hugo extended binary and brings up `hugo server`. No package install, no parking, no second edit of `.lando.yml`.
+`--yes` skips prompts. Hugo declares no recipe options, so the only prompt is the app name. The first start builds the `builder` image with a pinned official Hugo extended binary and brings up `hugo server`. The starter site is ready for the development server without installing packages or editing `.lando.yml` first.
+
+## Check the toolchain
+
+```sh
+lando hugo version
+lando npm --version
+```
+
+`lando hugo version` reports the extended build the recipe pins in `builder.build.artifact` of your Landofile. That pin is part of your app, not something Lando swaps underneath you; change it there if you need a different release. `lando npm` is there for themes and asset pipelines that need Node, not for installing Hugo.
+
+## Find your URLs
+
+```sh
+lando info
+```
+
+Open the **builder** URL `lando info` prints (for example `https://builder.hugo-demo.lndo.site`). That's the Hugo development server with live reload. If host ports 80 or 443 are already taken, the URL may use a fallback port such as `:8443`.
+
+The app hostname URL (the **web** entry, for example `https://hugo-demo.lndo.site`) is nginx serving `public/`. Hugo 0.167.0's server writes its output to disk by default, so `web` has pages as soon as `hugo server` finishes its first render.
 
 ## See what the recipe writes
 
@@ -63,25 +84,6 @@ Init writes `.lando.yml` and a small starter site: a Hugo config, a content arch
     </Step>
   </Scenario>
 </Guide>
-
-## Check the toolchain
-
-```sh
-lando hugo version
-lando npm --version
-```
-
-`lando hugo version` reports the extended build the recipe pins in `builder.build.artifact` of your Landofile. That pin is part of your app, not something Lando swaps underneath you; change it there if you need a different release. `lando npm` is there for themes and asset pipelines that need Node, not for installing Hugo.
-
-## Find your URLs
-
-```sh
-lando info
-```
-
-Open the **builder** URL `lando info` prints (for example `https://builder.hugo-demo.lndo.site`). That's the Hugo development server with live reload. If host ports 80 or 443 are already taken, the URL may use a fallback port such as `:8443`.
-
-The app hostname URL (the **web** entry, for example `https://hugo-demo.lndo.site`) is nginx serving `public/`. Hugo 0.167.0's server writes its output to disk by default, so `web` has pages as soon as `hugo server` finishes its first render.
 
 ## Add content
 

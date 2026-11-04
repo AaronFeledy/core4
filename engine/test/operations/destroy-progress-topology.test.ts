@@ -19,6 +19,7 @@ import { emptySnapshots } from "./data-mover-support.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import {
   acceleratedPlan,
   recoveryHarness,
@@ -94,7 +95,13 @@ describe("destroy progress topology", () => {
               }).pipe(
                 Effect.andThen(
                   veto && event._tag === "pre-destroy"
-                    ? Effect.fail(new EventError({ message: "veto" }))
+                    ? Effect.fail(
+                        new EventError({
+                          message: "veto",
+                          remediation:
+                            "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+                        }),
+                      )
                     : Effect.void,
                 ),
               ),
@@ -357,6 +364,8 @@ describe("destroy progress topology", () => {
       engineId: "mutagen",
       sessionRef: String(syncSession.ref),
       message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
     });
     const engine = {
       ...availableFileSync(),
@@ -421,7 +430,15 @@ describe("destroy progress topology", () => {
   });
   test("destroys a previously ordinary app when the current plan proposes acceleration", async () => {
     const calls: string[] = [];
-    const planned = { ...plan, fileSync: [{ engineId: "mutagen", session: syncSession.spec }] };
+    const planned = withAcceleratedBind(plan, syncSession.service, {
+      type: "bind",
+      source: plan.root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "app-mount",
+      excludes: [],
+    });
     const harness = makeHarness({
       appliedFileSyncState: "ordinary",
       destroyEffect: Effect.sync(() => {
@@ -628,6 +645,7 @@ describe("destroy progress topology", () => {
       providerId: "lando",
       operation: "destroy",
       message: "provider destroy failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
     });
     const harness = makeHarness({ destroyEffect: Effect.fail(providerFailure) });
 

@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, php, composer]
 
 # Run Composer on PHP
 
-Declare a `composer` tooling task against a PHP service. Lando routes it through the cache-backed tooling path, so it does not need a provider bootstrap just to find the command:
+Run Composer inside a PHP service by declaring a `composer` tooling task in `.lando.yml`. Use this complete example in a new app directory, or merge the task into an existing PHP app:
 
 ```yaml
 name: composer-php-demo
@@ -23,6 +23,8 @@ tooling:
       - composer "$@"
       - composer
 ```
+
+After completing `lando setup`, run `lando start` from the app directory. Then run `lando composer --version` to check that the task reaches Composer in the service.
 
 <Guide>
   <Scenario id="tooling-bootstrap" render>
@@ -43,4 +45,4 @@ lando composer --version
 lando app:composer --version
 ```
 
-Both forms use the same route. The router reads a fresh app command cache before provider-backed execution starts. If the cache is stale or missing, the command names the fix: `lando app:cache:refresh`, `lando start`, or `lando rebuild`. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.
+Both forms use the same route. The router reads a fresh app command cache before provider-backed execution starts. A missing index on the host CLI rebuilds once automatically when the app source is already resolved. If the cache is stale or invalid, run `lando app:cache:refresh`; `lando start` and `lando rebuild` also rebuild it, but you do not need them only for discovery. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.

@@ -27,6 +27,7 @@ import {
   verifyLinuxPodmanPortability,
   verifyManagedLinuxPodman,
 } from "./linux-podman-source-build.ts";
+import { extractVerifiedDebianBinary } from "./runtime-bundle-debian.ts";
 import { fetchOverHttps } from "./runtime-bundle-fetch.ts";
 import { stageRuntimeBundleLicenses } from "./runtime-bundle-licenses.ts";
 import {
@@ -175,6 +176,13 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
           stageDir,
           execute: verifyCommand,
         });
+      } else if (component.archive === "deb") {
+        const bytes = await options.fetchArtifact(component.url);
+        const payload = await extractVerifiedDebianBinary(component, bytes);
+        const destPath = join(stageDir, component.installName);
+        await mkdir(dirname(destPath), { recursive: true });
+        await writeFile(destPath, payload);
+        await chmod(destPath, component.mode);
       } else {
         const bytes = await options.fetchArtifact(component.url);
         const actual = sha256Hex(bytes);

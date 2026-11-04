@@ -23,7 +23,7 @@ test.each([false, true])(
     );
     const desired = {
       ...target,
-      landofile: { name: "test-start", services: {} },
+      landofile: literalTestLandofile({ name: "test-start", services: {} }),
       plan: mismatch ? { ...acceleratedPlan, fileSync: [] } : acceleratedPlan,
     };
     // When destroy receives the explicit desired target.
@@ -73,3 +73,4 @@ test.each([{ extraSession: true }, { phase: "preparing" as const, extraSession: 
     expect(harness.calls).not.toContain("dispose-targets");
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

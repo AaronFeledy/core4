@@ -4,6 +4,8 @@ import { isPlainRecord } from "./record.ts";
 export interface ValueOrigins<Source> {
   readonly source: Source;
   readonly deleted: boolean;
+  /** A consumed directive or form change replaced this subtree during composition. */
+  readonly replaced?: true;
   readonly children: ReadonlyMap<string | number, ValueOrigins<Source>>;
 }
 
@@ -25,7 +27,12 @@ export const withValueOrigins = <Source>(
     } else if (isPlainRecord(plain) && !isLandofileReset(plain)) {
       for (const [key, entry] of Object.entries(plain)) children.set(key, visit(entry, [...path, key]));
     }
-    return { source: source(path), deleted: isLandofileReset(input), children };
+    return {
+      source: source(path),
+      deleted: isLandofileReset(input),
+      ...(isLandofileOverride(input) || isLandofileReset(input) ? { replaced: true as const } : {}),
+      children,
+    };
   };
   return { value, origins: visit(value, []) };
 };

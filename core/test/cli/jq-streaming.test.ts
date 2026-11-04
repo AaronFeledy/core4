@@ -64,7 +64,7 @@ describe("runWithRendererHandling streaming jqExpression", () => {
     expect(last).toBe("demo");
     expect(() => decodeFrame(last ?? "{}")).toThrow();
     expect(io.stderr()).toBe("");
-    expect(exitCode).toBeUndefined();
+    expect(exitCode).toBe(0);
   });
 
   test("does not jq intermediate stream chunks", async () => {

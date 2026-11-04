@@ -88,6 +88,7 @@ export const assertLandoVersionConstraint = (
         filePath: bad.source,
         line: undefined,
         column: undefined,
+        remediation: `Edit the lando: field in ${bad.source}: ${RANGE_SYNTAX_REMEDIATION}`,
       }),
     );
   }

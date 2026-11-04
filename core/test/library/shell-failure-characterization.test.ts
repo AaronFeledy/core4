@@ -130,10 +130,14 @@ describe("library shell failure characterization", () => {
       // Then
       expect(rejection).toBeInstanceOf(Error);
       if (!(rejection instanceof Error)) throw new Error("Expected an Error rejection");
-      expect(rejection.name).toBe("Error");
-      expect(rejection.message.replaceAll(/fiber \(#\d+\)/g, "fiber (#<id>)")).toBe(scenario.causeText);
-      expect(Cause.isCause(rejection.cause)).toBe(true);
-      expect(normalizeRejectionJson(rejection.cause)).toEqual(scenario.rejectionCause);
+      expect(rejection.name).toBe(scenario.rejectionName);
+      expect(rejection.message).toBe(scenario.rejectionMessage);
+      expect(normalizeRejectionJson(rejection)).toEqual(scenario.rejectionJson);
+      const exit = await Effect.runPromiseExit(invokeOperation(scenario.effect()));
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(normalizeRejectionJson(exit.cause)).toEqual(scenario.rejectionCause);
+      }
       expect(renderedErrors).toEqual([]);
     });
   }

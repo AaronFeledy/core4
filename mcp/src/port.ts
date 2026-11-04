@@ -1,3 +1,5 @@
+import type { CompletedCommandResult } from "@lando/sdk/command-result";
+import type { CommandCompletion } from "@lando/sdk/schema";
 import { Context, type Effect, type Exit } from "effect";
 
 export interface McpCommandExecution<A> {
@@ -6,14 +8,14 @@ export interface McpCommandExecution<A> {
   readonly args: Readonly<Record<string, unknown>>;
   readonly flags: Readonly<Record<string, unknown>>;
   readonly cwd?: string;
-  readonly successExitCode?: (value: A) => number | undefined;
+  readonly completion?: (value: A) => CommandCompletion;
 }
 
 export interface McpCommandExecutorShape {
   readonly execute: <A, E, R>(
     command: Effect.Effect<A, E, R>,
     execution: McpCommandExecution<A>,
-  ) => Effect.Effect<Exit.Exit<A, E>, never, R>;
+  ) => Effect.Effect<Exit.Exit<CompletedCommandResult<A>, E>, never, R>;
 }
 
 export class McpCommandExecutor extends Context.Service<McpCommandExecutor, McpCommandExecutorShape>()(

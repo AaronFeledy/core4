@@ -1,6 +1,5 @@
 import { stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { causeMessage } from "@lando/sdk/errors";
 import {
   type FragmentResult,
   type NormalizedInclude,
@@ -8,6 +7,7 @@ import {
   requiredPorts,
 } from "./include-context.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
+import { includeReadError } from "./include-read-error.ts";
 
 export const fileExists = (path: string): Promise<boolean> =>
   stat(path).then(
@@ -18,11 +18,7 @@ export const readText = async (path: string, source: string): Promise<string> =>
   try {
     return await Bun.file(path).text();
   } catch (cause) {
-    throw includeError({
-      message: `Could not read include fragment ${source} at ${path}: ${causeMessage(cause)}`,
-      source,
-      kind: "fetch-failed",
-    });
+    throw includeReadError(path, source, cause);
   }
 };
 const userIncludeSubpath = (source: string): string => {

@@ -36,7 +36,12 @@ export const configSourceStack = Effect.fnUntraced(function* (file?: string) {
           : { ...inputs, rootOverrides: { ...inputs.rootOverrides, userConfRoot: dirname(file) } },
       );
     },
-    catch: (cause) => new ConfigError({ message: "Failed to acquire global configuration sources.", cause }),
+    catch: (cause) =>
+      new ConfigError({
+        message: "Failed to acquire global configuration sources.",
+        cause,
+        remediation: "Fix permissions under the Lando user-config root, then rerun `lando config validate`.",
+      }),
   });
 });
 

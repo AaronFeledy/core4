@@ -15,7 +15,9 @@ test("rejects an invalid generated route at the final AppPlan boundary", async (
   });
   // When
   const result = await Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) =>
+      planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
       Effect.result,
     ),
@@ -28,3 +30,4 @@ test("rejects an invalid generated route at the final AppPlan boundary", async (
       expect(result.failure.issues.map(({ path }) => path)).toEqual([["routes", 0, "hostname"]]);
   }
 });
+import { planTestLandofile } from "../compiled-landofile.ts";

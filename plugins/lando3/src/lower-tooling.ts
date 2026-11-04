@@ -1,9 +1,9 @@
 /**
  * Lando 3 `tooling:` as Lando 4 tooling tasks.
  *
- * Lando 3 registered a task only when its value was a mapping, so any other
- * value removes the task and becomes `disabled: true`. Positional arguments
- * written into the task name, yargs `options`, and `positionals` become
+ * Lando 3 registered a task only when its value was a mapping. The disabling
+ * value `false` passes through; other non-mappings become `false`.
+ * Positional arguments written into the task name, yargs `options`, and `positionals` become
  * declared `args` and `flags`. A command list becomes ordered `cmds` steps,
  * with `{service: command}` entries as service-targeted step objects.
  */
@@ -20,7 +20,7 @@ export interface LoweredTask {
 }
 
 export interface LoweredTooling {
-  readonly tooling: Readonly<Record<string, V4Wire>>;
+  readonly tooling: Readonly<Record<string, V4Wire | false>>;
   readonly tasks: ReadonlyMap<string, LoweredTask>;
 }
 
@@ -173,7 +173,7 @@ const lowerTask = (
     serviceFlag = { source: flag, target: flag === "host" ? "host-service" : flag };
     task.service = `:${serviceFlag.target}`;
     report(
-      flag === "host" ? "needs-review" : "rewritten",
+      "needs-review",
       [...path, "service"],
       flag === "host"
         ? 'The host option became the host-service flag, because service: ":host" runs on the host in Lando 4. Lando 4 also forwards the flag to the command as --host-service=<value>.'
@@ -212,7 +212,7 @@ const lowerTask = (
   else {
     task.cmds = commands.map((step) => (step.service === undefined ? step.cmd : { ...step }));
     report(
-      "rewritten",
+      "needs-review",
       [...path, "cmd"],
       "The command list became ordered cmds steps. Lando 4 passes caller arguments to the last step only; Lando 3 appended them to every command.",
       "Review which step should receive caller arguments.",
@@ -252,7 +252,7 @@ const lowerTask = (
 };
 
 export const lowerTooling = (value: unknown, report: Report): LoweredTooling => {
-  const tooling: Record<string, V4Wire> = {};
+  const tooling: Record<string, V4Wire | false> = {};
   const tasks = new Map<string, LoweredTask>();
   if (!hasPlainObjectPrototype(value)) return { tooling, tasks };
   for (const [key, entry] of Object.entries(value)) {
@@ -278,12 +278,13 @@ export const lowerTooling = (value: unknown, report: Report): LoweredTooling => 
       continue;
     }
     if (!hasPlainObjectPrototype(entry)) {
-      tooling[name] = { disabled: true };
+      tooling[name] = false;
       tasks.set(name, { service: undefined });
+      if (entry === false) continue;
       report(
         "rewritten",
         path,
-        "Lando 3 removed a task whose value is not a mapping; it is now disabled: true.",
+        "Lando 3 removed a task whose value is not a mapping; it is now false to keep it disabled.",
         "Delete the task instead if nothing else defines it.",
       );
       continue;

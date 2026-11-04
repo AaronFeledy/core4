@@ -1,3 +1,4 @@
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 /**
  * Verified-artifact Downloader over Effect's `HttpClient`.
  *
@@ -6,7 +7,7 @@
  * verification, atomic temp-file persistence, cache/offline short-circuiting,
  * and scheme gating on top of that egress path.
  */
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { Downloader, EventService } from "@lando/sdk/services";
@@ -24,6 +25,11 @@ export const layer: Layer.Layer<Downloader, never, HttpClient.HttpClient> = Laye
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient;
     const eventService = yield* Effect.serviceOption(EventService);
-    return Downloader.of(makeDownloaderService(http, makeDownloaderEvents(eventService)));
+    const service = yield* Effect.serviceOption(RedactionService);
+    const options = { sourceEnv: { ...process.env } };
+    const redactor = Option.isSome(service)
+      ? yield* service.value.forProfile("secrets", options)
+      : createStandaloneRedactor("secrets", options);
+    return Downloader.of(makeDownloaderService(http, makeDownloaderEvents(eventService, redactor)));
   }),
 );

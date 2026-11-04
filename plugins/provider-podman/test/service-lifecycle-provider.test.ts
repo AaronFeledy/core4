@@ -25,7 +25,7 @@ const providerId = ProviderId.make("podman");
 const appId = AppId.make("lifecycle-app");
 const missingAppId = AppId.make("missing-lifecycle-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-lifecycle-app-web";
+const containerName = "lando-lifecycle-app--web";
 const lifecycleActions = ["start", "stop", "restart"] as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
@@ -41,7 +41,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "busybox:1.37" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -58,7 +57,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

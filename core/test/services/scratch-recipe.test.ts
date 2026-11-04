@@ -8,7 +8,6 @@ import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core
 import {
   PathsService,
   RuntimeProvider,
-  RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
@@ -27,8 +26,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -38,6 +36,7 @@ const stateStoreLayer = StateStoreLayer.layer.pipe(
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
+import { scratchGlobalAdmissionFixture } from "../_support/scratch-global-admission.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -45,20 +44,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -66,14 +52,7 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets")),
-  }),
-);
+const redactionLive = RedactionService.layer;
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -82,6 +61,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -107,7 +87,9 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Promise<T>): Promise<T> => {
+const withTempEnv = async <T>(
+  run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
+): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-cache-")));
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-data-")));
   const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-conf-")));
@@ -121,7 +103,7 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run({ cacheRoot });
+    return await run({ dataRoot, cacheRoot });
   } finally {
     process.chdir(previousCwd);
     // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
@@ -179,6 +161,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
         providerId,
         status: "running",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   });
@@ -186,20 +169,14 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const registryLive = Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-  );
+  const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const initPortLive =
     runPostInitCalls === undefined
-      ? ScratchInitAppPortLayer.layer
+      ? ScratchInitAppPortLayer.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer, BunProcessRunner.layer),
+          ),
+        )
       : Layer.succeed(
           ScratchInitAppPort,
           ScratchInitAppPort.of({
@@ -223,13 +200,18 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
           }),
         );
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
+    admissionLayer,
+    environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     initPortLive,
     BunDataMover.layer.pipe(
@@ -248,7 +230,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   return Layer.mergeAll(
     scratchDeps,
     ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const fileExists = async (path: string): Promise<boolean> => {
@@ -354,7 +336,7 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
   });
 
   test("surfaces recipe prompt failures with answer remediation", async () => {
-    await withTempEnv(async ({ cacheRoot }) => {
+    await withTempEnv(async ({ dataRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -372,7 +354,7 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
       if (outcome._tag === "Failure") {
         expect(outcome.failure._tag).toBe("ScratchAppError");
         expect(outcome.failure.message).toContain('recipe prompt "php"');
-        expect(outcome.failure.message).toContain('Invalid value for prompt "php"');
+        expect(outcome.failure.message).toContain("Invalid answer for recipe option php.");
         expect(outcome.failure.message).not.toContain(
           "Unable to render the recipe into the scratch app root",
         );
@@ -380,14 +362,14 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
       }
-      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+      expect((await readdir(join(dataRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
         [],
       );
     });
   });
 
   test("maps an unknown recipe reference to ScratchSourceUnresolvedError", async () => {
-    await withTempEnv(async ({ cacheRoot }) => {
+    await withTempEnv(async ({ dataRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -407,9 +389,10 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
           "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
         );
       }
-      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+      expect((await readdir(join(dataRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
         [],
       );
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

@@ -7,6 +7,14 @@ const parseOptions = { onExcessProperty: "error", errors: "all" } as const;
 // reconstruct: overlapping object intersections, required-key choices, and closed
 // extension records. Canonical RegExp.source also avoids its pattern-payload bug.
 export function importableNode(node: JsonSchema.JsonSchema): JsonSchema.JsonSchema {
+  if (Array.isArray(node.allOf) && node.allOf.length === 1) {
+    const check: unknown = node.allOf[0];
+    if (Predicate.isObject(check) && Predicate.isObject(check.not) && typeof check.not.const === "string") {
+      expect(Object.keys(check)).toEqual(["not"]);
+      const { allOf: _allOf, ...rest } = node;
+      return importableNode({ ...rest, not: check.not });
+    }
+  }
   if (typeof node.pattern === "string") {
     const pattern = new RegExp(node.pattern, "u").source;
     if (pattern !== node.pattern) return importableNode({ ...node, pattern });

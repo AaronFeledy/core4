@@ -6,7 +6,7 @@ import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { hostProxyWorkerEntry } from "../../composition.ts";
 import { DetachedWorkerLogError } from "../detached-worker/log.ts";
@@ -16,7 +16,12 @@ import {
 } from "../detached-worker/process.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
-import { type HostProxyWorkerSpawner, defaultSpawnWorker, hostProxyWorkerArgv } from "./worker-process.ts";
+import {
+  type HostProxyWorkerSpawner,
+  defaultSpawnWorker,
+  hostProxyExecutableIdentity,
+  hostProxyWorkerArgv,
+} from "./worker-process.ts";
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 import { registerHostProxyCredentials, reuseHostProxyWorker } from "./worker-reuse.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
@@ -47,13 +52,19 @@ export interface DetachedHostProxyWorkerOptions {
   ) => Effect.Effect<void>;
 }
 
-export const startDetachedHostProxyWorker = (
+export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWorker")(function* (
   options: DetachedHostProxyWorkerOptions,
-): Effect.Effect<
+): Effect.fn.Return<
   HostProxyRunLandoSession & { readonly reused?: boolean },
   HostProxyTransportUnavailableError
-> =>
-  withWorkerRecordLock(
+> {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactorOptions = { sourceEnv: { ...process.env } };
+  const redactor =
+    redaction._tag === "Some"
+      ? yield* redaction.value.forProfile("secrets", redactorOptions)
+      : createStandaloneRedactor("secrets", redactorOptions);
+  return yield* withWorkerRecordLock(
     options.app,
     options.paths,
     Effect.gen(function* () {
@@ -74,6 +85,9 @@ export const startDetachedHostProxyWorker = (
           ...(options.shimDigest === undefined ? {} : { shimDigest: options.shimDigest }),
           providerId: options.plan.provider,
           workerEntry: hostProxyWorkerEntry(),
+          executableIdentity: yield* Effect.tryPromise(() =>
+            hostProxyExecutableIdentity(hostProxyWorkerEntry()),
+          ),
         }),
       );
       const reused = yield* reuseHostProxyWorker(options, configDigest);
@@ -90,6 +104,7 @@ export const startDetachedHostProxyWorker = (
           return yield* Effect.tryPromise({
             try: async () =>
               spawnWorker({
+                redactor,
                 argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
                 logsDir: makeLandoPaths(options.paths).logsDir,
                 privateFileAccess: options.privateFileAccess,
@@ -117,7 +132,7 @@ export const startDetachedHostProxyWorker = (
                 yield* registerHostProxyCredentials(ready);
                 const transport: HostProxyTransportKind =
                   ready.transport ??
-                  (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
+                  (options.hostGatewayName === undefined ? "unix-socket" : "tcp-host-gateway");
                 const probeServices = hostProxyEligibleServices(options.plan).map((service) =>
                   String(service.name),
                 );
@@ -178,7 +193,7 @@ export const startDetachedHostProxyWorker = (
               cause instanceof HostProxyTransportUnavailableError
                 ? cause
                 : new HostProxyTransportUnavailableError({
-                    message: createStandaloneRedactor("secrets").redactString(causeMessage(cause)),
+                    message: redactor.redactString(causeMessage(cause)),
                     socketPath: workerStatePath(options.app, options.paths),
                     remediation: `Inspect ${worker.logPath} for the worker crash.`,
                   }),
@@ -197,7 +212,7 @@ export const startDetachedHostProxyWorker = (
         cause instanceof HostProxyTransportUnavailableError
           ? cause
           : new HostProxyTransportUnavailableError({
-              message: causeMessage(cause),
+              message: redactor.redactString(causeMessage(cause)),
               socketPath: workerStatePath(options.app, options.paths),
               remediation:
                 cause instanceof DetachedWorkerExitedBeforeReadyError ||
@@ -209,6 +224,7 @@ export const startDetachedHostProxyWorker = (
       ),
     ),
   );
+});
 
 export const removeHostProxyWorkerState = (
   app: AppRef,

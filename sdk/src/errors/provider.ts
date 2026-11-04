@@ -1,13 +1,16 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
+import { ListenerObservation } from "../schema/listener-observation.ts";
 import { ProviderId } from "../schema/primitives.ts";
+
+const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
 
 const ProviderErrorBase = {
   providerId: Schema.String,
   operation: Schema.String,
   message: Schema.String,
   details: Schema.optional(Schema.Unknown),
-  remediation: Schema.optional(Schema.String),
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 };
 
@@ -17,7 +20,7 @@ export class RouteProviderMismatchError extends Schema.TaggedError<RouteProvider
     message: Schema.String.annotate({ description: "Why the app cannot use the host router." }),
     providerId: ProviderId.annotate({ description: "Provider selected for the app." }),
     hostProviderId: ProviderId.annotate({ description: "Host provider running the global app and router." }),
-    remediation: Schema.String.annotate({ description: "Options to align providers or disable routing." }),
+    remediation: Remediation.annotate({ description: "Options to align providers or disable routing." }),
   },
 ) {}
 
@@ -72,7 +75,7 @@ export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyErro
     "healthcheck-failed",
     "healthcheck-timeout",
   ]).annotate({ description: "Lifecycle, observation, or healthcheck failure classification." }),
-  remediation: Schema.String.annotate({ description: "App-kind-specific diagnosis and recovery commands." }),
+  remediation: Remediation.annotate({ description: "App-kind-specific diagnosis and recovery commands." }),
   exitCode: Schema.optional(
     Schema.Number.annotate({ description: "Observed terminal process exit code, when available." }),
   ),
@@ -83,6 +86,7 @@ export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyErro
   lastStatus: Schema.optional(
     Schema.String.annotate({ description: "Redacted last probe or provider observation detail." }),
   ),
+  listener: Schema.optional(ListenerObservation),
   logTail: Schema.optional(
     ServiceStartLogTail.annotate({ description: "Bounded, redacted service log snapshot." }),
   ),
@@ -92,6 +96,7 @@ export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("
   ...ProviderErrorBase,
   service: Schema.String,
   logTail: Schema.optional(ServiceStartLogTail),
+  listener: Schema.optional(ListenerObservation),
 }) {}
 
 export class ServiceExecError extends Schema.TaggedError<ServiceExecError>()("ServiceExecError", {
@@ -126,7 +131,9 @@ export class NoProviderInstalledError extends Schema.TaggedError<NoProviderInsta
   "NoProviderInstalledError",
   {
     message: Schema.String,
-    suggestion: Schema.optional(Schema.String),
+    remediation: Remediation.pipe(
+      Schema.withConstructorDefault(Effect.succeed("Run `lando setup` to install a runtime provider.")),
+    ),
   },
 ) {}
 
@@ -137,7 +144,7 @@ export class CapabilityError extends Schema.TaggedError<CapabilityError>()("Capa
   key: Schema.optional(Schema.String),
   capability: Schema.String,
   providerId: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Remediation,
 }) {}
 
 export class PublicationUnsupportedError extends Schema.TaggedError<PublicationUnsupportedError>()(
@@ -147,14 +154,14 @@ export class PublicationUnsupportedError extends Schema.TaggedError<PublicationU
     service: Schema.String,
     providerId: Schema.String,
     capability: Schema.Literal("hostPortPublish"),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
 const ProviderSetupErrorBase = {
   providerId: ProviderId,
   message: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
 };
 
 export class ProviderSetupConsentDeniedError extends Schema.TaggedError<ProviderSetupConsentDeniedError>()(

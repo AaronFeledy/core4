@@ -1,0 +1,3601 @@
+{
+  "repositories": [
+    {
+      "repo": "acquia",
+      "url": "https://github.com/lando/acquia",
+      "commit": "f6574cc71e62dbd3b3cf83e0319964fea64ac044",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "fff96076013ee66e8ba28eeff30a9f9c1a3b9655fd90f1d2c2de882dc6516c57",
+          "bytes": 362
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "28a60feb396afe22461ba6a517c00c3278bfd7e81c87e480b849f0cf0c0c7b3f",
+          "bytes": 37
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "a0b78ad55b3557f02c23dfa759646b4355933ca3708d698592c0d7a44172546b",
+          "bytes": 59
+        },
+        {
+          "path": "examples/acquia-8.2/.lando.yml",
+          "sha256": "9c061bb17c5bad5e8783f4b2bed9bcd88286aeef0223f46b76e13efa9ba1688d",
+          "bytes": 290
+        },
+        {
+          "path": "examples/acquia-8.3/.lando.yml",
+          "sha256": "b315b1a81929236e0f3a7ecb1db3083743e4fceeb919f8137609e84e053c2909",
+          "bytes": 290
+        },
+        {
+          "path": "examples/acquia-8.4/.lando.yml",
+          "sha256": "9efd8397061b1ceffcc69717351bccbf4dceeb74426d93c2827c13a38ecf43c2",
+          "bytes": 290
+        },
+        {
+          "path": "examples/acquia-8.5/.lando.yml",
+          "sha256": "f692bab7f77dc33e3e81e3c2ca11983404f4d05595da090b5b82ab88af40c7d1",
+          "bytes": 290
+        },
+        {
+          "path": "examples/acquia-custom/.lando.yml",
+          "sha256": "07b7992e6d3ab409b2af1fbf02a682b63abaa4de3a1208a2272c1ef7589b60b5",
+          "bytes": 428
+        },
+        {
+          "path": "examples/acquia-default/.lando.yml",
+          "sha256": "fd3709bf31dc2a9802fc3dd7a4f519ff1671ba250996daf9117c37e2f4c77911",
+          "bytes": 435
+        },
+        {
+          "path": "examples/acquia-downstreamer-1/.lando.yml",
+          "sha256": "8ff94696e2f17561aaeb77d2b55c589dadf484ef1ce58e96123c029dd714e577",
+          "bytes": 634
+        },
+        {
+          "path": "examples/acquia-downstreamer-2/.lando.yml",
+          "sha256": "5227151c73998e00e6e90fe9c90df3a791b1f803cf8867e1b54c0134900463d0",
+          "bytes": 687
+        },
+        {
+          "path": "examples/acquia-drush-uri/.lando.yml",
+          "sha256": "05239a9f406830b7940bc7ff5e79b8a3d3fee9bbc0aa7b9501b431e637ecd9e1",
+          "bytes": 84
+        },
+        {
+          "path": "examples/acquia-mysql84/.lando.yml",
+          "sha256": "5387cc958f9d763875dae873cc9596d280e76c27f6b425c69331ffb1c56ff2be",
+          "bytes": 426
+        },
+        {
+          "path": "examples/acquia-xdebug/.lando.yml",
+          "sha256": "047a5dfdefaec114c622ffa79420f1c73eef9e2a407e4183ef87d21f955bec33",
+          "bytes": 342
+        }
+      ]
+    },
+    {
+      "repo": "apache",
+      "url": "https://github.com/lando/apache",
+      "commit": "deb100d8a509998fd4cf08579e1895b9454bcdc7",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "128a8b99b97bc762ad88393e38300a67f81296c6e8977383d31214aff51caf49",
+          "bytes": 363
+        },
+        {
+          "path": "examples/2.4/.lando.yml",
+          "sha256": "4c1523d2cfad92dcdb0795999d627559ef615c5414bf643247c047ffcdfb9398",
+          "bytes": 376
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "013b39c9052e72af4dd3de87f6eeeded5fc3d0c179f581aa2b6b446808f39c81",
+          "bytes": 620
+        }
+      ]
+    },
+    {
+      "repo": "backdrop",
+      "url": "https://github.com/lando/backdrop",
+      "commit": "4545d55d6ca5faf192d49da1344a894b996dbb37",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "3a10d4e18ca15fb9a0940f135bb194e4a414e7c4d0e39650ddb84e4928a29a01",
+          "bytes": 367
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "fdcbd02b713089693278f0908ee516ee8880d6c275885a398b2e6259d2adae51",
+          "bytes": 39
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "3de7e961ab9538857f7342e8b7266db1d91c04bc3c5389efc948d1482e0b6432",
+          "bytes": 61
+        },
+        {
+          "path": "examples/backdrop-custom/.lando.yml",
+          "sha256": "4c0a7cf6167bea954013574aeabc5398502805d128882a0a1435c09044012f03",
+          "bytes": 392
+        },
+        {
+          "path": "examples/backdrop-defaults/.lando.yml",
+          "sha256": "53e300c10dca2a135c9111d68187a84e83f505655110cc8781dfb68eb6417537",
+          "bytes": 99
+        },
+        {
+          "path": "examples/backdrop-downstreamer-1/.lando.yml",
+          "sha256": "04669ffed47101deaf1814de9e59013f48f5ce447d9f2ba2abf4f9d56d3c0bfc",
+          "bytes": 198
+        },
+        {
+          "path": "examples/backdrop-downstreamer-2/.lando.yml",
+          "sha256": "fac260a0f4ad3b595491dd3ec3367ec068f3dc624877e69fd7bc9c4a65125266",
+          "bytes": 207
+        },
+        {
+          "path": "examples/backdrop-export/.lando.yml",
+          "sha256": "daf0b5e3f927b4aa9a23c00574925f2b42f869ad1774d1e51df967c5fdd4510b",
+          "bytes": 98
+        },
+        {
+          "path": "examples/backdrop-import/.lando.yml",
+          "sha256": "b7a5c83102577f5661497beb692fe185423963b9d79fc824546b679a389b1c68",
+          "bytes": 217
+        },
+        {
+          "path": "examples/backdrop-mariadb/.lando.yml",
+          "sha256": "da0862603110d80620a5cb3e4e844e1e47d2e7f4b76324cebe3a32d3f2db0785",
+          "bytes": 157
+        },
+        {
+          "path": "examples/backdrop-mysql-client/.lando.yml",
+          "sha256": "b817820923312d88bcbeae3f0dcfdfc94844a796f4030bac9d50cdbe5a74ef6c",
+          "bytes": 161
+        },
+        {
+          "path": "examples/backdrop-mysql8/.lando.yml",
+          "sha256": "b066eb5d534e43de28abd092485a0b9e5f7f55c0162545c9d395bfcc823cdfbb",
+          "bytes": 156
+        },
+        {
+          "path": "examples/backdrop-mysql84/.lando.yml",
+          "sha256": "74d87fcdd4a4e9a63031af40317ff3acb0091c76fd590bd5df8a0afef7ecadda",
+          "bytes": 152
+        },
+        {
+          "path": "examples/backdrop-nginx/.lando.yml",
+          "sha256": "735f0b0ed864757e3659157eed22a9ce3b530831fd1c3013b7bda9c142092f16",
+          "bytes": 192
+        }
+      ]
+    },
+    {
+      "repo": "core",
+      "url": "https://github.com/lando/core",
+      "commit": "0f51ea1336233e22f843a4b1ed519fc04ac184aa",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "60fbd7006b7c4ce45ea6c535fa988aff5e9d1569dc66ae44e1b8ffc86bf43f5a",
+          "bytes": 359
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "b5dae8136a3c8298310cfbaf2e7649b9cb5b5db614d2081e3bfb2f6b0565e899",
+          "bytes": 58
+        },
+        {
+          "path": "examples/badname/.lando.yml",
+          "sha256": "955d2d697eb7fb2676e5920aff85c71fc94dd621b64899a702ad401a28e8e965",
+          "bytes": 412
+        },
+        {
+          "path": "examples/build/.lando.yml",
+          "sha256": "a6846e67957113efa8eee6c1b0fd58bf4586e753e6bb1db51959d2e8d8b80a13",
+          "bytes": 2578
+        },
+        {
+          "path": "examples/c,o,m,m,a/.lando.yml",
+          "sha256": "0f0fe88d28c7e5a9504db5a24c267ca6e1e1975dbe0733dcf6352612c73d61cc",
+          "bytes": 407
+        },
+        {
+          "path": "examples/cache/.lando.yml",
+          "sha256": "8de91ac739261495c00fa5ce41aece7190c38d93d0772d33e10b9034adb3b338",
+          "bytes": 573
+        },
+        {
+          "path": "examples/certs/.lando.yml",
+          "sha256": "65e8272d5f6bab990067dc419f6c6ac90bca8f2c055051de4c58b1f4581d3f8d",
+          "bytes": 1904
+        },
+        {
+          "path": "examples/command/.lando.yml",
+          "sha256": "6d90381bba5562970c96bc77ad40de7fe59a0e48bb8539942f0329c73b8b9ee0",
+          "bytes": 955
+        },
+        {
+          "path": "examples/config/.lando.yml",
+          "sha256": "cdc386113d17530f970351c173c76c5d81a2059fd0299b6d505fad5a13019a90",
+          "bytes": 781
+        },
+        {
+          "path": "examples/debug/.lando.yml",
+          "sha256": "a9f1d116013db356c0d361859a0de69a6f9ca38c6fb730fbab41656ec8a75773",
+          "bytes": 589
+        },
+        {
+          "path": "examples/desktop-smoke/.lando.yml",
+          "sha256": "92345eea6678ac6e3db023fe8671085a11c7edf8cebb7c94d40b87d9aa9622a9",
+          "bytes": 72
+        },
+        {
+          "path": "examples/entrypoint/.lando.yml",
+          "sha256": "89206b068df23981175edcbb5dcc6994ef128e4891246e7bc48bcf179a9bebc4",
+          "bytes": 1126
+        },
+        {
+          "path": "examples/envfile/.lando.dist.yml",
+          "sha256": "531172eb915a20e3eb2d79a33629587ead3c395563266ec9f0c48a51db852f86",
+          "bytes": 78
+        },
+        {
+          "path": "examples/envfile/.lando.local.yml",
+          "sha256": "67d6f7abf6ee1128381085d1642544a9f7fbc4cc2492c2cff61ae83771b699c2",
+          "bytes": 56
+        },
+        {
+          "path": "examples/envfile/.lando.yml",
+          "sha256": "dc73e6528562ba87f377f86936680f9caf8083a2dbe7ab96e6a7814a50d6c1b3",
+          "bytes": 568
+        },
+        {
+          "path": "examples/events/.lando.yml",
+          "sha256": "113c568cb4cb9a5ac33e3fff03d9d1eecddd93ec59806d3fed37f83b96d2ab0b",
+          "bytes": 4142
+        },
+        {
+          "path": "examples/excludes/.lando.yml",
+          "sha256": "b60c7d77a4308be44d4b61230f994c98121a4e505e3e28f0916eb175b13ccb55",
+          "bytes": 431
+        },
+        {
+          "path": "examples/exec/.lando.yml",
+          "sha256": "011c7fd65aa5c67c4eb7136c38c4b318c1fc8d2fbcf4ac0b13b7d8f4efbe2f7a",
+          "bytes": 874
+        },
+        {
+          "path": "examples/experimental/.lando.yml",
+          "sha256": "8f791df3729bf19fa315b681dd835a0c594f480db8abd03632b5901fa666881b",
+          "bytes": 58
+        },
+        {
+          "path": "examples/healthcheck/.lando.yml",
+          "sha256": "7e1eeea5835cf88e6ac02878756c87a4a005e3d410c157b41357d267eddb5a5f",
+          "bytes": 3138
+        },
+        {
+          "path": "examples/host/.lando.yml",
+          "sha256": "fcc99a78bced278a930c121dd8448ed0bfb5b58a444ec4f43b8c632cfa9e5354",
+          "bytes": 375
+        },
+        {
+          "path": "examples/info/.lando.yml",
+          "sha256": "83e63cdac8c6c4190437d5f431f73393cd1ea9160b19c9ae9df15ce269e06fad",
+          "bytes": 604
+        },
+        {
+          "path": "examples/keys/.lando.yml",
+          "sha256": "88d292755caf2d68d717b38a0defbca9fc6f1e5a5c8f1cb26ac7c99bd3c7d0cd",
+          "bytes": 1719
+        },
+        {
+          "path": "examples/l337/.lando.yml",
+          "sha256": "1466c508ef0386d193d117c0deb672a779108699d102b5a5041701f45962845e",
+          "bytes": 12850
+        },
+        {
+          "path": "examples/lando-101/.lando.config.yml",
+          "sha256": "d97235c66eee5e8c1941fd942f7c50142adb3478480e27fec6bad4be0535d8bf",
+          "bytes": 48
+        },
+        {
+          "path": "examples/lando-101/.lando.proxy.yml",
+          "sha256": "1c709e4b46864c081e2c521603cfde27e3d2debf30f3d6d660a2d3bedf771b9e",
+          "bytes": 196
+        },
+        {
+          "path": "examples/lando-101/.lando.services.yml",
+          "sha256": "f7fd84a4b19c2b3ef3c182a406b7d1f4860f3079f0c19a6c5faab303a1ec7f0f",
+          "bytes": 147
+        },
+        {
+          "path": "examples/lando-101/.lando.tooling.yml",
+          "sha256": "78deb988bc086bf2f0c0f5389b2ae819bf4810700c7a27eebadf4f149aa494f6",
+          "bytes": 268
+        },
+        {
+          "path": "examples/lando-101/.lando.yml",
+          "sha256": "2bac50f9228dfe487eceae1e8559bf645e58d7d7723b7c27572bb7a17593dc3a",
+          "bytes": 29
+        },
+        {
+          "path": "examples/lando-v4/.lando.yml",
+          "sha256": "e79201ed09078917971100d6ee29f8bdb5a5d96b7e0ba2c3a8b4988ca6338d70",
+          "bytes": 3793
+        },
+        {
+          "path": "examples/landofile/.lando.dist.yml",
+          "sha256": "199935828868e9fd9bd5862912c36a9979adbeb00d089e0afc59b0f0e1077177",
+          "bytes": 53
+        },
+        {
+          "path": "examples/landofile/.lando.local.yml",
+          "sha256": "44b00979af425f45c9ad287df597b67c1577c89f81531e58fe7f969c8eea21f5",
+          "bytes": 198
+        },
+        {
+          "path": "examples/landofile/.lando.yml",
+          "sha256": "f712f7fbb34d4e9fbb9ed724b05fd70b53772337eb2b7ed7d2758efe15e2bf84",
+          "bytes": 59
+        },
+        {
+          "path": "examples/list/.lando.yml",
+          "sha256": "04a06f520e0d5d54be378192c20b55eaf7dbdb51ace7ecc0677cfe1f3afc8488",
+          "bytes": 588
+        },
+        {
+          "path": "examples/logs/.lando.yml",
+          "sha256": "9995234d3f49c86ea1c1ecacc048566ac24e2dbfc5631789f7f29830a7aebfcd",
+          "bytes": 588
+        },
+        {
+          "path": "examples/long-name/.lando.yml",
+          "sha256": "ff40d72d34f47063fbde40674a222038769ea8aa150846efe18a56f3b831b497",
+          "bytes": 517
+        },
+        {
+          "path": "examples/mounts/.lando.yml",
+          "sha256": "e1e95aac47231656c5a7415680827d209600b3c39fbd8509fddfc4ec4449efdc",
+          "bytes": 2153
+        },
+        {
+          "path": "examples/networking/.lando.lamp.yml",
+          "sha256": "b168a2b58714972d966ca0f243501c728544b9a26e80b9b2c12d08fc1cf4bb83",
+          "bytes": 767
+        },
+        {
+          "path": "examples/networking/.lando.lemp.yml",
+          "sha256": "5324bea1b898db987ad93a546da1274c38ce0300caaef73f1a334977a4f87bd5",
+          "bytes": 906
+        },
+        {
+          "path": "examples/no-services/.lando.yml",
+          "sha256": "7391f7c30a74739797c33dd08f70dd2204fc7594e0e520d223e068e73d6851e9",
+          "bytes": 51
+        },
+        {
+          "path": "examples/orchestrator/.lando.yml",
+          "sha256": "a8537701acd26248e8223be6e53651b8bf92b8f80c0db2dbd2f83983d2e4054b",
+          "bytes": 199
+        },
+        {
+          "path": "examples/plugins/.lando.yml",
+          "sha256": "51c11cc94294818818f4214081f89cd5ec02ea0d026d35fa776571728326d3e9",
+          "bytes": 631
+        },
+        {
+          "path": "examples/proxy/.lando.local.yml",
+          "sha256": "6d9655efa1761ad2f5f6252ada694a62a2bffcf2e09c7524a1def01bd50d47b4",
+          "bytes": 314
+        },
+        {
+          "path": "examples/proxy/.lando.stripped.yml",
+          "sha256": "568010f6c3d01a7239a10a87a8ae0f3dd657c28a4d68ccccceb7deac79eb5276",
+          "bytes": 2342
+        },
+        {
+          "path": "examples/proxy/.lando.upstream.yml",
+          "sha256": "0e011027b1d61ee482a255852de07013b54e3559eea4ba31cc3bca462a935589",
+          "bytes": 206
+        },
+        {
+          "path": "examples/proxy/.lando.yml",
+          "sha256": "eeaba21e2098afe263506fe818319c7855a0e2ef6f319eca40837695c2c15f0b",
+          "bytes": 3027
+        },
+        {
+          "path": "examples/rebuild/.lando.yml",
+          "sha256": "35f827bf60151dd09ea75e74502aeb9b67735fc9de72ef44a4b4e3cc6d69e17d",
+          "bytes": 666
+        },
+        {
+          "path": "examples/recipes/.lando.yml",
+          "sha256": "07fbc2586a8da2e7700f04d190f02f6abcaa788fda9fe862554ac3a9555cf412",
+          "bytes": 110
+        },
+        {
+          "path": "examples/release-channel/.lando.yml",
+          "sha256": "b4461a21dfe0529b0bca59e108e28443a6c11333a7f929e23182db1d7a439c4a",
+          "bytes": 599
+        },
+        {
+          "path": "examples/renderer/.lando.yml",
+          "sha256": "f6b8f0463b042155c5c9caf0328369a215d4029ec8e9f2116fef1dfbe3b537ee",
+          "bytes": 1295
+        },
+        {
+          "path": "examples/restart/.lando.yml",
+          "sha256": "15ee16c82d99b3f0368f50e4937f2d64687eb9cb36e4701950fb3c0749d13186",
+          "bytes": 591
+        },
+        {
+          "path": "examples/scanner/.lando.yml",
+          "sha256": "b0e479e0553144998b11c074ebb286c195d19160c2c6216c3856bcc124f8dab2",
+          "bytes": 2446
+        },
+        {
+          "path": "examples/security/.lando.yml",
+          "sha256": "05b50edcad16b2e74378fa342e7c7f30f551ee0afca14f9af13ed13fe4c5a1c4",
+          "bytes": 3371
+        },
+        {
+          "path": "examples/setup-linux/.lando.yml",
+          "sha256": "ebed59607517b5b6bab79a0da9b9bb94508febc9b1c68b17e6ffda0a8021f7bf",
+          "bytes": 408
+        },
+        {
+          "path": "examples/setup-macos/.lando.yml",
+          "sha256": "dee7005de5371718e0a6ff24f4ce90cfd9f25ad5ccea74604b230daaf62ea7e4",
+          "bytes": 408
+        },
+        {
+          "path": "examples/setup-windows/.lando.yml",
+          "sha256": "b3e718ed487e3e9bdef381d66e19f258f1bbad72cbe9d692f332f68029ae3cc0",
+          "bytes": 410
+        },
+        {
+          "path": "examples/sluggy/.lando.yml",
+          "sha256": "68f6303292ac0a78c5e2f2c4ce97679763d29a6314472be4da8ed325cf4c86da",
+          "bytes": 139
+        },
+        {
+          "path": "examples/sql-helpers/.lando.sqlhelpers.yml",
+          "sha256": "8693b87c8ff7bf935d353a60dc22a3f3ea004f34f66127110e25a23a62f4f83e",
+          "bytes": 3582
+        },
+        {
+          "path": "examples/ssh/.lando.yml",
+          "sha256": "077e4d95bde929a8978d3e7d4bd7ce2b03aadf5fef7ec61fd756ace7d2b00c61",
+          "bytes": 850
+        },
+        {
+          "path": "examples/storage/.lando.yml",
+          "sha256": "25117f40b2fd9b361ee87f64cedcdf0c9bb22ff1ac10ae33b908bc403b0661e2",
+          "bytes": 2606
+        },
+        {
+          "path": "examples/storage/app2/.lando.yml",
+          "sha256": "38b2875e12cdd91ed210f35829972ad94a30a0a1f4436523e063c93a33252129",
+          "bytes": 293
+        },
+        {
+          "path": "examples/tooling/.lando.yml",
+          "sha256": "cc3bf107046ae2789c402b82753863fde66945a20042198c1c53564798cb15f0",
+          "bytes": 6586
+        },
+        {
+          "path": "examples/version/.lando.yml",
+          "sha256": "debeae0ce984e955ce358b316d91e58310443e75f9bcf02b19a152ea5bdf1488",
+          "bytes": 638
+        },
+        {
+          "path": "examples/yaml/.lando.yml",
+          "sha256": "e5843b655f2bdfcb4a3901a568745af25c3b14a21aa7f272142d7316c2bc9605",
+          "bytes": 440
+        }
+      ]
+    },
+    {
+      "repo": "dotnet",
+      "url": "https://github.com/lando/dotnet",
+      "commit": "efb057343e507a9e6ee517685408d4f5630b1fd3",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "c493fb626ae5ea3280b0db1b9ba0bfc7f5a7e3010202662bf0a4854f4f0d9baa",
+          "bytes": 363
+        },
+        {
+          "path": "examples/2.1/.lando.yml",
+          "sha256": "fc457523c83666b052cd3f1420abe61d679d727ca1f8a38cdfa1a8233c5f6baa",
+          "bytes": 254
+        }
+      ]
+    },
+    {
+      "repo": "drupal",
+      "url": "https://github.com/lando/drupal",
+      "commit": "4ae3ca204b560361fb8feafd04cca4e603b90f85",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "6618d8fb3f51cc1a5deb53a06bba9d09c16e3c8a16f4b2461b8699b777251460",
+          "bytes": 363
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "d7d8b1aac68b9122dbdb4efb19125c382b86cf496b91a6843f9f2ae704aecf1a",
+          "bytes": 37
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "ec687cf60038964adab40b82e5f6d8de3537214f974443f4805eac1f99cfd8eb",
+          "bytes": 49
+        },
+        {
+          "path": "examples/drupal-custom/.lando.yml",
+          "sha256": "13fc0acf101816baf118b59f19c7206f47525ff7b62f94553c0eebf415b68c85",
+          "bytes": 322
+        },
+        {
+          "path": "examples/drupal-defaults/.lando.yml",
+          "sha256": "5495fd24603552cac48a8a201f3ed061785d24113a899feeec33aaf9d254e4e4",
+          "bytes": 95
+        },
+        {
+          "path": "examples/drupal-export/.lando.yml",
+          "sha256": "89b8bce0bb158f37e59039b3237eb7981a94972c2f60aa7d826c723c722ea5a0",
+          "bytes": 94
+        },
+        {
+          "path": "examples/drupal-import/.lando.yml",
+          "sha256": "920168c1f64ab5322753d734f165eb256a917083b0854f99945e447cd399f6cd",
+          "bytes": 213
+        },
+        {
+          "path": "examples/drupal-mariadb-mysql/.lando.yml",
+          "sha256": "2328c5dd6363e4d5ae40b48961684b2a6518d1f0878550d6c3c0f9b350cbea47",
+          "bytes": 173
+        },
+        {
+          "path": "examples/drupal-mariadb/.lando.yml",
+          "sha256": "a5ad14c2ae45e956959dce5fd6509496c8ddc0f83fb2198f89c20e3c11768bbf",
+          "bytes": 167
+        },
+        {
+          "path": "examples/drupal-nginx/.lando.yml",
+          "sha256": "e472f46b10148349a00c693146dcdf233496f3a509a941cebc956c78f2c85391",
+          "bytes": 187
+        },
+        {
+          "path": "examples/drupal8/.lando.local.yml",
+          "sha256": "0506c7b6a2a52c2965c38eb6e667987093af2c78753cc392b2c03056d9a63a32",
+          "bytes": 398
+        }
+      ]
+    },
+    {
+      "repo": "elasticsearch",
+      "url": "https://github.com/lando/elasticsearch",
+      "commit": "c1db8626ff539c7bce97fddc269a70386dae0972",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "89eee9bd4c15930c397f0694f825a2db85e5bab32ac5b9ab8c0c8437616b3e06",
+          "bytes": 377
+        },
+        {
+          "path": "examples/5.x/.lando.yml",
+          "sha256": "7526bde0fb99316231821d4e5277f6184c3700c07534963118e918aa8ed05f17",
+          "bytes": 267
+        },
+        {
+          "path": "examples/6.x/.lando.yml",
+          "sha256": "227a72473ba1b4e211ef54e684bea03e83923d94c6c5ff48ffb1a48d29b7ecc1",
+          "bytes": 267
+        },
+        {
+          "path": "examples/7.x/.lando.yml",
+          "sha256": "dc2fa78dd3dd0e76fdab7739b1ed0484ba35abdb2a911b6f2ae7581ff9c923dc",
+          "bytes": 267
+        },
+        {
+          "path": "examples/8.x/.lando.yml",
+          "sha256": "e1e7c495ab50dd537e118a7c4babe7593085be44fa13b4b0afa549a71ac84784",
+          "bytes": 267
+        },
+        {
+          "path": "examples/9.x/.lando.yml",
+          "sha256": "8e0165f2337346088f102c157cf1aac7492f207d576f2c5339b716bcc0e6baec",
+          "bytes": 266
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "7e2bfafc6da0a86d0dc0df724f5191c0d900b5079d2921acf50c74f6a6bd6f8a",
+          "bytes": 338
+        }
+      ]
+    },
+    {
+      "repo": "go",
+      "url": "https://github.com/lando/go",
+      "commit": "cad86c8654caef0e437dca66ebb5a4362f1bda89",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "04a7360a9827f36dfa22f90f725def4172d39fe67eff0a979cfb49ad8ee50c94",
+          "bytes": 359
+        },
+        {
+          "path": "examples/1.x/.lando.yml",
+          "sha256": "9a9867d22e580c0dfcf420704cea3e3bb8ec33c8d37d964563fa63a7cdb7ec00",
+          "bytes": 287
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "9f14fc65520977021ed2e4700ab4bb38ab3de9f6dd2d4abaea940baa81a026be",
+          "bytes": 245
+        }
+      ]
+    },
+    {
+      "repo": "joomla",
+      "url": "https://github.com/lando/joomla",
+      "commit": "3c12e4be18050f2fe631496169571a9b4a062093",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "3cf0b17fd7994c41358f08aec699c1f291524e04bd3c4b2c5a383a8da9072ae8",
+          "bytes": 363
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "ef061d729a7d31d1cdb4cb6d6621a8844bfc2bc12d4df33e6c1976b0cb55b418",
+          "bytes": 37
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "f03352456a5e0c5d2528e429a0f294710e9918deae06177a90d4bb1e80b7fda3",
+          "bytes": 49
+        },
+        {
+          "path": "examples/joomla-custom/.lando.yml",
+          "sha256": "4da3f022685149e994f29ad25f26d93e8eb78aabe9fa9e6a3331dcedd9d51673",
+          "bytes": 372
+        },
+        {
+          "path": "examples/joomla-defaults/.lando.yml",
+          "sha256": "4b05ece7d292567be5781b0644e996d1006a4312182ccbb0f51af890bb5b938d",
+          "bytes": 93
+        },
+        {
+          "path": "examples/joomla-downstreamer-1/.lando.yml",
+          "sha256": "a338e153d9575e7b685a6d72090b8066f212875f03ac432763f4fa21e88556fc",
+          "bytes": 192
+        },
+        {
+          "path": "examples/joomla-downstreamer-2/.lando.yml",
+          "sha256": "295744bdc3e9a34b13d3a3362c8f95eff44e2d27f94a091a96c07e2fc81ca39c",
+          "bytes": 199
+        },
+        {
+          "path": "examples/joomla-export/.lando.yml",
+          "sha256": "9ffe2e349f8c11321da9f8491a10b0c8b346359064a9b4991b0eff13f6f39f7d",
+          "bytes": 92
+        },
+        {
+          "path": "examples/joomla-import/.lando.yml",
+          "sha256": "4fca3b71efc8af535e4fc133af121b00db65d4a8dfc2684cf14b3755f7f8e7c1",
+          "bytes": 211
+        },
+        {
+          "path": "examples/joomla-mariadb-mysql/.lando.yml",
+          "sha256": "fe3856a2f49c219987613eff9f086fd4a095fb610b508e495ae991b79e423724",
+          "bytes": 157
+        },
+        {
+          "path": "examples/joomla-mariadb/.lando.yml",
+          "sha256": "64863995fa933bd15e52c4bfb21f4cb11eeefd7d52fadc2d621a394a43909380",
+          "bytes": 151
+        },
+        {
+          "path": "examples/joomla-mysql8/symfony-mysql8/.lando.yml",
+          "sha256": "4fef45f71d0364e2e89e914e6c64cbd69c5290b922d2c572e16bf1855ba66d46",
+          "bytes": 150
+        },
+        {
+          "path": "examples/joomla-nginx/.lando.yml",
+          "sha256": "c750ceae190cddd0a623c821d56d7d4d146fca95f9cd54cd64670e1c38282ac3",
+          "bytes": 186
+        }
+      ]
+    },
+    {
+      "repo": "lagoon",
+      "url": "https://github.com/lando/lagoon",
+      "commit": "380f69c4c21afc913049a264db6b5679165f68d5",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "7d1f9564cdd6cddfef2997f9326293c97788f7814314a2957a4f585c722fa820",
+          "bytes": 363
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "c3a06b42037909351f2d6a77c3e2dd6a8e6ff88ace26619c411c348287aae4e3",
+          "bytes": 37
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "c64834b89e2d9433de5bc03f66ab00bd5a91d4b012aa84742857a357cd194bc5",
+          "bytes": 61
+        },
+        {
+          "path": "examples/all-services/.lando.yml",
+          "sha256": "65cdcd3f9850a26292b2f2899544e48b8a51baca568b09c066d3a9a4593553fb",
+          "bytes": 480
+        },
+        {
+          "path": "examples/proxy-tests/.lando.yml",
+          "sha256": "3fc3fddf2a8e155682141c9327cf28ec7875c5f85c0180eb93d69f86d2d9223b",
+          "bytes": 424
+        }
+      ]
+    },
+    {
+      "repo": "lamp",
+      "url": "https://github.com/lando/lamp",
+      "commit": "a30a9a755e26f7c9e2a28cd8d1c71adaa0606792",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "3a95aff5c1617a6755fcc3ca7c29acec8a97850a66e593a4b5ccc85f09a6220f",
+          "bytes": 359
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "14518dcb5739e6b62ca1b497d12fc778c0b6c9704d0df3193dbb6f71cc220cc8",
+          "bytes": 35
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "b566e902a77e905b14e8ee7b45bb69cb63eb3bf45e4641526e0571a366e00671",
+          "bytes": 57
+        },
+        {
+          "path": "examples/lamp-custom/.lando.yml",
+          "sha256": "a7f9a5fd4c2c6d9e7d1ae7a575a4b769d19c59c6e78e6effe5c4cccee16776e6",
+          "bytes": 463
+        },
+        {
+          "path": "examples/lamp-defaults/.lando.yml",
+          "sha256": "a1df8be706a1ee37eab7cabc75db95d7954b1f80dedcc6af08c0396789cf7bae",
+          "bytes": 87
+        },
+        {
+          "path": "examples/lamp-downstreamer-1/.lando.yml",
+          "sha256": "9a3fab41f80cfbab9ce00afb60517e06030584cc416a4fa77fc06e1dbd573284",
+          "bytes": 186
+        },
+        {
+          "path": "examples/lamp-downstreamer-2/.lando.yml",
+          "sha256": "709d739d93e759fcbf8322f1fee129c69e117f0547fde451764089cc591777e3",
+          "bytes": 191
+        },
+        {
+          "path": "examples/lamp-export/.lando.yml",
+          "sha256": "421fd3bdc456364888ef6270817f6a8e51f7c6aca7ed8c0d5a2987aeced0e391",
+          "bytes": 86
+        },
+        {
+          "path": "examples/lamp-import/.lando.yml",
+          "sha256": "2a0aa79fa727d4c4f500c04d6a60e552002684e04f0f8ef24be04d8ee972ba2a",
+          "bytes": 205
+        },
+        {
+          "path": "examples/lamp-nginx/.lando.yml",
+          "sha256": "624c9fb6037ad57211f88e93a62fa845cf161b797a7572292722bd237471c514",
+          "bytes": 180
+        }
+      ]
+    },
+    {
+      "repo": "laravel",
+      "url": "https://github.com/lando/laravel",
+      "commit": "73db75f7f8ed7ef64fc77ed1fd618c1b8feafb22",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "7a950674a126bb94e959d594715e9fde34ad89525e1d1833fd86fc518afaa068",
+          "bytes": 365
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "0680dcd813096a249dcc802d0b8260f8a8c22b4819e168c868610669c77193cd",
+          "bytes": 38
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "d7657257e50cd6d462b248f0e4f2db8f26d48d0fb2983d2a5b033bcf5b676a71",
+          "bytes": 60
+        },
+        {
+          "path": "examples/laravel-custom/.lando.yml",
+          "sha256": "29c9d3447205d699bfd817d029795892cf30b490fc2d7dab1c99797772487fe5",
+          "bytes": 501
+        },
+        {
+          "path": "examples/laravel-defaults/.lando.yml",
+          "sha256": "c3ad200059041e241f71c3653b8aad2ae6199956da5df10b414b801c174e032f",
+          "bytes": 96
+        },
+        {
+          "path": "examples/laravel-downstreamer-1/.lando.yml",
+          "sha256": "3a7c7543ff089a7ade22137136eb8a2c50f2a77390fff0e43c172ce095dbe2e1",
+          "bytes": 195
+        },
+        {
+          "path": "examples/laravel-downstreamer-2/.lando.yml",
+          "sha256": "46007dffcfe561ce3a286daad08a6262f1886edb4010680a934b694f58177533",
+          "bytes": 203
+        },
+        {
+          "path": "examples/laravel-export/.lando.yml",
+          "sha256": "307bb53cccd01bd2555e5df0c627e563aa1e13a7071520c4a229898cef20a623",
+          "bytes": 95
+        },
+        {
+          "path": "examples/laravel-import/.lando.yml",
+          "sha256": "0d5cbdb3195e93d0049adb61ba848dd62f27e4f605cdb11c94f360affe9b445a",
+          "bytes": 214
+        },
+        {
+          "path": "examples/laravel-nginx/.lando.yml",
+          "sha256": "e8618570dcd4d8a72028d48c565fcc232e18ae97f363e3e0a38a2eec448750a7",
+          "bytes": 189
+        }
+      ]
+    },
+    {
+      "repo": "lemp",
+      "url": "https://github.com/lando/lemp",
+      "commit": "cf413cf4f4e11ad44586db4dcbefdd3672dcaa37",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "994d054186933e7a6f41611915747625108ddadca7e6d2c9411e71c074567c78",
+          "bytes": 359
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "a58955bda54887413be026c552497200535e31d692e4392e716a4701fbbe6f98",
+          "bytes": 120
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "b566e902a77e905b14e8ee7b45bb69cb63eb3bf45e4641526e0571a366e00671",
+          "bytes": 57
+        },
+        {
+          "path": "examples/lemp-custom/.lando.yml",
+          "sha256": "f5d762658ff5c35b4ad86db590278614a60689c7690e3a3404b43347dd7589cf",
+          "bytes": 462
+        },
+        {
+          "path": "examples/lemp-defaults/.lando.yml",
+          "sha256": "9e111ae40a7679fd43dcdc373942219eb93c6c9e7d29a48bc70b3cee03667388",
+          "bytes": 172
+        },
+        {
+          "path": "examples/lemp-downstreamer-1/.lando.yml",
+          "sha256": "49ede834ceb100c64178bba11282d9e57c75f57148ff5b6920a1a1f6d4d0f176",
+          "bytes": 186
+        },
+        {
+          "path": "examples/lemp-downstreamer-2/.lando.yml",
+          "sha256": "77a519be8531064cddddc37c8d9318eb5e80f0438fb37eda4797000256ce11ee",
+          "bytes": 191
+        },
+        {
+          "path": "examples/lemp-export/.lando.yml",
+          "sha256": "e7f95c90be564104b19588d6914c910389ff35852de0b4d3b82971ba6cec0bfb",
+          "bytes": 86
+        },
+        {
+          "path": "examples/lemp-import/.lando.yml",
+          "sha256": "6559e3f06d6c64c604eb2ccc18f81a856a4e24746d0ae5a30db46ce2ca17e3cd",
+          "bytes": 205
+        },
+        {
+          "path": "examples/lemp-nginx/.lando.yml",
+          "sha256": "ecca7166681196e9aa343dfc55ffcfef9f3c05b321be5671a4b7098081ecd6bb",
+          "bytes": 185
+        }
+      ]
+    },
+    {
+      "repo": "mailhog",
+      "url": "https://github.com/lando/mailhog",
+      "commit": "f74a809f68ef3ed3a14b8c44a178b9a6353c6d3d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "ff2206b877b74ecc0669e2cb7a65e2f48519e20aa2155a09c643b170adf4a435",
+          "bytes": 365
+        },
+        {
+          "path": "examples/mailhog/.lando.yml",
+          "sha256": "f2ba1aefe6b3a2d19271a912221ac5b400c051de686f6ea98f7b8dcbc1e31450",
+          "bytes": 292
+        }
+      ]
+    },
+    {
+      "repo": "mailpit",
+      "url": "https://github.com/lando/mailpit",
+      "commit": "152873510a90640201385c4d85aeecef188700cd",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "27e34834178407f8d135679947af72db09e889e98c0fab791676244aed8293c0",
+          "bytes": 227
+        },
+        {
+          "path": "examples/advanced/.lando.local.yml",
+          "sha256": "ead85b15338b8c37cc4ffa97ca9feea179fd32844671c5c5df5cd221557a61ec",
+          "bytes": 157
+        },
+        {
+          "path": "examples/advanced/.lando.yml",
+          "sha256": "48ac8259202eee510cc9bd5b6f8738ea591db7537ebc161c9a155aa7186b8169",
+          "bytes": 228
+        },
+        {
+          "path": "examples/basic/.lando.local.yml",
+          "sha256": "ead85b15338b8c37cc4ffa97ca9feea179fd32844671c5c5df5cd221557a61ec",
+          "bytes": 157
+        },
+        {
+          "path": "examples/basic/.lando.yml",
+          "sha256": "d76fa04d8375c5817b0da0d529447a51756c8954fa73ec8430cb6da3a7954a74",
+          "bytes": 95
+        }
+      ]
+    },
+    {
+      "repo": "mariadb",
+      "url": "https://github.com/lando/mariadb",
+      "commit": "800d0dc829ac45d0632e9cbce1a5f5dbf62d8854",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "ab399052cc98469934a812d6327529916c019d14c72b41065b05d224f6aec4e4",
+          "bytes": 365
+        },
+        {
+          "path": "examples/10.1/.lando.yml",
+          "sha256": "bb358f4c5350113557063ed7d4fe69ba8b120ead43c33eb3a5e884f32b01992d",
+          "bytes": 249
+        },
+        {
+          "path": "examples/10.10/.lando.yml",
+          "sha256": "9d7e4834da95c5e86b767309c6e8292b2d85fddfac64043d9d09e6a55d20c536",
+          "bytes": 315
+        },
+        {
+          "path": "examples/10.11/.lando.yml",
+          "sha256": "c51c6a581e4f7b78da5148225f564bba9f0a6a452878bd6b3f139656a37c0741",
+          "bytes": 315
+        },
+        {
+          "path": "examples/10.2/.lando.yml",
+          "sha256": "47b104b7f27dede1140e12a766175f4d4fd319faaa99ee70ea68425f5b586166",
+          "bytes": 249
+        },
+        {
+          "path": "examples/10.3/.lando.yml",
+          "sha256": "7e97742081e507a3c022080e21c3fb2d773f1f2556d15f6edccaaf7a66f91e3c",
+          "bytes": 249
+        },
+        {
+          "path": "examples/10.4/.lando.yml",
+          "sha256": "6404630793ca902db32f3259dd873b85f5d8779ca7ee35b8f007ecbaaad82d8a",
+          "bytes": 249
+        },
+        {
+          "path": "examples/10.5/.lando.yml",
+          "sha256": "2f75fe53fda3888633d2a453e9bebf63e353f92285ff9a9353c0021b462abd53",
+          "bytes": 249
+        },
+        {
+          "path": "examples/10.6/.lando.yml",
+          "sha256": "77442515d28fa47270a9e62b16bbcd8d43c8d336abc01af36f4522a7e13162ae",
+          "bytes": 312
+        },
+        {
+          "path": "examples/10.7/.lando.yml",
+          "sha256": "e80cb59027579cd1b0ab69a46544fa94b71ec1380229fb8fa74012b9aa4e33be",
+          "bytes": 312
+        },
+        {
+          "path": "examples/10.8/.lando.yml",
+          "sha256": "e55d9af18711b2484e6b2a49785906899ee452f0aad6357ff01bbe0364d5d62b",
+          "bytes": 312
+        },
+        {
+          "path": "examples/10.9/.lando.yml",
+          "sha256": "55aa4237100b32768013008e12c73bcba095e6f50039873be865d66f61b4b00a",
+          "bytes": 312
+        },
+        {
+          "path": "examples/11.0/.lando.yml",
+          "sha256": "5ce7834f12e5a7013dc57a7ca0d832e5c151beea7ecd198472929cfca8e9e383",
+          "bytes": 312
+        },
+        {
+          "path": "examples/11.1/.lando.yml",
+          "sha256": "29cb4229190540bbaaf7295d30e6249a23d7f1cb57155bfced5ea3b226f09512",
+          "bytes": 312
+        },
+        {
+          "path": "examples/11.2/.lando.yml",
+          "sha256": "0f5dbfbaeba7d1d69bed98058f2dc2218c594f5cbcf3243ead6fea7c44025fc7",
+          "bytes": 312
+        },
+        {
+          "path": "examples/11.3/.lando.yml",
+          "sha256": "d166f34bd1e9717c7daf3239cbab7090492d47c0272047220923aa6feaa5afb8",
+          "bytes": 312
+        },
+        {
+          "path": "examples/11.4/.lando.yml",
+          "sha256": "aa276700204b1b50051e589acc6088518f2ff0315d970ed77ceb95daa8dd30e1",
+          "bytes": 314
+        },
+        {
+          "path": "examples/11.5/.lando.yml",
+          "sha256": "2be0ff15b1df7509ca7b7551bad60ff4c1bc3c3dbec3c8ebd5262626395a34b1",
+          "bytes": 314
+        },
+        {
+          "path": "examples/11.6/.lando.yml",
+          "sha256": "7908ed099f28aa4060a62f636bcc3faa9d0ed68ec473942b54abf97a201e1e19",
+          "bytes": 314
+        },
+        {
+          "path": "examples/11.7/.lando.yml",
+          "sha256": "7a3b3e680e98fc89459c627452c6a10c6723e0b8903d0c04dcb71c9cf516f733",
+          "bytes": 314
+        },
+        {
+          "path": "examples/11.8/.lando.yml",
+          "sha256": "28fa5a63f11b4f458ceca7b0c1a011d0831940d08522558ace26ee77132a6d83",
+          "bytes": 314
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "8ebfaaf4aa1660cec43d273eb17c615383358febdd648a04d321324074600ab2",
+          "bytes": 661
+        },
+        {
+          "path": "examples/tooling/.lando.yml",
+          "sha256": "ce64b1911799746988deaf8a3c673d56753217b312832f2eb9ac656fb737caa4",
+          "bytes": 512
+        }
+      ]
+    },
+    {
+      "repo": "mean",
+      "url": "https://github.com/lando/mean",
+      "commit": "ffb2e9ebefa81e98258d134710b3c57cfc049aa1",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "bff950e07c183f820171b9fcf0baf9ae6e5f3dffd46b0a5992971b530fdcf099",
+          "bytes": 359
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "cbd3dad832280dc53426fdf0aedd9ac834ec3a0a2737f7a261e180b07c036c25",
+          "bytes": 35
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "9dfe67f497b32176add68b7e280c601cd571c64e7a7d8ec31891c767020bf702",
+          "bytes": 57
+        },
+        {
+          "path": "examples/mean-custom/.lando.yml",
+          "sha256": "4bc2f336d5bb7fe82a6fb619bbb54c04e981653f187ec40009e6689a660ec06e",
+          "bytes": 185
+        },
+        {
+          "path": "examples/mean-downstreamer-1/.lando.yml",
+          "sha256": "407fc33ff798392cb8ab87d151e2792638ede7866fe1ea2f888c28e89ee60a8b",
+          "bytes": 254
+        },
+        {
+          "path": "examples/mean-downstreamer-2/.lando.yml",
+          "sha256": "10f25016926514e9b9335cef36ad2a9736c57ab13ec4f15d4a1c8a2961a53e63",
+          "bytes": 260
+        },
+        {
+          "path": "examples/mean-mysql84/.lando.yml",
+          "sha256": "894fb7de6b21b9f51c26564e8f2ce7c5dd1416e52c7343f7259cc395b633b16b",
+          "bytes": 223
+        }
+      ]
+    },
+    {
+      "repo": "memcached",
+      "url": "https://github.com/lando/memcached",
+      "commit": "c817076f2c316ead76768f58e0e7d4cb39b13374",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "e0da371f57641fb6d55209567108aee8ada18a66d18a4f52de83d4a791dd26cc",
+          "bytes": 369
+        },
+        {
+          "path": "examples/1.x/.lando.yml",
+          "sha256": "4657b4c808d6dd610e19c126736bf06ef0e1272bb7d619c356671bfbd3cc5098",
+          "bytes": 249
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "66b736a6302f8d275f237e303763f8f3e6651a0309f201e9eba8a6fb94d8df3f",
+          "bytes": 251
+        }
+      ]
+    },
+    {
+      "repo": "mongo",
+      "url": "https://github.com/lando/mongo",
+      "commit": "87daeadff485710f7ac25f2944be8d268a24a6f7",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "101a9cf5d954f668870c85ed4d5c6719f4de4a85c6a2cb47ca952cf03f0fe2fe",
+          "bytes": 361
+        },
+        {
+          "path": "examples/3.x/.lando.yml",
+          "sha256": "43120eae3e2f2e2e96bc6ba6c9c2b7f3eb07d926411098249cf69e64194b66e2",
+          "bytes": 277
+        },
+        {
+          "path": "examples/4.x/.lando.yml",
+          "sha256": "38a1da90d75a45586ab59341688955048ec80bb5e98f63c7232c8d91963e87e7",
+          "bytes": 277
+        },
+        {
+          "path": "examples/5.x/.lando.yml",
+          "sha256": "88980ed35add3f68712be93f04bff8b331a7dfba4197888e7b29c31a23c2edcf",
+          "bytes": 276
+        },
+        {
+          "path": "examples/6.x/.lando.yml",
+          "sha256": "854624e37293f6001dd1d9d64bd85f072293c3ffbce19e076fea49464d5e04d1",
+          "bytes": 278
+        },
+        {
+          "path": "examples/7.x/.lando.yml",
+          "sha256": "dfc72f90e28f0ed0c90adfd0f334f4f4295898397bd150b4c94dd6d73fd2c12d",
+          "bytes": 278
+        },
+        {
+          "path": "examples/8.x/.lando.yml",
+          "sha256": "090f3b08bd3fc3a1ce2ddf335d3b5e847ade9d199ba644d773f85345e18a93bb",
+          "bytes": 278
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "ab939e4fa17343a1e4625a2a35ebd5e291608a7cf79b64242d39e6ee593d3e43",
+          "bytes": 263
+        }
+      ]
+    },
+    {
+      "repo": "mssql",
+      "url": "https://github.com/lando/mssql",
+      "commit": "d86dc9770cf1c1880b807aafaddca1ec7e0408f2",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "b6054bb3626adaf7e8b2b811c0b17e381c96d4c20b422461de829a1275306b9b",
+          "bytes": 361
+        },
+        {
+          "path": "examples/2017/.lando.yml",
+          "sha256": "20b94e2e100e0e172fa04b89a7be7a9566564feb6912db2265cc971e96f47fdb",
+          "bytes": 206
+        },
+        {
+          "path": "examples/2019/.lando.yml",
+          "sha256": "bd464a81f41ecc97be5c2b0779fdcafab9a788014d814fb95bec50db41435a45",
+          "bytes": 218
+        },
+        {
+          "path": "examples/2022/.lando.yml",
+          "sha256": "61e4b2e9775c78543c262239c0f750e4c783b5c391a4366466a99be248796482",
+          "bytes": 219
+        }
+      ]
+    },
+    {
+      "repo": "mysql",
+      "url": "https://github.com/lando/mysql",
+      "commit": "c9117c0ebbfc9a3b45d5f3fcab61c85b1f697a71",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "8be0fb1cde11d37f98319d8cc03d0895a7981c68523eaf14bc094ba087583b24",
+          "bytes": 361
+        },
+        {
+          "path": "examples/5.7/.lando.yml",
+          "sha256": "1d4e8463ced36916c812a2b206d7ad6f71da4bd8e48e34698e72a11e28cf3442",
+          "bytes": 234
+        },
+        {
+          "path": "examples/8.0/.lando.yml",
+          "sha256": "f75fc8b12e3ce7f8b21281dcfd1a29eb6ade6b9bb4a757c5a015d57de233243c",
+          "bytes": 238
+        },
+        {
+          "path": "examples/8.4/.lando.yml",
+          "sha256": "7eb2306ffc75663f738ef4b204bda6d6afb87b2e80f11019166851db8d333785",
+          "bytes": 237
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "4c7c0001119183162fdb1e56be4f13443199b57bfbeafe195f2952cc6c495390",
+          "bytes": 830
+        }
+      ]
+    },
+    {
+      "repo": "nginx",
+      "url": "https://github.com/lando/nginx",
+      "commit": "4db3a3c4441bb1016dbccc4c4d6ad2cc704130b5",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "02cac0d7390ca4368fe503abed3adb82d1a9eab7bc44561dee930b04cdab6309",
+          "bytes": 361
+        },
+        {
+          "path": "examples/1.16/.lando.yml",
+          "sha256": "9402222c9474d5c6c1210213e6c622c9542e886a1dfd9c44c8f196b0ef2661d3",
+          "bytes": 240
+        },
+        {
+          "path": "examples/1.17/.lando.yml",
+          "sha256": "04ad0a61b8b1a399b9de092f646335ab7a7a5ce61bcbf6482d18f07e27654a55",
+          "bytes": 241
+        },
+        {
+          "path": "examples/1.18/.lando.yml",
+          "sha256": "1eef5962bc8f7597d7622f2db42a54e75d5f8bac00fe28c91ae9d5ad08553f4a",
+          "bytes": 208
+        },
+        {
+          "path": "examples/1.19/.lando.yml",
+          "sha256": "c880480dd3f13d1ed4ca62340280333a227f7d9ec941e70b9254230de3592d5b",
+          "bytes": 208
+        },
+        {
+          "path": "examples/1.20/.lando.yml",
+          "sha256": "4e859e0c783c154545c2598a8556d89af410e49c7dc380945af9c96f8247dadb",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.21/.lando.yml",
+          "sha256": "1afad5a67e3b7102341b9cfc1d00aa2071be9919e8e2fa24209f485cf64e6bd7",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.22/.lando.yml",
+          "sha256": "d16e2c097a5a7ba7482859620e6997d803034ab678bfd0fecd932b8dae5d6d43",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.23/.lando.yml",
+          "sha256": "7e95eebb2d87719f1cae088072e71a78d2c4712e658c0490ee47aa88889e9839",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.24/.lando.yml",
+          "sha256": "a53c9e2be1100af52a3f85840fb70e536adae7eccc370b041e5580d8889a677b",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.25/.lando.yml",
+          "sha256": "1802c3efc054430b31da0025724992ed1fc918a18ed30f4bbed3cc8ef0b7290f",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.26/.lando.yml",
+          "sha256": "45e9ba31e1a462c83185307cfad7d864165b28678ce7c2184b36567d53a7ce45",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.27/.lando.yml",
+          "sha256": "755c8bc81078150b5888810054a61394c9a00b6c7d8c6d46a1e63b5edbf57262",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.28/.lando.yml",
+          "sha256": "880f896a5ae2a376436df11d2b6b2edb4b9a3fa66c318e6bae84d33ef18eb042",
+          "bytes": 277
+        },
+        {
+          "path": "examples/1.29/.lando.yml",
+          "sha256": "5e4ca31754b43682920f4120d33909cb831b74061a641b7f7105a9cc42311e42",
+          "bytes": 497
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "8bca401b7780a4b23cb3bca6c60bf804232973b3ad76d4cf2c2713157b0d6d9f",
+          "bytes": 589
+        }
+      ]
+    },
+    {
+      "repo": "node",
+      "url": "https://github.com/lando/node",
+      "commit": "eb04606f4829bc8ebfa1706ad83e4c7f153bd038",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "a72711ec79ea8555eac2a5d1d4d72b6f6f62cf3eeff4825ee7568cbd8d8b7d2b",
+          "bytes": 359
+        },
+        {
+          "path": "examples/10/.lando.yml",
+          "sha256": "26fef02137ef71676b29576e58ab29582749a4249a340fad917312f7ce6265fc",
+          "bytes": 755
+        },
+        {
+          "path": "examples/12/.lando.yml",
+          "sha256": "121c6154fb7ffc6c07caba816cb55fa0ccc17871bb839711f08f1a35f1786dce",
+          "bytes": 862
+        },
+        {
+          "path": "examples/14/.lando.yml",
+          "sha256": "4d820fb529929268185bd996726b032700f53af008075581fccfa1b186eb686e",
+          "bytes": 863
+        },
+        {
+          "path": "examples/16/.lando.yml",
+          "sha256": "23e112b6025704e5f9454b1802c88d8113bff1168d932de17a4542bc6e2ea071",
+          "bytes": 868
+        },
+        {
+          "path": "examples/18/.lando.yml",
+          "sha256": "00d53414e26b8577e2b9aa2606e1b3fb122671315cce5670d4e0b1576baf962d",
+          "bytes": 868
+        },
+        {
+          "path": "examples/20/.lando.yml",
+          "sha256": "add3c4d9c487ffa1adfd5adbd6ceb3fdbe20a17e604bd47897aa882a88f30f02",
+          "bytes": 856
+        },
+        {
+          "path": "examples/21/.lando.yml",
+          "sha256": "45d6f0a6be9f99d837678dc7d2a12799405448b5af3f3553764339cabce35ed0",
+          "bytes": 856
+        },
+        {
+          "path": "examples/22/.lando.yml",
+          "sha256": "a659c84502698629c19b127a5dad63aaac8b9ee733da30a8e1b20ef5df9a8683",
+          "bytes": 856
+        },
+        {
+          "path": "examples/23/.lando.yml",
+          "sha256": "e21f73a59b11741437d8aae70604d868c2b8e66bc0f4d08ea00cd2fcf633f679",
+          "bytes": 856
+        },
+        {
+          "path": "examples/24/.lando.yml",
+          "sha256": "87e0cfdb6bf1cd28edece1e44dcf9d1816aa919d468da7bd558adff8df9a1a28",
+          "bytes": 856
+        },
+        {
+          "path": "examples/25/.lando.yml",
+          "sha256": "b80403ec27b8010b46335beb7c052318958d88b4ed4a655c178af3b4706705e1",
+          "bytes": 856
+        },
+        {
+          "path": "examples/26/.lando.yml",
+          "sha256": "88c6be93fddf0e502356c69f2b17cb563085e1c7eb7a31b20baee6611034bba6",
+          "bytes": 877
+        }
+      ]
+    },
+    {
+      "repo": "pantheon",
+      "url": "https://github.com/lando/pantheon",
+      "commit": "3032fcd6ea9d5413d4a6974705ff1f85fb5d05e5",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "6cef9ecdf45edc78d63f06297cedf7f4e52db656cfbfa5d7738530df0c25d112",
+          "bytes": 367
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "8de0b955b15f1c634596464e0b1051ba2631440dd6697c22f9079bd260e06d60",
+          "bytes": 39
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "c64834b89e2d9433de5bc03f66ab00bd5a91d4b012aa84742857a357cd194bc5",
+          "bytes": 61
+        },
+        {
+          "path": "examples/frontend-build/.lando.yml",
+          "sha256": "d2c3dbe8bcd7316c56b5af8c48a3e1dd29981aa876856cb10faae4b1b3ee258a",
+          "bytes": 317
+        },
+        {
+          "path": "examples/pantheon-downstreamer-1/.lando.yml",
+          "sha256": "351c9b24baa6b4298f47f01067f7d74f528490df1b09777fc2eb3635fa7eab2e",
+          "bytes": 205
+        },
+        {
+          "path": "examples/pantheon-downstreamer-2/.lando.yml",
+          "sha256": "8f565e0455c1299aa2612216cfd6b5ae07edf6bd66155fe846a2af16d1de52a4",
+          "bytes": 214
+        },
+        {
+          "path": "examples/pantheon-drush-uri/.lando.yml",
+          "sha256": "68cffdb100f889b5c35ed4728f9b6c05c3ab6a9299ffc2f7da12b2cd8969e479",
+          "bytes": 220
+        },
+        {
+          "path": "examples/pantheon-php-warning/.lando.yml",
+          "sha256": "d5010dad9e6a2a628bc512c73030ed5829b0f72639146ac8387b32c06f833628",
+          "bytes": 260
+        }
+      ]
+    },
+    {
+      "repo": "php",
+      "url": "https://github.com/lando/php",
+      "commit": "e9cb197b2c0a956eeff0f08a121968269647b450",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "558113370a99c415494b788a00bd8796841d8dc85abbefa8b9409379e6b63bde",
+          "bytes": 357
+        },
+        {
+          "path": "examples/5.6/.lando.yml",
+          "sha256": "6ae09e0ca5935393100a394bbf2cd459e13625745720b0731ff33cf660966984",
+          "bytes": 1049
+        },
+        {
+          "path": "examples/7.0/.lando.yml",
+          "sha256": "117124260119a3dc233e687157f5e9938933b075f33a9534b21b141b6d37a96c",
+          "bytes": 1404
+        },
+        {
+          "path": "examples/7.1/.lando.yml",
+          "sha256": "27e4ae38ef65ea7c2a0bd53f0a72d59c9a2b5209bc327dd1ed7cf923aeb3f1ce",
+          "bytes": 1278
+        },
+        {
+          "path": "examples/7.2/.lando.yml",
+          "sha256": "e35e965d1f5b873e4974dfc4f3f38791aafdb199697182f395cf93af3cfd2814",
+          "bytes": 1278
+        },
+        {
+          "path": "examples/7.3/.lando.yml",
+          "sha256": "1c8df88629fc02634d690f1df124175daafe5e283552fc1770ff5a13bf154499",
+          "bytes": 1254
+        },
+        {
+          "path": "examples/7.4/.lando.yml",
+          "sha256": "29db7d393baf8cee6931f67ad7c784c6a4c9549e0d15b6dcddd71b695efb558e",
+          "bytes": 1410
+        },
+        {
+          "path": "examples/8.0/.lando.yml",
+          "sha256": "dbde75e5015f24f16108ee31df9e8133892441c59d0a36b27b8cdfe4e5b07e4f",
+          "bytes": 1379
+        },
+        {
+          "path": "examples/8.1/.lando.yml",
+          "sha256": "5faa6239e5a7a6e2d37479a3527ddd08f9306e40cf60b4c7e7909de85f32d54a",
+          "bytes": 1254
+        },
+        {
+          "path": "examples/8.2/.lando.yml",
+          "sha256": "963690e72d06ee27657a9dbccb9450a0e1b15e343f424d80f42b8ebecfa35620",
+          "bytes": 1254
+        },
+        {
+          "path": "examples/8.3/.lando.yml",
+          "sha256": "16afa3a41c005a885bd8e93331b78946c2044e5506bf658aec5e88895fc0d54f",
+          "bytes": 1253
+        },
+        {
+          "path": "examples/8.4/.lando.yml",
+          "sha256": "0d2d9d17651a0eeb7cfd842e9fbca6ed49b61bf2da7b1e7829123bc8be597ba6",
+          "bytes": 1236
+        },
+        {
+          "path": "examples/8.5/.lando.yml",
+          "sha256": "8d5808917cfb05a091e2ea41ce4bcb619538f3cb6a3042a4a0c0b1568f3fa176",
+          "bytes": 1236
+        },
+        {
+          "path": "examples/build-fail/.lando.yml",
+          "sha256": "cc4faf6db8769f79470eafdc053506324e531c386536f3e2a09034b94489bb08",
+          "bytes": 341
+        },
+        {
+          "path": "examples/composer/.lando.yml",
+          "sha256": "23b72127cca61b11ae612cbf98373d1200ebed55a217ed1bca04824ca90728a8",
+          "bytes": 1010
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "236fc375c6c6d67c5d4f63b79e96c76faf13035d49dd59ea234d2a160f489ccb",
+          "bytes": 749
+        },
+        {
+          "path": "examples/db-client-mysql/.lando.yml",
+          "sha256": "109d592e6881ef18b43d79d697c24c5d7b4dc4ffd97af7e9b61c40ea8c6dc570",
+          "bytes": 292
+        },
+        {
+          "path": "examples/db-client-mysql57/.lando.yml",
+          "sha256": "5f00dc4bb7a1d28f919d44f6faa80649f260fd137e3bb070ec0e42f337421003",
+          "bytes": 570
+        },
+        {
+          "path": "examples/db-client/.lando.yml",
+          "sha256": "2c2590df5a87556df4ebb545f07be25fbcd1d9eeeaf1d8a85500ce7525d5894b",
+          "bytes": 1154
+        },
+        {
+          "path": "examples/php-extensions/.lando.yml",
+          "sha256": "a15a8d38c33ec2e2b1651a7f3bc51bde4b66b6c2cad8ef154fec77f98d45d87d",
+          "bytes": 698
+        },
+        {
+          "path": "examples/xdebug/.lando.yml",
+          "sha256": "a5205f5399546ad4c81f331c51e36687732a6abcf83dd9d7a7a67ec07a5ded29",
+          "bytes": 486
+        }
+      ]
+    },
+    {
+      "repo": "phpmyadmin",
+      "url": "https://github.com/lando/phpmyadmin",
+      "commit": "434f022b550310b58c4e1f70fbb555846e52ca4d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "565903dbf7212d7c671227033eacc97f16dbe6b3137313e454ff377061bb5d85",
+          "bytes": 371
+        },
+        {
+          "path": "examples/4.x/.lando.yml",
+          "sha256": "c98cb712835ad3a3e14c038712d5f1ba2eb6a52cb3a6ab7c1c1092679e344fc7",
+          "bytes": 597
+        },
+        {
+          "path": "examples/5.x/.lando.yml",
+          "sha256": "e0970926e31c8bf00e4398c0a13c9ed8ba880803fe3508468aa1b582ff8a7c70",
+          "bytes": 833
+        },
+        {
+          "path": "examples/mysql/.lando.yml",
+          "sha256": "96568463c8b630e6e524b09cf7ea97d81958796e6e3e38ee0f86e0f2ef9556d1",
+          "bytes": 321
+        }
+      ]
+    },
+    {
+      "repo": "postgres",
+      "url": "https://github.com/lando/postgres",
+      "commit": "986358f9b8bdc342f717777a0711ebe92109d89d",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "d69334ad5456340654938a367106b0185babc49eb8e5a60ba40c3da027df7781",
+          "bytes": 367
+        },
+        {
+          "path": "examples/10/.lando.yml",
+          "sha256": "fbc9eb942a95a478778c607f822fbf12c767a6a62828f79a094214527a114c22",
+          "bytes": 555
+        },
+        {
+          "path": "examples/11/.lando.yml",
+          "sha256": "0c29931084b1171fe70231eee38afa2469e052e503f37fc57c4df49fbad01fd0",
+          "bytes": 555
+        },
+        {
+          "path": "examples/12/.lando.yml",
+          "sha256": "9f5951d150433630735cdd82949bd321e1e91b2827e37c4eadfeaf88d4014889",
+          "bytes": 555
+        },
+        {
+          "path": "examples/13/.lando.yml",
+          "sha256": "fd6300b2c3e0b0def5aa063f7b879be5d12297328fba68cdd9c5e230ebf569ec",
+          "bytes": 555
+        },
+        {
+          "path": "examples/14/.lando.yml",
+          "sha256": "c61ab282673ff529f419a2312c66c94ad0caad152c6f7cdd26c6960a118d7a94",
+          "bytes": 555
+        },
+        {
+          "path": "examples/15/.lando.yml",
+          "sha256": "7d37910499b22bd279248f53fccfcb227ca498284af04423dc7a10d79bba385f",
+          "bytes": 555
+        },
+        {
+          "path": "examples/16/.lando.yml",
+          "sha256": "f14c9d2f24219b91a34f667671c7563d4b61960375846cb077e1c970a6d3d6e7",
+          "bytes": 555
+        },
+        {
+          "path": "examples/17/.lando.yml",
+          "sha256": "a973e1d1d5b3c136bcd697217636c3d3ad32e3c608d11dc748852974e82bda85",
+          "bytes": 555
+        },
+        {
+          "path": "examples/9.6/.lando.yml",
+          "sha256": "2a96ee215aee45fc268b93cfbde2c0599ec22acc06be07f33ba76934e6ef54ab",
+          "bytes": 592
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "88561b62faa7e0443990ee28af9876ffb7c0cd949bfe74053374e197af2d8ce6",
+          "bytes": 791
+        }
+      ]
+    },
+    {
+      "repo": "python",
+      "url": "https://github.com/lando/python",
+      "commit": "ad8930c62ec5cb8f97deb1f7d810b7a96fc74421",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "8592ba0a3222578212eefa60a01deb600a08e860075d8f79b6e6037fbe87cae4",
+          "bytes": 363
+        },
+        {
+          "path": "examples/2.x/.lando.yml",
+          "sha256": "6fa8b16542e2a6f9dc64d4cda830e646ebca814bb76f52cd9a4e5baad23eaa95",
+          "bytes": 243
+        },
+        {
+          "path": "examples/3.x/.lando.yml",
+          "sha256": "6b1fd9b4022b6d5a22c5e16fdb0c5ec56957638e66e48839c75a7cb6a5d683a8",
+          "bytes": 303
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "f9d52861315da80135a244a77abd9929e9436d130e9481693d33a27faeaa3448",
+          "bytes": 374
+        }
+      ]
+    },
+    {
+      "repo": "redis",
+      "url": "https://github.com/lando/redis",
+      "commit": "5b325429c9121a32ec410ef52b1deab80c4460f3",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "2186a2c32c7b686fde1087d0d5134c336d865a28d68880e2e7d8c37cedab49ba",
+          "bytes": 361
+        },
+        {
+          "path": "examples/2.x/.lando.yml",
+          "sha256": "7518c3aab775c0a27884fcc157c51fec3da8f3eb6df55fc624796e25910a5daf",
+          "bytes": 297
+        },
+        {
+          "path": "examples/4.x/.lando.yml",
+          "sha256": "e93a505a3ea18294a590130fedac0fe46250c77966ec33dc5f49d0c13a967afc",
+          "bytes": 293
+        },
+        {
+          "path": "examples/5.x/.lando.yml",
+          "sha256": "b4e73232ae1f76dc4ea89cc56d4d1c7a7acd2f9aa3f4d2f31415fc48754132cb",
+          "bytes": 293
+        },
+        {
+          "path": "examples/6.x/.lando.yml",
+          "sha256": "847522e922aa886567473358074b62cf70b599c631148217736add4bc09e56c3",
+          "bytes": 293
+        },
+        {
+          "path": "examples/7.4.x/.lando.yml",
+          "sha256": "285478422c0d91bb61bee2d51f68f4f0bbb30e86f1247e47bb9900f58bed9631",
+          "bytes": 298
+        },
+        {
+          "path": "examples/7.x/.lando.yml",
+          "sha256": "70f352e2d81244438e112e5763d4b8d806767440323ec482f53bc8f4a809f362",
+          "bytes": 293
+        },
+        {
+          "path": "examples/8.x/.lando.yml",
+          "sha256": "f0b9543155d4a006d10d67627e356a54200b3a7b24f5fa0a9be6d649bc9dde90",
+          "bytes": 292
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "21737ef336de02475d57d78a60906d562b2b45aada9162e04da3e5db4ab7ed24",
+          "bytes": 287
+        }
+      ]
+    },
+    {
+      "repo": "ruby",
+      "url": "https://github.com/lando/ruby",
+      "commit": "0618c2019e8baa185345b4c8e279123675978946",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "09edb399e9f7ece9ce04fd4afbaa30d3382397400b0e697ab4a248b3448de593",
+          "bytes": 359
+        },
+        {
+          "path": "examples/2.x/.lando.yml",
+          "sha256": "e3fbd3ab10dad0482f8fe8a1df575f724960fc2c83ff20a97a7bfdf3d38ffbd9",
+          "bytes": 286
+        },
+        {
+          "path": "examples/3.x/.lando.yml",
+          "sha256": "cd4ee70ec94d8043ae4720ddc2ed60ece745180c8d502dc4acadfaa658012126",
+          "bytes": 459
+        },
+        {
+          "path": "examples/4.x/.lando.yml",
+          "sha256": "a36d39d60fccd7fb6e08daf85935046c5bff7b4c355f21ebe89492d19073b8c5",
+          "bytes": 348
+        }
+      ]
+    },
+    {
+      "repo": "solr",
+      "url": "https://github.com/lando/solr",
+      "commit": "8819c8c3947c526a2c81e4142c2cdc40ad2e45e6",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "0016ceca16dc8568b52ea37ad0e749434f48fe6956395889b7c28556ef718722",
+          "bytes": 359
+        },
+        {
+          "path": "examples/10.x/.lando.yml",
+          "sha256": "89a6ad0b5efabac2dbc2737c30e92933cd7a9a9767d77d429e4c8b0031efdd8d",
+          "bytes": 759
+        },
+        {
+          "path": "examples/3.x/.lando.yml",
+          "sha256": "a3a74dffc940501b1deae034279c7ef77a1cd5a91f54d6a88c8fa95ec62f68b3",
+          "bytes": 342
+        },
+        {
+          "path": "examples/4.x/.lando.yml",
+          "sha256": "d8f98cde20cc1c3e2f4383d869da7ee47a8e0c104ec1ac143e89aabaef39a6eb",
+          "bytes": 510
+        },
+        {
+          "path": "examples/5.x/.lando.yml",
+          "sha256": "8f600aacf51dc3afaee810e1c8accf5f9d39efa3760906db5778f799dbfc65ab",
+          "bytes": 755
+        },
+        {
+          "path": "examples/6.x/.lando.yml",
+          "sha256": "1dccc1fd072f775ea43fe23cb926d0812a005921c5241cb043cb45b14080acc6",
+          "bytes": 509
+        },
+        {
+          "path": "examples/7.x/.lando.yml",
+          "sha256": "4caeb32f6c916e5be84200290960d7f5b5c7f72d2c99676f596cf2beb1f0d754",
+          "bytes": 706
+        },
+        {
+          "path": "examples/8.x/.lando.yml",
+          "sha256": "676a944270c3967ea6c3bd70457ab5614ccdae9119566752e625ce2ad65f760b",
+          "bytes": 754
+        },
+        {
+          "path": "examples/9.x/.lando.yml",
+          "sha256": "44fc78d9b52b760165fbc371dd40a7549e981f1a6cd55addb1582976d52e4fc3",
+          "bytes": 754
+        }
+      ]
+    },
+    {
+      "repo": "symfony",
+      "url": "https://github.com/lando/symfony",
+      "commit": "3631d0a9a3cd9d2609c08958c1902cc8913fcc5c",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "f6ef4ce31b2ad991477469186caa147e0cc5af1773d78d49f0e79fafc85f41d2",
+          "bytes": 365
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "be234179d441bce60f9c0c83690ff08ca2f90ae71870e2a03cf08db0f9d143b4",
+          "bytes": 38
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "b2311de96ad818d8d482f21a153f81ccc390362660af6171cf2703ad6ee30ca5",
+          "bytes": 60
+        },
+        {
+          "path": "examples/symfony-custom/.lando.yml",
+          "sha256": "b1d32cc74e78079dfb52acee056566f31dbda7d87cc9c12839756f214c1a7a41",
+          "bytes": 419
+        },
+        {
+          "path": "examples/symfony-defaults/.lando.yml",
+          "sha256": "a6204e032db7322d95d96cd04ccdcdd1eb379e17c6e88393988df5527724ffa4",
+          "bytes": 96
+        },
+        {
+          "path": "examples/symfony-downstreamer-1/.lando.yml",
+          "sha256": "1a700170436a045a5591937da9e740702a3a429341554e2cd9f315509e4c80a7",
+          "bytes": 195
+        },
+        {
+          "path": "examples/symfony-downstreamer-2/.lando.yml",
+          "sha256": "103bc9ec9b56e9f63bf34b03f805069b654b6365145e64642cdc97870dc7e092",
+          "bytes": 203
+        },
+        {
+          "path": "examples/symfony-export/.lando.yml",
+          "sha256": "2ac8e4d6ccfd570221a505cc6881b9df9e9d8f948a3d18395696e96e0599d0c2",
+          "bytes": 95
+        },
+        {
+          "path": "examples/symfony-import/.lando.yml",
+          "sha256": "78f49a1846c20bd0bd77dc49923313540e11a4af4297684708f7c1d5bbb2eb30",
+          "bytes": 214
+        },
+        {
+          "path": "examples/symfony-mariadb-mysql/.lando.yml",
+          "sha256": "9a4b3a2266409efde8489e2360e9a11c546fe03a85de77c8ef99afd58452ebdd",
+          "bytes": 160
+        },
+        {
+          "path": "examples/symfony-mariadb/.lando.yml",
+          "sha256": "4ca178d5c2ef097863fe09f68378932be34b0871e8735d72cc89b92ba14ec39f",
+          "bytes": 154
+        },
+        {
+          "path": "examples/symfony-mysql8/.lando.yml",
+          "sha256": "aec5a103730979f156b54f004dc1834b9398286523e47b461126078e38355f77",
+          "bytes": 153
+        },
+        {
+          "path": "examples/symfony-mysql84/.lando.yml",
+          "sha256": "991b7b3e338b83ab150d60f900242c81e15df3002d88e3d0a157add6bd8443f8",
+          "bytes": 149
+        },
+        {
+          "path": "examples/symfony-nginx/.lando.yml",
+          "sha256": "2f994c897af6867d89d0cb36326e4c3f37d960ff9220a96575401ea4c5d6139a",
+          "bytes": 189
+        }
+      ]
+    },
+    {
+      "repo": "tomcat",
+      "url": "https://github.com/lando/tomcat",
+      "commit": "833bf10b536bc2aa9810fd8e40009360ae87ab27",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "2810748088305d129ffaf176b0cb180206f949e51c1157f8e0634e867eed6973",
+          "bytes": 363
+        },
+        {
+          "path": "examples/10.x/.lando.yml",
+          "sha256": "4394d5cabccb5f21e3bdea9bac2fd6dddb02f634416891d028172aa4e259fa25",
+          "bytes": 309
+        },
+        {
+          "path": "examples/11.x/.lando.yml",
+          "sha256": "786e8ecb063ab1b4deea92af796980555b53424d3789f4d4b82884a5fca36d91",
+          "bytes": 307
+        },
+        {
+          "path": "examples/7.x/.lando.yml",
+          "sha256": "6c2a25ae011b2d1a5eab7b82bb89ae23558e6471d439f28e46f5d53c9d456572",
+          "bytes": 446
+        },
+        {
+          "path": "examples/8.x/.lando.yml",
+          "sha256": "f4d762ae0618adc6a1c806cd47c5c805d7f5c5dd1da0e2e7342d0b02807440cc",
+          "bytes": 303
+        },
+        {
+          "path": "examples/9.x/.lando.yml",
+          "sha256": "7b2b2f6811211de60d35d5a756d811c570013be41b75fa697be9fde0805fd067",
+          "bytes": 305
+        },
+        {
+          "path": "examples/default/.lando.yml",
+          "sha256": "c8252cb16f7d750cae6c885bc057163104e24418529eb0182a67b9e1487337b1",
+          "bytes": 309
+        }
+      ]
+    },
+    {
+      "repo": "upsun",
+      "url": "https://github.com/lando/upsun",
+      "commit": "b862f3ffb405c00ba07885b039388d67df456030",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "a6975f637c6e7c4abed2ba9d610ce0dce5a72a5f0c0eb33233f11faca962dd53",
+          "bytes": 224
+        },
+        {
+          "path": "examples/fixed-magento/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/fixed-magento/.lando.yml",
+          "sha256": "c6ebbac3d8ee4365cac51d6be386ab138152c3397fd451db14d1cb07cd45f68a",
+          "bytes": 40
+        },
+        {
+          "path": "examples/fixed-php/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/fixed-php/.lando.yml",
+          "sha256": "60b53d7af8fa5e23f595024c207c03044529c3262ea2a1bd28d90f195a893cc8",
+          "bytes": 36
+        },
+        {
+          "path": "examples/flex-composable/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/flex-composable/.lando.yml",
+          "sha256": "01de162e4ce0f2b1854a03d71590f089167ed5905914b667444ed3912e83f668",
+          "bytes": 42
+        },
+        {
+          "path": "examples/flex-multiapp/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/flex-multiapp/.lando.yml",
+          "sha256": "d25d3374fb2deabf96ad163ca04c4848c41a857f85b6e0507c0031ca0b7c7ff9",
+          "bytes": 59
+        },
+        {
+          "path": "examples/flex-node/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/flex-node/.lando.yml",
+          "sha256": "6974958b7012342472034e48e1b6960e537b9b2551bb5d28961e72c006cdd9ae",
+          "bytes": 36
+        },
+        {
+          "path": "examples/flex-php/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/flex-php/.lando.yml",
+          "sha256": "25fa5cb059af40db03a53d0f5c19f8df5d5e97a83c8bc33a174d9430e8c02171",
+          "bytes": 57
+        },
+        {
+          "path": "examples/flex-services/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/flex-services/.lando.yml",
+          "sha256": "8b03885db948bf4c58fee9ad52eea85f7bb343c8ff35a4309b79d62e42012930",
+          "bytes": 95
+        },
+        {
+          "path": "examples/flex-static/.lando.local.yml",
+          "sha256": "51c54a944016bb38b9fafe3f71793ef0142f1b749cd4de43e86839b612db37f4",
+          "bytes": 155
+        },
+        {
+          "path": "examples/flex-static/.lando.yml",
+          "sha256": "815590b13913c5f17585efa32ae50479a660f3c1576de69a9979a27aba9203dd",
+          "bytes": 38
+        }
+      ]
+    },
+    {
+      "repo": "varnish",
+      "url": "https://github.com/lando/varnish",
+      "commit": "106620cadc62fd0c9bf7ca1340ca3460aee3cb8e",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "ffc6f9206e346ba79a4da437e3b1faf59b5ab60bc1dfa43331f69568b043fe45",
+          "bytes": 365
+        },
+        {
+          "path": "examples/4.x/.lando.yml",
+          "sha256": "145434d95d52b2cae6b132611c90b218da24e3ad21fad4b9dbeee319364f8e4c",
+          "bytes": 288
+        },
+        {
+          "path": "examples/6.x/.lando.yml",
+          "sha256": "2b99f1d8b9468ce8c3f88d22a8b143a843f5a92bed2279f9122f9278cac716dd",
+          "bytes": 287
+        },
+        {
+          "path": "examples/custom/.lando.yml",
+          "sha256": "19616526ebc07da7c92ff53cd6408f3299341b1425d564a9e51d76fe5906c7ec",
+          "bytes": 738
+        },
+        {
+          "path": "examples/defaults/.lando.yml",
+          "sha256": "ffc224f9abc65f36562b19665764988f6714494f83281937c055a041389a5217",
+          "bytes": 296
+        }
+      ]
+    },
+    {
+      "repo": "wordpress",
+      "url": "https://github.com/lando/wordpress",
+      "commit": "6d077979291a8f12bbf96211e49ca1a853f1b30c",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2025 Lando Alliance",
+      "files": [
+        {
+          "path": ".lando.yml",
+          "sha256": "4d6e5daffe303628061e8eebb69df8979e130d451522df114b4c0a05dcdcd0d4",
+          "bytes": 369
+        },
+        {
+          "path": "examples/.lando.upstream.yml",
+          "sha256": "d3396869fcfcaa7194daa1be5bf5a20f901155e98d25d1d36f34c6daf5e210e9",
+          "bytes": 40
+        },
+        {
+          "path": "examples/.lando.yml",
+          "sha256": "04a4986e6e7524bb07b9770cd57f495cb42a7e5a3d2ee6d2982d1dfa276022ac",
+          "bytes": 62
+        },
+        {
+          "path": "examples/wordpress-custom/.lando.yml",
+          "sha256": "910c14e241c23f09ed4cfb376b5cfc0d9554f334912f9e71bc0cee42127b84fe",
+          "bytes": 482
+        },
+        {
+          "path": "examples/wordpress-defaults/.lando.yml",
+          "sha256": "7ecd0ad0dd82ea49ed2667ca15324ad499d9fdf4d0eb7f0b292f4363f030dca3",
+          "bytes": 102
+        },
+        {
+          "path": "examples/wordpress-downstreamer-1/.lando.yml",
+          "sha256": "546fee7b6b90a02dc83a0321663c404a1ad272e17203f49069adf709bee2413f",
+          "bytes": 201
+        },
+        {
+          "path": "examples/wordpress-downstreamer-2/.lando.yml",
+          "sha256": "044a4d5b86852d101fdb3677eee36f19ffe75a310a87027a0d132db2c480b319",
+          "bytes": 211
+        },
+        {
+          "path": "examples/wordpress-export/.lando.yml",
+          "sha256": "d80170c72cd6a110028f230bb80ee43c571cbdd8d6eebb8929c3e37fb05ad409",
+          "bytes": 101
+        },
+        {
+          "path": "examples/wordpress-import/.lando.yml",
+          "sha256": "08c60f83a3e2b43931b96182215647e0e12e008ad8b7f998d6d07ff0881770b4",
+          "bytes": 220
+        },
+        {
+          "path": "examples/wordpress-nginx/.lando.yml",
+          "sha256": "f9af22c5ab9a9a7b66299ee4ab9d187ab1475eb5d2e2791ea955ab0c6b3fd238",
+          "bytes": 194
+        },
+        {
+          "path": "examples/wordpress-recommended/.lando.yml",
+          "sha256": "1249074f69d1bd7d34fe47176f277d3bcd36d4d5258b9c0e0e8bf2fb1142d8ef",
+          "bytes": 148
+        }
+      ]
+    }
+  ],
+  "exclusions": [],
+  "documentSets": [
+    {
+      "id": "acquia/.",
+      "files": ["acquia/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples",
+      "files": ["acquia/examples/.lando.upstream.yml", "acquia/examples/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-8.2",
+      "files": ["acquia/examples/acquia-8.2/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-8.3",
+      "files": ["acquia/examples/acquia-8.3/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-8.4",
+      "files": ["acquia/examples/acquia-8.4/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-8.5",
+      "files": ["acquia/examples/acquia-8.5/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-custom",
+      "files": ["acquia/examples/acquia-custom/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-default",
+      "files": ["acquia/examples/acquia-default/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-downstreamer-1",
+      "files": ["acquia/examples/acquia-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-downstreamer-2",
+      "files": ["acquia/examples/acquia-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-drush-uri",
+      "files": ["acquia/examples/acquia-drush-uri/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-mysql84",
+      "files": ["acquia/examples/acquia-mysql84/.lando.yml"]
+    },
+    {
+      "id": "acquia/examples/acquia-xdebug",
+      "files": ["acquia/examples/acquia-xdebug/.lando.yml"]
+    },
+    {
+      "id": "apache/.",
+      "files": ["apache/.lando.yml"]
+    },
+    {
+      "id": "apache/examples/2.4",
+      "files": ["apache/examples/2.4/.lando.yml"]
+    },
+    {
+      "id": "apache/examples/custom",
+      "files": ["apache/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "backdrop/.",
+      "files": ["backdrop/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples",
+      "files": ["backdrop/examples/.lando.upstream.yml", "backdrop/examples/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-custom",
+      "files": ["backdrop/examples/backdrop-custom/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-defaults",
+      "files": ["backdrop/examples/backdrop-defaults/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-downstreamer-1",
+      "files": ["backdrop/examples/backdrop-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-downstreamer-2",
+      "files": ["backdrop/examples/backdrop-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-export",
+      "files": ["backdrop/examples/backdrop-export/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-import",
+      "files": ["backdrop/examples/backdrop-import/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-mariadb",
+      "files": ["backdrop/examples/backdrop-mariadb/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-mysql-client",
+      "files": ["backdrop/examples/backdrop-mysql-client/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-mysql8",
+      "files": ["backdrop/examples/backdrop-mysql8/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-mysql84",
+      "files": ["backdrop/examples/backdrop-mysql84/.lando.yml"]
+    },
+    {
+      "id": "backdrop/examples/backdrop-nginx",
+      "files": ["backdrop/examples/backdrop-nginx/.lando.yml"]
+    },
+    {
+      "id": "core/.",
+      "files": ["core/.lando.yml"]
+    },
+    {
+      "id": "core/examples",
+      "files": ["core/examples/.lando.yml"]
+    },
+    {
+      "id": "core/examples/badname",
+      "files": ["core/examples/badname/.lando.yml"]
+    },
+    {
+      "id": "core/examples/build",
+      "files": ["core/examples/build/.lando.yml"]
+    },
+    {
+      "id": "core/examples/c,o,m,m,a",
+      "files": ["core/examples/c,o,m,m,a/.lando.yml"]
+    },
+    {
+      "id": "core/examples/cache",
+      "files": ["core/examples/cache/.lando.yml"]
+    },
+    {
+      "id": "core/examples/certs",
+      "files": ["core/examples/certs/.lando.yml"]
+    },
+    {
+      "id": "core/examples/command",
+      "files": ["core/examples/command/.lando.yml"]
+    },
+    {
+      "id": "core/examples/config",
+      "files": ["core/examples/config/.lando.yml"]
+    },
+    {
+      "id": "core/examples/debug",
+      "files": ["core/examples/debug/.lando.yml"]
+    },
+    {
+      "id": "core/examples/desktop-smoke",
+      "files": ["core/examples/desktop-smoke/.lando.yml"]
+    },
+    {
+      "id": "core/examples/entrypoint",
+      "files": ["core/examples/entrypoint/.lando.yml"]
+    },
+    {
+      "id": "core/examples/envfile",
+      "files": [
+        "core/examples/envfile/.lando.dist.yml",
+        "core/examples/envfile/.lando.local.yml",
+        "core/examples/envfile/.lando.yml"
+      ]
+    },
+    {
+      "id": "core/examples/events",
+      "files": ["core/examples/events/.lando.yml"]
+    },
+    {
+      "id": "core/examples/excludes",
+      "files": ["core/examples/excludes/.lando.yml"]
+    },
+    {
+      "id": "core/examples/exec",
+      "files": ["core/examples/exec/.lando.yml"]
+    },
+    {
+      "id": "core/examples/experimental",
+      "files": ["core/examples/experimental/.lando.yml"]
+    },
+    {
+      "id": "core/examples/healthcheck",
+      "files": ["core/examples/healthcheck/.lando.yml"]
+    },
+    {
+      "id": "core/examples/host",
+      "files": ["core/examples/host/.lando.yml"]
+    },
+    {
+      "id": "core/examples/info",
+      "files": ["core/examples/info/.lando.yml"]
+    },
+    {
+      "id": "core/examples/keys",
+      "files": ["core/examples/keys/.lando.yml"]
+    },
+    {
+      "id": "core/examples/l337",
+      "files": ["core/examples/l337/.lando.yml"]
+    },
+    {
+      "id": "core/examples/lando-101",
+      "files": [
+        "core/examples/lando-101/.lando.config.yml",
+        "core/examples/lando-101/.lando.proxy.yml",
+        "core/examples/lando-101/.lando.services.yml",
+        "core/examples/lando-101/.lando.tooling.yml",
+        "core/examples/lando-101/.lando.yml"
+      ]
+    },
+    {
+      "id": "core/examples/lando-v4",
+      "files": ["core/examples/lando-v4/.lando.yml"]
+    },
+    {
+      "id": "core/examples/landofile",
+      "files": [
+        "core/examples/landofile/.lando.dist.yml",
+        "core/examples/landofile/.lando.local.yml",
+        "core/examples/landofile/.lando.yml"
+      ]
+    },
+    {
+      "id": "core/examples/list",
+      "files": ["core/examples/list/.lando.yml"]
+    },
+    {
+      "id": "core/examples/logs",
+      "files": ["core/examples/logs/.lando.yml"]
+    },
+    {
+      "id": "core/examples/long-name",
+      "files": ["core/examples/long-name/.lando.yml"]
+    },
+    {
+      "id": "core/examples/mounts",
+      "files": ["core/examples/mounts/.lando.yml"]
+    },
+    {
+      "id": "core/examples/networking",
+      "files": ["core/examples/networking/.lando.lamp.yml", "core/examples/networking/.lando.lemp.yml"]
+    },
+    {
+      "id": "core/examples/no-services",
+      "files": ["core/examples/no-services/.lando.yml"]
+    },
+    {
+      "id": "core/examples/orchestrator",
+      "files": ["core/examples/orchestrator/.lando.yml"]
+    },
+    {
+      "id": "core/examples/plugins",
+      "files": ["core/examples/plugins/.lando.yml"]
+    },
+    {
+      "id": "core/examples/proxy",
+      "files": [
+        "core/examples/proxy/.lando.local.yml",
+        "core/examples/proxy/.lando.stripped.yml",
+        "core/examples/proxy/.lando.upstream.yml",
+        "core/examples/proxy/.lando.yml"
+      ]
+    },
+    {
+      "id": "core/examples/rebuild",
+      "files": ["core/examples/rebuild/.lando.yml"]
+    },
+    {
+      "id": "core/examples/recipes",
+      "files": ["core/examples/recipes/.lando.yml"]
+    },
+    {
+      "id": "core/examples/release-channel",
+      "files": ["core/examples/release-channel/.lando.yml"]
+    },
+    {
+      "id": "core/examples/renderer",
+      "files": ["core/examples/renderer/.lando.yml"]
+    },
+    {
+      "id": "core/examples/restart",
+      "files": ["core/examples/restart/.lando.yml"]
+    },
+    {
+      "id": "core/examples/scanner",
+      "files": ["core/examples/scanner/.lando.yml"]
+    },
+    {
+      "id": "core/examples/security",
+      "files": ["core/examples/security/.lando.yml"]
+    },
+    {
+      "id": "core/examples/setup-linux",
+      "files": ["core/examples/setup-linux/.lando.yml"]
+    },
+    {
+      "id": "core/examples/setup-macos",
+      "files": ["core/examples/setup-macos/.lando.yml"]
+    },
+    {
+      "id": "core/examples/setup-windows",
+      "files": ["core/examples/setup-windows/.lando.yml"]
+    },
+    {
+      "id": "core/examples/sluggy",
+      "files": ["core/examples/sluggy/.lando.yml"]
+    },
+    {
+      "id": "core/examples/sql-helpers",
+      "files": ["core/examples/sql-helpers/.lando.sqlhelpers.yml"]
+    },
+    {
+      "id": "core/examples/ssh",
+      "files": ["core/examples/ssh/.lando.yml"]
+    },
+    {
+      "id": "core/examples/storage",
+      "files": ["core/examples/storage/.lando.yml"]
+    },
+    {
+      "id": "core/examples/storage/app2",
+      "files": ["core/examples/storage/app2/.lando.yml"]
+    },
+    {
+      "id": "core/examples/tooling",
+      "files": ["core/examples/tooling/.lando.yml"]
+    },
+    {
+      "id": "core/examples/version",
+      "files": ["core/examples/version/.lando.yml"]
+    },
+    {
+      "id": "core/examples/yaml",
+      "files": ["core/examples/yaml/.lando.yml"]
+    },
+    {
+      "id": "dotnet/.",
+      "files": ["dotnet/.lando.yml"]
+    },
+    {
+      "id": "dotnet/examples/2.1",
+      "files": ["dotnet/examples/2.1/.lando.yml"]
+    },
+    {
+      "id": "drupal/.",
+      "files": ["drupal/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples",
+      "files": ["drupal/examples/.lando.upstream.yml", "drupal/examples/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-custom",
+      "files": ["drupal/examples/drupal-custom/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-defaults",
+      "files": ["drupal/examples/drupal-defaults/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-export",
+      "files": ["drupal/examples/drupal-export/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-import",
+      "files": ["drupal/examples/drupal-import/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-mariadb-mysql",
+      "files": ["drupal/examples/drupal-mariadb-mysql/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-mariadb",
+      "files": ["drupal/examples/drupal-mariadb/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal-nginx",
+      "files": ["drupal/examples/drupal-nginx/.lando.yml"]
+    },
+    {
+      "id": "drupal/examples/drupal8",
+      "files": ["drupal/examples/drupal8/.lando.local.yml"]
+    },
+    {
+      "id": "elasticsearch/.",
+      "files": ["elasticsearch/.lando.yml"]
+    },
+    {
+      "id": "elasticsearch/examples/5.x",
+      "files": ["elasticsearch/examples/5.x/.lando.yml"]
+    },
+    {
+      "id": "elasticsearch/examples/6.x",
+      "files": ["elasticsearch/examples/6.x/.lando.yml"]
+    },
+    {
+      "id": "elasticsearch/examples/7.x",
+      "files": ["elasticsearch/examples/7.x/.lando.yml"]
+    },
+    {
+      "id": "elasticsearch/examples/8.x",
+      "files": ["elasticsearch/examples/8.x/.lando.yml"]
+    },
+    {
+      "id": "elasticsearch/examples/9.x",
+      "files": ["elasticsearch/examples/9.x/.lando.yml"]
+    },
+    {
+      "id": "elasticsearch/examples/custom",
+      "files": ["elasticsearch/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "go/.",
+      "files": ["go/.lando.yml"]
+    },
+    {
+      "id": "go/examples/1.x",
+      "files": ["go/examples/1.x/.lando.yml"]
+    },
+    {
+      "id": "go/examples/custom",
+      "files": ["go/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "joomla/.",
+      "files": ["joomla/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples",
+      "files": ["joomla/examples/.lando.upstream.yml", "joomla/examples/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-custom",
+      "files": ["joomla/examples/joomla-custom/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-defaults",
+      "files": ["joomla/examples/joomla-defaults/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-downstreamer-1",
+      "files": ["joomla/examples/joomla-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-downstreamer-2",
+      "files": ["joomla/examples/joomla-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-export",
+      "files": ["joomla/examples/joomla-export/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-import",
+      "files": ["joomla/examples/joomla-import/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-mariadb-mysql",
+      "files": ["joomla/examples/joomla-mariadb-mysql/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-mariadb",
+      "files": ["joomla/examples/joomla-mariadb/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-mysql8/symfony-mysql8",
+      "files": ["joomla/examples/joomla-mysql8/symfony-mysql8/.lando.yml"]
+    },
+    {
+      "id": "joomla/examples/joomla-nginx",
+      "files": ["joomla/examples/joomla-nginx/.lando.yml"]
+    },
+    {
+      "id": "lagoon/.",
+      "files": ["lagoon/.lando.yml"]
+    },
+    {
+      "id": "lagoon/examples",
+      "files": ["lagoon/examples/.lando.upstream.yml", "lagoon/examples/.lando.yml"]
+    },
+    {
+      "id": "lagoon/examples/all-services",
+      "files": ["lagoon/examples/all-services/.lando.yml"]
+    },
+    {
+      "id": "lagoon/examples/proxy-tests",
+      "files": ["lagoon/examples/proxy-tests/.lando.yml"]
+    },
+    {
+      "id": "lamp/.",
+      "files": ["lamp/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples",
+      "files": ["lamp/examples/.lando.upstream.yml", "lamp/examples/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-custom",
+      "files": ["lamp/examples/lamp-custom/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-defaults",
+      "files": ["lamp/examples/lamp-defaults/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-downstreamer-1",
+      "files": ["lamp/examples/lamp-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-downstreamer-2",
+      "files": ["lamp/examples/lamp-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-export",
+      "files": ["lamp/examples/lamp-export/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-import",
+      "files": ["lamp/examples/lamp-import/.lando.yml"]
+    },
+    {
+      "id": "lamp/examples/lamp-nginx",
+      "files": ["lamp/examples/lamp-nginx/.lando.yml"]
+    },
+    {
+      "id": "laravel/.",
+      "files": ["laravel/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples",
+      "files": ["laravel/examples/.lando.upstream.yml", "laravel/examples/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-custom",
+      "files": ["laravel/examples/laravel-custom/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-defaults",
+      "files": ["laravel/examples/laravel-defaults/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-downstreamer-1",
+      "files": ["laravel/examples/laravel-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-downstreamer-2",
+      "files": ["laravel/examples/laravel-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-export",
+      "files": ["laravel/examples/laravel-export/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-import",
+      "files": ["laravel/examples/laravel-import/.lando.yml"]
+    },
+    {
+      "id": "laravel/examples/laravel-nginx",
+      "files": ["laravel/examples/laravel-nginx/.lando.yml"]
+    },
+    {
+      "id": "lemp/.",
+      "files": ["lemp/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples",
+      "files": ["lemp/examples/.lando.upstream.yml", "lemp/examples/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-custom",
+      "files": ["lemp/examples/lemp-custom/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-defaults",
+      "files": ["lemp/examples/lemp-defaults/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-downstreamer-1",
+      "files": ["lemp/examples/lemp-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-downstreamer-2",
+      "files": ["lemp/examples/lemp-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-export",
+      "files": ["lemp/examples/lemp-export/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-import",
+      "files": ["lemp/examples/lemp-import/.lando.yml"]
+    },
+    {
+      "id": "lemp/examples/lemp-nginx",
+      "files": ["lemp/examples/lemp-nginx/.lando.yml"]
+    },
+    {
+      "id": "mailhog/.",
+      "files": ["mailhog/.lando.yml"]
+    },
+    {
+      "id": "mailhog/examples/mailhog",
+      "files": ["mailhog/examples/mailhog/.lando.yml"]
+    },
+    {
+      "id": "mailpit/.",
+      "files": ["mailpit/.lando.yml"]
+    },
+    {
+      "id": "mailpit/examples/advanced",
+      "files": ["mailpit/examples/advanced/.lando.local.yml", "mailpit/examples/advanced/.lando.yml"]
+    },
+    {
+      "id": "mailpit/examples/basic",
+      "files": ["mailpit/examples/basic/.lando.local.yml", "mailpit/examples/basic/.lando.yml"]
+    },
+    {
+      "id": "mariadb/.",
+      "files": ["mariadb/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.1",
+      "files": ["mariadb/examples/10.1/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.10",
+      "files": ["mariadb/examples/10.10/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.11",
+      "files": ["mariadb/examples/10.11/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.2",
+      "files": ["mariadb/examples/10.2/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.3",
+      "files": ["mariadb/examples/10.3/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.4",
+      "files": ["mariadb/examples/10.4/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.5",
+      "files": ["mariadb/examples/10.5/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.6",
+      "files": ["mariadb/examples/10.6/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.7",
+      "files": ["mariadb/examples/10.7/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.8",
+      "files": ["mariadb/examples/10.8/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/10.9",
+      "files": ["mariadb/examples/10.9/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.0",
+      "files": ["mariadb/examples/11.0/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.1",
+      "files": ["mariadb/examples/11.1/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.2",
+      "files": ["mariadb/examples/11.2/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.3",
+      "files": ["mariadb/examples/11.3/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.4",
+      "files": ["mariadb/examples/11.4/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.5",
+      "files": ["mariadb/examples/11.5/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.6",
+      "files": ["mariadb/examples/11.6/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.7",
+      "files": ["mariadb/examples/11.7/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/11.8",
+      "files": ["mariadb/examples/11.8/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/custom",
+      "files": ["mariadb/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "mariadb/examples/tooling",
+      "files": ["mariadb/examples/tooling/.lando.yml"]
+    },
+    {
+      "id": "mean/.",
+      "files": ["mean/.lando.yml"]
+    },
+    {
+      "id": "mean/examples",
+      "files": ["mean/examples/.lando.upstream.yml", "mean/examples/.lando.yml"]
+    },
+    {
+      "id": "mean/examples/mean-custom",
+      "files": ["mean/examples/mean-custom/.lando.yml"]
+    },
+    {
+      "id": "mean/examples/mean-downstreamer-1",
+      "files": ["mean/examples/mean-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "mean/examples/mean-downstreamer-2",
+      "files": ["mean/examples/mean-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "mean/examples/mean-mysql84",
+      "files": ["mean/examples/mean-mysql84/.lando.yml"]
+    },
+    {
+      "id": "memcached/.",
+      "files": ["memcached/.lando.yml"]
+    },
+    {
+      "id": "memcached/examples/1.x",
+      "files": ["memcached/examples/1.x/.lando.yml"]
+    },
+    {
+      "id": "memcached/examples/custom",
+      "files": ["memcached/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "mongo/.",
+      "files": ["mongo/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/3.x",
+      "files": ["mongo/examples/3.x/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/4.x",
+      "files": ["mongo/examples/4.x/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/5.x",
+      "files": ["mongo/examples/5.x/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/6.x",
+      "files": ["mongo/examples/6.x/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/7.x",
+      "files": ["mongo/examples/7.x/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/8.x",
+      "files": ["mongo/examples/8.x/.lando.yml"]
+    },
+    {
+      "id": "mongo/examples/custom",
+      "files": ["mongo/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "mssql/.",
+      "files": ["mssql/.lando.yml"]
+    },
+    {
+      "id": "mssql/examples/2017",
+      "files": ["mssql/examples/2017/.lando.yml"]
+    },
+    {
+      "id": "mssql/examples/2019",
+      "files": ["mssql/examples/2019/.lando.yml"]
+    },
+    {
+      "id": "mssql/examples/2022",
+      "files": ["mssql/examples/2022/.lando.yml"]
+    },
+    {
+      "id": "mysql/.",
+      "files": ["mysql/.lando.yml"]
+    },
+    {
+      "id": "mysql/examples/5.7",
+      "files": ["mysql/examples/5.7/.lando.yml"]
+    },
+    {
+      "id": "mysql/examples/8.0",
+      "files": ["mysql/examples/8.0/.lando.yml"]
+    },
+    {
+      "id": "mysql/examples/8.4",
+      "files": ["mysql/examples/8.4/.lando.yml"]
+    },
+    {
+      "id": "mysql/examples/custom",
+      "files": ["mysql/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "nginx/.",
+      "files": ["nginx/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.16",
+      "files": ["nginx/examples/1.16/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.17",
+      "files": ["nginx/examples/1.17/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.18",
+      "files": ["nginx/examples/1.18/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.19",
+      "files": ["nginx/examples/1.19/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.20",
+      "files": ["nginx/examples/1.20/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.21",
+      "files": ["nginx/examples/1.21/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.22",
+      "files": ["nginx/examples/1.22/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.23",
+      "files": ["nginx/examples/1.23/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.24",
+      "files": ["nginx/examples/1.24/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.25",
+      "files": ["nginx/examples/1.25/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.26",
+      "files": ["nginx/examples/1.26/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.27",
+      "files": ["nginx/examples/1.27/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.28",
+      "files": ["nginx/examples/1.28/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/1.29",
+      "files": ["nginx/examples/1.29/.lando.yml"]
+    },
+    {
+      "id": "nginx/examples/custom",
+      "files": ["nginx/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "node/.",
+      "files": ["node/.lando.yml"]
+    },
+    {
+      "id": "node/examples/10",
+      "files": ["node/examples/10/.lando.yml"]
+    },
+    {
+      "id": "node/examples/12",
+      "files": ["node/examples/12/.lando.yml"]
+    },
+    {
+      "id": "node/examples/14",
+      "files": ["node/examples/14/.lando.yml"]
+    },
+    {
+      "id": "node/examples/16",
+      "files": ["node/examples/16/.lando.yml"]
+    },
+    {
+      "id": "node/examples/18",
+      "files": ["node/examples/18/.lando.yml"]
+    },
+    {
+      "id": "node/examples/20",
+      "files": ["node/examples/20/.lando.yml"]
+    },
+    {
+      "id": "node/examples/21",
+      "files": ["node/examples/21/.lando.yml"]
+    },
+    {
+      "id": "node/examples/22",
+      "files": ["node/examples/22/.lando.yml"]
+    },
+    {
+      "id": "node/examples/23",
+      "files": ["node/examples/23/.lando.yml"]
+    },
+    {
+      "id": "node/examples/24",
+      "files": ["node/examples/24/.lando.yml"]
+    },
+    {
+      "id": "node/examples/25",
+      "files": ["node/examples/25/.lando.yml"]
+    },
+    {
+      "id": "node/examples/26",
+      "files": ["node/examples/26/.lando.yml"]
+    },
+    {
+      "id": "pantheon/.",
+      "files": ["pantheon/.lando.yml"]
+    },
+    {
+      "id": "pantheon/examples",
+      "files": ["pantheon/examples/.lando.upstream.yml", "pantheon/examples/.lando.yml"]
+    },
+    {
+      "id": "pantheon/examples/frontend-build",
+      "files": ["pantheon/examples/frontend-build/.lando.yml"]
+    },
+    {
+      "id": "pantheon/examples/pantheon-downstreamer-1",
+      "files": ["pantheon/examples/pantheon-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "pantheon/examples/pantheon-downstreamer-2",
+      "files": ["pantheon/examples/pantheon-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "pantheon/examples/pantheon-drush-uri",
+      "files": ["pantheon/examples/pantheon-drush-uri/.lando.yml"]
+    },
+    {
+      "id": "pantheon/examples/pantheon-php-warning",
+      "files": ["pantheon/examples/pantheon-php-warning/.lando.yml"]
+    },
+    {
+      "id": "php/.",
+      "files": ["php/.lando.yml"]
+    },
+    {
+      "id": "php/examples/5.6",
+      "files": ["php/examples/5.6/.lando.yml"]
+    },
+    {
+      "id": "php/examples/7.0",
+      "files": ["php/examples/7.0/.lando.yml"]
+    },
+    {
+      "id": "php/examples/7.1",
+      "files": ["php/examples/7.1/.lando.yml"]
+    },
+    {
+      "id": "php/examples/7.2",
+      "files": ["php/examples/7.2/.lando.yml"]
+    },
+    {
+      "id": "php/examples/7.3",
+      "files": ["php/examples/7.3/.lando.yml"]
+    },
+    {
+      "id": "php/examples/7.4",
+      "files": ["php/examples/7.4/.lando.yml"]
+    },
+    {
+      "id": "php/examples/8.0",
+      "files": ["php/examples/8.0/.lando.yml"]
+    },
+    {
+      "id": "php/examples/8.1",
+      "files": ["php/examples/8.1/.lando.yml"]
+    },
+    {
+      "id": "php/examples/8.2",
+      "files": ["php/examples/8.2/.lando.yml"]
+    },
+    {
+      "id": "php/examples/8.3",
+      "files": ["php/examples/8.3/.lando.yml"]
+    },
+    {
+      "id": "php/examples/8.4",
+      "files": ["php/examples/8.4/.lando.yml"]
+    },
+    {
+      "id": "php/examples/8.5",
+      "files": ["php/examples/8.5/.lando.yml"]
+    },
+    {
+      "id": "php/examples/build-fail",
+      "files": ["php/examples/build-fail/.lando.yml"]
+    },
+    {
+      "id": "php/examples/composer",
+      "files": ["php/examples/composer/.lando.yml"]
+    },
+    {
+      "id": "php/examples/custom",
+      "files": ["php/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "php/examples/db-client-mysql",
+      "files": ["php/examples/db-client-mysql/.lando.yml"]
+    },
+    {
+      "id": "php/examples/db-client-mysql57",
+      "files": ["php/examples/db-client-mysql57/.lando.yml"]
+    },
+    {
+      "id": "php/examples/db-client",
+      "files": ["php/examples/db-client/.lando.yml"]
+    },
+    {
+      "id": "php/examples/php-extensions",
+      "files": ["php/examples/php-extensions/.lando.yml"]
+    },
+    {
+      "id": "php/examples/xdebug",
+      "files": ["php/examples/xdebug/.lando.yml"]
+    },
+    {
+      "id": "phpmyadmin/.",
+      "files": ["phpmyadmin/.lando.yml"]
+    },
+    {
+      "id": "phpmyadmin/examples/4.x",
+      "files": ["phpmyadmin/examples/4.x/.lando.yml"]
+    },
+    {
+      "id": "phpmyadmin/examples/5.x",
+      "files": ["phpmyadmin/examples/5.x/.lando.yml"]
+    },
+    {
+      "id": "phpmyadmin/examples/mysql",
+      "files": ["phpmyadmin/examples/mysql/.lando.yml"]
+    },
+    {
+      "id": "postgres/.",
+      "files": ["postgres/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/10",
+      "files": ["postgres/examples/10/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/11",
+      "files": ["postgres/examples/11/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/12",
+      "files": ["postgres/examples/12/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/13",
+      "files": ["postgres/examples/13/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/14",
+      "files": ["postgres/examples/14/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/15",
+      "files": ["postgres/examples/15/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/16",
+      "files": ["postgres/examples/16/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/17",
+      "files": ["postgres/examples/17/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/9.6",
+      "files": ["postgres/examples/9.6/.lando.yml"]
+    },
+    {
+      "id": "postgres/examples/custom",
+      "files": ["postgres/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "python/.",
+      "files": ["python/.lando.yml"]
+    },
+    {
+      "id": "python/examples/2.x",
+      "files": ["python/examples/2.x/.lando.yml"]
+    },
+    {
+      "id": "python/examples/3.x",
+      "files": ["python/examples/3.x/.lando.yml"]
+    },
+    {
+      "id": "python/examples/custom",
+      "files": ["python/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "redis/.",
+      "files": ["redis/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/2.x",
+      "files": ["redis/examples/2.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/4.x",
+      "files": ["redis/examples/4.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/5.x",
+      "files": ["redis/examples/5.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/6.x",
+      "files": ["redis/examples/6.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/7.4.x",
+      "files": ["redis/examples/7.4.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/7.x",
+      "files": ["redis/examples/7.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/8.x",
+      "files": ["redis/examples/8.x/.lando.yml"]
+    },
+    {
+      "id": "redis/examples/custom",
+      "files": ["redis/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "ruby/.",
+      "files": ["ruby/.lando.yml"]
+    },
+    {
+      "id": "ruby/examples/2.x",
+      "files": ["ruby/examples/2.x/.lando.yml"]
+    },
+    {
+      "id": "ruby/examples/3.x",
+      "files": ["ruby/examples/3.x/.lando.yml"]
+    },
+    {
+      "id": "ruby/examples/4.x",
+      "files": ["ruby/examples/4.x/.lando.yml"]
+    },
+    {
+      "id": "solr/.",
+      "files": ["solr/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/10.x",
+      "files": ["solr/examples/10.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/3.x",
+      "files": ["solr/examples/3.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/4.x",
+      "files": ["solr/examples/4.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/5.x",
+      "files": ["solr/examples/5.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/6.x",
+      "files": ["solr/examples/6.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/7.x",
+      "files": ["solr/examples/7.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/8.x",
+      "files": ["solr/examples/8.x/.lando.yml"]
+    },
+    {
+      "id": "solr/examples/9.x",
+      "files": ["solr/examples/9.x/.lando.yml"]
+    },
+    {
+      "id": "symfony/.",
+      "files": ["symfony/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples",
+      "files": ["symfony/examples/.lando.upstream.yml", "symfony/examples/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-custom",
+      "files": ["symfony/examples/symfony-custom/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-defaults",
+      "files": ["symfony/examples/symfony-defaults/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-downstreamer-1",
+      "files": ["symfony/examples/symfony-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-downstreamer-2",
+      "files": ["symfony/examples/symfony-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-export",
+      "files": ["symfony/examples/symfony-export/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-import",
+      "files": ["symfony/examples/symfony-import/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-mariadb-mysql",
+      "files": ["symfony/examples/symfony-mariadb-mysql/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-mariadb",
+      "files": ["symfony/examples/symfony-mariadb/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-mysql8",
+      "files": ["symfony/examples/symfony-mysql8/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-mysql84",
+      "files": ["symfony/examples/symfony-mysql84/.lando.yml"]
+    },
+    {
+      "id": "symfony/examples/symfony-nginx",
+      "files": ["symfony/examples/symfony-nginx/.lando.yml"]
+    },
+    {
+      "id": "tomcat/.",
+      "files": ["tomcat/.lando.yml"]
+    },
+    {
+      "id": "tomcat/examples/10.x",
+      "files": ["tomcat/examples/10.x/.lando.yml"]
+    },
+    {
+      "id": "tomcat/examples/11.x",
+      "files": ["tomcat/examples/11.x/.lando.yml"]
+    },
+    {
+      "id": "tomcat/examples/7.x",
+      "files": ["tomcat/examples/7.x/.lando.yml"]
+    },
+    {
+      "id": "tomcat/examples/8.x",
+      "files": ["tomcat/examples/8.x/.lando.yml"]
+    },
+    {
+      "id": "tomcat/examples/9.x",
+      "files": ["tomcat/examples/9.x/.lando.yml"]
+    },
+    {
+      "id": "tomcat/examples/default",
+      "files": ["tomcat/examples/default/.lando.yml"]
+    },
+    {
+      "id": "upsun/.",
+      "files": ["upsun/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/fixed-magento",
+      "files": ["upsun/examples/fixed-magento/.lando.local.yml", "upsun/examples/fixed-magento/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/fixed-php",
+      "files": ["upsun/examples/fixed-php/.lando.local.yml", "upsun/examples/fixed-php/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/flex-composable",
+      "files": [
+        "upsun/examples/flex-composable/.lando.local.yml",
+        "upsun/examples/flex-composable/.lando.yml"
+      ]
+    },
+    {
+      "id": "upsun/examples/flex-multiapp",
+      "files": ["upsun/examples/flex-multiapp/.lando.local.yml", "upsun/examples/flex-multiapp/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/flex-node",
+      "files": ["upsun/examples/flex-node/.lando.local.yml", "upsun/examples/flex-node/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/flex-php",
+      "files": ["upsun/examples/flex-php/.lando.local.yml", "upsun/examples/flex-php/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/flex-services",
+      "files": ["upsun/examples/flex-services/.lando.local.yml", "upsun/examples/flex-services/.lando.yml"]
+    },
+    {
+      "id": "upsun/examples/flex-static",
+      "files": ["upsun/examples/flex-static/.lando.local.yml", "upsun/examples/flex-static/.lando.yml"]
+    },
+    {
+      "id": "varnish/.",
+      "files": ["varnish/.lando.yml"]
+    },
+    {
+      "id": "varnish/examples/4.x",
+      "files": ["varnish/examples/4.x/.lando.yml"]
+    },
+    {
+      "id": "varnish/examples/6.x",
+      "files": ["varnish/examples/6.x/.lando.yml"]
+    },
+    {
+      "id": "varnish/examples/custom",
+      "files": ["varnish/examples/custom/.lando.yml"]
+    },
+    {
+      "id": "varnish/examples/defaults",
+      "files": ["varnish/examples/defaults/.lando.yml"]
+    },
+    {
+      "id": "wordpress/.",
+      "files": ["wordpress/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples",
+      "files": ["wordpress/examples/.lando.upstream.yml", "wordpress/examples/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-custom",
+      "files": ["wordpress/examples/wordpress-custom/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-defaults",
+      "files": ["wordpress/examples/wordpress-defaults/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-downstreamer-1",
+      "files": ["wordpress/examples/wordpress-downstreamer-1/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-downstreamer-2",
+      "files": ["wordpress/examples/wordpress-downstreamer-2/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-export",
+      "files": ["wordpress/examples/wordpress-export/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-import",
+      "files": ["wordpress/examples/wordpress-import/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-nginx",
+      "files": ["wordpress/examples/wordpress-nginx/.lando.yml"]
+    },
+    {
+      "id": "wordpress/examples/wordpress-recommended",
+      "files": ["wordpress/examples/wordpress-recommended/.lando.yml"]
+    }
+  ]
+}

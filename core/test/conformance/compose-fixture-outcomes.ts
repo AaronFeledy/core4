@@ -15,7 +15,6 @@ import {
   valueAt,
 } from "./compose-fixture-outcome-values.ts";
 import {
-  matchedVolumes,
   preservedSourceValue,
   requirePresentValue,
   serviceDocumentPath,
@@ -84,29 +83,6 @@ const assertPreservedMatch = (match: ComposeDispositionMatch, context: OutcomeCo
     expect(produced).toEqual(source);
     return true;
   }
-  if (match.matrixPath.startsWith("volumes.tmpfs")) {
-    const volume = matchedVolumes(match, service)[0];
-    if (volume === undefined) throw new ComposeFixtureOutcomeError("Matched tmpfs volume missing");
-    const entries = valueAt(compose, "tmpfs");
-    const preserved = Array.isArray(entries)
-      ? entries.find((entry) => valueAt(entry, "target") === volume.target)
-      : undefined;
-    requirePresentValue(preserved, match, "ServicePlan.extensions.compose.tmpfs");
-    const suffix = match.matrixPath.slice("volumes.tmpfs".length).replace(/^\./u, "");
-    const produced = suffix.length === 0 ? preserved : valueAt(preserved, suffix);
-    requirePresentValue(produced, match, `ServicePlan.extensions.compose.tmpfs.${suffix}`);
-    expect(produced).toEqual(
-      suffix.length === 0
-        ? {
-            target: volume.target,
-            ...(volume.readOnly ? { read_only: true } : {}),
-            ...(volume.tmpfs ?? {}),
-          }
-        : source,
-    );
-    return true;
-  }
-
   const relativePath = serviceDocumentPath(match);
   const produced = valueAt(compose, relativePath);
   requirePresentValue(produced, match, `ServicePlan.extensions.compose.${relativePath}`);

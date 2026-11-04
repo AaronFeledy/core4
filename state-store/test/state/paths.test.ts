@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -19,6 +19,18 @@ describe("resolveStatePath", () => {
 
   afterEach(async () => {
     await rm(base, { recursive: true, force: true });
+  });
+
+  test("preserves a non-missing realpath failure instead of accepting a lexical root", async () => {
+    const loop = join(base, "loop");
+    await symlink(loop, loop);
+    const result = await Effect.runPromise(
+      resolveStatePath({ path: AbsolutePath.make(loop) }, undefined, "record", "open").pipe(Effect.result),
+    );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toMatchObject({ _tag: "StateStoreError", cause: { code: "ELOOP" } });
+    }
   });
 
   test("uses injected host roots for named state roots", async () => {

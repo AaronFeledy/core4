@@ -5,7 +5,7 @@ const tunnelFields = {
   provider: Schema.optional(Schema.String),
   sessionId: Schema.optional(Schema.String),
   detail: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 };
 

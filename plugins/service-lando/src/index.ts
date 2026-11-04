@@ -7,6 +7,7 @@ import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services"
 import { appFeatures } from "./app-features/index.ts";
 import { SERVICE_FEATURE_IDS, serviceFeatures as bundledServiceFeatures } from "./features/index.ts";
 import mailpitGlobalService from "./global-services/mailpit.ts";
+import { buildServiceTypeFacts } from "./service-type-facts.ts";
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
 import { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "./services/dotnet.ts";
@@ -29,7 +30,13 @@ import {
   mysqlServiceType,
 } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType, nodeServiceType } from "./services/node.ts";
+import {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+  nodeServiceType,
+} from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
 import {
   php81ServiceType,
@@ -95,6 +102,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["node", nodeServiceType],
   ["node:lts", nodeLtsServiceType],
   ["node:22", node22ServiceType],
+  ["node:24", node24ServiceType],
+  ["node:26", node26ServiceType],
   ["opensearch", opensearchServiceType],
   ["opensearch:2", opensearch2ServiceType],
   ["php:8.1", php81ServiceType],
@@ -129,6 +138,9 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
 ]);
 
 export const services = Layer.empty;
+
+export const serviceTypeFacts = () => buildServiceTypeFacts(serviceTypes);
+export { listenerContracts } from "./service-type-facts.ts";
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["mailpit", mailpitGlobalService],

@@ -11,12 +11,7 @@ test("registers fresh and reused control tokens before returning a session", asy
   const { cleanup, options } = await relayHarness("ssh", "volume-relay");
   const registered: string[] = [];
   const redaction = {
-    ...makeRedactionService({
-      id: "test",
-      list: Effect.succeed([]),
-      get: () => Effect.succeed("unused"),
-      has: () => Effect.succeed(false),
-    }),
+    ...makeRedactionService(),
     registerValues: (values: readonly string[]) =>
       Effect.sync(() => {
         registered.push(...values);

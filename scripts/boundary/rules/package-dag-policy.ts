@@ -66,6 +66,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/redaction"],
     devDependencies: [],
   },
+  "@lando/source-acquisition": {
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
+    devDependencies: [],
+  },
   "@lando/data-mover": {
     dependencies: [
       "@lando/container-runtime",
@@ -93,11 +97,12 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/mcp": {
-    dependencies: ["@lando/sdk", "@lando/engine", "@lando/redaction"],
-    devDependencies: [],
+    dependencies: ["@lando/sdk", "@lando/engine", "@lando/landofile", "@lando/redaction"],
+    // Pipe regressions exercise the renderer-owned production Stdio adapter.
+    devDependencies: ["@lando/renderer"],
   },
   "@lando/landofile": {
-    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/source-acquisition"],
     devDependencies: [],
   },
   "@lando/engine": {
@@ -107,6 +112,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/state-store",
       "@lando/container-runtime",
       "@lando/landofile",
+      "@lando/source-acquisition",
       "@lando/redaction",
       "@lando/http-client",
       "@lando/telemetry",
@@ -125,6 +131,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/http-client",
       "@lando/telemetry",
       "@lando/managed-file",
+      "@lando/source-acquisition",
       "@lando/renderer",
       "@lando/service-lando",
       "@lando/provider-docker",
@@ -138,8 +145,13 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/github-actions": {
+    dependencies: ["@lando/sdk"],
+    // The verified-source cache test proves quarantine against the real TestStateStore backend.
+    devDependencies: ["@lando/state-store"],
+  },
   "@lando/sql": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
     // Recovery retention tests compose the real snapshot store without a live container runtime.
     devDependencies: ["@lando/data-mover", "@lando/paths", "@lando/state-store"],
   },
@@ -173,10 +185,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client"],
     devDependencies: [],
     // Diagnostic regressions register process-global canaries; runtime imports remain forbidden.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
+    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client", "@lando/redaction"],
   },
   "@lando/renderer-lando": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],

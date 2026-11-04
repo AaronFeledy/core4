@@ -71,10 +71,13 @@ describe("redis ServiceType", () => {
     expect(plan.type).toBe("redis");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "redis:7" });
     expect(plan.command).toEqual(["redis-server", "--appendonly", "yes"]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-redis-data");
-    expect(String(plan.storage[0]?.target)).toBe("/data");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 6379, protocol: "tcp", name: "cache" }]);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--redis-data");
+    expect(String(volumes[0]?.target)).toBe("/data");
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
+    ]);
   });
 
   test("respects image, port, and command overrides", async () => {
@@ -124,5 +127,53 @@ describe("redis ServiceType", () => {
     );
 
     expect(resolution.tooling?.["redis-cli"]).toEqual({ service: "cache", cmd: ["redis-cli"] });
+  });
+
+  test("sets launcher listener authority when an authored command replaces the Lando port launcher", async () => {
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
+      service: Schema.decodeUnknownSync(ServiceConfig)({
+        type: "redis",
+        port: 16379,
+        command: ["redis-server", "--maxmemory", "256mb"],
+      }),
+      appRoot: "/srv/apps/myapp",
+      metadata,
+      featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
+    });
+    expect(plan.command).toEqual(["redis-server", "--maxmemory", "256mb"]);
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "Redis",
+      setting: "--port 16379",
+      port: 16379,
+    });
+  });
+
+  test("omits listener authority when only an entrypoint is authored", async () => {
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
+      service: Schema.decodeUnknownSync(ServiceConfig)({
+        type: "redis",
+        port: 16379,
+        entrypoint: ["custom-start"],
+      }),
+      appRoot: "/srv/apps/myapp",
+      metadata,
+      featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
+    });
+    expect(plan.command).toEqual(["redis-server", "--appendonly", "yes", "--port", "16379"]);
+    expect(plan.listenerAuthority).toBeUndefined();
+  });
+
+  test("omits listener authority when Lando owns the redis-server launcher", async () => {
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
+      service: Schema.decodeUnknownSync(ServiceConfig)({ type: "redis", port: 16379 }),
+      appRoot: "/srv/apps/myapp",
+      metadata,
+      featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
+    });
+    expect(plan.listenerAuthority).toBeUndefined();
   });
 });

@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { compileRecipeSource } from "@lando/sdk/recipes";
 import {
   LandofileAuthoringShape,
   LandofileShape,
   RecipeManifest,
   getEditorJsonSchema,
   getJsonSchema,
+  validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import { LandofileStandardSchema, RecipeManifestStandardSchema } from "@lando/sdk/schema/standard";
 import {
@@ -14,7 +16,7 @@ import {
   JsonSchema,
   Result,
   Schema,
-  SchemaIssue,
+  type SchemaIssue,
   SchemaParser,
   SchemaRepresentation,
 } from "effect";
@@ -103,7 +105,12 @@ const INEXPRESSIBLE = [
 ] as const;
 
 const SKIPPED = [
+  { suffix: ".lando.stop", reason: "Discovery stop marker, not a Landofile document." },
   { suffix: ".lando.ts", reason: "TypeScript program, not a YAML Landofile document." },
+  {
+    suffix: ".lando.local.ts",
+    reason: "TypeScript overlay program, not a canonical YAML Landofile document.",
+  },
   { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.recipe.yml", reason: "Recipe overlay layer, not a canonical Landofile document." },
@@ -119,7 +126,7 @@ function issueDetails(issues: readonly StandardSchemaV1.Issue[]) {
 
 function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
   return Result.isFailure(decoded)
-    ? issueDetails(SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues)
+    ? issueDetails(validationIssuesFromSchemaIssue(decoded.failure.issue))
     : [];
 }
 
@@ -188,11 +195,17 @@ test("runtime JSON Schema agrees with the strict Landofile decoder", async () =>
 
 const INVALID_INPUT_FIXTURES = new Map([
   [
+    "node/fixtures/node-init-invalid",
+    "Deliberate init: sometimes; only booleans or ASCII case-insensitive true/false/on/off/yes/no/1/0 strings are accepted.",
+  ],
+  [
     "router-and-scanner/fixtures/router-and-scanner-invalid",
     "Retries intentionally exceed the allowed range.",
   ],
   ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
   ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
+  ["networks/fixtures/networks-pinned-address", "Deliberately pins a network address Lando rejects."],
+  ["nginx/fixtures/nginx-upload-dirs-inject", "Deliberate config-injection attempt in an upload directory."],
   ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
   ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
   [
@@ -202,8 +215,18 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["convert-from-lando-3/fixtures/pantheon-app", "Legacy Pantheon recipe source requires translation."],
   ["convert-from-lando-3/fixtures/lando3-blocked", "Legacy source deliberately blocked by translation."],
   ["convert-from-lando-3/fixtures/lando3-layers", "Legacy layered source requires translation."],
+  ["convert-from-lando-3/fixtures/lando3-ports-mounts", "Legacy Lando 3 source requires translation."],
   ["config-lint/fixtures/config-lint-invalid", "Deliberate unknown keys and invalid ports."],
+  ["config-lint/fixtures/wrong-type", "Deliberate wrong boolean type for fragment and effective parity."],
+  [
+    "config-lint/fixtures/wrong-filter-prefix",
+    "Deliberate wrong prefix type on a selected route-filter member.",
+  ],
   ["config-views/fixtures/invalid", "Deliberate invalid runtime for raw and merged inspection."],
+  [
+    "your-landofile/fixtures/flow-mapping-rejected",
+    "Deliberate populated flow mapping as an environment value.",
+  ],
 ]);
 
 const inputValid = [
@@ -227,6 +250,8 @@ const inputValid = [
   },
 ] as const;
 const inputInvalid = [
+  { id: "disabled-tooling-string", input: { tooling: { retired: "disabled" } } },
+  { id: "empty-tooling-string", input: { tooling: { retired: "" } } },
   { id: "plain-boolean", input: { name: "demo", services: { web: { primary: "maybe" } } } },
   { id: "plain-number", input: { name: "demo", router: { httpPort: "abc" } } },
   { id: "surrounding-spaces", input: { name: "demo", router: { httpPort: "  {{ number(env.PORT) }}  " } } },
@@ -348,18 +373,32 @@ test("skips non-Landofile fixture files only when a reason is listed", () => {
   console.info(`Landofile parity skipped: ${skipped.length}`);
 });
 
-test("bundled recipe manifests agree with RecipeManifest", async () => {
-  // Given bundled recipe.yml files. Empty YAML maps parse as null, so a manifest may be rejected.
-  const paths = [
-    ...new Bun.Glob("recipes/**/recipe.yml").scanSync({ cwd: fileURLToPath(root), dot: true }),
-  ].sort();
-  expect(paths.length).toBeGreaterThan(0);
-  for (const id of paths) {
-    const input = Bun.YAML.parse(await Bun.file(new URL(id, root)).text());
+test("compiled recipe manifests agree with RecipeManifest", async () => {
+  // Given the public compiler's derived manifest and invalid wire variants.
+  const manifest = Result.getOrThrow(
+    compileRecipeSource(
+      {
+        id: "parity",
+        title: "Parity",
+        description: "Compiled recipe contract fixture",
+        version: "1.0.0",
+        options: { enabled: { type: { kind: "boolean" }, default: false, prompt: {} } },
+        config: { runtime: 4 },
+      },
+      { sourceKind: "bundled", packageName: "@lando/recipe-parity", assets: [] },
+    ),
+  );
+  const fixtures = [
+    { id: "compiled", input: manifest, accepted: true },
+    { id: "invalid-title", input: { ...manifest, title: 7 }, accepted: false },
+    { id: "excess-property", input: { ...manifest, unexpected: true }, accepted: false },
+  ];
+  for (const { id, input, accepted } of fixtures) {
+    // When both public schema interfaces validate the same value.
     const decoded = Schema.decodeUnknownResult(RecipeManifest)(input, parseOptions);
     const standard = await RecipeManifestStandardSchema["~standard"].validate(input);
-    const accepted = Result.isSuccess(decoded);
     // Then the Standard Schema view agrees on accept/reject and on every issue path and message.
+    expect(Result.isSuccess(decoded), id).toBe(accepted);
     expect(standard.issues === undefined, id).toBe(accepted);
     expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
   }

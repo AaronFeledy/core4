@@ -15,6 +15,7 @@ test("a future engine StartedAt never extends settling past two seconds", async 
         service: target.service,
         providerId: plan.provider,
         status: "running",
+        publications: { status: "unknown" },
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(600_000)),
       }),
   } satisfies RuntimeProviderShape;
@@ -38,6 +39,7 @@ test("healthcheck waits use one global liveness poll per cadence and preserve ex
           service: target.service,
           providerId: plan.provider,
           status: now >= 1_000 ? "stopped" : "running",
+          publications: { status: "unknown" as const },
           ...(now >= 1_000 ? { exitCode: 17 } : {}),
         };
       }),

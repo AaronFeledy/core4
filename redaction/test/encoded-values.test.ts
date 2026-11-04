@@ -1,19 +1,14 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { REDACTED, createPayloadRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
-import {
-  createStandaloneRedactor,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "../src/service.ts";
-
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+import { createStandaloneRedactor, makeRedactionService } from "../src/service.ts";
 
 const escapedSecret = 'p@ss/"w:\\rd\n?☃';
 const variants = [
   ["raw", "p@ss/w:rd", "p@ss/w:rd"],
   ["URL", "p@ss/w:rd", "p%40ss%2Fw%3Ard"],
+  ["RFC 3986 punctuation", "p!ss'()*", "p%21ss%27%28%29%2A"],
+  ["RFC 3986 bang", "p!ss", "p%21ss"],
   ["JSON unchanged", "p@ss/w:rd", "p@ss/w:rd"],
   ["base64 unchanged alphabet", "p@ss/w:rd", "cEBzcy93OnJk"],
   ["escaped raw", escapedSecret, escapedSecret],
@@ -27,22 +22,23 @@ const variants = [
   ["base64url underscore", "\uffff", "77-_"],
 ] as const;
 
-for (const source of ["store", "registered", "authoritative", "caller", "env"] as const) {
+for (const source of ["resolved", "registered", "authoritative", "caller", "env", "whole-token"] as const) {
   test.each(variants)(`${source} masks %s in both layers`, async (_name, secret, variant) => {
     // Given
-    const service = makeRedactionService({
-      id: "fixture",
-      get: () => Effect.succeed(secret),
-      has: () => Effect.succeed(source === "store"),
-      list: Effect.succeed(source === "store" ? ["fixture"] : []),
-    });
+    const service = makeRedactionService();
+    if (source === "resolved") await Effect.runPromise(service.registerValues([secret]));
     const options = {
       authoritativeTokens: source === "authoritative" ? [secret] : [],
       redactionTokens: source === "caller" ? [secret] : [],
       sourceEnv: source === "env" ? { APP_SECRET: secret } : {},
+      wholeTokenValues: source === "whole-token" ? [secret] : [],
     };
     const strings = await Effect.runPromise(service.forProfile("secrets", options));
-    const standalone = createStandaloneRedactor("secrets", options);
+    const standalone = createStandaloneRedactor("secrets", {
+      ...options,
+      authoritativeTokens:
+        source === "registered" || source === "resolved" ? [secret] : options.authoritativeTokens,
+    });
     const getValues = await Effect.runPromise(service.payloadValues(options));
     const initial = getValues();
     const text = `<>${variant}<>`;
@@ -53,7 +49,7 @@ for (const source of ["store", "registered", "authoritative", "caller", "env"] a
     // Then
     expect(stringOutput).toBe(`<>${REDACTED}<>`);
     expect(strings.redactStringBounded?.(text, 4096)).toBe(`<>${REDACTED}<>`);
-    if (source !== "store") expect(standalone.redactString(text)).toBe(`<>${REDACTED}<>`);
+    expect(standalone.redactString(text)).toBe(`<>${REDACTED}<>`);
     if (source === "registered") expect(getValues()).not.toBe(initial);
     expect(getValues()).toBe(getValues());
     for (let split = 0; split <= bytes.length; split += 1) {
@@ -68,14 +64,22 @@ for (const source of ["store", "registered", "authoritative", "caller", "env"] a
   });
 }
 
+test("encoded whole-token variants retain boundaries and substring collisions take precedence", () => {
+  const secret = "p@ss";
+  const encoded = "p%40ss";
+  const whole = createStandaloneRedactor("secrets", { wholeTokenValues: [secret] });
+  const mixed = createStandaloneRedactor("secrets", {
+    wholeTokenValues: [secret],
+    redactionTokens: [encoded],
+  });
+  const input = `${encoded} ${encoded}-suffix`;
+  expect(whole.redactString(input)).toBe("[redacted] p%40ss-suffix");
+  expect(mixed.redactString(input)).toBe("[redacted] [redacted]-suffix");
+});
+
 test("unusable encoded variants are dropped rather than suppressing strings or corrupting ANSI", async () => {
   // Given: U+33B4 encodes as the unsafe short numeric base64 value 4460.
-  const service = makeRedactionService({
-    id: "empty",
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-    list: Effect.succeed([]),
-  });
+  const service = makeRedactionService();
   const options = { authoritativeTokens: ["\u33b4"] };
   const strings = await Effect.runPromise(service.forProfile("secrets", options));
   const getValues = await Effect.runPromise(service.payloadValues(options));
@@ -84,7 +88,7 @@ test("unusable encoded variants are dropped rather than suppressing strings or c
   const payload = createPayloadRedactor(getValues);
   const output = Buffer.concat([payload.write(new TextEncoder().encode(text)), payload.flush()]).toString();
   // Then
-  expect([...getValues()]).not.toContain("4460");
+  expect([...getValues().substring]).not.toContain("4460");
   expect(strings.redactString(text)).toBe(text);
   expect(output).toBe(text);
   expect(strings.redactString("<>\u33b4<>")).toBe(`<>${REDACTED}<>`);
@@ -94,12 +98,7 @@ test.each(["lando", "landolando"])("heuristic default %s keeps encoded forms", a
   // Given
   const options = { sourceEnv: { DB_PASSWORD: secret } };
   const strings = createStandaloneRedactor("secrets", options);
-  const service = makeRedactionService({
-    id: "empty",
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-    list: Effect.succeed([]),
-  });
+  const service = makeRedactionService();
   const getValues = await Effect.runPromise(service.payloadValues(options));
   const text = `<>${Buffer.from(secret).toString("base64")}<>`;
   // When
@@ -110,16 +109,11 @@ test.each(["lando", "landolando"])("heuristic default %s keeps encoded forms", a
   expect(output).toBe(text);
 });
 
-test("raw unusable authoritative values still suppress only string details", async () => {
+test("raw unusable authoritative values suppress string details and mask payload bytes", async () => {
   // Given
   const options = { authoritativeTokens: ["32"] };
   const strings = createStandaloneRedactor("secrets", options);
-  const service = makeRedactionService({
-    id: "empty",
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-    list: Effect.succeed([]),
-  });
+  const service = makeRedactionService();
   const getValues = await Effect.runPromise(service.payloadValues(options));
   const text = "\u001b[32mvisible 32\u001b[0m";
   // When
@@ -128,5 +122,5 @@ test("raw unusable authoritative values still suppress only string details", asy
   // Then
   expect(strings.redactString(text)).toBe(REDACTED);
   expect(strings.redactStringBounded?.(text, 4096)).toBe(REDACTED);
-  expect(output).toBe(text);
+  expect(output).not.toContain("32");
 });

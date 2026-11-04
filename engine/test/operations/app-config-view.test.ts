@@ -3,10 +3,14 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { type AppConfigViewOptions, appConfigView } from "../../src/operations/app-config-view.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const inspect = (landofile: LandofileShape, options: AppConfigViewOptions) =>
   appConfigView(options).pipe(
-    Effect.provideService(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Effect.provideService(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalTestLandofile(landofile)) }),
+    ),
   );
 
 for (const options of [{ subcommand: "get", key: "services.web" }, { path: "services.web" }] as const) {

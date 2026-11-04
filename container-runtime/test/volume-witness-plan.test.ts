@@ -1,8 +1,14 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Schema, Stream } from "effect";
 import { type DataPlaneHttpRequest, makeProviderDataPlane, volumeWitnessImage } from "../src/data-plane.ts";
 import { echoHelperPull } from "./helper-pull-support.ts";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 test("pins both adoption helpers to the existing container rather than auto-creating a named volume", async () => {
   const calls: DataPlaneHttpRequest[] = [];
@@ -14,7 +20,7 @@ test("pins both adoption helpers to the existing container rather than auto-crea
     capabilities: { volumeSnapshot: "none" },
     endpointNamespace: "unix:///fixture.sock",
     pullHelperImage: echoHelperPull(pulledRefs),
-    redactDetails: (value) => value,
+    redactor: passthroughRedactor,
     api: {
       request: (input) => {
         calls.push(input);
@@ -88,7 +94,7 @@ test("refuses to create a witness helper when the acquired image is not the pinn
     capabilities: { volumeSnapshot: "none" },
     endpointNamespace: "unix:///fixture.sock",
     pullHelperImage: (ref) => Effect.succeed({ ref, digest: `sha256:${"0".repeat(64)}` }),
-    redactDetails: (value) => value,
+    redactor: passthroughRedactor,
     api: {
       request: (input) => {
         calls.push(input);

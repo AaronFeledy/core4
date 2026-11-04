@@ -1,16 +1,22 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   ServiceConfigIssue,
-  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  launcherAuthority,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -27,7 +33,23 @@ export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
 export const STATIC_FEATURE_ID = "service-lando.static" as const;
 export const STATIC_FEATURE_PRIORITY = 600;
 
-const DEFAULT_PORT = 80;
+export const STATIC_LISTENERS = {
+  nginx: {
+    port: 80,
+    daemon: "nginx",
+    when: "type: static or static:nginx",
+    launcher: { setting: (port: number) => `listen ${port};` },
+  },
+  caddy: {
+    port: 80,
+    daemon: "caddy",
+    when: "type: static:caddy",
+    launcher: { setting: (port: number) => `--listen :${port}` },
+  },
+} as const satisfies Readonly<Record<SupportedStaticServer, ListenerContract>>;
+export const STATIC_LISTENER = STATIC_LISTENERS.nginx;
+export const DEFAULT_PORT = STATIC_LISTENER.port;
+export const APP_MOUNT_TARGET = "/app";
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
@@ -88,7 +110,7 @@ const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.confi
 const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { docRoot, server } = configFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, STATIC_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
   const ownsCommand = service.command === undefined && service.entrypoint === undefined;
@@ -98,10 +120,16 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
     // its own server block, is still the planned command.
     if (ownsCommand) ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
   }
-  ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
+  // Only an authored command replaces the generated launcher; entrypoint still
+  // receives Lando's listen-port argv.
+  if (service.command !== undefined) {
+    ctx.setCommand(service.command);
+    ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS[server], port));
+  } else {
+    ctx.setCommand(defaultStaticCommand(server, docRoot, port, service.user));
+  }
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
 
@@ -115,6 +143,17 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   id: STATIC_FEATURE_ID,
   schema: StaticFeatureConfigSchema as Schema.Codec<unknown>,
   priority: STATIC_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(STATIC_FEATURE_ID, (ctx) => {
+    const { docRoot } = Schema.decodeUnknownSync(StaticFeatureConfigSchema)(ctx.config);
+    return { handledServiceFields: docRoot.length > 0 ? ["webroot"] : [] };
+  }),
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, STATIC_LISTENER),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(STATIC_FEATURE_ID, "service-lando.static failed to apply", applyStaticFeature),
 };
 
@@ -130,6 +169,11 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
+    // Verified linux/amd64: nginx:1.26-alpine config
+    // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
+    // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).
+    // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e
+    // has only root. Both server choices therefore declare only the root home.
     identity: rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>
@@ -150,7 +194,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
               id: "lando.env",
               config: { webroot: docRoot },
             },
-            { id: "lando.app-mount", config: { target: "/app", readOnly: true } },
+            { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, readOnly: true } },
           ],
         };
       }),

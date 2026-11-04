@@ -23,6 +23,7 @@ export const validateSource = (request: DownloadRequest): DownloadSourceForbidde
       message: "The download URL is not a valid absolute URL.",
       url: request.url,
       reason: "scheme",
+      remediation: "Pass an absolute https:// URL for the download source.",
     });
   }
   if (parsed.protocol === "https:") return undefined;
@@ -32,12 +33,14 @@ export const validateSource = (request: DownloadRequest): DownloadSourceForbidde
       message: "file:// sources are rejected unless the request explicitly allows local sources.",
       url: request.url,
       reason: "file-source",
+      remediation: "Use an https:// source, or set allowFileSource only for trusted local fixtures.",
     });
   }
   return new DownloadSourceForbiddenError({
     message: `The scheme ${parsed.protocol} is not allowed; https:// is the only production scheme.`,
     url: request.url,
     reason: "scheme",
+    remediation: "Use an https:// download URL.",
   });
 };
 
@@ -53,6 +56,7 @@ export const validateDestinationFilename = (filename: string): DownloadSourceFor
     return new DownloadSourceForbiddenError({
       message: "The destination filename must be a single path segment within the target directory.",
       reason: "destination-escape",
+      remediation: "Use a single filename without path separators for the download destination.",
     });
   }
   return undefined;

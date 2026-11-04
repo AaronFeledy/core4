@@ -177,7 +177,7 @@ describe("doctor degradation is visible to automation", () => {
 
   test("a degraded report exits non-zero so scripts cannot read it as healthy", () => {
     // When / Then
-    expect(metaDoctorSpec.successExitCode?.(reportWithSelf(), {})).toBe(1);
+    expect(metaDoctorSpec.completion?.(reportWithSelf(), {})).toEqual({ ok: false, exitCode: 1 });
   });
 
   test("a healthy report keeps the default exit code", () => {
@@ -191,7 +191,7 @@ describe("doctor degradation is visible to automation", () => {
     };
 
     // When / Then
-    expect(metaDoctorSpec.successExitCode?.(healthy, {})).toBeUndefined();
+    expect(metaDoctorSpec.completion?.(healthy, {})).toEqual({ ok: true, exitCode: 0 });
   });
 
   test("text output surfaces the self section", () => {
@@ -210,7 +210,12 @@ describe("isolateDoctorSection", () => {
     const outcome = await Effect.runPromise(
       isolateDoctorSection({
         section: "unit",
-        effect: Effect.fail(new ConfigError({ message: "bad config" })),
+        effect: Effect.fail(
+          new ConfigError({
+            message: "bad config",
+            remediation: "Injected failure for doctor self fixture.",
+          }),
+        ),
         fallback: "fallback",
       }),
     );

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DecompressionLimitError } from "../src/debian-decompress.ts";
 import { decompressXz } from "../src/nft-provision.ts";
 
 // These PATH-selected executable shell fixtures require POSIX shebang execution.
@@ -28,7 +29,7 @@ test.skipIf(process.platform === "win32")(
       // Then: exit 3 remains a cap error, rather than an EPIPE-triggered missing-xz fallback.
       expect(result).toBeInstanceOf(Error);
       if (!(result instanceof Error)) throw new Error("Expected decompression failure");
-      expect(result.constructor.name).toBe("NftDecompressionCapError");
+      expect(result).toBeInstanceOf(DecompressionLimitError);
       const pid = Number.parseInt(await readFile(pidFile, "utf8"), 10);
       expect(Number.isSafeInteger(pid)).toBe(true);
       expect(() => process.kill(pid, 0)).toThrow();

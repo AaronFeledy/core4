@@ -6,7 +6,7 @@ import { readAppEnvironment } from "../src/app-environment.ts";
 import type { EngineHttpApi } from "../src/engine-api.ts";
 import { APP_LABEL, SERVICE_LABEL } from "../src/labels.ts";
 
-const ctx = { providerId: "test", remediation: "Run doctor." };
+const ctx = { providerId: "test", remediation: "Run doctor.", env: {} };
 const app = AppId.make("secret-readback");
 const labels = { [APP_LABEL]: app, [SERVICE_LABEL]: "web" };
 const names = { web: ["API_VALUE", "SECOND"] };
@@ -186,6 +186,7 @@ test("transport failures discard their cause and response data", async () => {
           providerId: "test",
           operation: "request",
           message: "transport-private-canary",
+          remediation: "Install or start the `test` provider and confirm it can perform `request`.",
         }),
       ),
   };

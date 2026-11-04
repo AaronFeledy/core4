@@ -31,6 +31,7 @@ import {
   StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 
 import { makeLandoPaths } from "@lando/paths";
 const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
@@ -63,6 +64,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -102,11 +104,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "test_stop_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -140,7 +142,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [{ kind: "data" as const, name: "test_stop_database_data", scope: "app" as const }],
   fileSync: [],
   metadata,
@@ -190,6 +191,7 @@ const makeStopLayer = (
     readonly appliedFileSync?: AppliedFileSyncInspection;
   } = {},
 ) => {
+  const currentPlan = currentTestPlan(plannedApp);
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
@@ -216,6 +218,7 @@ const makeStopLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -224,6 +227,7 @@ const makeStopLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -249,7 +253,7 @@ const makeStopLayer = (
         providerId,
         status: stopped.has(target.service) ? "stopped" : "running",
         state: stopped.has(target.service) ? "stopped" : "running",
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   };
@@ -259,11 +263,13 @@ const makeStopLayer = (
     testStateStoreLayer,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-stop", services: {} }, plannedApp.root)),
+      }),
     ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -291,13 +297,14 @@ const makeStopLayer = (
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
     ),
   );
 
-  return { layer, events, publishedEvents, destroyCalls, volumes };
+  return { layer, currentPlan, events, publishedEvents, destroyCalls, volumes };
 };
 
 const expectMissingPath = async (path: string): Promise<void> => {
@@ -328,7 +335,7 @@ describe("lando stop", () => {
       "post-stop",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
+    expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan: harness.currentPlan });
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
     expect(harness.volumes.has("test_stop_database_data")).toBe(true);
     expect(result.servicesStopped).toEqual(["database", "web"]);
@@ -408,7 +415,7 @@ describe("lando stop", () => {
     ).toBe(false);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(String(harness.destroyCalls[0]?.target.app)).toBe("test-stop");
-    expect(harness.destroyCalls[0]?.target.plan).toEqual(planWithGlobalRequirement);
+    expect(harness.destroyCalls[0]?.target.plan).toEqual(harness.currentPlan);
   });
 
   test("preserves the missing Landofile error outside an app directory", async () => {
@@ -418,7 +425,7 @@ describe("lando stop", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("LandofileNotFoundError");
-      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
+      expect(result.stderr).toContain(`Run \`lando init\` in ${dir} to create an app.`);
     });
   });
 
@@ -474,6 +481,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "buildArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
           }),
         ),
       pullArtifact: () =>
@@ -482,6 +490,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "pullArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
       removeArtifact: () => Effect.void,
@@ -506,7 +515,7 @@ describe("lando stop", () => {
           providerId,
           status: "stopped",
           state: "stopped",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -515,11 +524,13 @@ describe("lando stop", () => {
       PrivateFileAccessService.layer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(literalLandofile({ name: "test-stop", services: {} }, plan.root)),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -541,11 +552,12 @@ describe("lando stop", () => {
           subscribe: () => Stream.die("not used"),
           subscribeQueue: Effect.die("not used"),
           waitFor: () => Effect.die("not used"),
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.die("not used"),
           query: () => Effect.succeed([]),
         }),
       ),
-      Layer.succeed(FileSyncEngine, unavailableEngine),
+      FileSyncResolver.layerWithEngine(unavailableEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     const result = await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
@@ -586,6 +598,8 @@ describe("lando stop", () => {
                 engineId: "mutagen",
                 sessionRef: "session-web-app-mount",
                 message: "daemon unavailable",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
               }),
             ),
           ),
@@ -599,7 +613,10 @@ describe("lando stop", () => {
         sessions: [testSessionSpec("app-mount")],
       },
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(stopApp().pipe(Effect.provide(layer), Effect.flip));
 
@@ -651,6 +668,8 @@ describe("lando stop", () => {
                     engineId: "mutagen",
                     sessionRef: String(ref),
                     message: "daemon unavailable",
+                    remediation:
+                      "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
                   }),
                 )
               : Effect.void,
@@ -670,7 +689,10 @@ describe("lando stop", () => {
         sessions: existing.map((session) => session.spec),
       },
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(stopApp().pipe(Effect.provide(layer), Effect.flip));
 
@@ -744,6 +766,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "buildArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
           }),
         ),
       pullArtifact: () =>
@@ -752,6 +775,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "pullArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
       removeArtifact: () => Effect.void,
@@ -776,7 +800,7 @@ describe("lando stop", () => {
           providerId,
           status: "stopped",
           state: "stopped",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -785,11 +809,13 @@ describe("lando stop", () => {
       PrivateFileAccessService.layer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(literalLandofile({ name: "test-stop", services: {} }, plan.root)),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -811,11 +837,12 @@ describe("lando stop", () => {
           subscribe: () => Stream.die("not used"),
           subscribeQueue: Effect.die("not used"),
           waitFor: () => Effect.die("not used"),
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.die("not used"),
           query: () => Effect.succeed([]),
         }),
       ),
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
@@ -834,3 +861,4 @@ describe("lando stop", () => {
     expect(callLog.lastIndexOf("listSessions")).toBeLessThan(flushIndex);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

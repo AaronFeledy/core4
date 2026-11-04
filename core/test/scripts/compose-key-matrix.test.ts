@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import remarkMdx from "remark-mdx";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 
 import {
   type ComposeDisposition,
@@ -14,6 +17,11 @@ import {
 } from "../../../scripts/build-compose-key-matrix.ts";
 
 type DispositionMap = Readonly<Record<string, ComposeDispositionEntry>>;
+
+test("renders remediation placeholders as text that parses as MDX", () => {
+  const page = renderComposeKeyMatrixPage();
+  expect(() => unified().use(remarkParse).use(remarkMdx).parse(page)).not.toThrow();
+});
 
 const countDisposition = (entries: DispositionMap, disposition: ComposeDisposition): number =>
   Object.values(entries).filter((entry) => entry.disposition === disposition).length;
@@ -72,9 +80,11 @@ test("describes preserved data without blanket capability gating", () => {
   const page = renderComposeKeyMatrixPage();
 
   // Then
-  expect(page).toContain(
-    "A `preserved` key is accepted and carried in the Compose plan extension; row details determine capability behavior.",
-  );
+  const preservedDefinition = page.split("\n").find((line) => line.startsWith("- `preserved`:"));
+  expect(preservedDefinition).toBeDefined();
+  expect(preservedDefinition).toContain("Lando accepts the key and carries it in the Compose plan extension");
+  expect(preservedDefinition).toContain("Read the row for provider capability requirements");
+  expect(preservedDefinition).toContain("acceptance does not guarantee every provider can use it");
   expect(page).not.toContain("carried in the Compose plan extension for capability checks");
 });
 

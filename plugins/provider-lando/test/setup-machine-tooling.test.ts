@@ -227,8 +227,11 @@ describe("provider-lando bundled machine tooling resolution", () => {
   });
 
   test("linux setup detects the Podman version from the bundled binary, not system PATH", async () => {
+    const { catatonitFixture } = await import("./fixtures/catatonit.ts");
+    const helper = catatonitFixture();
     const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-version-linux-"));
     try {
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.1.7");
       await writeFile(join(runtimeBinDir, "podman"), '#!/bin/sh\necho "podman version 9.9.9-bundled"\n', {
         mode: 0o755,
       });
@@ -238,6 +241,8 @@ describe("provider-lando bundled machine tooling resolution", () => {
           platform: "linux",
           runtimeBinDir,
           skipSocketProbe: true,
+          artifactDownload: helper.download,
+          _catatonitPackage: helper.pkg,
         }),
       );
 

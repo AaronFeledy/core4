@@ -1,0 +1,24 @@
+name: lando-ruby-3
+services:
+  defaults:
+    type: ruby:3.4
+    command: ruby /app/server.rb
+  custom:
+    type: ruby:3.3
+    port: 8080
+    command: ruby /app/server-custom.rb
+  patch:
+    type: ruby:3.3.1
+  cli:
+    type: ruby:3.4
+  v3_2:
+    type: ruby:3.2
+  v3_3:
+    type: ruby:3.3
+  v3_4:
+    type: ruby:3.4
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/ruby": ./../../

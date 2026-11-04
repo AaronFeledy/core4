@@ -1,0 +1,56 @@
+{
+  "provenance": {
+    "commit": "34e17e671c0864ac6db5c046c8c4a0491a8aef0b",
+    "sources": {
+      "sdk/src/schema/tooling-input.ts": "b95e4ef6ae6ef905e4db52ad25496fd84843e5c4"
+    }
+  },
+  "review": "Optional sensitive: true on authored tooling flags and args only. Match the complete normalized historical declaration by SHA-256 before adding this field; preserve every other field, constraint, required list, and union branch. Never regenerate from current schemas.",
+  "before": [
+    { "projection": "bare", "sha256": "a6ca06f2a1b138e5c3d8e8adc61a81e15d0ad7a876be1599130f4437b518c8bc" },
+    { "projection": "bare", "sha256": "2284a3bd5fc48be5129e33e28593fafdedc9a3feeb6a0430cbdf1af19690e0d3" },
+    {
+      "projection": "authoring",
+      "sha256": "bf5ff8aceab4751133591e9bb5da31d2843b041a7847fb4a367e46f6418dfa5d"
+    },
+    {
+      "projection": "authoring",
+      "sha256": "cbde1edbb46e471a64a13e50e0f05cf073121d40ae40bf9c9db0f58d5388351f"
+    },
+    {
+      "projection": "authoring",
+      "sha256": "6d8c2f38d006a330cca021e8fcc74654dc94f414bd4d1d15928eda942f6018be"
+    },
+    {
+      "projection": "authoring",
+      "sha256": "419e2541c8be474da2dc356737097e1e4cd95a7fa140726de97b9d50bdf4c12f"
+    }
+  ],
+  "bareSensitive": { "type": "boolean", "enum": [true] },
+  "authoringSensitive": {
+    "anyOf": [
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "_tag": { "type": "string", "enum": ["LandofileOverride"] },
+          "value": {
+            "anyOf": [
+              { "type": "boolean", "enum": [true] },
+              { "type": "string", "pattern": "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])" }
+            ]
+          }
+        },
+        "required": ["_tag"]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "_tag": { "type": "string", "enum": ["LandofileReset"] } },
+        "required": ["_tag"]
+      },
+      { "type": "boolean", "enum": [true] },
+      { "type": "string", "pattern": "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])" }
+    ]
+  }
+}

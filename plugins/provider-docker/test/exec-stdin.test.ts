@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
@@ -24,7 +25,7 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-exec-stdin-app-web";
+const containerName = "lando-exec-stdin-app--web";
 const createPath = `/containers/${containerName}/exec` as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
@@ -40,7 +41,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -57,7 +57,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -84,6 +83,7 @@ const makeFakeApi = () => {
       return Stream.empty;
     },
   };
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 

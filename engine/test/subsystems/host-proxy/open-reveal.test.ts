@@ -2,21 +2,12 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProcessExecError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, ProcessRunner, type ProcessSpawnOptions } from "@lando/sdk/services";
 import { Effect, Layer, Stream } from "effect";
-import {
-  HostProxyOpenerError,
-  openHostTarget,
-  revealArgvFor,
-  revealHostPath,
-} from "../../../src/services/host-opener.ts";
+import { openHostTarget, revealArgvFor, revealHostPath } from "../../../src/services/host-opener.ts";
 import { openHostProxyTarget } from "../../../src/subsystems/host-proxy/open-target.ts";
 import { createHostProxyRunLandoSession } from "../../../src/subsystems/host-proxy/transport.ts";
 
@@ -114,7 +105,15 @@ test("Windows reveal spawn failure is a tagged opener error, not a transport fai
       revealHostPath("C:\\app\\evil.exe", false, { platform: "win32" }).pipe(
         Effect.provideService(ProcessRunner, {
           ...runner.service,
-          run: () => Effect.fail(new ProcessExecError({ message: "missing", cmd: "explorer.exe" })),
+          run: () =>
+            Effect.fail(
+              new ProcessExecError({
+                message: "missing",
+                cmd: "explorer.exe",
+                remediation:
+                  "Install `explorer.exe` on this host or fix its executable path, then re-run the command.",
+              }),
+            ),
         }),
       ),
     ),
@@ -138,9 +137,7 @@ test("opener failure retains its remediation and classification over the host-pr
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...makeRedactionService(),
       }),
     ),
     Layer.succeed(
@@ -154,6 +151,7 @@ test("opener failure retains its remediation and classification over the host-pr
         subscribeQueue: Effect.die("unused"),
         query: () => Effect.die("unused"),
         waitFor: () => Effect.die("unused"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("unused"),
       }),
     ),
@@ -169,15 +167,14 @@ test("opener failure retains its remediation and classification over the host-pr
         callerService: "web",
         executor: () => Effect.die("unused"),
         openExecutor: () =>
-          Effect.fail(
-            new HostProxyOpenerError({
-              message: "The host opener failed.",
-              opener: "xdg-open",
-              operation: "openUrl",
-              remediation: "Install a host browser.",
-            }),
-          ),
-        paths: { userDataRoot: root, userCacheRoot: root, platform: "win32" },
+          Effect.succeed({
+            _tag: "error" as const,
+            code: "internal" as const,
+            message: "The host opener failed.",
+            remediation: "Install a host browser.",
+          }),
+        paths: { userDataRoot: root, userCacheRoot: root },
+        hostGatewayName: "host.containers.internal",
         shimArtifactPath: shim,
       }).pipe(Effect.provide(services)),
     );
@@ -198,11 +195,7 @@ test("opener failure retains its remediation and classification over the host-pr
         message: "The host opener failed.",
         remediation: "Install a host browser.",
       });
-      expect(events[1]).toMatchObject({
-        _tag: "post-host-proxy-call",
-        outcome: "failure",
-        failureDetail: "HostProxyOpenerError",
-      });
+      expect(events).toEqual([]);
     } finally {
       await session.close();
     }

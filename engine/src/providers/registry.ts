@@ -1,3 +1,4 @@
+import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { GlobalConfigSources } from "../services/config.ts";
@@ -28,6 +29,7 @@ import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { TeardownProvider } from "./app-placement.ts";
 import {
   observeProviderRuntime,
@@ -50,6 +52,8 @@ const toProviderUnavailable = (cause: unknown) =>
     operation: "list",
     message: "Unable to list runtime provider plugins.",
     cause,
+    remediation:
+      "Run lando doctor and repair the provider plugin manifest or import reported by the cause before retrying.",
   });
 
 export const makeRuntimeProviderRegistry = (
@@ -70,10 +74,11 @@ export const makeRuntimeProviderRegistry = (
       const managedFileService = yield* ManagedFileService;
       const paths = yield* PathsService;
       const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactorOptions = { sourceEnv: { ...process.env } };
       const errorRedactor =
         redaction._tag === "Some"
-          ? yield* redaction.value.forProfile("secrets")
-          : createStandaloneRedactor("secrets");
+          ? yield* redaction.value.forProfile("secrets", redactorOptions)
+          : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
@@ -171,6 +176,7 @@ export const makeRuntimeProviderRegistry = (
       });
 
       const makeProvider = makeProviderFactory({
+        hostProbeRunners: yield* captureHostProbeRunners,
         paths,
         downloader,
         containerHelperAssets,
@@ -214,6 +220,46 @@ export const makeRuntimeProviderRegistry = (
       );
 
       return RuntimeProviderRegistry.of({
+        appliedStateInventory: Effect.fn("RuntimeProviderRegistry.appliedStateInventory")(function* (
+          providerId: ProviderId,
+        ) {
+          const { contribution, context } = yield* contributionFor(providerId);
+          if (contribution.appliedStateInventory === undefined)
+            return yield* Effect.fail(
+              redactFailure(
+                new ProviderUnavailableError({
+                  providerId,
+                  operation: "applied-state.list",
+                  message: `Runtime provider ${providerId} does not provide a strict applied-state inventory.`,
+                  remediation:
+                    "Update the provider plugin to support strict applied-state inventory before relying on host-wide ownership checks.",
+                }),
+              ),
+            );
+          return yield* contribution
+            .appliedStateInventory(context)
+            .pipe(Effect.provideService(PathsService, paths), Effect.mapError(redactFailure));
+        }),
+        assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
+          function* (plan) {
+            const { contribution, context } = yield* contributionFor(plan.provider);
+            if (contribution.appliedStateInventory === undefined) return;
+            const inventory = yield* contribution
+              .appliedStateInventory(context)
+              .pipe(Effect.provideService(PathsService, paths));
+            const issue = inventory.unreadable.find(
+              (entry) => entry.appId === undefined || entry.appId === plan.id,
+            );
+            if (issue !== undefined)
+              return yield* Effect.fail(
+                unreadableAppliedStateError({
+                  providerId: plan.provider,
+                  path: issue.path,
+                  layout: issue.appId === undefined ? "record" : "per-app",
+                }),
+              );
+          },
+        ),
         list: providerIds,
         appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
           const ids = yield* providerIds;

@@ -1,6 +1,12 @@
 import { layer as plannerLayer } from "@lando/engine/services/planner";
 import { PluginLoadError } from "@lando/sdk/errors";
-import { type ProviderCapabilities, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  LoadScopedLandofile,
+  type ProviderCapabilities,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 
@@ -19,7 +25,13 @@ const serviceType: ServiceType = {
     Effect.succeed({ base: "l337", normalizedConfig: input.service, features: [{ id: "probe.image" }] }),
 };
 const unsupported = (id: string) =>
-  Effect.fail(new PluginLoadError({ pluginName: id, message: `Unexpected plugin ${id}` }));
+  Effect.fail(
+    new PluginLoadError({
+      pluginName: id,
+      message: `Unexpected plugin ${id}`,
+      remediation: "Install or register the plugin, then retry.",
+    }),
+  );
 const registry = Layer.succeed(
   PluginRegistry,
   PluginRegistry.of({
@@ -45,19 +57,24 @@ const registry = Layer.succeed(
 export const planHostProbe = (name: string, capabilities: ProviderCapabilities) =>
   Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(
-      {
-        name,
-        runtime: 4,
-        provider: ProviderId.make("docker"),
-        services: {
-          [hostProbeService]: {
-            type: serviceType.id,
-            home: false,
-            appMount: false,
-            extra_hosts: authoredExtraHosts,
+      LoadScopedLandofile.make({
+        stage: "load-scoped",
+        pendingSites: [],
+        context: { appRoot: AbsolutePath.make(process.cwd()), env: {} },
+        document: {
+          name,
+          runtime: 4,
+          provider: ProviderId.make("docker"),
+          services: {
+            [hostProbeService]: {
+              type: serviceType.id,
+              home: false,
+              appMount: false,
+              extra_hosts: authoredExtraHosts,
+            },
           },
         },
-      },
+      }),
       capabilities,
     ),
   ).pipe(Effect.provide(plannerLayer), Effect.provide(registry));

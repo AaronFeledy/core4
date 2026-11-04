@@ -1,6 +1,6 @@
 # Lando v4: Mission, Tenets, and Non-Goals
 
-> **Part 1 of 19** · [Index](./README.md)
+> **Part 1 of 20** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
 This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Release stages and sequencing live only in the [ROADMAP](./ROADMAP.md).
@@ -14,6 +14,8 @@ This part states the mission, non-negotiable tenets, core boundaries, default di
 ### 1.1 What Lando v4 is
 
 Lando v4 is a declarative local-development toolchain. A committed Landofile produces an identical networked environment with one command. The user promise continues; the implementation is a hard reset.
+
+Local development remains primary. Programmable execution (§22) exposes the same environments and operations to advanced consumers without changing ordinary commands, defaults, or performance. External automation platforms are optional consumers, not prerequisites.
 
 1. **Provider-neutral.** Runtime providers are plugins; core has no Docker dependency.
 2. **Bun-native.** Bun is the runtime, package manager, test runner, process and shell substrate, file layer, and bundler. `ProcessRunner` owns argv-precise work and `ShellRunner` owns shell-shaped work (§3.4, §4.2).
@@ -31,7 +33,7 @@ These tenets are non-negotiable and reviewable on every PR.
 |---|---|
 | **Functional core, imperative shell** | Business logic is pure Effect; filesystem, process, network, and terminal effects live behind services. CLI and library hosts are imperative shells. |
 | **Type-driven design** | Effect Schema defines public contracts and TypeScript types are inferred from it. |
-| **Tagged errors only** | Core failures are `Schema.TaggedError` values with machine `_tag` and actionable remediation, not thrown generic exceptions. |
+| **Tagged errors only** | Core failures are `Schema.TaggedError` values with machine `_tag` and required, nonblank actionable remediation on decoded values and the wire, not thrown generic exceptions. CLI and MCP presentation boundaries normalize unexpected defects to `LandoInternalError` and keep a tagged error that surfaced as a defect under its own tag and remediation; normal failure output never prints stacks. |
 | **Resource-safe by construction** | Handles, locks, files, ports, networks, and subprocesses are acquired in `Scope` with an explicit lifetime owner. Acquisition-local resources finalize on failure or interruption; established user and global app resources stay app-owned (§6.7) until their owning lifecycle ends. |
 | **Capability before plan, plan before action** | Providers declare capabilities; planning validates intent; providers execute only valid plans. |
 | **Performance is a feature** | Published p95 end-to-end, first-paint, and hot-path budgets in §2.1 are release contracts; embedding hosts that reuse one `LandoRuntime` across sequential operations are held to the same hot-path budgets (§16.3). Streaming render, bytecode, generated bootstrap layers, lazy services, bounded caches, efficient event dispatch, concurrency, and runtime reuse remain mandatory where their owning sections specify them. Regressions are release-blocking. |
@@ -53,6 +55,7 @@ Core owns:
 - The native command registry, routing, help/manifest generation, and CLI-to-Effect boundary (§8.4.1).
 - Provider-neutral planning, app lifecycle orchestration, provider selection, subsystem contracts, and caches (§3–§12).
 - The public embedding API, including runtime factories, services, schemas, errors, and event payloads (§16).
+- Opt-in composition of environments, operations, and explicit lifetime ownership (§22).
 - Global-app identity, lifecycle, CLI, plugin enablement, and required-service integration; plugins own contributed services (§20).
 - Scratch-app identity, scoped lifecycle, isolation transforms, registry, and orphan cleanup; plugins MAY contribute inputs, not scratch ownership (§21).
 - The embedded Bun user surface, its allowed verbs, redaction, recursion, and host-proxy policy (§2.1, §8.2.4, §8.8.8, §10.10).
@@ -109,8 +112,9 @@ The forms ship from the same source at the same version and MUST NOT drift.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
-- File-sync engines beyond passthrough and bundled Mutagen, or file-sync-owned TCP/UDP forwarding (§10.6).
+- Bundled file-sync engines beyond Mutagen (`passthrough` is a no-session policy, not an engine), or file-sync-owned TCP/UDP forwarding (§10.6).
 - Copy-on-write scratch isolation, scratch fleets, fork-source hot reload, or scratch apps as expression sources (§21.15).
+- Foreign automation dialects/protocols and the execution-platform features excluded by §22.1.
 
 ### 14.2 Open decisions
 
@@ -125,7 +129,7 @@ The following extension constraints apply without committing to an implementatio
 
 | Capability | Constraint |
 |---|---|
-| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
+| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app host-proxy worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
 | Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
 | Service-type `topLevelAlias` enforcement | Enforce once the tooling schema lifts the current catalog-wide rejection of `topLevelAlias` (§6.11, §8.5). |
 | OS-keychain credential backend | Add a keychain-backed writable `SecretStore` (macOS Keychain, Windows Credential Manager, Secret Service) as a peer of the file-backed `lando` store once its threat model (§9.5.1) proves insufficient; the file store stays the default until then. |

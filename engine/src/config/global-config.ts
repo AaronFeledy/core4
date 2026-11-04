@@ -12,6 +12,7 @@ import {
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Result, Schema, type SchemaIssue } from "effect";
+import { hostEventsShellIssues } from "../planner/host-shell-issues.ts";
 import { findAgentEnvPatternNames } from "./agent-env.ts";
 import { attributeConfigIssue, globalConfigIssuesError } from "./global-config-errors.ts";
 
@@ -77,7 +78,11 @@ export const decodeGlobalConfigSources = (
     hostDecoded === undefined
       ? []
       : Result.isSuccess(hostDecoded)
-        ? hostEventsSemanticIssues(hostDecoded.success)
+        ? [
+            ...hostEventsSemanticIssues(hostDecoded.success),
+            // Authoring checks only: a bad host step must not stop commands that merely read config.
+            ...(options.excessKeys === "error" ? hostEventsShellIssues(hostDecoded.success) : []),
+          ]
         : validationIssuesFromCause(hostDecoded.failure).map((issue) => ({
             ...issue,
             path: ["hostEvents", ...issue.path],
@@ -115,7 +120,10 @@ export const decodeGlobalConfigSources = (
     issues.push({ path: ["logLevel"], message: `Expected one of ${LOG_LEVELS.join(", ")}.` });
   if (Result.isFailure(decoded)) issues.push(...validationIssuesFromCause(decoded.failure));
   else if (decoded.success.hostEvents !== undefined && hostIssues.length === 0)
-    issues.push(...hostEventsSemanticIssues(decoded.success.hostEvents));
+    issues.push(
+      ...hostEventsSemanticIssues(decoded.success.hostEvents),
+      ...(options.excessKeys === "error" ? hostEventsShellIssues(decoded.success.hostEvents) : []),
+    );
   let cause: AgentEnvPatternError | undefined;
   if (Result.isSuccess(decoded) && decoded.success.notify?.enabled && options.commandIds !== undefined) {
     const commandIds = options.commandIds;
@@ -187,4 +195,21 @@ export const decodeGlobalConfigFile = (
     }),
     (value) => value.config,
   );
+};
+
+/** Host steps in `hostEvents` that Bun Shell can't run, as the error `lando config validate` reports. */
+export const hostEventsShellConfigError = (
+  hostEvents: HostEvents | undefined,
+  configFile: string,
+): ConfigError | undefined => {
+  const issues = hostEvents === undefined ? [] : hostEventsShellIssues(hostEvents);
+  return issues.length === 0
+    ? undefined
+    : globalConfigIssuesError(
+        issues.map((issue) => ({
+          ...issue,
+          source: { layer: "config-file", file: configFile, path: issue.path },
+        })),
+        configFile,
+      );
 };

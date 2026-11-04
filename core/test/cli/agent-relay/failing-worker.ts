@@ -12,6 +12,8 @@ const provider = {
         providerId: "docker",
         operation: "bridge",
         message: "sensitive-provider-diagnostic",
+        remediation:
+          "Re-run the command after checking `docker` logs for the `bridge` failure; if it persists, report the error with that operation name.",
       }),
     ),
 };

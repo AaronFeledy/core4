@@ -3,7 +3,7 @@ import { ConfigTranslateInput, ConfigTranslateSourceId } from "@lando/sdk/schema
 import { Effect, Schema } from "effect";
 
 import { slugifyAppName } from "../src/naming.ts";
-import { lando3ConfigTranslator } from "../src/translator.ts";
+import { testTranslator as lando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const digest = (text: string): string =>
   `sha256:${new Bun.CryptoHasher("sha256").update(text).digest("hex")}`;

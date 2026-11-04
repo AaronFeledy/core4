@@ -8,19 +8,55 @@ tags: [beta, docs, plugins, authoring]
 
 # Link a local plugin
 
-`lando meta:plugin:link` validates the checkout, then symlinks it into the user plugin root.
+Run `lando meta:plugin:link` from your plugin checkout to validate it and create
+a symlink in your user plugin root. Keep the checkout at that location while
+using the link.
 
 ```sh
 lando meta:plugin:link
 ```
 
-That is cwd. Pass a path when the checkout is next door.
+With no argument, the command uses your current directory. Pass a path to link
+a checkout elsewhere:
 
 ```sh
 lando meta:plugin:link ../lando-plugin-demo
 ```
 
-A symlink is cheaper than a tarball, and meaner if you later move the checkout.
+After linking, check that `<userDataRoot>/plugins/<name>` points to your checkout,
+where `<name>` is the plugin manifest's name.
+
+## Fix a rejected manifest
+
+If linking fails with `PluginManifestError`, read the issue paths and reasons
+below the message, then correct those fields in `package.json`. Unknown keys are
+rejected. The manifest is the `landoPlugin` object when present, otherwise the
+whole `package.json`.
+
+For scripts or editor integrations, request structured diagnostics:
+
+```sh
+lando meta:plugin:link ../lando-plugin-demo --format=json
+```
+
+The failure envelope carries `error.issues`, each with a `path` array and a
+`message`, plus `error.remediation`. An empty path means the manifest root.
+
+For example, an extra `unexpected` key in `landoPlugin` is rejected with the
+issue path `["unexpected"]`. Remove the key from `package.json`, then rerun
+the link command. Lando validates the manifest before creating the link.
+
+<Guide>
+  <Scenario id="reject-excess-manifest-key" render>
+    <Step name="inspect-manifest-issue">
+      <UseFixture name="excess-manifest-key" />
+      <Run command="lando meta:plugin:link --format=json" expectExit={1} />
+      <Verify errorTag="PluginManifestError" />
+      <Verify command="lando meta:plugin:link --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"unexpected\"\\s*\\]" } }} />
+      <Verify command="lando meta:plugin:link --format=json" expectExit={1} expect={{ stdout: { regex: "\"remediation\":\\s*\"[^\"\\s]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## What it writes
 
@@ -37,7 +73,8 @@ Also trust the absolute checkout if you need postinstall or authoring-root check
 lando meta:plugin:trust-authoring-root /absolute/path/to/plugin
 ```
 
-Relative paths are rejected.
+Replace `/absolute/path/to/plugin` with the checkout's absolute path. Relative
+paths are rejected.
 
 ## Unlink
 

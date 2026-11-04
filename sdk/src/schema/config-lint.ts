@@ -14,6 +14,10 @@ import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
  */
 export const ConfigLintViolation = Schema.Struct({
   rule: Schema.String.annotate({ description: "Stable diagnostic rule identifier." }),
+  reason: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Machine-readable cause within rule. landofile.load findings carry the failing validation issue's rule, or the load failure's tag when the issue has none.",
+  }),
   severity: Schema.Literals(["error", "warning"]).annotate({
     description: "Whether the finding prevents configuration validity.",
   }),

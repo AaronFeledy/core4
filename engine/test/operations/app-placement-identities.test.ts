@@ -138,6 +138,7 @@ test("user cleanup evidence excludes colocated scratch inventory and orphan reso
             service: ServiceName.make("web"),
             providerId: plan.provider,
             status: "running",
+            publications: { status: "unknown" as const },
           },
         ]),
     },

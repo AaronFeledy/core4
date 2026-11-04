@@ -6,7 +6,6 @@ services:
     type: compose
     image: ollama/ollama:latest
     appMount: false
-    home: false
     ports:
       - "127.0.0.1:11434:11434"
     volumes:

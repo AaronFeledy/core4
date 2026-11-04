@@ -3,7 +3,6 @@ services:
   search:
     type: solr
     image: solr:10
-    home: false
 tooling:
   solr:
     service: search

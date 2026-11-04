@@ -13,7 +13,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "bun": ">=1.4.2"
+    "bun": ">=1.4.3"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/http-client": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",

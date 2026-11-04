@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
 
-import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { composeService } from "@lando/engine/services/feature";
@@ -27,6 +27,7 @@ const composeCerts = (config: Readonly<Record<string, unknown>> = {}, serviceNam
     },
     baseKind: "lando",
     appName: "certs-test",
+    appSlug: "certs-test",
     appRoot: "/srv/apps/certs-test",
     normalizedConfig: { type: "node:22" },
     features: [{ id: LANDO_CERTS_FEATURE_ID, config, definition: certsFeature() }],
@@ -43,13 +44,17 @@ describe("lando.certs feature", () => {
     expect(definition.priority).toBe(1000);
   });
 
-  test("is completely inert for an empty config", async () => {
+  test("records no certificate for an empty config without mounts or environment", async () => {
     const plan = await composeCertsPlan({});
 
     expect(plan.mounts.filter((mount) => mount.target.startsWith("/etc/lando/certs/leaf"))).toEqual([]);
     expect(plan.environment.LANDO_SERVICE_CERT).toBeUndefined();
     expect(plan.environment.LANDO_SERVICE_KEY).toBeUndefined();
     expect(plan.certs).toBeUndefined();
+    expect(plan.extensions["@lando/core/certs"]).toBe("none");
+    expect(
+      Schema.decodeSync(ServicePlan)(Schema.encodeSync(ServicePlan)(plan)).extensions["@lando/core/certs"],
+    ).toBe("none");
   });
 
   test("mounts cert and key read-only and publishes both env vars", async () => {
@@ -60,6 +65,7 @@ describe("lando.certs feature", () => {
 
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/certs/web.crt",
         target: PortablePath.make("/etc/lando/certs/leaf/web.crt"),
@@ -69,6 +75,7 @@ describe("lando.certs feature", () => {
       {
         type: "bind",
         source: "/host/certs/web.key",
+        origin: "service",
         target: PortablePath.make("/etc/lando/certs/leaf/web.key"),
         readOnly: true,
         realization: "passthrough",
@@ -106,6 +113,8 @@ describe("lando.certs feature", () => {
 
   test("records the certificate plan when cn and caId are present", async () => {
     const plan = await composeCertsPlan({
+      certPath: "/host/certs/generated.crt",
+      keyPath: "/host/certs/generated.key",
       cn: "web.certs-test.internal",
       sans: ["web", "web.certs-test.internal"],
       caId: "mkcert",
@@ -116,15 +125,20 @@ describe("lando.certs feature", () => {
       sans: ["web", "web.certs-test.internal"],
       caId: "mkcert",
     });
+    expect(plan.extensions).not.toHaveProperty("@lando/core/certs");
   });
 
-  test("omits the certificate plan for user-supplied certs", async () => {
+  test("records the certificate source for user-supplied certs", async () => {
     const plan = await composeCertsPlan({
       certPath: "/host/certs/custom.crt",
       keyPath: "/host/certs/custom.key",
     });
 
     expect(plan.certs).toBeUndefined();
+    expect(plan.extensions["@lando/core/certs"]).toBe("custom");
+    expect(
+      Schema.decodeSync(ServicePlan)(Schema.encodeSync(ServicePlan)(plan)).extensions["@lando/core/certs"],
+    ).toBe("custom");
   });
 
   test("rejects malformed config through the feature schema", async () => {

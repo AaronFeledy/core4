@@ -81,9 +81,9 @@ for (const mode of ["lando", "plain", "json", "verbose"] as const) {
               if (shape === "live") {
                 const sink = yield* Effect.serviceOption(StreamFrameSink);
                 if (Option.isSome(sink)) {
-                  yield* sink.value.emit({ _tag: "stdout", chunk: "alpha\nbeta\n", raw: true });
-                  yield* sink.value.emit({ _tag: "stdout", chunk: "partial", raw: true });
-                  yield* sink.value.emit({ _tag: "stderr", chunk: "tool-diagnostic\n", raw: true });
+                  yield* sink.value.emit({ _tag: "stdout", chunk: "alpha\nbeta\n", kind: "bytes" });
+                  yield* sink.value.emit({ _tag: "stdout", chunk: "partial", kind: "bytes" });
+                  yield* sink.value.emit({ _tag: "stderr", chunk: "tool-diagnostic\n", kind: "bytes" });
                 }
               }
               return { value: "result" };

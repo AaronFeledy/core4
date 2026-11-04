@@ -1,12 +1,16 @@
-import { join } from "node:path";
+// allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
+import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 
-import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { Clock, type Context, Effect, Option } from "effect";
 
-import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from "@lando/sdk/errors";
-import type { ExpressionContext } from "@lando/sdk/expressions";
+import {
+  LandofileEventStepFailedError,
+  ToolingCompileError,
+  ToolingDisabledError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
@@ -20,9 +24,13 @@ import {
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { eventStepLabel } from "./event-step-identity.ts";
 
-import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import type { ExpressionContext } from "@lando/sdk/expressions";
+import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
+import { effectiveToolingForPlan, toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
+import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
+import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import type {
   ResolvedToolingCmdStepLeaf,
   ResolvedToolingCommandStepLeaf,
@@ -30,7 +38,6 @@ import type {
   ResolvedToolingTaskStepLeaf,
   ToolingStepRunners,
 } from "../tooling/step-runner.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { publishEventOutputProgress } from "./event-output-progress.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
@@ -61,7 +68,9 @@ interface EventRuntimeOptions {
   readonly event: LandofileEventName;
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly privateFileAccess: PrivateFileAccess;
+  readonly environmentResolver: Option.Option<Context.Service.Shape<typeof EnvironmentValueResolver>>;
   readonly hostRunner?: Context.Service.Shape<typeof ShellRunner>;
+  readonly processRunner?: ProcessRunner["Service"];
   readonly redactor: Redactor;
   /** `env` maps hold env-style names; `input` holds command flags and args, named like config fields. */
   readonly redactorFor: (sources: EventRedactionSources) => Effect.Effect<EventRedactionScope>;
@@ -97,6 +106,42 @@ const failureExitCode = (error: unknown): number => {
   return 1;
 };
 
+const wrappedRemediation = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("remediation" in error)) return undefined;
+  const value = error.remediation;
+  return typeof value === "string" && /\S/u.test(value) ? value : undefined;
+};
+
+const leafTargetsHost = (
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  result?: ToolingEngineResult,
+): boolean => {
+  if (leaf.kind === "cmd" && leaf.service === ":host") return true;
+  if (result !== undefined && String(result.service) === ":host") return true;
+  return false;
+};
+
+const lifecycleRemediation = (
+  options: EventRuntimeOptions,
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  error?: unknown,
+  result?: ToolingEngineResult,
+): string => {
+  if (error instanceof ToolingDisabledError) {
+    return options.redactor.redactString(error.remediation);
+  }
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  let remediation = `Fix ${label}, then rerun the lifecycle command.`;
+  if (leafTargetsHost(leaf, result)) {
+    remediation += " The step runs in Bun Shell.";
+  }
+  const wrapped = error === undefined ? undefined : wrappedRemediation(error);
+  if (wrapped !== undefined) {
+    remediation += ` ${options.redactor.redactString(wrapped)}`;
+  }
+  return remediation;
+};
+
 const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
@@ -111,7 +156,7 @@ const stepFailure = (
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, error),
   });
 };
 
@@ -133,25 +178,17 @@ const nonzeroFailure = (
       options.redactor.redactString(output.stdout),
       options.redactor.redactString(output.stderr),
     ),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, undefined, result),
   });
-};
-
-const stringifyEnv = (
-  env: Readonly<Record<string, string | number | boolean>> | undefined,
-): Readonly<Record<string, string>> | undefined => {
-  if (env === undefined) return undefined;
-  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)]));
 };
 
 const hostEventChildEnv = (
   source: "host" | "project" | undefined,
-  env: Readonly<Record<string, string | number | boolean>> | undefined,
+  env: import("@lando/sdk/schema").Environment | undefined,
   service: string | undefined,
-): Readonly<Record<string, string>> | undefined => {
-  const stringEnv = stringifyEnv(env);
-  if (source !== "host" || service !== ":host") return stringEnv;
-  return { ...stringEnv, [LANDO_HOST_EVENT_ENV]: "1" };
+): import("@lando/sdk/schema").Environment | undefined => {
+  if (source !== "host" || service !== ":host") return env;
+  return { ...env, [LANDO_HOST_EVENT_ENV]: "1" };
 };
 
 const toolingRuntime = Effect.fnUntraced(function* (tool: string) {
@@ -180,7 +217,7 @@ const runInvocation = Effect.fnUntraced(function* (
   invocationOptions: {
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly env?: import("@lando/sdk/schema").Environment;
   } = {},
 ) {
   const runtime = yield* toolingRuntime(tool);
@@ -188,7 +225,10 @@ const runInvocation = Effect.fnUntraced(function* (
     name: tool,
     lookupKey: tool,
     task,
-    source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
+    source: {
+      path: toolingSourcePathForPlan(options.plan, tool),
+      task: tool,
+    },
     ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
     ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
   });
@@ -248,12 +288,28 @@ const runTask = Effect.fnUntraced(function* (
   const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
   const variableRedaction = yield* options.redactorFor({ env: [leaf.vars] });
   if (task === undefined) {
+    if (options.hostRunner === undefined)
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "ShellRunner is unavailable for script-backed event execution.",
+          tool: leaf.task,
+          remediation: "Provide the selected ShellRunner in the event runtime.",
+        }),
+      );
     const script = yield* runBunShellTooling(
       { name: leaf.task, cwd: String(options.plan.root) },
       String(options.plan.root),
-    ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
+    ).pipe(
+      Effect.provideService(PrivateFileAccessService, options.privateFileAccess),
+      Effect.provideService(ShellRunner, options.hostRunner),
+    );
     if (script !== undefined) {
-      return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
+      return {
+        leaf,
+        result: { ...script, stdout: script.stdout ?? "", stderr: script.stderr ?? "" },
+        startedAt,
+        redactor: variableRedaction.redactor,
+      };
     }
     return yield* Effect.fail(
       stepFailure(
@@ -267,11 +323,13 @@ const runTask = Effect.fnUntraced(function* (
       ),
     );
   }
-  const resolved = yield* resolveToolingTaskShape(task, context).pipe(
-    Effect.mapError((error) =>
-      stepFailure({ ...options, redactor: variableRedaction.redactor }, leaf, error),
-    ),
-  );
+  const client = yield* resolveConnectionClientTask({
+    plan: options.plan,
+    name: leaf.task,
+    task,
+    sites: sitesUnder(invocationAuthorityForPlan(options.plan)?.sites ?? [], ["tooling", leaf.task]),
+  });
+  const resolved = yield* resolveToolingTaskShape(client.task, context, client.sites);
   const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
   const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
     Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
@@ -324,11 +382,15 @@ const withStreamedTail = Effect.fnUntraced(function* (
   const tee: StreamFrameSinkShape = {
     emit: (frame) =>
       Effect.sync(() => {
-        const bytes = typeof frame.chunk === "string" ? encoder.encode(frame.chunk) : frame.chunk;
+        const bytes =
+          frame.kind === "record"
+            ? encoder.encode(`${frame.chunk}\n`)
+            : typeof frame.chunk === "string"
+              ? encoder.encode(frame.chunk)
+              : frame.chunk;
         const text = decoders[frame._tag].decode(payloads[frame._tag].write(bytes), { stream: true });
         tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
       }).pipe(Effect.andThen(live.value.emit(frame))),
-    ...(live.value.flush === undefined ? {} : { flush: live.value.flush }),
   };
   const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
   for (const kind of ["stdout", "stderr"] as const) {
@@ -343,9 +405,18 @@ export const makeEventStepRunners = (
 ): ToolingStepRunners<EventLeafError, EventLeafResult> => {
   const checked = (
     leaf: ResolvedToolingStepLeaf,
-    effect: Effect.Effect<EventLeafResult, unknown>,
+    effect: Effect.Effect<EventLeafResult, unknown, EnvironmentValueResolver>,
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
-    withStreamedTail(effect).pipe(
+    withStreamedTail(
+      Option.isSome(options.environmentResolver)
+        ? effect.pipe(Effect.provideService(EnvironmentValueResolver, options.environmentResolver.value))
+        : Effect.fail(
+            new ToolingCompileError({
+              message: "Environment value resolver is unavailable for event execution.",
+              tool: options.event,
+            }),
+          ),
+    ).pipe(
       Effect.catch((error) =>
         isEventRuntimeError(error) ? Effect.fail(error) : Effect.fail(stepFailure(options, leaf, error)),
       ),
@@ -353,7 +424,18 @@ export const makeEventStepRunners = (
     );
   return {
     runCmd: (leaf) => checked(leaf, runCmd(options, leaf)),
-    runTask: (leaf, context) => checked(leaf, runTask(options, leaf, context)),
+    runTask: (leaf, context) =>
+      checked(
+        leaf,
+        options.processRunner === undefined
+          ? Effect.fail(
+              new ToolingCompileError({
+                message: "Process runner is unavailable for event task execution.",
+                tool: options.event,
+              }),
+            )
+          : runTask(options, leaf, context).pipe(Effect.provideService(ProcessRunner, options.processRunner)),
+      ),
     runCommand: (leaf) =>
       checked(
         leaf,

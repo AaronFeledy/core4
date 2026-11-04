@@ -1,4 +1,5 @@
 import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
+import type { ListenerAuthority } from "@lando/sdk/schema";
 
 import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import {
@@ -8,22 +9,14 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "@lando/renderer/summary";
+import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "./service-summary";
-
-type InfoResultWithHostProxy = InfoAppResult & {
-  readonly hostProxy?: {
-    readonly runLando: {
-      readonly availability: "available" | "unavailable";
-      readonly reason?: string;
-    };
-  };
-};
-
-const hasHostProxy = (result: InfoAppResult): result is InfoResultWithHostProxy => "hostProxy" in result;
-
-const hostProxyFor = (result: InfoAppResult) => (hasHostProxy(result) ? result.hostProxy : undefined);
+import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
+import { fileSyncSection, plainFileSyncLines } from "./info-file-sync-render.ts";
+import { probeFields } from "./info-probes-render.ts";
+import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
+import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
 const infoStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
@@ -37,7 +30,12 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
   return [
     {
       label: "log sources",
-      value: sources.map((source) => `${source.id} [${availability(source)}]`).join(", "),
+      value: sources
+        .map(
+          (source) =>
+            `${source.id}${source.strategy === "console" ? ` (console/${source.stream})` : ""} [${availability(source)}]`,
+        )
+        .join(", "),
     },
     ...(reasons.length === 0 ? [] : [{ label: "log details", value: reasons.join(" ") }]),
   ];
@@ -49,24 +47,76 @@ const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
   return parts.join(" ");
 };
 
+const detailList = new Intl.ListFormat("en", { type: "conjunction" });
+
+const listenerText = (authority: ListenerAuthority): string => {
+  switch (authority.owner) {
+    case "application":
+      return `app-owned · sets ${authority.variables.map((variable) => `\`${variable}\``).join(", ")}`;
+    case "launcher":
+      return `your command must pass \`${authority.setting}\``;
+    case "image":
+      return `your image must set \`${authority.setting}\`${authority.file === undefined ? "" : ` in ${authority.file}`}`;
+    default: {
+      const unreachable: never = authority;
+      return unreachable;
+    }
+  }
+};
+
+const planMetadataFields = (service: InfoAppService): NonNullable<SummaryRow["fields"]> =>
+  [
+    ...(service.artifact === undefined
+      ? []
+      : [
+          {
+            label: "artifact",
+            value:
+              service.artifact.kind === "ref"
+                ? `${service.artifact.ref}${service.artifact.digest === undefined ? "" : ` (${service.artifact.digest})`}`
+                : `build${service.artifact.contentHash === undefined ? "" : ` (${service.artifact.contentHash})`}`,
+          },
+        ]),
+    ...(service.user === undefined ? [] : [{ label: "user", value: service.user }]),
+    ...(service.listenerAuthority === undefined
+      ? []
+      : [{ label: "listener", value: listenerText(service.listenerAuthority) }]),
+  ].map((field) => ({ ...field, value: escapeDiagnosticText(field.value) }));
+
+/** One pointer to the JSON contract for the details the summary leaves out. */
+const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string => {
+  const details = [
+    ...(hasLogSources ? ["log paths", "strategies"] : []),
+    ...(hasStorage ? ["mount sources"] : []),
+  ];
+  return `Run \`lando info --format=json\` for ${detailList.format(details)}.`;
+};
+
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
-  const hostProxy = hostProxyFor(result);
-  const rows: SummaryRow[] = result.services.map((service) => ({
-    label: service.service,
-    tone: infoStatusTone(service.status),
-    value: service.status,
-    fields: [
-      { label: "type", value: service.type },
-      { label: "provider", value: service.provider },
-      {
-        label: "endpoints",
-        value: endpointText(service.endpoints),
-      },
-      ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
-      ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
-    ],
-  }));
+  const hostProxy = result.hostProxy;
+  const projectFiles = fileSyncSection(result.fileSync);
+  const rows: SummaryRow[] = result.services.map((service) => {
+    const remedy = storageRemedy(service);
+    return {
+      label: service.service,
+      tone: service.health?.state === "unhealthy" ? "warn" : infoStatusTone(service.status),
+      value: service.status,
+      fields: [
+        { label: "type", value: service.type },
+        { label: "provider", value: service.provider },
+        ...planMetadataFields(service),
+        ...probeFields(service),
+        ...connectionFields(service.connections),
+        ...storageFields(service),
+        ...homeFields(service),
+        ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
+        ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
+      ],
+      ...(remedy === undefined ? {} : { remedy }),
+    };
+  });
   const hasLogSources = result.services.some((service) => (service.logSources?.length ?? 0) > 0);
+  const hasStorage = result.services.some((service) => (service.mounts?.length ?? 0) > 0);
   const agentEnvSection =
     result.agentEnv === undefined
       ? []
@@ -101,11 +151,12 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         rows,
         ...(rows.length === 0
           ? { notes: ["No services are defined for this app."] }
-          : hasLogSources
-            ? { notes: ["Run `lando info --format=json` for log paths and strategies."] }
+          : hasLogSources || hasStorage
+            ? { notes: [jsonDetailsNote(hasLogSources, hasStorage)] }
             : {}),
       },
-      ...(hostProxy === undefined
+      ...(projectFiles === undefined ? [] : [projectFiles]),
+      ...(hostProxy?.runLando.availability !== "unavailable"
         ? []
         : [
             {
@@ -113,7 +164,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
               rows: [
                 {
                   label: "runLando",
-                  tone: (hostProxy.runLando.availability === "available" ? "ok" : "skipped") as SummaryTone,
+                  tone: "skipped" as const,
                   value: hostProxy.runLando.availability,
                   fields:
                     hostProxy.runLando.reason === undefined
@@ -136,14 +187,15 @@ const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
 };
 
 const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
-  const hostProxy = hostProxyFor(result);
-  if (hostProxy === undefined) return [];
+  const hostProxy = result.hostProxy;
+  if (hostProxy?.runLando.availability !== "unavailable") return [];
   const reason = hostProxy.runLando.reason === undefined ? "" : `\t${hostProxy.runLando.reason}`;
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };
 
+// Links must open from the host, so app-network `internal` addresses are deliberately left out.
 const infoHttpUrls = (result: InfoAppResult): ReadonlyArray<string> =>
-  result.services.flatMap((service) => service.endpoints);
+  unambiguousHostHttpUrls(result.services.flatMap((service) => service.connections));
 
 export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
   const rendered = isDecoratedContext(ctx)
@@ -153,18 +205,35 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
-  const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
+  const extra = [...plainFileSyncLines(result.fileSync), ...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
-    const renderedEndpoints = endpointText(service.endpoints);
-    const base = `${service.service}\t${service.status}\t${renderedEndpoints}`;
+    const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
-      return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
+      const location = source.strategy === "console" ? `console/${source.stream}` : source.path;
+      return `${service.service}\tlog-source\t${source.id}\t${location}\t${source.strategy}\t${source.availability}${reason}`;
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
-    return [base, ...logRows, ...credsRows];
+    const homeRows = homeFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    const metadataRows = planMetadataFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    const probes = probeFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    return [
+      base,
+      ...metadataRows,
+      ...probes,
+      ...plainStorageRows(service),
+      ...homeRows,
+      ...logRows,
+      ...credsRows,
+    ];
   });
-  return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
+  return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

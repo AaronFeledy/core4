@@ -102,7 +102,7 @@ const buildCaptured = (rawFrame: string): CapturedFrame => {
  * service, no timers, no provider) so the result is deterministic.
  */
 export const captureTreeFrame = (events: ReadonlyArray<LandoEvent>, columns: number): CapturedFrame => {
-  const vm = new TaskTreeViewModel({ terminalColumns: columns });
+  const vm = new TaskTreeViewModel({ color: true, terminalColumns: columns });
   for (const event of events) vm.apply(event);
   return buildCaptured(vm.frameLines().join("\n"));
 };

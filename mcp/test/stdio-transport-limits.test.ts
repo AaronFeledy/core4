@@ -61,7 +61,7 @@ test("stdio-never-reading-client-cannot-accumulate-unbounded-progress", async ()
               const sink = yield* StreamFrameSink;
               for (let i = 0; i < 1025; i++) {
                 emitted++;
-                yield* sink.emit({ _tag: "stdout", chunk: `progress-${i}` });
+                yield* sink.emit({ kind: "record", _tag: "stdout", chunk: `progress-${i}` });
               }
               return {};
             }),

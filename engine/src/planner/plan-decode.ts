@@ -1,12 +1,16 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { AppPlan, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
+import {
+  CurrentExecutableAppPlan,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 
 export const decodeAppPlan = (
   appRoot: string,
   plan: unknown,
-): Effect.Effect<AppPlan, LandofileValidationError> => {
-  const decoded = Schema.decodeUnknownResult(AppPlan)(plan);
+): Effect.Effect<CurrentExecutableAppPlan, LandofileValidationError> => {
+  const decoded = Schema.decodeUnknownResult(CurrentExecutableAppPlan)(plan);
   if (Result.isSuccess(decoded)) return Effect.succeed(decoded.success);
   const issues = validationIssuesFromCause(decoded.failure, { fallback: "Invalid AppPlan." });
   return Effect.fail(

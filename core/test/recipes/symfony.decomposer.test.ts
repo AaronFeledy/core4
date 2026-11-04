@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { symfonyDecomposer } from "../../src/recipes/builtin/symfony/decomposer.ts";
-import { symfonyRecipeYaml } from "../../src/recipes/builtin/symfony/manifest.ts";
-import { symfonyProducer, symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
+import { Effect, Result } from "effect";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: symfonyDecomposer,
+  producer: symfonyProducer,
+  snapshot: symfonySnapshot,
+  manifest,
+} = bundledRecipe("symfony");
 
 const defaults = { php: "8.4", database: "postgres:16", composer: "2", webroot: "public" };
 const alternate = { php: "8.1", database: "mariadb:11.4", composer: "2.7.7", webroot: "/app/web" };
@@ -31,7 +30,7 @@ const expected = {
       port: 80,
       environment: {
         DATABASE_URL:
-          "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+          "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8",
         REDIS_URL: "redis://cache:6379",
       },
       dependsOn: ["database", "cache"],
@@ -83,7 +82,7 @@ describe("symfony decomposition", () => {
     const appserver = services.appserver;
     if (appserver === undefined || typeof appserver === "string")
       throw new TypeError("Expected an object appserver service.");
-    expect(Object.keys(appserver)).toEqual(Object.keys(expected.services.appserver));
+    expect(Object.keys(appserver).sort()).toEqual(Object.keys(expected.services.appserver).sort());
   });
 
   test("returns the exact authoring fragment when non-default options are supplied", () => {
@@ -102,7 +101,7 @@ describe("symfony decomposition", () => {
             ...expected.services.appserver,
             environment: {
               DATABASE_URL:
-                "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+                "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
               REDIS_URL: "redis://cache:6379",
             },
           },
@@ -116,11 +115,11 @@ describe("symfony decomposition", () => {
   test.each([
     {
       database: "postgres:16",
-      url: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+      url: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8",
     },
     {
       database: "mariadb:11.4",
-      url: "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+      url: "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
     },
   ])("injects datastore connection environment when the database is $database", ({ database, url }) => {
     // Given the selected database, when the recipe is decomposed.
@@ -148,24 +147,19 @@ describe("symfony decomposition", () => {
 
   test("publishes exactly the declared file and post-init inventory", () => {
     // Given the published recipe YAML.
-    const raw = Bun.YAML.parse(symfonyRecipeYaml);
     // When decoded through the public manifest contract.
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(raw);
     // Then only the Landofile and the existing message are declared.
-    expect<unknown>(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect<unknown>(manifest.files).toEqual([]);
     expect<unknown>(manifest.postInit).toEqual([
       { type: "message", text: "Run 'lando start' inside the new app directory to bring Symfony up." },
     ]);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot", () => {
+  test("publishes a self-consistent migratable snapshot", async () => {
     // Given the schema-decoded published snapshot.
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(symfonyRecipeYaml));
     // When its canonical content identity is recomputed.
-    const digest = computeRecipeContentDigest(recipeContentDigestProjection(manifest));
+    const digest = await recompiledBundledDigest(manifest);
     // Then identity and migratability agree with the manifest.
     expect<unknown>(digest).toBe(manifest.snapshot?.identity.contentDigest);
     expect(manifest.snapshot?.identity.recipeId).toBe(manifest.id);

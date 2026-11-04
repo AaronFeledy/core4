@@ -91,7 +91,25 @@ describe("mergeRouterConfig", () => {
     // Then
     expect(merged.httpPorts).toEqual([9090, 9000]);
     expect(merged.httpsPorts).toEqual([8443, 9443]);
-    expect(merged.bindAddress).toBe("0.0.0.0");
+    expect(merged.bindAddress).toBe("10.0.0.1");
+  });
+
+  test("ignores a Landofile bindAddress so it cannot widen the shared router", () => {
+    // Given a global bind and a widening Landofile bind.
+    const globalRouter = { bindAddress: "10.0.0.1" };
+    const landofileRouter = { bindAddress: "0.0.0.0" };
+    // When they merge.
+    const merged = mergeRouterConfig(globalRouter, landofileRouter);
+    // Then only the global bind survives.
+    expect(merged.bindAddress).toBe("10.0.0.1");
+  });
+
+  test("keeps the compiled loopback bind when only the Landofile sets bindAddress", () => {
+    // Given a Landofile that tries to publish on every interface.
+    // When no global overlay is present.
+    const merged = mergeRouterConfig(undefined, { bindAddress: "0.0.0.0" });
+    // Then the shared router stays on loopback.
+    expect(merged.bindAddress).toBe("127.0.0.1");
   });
 });
 
@@ -161,6 +179,16 @@ describe("resolveRouterConfigForApp", () => {
     );
     expect(preferredOnly.router).toEqual({ enabled: true, bindAddress: "127.0.0.1", httpPort: 80 });
     expect(preferredOnly.routerPin).toEqual({});
+  });
+
+  test("ignores a Landofile bindAddress when resolving app router config", async () => {
+    const result = await Effect.runPromise(
+      resolveRouterConfigForApp({ bindAddress: "0.0.0.0", httpPort: 9090 }).pipe(
+        Effect.provide(globalRouterLayer({ bindAddress: "10.0.0.1" })),
+      ),
+    );
+    expect(result.router).toEqual({ enabled: true, bindAddress: "10.0.0.1", httpPort: 9090 });
+    expect(result.routerPin).toEqual({ httpPort: 9090 });
   });
 
   test("records Landofile router disablement while retaining explicit port settings", async () => {

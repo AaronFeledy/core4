@@ -1,7 +1,28 @@
 # laravel
 
-Laravel scaffold with PHP 8.1-8.6, Composer, Node 22 for Vite, MariaDB or
-PostgreSQL, Redis, and an optional `via: cli` queue worker.
+Use this recipe for Laravel with PHP 8.1-8.6, Composer, Node 22 for Vite,
+MariaDB or PostgreSQL, and Redis. You can also add a PHP CLI queue worker.
+The recipe configures the stack; create the Laravel application afterward.
+
+## Host prerequisites
+
+- Lando v4 install with `provider-lando` or `provider-docker`.
+
+## Bootstrapping the codebase
+
+The recipe writes a Landofile only. After `lando start`, create Laravel in
+`tmp-app` with `lando composer create-project laravel/laravel tmp-app`, then copy
+the application into the root while keeping `.lando.yml`. Run `lando composer
+install` to check and install the application's dependencies, then build the
+frontend with `lando npm install` and `lando npm run build`. `node_modules`
+stays in the `node` service's volume; `public/build` lands in the shared `/app`.
+
+When `worker` is true, both PHP services author
+`appMount: { target: "/app", includes: ["vendor"] }`, sharing host dependencies
+instead of creating separate vendor shadows. The default keeps its vendor shadow.
+The queue worker needs the application and dependencies first. Start warns about a
+`restarting` worker while they are missing. The engine retries the worker automatically
+and it starts on its own once installation finishes. Check `lando logs --service=worker`.
 
 ## Generated services
 
@@ -20,23 +41,3 @@ PostgreSQL, Redis, and an optional `via: cli` queue worker.
 - `lando artisan`: Laravel Artisan.
 - `lando composer`: Composer.
 - `lando npm`: npm inside the `node` service.
-
-## Bootstrapping the codebase
-
-The recipe writes a Landofile only. After `lando start`, create Laravel in
-`tmp-app` with `lando composer create-project laravel/laravel tmp-app`, then copy
-the application into the root while keeping `.lando.yml`. Run `lando composer
-install` to check and install the application's dependencies, then build the
-frontend with `lando npm install` and `lando npm run build`. `node_modules`
-stays in the `node` service's volume; `public/build` lands in the shared `/app`.
-
-When `worker` is true, both PHP services author
-`appMount: { target: "/app", includes: ["vendor"] }`, sharing host dependencies
-instead of creating separate vendor shadows. The default keeps its vendor shadow.
-The queue worker needs the application and dependencies first. Start warns about a
-`restarting` worker while they are missing. The engine retries the worker automatically
-and it starts on its own once installation finishes. Check `lando logs --service=worker`.
-
-## Host prerequisites
-
-- Lando v4 install with `provider-lando` or `provider-docker`.

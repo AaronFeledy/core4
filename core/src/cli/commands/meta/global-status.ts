@@ -1,120 +1,58 @@
-import { Effect, Schema } from "effect";
-
-import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
-import type { ToolingExecError } from "@lando/sdk/errors";
-import type { ServicePlan } from "@lando/sdk/schema";
-import {
-  type AppPlanner,
-  type FileSystem,
-  type GlobalAppService,
-  type ProviderError,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
-import { selectGlobalServices } from "./global-common";
-
-import {
-  type LoadObservedGlobalPlanError,
-  loadObservedGlobalPlan,
-} from "@lando/engine/operations/global-plan";
+import type { GlobalStatusResult } from "@lando/engine/operations/global-status";
+export {
+  type GlobalStatusOptions,
+  type GlobalStatusResult,
+  GlobalStatusResultSchema,
+  globalStatus,
+} from "@lando/engine/operations/global-status";
+import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
-import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
-import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "../service-summary";
-
-export interface GlobalStatusOptions {
-  readonly services?: ReadonlyArray<string>;
-  readonly format?: "json" | "table";
-}
-
-type GlobalServiceStatus = "unknown" | "stopped" | "starting" | "running" | "healthy" | "unhealthy" | "error";
-
-export interface GlobalStatusService {
-  readonly app: string;
-  readonly service: string;
-  readonly api: 4;
-  readonly type: string;
-  readonly provider: string;
-  readonly primary: boolean;
-  readonly status: GlobalServiceStatus;
-  readonly endpoints: ReadonlyArray<string>;
-}
-
-export const GlobalStatusServiceSchema = Schema.Struct({
-  app: Schema.String,
-  service: Schema.String,
-  api: Schema.Literal(4),
-  type: Schema.String,
-  provider: Schema.String,
-  primary: Schema.Boolean,
-  status: Schema.Literals(["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"]),
-  endpoints: Schema.Array(Schema.String),
-});
-
-export interface GlobalStatusResult {
-  readonly app: string;
-  readonly materialized: boolean;
-  readonly services: ReadonlyArray<GlobalStatusService>;
-}
-
-export const GlobalStatusResultSchema = Schema.Struct({
-  app: Schema.String,
-  materialized: Schema.Boolean,
-  services: Schema.Array(GlobalStatusServiceSchema),
-});
-
-type GlobalStatusError = LoadObservedGlobalPlanError | ProviderError | ToolingExecError;
-
-type GlobalStatusServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
-
-const statusText = (status: string | undefined): GlobalServiceStatus => {
-  switch (status) {
-    case "stopped":
-    case "starting":
-    case "running":
-    case "healthy":
-    case "unhealthy":
-    case "error":
-      return status;
-    default:
-      return "unknown";
-  }
-};
+import {
+  type RenderContext,
+  contextAllowsHyperlinks,
+  isDecoratedContext,
+  summaryPaintOptions,
+} from "../../renderer-boundary";
+import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "../connection-summary";
+import { INFO_STATUS_TONES, summaryToneFromTable } from "../service-summary";
 
 const globalStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
 export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDocument => {
-  if (!result.materialized) {
-    return {
-      title: "GLOBAL APP",
-      tone: "info",
-      sections: [{ title: "status", rows: [], notes: ["Global app is not installed."] }],
-      footer: "not installed",
-    };
-  }
   const rows = result.services.map((service) => ({
     label: service.service,
     tone: globalStatusTone(service.status),
     value: service.status,
     fields: [
+      { label: "desired", value: service.desired },
+      ...(service.policy?.reasons.length
+        ? [{ label: "reason", value: service.policy.reasons.join(", ") }]
+        : []),
+      ...(service.pending.length === 0
+        ? []
+        : [{ label: "pending", value: service.pending.map((work) => work.phase).join(", ") }]),
       { label: "type", value: service.type },
       { label: "provider", value: service.provider },
-      {
-        label: "endpoints",
-        value: endpointText(service.endpoints),
-      },
+      ...connectionFields(service.connections),
     ],
   }));
   return {
     title: "GLOBAL APP",
-    subtitle: result.app,
+    subtitle: `${result.app}; policy ${result.policyState}; runtime ${result.runtimeState}`,
     tone: rows.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone)),
     sections: [
       {
         title: "services",
         rows,
-        ...(rows.length === 0 ? { notes: ["No global services are running."] } : {}),
+        notes: [
+          ...result.diagnostics,
+          ...result.pending.map((work) => `${work.phase}: ${work.message}`),
+          ...(result.materialized ? [] : ["Global configuration is not materialized."]),
+          ...(rows.length === 0 ? ["No global services are known."] : []),
+        ],
       },
     ],
-    footer: `${result.services.length} services`,
+    footer: `${result.services.length} services; ${result.pending.length} pending reconciliation phases`,
   };
 };
 
@@ -124,65 +62,26 @@ export const renderGlobalStatusResult = (
   ctx?: RenderContext,
 ): string => {
   void _format;
-  if (isDecoratedContext(ctx))
-    return formatSummary(buildGlobalStatusSummary(result), summaryPaintOptions(ctx));
-  if (!result.materialized) return "Global app is not installed.\n(no services)";
-  if (result.services.length === 0) return `${result.app}\n(no services)`;
+  if (isDecoratedContext(ctx)) {
+    const text = formatSummary(buildGlobalStatusSummary(result), summaryPaintOptions(ctx));
+    return contextAllowsHyperlinks(ctx)
+      ? linkKnownHttpUrls(
+          text,
+          unambiguousHostHttpUrls(result.services.flatMap((service) => service.connections)),
+        )
+      : text;
+  }
   const rows = result.services.map((service) => {
-    const endpoints = endpointText(service.endpoints);
-    return `${service.service}\t${service.status}\t${endpoints}`;
+    return `${service.service}\t${service.desired}\t${service.status}\t${service.pending.map((work) => work.phase).join(",") || "-"}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
   });
-  return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows].join("\n");
+  return [
+    `app\t${result.app}`,
+    `policy\t${result.policyState}\truntime\t${result.runtimeState}`,
+    ...(result.materialized ? [] : ["Global configuration is not materialized."]),
+    ...result.diagnostics,
+    ...result.pending.map((work) => `${work.phase}: ${work.message}`),
+    ...(rows.length === 0
+      ? ["(no services)"]
+      : ["service\tdesired\tstate\tpending\tHost\tApp Network", ...rows]),
+  ].join("\n");
 };
-
-export const globalStatus = Effect.fn("GlobalStatus.status")(function* (
-  options: GlobalStatusOptions = {},
-): Effect.fn.Return<GlobalStatusResult, GlobalStatusError, GlobalStatusServices> {
-  const loaded = yield* loadObservedGlobalPlan();
-  if (!loaded.materialized) return { app: "global", materialized: false, services: [] };
-
-  const registry = yield* RuntimeProviderRegistry;
-  const degraded = (service: ServicePlan): GlobalStatusService => ({
-    app: String(loaded.plan.id),
-    service: String(service.name),
-    api: 4 as const,
-    type: service.type,
-    provider: String(service.provider),
-    primary: service.primary,
-    status: "unknown",
-    endpoints: publishedEndpointUrls(service.endpoints),
-  });
-
-  // Intentional: provider-unavailable degrades to "unknown" so status reports the materialized stack even when nothing is running.
-  const inspectService = (service: ServicePlan): Effect.Effect<GlobalStatusService, never, never> =>
-    registry.select(loaded.plan).pipe(
-      Effect.flatMap((provider) =>
-        provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }),
-      ),
-      Effect.map((runtime): GlobalStatusService => {
-        const status = statusText(runtime.state ?? runtime.status);
-        return {
-          app: String(loaded.plan.id),
-          service: String(service.name),
-          api: 4 as const,
-          type: service.type,
-          provider: String(service.provider),
-          primary: service.primary,
-          status,
-          endpoints:
-            status === "stopped" ? [] : publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-        };
-      }),
-      Effect.catch(() => Effect.succeed(degraded(service))),
-    );
-
-  const selected = yield* selectGlobalServices({
-    commandId: "meta:global:status",
-    services: loaded.plan.services,
-    requested: options.services,
-    expandDependencies: false,
-  });
-  const services = yield* Effect.forEach(selected, inspectService);
-
-  return { app: loaded.plan.name, materialized: true, services };
-});

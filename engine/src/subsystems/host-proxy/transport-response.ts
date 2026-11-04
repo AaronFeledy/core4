@@ -55,7 +55,7 @@ export const writeTransportResponse = (
     "content-type": "application/x-ndjson",
     ...(options.close === true ? { connection: "close" } : {}),
   });
-  if (payload._tag === "error" || "envelope" in payload) response.end(encodeNdjsonFrame(payload));
+  if (payload._tag === "error" || "stdout" in payload) response.end(encodeNdjsonFrame(payload));
 };
 
 export const writeJsonResponse = (response: ServerResponse, status: number, payload: unknown): void => {
@@ -151,6 +151,7 @@ export const handleControlPlane = (
       protocolVersion: options.control.protocolVersion,
       configDigest: options.control.configDigest,
       pid: options.control.pid,
+      bridge: options.control.bridgeState(),
     });
     return true;
   }
@@ -162,7 +163,16 @@ export const handleControlPlane = (
           writeJsonResponse(response, 400, invalidRequestResponse);
           return;
         }
-        await options.control.configure(body);
+        try {
+          await options.control.configure(body);
+        } catch {
+          writeJsonResponse(response, 503, {
+            _tag: "error",
+            tag: "HostProxyTransportUnavailableError",
+            message: "Host-proxy configuration refresh failed; the previous configuration remains active.",
+          });
+          return;
+        }
         writeJsonResponse(response, 200, { configured: true });
       } catch {
         // Invalid or incomplete control input must never echo plan contents or credentials.

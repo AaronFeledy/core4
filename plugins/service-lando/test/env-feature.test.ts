@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { landoServiceStoreName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 import { landoEnvFeature } from "../src/features/env.ts";
 
 const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
-  const env: Record<string, string> = {};
+  const env: Record<string, import("@lando/sdk/schema").EnvironmentValue> = {};
   const ctx: ServiceFeatureContext = {
     serviceName: "web",
     serviceType: "php",
@@ -16,6 +17,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     appRoot: "/srv/apps/myapp",
     normalizedConfig: {},
     config,
+    serviceStoreName: (role) => landoServiceStoreName("myapp", "web", role),
     addEnv(name, value) {
       env[name] = value;
     },
@@ -24,13 +26,15 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     addBuildStep() {},
     addExtension() {},
     addStorage() {},
-    addEndpoint() {},
     addDependency() {},
     addHostAlias() {},
     setHealthcheck() {},
+    setReadiness() {},
+    setListenerAuthority() {},
     setCerts() {},
     setEntrypoint() {},
     setCommand() {},
+    setInit() {},
     setArtifact() {},
     setUser() {},
     setWorkingDirectory() {},

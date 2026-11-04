@@ -1,34 +1,59 @@
 import { expect, test } from "bun:test";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import {
-  RedactionService,
-  createPayloadValues,
-  makeRedactionService,
-  registerRedactionValues,
-} from "@lando/redaction/service";
-import { createPayloadRedactor, createRedactor } from "@lando/sdk/secrets";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Exit, Layer, Queue, Stream } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
+import {
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+  createCollectingStreamFrameSink,
+} from "../../src/operations/stream-frame-sink.ts";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const frameText = (frame: StreamFrameSinkFrame) =>
   typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+
+test("private script capture retains output without forwarding it to an ambient sink", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-private-"));
+  const script = join(root, "private.bun.sh");
+  const frames: StreamFrameSinkFrame[] = [];
+  try {
+    await writeFile(script, "printf private; printf diagnostic 1>&2\n");
+    // When
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { capture: true })).pipe(
+        Effect.provide(
+          BunShellRunner.layer(() => {
+            throw new TypeError("Interactive IO must not be opened");
+          }),
+        ),
+        Effect.provideService(StreamFrameSink, {
+          emit: (frame) =>
+            Effect.sync(() => {
+              frames.push(frame);
+            }),
+        }),
+      ),
+    );
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "private", stderr: "diagnostic" });
+    expect(frames).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("forwards unregistered assignments and binary script bytes without decoding", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-bytes-"));
   const script = join(root, "binary.bun.sh");
   const chunks: Uint8Array[] = [];
-  const redaction = makeRedactionService({
-    id: "empty",
-    list: Effect.succeed([]),
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-  });
+  const redaction = makeRedactionService();
   try {
     await writeFile(
       script,
@@ -70,7 +95,7 @@ test.each([true, false])(
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-script-stdin-"));
     const scriptPath = join(root, "count.bun.sh");
-    const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+    const runnerPath = resolve(import.meta.dirname, "../shell-runner.ts");
     try {
       await writeFile(scriptPath, "wc -l\n");
       const helper = `
@@ -108,7 +133,7 @@ test("terminal host IO inherits input but routes output through the live sink", 
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-terminal-"));
   const scriptPath = join(root, "prompt.bun.sh");
-  const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+  const runnerPath = resolve(import.meta.dirname, "../shell-runner.ts");
   try {
     await writeFile(scriptPath, "echo -n 'name? '\necho to-stderr 1>&2\ncat\n");
     const helper = `
@@ -248,10 +273,10 @@ test.skipIf(process.platform === "win32").each([
   },
 );
 
-test("forwards flush from the live stream sink after script output", async () => {
+test("leaves a supplied stream sink open after script output", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-shell-flush-"));
-  let flushed = 0;
+  const output = createCollectingStreamFrameSink();
   const shellLayer = BunShellRunner.layer(() => {
     throw new TypeError("unused interactive IO");
   });
@@ -262,22 +287,12 @@ test("forwards flush from the live stream sink after script output", async () =>
     await Effect.runPromise(
       Effect.flatMap(ShellRunner, (shell) =>
         shell.runScript(script, { cwd: root, env: { PATH: root } }),
-      ).pipe(
-        Effect.provide(shellLayer),
-        Effect.provideService(
-          StreamFrameSink,
-          StreamFrameSink.of({
-            emit: () => Effect.void,
-            flush: () =>
-              Effect.sync(() => {
-                flushed += 1;
-              }),
-          }),
-        ),
-      ),
+      ).pipe(Effect.provide(shellLayer), Effect.provideService(StreamFrameSink, output.sink)),
     );
     // Then
-    expect(flushed).toBe(1);
+    await Effect.runPromise(output.sink.emit({ kind: "bytes", _tag: "stdout", chunk: "later" }));
+    await Effect.runPromise(output.finish());
+    expect(output.result().stdout).toBe("abclater");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -334,9 +349,16 @@ test("escapes percent signs and uses CRLF in a Windows launcher", () => {
   });
 });
 
-test.each(["collected", "live"] as const)(
-  "preserves script inputs and both output streams with restricted PATH in %s mode",
-  async (mode) => {
+test.each([
+  ["collected", undefined],
+  ["live", undefined],
+  ["collected", "caller-pwd"],
+  ["live", "caller-pwd"],
+  ["collected", ""],
+  ["live", ""],
+] as const)(
+  "preserves script inputs and both output streams with restricted PATH in %s mode and PWD %j",
+  async (mode, pwd) => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-shell-runtime-"));
     const frames: StreamFrameSinkFrame[] = [];
@@ -347,12 +369,12 @@ test.each(["collected", "live"] as const)(
       const script = join(root, "probe.bun.sh");
       await writeFile(
         script,
-        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo diagnostic 1>&2; echo -n tail\n',
+        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo "$PWD"; echo diagnostic 1>&2; echo -n tail\n',
       );
       const run = Effect.flatMap(ShellRunner, (shell) =>
         shell.runScript(script, {
           cwd: root,
-          env: { PATH: root, FOO: "explicit-env" },
+          env: { PATH: root, FOO: "explicit-env", ...(pwd === undefined ? {} : { PWD: pwd }) },
           argv: ["two words", "", "$(echo injected)"],
         }),
       ).pipe(Effect.provide(shellLayer));
@@ -370,7 +392,8 @@ test.each(["collected", "live"] as const)(
             ),
       );
       // Then
-      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${root}\ntail`;
+      const cwd = await realpath(root);
+      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${cwd}\n${pwd ?? cwd}\ntail`;
       const expectedStderr = "diagnostic\n";
       if (mode === "collected") {
         expect(result).toEqual({ exitCode: 0, stdout: expectedStdout, stderr: expectedStderr });
@@ -401,7 +424,8 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
   const secret = "scoped-stream-secret";
   const frames: StreamFrameSinkFrame[] = [];
   const events: LandoEvent[] = [];
-  const values = createPayloadValues([]);
+  const redaction = makeRedactionService();
+  const values = await Effect.runPromise(redaction.payloadValues());
   const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
   const layer = Layer.mergeAll(
     BunShellRunner.layer(() => {
@@ -414,24 +438,11 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
           Effect.sync(() => {
             const bytes =
               typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
-            frames.push({ ...frame, chunk: payloads[frame._tag].write(bytes) });
-          }),
-        flush: () =>
-          Effect.sync(() => {
-            for (const tag of ["stdout", "stderr"] as const)
-              frames.push({ _tag: tag, chunk: payloads[tag].flush() });
+            frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
           }),
       }),
     ),
-    Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: (options) => Effect.succeed(() => options?.redactionTokens ?? []),
-        forProfile: (profile, options) =>
-          Effect.succeed(createRedactor(profile, { values: options?.redactionTokens ?? [] })),
-      }),
-    ),
+    Layer.succeed(RedactionService, redaction),
     Layer.succeed(
       EventService,
       EventService.of({
@@ -442,6 +453,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<never>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),
@@ -453,9 +465,17 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
     // When
     const result = await Effect.runPromise(
       BunShellRunner.withShellRedactionTokens(
-        [secret],
+        { substring: [secret] },
         Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { cwd: root })),
-      ).pipe(Effect.provide(layer)),
+      ).pipe(
+        Effect.provide(layer),
+        Effect.ensuring(
+          Effect.sync(() => {
+            for (const tag of ["stdout", "stderr"] as const)
+              frames.push({ kind: "bytes", _tag: tag, chunk: payloads[tag].flush() });
+          }),
+        ),
+      ),
     );
     // Then
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });

@@ -5,7 +5,7 @@ description: The canonical, in-repo inventory of every telemetry event Lando rec
 
 # Telemetry Event Inventory
 
-This is the canonical, in-repo inventory of every telemetry event Lando records. It lists each event's allowed fields, field types, allowed values, owning package, source trigger, and recording scope (CLI-only vs library-eligible).
+Lando records the update outcomes and deprecated-surface use listed below. Use this inventory to check each event's allowed fields, types, values, source trigger, and recording scope. CLI-only events are recorded by CLI runs; library-eligible events can also be recorded when an embedding host enables telemetry.
 
 The machine-readable source of truth lives in [`telemetry/src/inventory.ts`](../../telemetry/src/inventory.ts). The `check:telemetry-inventory` gate fails when code records an event that is not declared there, and a consistency test fails when this document drifts from it. Adding a telemetry event therefore requires editing the inventory module **and** this document in the same change.
 
@@ -13,7 +13,7 @@ Related reference schemas: [telemetry config](../reference/schemas/telemetry-con
 
 ## Defaults, opt-out, and retention {#defaults-and-retention}
 
-Telemetry is fire-and-forget: recording never blocks command completion, never changes the exit code, and is dropped rather than delaying shutdown. CLI mode defaults telemetry on; library mode defaults it off unless the embedding host opts in. Disable it with `LANDO_CONFIG__TELEMETRY__ENABLED=0`, the `telemetry.enabled` config key, or the documented opt-out command.
+Telemetry is fire-and-forget: recording never blocks command completion, never changes the exit code, and is dropped rather than delaying shutdown. CLI mode defaults telemetry on; library mode defaults it off unless the embedding host opts in. Disable it with `LANDO_CONFIG__TELEMETRY__ENABLED=0`, the `telemetry.enabled` config key, or `lando config telemetry off`. Check the effective setting with `lando config telemetry status`.
 
 Every payload is redacted before it is buffered or dispatched: fields are allowlisted to the inventory below and free-string values are scrubbed of paths, hostnames, URLs, credentials, email addresses, UUID-like identifiers, and tokens. The full redaction rules and the retention policy (what is retained, where, who can access it, and when raw and aggregated data are deleted) live in the canonical [telemetry redaction and retention policy](./retention.md).
 

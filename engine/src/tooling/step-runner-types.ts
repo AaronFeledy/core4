@@ -1,8 +1,12 @@
 import type { Effect } from "effect";
 
-import type { LandofileExpressionParseError, ToolingStepConditionError } from "@lando/sdk/errors";
+import type {
+  ConfigExpressionError,
+  LandofileExpressionParseError,
+  ToolingStepConditionError,
+} from "@lando/sdk/errors";
 import type { ExpressionContext, LandofileExpressionEvaluationError } from "@lando/sdk/expressions";
-import type { PortablePath, ToolingVarLiteral } from "@lando/sdk/schema";
+import type { PortablePath } from "@lando/sdk/schema";
 
 import type { ToolingStepLeaf } from "./step-program.ts";
 
@@ -17,7 +21,7 @@ export interface ResolvedToolingCmdStepLeaf extends ResolvedLeafBase {
   readonly kind: "cmd";
   readonly command: string;
   readonly service?: string;
-  readonly env?: Readonly<Record<string, ToolingVarLiteral>>;
+  readonly env?: import("@lando/sdk/schema").Environment;
   readonly user?: string;
   readonly dir?: PortablePath;
 }
@@ -58,5 +62,8 @@ export interface ToolingStepRunners<E, A> {
   readonly mapLeafError?: (leaf: ToolingStepLeaf, error: unknown) => E;
 }
 
-export type ToolingStepExpressionError = LandofileExpressionParseError | LandofileExpressionEvaluationError;
+export type ToolingStepExpressionError =
+  | ConfigExpressionError
+  | LandofileExpressionParseError
+  | LandofileExpressionEvaluationError;
 export type ToolingStepRunError<E> = E | ToolingStepConditionError | ToolingStepExpressionError;

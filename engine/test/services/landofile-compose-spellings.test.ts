@@ -24,6 +24,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );

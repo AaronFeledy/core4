@@ -31,7 +31,6 @@ const plan: AppPlan = {
           command: [],
           environment: {},
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],
@@ -43,7 +42,6 @@ const plan: AppPlan = {
     }),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -159,14 +157,14 @@ describe("log-follow completion", () => {
         followLogsForPlan(plan, { signal: controller.signal }).pipe(Effect.provide(layer)),
       );
 
-      expect(result).toEqual({ app: "Follow App", lines: [] });
+      expect(result).toEqual({ app: "Follow App" });
       expect(released.sort()).toEqual(["database", "web"]);
       expect(frames.sort((a, b) => (a.service ?? "").localeCompare(b.service ?? ""))).toEqual(
         mode === "empty"
           ? []
           : [
-              { _tag: "stdout", chunk: "database ready", service: "database" },
-              { _tag: "stdout", chunk: "web ready", service: "web" },
+              { kind: "record", _tag: "stdout", chunk: "database ready", service: "database" },
+              { kind: "record", _tag: "stdout", chunk: "web ready", service: "web" },
             ],
       );
     });

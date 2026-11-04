@@ -29,7 +29,6 @@ test("nests provider inspection under the operation span when info runs against 
         artifact: { kind: "ref", ref: "nginx:alpine" },
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -39,7 +38,6 @@ test("nests provider inspection under the operation span when info runs against 
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -82,15 +80,19 @@ test("nests provider inspection under the operation span when info runs against 
     })),
   ).toEqual([
     { name: "AppOperation.infoForPlan", parent: Option.none() },
-    { name: "RuntimeProvider.inspect", parent: Option.some("AppOperation.infoForPlan") },
+    { name: "Connections.observePlan", parent: Option.some("AppOperation.infoForPlan") },
+    { name: "RuntimeProvider.inspect", parent: Option.some("Connections.observePlan") },
+    { name: "Connections.collectObserved", parent: Option.some("AppOperation.infoForPlan") },
   ]);
   const operation = spans[0];
-  const inspection = spans[1];
+  const collection = spans[1];
+  const inspection = spans[2];
   expect(operation).toBeDefined();
   expect(inspection).toBeDefined();
-  if (operation === undefined || inspection === undefined)
+  if (operation === undefined || collection === undefined || inspection === undefined)
     throw new Error("Expected operation and inspection spans");
-  expect(Option.getOrUndefined(inspection.parent)?.spanId).toBe(operation.spanId);
+  expect(Option.getOrUndefined(collection.parent)?.spanId).toBe(operation.spanId);
+  expect(Option.getOrUndefined(inspection.parent)?.spanId).toBe(collection.spanId);
   expect(inspection.traceId).toBe(operation.traceId);
-  expect(spans.map((span) => span.status._tag)).toEqual(["Ended", "Ended"]);
+  expect(spans.map((span) => span.status._tag)).toEqual(["Ended", "Ended", "Ended", "Ended"]);
 });

@@ -1,11 +1,11 @@
 /**
- * Core-private network-trust seam.
+ * HTTP-client-private network-trust seam.
  *
  * The proxy/CA application logic (`shouldBypassProxy`, `fetchInitForNetwork`)
  * and the resolved-trust shape (`ResolvedNetworkTrust`) are now the canonical
  * pure `@lando/sdk/network-trust` module, consumed by both the HTTP client and
  * `lando setup` preflight. This module re-exports them for core-internal
- * callers and owns core's PEM-loading, service-inject resolution, and ambient
+ * callers and owns PEM-loading, service-inject resolution, and ambient
  * `NetworkTrust` context seams.
  *
  * Trust is carried as an already-resolved, already-loaded object on the
@@ -13,7 +13,7 @@
  * network preflight) provides it around its egress effect; the HTTP client
  * reads it from the requesting fiber and applies Bun `fetch` `proxy`/`tls.ca`
  * options. When the reference is unset the client self-resolves from config/env or
- * stays a bare request.
+ * stays a bare request except for the SDK's unconditional lexical loopback bypass.
  *
  * The tag is intentionally NOT published from `@lando/sdk` and NOT re-exported
  * from `core/src/services/index.ts`: it is the in-process injection mechanism,
@@ -23,15 +23,15 @@ import { readFile } from "node:fs/promises";
 import tls from "node:tls";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Context, Effect, Schema } from "effect";
-
+import { HttpTrustError } from "@lando/sdk/errors";
 import {
   type NetworkTrustPlan,
   type ResolvedNetworkTrust,
   resolveNetworkTrustPlan,
-  shouldBypassProxy,
 } from "@lando/sdk/network-trust";
 import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Context, Effect, Option, Schema } from "effect";
 
 export type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 export {
@@ -42,21 +42,10 @@ export {
 export { resolveNetworkTrustPlan };
 export type { NetworkTrustPlan };
 
-/**
- * Direct endpoint policy is lexical, not DNS- or caller-based: exact localhost,
- * IPv4 127/8 and IPv6 ::1, or an explicit resolved NO_PROXY match. Unspecified
- * addresses (0.0.0.0), lndo.site and absent proxy settings grant no exemption.
- */
-export const usesDirectEndpoint = (url: URL, trust: ResolvedNetworkTrust | undefined): boolean =>
-  url.hostname === "localhost" ||
-  url.hostname === "[::1]" ||
-  /^127\.\d+\.\d+\.\d+$/u.test(url.hostname) ||
-  (trust !== undefined && shouldBypassProxy(url.href, trust.proxy.noProxy));
-
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,
   path: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
@@ -167,6 +156,50 @@ export const withWindowsHostTrust = (
     trustHost: false,
   };
 };
+
+/**
+ * Resolve outbound network trust for a request fiber or host-side transport.
+ *
+ * Precedence is fixed: an already-injected {@link ResolvedNetworkTrust} wins;
+ * otherwise load the plan from `ConfigService` in `context` (plus `env`) and
+ * read CA PEMs. Missing config yields `undefined` (bare request / no projection),
+ * not "trust nothing".
+ */
+export const resolveTrust = Effect.fnUntraced(function* (
+  context: Context.Context<never>,
+  injected: ResolvedNetworkTrust | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+) {
+  if (injected !== undefined) return injected;
+  const config = Context.getOption(context, ConfigService);
+  if (Option.isNone(config)) return undefined;
+  const globalConfig = yield* config.value.load;
+  const plan = yield* Effect.try({
+    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }, env),
+    catch: (cause) =>
+      new HttpTrustError({
+        message: cause instanceof Error ? cause.message : "Could not resolve network trust",
+        urlOrigin: "unknown",
+        kind: "missing-custom-ca",
+        remediation:
+          "Check network.ca.certs, LANDO_NETWORK_CA_CERTS, and proxy trust settings (HTTPS_PROXY / network.proxy), then retry.",
+        cause,
+      }),
+  });
+  const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
+    Effect.mapError(
+      (cause) =>
+        new HttpTrustError({
+          message: cause.message,
+          urlOrigin: "unknown",
+          kind: "missing-custom-ca",
+          remediation: cause.remediation,
+          cause,
+        }),
+    ),
+  );
+  return { proxy: plan.proxy, caPems: loaded.map((cert) => cert.pem), trustHost: plan.trustHost };
+});
 
 /**
  * Optional injected trust for one fiber. Callers that already resolved trust

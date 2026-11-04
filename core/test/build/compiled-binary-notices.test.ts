@@ -181,11 +181,11 @@ describe("compiled binary notices", () => {
     expect(() => verifyBunLicensePin(BUN_LICENSE_PIN.version, "fixture")).toThrow("checksum mismatch");
   });
 
-  test.each(["1.4.2", "1.4.2-debug"])("permits pinned Bun %s for native relinking", (version) => {
+  test.each(["1.4.3", "1.4.3-debug"])("permits pinned Bun %s for native relinking", (version) => {
     expect(() => verifyBunCompilerVersion(version)).not.toThrow();
   });
 
   test("rejects a compiler whose runtime would not match the licensed version", () => {
-    expect(() => verifyBunCompilerVersion("1.4.3")).toThrow(CompiledBinaryLicenseError);
+    expect(() => verifyBunCompilerVersion("1.4.2")).toThrow(CompiledBinaryLicenseError);
   });
 });

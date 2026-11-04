@@ -8,10 +8,14 @@ tags: [beta, docs, agent]
 
 # Install project-local agent skills
 
-`lando agent:skills:install` writes a Lando-owned skill pack into this app so
-agents run tooling through Lando. `lando start` and `lando rebuild` never do
-this. Default `lando init` is also off; pass `--agent-skills` when you want
-the pack on a new app.
+Run `lando agent:skills:install` from your app directory to give agents
+project-local instructions for using Lando tooling. The command writes
+`.agents/skills/lando/SKILL.md`; check that file to confirm the pack is installed.
+
+The commands below install, update, and remove the pack. Choose the action you
+need rather than running all three: the last command removes the owned file.
+Update refreshes the file only while Lando still owns it; a file you adopted
+or wrote by hand stays put.
 
 ```sh
 lando agent:skills:install
@@ -25,8 +29,8 @@ vs host. It points at the existing [MCP](/core4/guides/agent-native/mcp/),
 [in-container context](/core4/guides/agent-native/in-container-context/), and
 [exec](/core4/guides/cli/exec/) guides. It does not copy those pages.
 
-Update refreshes the file when Lando still owns it. Remove deletes that
-owned file only. A skill file you adopted or wrote by hand stays put.
+`lando start` and `lando rebuild` do not install agent skills. For a new app,
+pass `--agent-skills` to `lando init`; installation is off by default.
 
 <Guide>
   <Scenario id="install-update-remove" render>

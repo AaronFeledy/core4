@@ -42,5 +42,5 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
     }
     return yield* pluginRemove({ name });
   }),
-  render: (result) => renderPluginRemoveResult(result as PluginRemoveResult),
+  render: (result) => renderPluginRemoveResult(result),
 };

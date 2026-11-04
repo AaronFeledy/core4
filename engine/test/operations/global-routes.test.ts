@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
+import { GlobalAppError, ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
-import { publishGlobalRoutes } from "../../src/operations/global-routes.ts";
+import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
+import { publishGlobalRoutes as publishGlobalRoutesEffect } from "../../src/operations/global-routes.ts";
+
+const publishGlobalRoutes = (...args: Parameters<typeof publishGlobalRoutesEffect>) =>
+  withGlobalActivationScope(publishGlobalRoutesEffect(...args));
 
 const mail = ServiceName.make("mailpit");
 const plan: AppPlan = {
@@ -26,7 +30,6 @@ const plan: AppPlan = {
       backend: { service: mail, protocol: "http", port: 8025 },
     },
   ],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -65,7 +68,7 @@ const observation = {
   service: sibling,
   status: "running" as const,
   state: "running",
-  endpoints: [],
+  publications: { status: "unknown" as const },
 };
 
 describe("global route publication", () => {
@@ -92,7 +95,7 @@ describe("global route publication", () => {
     );
     // Then the stale definition is withdrawn and no URLs are advertised.
     expect(removed).toEqual([plan.id]);
-    expect(urls.size).toBe(0);
+    expect(urls).toBeUndefined();
   });
 
   for (const current of [siblingPlan, { ...plan, routes: [] }, { ...plan, router: { enabled: false } }]) {
@@ -116,7 +119,7 @@ describe("global route publication", () => {
         );
         // Then the actual published definition survives unchanged, without advertising success URLs.
         expect(router.routesByApp.get(plan.id)).toEqual(plan.routes);
-        expect(urls.size).toBe(0);
+        expect(urls).toBeUndefined();
       });
     }
   }
@@ -142,7 +145,7 @@ describe("global route publication", () => {
     );
     // Then the current routes replace the retained definition and URLs are advertised again.
     expect(router.routesByApp.get(plan.id)).toEqual(siblingPlan.routes);
-    expect(urls.get(sibling)).toEqual(["https://sibling.lndo.site:38443"]);
+    expect(urls).toBeUndefined();
   });
 
   test("bare start publishes all routes without listing services or setting up the router", async () => {
@@ -161,7 +164,7 @@ describe("global route publication", () => {
     );
     // Then all declared routes and their advertised URLs are available.
     expect(router.routesByApp.get(plan.id)).toEqual(siblingPlan.routes);
-    expect(urls.get(mail)).toEqual(["https://mailpit.custom.test:38443"]);
+    expect(urls).toBeUndefined();
   });
 
   for (const status of ["stopped", "missing", "running", "paused", "restarting"] as const) {
@@ -226,14 +229,22 @@ describe("global route publication", () => {
     );
     // Then the global file is removed and no route URLs are returned.
     expect(removed).toEqual([plan.id]);
-    expect(urls.size).toBe(0);
+    expect(urls).toBeUndefined();
   });
 
   test("disabled router tolerates route removal failure", async () => {
     // Given a disabled router whose stale file cannot be removed.
     const router = {
       ...makeRouter(),
-      removeRoutes: () => Effect.fail(new ProxyError({ proxyId: "test", message: "unavailable" })),
+      removeRoutes: () =>
+        Effect.fail(
+          new ProxyError({
+            proxyId: "test",
+            message: "unavailable",
+            remediation:
+              "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+          }),
+        ),
     };
     // When best-effort withdrawal runs.
     const urls = await Effect.runPromise(
@@ -245,7 +256,7 @@ describe("global route publication", () => {
       ),
     );
     // Then disabled routing still returns no URLs.
-    expect(urls.size).toBe(0);
+    expect(urls).toBeUndefined();
   });
 
   test("publication withdraws stale routes when nothing routable is running", async () => {
@@ -288,6 +299,7 @@ describe("global route publication", () => {
       providerId: "lando",
       operation: "list",
       message: "unavailable",
+      remediation: "Install or start the `lando` provider and confirm it can perform `list`.",
     });
     const router = makeRouter();
     // When publication needs the sibling observation.
@@ -301,4 +313,100 @@ describe("global route publication", () => {
     expect(result).toMatchObject({ _tag: "Failure", failure: error });
     expect(router.routesByApp.size).toBe(0);
   });
+});
+
+test("saved policy is checked after sibling observation immediately before route publication", async () => {
+  let admitted = true;
+  const calls: string[] = [];
+  const changed = new GlobalAppError({
+    operation: "startup-admission",
+    message: "Policy changed during observation.",
+    remediation: "Retry with the current policy.",
+  });
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        applyRoutes: () =>
+          Effect.sync(() => {
+            calls.push("apply");
+            return { app: plan.id, appliedRoutes: [], authorities: [] };
+          }),
+      },
+      {
+        list: () =>
+          Effect.sync(() => {
+            calls.push("list");
+            admitted = false;
+            return [observation];
+          }),
+      },
+      siblingPlan,
+      { started: new Set([mail]), failed: new Set() },
+      Effect.suspend(() => (admitted ? Effect.void : Effect.fail(changed))),
+    ).pipe(Effect.result),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBe(changed);
+  expect(calls).toEqual(["list"]);
+});
+
+test("changed policy also prevents stale empty-plan route withdrawal", async () => {
+  let removed = false;
+  const changed = new GlobalAppError({
+    operation: "startup-admission",
+    message: "Saved policy changed.",
+    remediation: "Retry with the current policy.",
+  });
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        removeRoutes: () =>
+          Effect.sync(() => {
+            removed = true;
+          }),
+      },
+      {
+        list: () => Effect.die("Empty plans must not inspect siblings"),
+      },
+      { ...plan, routes: [] },
+      { started: new Set(), failed: new Set() },
+      Effect.fail(changed),
+    ).pipe(Effect.result),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBe(changed);
+  expect(removed).toBe(false);
+});
+
+test("empty route removal owns publication until its router callback completes", async () => {
+  let policyChanged = false;
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        removeRoutes: () =>
+          Effect.gen(function* () {
+            const nested = yield* Effect.result(
+              withGlobalPolicyChange(
+                "disable",
+                Effect.sync(() => {
+                  policyChanged = true;
+                }),
+              ),
+            );
+            expect(nested).toMatchObject({
+              _tag: "Failure",
+              failure: { _tag: "GlobalAppError", operation: "policy-coordination" },
+            });
+          }).pipe(Effect.orDie),
+      },
+      { list: () => Effect.die("Empty publication must not list") },
+      { ...plan, routes: [] },
+      { started: new Set(), failed: new Set() },
+    ),
+  );
+  expect(result).toBeUndefined();
+  expect(policyChanged).toBe(false);
 });

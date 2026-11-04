@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
 import { lstat, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import { resolveStatePath } from "@lando/state-store/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 
@@ -44,10 +47,26 @@ export const withDetachedWorkerLock = <A, E>(
   options: {
     readonly path: string;
     readonly label: string;
+    readonly paths: RootOverrides | undefined;
     readonly privateFileAccess: PrivateFileAccess;
   },
   body: Effect.Effect<A, E>,
-) => withAdvisoryLockUsing(options.privateFileAccess)(options.path, options.label, body);
+) => {
+  const key = `${options.label}-${createHash("sha256")
+    .update(resolve(dirname(options.path)))
+    .digest("hex")}`;
+  return resolveStatePath(
+    "userData",
+    "operation-locks",
+    key,
+    options.label,
+    makeLandoPaths(options.paths).roots,
+  ).pipe(
+    Effect.flatMap(({ file }) =>
+      withAdvisoryLockUsing(options.privateFileAccess, { expireLiveOwner: false })(file, options.label, body),
+    ),
+  );
+};
 
 /**
  * Whether a worker record may be trusted: a regular file owned by this user with no group or other

@@ -53,7 +53,10 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
         ...(lifetime === "detached" ? {} : { managed: { scope } }),
         use: (overlaid) =>
           Effect.gen(function* () {
-            socket = overlaid.services[web.name]?.environment.LANDO_HOST_PROXY_SOCKET;
+            const socketValue = overlaid.services[web.name]?.environment.LANDO_HOST_PROXY_SOCKET;
+            if (socketValue !== undefined && typeof socketValue !== "string")
+              throw new TypeError("Expected concrete host-proxy socket");
+            socket = socketValue;
             switch (lifetime) {
               case "failure":
                 return yield* Effect.fail("apply failed");

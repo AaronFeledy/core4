@@ -2,7 +2,7 @@ import { basename, dirname, resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { type LandofileIncludeError, LandofileParseError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
+import type { DurableStateRoot, StateBucket, StateStoreShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import {
   type FragmentResult,
@@ -64,7 +64,7 @@ const parseLockfileYaml = (content: string): { includes: Array<Record<string, un
   if (!header) throw invalidLock("Missing includes lockfile header.");
   return { includes };
 };
-const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
+export const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
   const parsed = parseLockfileYaml(content);
   const entries = Schema.decodeUnknownSync(LockEntriesSchema)(parsed.includes, { onExcessProperty: "error" });
   const sources = new Set<string>();
@@ -103,7 +103,7 @@ const lockTextDecoder = new TextDecoder();
 const lockfileRoot = (
   appRoot: string,
   lockfilePath: string,
-): { readonly root: StateRoot; readonly key: string } => {
+): { readonly root: DurableStateRoot; readonly key: string } => {
   if (resolve(lockfilePath) === resolve(appRoot, ".lando.lock.yml"))
     return { root: { app: AbsolutePath.make(appRoot) }, key: ".lando.lock.yml" };
   return { root: { path: AbsolutePath.make(dirname(lockfilePath)) }, key: basename(lockfilePath) };
@@ -150,7 +150,7 @@ export const parseLockEntries = (
 ): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError | LandofileIncludeError> =>
   openLockfileBucket(stateStore, appRoot, path).pipe(
     Effect.flatMap((bucket) =>
-      bucket.get.pipe(
+      Effect.flatMap(bucket.exists, (exists) => (exists ? bucket.get : Effect.succeed(undefined))).pipe(
         Effect.mapError(
           (cause) =>
             new LandofileParseError({
@@ -162,7 +162,10 @@ export const parseLockEntries = (
               filePath: path,
               line: undefined,
               column: undefined,
-              ...(cause.reason === "decode" ? { remediation: CORRUPT_LOCK_REMEDIATION } : {}),
+              remediation:
+                cause.reason === "decode"
+                  ? CORRUPT_LOCK_REMEDIATION
+                  : `Ensure the include lockfile at ${path} is readable, then retry.`,
               cause: cause.reason === "decode" ? cause.cause : cause,
             }),
         ),
@@ -209,28 +212,21 @@ export const writeLockEntries = (
           }),
     ),
   );
-export const writeLockfileIfNeeded = (
-  ctx: ResolveContext,
-): Effect.Effect<void, LandofileIncludeError | LandofileParseError> => {
-  if (ctx.stagedLocks.size === 0) return Effect.void;
-  return writeLockEntries(ctx.stateStore, {
-    appRoot: ctx.appRoot,
-    lockfilePath: ctx.lockfilePath,
-    entries: [...ctx.stagedLocks.values()],
-    merge: true,
-  });
-};
 export const stageFragmentLock = (fragment: FragmentResult, ctx: ResolveContext): Effect.Effect<void> => {
   // readPinnedFragment already verified pinned fragments; a load keeps existing entries as written.
   if (!fragment.locked || fragment.resolved === undefined) return Effect.void;
   const locked = ctx.lockEntries.get(fragment.sourceId);
-  if (ctx.mode === "pin" && locked !== undefined && locked.version === fragment.version) return Effect.void;
-  ctx.stagedLocks.set(fragment.sourceId, {
+  if (ctx.mode === "pin" && locked !== undefined && locked.version === fragment.version) {
+    ctx.stagedLocks.delete(fragment.sourceId);
+    return Effect.void;
+  }
+  const proposal = {
     source: fragment.sourceId,
     resolved: fragment.resolved,
     checksum: sha256Hex(fragment.content),
     ...(fragment.version === undefined ? {} : { version: fragment.version }),
-  });
+  };
+  ctx.stagedLocks.set(fragment.sourceId, proposal);
   return Effect.void;
 };
 export const lockValue = (entry: LockEntry): string =>

@@ -22,6 +22,7 @@ export const DOCTOR_TREE_ID = "doctor";
 
 export type DoctorSectionId =
   | "provider"
+  | "app-listeners"
   | "certificate-authority"
   | "network-trust"
   | "subsystems"
@@ -48,6 +49,7 @@ export const doctorSections = (options: DoctorOptions): ReadonlyArray<TaskSpec> 
     "global-app",
     "mcp",
   ];
+  if (options.app === true) ids.splice(1, 0, "app-listeners");
   if (options.app === true) ids.push("app-version-constraints");
   if (options.deprecations === true) ids.push("deprecations");
   if (options.app === true) ids.push("app-config");
@@ -124,8 +126,13 @@ export const deprecationsOutcome = (report: DoctorDeprecationReport): DoctorSect
 export const appConfigOutcome = (result: ConfigLintResult | undefined): DoctorSectionOutcome => {
   const label = doctorSectionLabel("app-config");
   if (result === undefined) return { summary: `${label} · skipped` };
-  if (result.valid) return {};
-  return { summary: `${label} · ${plural(result.violations.length, "violation")}`, failed: true };
+  if (result.valid) {
+    const warningCount = result.violations.filter((issue) => issue.severity === "warning").length;
+    if (warningCount === 0) return {};
+    return { summary: `${label} · ${plural(warningCount, "warning")}`, warned: true };
+  }
+  const errors = result.violations.filter((issue) => issue.severity === "error").length;
+  return { summary: `${label} · ${plural(errors, "violation")}`, failed: true };
 };
 
 export const selfCheckOutcome = (id: DoctorSectionId, self: DoctorSelfCheck): DoctorSectionOutcome => {

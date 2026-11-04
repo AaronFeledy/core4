@@ -62,6 +62,10 @@ export const landoCertsFeature: ServiceFeatureDefinition = {
 
       if (config.cn !== undefined && config.caId !== undefined) {
         ctx.setCerts({ cn: config.cn, sans: config.sans, caId: config.caId });
+      } else if (config.certPath !== undefined) {
+        ctx.addExtension("@lando/core/certs", "custom");
+      } else {
+        ctx.addExtension("@lando/core/certs", "none");
       }
     }),
 };

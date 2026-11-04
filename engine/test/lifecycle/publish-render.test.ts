@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 
-import { registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { makeRedactionService } from "@lando/redaction/service";
 import { EventService } from "@lando/sdk/services";
 
 import { makePublishRender } from "../../src/lifecycle/publish-render.ts";
@@ -16,11 +15,9 @@ describe("plugin render publication", () => {
         Effect.gen(function* () {
           const context = yield* Layer.build(LandoEventService.layerRuntime);
           const events = Context.get(context, EventService);
-          const publish = makePublishRender(events, {
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => ["topsecret"]),
-            forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-          });
+          const redaction = makeRedactionService();
+          yield* redaction.registerValues(["topsecret"]);
+          const publish = makePublishRender(events, redaction);
 
           // When: a valid render event contains that secret.
           yield* publish({

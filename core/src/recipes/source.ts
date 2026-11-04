@@ -1,20 +1,4 @@
-/**
- * Recipe source resolver.
- *
- * Supported recipe source forms:
- *   - bare `<id>` — bundled built-in recipe (no disk read at runtime)
- *   - `./path` or `/abs/path` — local directory containing `recipe.yml`
- *
- * Unsupported here and rejected with a tagged `NotImplementedError`:
- *   - `github:owner/repo[/path][@ref]`
- *   - `git+https://…`, `git+ssh://…`, `git@…`
- *   - `npm:@scope/pkg[/path][@version]`
- *   - `registry:<id>[@version]`
- *
- * Resolution is deterministic and never touches the network: bundled refs
- * are read from the in-binary `BUNDLED_RECIPES` table; local refs are read
- * from the host filesystem under the supplied `cwd`.
- */
+import { realpath } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
 
 import { Effect } from "effect";
@@ -28,20 +12,14 @@ import {
   type RecipeSourceError,
   causeMessage,
 } from "@lando/sdk/errors";
-import type { RecipeManifest } from "@lando/sdk/schema";
+import type { RecipeSource } from "@lando/sdk/schema";
 
 import { validationIssue } from "@lando/sdk/schema";
 import { BUNDLED_RECIPES } from "./bundled";
-import { flattenRecipe } from "./manifest/flatten";
-import { validateRecipeManifestObject } from "./manifest/service";
+import type { RecipeTransportEvidence } from "./resolved-source-types";
+import { validateRecipeSourceObject } from "./source-parse";
 import { loadRecipeTs } from "./ts-loader";
 
-/**
- * The directory-resolution boundary enforces that a local recipe id matches
- * the directory basename before schema parsing. The `^` anchor restricts the
- * match to top-level YAML scalars (column 0); nested `id:` keys (e.g. a
- * prompt whose `name:` is `"id"`) are indented and skipped.
- */
 const TOP_LEVEL_ID_RE = /^id:[ \t]+(?:"([^"]+)"|'([^']+)'|([^\s#]+))[ \t]*(?:#.*)?$/m;
 
 const extractTopLevelId = (manifestYaml: string): string | undefined => {
@@ -55,8 +33,13 @@ export interface ResolvedRecipe {
   readonly source: string;
   readonly manifestYaml: string;
   readonly root: string | undefined;
-  // Set for `recipe.ts` recipes; when present the caller skips YAML parsing.
-  readonly manifest?: typeof RecipeManifest.Type;
+  readonly authoredSource?: RecipeSource;
+  readonly sourceContent?: string;
+  readonly evaluation?: "declarative" | "typescript";
+  readonly transport?: RecipeTransportEvidence;
+  readonly commitSha?: string;
+  readonly sha256?: string;
+  readonly acquisitionRoot?: string;
 }
 
 export interface ResolveRecipeOptions {
@@ -101,6 +84,7 @@ const resolveBuiltin = (ref: string): Effect.Effect<ResolvedRecipe, RecipeManife
     id: entry.id,
     source: entry.source,
     manifestYaml: entry.manifestYaml,
+    authoredSource: entry.authoredSource,
     root: undefined,
   });
 };
@@ -146,13 +130,20 @@ const resolveLocalTs = Effect.fnUntraced(function* (
       }),
   });
   const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
-  const flat = yield* flattenRecipe(tsPath, parsed);
-  const manifest = yield* validateRecipeManifestObject(tsPath, flat);
+  const authoredSource = yield* validateRecipeSourceObject(tsPath, parsed);
   const dirBasename = basename(expanded);
-  if (manifest.id !== dirBasename) {
-    return yield* Effect.fail(idMismatchError(manifest.id, dirBasename, tsPath));
+  if (authoredSource.id !== dirBasename) {
+    return yield* Effect.fail(idMismatchError(authoredSource.id, dirBasename, tsPath));
   }
-  return { id: ref, source: tsPath, manifestYaml: "", root: expanded, manifest };
+  return {
+    id: ref,
+    source: tsPath,
+    manifestYaml: "",
+    root: expanded,
+    authoredSource,
+    sourceContent: content,
+    evaluation: "typescript",
+  };
 });
 
 const resolveLocal = Effect.fnUntraced(function* (
@@ -167,7 +158,14 @@ const resolveLocal = Effect.fnUntraced(function* (
   | RecipeSourceError
   | NotImplementedError
 > {
-  const expanded = expandLocalPath(ref, options);
+  const expanded = yield* Effect.tryPromise({
+    try: () => realpath(expandLocalPath(ref, options)),
+    catch: (cause) =>
+      new RecipeManifestNotFoundError({
+        source: ref,
+        message: `Could not resolve recipe directory: ${causeMessage(cause)}`,
+      }),
+  });
   const manifestPath = resolve(expanded, "recipe.yml");
   const tsPath = resolve(expanded, "recipe.ts");
   const [yamlExists, tsExists] = yield* Effect.tryPromise({

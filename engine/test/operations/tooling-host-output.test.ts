@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
-import { RedactionService, createPayloadValues, makeRedactionService } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
+  type Environment,
   GlobalConfig,
   type LandofileEvents,
   ProviderId,
@@ -18,13 +20,16 @@ import {
   ShellRunner,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
@@ -34,7 +39,8 @@ const harness = (
   onFrame?: (frame: StreamFrameSinkFrame) => void,
 ) => {
   const frames: StreamFrameSinkFrame[] = [];
-  const basePlan: AppPlan = {
+  const basePlan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("host-output"),
     name: "host-output",
     slug: "host-output",
@@ -42,22 +48,27 @@ const harness = (
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     extensions: {},
     metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"), source: "test", runtime: 4 },
   };
-  const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
+  let plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
+    testEnvironmentResolverLayer,
     EventRuntime.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       ShellRunner,
-      makeShellRunnerService(() => {
-        throw new Error("unused REPL");
-      }, ownerOnlyFileAccess),
+      makeShellRunnerService(
+        () => {
+          throw new Error("unused REPL");
+        },
+        ownerOnlyFileAccess,
+        Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer))),
+      ),
     ),
     Layer.succeed(
       ToolingEngine,
@@ -75,7 +86,7 @@ const harness = (
     ),
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: plan.name, tooling: { probe: task } }) }),
+      LandofileService.of({ discover: compileTestLandofile({ name: plan.name, tooling: { probe: task } }) }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
     Layer.succeed(
@@ -104,48 +115,61 @@ const harness = (
         }),
     }),
   );
-  const redaction = Layer.succeed(
-    RedactionService,
-    makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.succeed(""),
-      has: () => Effect.succeed(false),
-    }),
-  );
+  const redactionService = makeRedactionService();
+  const redaction = Layer.succeed(RedactionService, redactionService);
   return {
     frames,
-    run: (
-      options: { readonly sink?: boolean; readonly redaction?: boolean; readonly payload?: boolean } = {},
-    ) => {
-      const values = createPayloadValues([]);
-      const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
-      const protectedSink = Layer.succeed(StreamFrameSink, {
-        emit: (frame) =>
-          Effect.sync(() => {
-            const bytes =
-              typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
-            frames.push({ ...frame, chunk: payloads[frame._tag].write(bytes) });
-          }),
-        flush: () =>
-          Effect.sync(() => {
-            for (const tag of ["stdout", "stderr"] as const)
-              frames.push({ _tag: tag, chunk: payloads[tag].flush() });
-          }),
-      });
-      return Effect.runPromise(
-        runTooling({ name: "probe" }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              layer,
-              options.sink === false ? Layer.empty : options.payload === true ? protectedSink : sink,
-              options.redaction === false ? Layer.empty : redaction,
-            ),
-          ),
-          Effect.result,
-        ),
+    commitLiteral: (value: string) => {
+      plan = attachEffectiveTooling(
+        {
+          ...plan,
+          committedLiteralDigests: [sha256Hex(value)],
+        },
+        { probe: task },
       );
     },
+    run: (
+      options: {
+        readonly sink?: boolean;
+        readonly redaction?: boolean;
+        readonly payload?: boolean;
+        readonly env?: Environment;
+      } = {},
+    ) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const values = yield* redactionService.payloadValues();
+          const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
+          const protectedSink = Layer.succeed(StreamFrameSink, {
+            emit: (frame) =>
+              Effect.sync(() => {
+                const bytes =
+                  typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
+                frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
+              }),
+          });
+          return yield* runTooling({
+            name: "probe",
+            ...(options.env === undefined ? {} : { env: options.env }),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                layer,
+                options.sink === false ? Layer.empty : options.payload === true ? protectedSink : sink,
+                options.redaction === false ? Layer.empty : redaction,
+              ),
+            ),
+            Effect.result,
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (options.payload === true)
+                  for (const tag of ["stdout", "stderr"] as const)
+                    frames.push({ kind: "bytes", _tag: tag, chunk: payloads[tag].flush() });
+              }),
+            ),
+          );
+        }),
+      ),
   };
 };
 
@@ -154,6 +178,22 @@ const joined = (frames: ReadonlyArray<StreamFrameSinkFrame>, tag: "stdout" | "st
     .filter((frame) => frame._tag === tag)
     .map((frame) => (typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk)))
     .join("");
+
+test.each([
+  [undefined, "[redacted] wordpress-seo override-tail\n"],
+  [{ OTHER_PASSWORD: "wordpress" }, "[redacted] wordpress-seo override-tail\n"],
+  [{ DB_PASSWORD: "override" }, "[redacted] wordpress-seo [redacted]-tail\n"],
+] as const)("host tooling preserves plan tiers and protects caller env %j", async (env, expected) => {
+  const h = harness({
+    service: ":host",
+    env: { DB_PASSWORD: "wordpress" },
+    cmd: "printf '%s\\n' 'wordpress wordpress-seo override-tail'",
+  });
+  h.commitLiteral("wordpress");
+  const result = await h.run({ payload: true, ...(env === undefined ? {} : { env }) });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  expect(joined(h.frames, "stdout")).toBe(expected);
+});
 
 test("keeps a registered secret masked across separately executed host commands", async () => {
   // Given
@@ -165,9 +205,23 @@ test("keeps a registered secret masked across separately executed host commands"
   // When
   const result = await h.run({ payload: true });
   // Then
-  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "", stderr: "" } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  expect(result).not.toHaveProperty("success.stdout");
+  expect(result).not.toHaveProperty("success.stderr");
   expect(joined(h.frames, "stdout")).toBe("[redacted]");
   expect(joined(h.frames, "stderr")).toBe("[redacted]");
+});
+
+test("argv host tooling carries plan redaction tiers into the output boundary", async () => {
+  const h = harness({
+    service: ":host",
+    env: { DB_PASSWORD: "wordpress" },
+    cmd: [process.execPath, "-e", 'process.stdout.write("wordpress wordpress-seo override-tail");'],
+  });
+  h.commitLiteral("wordpress");
+  const result = await h.run({ payload: true, env: { OTHER_PASSWORD: "override" } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  expect(joined(h.frames, "stdout")).toBe("[redacted] wordpress-seo [redacted]-tail");
 });
 
 test("delivers a host partial line before the body is allowed to finish", async () => {
@@ -201,7 +255,8 @@ test("delivers a host partial line before the body is allowed to finish", async 
       }),
     ]);
     // Then
-    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "" } });
+    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+    expect(result).not.toHaveProperty("success.stdout");
     expect(joined(h.frames, "stdout")).toBe("onetwo");
   } finally {
     clearTimeout(timer);
@@ -219,15 +274,17 @@ test("streams host channels through the sink without collecting the body", async
   });
   // When the body runs with a live sink.
   const result = await h.run();
-  // Then channels stream as authored and the collected result stays empty under a live sink.
+  // Then channels stream as authored and the result omits uncaptured output.
   expect(joined(h.frames, "stdout")).toBe("split-host-secret");
   expect(joined(h.frames, "stderr")).toBe("split-host-secret");
-  expect(h.frames.every((frame) => frame.raw === true)).toBe(true);
+  expect(h.frames.every((frame) => frame.kind === "bytes")).toBe(true);
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { stdout: "", stderr: "", exitCode: 0 },
+    success: { exitCode: 0 },
   });
-  if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
+  expect(result).not.toHaveProperty("success.stdout");
+  expect(result).not.toHaveProperty("success.stderr");
+  expect(result).not.toHaveProperty("success.rendered");
 });
 
 test("emits failure stderr before returning the body exit code", async () => {
@@ -242,8 +299,9 @@ test("emits failure stderr before returning the body exit code", async () => {
   expect(joined(h.frames, "stderr")).toBe("diagnostic");
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { exitCode: 7, stderr: "" },
+    success: { exitCode: 7 },
   });
+  expect(result).not.toHaveProperty("success.stderr");
 });
 
 test.each(["pre", "post"] as const)(
@@ -306,3 +364,5 @@ test.each([
   const hasHost = JSON.stringify(task).includes(":host");
   expect(joined(h.frames, "stdout")).toBe(hasHost ? "hostprovider" : "provider");
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

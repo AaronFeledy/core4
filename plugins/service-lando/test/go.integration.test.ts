@@ -12,7 +12,7 @@ import { bringDown, bringUp, makePodmanApiClient, layer as makeProviderLayer } f
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   PortablePath,
   type ProviderCapabilities,
@@ -21,8 +21,12 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Clock, DateTime, Effect, Layer, Schema } from "effect";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
@@ -43,6 +47,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -96,16 +101,18 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
   artifact: { kind: "ref", ref: "golang:1.22" },
   command: ["go", "run", "/app/main.go"],
   environment: { GOFLAGS: "-mod=mod" },
-  appMount: {
-    source: appRoot,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: appRoot,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [
     {
       _tag: "published",
@@ -152,7 +159,8 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
 
         const appRoot = AbsolutePath.make(appRootStr);
         const web = goServicePlan(appRoot);
-        const plan: AppPlan = {
+        const plan: CurrentExecutableAppPlan = {
+          valueModel: 1,
           id: appId,
           name: "Go Integration App",
           slug: "gointtest",
@@ -160,7 +168,6 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           provider: providerId,
           services: { [web.name]: web },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata,
@@ -196,8 +203,11 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           });
 
           const toolingLayer = Layer.mergeAll(
-            PrivateFileAccessService.layer,
-            Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+            toolingExecutionLayer,
+            Layer.succeed(
+              LandofileService,
+              LandofileService.of({ discover: Effect.succeed(compileTestLandofile(landofile)) }),
+            ),
             Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
             Layer.succeed(
               RuntimeProviderRegistry,
@@ -210,13 +220,15 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
                 select: () => Effect.succeed(provider),
               }),
             ),
-            ProviderExecToolingEngine.layer,
+            ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
             LandoEventService.layer,
             emptyConfigServiceLayer,
           );
 
           const result = await Effect.runPromise(
-            runTooling({ name: "go", args: ["version"] }).pipe(Effect.provide(toolingLayer)),
+            runTooling({ name: "go", input: { _tag: "RawArgv", argv: ["version"] } }).pipe(
+              Effect.provide(toolingLayer),
+            ),
           );
 
           expect(result.tool).toBe("go");

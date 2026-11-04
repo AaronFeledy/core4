@@ -91,6 +91,7 @@ test("stopping a service without authored routes leaves sibling route publicatio
         setup: () => Effect.die("selected stop must not set up routes"),
         applyRoutes: () => Effect.die("non-routed selection must not rewrite sibling routes"),
       }),
+      Effect.provide(h.layer),
     ),
   );
   // Then container removal succeeds without touching the router.

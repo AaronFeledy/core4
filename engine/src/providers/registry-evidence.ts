@@ -19,6 +19,13 @@ export const makeAppliedStateProvider = Effect.fnUntraced(function* (
   const runtime = yield* Effect.cached(services.makeProvider(descriptor));
   return {
     id,
+    ...(contribution.appliedStateInventory === undefined
+      ? {}
+      : {
+          appliedStateInventory: contribution
+            .appliedStateInventory(context)
+            .pipe(Effect.provideService(PathsService, services.paths)),
+        }),
     ...(resourceOwnership === undefined
       ? {}
       : {

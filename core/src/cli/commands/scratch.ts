@@ -3,11 +3,12 @@ import { Effect, Schema } from "effect";
 import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import type {
   AppPlacementError,
+  DebuggerHostUnavailableError,
   LandofileVersionConstraintError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
 } from "@lando/sdk/errors";
-import type { IsolateMode } from "@lando/sdk/schema";
+import { AbsolutePath, type IsolateMode } from "@lando/sdk/schema";
 import type {
   ScratchGcOptions,
   ScratchGcReport,
@@ -79,7 +80,7 @@ export const ScratchSourceResultSchema = Schema.Union([
 export const ScratchAppRefResultSchema = Schema.Struct({
   kind: Schema.Literals(["user", "global", "scratch"]),
   id: Schema.String,
-  root: Schema.String,
+  root: AbsolutePath,
 });
 
 export const ScratchHandleResultSchema = Schema.Struct({
@@ -158,6 +159,7 @@ type ScratchStartError =
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError
+  | DebuggerHostUnavailableError
   | LandofileVersionConstraintError;
 type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError | ScratchAppError;
 

@@ -4,7 +4,7 @@ import { serviceTypes } from "../src/index.ts";
 
 describe("bundled service image identity", () => {
   // Given the registered catalog, excluding author-supplied images.
-  const catalog = [...serviceTypes].filter(([id]) => id !== "compose" && id !== "lando");
+  const catalog = [...serviceTypes].filter(([id]) => !["compose", "lando", "minio"].includes(id));
 
   it("declares identity when the service owns its default image", () => {
     // When
@@ -15,16 +15,13 @@ describe("bundled service image identity", () => {
     expect(missing.map(([id]) => id)).toEqual([]);
   });
 
-  it("declares a home when the default user principal is selected", () => {
-    for (const [id, serviceType] of catalog) {
-      // When
+  it("omits the default home only for Varnish images whose user has no home", () => {
+    const withoutHome = catalog.filter(([, serviceType]) => {
       const identity = serviceType.identity;
-      const principal = identity?.defaultUser.split(":")[0];
-
-      // Then
-      expect(principal, id).toBeDefined();
-      expect(Object.hasOwn(identity?.homes ?? {}, principal ?? ""), id).toBe(true);
-    }
+      const principal = identity?.defaultUser.split(":")[0] ?? "";
+      return !Object.hasOwn(identity?.homes ?? {}, principal);
+    });
+    expect(withoutHome.map(([id]) => id).sort()).toEqual(["varnish", "varnish:7"]);
   });
 
   it("uses absolute paths when declaring user homes", () => {
@@ -40,7 +37,7 @@ describe("bundled service image identity", () => {
 
   it("omits identity when the image is author-supplied", () => {
     // Given
-    for (const id of ["compose", "lando"]) {
+    for (const id of ["compose", "lando", "minio"]) {
       // When
       const serviceType = serviceTypes.get(id);
 

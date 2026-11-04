@@ -33,6 +33,11 @@ const derivedTypeScriptPolicies = [
     trackingPath: "docs/reference/service-types.mdx",
   },
   {
+    ids: ["service-listener-reference"],
+    ignoreProbe: "docs/reference/service-listeners.mdx",
+    trackingPath: "docs/reference/service-listeners.mdx",
+  },
+  {
     ids: ["command-registry-manifest", "setup-plugin-flags"],
     ignoreProbe: "core/src/cli/generated/command-ids.ts",
     trackingPath: "core/src/cli/generated",
@@ -75,7 +80,6 @@ const committedWorkflowPolicies = [
   { id: "release-workflow", path: ".github/workflows/release.yml" },
   { id: "provider-matrix-workflow", path: ".github/workflows/provider-matrix.yml" },
   { id: "runtime-bundle-workflow", path: ".github/workflows/runtime-bundle.yml" },
-  { id: "php-base-workflow", path: ".github/workflows/php-base-images.yml" },
   { id: "compose-vendor-bump-workflow", path: ".github/workflows/compose-vendor-bump.yml" },
   { id: "tomcat-bump-workflow", path: ".github/workflows/tomcat-bump.yml" },
   { id: "platform-readiness-workflow", path: ".github/workflows/platform-readiness.yml" },

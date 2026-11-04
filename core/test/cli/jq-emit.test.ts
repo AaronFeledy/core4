@@ -43,7 +43,7 @@ describe("runWithRendererHandling jqExpression", () => {
     // Then stdout is the raw scalar and the command exit stays 0.
     expect(io.stdout()).toBe("demo\n");
     expect(io.stderr()).toBe("");
-    expect(exitCode).toBeUndefined();
+    expect(exitCode).toBe(0);
     expect(process.exitCode).not.toBe(1);
     expect(process.exitCode).not.toBe(2);
   });
@@ -120,7 +120,7 @@ describe("runWithRendererHandling jqExpression", () => {
     // Then stdout has no envelope mix and the command exit stays 0.
     expect(io.stdout().includes("{")).toBe(false);
     expect(io.stderr()).toBe("");
-    expect(exitCode).toBeUndefined();
+    expect(exitCode).toBe(0);
     expect(process.exitCode).not.toBe(2);
   });
 

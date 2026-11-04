@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { Result, Schema } from "effect";
 
+import { importAuthorModule } from "@lando/landofile/author-modules";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 
@@ -18,16 +19,21 @@ export interface ExternalPluginModule {
   readonly [key: string]: unknown;
 }
 
-const loadExternalPluginEntry = async (
+export const loadInstalledPluginEntry = async (
   packageRoot: string,
   manifest: PluginManifest,
 ): Promise<ExternalPluginModule | undefined> => {
   if (manifest.entry === undefined) return undefined;
   const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
   try {
-    return (await import(pathToFileURL(entryPath).href)) as ExternalPluginModule;
+    return (await importAuthorModule(pathToFileURL(entryPath).href)) as ExternalPluginModule;
   } catch (cause) {
-    throw pluginLoadError(String(manifest.name), `Failed to import plugin entry ${manifest.entry}`, cause);
+    throw pluginLoadError(
+      String(manifest.name),
+      `Failed to import plugin entry ${manifest.entry}`,
+      cause,
+      `Repair the ${String(manifest.entry)} entry for plugin ${String(manifest.name)}, or reinstall the plugin.`,
+    );
   }
 };
 
@@ -40,6 +46,7 @@ const normalizeExternalContributionModules = async (
   const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
   const certificateAuthorities = manifest.contributes?.certificateAuthorities;
+  const fileSyncEngines = manifest.contributes?.fileSyncEngines;
   const routerServices = manifest.contributes?.routerServices;
   const secretStores = manifest.contributes?.secretStores;
   const remoteSources = manifest.contributes?.remoteSources;
@@ -53,6 +60,7 @@ const normalizeExternalContributionModules = async (
     httpClients === undefined &&
     interactionServices === undefined &&
     certificateAuthorities === undefined &&
+    fileSyncEngines === undefined &&
     routerServices === undefined &&
     secretStores === undefined &&
     remoteSources === undefined &&
@@ -77,6 +85,7 @@ const normalizeExternalContributionModules = async (
         throw pluginManifestError(
           `${kind} module path escapes the plugin package root: ${modulePath}`,
           cause,
+          `Set the ${kind} module to a file inside the plugin package root.`,
         );
       }
       throw cause;
@@ -90,6 +99,7 @@ const normalizeExternalContributionModules = async (
         throw pluginManifestError(
           `Duplicate rendererPanels id "${panel.id}" in plugin ${String(manifest.name)}`,
           panel.id,
+          "Assign each rendererPanels contribution a unique id within the plugin.",
         );
       }
       seenIds.add(panel.id);
@@ -103,6 +113,7 @@ const normalizeExternalContributionModules = async (
         throw pluginManifestError(
           `Duplicate subscribers id "${subscriber.id}" in plugin ${String(manifest.name)}`,
           subscriber.id,
+          "Assign each subscriber a unique id within the plugin.",
         );
       }
       seenSubscriberIds.add(subscriber.id);
@@ -153,6 +164,19 @@ const normalizeExternalContributionModules = async (
             ...contribution,
             module: await normalizeManifestModulePath(contribution.module, "certificateAuthorities"),
           })),
+        );
+  const normalizedFileSyncEngines =
+    fileSyncEngines === undefined
+      ? undefined
+      : await Promise.all(
+          fileSyncEngines.map(async (contribution) =>
+            contribution.module === undefined
+              ? contribution
+              : {
+                  ...contribution,
+                  module: await normalizeManifestModulePath(contribution.module, "fileSyncEngines"),
+                },
+          ),
         );
   const normalizedRouterServices =
     routerServices === undefined
@@ -223,6 +247,7 @@ const normalizeExternalContributionModules = async (
     ...(normalizedSubscribers === undefined ? {} : { subscribers: normalizedSubscribers }),
     contributes: {
       ...manifest.contributes,
+      ...(normalizedFileSyncEngines === undefined ? {} : { fileSyncEngines: normalizedFileSyncEngines }),
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
       ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
       ...(normalizedHttpClients === undefined ? {} : { httpClients: normalizedHttpClients }),
@@ -249,12 +274,20 @@ export const loadInstalledPluginManifest = async (packageRootInput: string): Pro
   try {
     parsed = JSON.parse(await readFile(packageJsonPath, "utf8"));
   } catch (cause) {
-    throw pluginManifestError(`Plugin package.json is invalid: ${packageJsonPath}`, cause);
+    throw pluginManifestError(
+      `Plugin package.json is invalid: ${packageJsonPath}`,
+      cause,
+      `Make ${packageJsonPath} readable and fix its JSON syntax.`,
+    );
   }
   const candidate = (parsed as { landoPlugin?: unknown }).landoPlugin ?? parsed;
   const decoded = Schema.decodeUnknownResult(PluginManifest)(candidate, { onExcessProperty: "error" });
   if (Result.isFailure(decoded)) {
-    throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.failure);
+    throw pluginManifestError(
+      `Plugin manifest validation failed: ${packageJsonPath}`,
+      decoded.failure,
+      `Correct the reported manifest fields in ${packageJsonPath}.`,
+    );
   }
   return normalizeExternalContributionModules(packageRoot, decoded.success);
 };
@@ -264,6 +297,6 @@ export const loadInstalledPlugin = async (
 ): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
   const packageRoot = packageRootPath(packageRootInput);
   const manifest = await loadInstalledPluginManifest(packageRoot);
-  const module = await loadExternalPluginEntry(packageRoot, manifest);
+  const module = await loadInstalledPluginEntry(packageRoot, manifest);
   return { manifest, ...(module === undefined ? {} : { module }) };
 };

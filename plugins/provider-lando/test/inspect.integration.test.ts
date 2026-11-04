@@ -19,6 +19,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
@@ -38,20 +39,21 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres", "-c", "port=55434"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  ...(name === "node"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-      }
-    : {}),
-  mounts: [],
-  storage: [],
+  mounts:
+    name === "node"
+      ? [
+          {
+            type: "bind",
+            role: "app",
+            source: appRoot,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            excludes: [],
+            includes: [],
+            realization: "passthrough",
+          },
+        ]
+      : [],
   endpoints:
     name === "node"
       ? [
@@ -78,6 +80,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Inspect App",
   slug: "inspectapp",
@@ -85,7 +88,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -95,6 +97,7 @@ const plan: AppPlan = {
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
+  const networks = new Map<string, { readonly Id: string }>();
   const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -116,8 +119,16 @@ const makeFakeApi = () => {
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        const networkCreate = decodeNetworkCreate(request);
+        if (networkCreate !== undefined) {
+          networks.set(networkCreate.Name, { Id: `${networkCreate.Name}-id`, ...networkCreate });
           return { status: 201, body: "{}" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networks].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          const network = networks.get(name);
+          return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
         }
         if (request.method === "GET" && action === "json") {
           if (!existing.has(name)) {
@@ -151,6 +162,9 @@ const makeFakeApi = () => {
           running.delete(name);
           return { status: 204, body: "" };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
@@ -181,8 +195,8 @@ describe("provider-lando inspect", () => {
     for (const snapshot of snapshots) {
       expect(snapshot.state).toBe("running");
       expect(snapshot.status).toBe("running");
-      expect(snapshot.containerId).toBe(`lando-inspectapp-${snapshot.service}-id`);
-      expect(snapshot.endpoints).toEqual(plan.services[snapshot.service]?.endpoints);
+      expect(snapshot.containerId).toBe(`lando-inspectapp--${snapshot.service}-id`);
+      expect(snapshot.publications).toEqual({ status: "unknown" });
     }
     const callsBeforeInspect = fake.calls.length;
     await Effect.runPromise(provider.inspect({ app: appId, service: node.name }));
@@ -193,7 +207,7 @@ describe("provider-lando inspect", () => {
 
   test("reports a stopped service without starting or removing it", async () => {
     const fake = makeFakeApi();
-    fake.existing.add("lando-inspectapp-node");
+    fake.existing.add("lando-inspectapp--node");
 
     const snapshot = await Effect.runPromise(
       inspect(plan, { app: appId, service: node.name }, { api: fake.api }),
@@ -205,10 +219,10 @@ describe("provider-lando inspect", () => {
       providerId,
       state: "stopped",
       status: "stopped",
-      containerId: "lando-inspectapp-node-id",
-      endpoints: node.endpoints,
+      containerId: "lando-inspectapp--node-id",
+      publications: { status: "unknown" },
     });
-    expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp-node/json" }]);
+    expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp--node/json" }]);
   });
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(
@@ -223,16 +237,17 @@ describe("provider-lando inspect", () => {
         const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 
         expect(snapshot.state).toBe("running");
-        expect(snapshot.endpoints).toEqual([
-          {
-            _tag: "published",
-            port: 31082,
-            protocol: "http",
-            name: "http",
-            publication: { bindAddress: "127.0.0.1", hostPort: 31082 },
-            materialization: { bindAddress: "127.0.0.1", hostPort: 31082 },
-          },
-        ]);
+        expect(snapshot.publications).toEqual({
+          status: "present",
+          bindings: [
+            {
+              port: 31082,
+              transport: "tcp",
+              bindAddress: "127.0.0.1",
+              hostPort: 31082,
+            },
+          ],
+        });
       } finally {
         await Effect.runPromise(bringDown(plan, { api }));
       }

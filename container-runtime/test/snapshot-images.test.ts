@@ -1,13 +1,19 @@
 import { expect, test } from "bun:test";
+import type { Redactor } from "@lando/sdk/secrets";
 import { DateTime, Effect } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 test("maps labeled and legacy snapshot images and restricts the image query", async () => {
   const requests: string[] = [];
   const plane = makeProviderDataPlane({
     providerId: "lando",
     capabilities: { volumeSnapshot: "native" },
-    redactDetails: (value) => value,
+    redactor: passthroughRedactor,
     api: {
       request: (request) => {
         requests.push(request.path);
@@ -62,7 +68,7 @@ test("returns no snapshot artifacts for a non-native provider without HTTP", asy
   const plane = makeProviderDataPlane({
     providerId: "docker",
     capabilities: { volumeSnapshot: "none" },
-    redactDetails: (value) => value,
+    redactor: passthroughRedactor,
     api: { request: () => Effect.die("Non-native listing must not access the runtime") },
   });
   expect(await Effect.runPromise(plane.listVolumeSnapshots())).toEqual([]);

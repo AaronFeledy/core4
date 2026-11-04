@@ -11,11 +11,11 @@ import {
   type ServiceType,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import * as AppCacheService from "../../src/cache/service.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { snapshotAppFeatureEnv } from "../../src/services/app-feature.ts";
+import { planApp } from "../plan-app.ts";
 
 const featureFor = (fromConfig: string): AppFeatureDefinition => ({
   id: "test.selector-env",
@@ -103,20 +103,24 @@ for (const scenario of [
       const runPlan = () =>
         Effect.runPromise(
           Effect.flatMap(PluginRegistry, (registry) =>
-            planApp(
-              registry,
-              {
-                ...cache,
-                writeAtomic: (path, bytes) =>
-                  cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
-              },
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              landofile,
-              TestRuntimeProvider.capabilities,
-              root,
+            compileTestLandofile(landofile, root).pipe(
+              Effect.flatMap((compiled) =>
+                planApp(
+                  {
+                    landofile: compiled,
+                    providerCapabilities: TestRuntimeProvider.capabilities,
+                    appRoot: root,
+                  },
+                  Layer.mergeAll(
+                    Layer.succeed(PluginRegistry, registry),
+                    Layer.succeed(CacheService, {
+                      ...cache,
+                      writeAtomic: (path, bytes) =>
+                        cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
+                    }),
+                  ),
+                ),
+              ),
             ),
           ).pipe(Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, [plugin]))),
         );
@@ -172,3 +176,4 @@ test("selector cache unions static env reads with absent values and shell parame
   expect(snapshot.bindings).toEqual({ MISSING: null, PAREN: null, SHELL_TARGET: null, TARGET: "web", Z: "" });
   expect(Object.keys(snapshot.bindings)).toEqual(["MISSING", "PAREN", "SHELL_TARGET", "TARGET", "Z"]);
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";

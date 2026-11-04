@@ -1,12 +1,12 @@
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
-import { createStandaloneRedactor } from "@lando/redaction/service";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import { CANONICAL_LANDOFILE } from "./app-config-recipe-analysis.ts";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export class AppConfigMigrateError extends Schema.TaggedError<AppConfigMigrateError>()(
   "AppConfigMigrateError",
@@ -18,7 +18,7 @@ export class AppConfigMigrateError extends Schema.TaggedError<AppConfigMigrateEr
       "confirmation-required",
       "encode-failed",
     ]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -28,7 +28,7 @@ export class AppConfigMigrateCommitError extends Schema.TaggedError<AppConfigMig
     message: Schema.String,
     phase: Schema.String,
     reason: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -82,7 +82,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
         }),
     ),
   );
-  const redactor = createStandaloneRedactor("secrets");
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   yield* makeManagedFileTransactions({
     journalRoot: () => resolveLandoRoots().userDataRoot,
     privateFileAccess,

@@ -15,6 +15,11 @@ export interface RendererContractHarness {
   readonly expectedCapabilities: (narrationTTY: boolean) => RendererCapabilities;
 }
 
+const chromaticSGR = new RegExp(
+  `${String.fromCharCode(27)}\\[(?:\\d+;)*(?:3[0-7]|9[0-7]|4[0-7]|10[0-7]|38;[\\d;]+|48;[\\d;]+)(?:;\\d+)*m`,
+  "u",
+);
+
 export const runRendererContract = Effect.fnUntraced(function* (harness: RendererContractHarness) {
   const events = yield* EventService;
   const fixtures: LandoEvent[] = [];
@@ -36,7 +41,12 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
     );
     fixtures.push(...samples);
   }
-  for (const isTTY of [false, true]) {
+  for (const { isTTY, noColor } of [
+    { isTTY: false, noColor: false },
+    { isTTY: true, noColor: false },
+    { isTTY: false, noColor: true },
+    { isTTY: true, noColor: true },
+  ]) {
     for (const stdoutIsTTY of [false, true]) {
       let stdout = "";
       let stderr = "";
@@ -44,6 +54,7 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
       const stderrBytes: number[] = [];
       const io: RendererIO = {
         isTTY,
+        noColor,
         stdoutIsTTY,
         terminalColumns: 60,
         terminalRows: 20,
@@ -70,11 +81,13 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
           );
           yield* requireContract(Object.isFrozen(initial), "capability snapshots are immutable");
           yield* requireContract(
-            (["color", "interactive", "animation", "notifications"] as const).every(
-              (key) => initial[key] === expected[key],
-            ),
-            "capabilities depend on the narration terminal, not stdout",
-            { initial, isTTY, stdoutIsTTY },
+            noColor
+              ? initial.color === false
+              : (["color", "interactive", "animation", "notifications"] as const).every(
+                  (key) => initial[key] === expected[key],
+                ),
+            "capabilities honor the color opt-out and depend on narration, not stdout",
+            { initial, isTTY, stdoutIsTTY, noColor },
           );
           yield* Effect.scoped(
             Effect.gen(function* () {
@@ -95,7 +108,15 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
             stdout,
           });
           yield* requireContract(stderr.length > 0, "narration reaches stderr");
+          if (noColor) {
+            yield* requireContract(
+              !chromaticSGR.test(stderr + new TextDecoder().decode(Uint8Array.from(stderrBytes))),
+              "host color opt-out suppresses chromatic SGR in every sampled event's narration",
+              { isTTY, stdoutIsTTY },
+            );
+          }
           const current = renderer.capabilities;
+          if (noColor) yield* requireContract(current.color === false, "color opt-out survives narration");
           yield* requireContract(Object.isFrozen(current), "updated capability snapshots remain immutable");
           yield* requireContract(
             (!initial.color || current.color) &&

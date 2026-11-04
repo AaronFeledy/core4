@@ -26,6 +26,70 @@ const inputs = (root: string) => ({
 const load = (root: string) => loadLandofileLayers(root, join(root, ".lando.yml"), inputs(root));
 
 test.each([
+  ["false", { disabled: true }],
+  ["echo local", { cmd: "echo local" }],
+])("a local YAML tooling shorthand %s replaces the inherited definition", async (higher, expected) => {
+  // Given
+  await withApp(
+    {
+      ".lando.yml": "name: forms\ntooling:\n  task:\n    service: web\n    cmds:\n      - echo inherited\n",
+      ".lando.local.yml": `tooling:\n  task: ${higher}\n`,
+    },
+    async (root) => {
+      // When
+      const result = await Effect.runPromise(load(root));
+      // Then
+      expect(result.document.tooling?.task).toEqual(expected);
+    },
+  );
+});
+
+test("TypeScript Landofiles accept tooling shorthands", async () => {
+  // Given
+  await withApp(
+    {
+      ".lando.ts": "export default { name: 'forms', tooling: { off: false, greet: 'echo hi' } }",
+    },
+    async (root) => {
+      // When
+      const result = await Effect.runPromise(
+        loadLandofileLayers(root, join(root, ".lando.ts"), inputs(root)),
+      );
+      // Then
+      expect(result.document.tooling).toEqual({
+        off: { disabled: true },
+        greet: { cmd: "echo hi" },
+      });
+    },
+  );
+});
+
+test.each(["includes", "toolingIncludes"])(
+  "a higher layer drops deferred vars when replacing a scalar task from %s",
+  async (form) => {
+    // Given
+    const include =
+      form === "includes"
+        ? 'includes:\n  - source: ./tasks.yml\n    kind: tooling\n    namespace: ns\n    vars:\n      NAME: "{{ app.name }}"\n'
+        : 'toolingIncludes:\n  ns:\n    file: ./tasks.yml\n    vars:\n      NAME: "{{ app.name }}"\n';
+    await withApp(
+      {
+        ".lando.yml": `name: forms\n${include}`,
+        "tasks.yml": 'tooling:\n  task: "echo {{ app.name }}"\n',
+        ".lando.local.yml": "tooling:\n  ns:task:\n    cmd: echo local\n    service: :host\n",
+      },
+      async (root) => {
+        // When
+        const result = await Effect.runPromise(load(root));
+        // Then
+        expect(result.document.tooling?.["ns:task"]).toEqual({ cmd: "echo local", service: ":host" });
+        expect(result.pendingSites).toEqual([]);
+      },
+    );
+  },
+);
+
+test.each([
   ["environment", { KEEP: "lower" }, ["WIN=upper"], { WIN: "upper" }],
   ["environment", ["KEEP=lower"], { WIN: "upper" }, { WIN: "upper" }],
   ["labels", { KEEP: "lower" }, ["WIN=upper"], { WIN: "upper" }],
@@ -49,7 +113,9 @@ test.each([
       // When
       const result = await Effect.runPromise(load(root));
       // Then
-      expect(Schema.encodeSync(LandofileShape)(result).services?.web).toEqual({ [String(field)]: expected });
+      expect(Schema.encodeSync(LandofileShape)(result.document).services?.web).toEqual({
+        [String(field)]: expected,
+      });
     },
   );
 });
@@ -95,7 +161,7 @@ test("one final runtime validation handles three layers and two partial fragment
         ).toMatchObject({ includes: ["second.yml"] });
         expect(spans.filter((name) => name === "Landofile.finalize")).toHaveLength(1);
         expect(spans.filter((name) => name.includes("decodeLayer"))).toHaveLength(0);
-        expect(result.services?.[ServiceName.make("web")]?.build).toEqual({
+        expect(result.document.services?.[ServiceName.make("web")]?.build).toEqual({
           context: "./site",
           target: "stage",
           args: { KEEP: "lower" },
@@ -122,7 +188,7 @@ test.each([false, { disable: true }])(
         // When
         const result = await Effect.runPromise(load(root));
         // Then
-        expect(result.services?.[ServiceName.make("web")]?.healthcheck).toEqual(
+        expect(result.document.services?.[ServiceName.make("web")]?.healthcheck).toEqual(
           middle === false ? { retries: 7 } : { kind: "command", command: "lower", retries: 7 },
         );
       },
@@ -150,9 +216,9 @@ test("whole-value expressions replace inherited objects without a second merge o
         }),
       );
       // Then
-      expect(result.services?.[ServiceName.make("web")]?.environment).toEqual({
+      expect(result.document.services?.[ServiceName.make("web")]?.environment).toEqual({
         WIN: "new",
-        LITERAL: "{{{{ env.NEVER }}",
+        LITERAL: "{{ env.NEVER }}",
       });
     },
   );

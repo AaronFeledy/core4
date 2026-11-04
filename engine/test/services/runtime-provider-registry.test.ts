@@ -37,7 +37,6 @@ const appPlan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -152,6 +151,7 @@ describe("RuntimeProviderRegistryLayer.layer", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       });

@@ -88,16 +88,18 @@ const service = (appRoot: string): ServicePlan => ({
     "require('node:fs').mkdirSync('/tmp/lando-live', { recursive: true }); console.log('live-console-ready'); setInterval(() => {}, 1000)",
   ],
   environment: {},
-  appMount: {
-    source: AbsolutePath.make(appRoot),
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: AbsolutePath.make(appRoot),
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -111,13 +113,13 @@ const makePlan = (appRoot: string): AppPlan => {
   const node = service(appRoot);
   return {
     id: appId,
+    valueModel: 1,
     name: "File Logs App",
     slug: "livefilelogsapp",
     root: AbsolutePath.make(appRoot),
     provider: providerId,
     services: { [node.name]: node },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -166,7 +168,7 @@ const execShellOk = async (
   const result = await Effect.runPromise(
     provider.exec(
       { app: plan.id, service: serviceName, plan },
-      { command: ["sh", "-lc", command], stdin: "ignore" },
+      { command: ["sh", "-c", command], stdin: "ignore" },
     ),
   );
   expect(result.exitCode, result.stderr).toBe(0);
@@ -184,7 +186,7 @@ const fileLogs = (
     { follow: options.follow ?? false, sources: [selected], source: selected.id, ...options },
   );
 
-const containerName = "lando-livefilelogsapp-node";
+const containerName = "lando-livefilelogsapp--node";
 
 const realContainerHelper = (target: { readonly os: "linux"; readonly arch: "x64" | "arm64" }) =>
   Effect.tryPromise({

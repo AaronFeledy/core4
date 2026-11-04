@@ -4,6 +4,9 @@ import * as recipes from "../../src/recipes/index.ts";
 test("recipes exports every public helper", () => {
   expect(Object.keys(recipes).sort()).toEqual(
     [
+      "RECIPE_SOURCE_VARIANT_BUDGET",
+      "RecipeSourceCompileError",
+      "compileRecipeSource",
       "SNAPSHOT_HELPER_ALLOWLIST",
       "SNAPSHOT_RENDER_BUDGET",
       "approvedSecretReferencesOnly",
@@ -20,6 +23,7 @@ test("recipes exports every public helper", () => {
       "recipeFamilyKey",
       "recipeMigratability",
       "recipeVersionedKey",
+      "renderCompiledRecipeSnapshot",
       "renderRecipeSnapshot",
       "sameRecipeFamily",
       "sameRecipeVersion",

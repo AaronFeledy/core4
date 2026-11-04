@@ -33,7 +33,9 @@ export const NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH = join(
 );
 /** Repo patch the source build applies to `component`, if any; notices link the same file. */
 export const sourcePatchFor = (component: RuntimeBundleComponent): string | undefined =>
-  component.sourceBuild === LinuxNetavarkSourceBuild && component.version === "2.0.0"
+  "sourceBuild" in component &&
+  component.sourceBuild === LinuxNetavarkSourceBuild &&
+  component.version === "2.0.0"
     ? NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH
     : undefined;
 const NETAVARK_AARDVARK_SOURCE_SHA256 = "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823";

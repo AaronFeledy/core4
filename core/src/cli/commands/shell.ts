@@ -3,10 +3,11 @@ import { createPayloadRedactor } from "@lando/sdk/secrets";
 /**
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
- * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
+ * Service mode runs a login shell in the requested service via provider execStream
+ * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
+ * interactive Bun Shell line REPL.
  */
-import { DateTime, Effect, Option, Queue, Stream } from "effect";
+import { DateTime, Effect, Option, Queue, Schema, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
@@ -23,6 +24,7 @@ import {
   DeprecationService,
   type ExecTarget,
   LandofileService,
+  PathsService,
   type ProviderError,
   RuntimeProviderRegistry,
   SecretStore,
@@ -32,9 +34,9 @@ import {
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
-import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
+import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 
 export interface ShellAppOptions {
@@ -96,14 +98,15 @@ const processShellIO: ShellIO = {
   },
 };
 
-export interface ShellAppResult {
-  readonly mode: "host" | "service";
-  readonly app: string;
-  readonly shell: string;
-  readonly cwd: string;
-  readonly service?: string;
-  readonly exitCode: number;
-}
+export const ShellAppResult = Schema.Struct({
+  mode: Schema.Literals(["host", "service"]).annotate({ description: "Shell execution location." }),
+  app: Schema.String.annotate({ description: "Application name." }),
+  shell: Schema.String.annotate({ description: "Shell used for the session." }),
+  cwd: Schema.String.annotate({ description: "Working directory of the shell." }),
+  service: Schema.optionalKey(Schema.String).annotate({ description: "Service name in service mode." }),
+  exitCode: Schema.Number.annotate({ description: "Shell process exit code." }),
+});
+export type ShellAppResult = typeof ShellAppResult.Type;
 
 export type ShellAppError =
   | AppPlanResolutionError
@@ -117,6 +120,7 @@ export type ShellAppServices =
   | AppPlanner
   | ConfigService
   | LandofileService
+  | PathsService
   | RuntimeProviderRegistry
   | SecretStore
   | ShellRunner;
@@ -150,14 +154,6 @@ const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, Deprec
   );
 };
 
-const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
-};
-
 const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
   return new ToolingExecError({
@@ -166,6 +162,10 @@ const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError 
         ? "shell requires a service: the app has no services."
         : `shell requires a service: the app has no primary service (available: ${list}).`,
     tool: "app:shell",
+    remediation:
+      list.length === 0
+        ? "Add a service to the Landofile before running lando shell."
+        : `Pass --service with one of: ${list}, or mark a service primary: true.`,
   });
 };
 
@@ -272,13 +272,15 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       ...(options.user === undefined ? {} : { user: options.user }),
     };
     const terminalSize = currentTerminalSize(io);
-    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-    const serviceEnv = withAgentContextEnv(options.env, process.env, {
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
+    const forwardedEnv = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,
     });
+    const serviceEnv =
+      options.noHistory === true ? withSessionNoHistoryEnv(forwardedEnv ?? {}) : forwardedEnv;
     const spec: CommandSpec = {
-      command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
+      command: serviceLoginShellCommand(options.args),
       stdin: "inherit",
       ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
       tty: true,
@@ -323,6 +325,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   }
 
   const shellRunner = yield* ShellRunner;
+  const paths = yield* PathsService;
   const secretStore = yield* SecretStore;
   const interactive =
     options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
@@ -332,7 +335,6 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const hostUser = process.env.USER ?? process.env.USERNAME;
   const hostHome = process.env.HOME ?? process.env.USERPROFILE;
   const env: Record<string, string> = {
-    ...filterStringEnv(process.env),
     ...(options.env ?? {}),
     LANDO: "ON",
     LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",
@@ -352,7 +354,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const historyFile =
     options.noHistory === true
       ? undefined
-      : (options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root)));
+      : (options.historyFile ?? paths.shellHistoryFile(plan.name, String(plan.root)));
 
   const launched = yield* shellRunner.interactive({
     cwd,

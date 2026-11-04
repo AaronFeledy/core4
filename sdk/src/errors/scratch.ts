@@ -7,7 +7,7 @@ import { Schema } from "effect";
 export class ScratchAppError extends Schema.TaggedError<ScratchAppError>()("ScratchAppError", {
   message: Schema.String,
   operation: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -17,7 +17,7 @@ export class ScratchSourceUnresolvedError extends Schema.TaggedError<ScratchSour
     message: Schema.String,
     source: Schema.String,
     attempts: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -27,7 +27,7 @@ export class ScratchAppNotFoundError extends Schema.TaggedError<ScratchAppNotFou
     message: Schema.String,
     id: Schema.String,
     suggestions: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -36,7 +36,7 @@ export class ScratchAppIdInvalidError extends Schema.TaggedError<ScratchAppIdInv
   {
     message: Schema.String,
     id: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -45,7 +45,7 @@ export class ScratchIsolationConflictError extends Schema.TaggedError<ScratchIso
   {
     message: Schema.String,
     flags: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -60,6 +60,6 @@ export class ScratchRunTargetError extends Schema.TaggedError<ScratchRunTargetEr
     message: Schema.String,
     service: Schema.String,
     available: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

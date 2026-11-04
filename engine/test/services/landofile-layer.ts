@@ -6,6 +6,7 @@ import * as EngineLandofileServiceLayer from "../../src/services/landofile-live.
 export const layerTransactionGuard = Layer.succeed(
   ManagedFileTransactionGuard,
   ManagedFileTransactionGuard.of({
+    assertReadable: () => Effect.void,
     ensureConsistent: () => Effect.void,
     pending: () => Effect.succeed(null),
   }),

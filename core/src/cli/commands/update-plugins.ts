@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
@@ -15,17 +15,23 @@ import {
   readInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
-import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
-import type { PluginManifest } from "@lando/sdk/schema";
-import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import {
-  DEFAULT_NPM_REGISTRY_URL,
-  type NpmPackument,
-  type NpmRegistryClient,
-} from "../../recipes/npm-source";
-import { retainedRecipeSources } from "../../recipes/runtime-sources";
-import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
-import type { BunSelfSpawner } from "./bun-self-runner";
+  type ConfigError,
+  type NotImplementedError,
+  ProcessExecError,
+  ProcessTimeoutError,
+} from "@lando/sdk/errors";
+import type { PluginManifest } from "@lando/sdk/schema";
+import {
+  ConfigService,
+  PluginTrustStore,
+  ProcessRunner,
+  type StateStore,
+  type StateStoreShape,
+} from "@lando/sdk/services";
+import type { NpmRegistryTransport, SourceStore } from "@lando/source-acquisition";
+import type { NpmPackument } from "@lando/source-acquisition/npm";
+import { retainedSourceTransports } from "../../recipes/runtime-sources";
 import { pluginAdd } from "./plugin-add";
 
 export interface PluginUpdateAdapterOptions {
@@ -33,10 +39,10 @@ export interface PluginUpdateAdapterOptions {
   readonly userDataRoot?: string;
   readonly cacheRoot?: string;
   readonly registryUrl?: string;
-  readonly registryClient?: NpmRegistryClient;
-  readonly fetcher?: TarballRecipeFetcher;
-  readonly extractor?: TarballRecipeExtractor;
-  readonly bunSelfSpawner?: BunSelfSpawner;
+  /** Packument reads for planning; also used as acquisition transport fallback. */
+  readonly registryClient?: NpmRegistryTransport;
+  readonly sources?: SourceStore;
+  readonly stateStore?: StateStoreShape;
 }
 
 const advertisedMetadata = (packument: NpmPackument): PluginUpdateMetadata => {
@@ -60,7 +66,7 @@ const loadManifest = (path: string): Effect.Effect<PluginManifest | undefined> =
 const inventoryFor = Effect.fnUntraced(function* (
   pluginsRoot: string,
   trustStore: typeof PluginTrustStore.Service,
-  registryClient: NpmRegistryClient,
+  registryClient: NpmRegistryTransport,
   resolveMetadata = true,
 ): Effect.fn.Return<
   ReadonlyArray<PluginUpdateInventoryItem & { readonly activation: InstalledPluginRegistryEntry }>
@@ -81,7 +87,7 @@ const inventoryFor = Effect.fnUntraced(function* (
           manifest?.bundled !== true &&
           trusted;
         const packument = mayResolve
-          ? yield* Effect.tryPromise(() => registryClient.fetchPackument(entry.name)).pipe(
+          ? yield* Effect.tryPromise(() => registryClient.packument(entry.name)).pipe(
               Effect.catch(() => Effect.succeed(undefined)),
             )
           : undefined;
@@ -103,16 +109,23 @@ const inventoryFor = Effect.fnUntraced(function* (
 
 export const makePluginUpdateRunner = Effect.fnUntraced(function* (
   options: PluginUpdateAdapterOptions = {},
-): Effect.fn.Return<PluginUpdateRunner, ConfigError | NotImplementedError, ConfigService | PluginTrustStore> {
+): Effect.fn.Return<
+  PluginUpdateRunner,
+  ConfigError | NotImplementedError,
+  ConfigService | PluginTrustStore | ProcessRunner | StateStore
+> {
   const config = yield* ConfigService;
   const trustStore = yield* PluginTrustStore;
+  const runner = yield* ProcessRunner;
+  const context = yield* Effect.context<ProcessRunner | StateStore>();
+  const stateStore = options.stateStore;
   let userDataRoot = options.userDataRoot;
   if (userDataRoot === undefined) userDataRoot = yield* config.get("userDataRoot");
   const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
   const pluginsRoot = options.pluginsRoot ?? paths.pluginsDir;
-  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-  const sources = yield* retainedRecipeSources(registryUrl);
-  const registryClient = options.registryClient ?? sources.npmRegistryClient;
+  const registryUrl = options.registryUrl;
+  const registryClient =
+    options.registryClient ?? (yield* retainedSourceTransports(registryUrl)).npmRegistryClient;
 
   return (input) =>
     Effect.gen(function* () {
@@ -153,27 +166,27 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           rows.push({ ...row, status: "failed", reason: "metadata-unavailable" });
           continue;
         }
-        const exit = yield* Effect.exit(
-          pluginAdd({
-            spec: `${row.name}@${row.targetVersion}`,
-            pluginsRoot,
-            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-            registryUrl,
-            registryClient,
-            fetcher: options.fetcher ?? sources.tarballRecipeFetcher,
-            ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
-            ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
-            trustStore: new Set(),
-            requestedSelector: row.selector,
-            expectedManifest: advertised,
-            expectedActivation: item.activation,
-            expectedRegistry,
-            nonInteractive: true,
-          }).pipe(
-            Effect.provideService(ConfigService, config),
-            Effect.provideService(PluginTrustStore, trustStore),
-          ),
+        const addEffect = pluginAdd({
+          spec: `${row.name}@${row.targetVersion}`,
+          pluginsRoot,
+          ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+          ...(options.sources === undefined ? {} : { sources: options.sources }),
+          ...(stateStore === undefined ? {} : { stateStore }),
+          ...(registryUrl === undefined ? {} : { registryUrl }),
+          npmRegistry: registryClient,
+          trustStore: new Set(),
+          requestedSelector: row.selector,
+          expectedManifest: advertised,
+          expectedActivation: item.activation,
+          expectedRegistry,
+          nonInteractive: true,
+        }).pipe(
+          Effect.provideService(ConfigService, config),
+          Effect.provideService(PluginTrustStore, trustStore),
+          Effect.provideService(ProcessRunner, runner),
+          Effect.provide(context),
         );
+        const exit = yield* Effect.exit(addEffect);
         if (Exit.isSuccess(exit)) {
           expectedRegistry[row.name] = {
             name: exit.value.pluginName,
@@ -184,6 +197,13 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           updatedPlugins.push(row.name);
           rows.push(row);
         } else {
+          const failure = Cause.findErrorOption(exit.cause);
+          if (
+            failure._tag === "Some" &&
+            (failure.value instanceof ProcessExecError || failure.value instanceof ProcessTimeoutError)
+          ) {
+            return yield* Effect.failCause(exit.cause);
+          }
           rows.push({ ...row, status: "failed", reason: "apply-failed" });
         }
       }

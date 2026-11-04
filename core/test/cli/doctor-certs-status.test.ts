@@ -94,6 +94,7 @@ describe("certificate authority doctor status", () => {
     const failure = new PluginLoadError({
       message: "Could not load secret module.",
       pluginName: "secret-plugin",
+      remediation: "Install or register the plugin, then retry.",
     });
 
     // When

@@ -17,8 +17,8 @@ beforeAll(async () => {
 
 test("publishes the Landofile editor artifact at the SDK modeline URL", async () => {
   const config = await Bun.file(resolve(root, "docs/astro.config.mjs")).text();
-  const site = /site:\s*"([^"]+)"/.exec(config)?.[1];
-  const base = /base:\s*"([^"]+)"/.exec(config)?.[1];
+  const site = /export default defineConfig\(\{\s*site:\s*"([^"]+)",\s*base,/.exec(config)?.[1];
+  const base = /^const base = "([^"]+)";$/m.exec(config)?.[1];
   if (site === undefined || base === undefined) throw new Error("Astro site and base must be configured");
 
   const publishedUrl = new URL(`${base}schemas/landofile.schema.json`, site).href;

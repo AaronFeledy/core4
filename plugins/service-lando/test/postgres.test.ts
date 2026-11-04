@@ -66,11 +66,14 @@ describe("postgres ServiceType", () => {
       PGPORT: "5432",
       LANDO_DB_PORT: "5432",
     });
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-postgresql-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/postgresql/data");
-    expect(plan.storage[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5432, protocol: "tcp", name: "db" }]);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("lando-myapp--db--postgresql-data");
+    expect(String(volumes[0]?.target)).toBe("/var/lib/postgresql/data");
+    expect(volumes[0]?.readOnly).toBe(false);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
+    ]);
     expect(plan.mounts.find((m) => String(m.target) === POSTGRES_CONFIG_TARGET)).toBeUndefined();
     expect(plan.command).toBeUndefined();
   });
@@ -92,7 +95,9 @@ describe("postgres ServiceType", () => {
       PGPORT: "15432",
       LANDO_DB_PORT: "15432",
     });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 15432, protocol: "tcp", name: "db", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual([
       "pg_isready",
       "-h",
@@ -111,7 +116,9 @@ describe("postgres ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "postgres:18" });
     expect(plan.environment.PGDATA).toBe("/var/lib/postgresql/data");
-    expect(plan.storage.map((storage) => String(storage.target))).toEqual(["/var/lib/postgresql/data"]);
+    expect(
+      plan.mounts.filter((mount) => mount.type === "volume").map((mount) => String(mount.target)),
+    ).toEqual(["/var/lib/postgresql/data"]);
   });
 
   test("lets authored PGDATA win", async () => {
@@ -138,7 +145,9 @@ describe("postgres ServiceType", () => {
   test("accepts a PGPORT that matches port", async () => {
     const plan = await planPostgres({ type: "postgres", port: 6543, environment: { PGPORT: "6543" } });
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 6543, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 6543, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("rejects a PGPORT that disagrees with port", async () => {
@@ -232,10 +241,13 @@ describe("postgres ServiceType", () => {
     const plan = await planPostgres({ type: "postgres", ports: ["127.0.0.1:15432:5432"] });
 
     expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
       {
         _tag: "published",
         port: 5432,
         protocol: "tcp",
+        name: "db",
+        primary: true,
         publication: { bindAddress: "127.0.0.1", hostPort: 15432 },
       },
     ]);
@@ -248,8 +260,10 @@ describe("postgres ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/postgresql.conf",
+      relativeTo: "app",
       target: POSTGRES_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",
@@ -287,8 +301,10 @@ describe("postgres ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/postgresql.conf",
+      relativeTo: "app",
       target: POSTGRES_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",

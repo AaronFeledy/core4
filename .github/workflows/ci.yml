@@ -16,29 +16,39 @@ permissions:
   pull-requests: read
 
 jobs:
+
+  selection:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      profile: ${{ steps.select.outputs.profile }}
+      broad: ${{ steps.select.outputs.broad }}
+      reason: ${{ steps.select.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Select CI profile
+        id: select
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bun run scripts/select-ci.ts
   static-checks-platform:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: darwin-arm64
-            runs-on: macos-15
-          - platform: darwin-x64
-            runs-on: macos-15-intel
-          - platform: linux-arm64
-            runs-on: ubuntu-24.04-arm
-          - platform: linux-x64
-            runs-on: ubuntu-24.04
-          - platform: linux-x64
-            runs-on: ubuntu-26.04
-          - platform: windows-x64
-            runs-on: windows-2022
-          - platform: windows-arm64
-            runs-on: windows-11-arm
+        include: ${{ fromJSON(needs.selection.outputs.broad == 'true' && '[{"platform":"darwin-arm64","runs-on":"macos-15"},{"platform":"darwin-x64","runs-on":"macos-15-intel"},{"platform":"linux-arm64","runs-on":"ubuntu-24.04-arm"},{"platform":"linux-x64","runs-on":"ubuntu-26.04"},{"platform":"windows-x64","runs-on":"windows-2022"},{"platform":"windows-arm64","runs-on":"windows-11-arm"}]' || '[{"platform":"linux-x64","runs-on":"ubuntu-26.04"}]') }}
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -54,15 +64,21 @@ jobs:
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Type check (bun check, no emit)
+        run: bun run check:types
+      - name: Typecheck
+        if: matrix.platform == 'linux-x64'
+        run: bun run typecheck
+
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
 
+      - name: Host Bun Shell dialect conformance
+        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
+
       - name: Lint
         run: bun run lint
-
-      - name: Audit dependencies
-        run: bun run audit
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -86,7 +102,7 @@ jobs:
 
       - name: Static scope notice for portable static matrix
         run: |
-          echo "::notice title=static-checks-scope::${{ matrix.platform }} on ${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04. Full cross-platform static test portability remains a follow-up portability effort."
+          echo "::notice title=static-checks-scope::${{ matrix.platform }} on ${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-26.04. Full cross-platform static test portability remains a follow-up portability effort."
 
       - name: Report job timing
         if: always()
@@ -94,29 +110,34 @@ jobs:
           echo "::notice title=ci-timing::static-checks/${{ matrix.platform }}/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   static-checks:
-    needs: [static-checks-platform, container-helper-arm64]
-    if: always()
-    runs-on: ubuntu-24.04
+    needs: [selection, static-checks-platform, container-helper-arm64]
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Confirm static-checks platform matrix
-        run: |
-          if [[ "${{ needs.static-checks-platform.result }}" != "success" ]]; then
-            echo "static-checks platform matrix result: ${{ needs.static-checks-platform.result }}"
-            exit 1
-          fi
-          if [[ "${{ needs.container-helper-arm64.result }}" != "success" ]]; then
-            echo "arm64 container helper result: ${{ needs.container-helper-arm64.result }}"
-            exit 1
-          fi
-          echo "static-checks platform matrix passed"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts
+
 
   bun-install-isolated-experiment:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -135,16 +156,17 @@ jobs:
           echo "::notice title=ci-timing::bun-install-isolated-experiment completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   unit-tests-linux-x64-shard:
-    needs: container-helper
+    needs: [selection, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
-        runs-on: [ubuntu-24.04, ubuntu-26.04]
+        runs-on: [ubuntu-26.04]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -161,7 +183,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -179,24 +201,70 @@ jobs:
           echo "::notice title=ci-timing::unit-tests-linux-x64-shard/${{ matrix.runs-on }}/${{ matrix.shard }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
   unit-tests-linux-x64:
-    needs: [unit-tests-linux-x64-shard]
-    if: always()
-    runs-on: ubuntu-24.04
+    needs: [selection, unit-tests-linux-x64-shard]
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Confirm unit test shard matrix
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts
+
+
+  process-signal-tests-darwin:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [{"platform":"darwin-arm64","runs-on":"macos-15"},{"platform":"darwin-x64","runs-on":"macos-15-intel"}]
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Isolate Lando roots
+        shell: bash
         run: |
-          if [[ "${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then
-            echo "unit test shard matrix result: ${{ needs.unit-tests-linux-x64-shard.result }}"
-            exit 1
-          fi
-          echo "unit test shard matrix passed on ubuntu-24.04, ubuntu-26.04"
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Test native process signal handling
+        run: bun test core/test/cli/process-signals.test.ts
+
+      - name: Test exec umask behavior
+        run: bun test container-runtime/test/exec-umask.test.ts
 
   docs-build:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -226,7 +294,7 @@ jobs:
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/dist
 
@@ -238,7 +306,7 @@ jobs:
   deploy-docs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [docs-build]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       pages: write
@@ -252,10 +320,12 @@ jobs:
         uses: actions/deploy-pages@v4
 
   test-isolation-linux-x64:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -280,10 +350,12 @@ jobs:
           echo "::notice title=ci-timing::test-isolation-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   container-helper:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -321,11 +393,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   container-helper-arm64:
-    needs: container-helper
+    needs: [selection, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -344,7 +417,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -359,10 +432,12 @@ jobs:
       - name: Test the arm64 container helper
         run: bun test core/test/container-helper/helper.integration.test.ts
   schema-snapshot:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -416,10 +491,12 @@ jobs:
           echo "::notice title=ci-timing::schema-snapshot completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   bundled-codegen:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -463,14 +540,16 @@ jobs:
           echo "::notice title=ci-timing::bundled-codegen completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   library-api-tests-runner:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-24.04, ubuntu-26.04]
+        runs-on: [ubuntu-26.04]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -495,28 +574,37 @@ jobs:
           echo "::notice title=ci-timing::library-api-tests/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   library-api-tests:
-    needs: [library-api-tests-runner]
-    if: always()
-    runs-on: ubuntu-24.04
+    needs: [selection, library-api-tests-runner]
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Confirm library-api-tests matrix
-        run: |
-          if [[ "${{ needs.library-api-tests-runner.result }}" != "success" ]]; then
-            echo "library-api-tests matrix result: ${{ needs.library-api-tests-runner.result }}"
-            exit 1
-          fi
-          echo "library-api-tests matrix passed on ubuntu-24.04, ubuntu-26.04"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts
+
 
   recipe-tests-runner:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-24.04, ubuntu-26.04]
+        runs-on: [ubuntu-26.04]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -541,25 +629,33 @@ jobs:
           echo "::notice title=ci-timing::recipe-tests/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   recipe-tests:
-    needs: [recipe-tests-runner]
-    if: always()
-    runs-on: ubuntu-24.04
+    needs: [selection, recipe-tests-runner]
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Confirm recipe-tests matrix
-        run: |
-          if [[ "${{ needs.recipe-tests-runner.result }}" != "success" ]]; then
-            echo "recipe-tests matrix result: ${{ needs.recipe-tests-runner.result }}"
-            exit 1
-          fi
-          echo "recipe-tests matrix passed on ubuntu-24.04, ubuntu-26.04"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts
+
 
   guide-scenarios-darwin-arm64:
-    needs: [static-checks]
+    needs: [selection, static-checks]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -584,9 +680,6 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Lint guides
         run: bun run lint:guides
@@ -617,11 +710,12 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   guide-scenarios-darwin-x64:
-    needs: [static-checks]
+    needs: [selection, static-checks]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -646,9 +740,6 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Lint guides
         run: bun run lint:guides
@@ -679,11 +770,12 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   guide-scenarios-linux-arm64:
-    needs: [static-checks]
+    needs: [selection, static-checks]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -708,9 +800,6 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Lint guides
         run: bun run lint:guides
@@ -741,15 +830,16 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   guide-scenarios-linux-x64-runner:
-    needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]
+    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-24.04, ubuntu-26.04]
+        runs-on: [ubuntu-26.04]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -775,9 +865,6 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Typecheck
-        run: bun run typecheck
-
       - name: Lint guides
         run: bun run lint:guides
 
@@ -802,7 +889,7 @@ jobs:
         run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-linux-x64
           path: dist
@@ -831,7 +918,7 @@ jobs:
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
       - name: Download current-commit Linux x64 runtime bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle
@@ -913,7 +1000,7 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
@@ -980,25 +1067,33 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-linux-x64/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   guide-scenarios-linux-x64:
-    needs: [guide-scenarios-linux-x64-runner]
-    if: always()
-    runs-on: ubuntu-24.04
+    needs: [selection, guide-scenarios-linux-x64-runner]
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Confirm guide-scenarios-linux-x64 matrix
-        run: |
-          if [[ "${{ needs.guide-scenarios-linux-x64-runner.result }}" != "success" ]]; then
-            echo "guide-scenarios-linux-x64 matrix result: ${{ needs.guide-scenarios-linux-x64-runner.result }}"
-            exit 1
-          fi
-          echo "guide-scenarios-linux-x64 matrix passed on ubuntu-24.04, ubuntu-26.04"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts
+
 
   guide-scenarios-windows-x64:
-    needs: [static-checks]
+    needs: [selection, static-checks]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -1023,9 +1118,6 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Lint guides
         run: bun run lint:guides
@@ -1056,11 +1148,12 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   guide-scenarios-windows-arm64:
-    needs: [static-checks]
+    needs: [selection, static-checks]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: windows-11-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -1085,9 +1178,6 @@ jobs:
 
       - name: Regenerate derived sources
         run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Lint guides
         run: bun run lint:guides
@@ -1118,11 +1208,12 @@ jobs:
           echo "::notice title=ci-timing::guide-scenarios-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-darwin-arm64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1139,7 +1230,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1173,6 +1264,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload darwin-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1190,11 +1291,12 @@ jobs:
           echo "::notice title=ci-timing::build-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-darwin-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1211,7 +1313,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1245,6 +1347,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload darwin-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1262,11 +1374,12 @@ jobs:
           echo "::notice title=ci-timing::build-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-linux-arm64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1283,7 +1396,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1317,6 +1430,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload linux-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1334,11 +1457,12 @@ jobs:
           echo "::notice title=ci-timing::build-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-linux-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1355,7 +1479,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1389,6 +1513,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload linux-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1406,11 +1540,12 @@ jobs:
           echo "::notice title=ci-timing::build-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-windows-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1427,7 +1562,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1458,6 +1593,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-x64.exe
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload windows-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1475,11 +1620,12 @@ jobs:
           echo "::notice title=ci-timing::build-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   build-windows-arm64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: windows-11-arm
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1496,7 +1642,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1527,6 +1673,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-arm64.exe
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload windows-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1544,17 +1700,19 @@ jobs:
           echo "::notice title=ci-timing::build-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   runtime-bundle-linux-x64:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Restore assembled Linux x64 runtime bundle
         id: runtime-bundle-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
           key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
@@ -1571,7 +1729,7 @@ jobs:
 
       - name: Setup Go for Linux Podman source build
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -1585,6 +1743,8 @@ jobs:
           set -euo pipefail
           UBUNTU_SNAPSHOT=20261019T000000Z
           printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
+          # Prefer snapshot dependencies even when the runner has newer versions installed.
+          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
           for DELAY in 0 5 15 45; do
             if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
             if sudo apt-get update --error-on=any; then break; fi
@@ -1629,10 +1789,12 @@ jobs:
           echo "::notice title=ci-timing::runtime-bundle-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
 
   runtime-bundle-win32-x64:
-    runs-on: ubuntu-24.04
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1662,11 +1824,12 @@ jobs:
           echo "::notice title=ci-timing::runtime-bundle-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   perf-budget-linux-x64:
-    needs: [build-linux-x64]
-    runs-on: ubuntu-24.04
+    needs: [selection, build-linux-x64]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1680,7 +1843,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-linux-x64
           path: dist
@@ -1700,11 +1863,12 @@ jobs:
           echo "::notice title=ci-timing::perf-budget-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   provider-integration-darwin-arm64:
-    needs: [build-darwin-arm64, container-helper]
+    needs: [selection, build-darwin-arm64, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: macos-15
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -1729,7 +1893,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1739,7 +1903,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download darwin-arm64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-darwin-arm64
           path: dist
@@ -1770,11 +1934,12 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-darwin-x64:
-    needs: [build-darwin-x64, container-helper]
+    needs: [selection, build-darwin-x64, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -1799,7 +1964,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1809,7 +1974,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download darwin-x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-darwin-x64
           path: dist
@@ -1840,11 +2005,12 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-linux-arm64:
-    needs: [build-linux-arm64, container-helper]
+    needs: [selection, build-linux-arm64, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -1869,7 +2035,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1879,7 +2045,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download linux-arm64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-linux-arm64
           path: dist
@@ -1910,15 +2076,17 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
   provider-integration-linux-x64-runner:
-    needs: [build-linux-x64, runtime-bundle-linux-x64, container-helper]
+    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-24.04, ubuntu-26.04]
+        runs-on: [ubuntu-26.04]
+        suite: [providers, services]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -1943,7 +2111,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -1953,7 +2121,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download linux-x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-linux-x64
           path: dist
@@ -1982,7 +2150,7 @@ jobs:
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
       - name: Download current-commit Linux x64 runtime bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle
@@ -2064,7 +2232,7 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
@@ -2094,13 +2262,24 @@ jobs:
           bun test plugins/provider-podman/test/capabilities.test.ts
 
       - name: Run provider integration tests
+        env:
+          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log
-          bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-          bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-          bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+          case "$LANDO_PROVIDER_TEST_SUITE" in
+            providers)
+              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
+              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              ;;
+            services)
+              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              ;;
+            *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
+          esac
 
       - name: Teardown Lando runtime
         if: always()
@@ -2112,7 +2291,7 @@ jobs:
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
       - name: Collect provider diagnostics
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p provider-diagnostics/test-logs
           dist/lando doctor --format json > provider-diagnostics/doctor.json 2>&1 || true
@@ -2137,7 +2316,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}
+          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}
           path: provider-diagnostics
           if-no-files-found: ignore
           retention-days: 7
@@ -2145,28 +2324,36 @@ jobs:
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   provider-integration-linux-x64:
-    needs: [provider-integration-linux-x64-runner]
-    if: always()
-    runs-on: ubuntu-24.04
+    needs: [selection, provider-integration-linux-x64-runner]
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Confirm provider-integration-linux-x64 matrix
-        run: |
-          if [[ "${{ needs.provider-integration-linux-x64-runner.result }}" != "success" ]]; then
-            echo "provider-integration-linux-x64 matrix result: ${{ needs.provider-integration-linux-x64-runner.result }}"
-            exit 1
-          fi
-          echo "provider-integration-linux-x64 matrix passed on ubuntu-24.04, ubuntu-26.04"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts
+
 
   provider-integration-windows-x64:
-    needs: [build-windows-x64, runtime-bundle-win32-x64, container-helper]
+    needs: [selection, build-windows-x64, runtime-bundle-win32-x64, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -2191,7 +2378,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -2201,7 +2388,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download windows-x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-windows-x64
           path: dist
@@ -2210,7 +2397,7 @@ jobs:
         run: chmod +x dist/lando-windows-x64.exe
 
       - name: Download current-commit Windows runtime bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle
@@ -2254,11 +2441,12 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-windows-arm64:
-    needs: [build-windows-arm64, container-helper]
+    needs: [selection, build-windows-arm64, container-helper]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
     runs-on: windows-11-arm
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -2283,7 +2471,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -2293,7 +2481,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Download windows-arm64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-windows-arm64
           path: dist
@@ -2322,3 +2510,23 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::provider-integration-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
+
+  ci:
+    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Validate selected job results
+        env:
+          CI_PROFILE: ${{ needs.selection.outputs.profile }}
+          CI_BROAD: ${{ needs.selection.outputs.broad }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun run scripts/validate-ci.ts

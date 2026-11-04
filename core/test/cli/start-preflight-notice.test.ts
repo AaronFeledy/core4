@@ -20,6 +20,7 @@ describe("start-like command preflight notices", () => {
         filePath: "/app/.lando.yml",
         line: undefined,
         column: undefined,
+        remediation: "Correct the YAML syntax in /app/.lando.yml.",
       });
       const warnings = makeCommandWarnings(format !== "text");
       const runtime = Layer.mergeAll(

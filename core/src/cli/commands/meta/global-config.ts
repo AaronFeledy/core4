@@ -1,13 +1,13 @@
 import { dirname } from "node:path";
+import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 
 import { Effect, Schema } from "effect";
 
-import type { LandofileParseError } from "@lando/sdk/errors";
-import { type ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
-import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
-import { type FileSystem, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
+import { LandofileWriteValidationError } from "@lando/sdk/errors";
+import { AbsolutePath, LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
+import { type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
-import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
+import { runEditVerb, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import type { ValueType } from "@lando/engine/config-write/write-core";
 import { readGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { validationIssue } from "@lando/sdk/schema";
@@ -15,10 +15,8 @@ import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/p
 import { renderConfigWriteResult } from "../config-write-render";
 import {
   compileGlobalConfigDocument,
-  decodeGlobalConfigDocument,
-  parseGlobalTree,
-  readGlobalText,
-  writeGlobalText,
+  globalConfigDocument,
+  requireMutableGlobalLandofile,
 } from "./global-config-document";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
@@ -55,9 +53,9 @@ export interface GlobalConfigResult {
 }
 
 export const GlobalAppPathsSchema = Schema.Struct({
-  root: Schema.String,
-  distLandofile: Schema.String,
-  userLandofile: Schema.String,
+  root: AbsolutePath,
+  distLandofile: AbsolutePath,
+  userLandofile: AbsolutePath,
 });
 
 export const GlobalConfigResultSchema = Schema.Struct({
@@ -79,74 +77,86 @@ export const GlobalConfigResultSchema = Schema.Struct({
 });
 
 type GlobalConfigReadError = Effect.Error<ReturnType<typeof readGlobalLandofile>>;
-type GlobalConfigWriteError = ConfigError | LandofileParseError | LandofileWriteValidationError;
+type GlobalConfigWriteError =
+  | import("@lando/sdk/errors").GlobalAppError
+  | Effect.Error<ReturnType<typeof compileGlobalConfigDocument>>
+  | Effect.Error<ReturnType<typeof requireMutableGlobalLandofile>>;
 
-type GlobalConfigServices = FileSystem | GlobalAppService;
+type GlobalConfigServices = Effect.Services<ReturnType<typeof readGlobalLandofile>> | GlobalMutationServices;
+type GlobalConfigWriteReturn = Effect.fn.Return<
+  GlobalConfigResult,
+  GlobalConfigWriteError,
+  Effect.Services<ReturnType<typeof compileGlobalConfigDocument>>
+>;
+type GlobalConfigMutationReturn = Effect.fn.Return<
+  GlobalConfigResult,
+  GlobalConfigWriteError,
+  Effect.Services<ReturnType<typeof compileGlobalConfigDocument>> | GlobalMutationServices
+>;
 
 const emptyGlobalLandofile: LandofileShapeType = { name: "global", runtime: 4, services: {} };
 
-export const globalConfigSet = Effect.fn("GlobalConfig.set")(function* (
-  options: GlobalConfigOptions,
-  filePath: string,
-): Effect.fn.Return<GlobalConfigResult, GlobalConfigWriteError, never> {
-  const key = options.key ?? options.path;
-  const raw = options.value;
-  if (key === undefined || raw === undefined) {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "`meta global config set` requires a <key.path> and a <value>.",
-        file: filePath,
-        issues: [validationIssue([], "Missing key path or value.")],
-        remediation: "Usage: `lando meta global config set <key.path> <value> [--type ...]`.",
-      }),
-    );
-  }
-  const outcome = yield* runSetVerb({
-    file: filePath,
-    key,
-    raw,
-    type: options.type,
-    dryRun: options.dryRun === true,
-    readText: readGlobalText(filePath),
-    parse: (text) => parseGlobalTree(filePath, text),
-    editCommand: "lando global:config edit",
-    decode: decodeGlobalConfigDocument(filePath),
-    writeText: writeGlobalText,
-  });
-  return { subcommand: "set", key, value: outcome.value, changed: true, dryRun: outcome.dryRun, filePath };
-});
+export const globalConfigSet = Effect.fn("GlobalConfig.set")(
+  function* (options: GlobalConfigOptions, filePath: string): GlobalConfigMutationReturn {
+    yield* requireMutableGlobalLandofile(filePath, "set");
+    const key = options.key ?? options.path;
+    const raw = options.value;
+    if (key === undefined || raw === undefined) {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: "`meta global config set` requires a <key.path> and a <value>.",
+          file: filePath,
+          issues: [validationIssue([], "Missing key path or value.")],
+          remediation: "Usage: `lando meta global config set <key.path> <value> [--type ...]`.",
+        }),
+      );
+    }
+    const outcome = yield* runSetVerb({
+      ...globalConfigDocument(filePath, "set"),
+      key,
+      raw,
+      type: options.type,
+      dryRun: options.dryRun === true,
+    });
+    return {
+      subcommand: "set",
+      key,
+      value: outcome.value,
+      changed: outcome.changed,
+      dryRun: outcome.dryRun,
+      filePath,
+    };
+  },
+  (effect, _options: GlobalConfigOptions, _filePath: string) => withGlobalMutation(effect),
+);
 
-export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
-  options: GlobalConfigOptions,
-  filePath: string,
-): Effect.fn.Return<GlobalConfigResult, GlobalConfigWriteError, never> {
-  const key = options.key ?? options.path;
-  if (key === undefined) {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "`meta global config unset` requires a <key.path>.",
-        file: filePath,
-        issues: [validationIssue([], "Missing key path.")],
-        remediation: "Usage: `lando meta global config unset <key.path>`.",
-      }),
-    );
-  }
-  const outcome = yield* runUnsetVerb({
-    file: filePath,
-    key,
-    dryRun: options.dryRun === true,
-    readText: readGlobalText(filePath),
-    parse: (text) => parseGlobalTree(filePath, text),
-    editCommand: "lando global:config edit",
-    decode: decodeGlobalConfigDocument(filePath),
-    writeText: writeGlobalText,
-  });
-  return { subcommand: "unset", key, changed: outcome.changed, dryRun: outcome.dryRun, filePath };
-});
+export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(
+  function* (options: GlobalConfigOptions, filePath: string): GlobalConfigMutationReturn {
+    yield* requireMutableGlobalLandofile(filePath, "unset");
+    const key = options.key ?? options.path;
+    if (key === undefined) {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: "`meta global config unset` requires a <key.path>.",
+          file: filePath,
+          issues: [validationIssue([], "Missing key path.")],
+          remediation: "Usage: `lando meta global config unset <key.path>`.",
+        }),
+      );
+    }
+    const outcome = yield* runUnsetVerb({
+      ...globalConfigDocument(filePath, "unset"),
+      key,
+      dryRun: options.dryRun === true,
+    });
+    return { subcommand: "unset", key, changed: outcome.changed, dryRun: outcome.dryRun, filePath };
+  },
+  (effect, _options: GlobalConfigOptions, _filePath: string) => withGlobalMutation(effect),
+);
 
 export const globalConfigValidate = Effect.fn("GlobalConfig.validate")(function* (
   filePath: string,
-): Effect.fn.Return<GlobalConfigResult, GlobalConfigWriteError, never> {
+): GlobalConfigWriteReturn {
   yield* compileGlobalConfigDocument(filePath);
   return { subcommand: "validate", valid: true, issues: [], filePath };
 });
@@ -154,9 +164,8 @@ export const globalConfigValidate = Effect.fn("GlobalConfig.validate")(function*
 export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
   options: GlobalConfigOptions,
   filePath: string,
-): Effect.fn.Return<GlobalConfigResult, GlobalConfigWriteError, never> {
-  const content = yield* readGlobalText(filePath);
-  const seeded = content.trim() === "" ? "name: global\nruntime: 4\n" : content;
+): GlobalConfigMutationReturn {
+  yield* requireMutableGlobalLandofile(filePath, "edit");
   const runner =
     options.editorRunner ??
     createDefaultEditorRunner(
@@ -164,24 +173,36 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
         ? {}
         : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
     );
+  const document = globalConfigDocument(filePath, "edit");
+  const source = yield* document.readText;
   const edited = yield* Effect.promise(() =>
-    runner({ name: "lando-global-config", content: seeded, cwd: dirname(filePath) }),
+    runner({
+      name: "lando-global-config",
+      content: source.trim() === "" ? "name: global\nruntime: 4\n" : source,
+      cwd: dirname(filePath),
+    }),
   );
-  if (edited.kind === "no-editor") {
-    return yield* Effect.fail(noEditorError(filePath));
-  }
-  if (edited.kind === "failed") {
-    return yield* Effect.fail(
-      editorFailedError(
-        filePath,
-        edited.reason,
-        "Re-run `lando meta global config edit` after resolving the editor error.",
-      ),
-    );
-  }
-  yield* compileGlobalConfigDocument(filePath, edited.content);
-  yield* writeGlobalText(filePath, edited.content);
-  return { subcommand: "edit", changed: true, valid: true, filePath };
+  const outcome = yield* withGlobalMutation(
+    Effect.gen(function* () {
+      const current = yield* document.readText;
+      if (current !== source)
+        return yield* Effect.fail(
+          new LandofileWriteValidationError({
+            file: filePath,
+            message: "The global Landofile changed while the editor was open.",
+            issues: [validationIssue([], "Another command changed the global Landofile.")],
+            remediation: "Reopen `lando global:config edit` and apply your changes to the current file.",
+          }),
+        );
+      return yield* runEditVerb({
+        ...document,
+        readText: Effect.succeed(source),
+        dryRun: options.dryRun === true,
+        openEditor: () => Effect.succeed(edited),
+      });
+    }),
+  );
+  return { subcommand: "edit", ...outcome, filePath };
 });
 
 export const renderGlobalConfigResult = (
@@ -216,7 +237,7 @@ const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
 > {
   const loaded = yield* readGlobalLandofile();
   const { paths } = loaded;
-  const landofile = loaded.materialized ? loaded.landofile : emptyGlobalLandofile;
+  const landofile = loaded.materialized ? loaded.landofile.document : emptyGlobalLandofile;
 
   return {
     app: landofile.name ?? "global",

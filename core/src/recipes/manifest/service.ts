@@ -1,23 +1,6 @@
-/**
- * `RecipeManifestService` live layer.
- *
- * Pipeline: pre-decode rejection, strict Effect Schema decode, and
- * tagged error preservation. Mirrors `@lando/landofile` `layer(options)`.
- *
- * Post-decode semantic validation enforces:
- *   - prompt `name` uniqueness within a recipe
- *   - `choices:` required and non-empty for `select`/`multiselect`
- *     prompts
- */
-import { Effect, Layer } from "effect";
-
-import {
-  NotImplementedError,
-  type RecipeExtendsError,
-  type RecipeManifestParseError,
-  RecipeManifestValidationError,
-  type RecipeSourceError,
-} from "@lando/sdk/errors";
+import { dirname, isAbsolute } from "node:path";
+import { decodeOrFail } from "@lando/landofile/decode";
+import { NotImplementedError, RecipeManifestValidationError } from "@lando/sdk/errors";
 import {
   RecipeManifest,
   type ValidationIssue,
@@ -25,12 +8,13 @@ import {
   validationIssue,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
-import { RecipeManifestService } from "@lando/sdk/services";
-
-import { decodeOrFail } from "@lando/landofile/decode";
-import { postInitAuthorizationIssue } from "../post-init/authorization";
-import { flattenRecipe } from "./flatten";
-import { parseRecipeYaml } from "./parser";
+import { RecipeManifestService, StateStore } from "@lando/sdk/services";
+import type { SourceSession } from "@lando/source-acquisition";
+import { Effect, Layer, Option } from "effect";
+import { resolveRecipeSource } from "../resolved-source";
+import { retainedRecipeSourceStore } from "../runtime-sources";
+import { mapSourceAcquisitionError } from "../source-session";
+import { postInitSemanticIssues } from "./action-semantics.ts";
 
 export { RecipeManifestService } from "@lando/sdk/services";
 
@@ -163,72 +147,8 @@ const validateSemantics = (
 
   if (manifest.postInit !== undefined) {
     for (const [index, action] of manifest.postInit.entries()) {
-      const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts ?? []);
-      if (authorizationIssue !== undefined)
-        issues.push(validationIssue(["postInit", index], authorizationIssue));
-      if (action.type !== "bun") continue;
-      if (action.verb === "add") {
-        const categories = [
-          action.dependencies,
-          action.devDependencies,
-          action.peerDependencies,
-          action.optionalDependencies,
-        ];
-        const specs = categories.flatMap((category) => category ?? []);
-        if (specs.length === 0) {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              "(bun add): at least one dependency category must be non-empty.",
-            ),
-          );
-        }
-        for (const spec of specs) {
-          if (spec.trim() === "" || spec.trim().startsWith("-")) {
-            issues.push(
-              validationIssue(
-                ["postInit", index],
-                `(bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
-              ),
-            );
-          }
-        }
-      }
-      if (action.verb === "create") {
-        if (action.template.trim() === "") {
-          issues.push(validationIssue(["postInit", index], "(bun create): template must not be empty."));
-        } else if (action.template.trim().startsWith("-")) {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              `(bun create): template "${action.template}" is invalid; it must not begin with "-".`,
-            ),
-          );
-        }
-      }
-      if ((action.verb === "run" || action.verb === "script") && action.script.trim() === "") {
-        issues.push(validationIssue(["postInit", index], `(bun ${action.verb}): script must not be empty.`));
-      }
-      if (action.verb === "run" && action.script.trim().startsWith("-")) {
-        issues.push(
-          validationIssue(
-            ["postInit", index],
-            `(bun run): script "${action.script}" is invalid; it must not begin with "-".`,
-          ),
-        );
-      }
-      if (action.verb === "x") {
-        if (action.spec.trim() === "") {
-          issues.push(validationIssue(["postInit", index], "(bun x): spec must not be empty."));
-        } else if (action.spec.trim().startsWith("-")) {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              `(bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
-            ),
-          );
-        }
-      }
+      for (const issue of postInitSemanticIssues(action, manifest.prompts ?? []))
+        issues.push(validationIssue(["postInit", index], issue));
     }
   }
 
@@ -252,23 +172,38 @@ const validateRecipeManifestObject = (
     Effect.flatMap((manifest) => validateSemantics(source, manifest)),
   );
 
-const parseRecipe = Effect.fn("RecipeManifestService.parse")(
-  (
-    source: string,
-    content: string,
-  ): Effect.Effect<
-    typeof RecipeManifest.Type,
-    | RecipeExtendsError
-    | RecipeManifestParseError
-    | RecipeManifestValidationError
-    | RecipeSourceError
-    | NotImplementedError
-  > =>
-    parseRecipeYaml({ source, content }).pipe(
-      Effect.flatMap((parsed) => flattenRecipe(source, parsed)),
-      Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
-    ),
-);
+const parseWithSources = Effect.fn("RecipeManifestService.parseWithSources")(function* (
+  source: string,
+  content: string,
+  sources: SourceSession | undefined,
+) {
+  const resolution = yield* resolveRecipeSource(
+    {
+      id: source,
+      source,
+      manifestYaml: content,
+      root: isAbsolute(source) ? dirname(source) : undefined,
+    },
+    sources === undefined ? {} : { sources },
+  );
+  const { compileResolvedRecipeSource } = yield* Effect.promise(() => import("../compiled-source"));
+  const manifest = yield* compileResolvedRecipeSource(resolution);
+  return yield* validateSemantics(source, manifest);
+});
+
+const parseRecipe = Effect.fn("RecipeManifestService.parse")(function* (source: string, content: string) {
+  const state = yield* Effect.serviceOption(StateStore);
+  if (Option.isNone(state)) {
+    return yield* parseWithSources(source, content, undefined);
+  }
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const store = (yield* retainedRecipeSourceStore()).store;
+      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      return yield* parseWithSources(source, content, sources);
+    }),
+  ).pipe(Effect.provideService(StateStore, state.value));
+});
 
 const recipeManifestService = RecipeManifestService.of({
   parse: parseRecipe,

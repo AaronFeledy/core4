@@ -13,12 +13,13 @@
   "type": "module",
   "private": true,
   "engines": {
-    "bun": ">=1.4.2"
+    "bun": ">=1.4.3"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./abortable-promise": "./src/abortable-promise.ts",
     "./app": "./src/app/index.ts",
     "./command-result": "./src/command-result/index.ts",
     "./database-creds": "./src/database-creds/index.ts",
@@ -72,6 +73,6 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.8.0"
   }
 }

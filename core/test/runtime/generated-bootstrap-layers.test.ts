@@ -102,7 +102,7 @@ describe("generated bootstrap layers", () => {
     const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
 
     expect(provider).toContain("ProviderUrlScanner.layer");
-    expect(provider).toContain("Layer.provide(Layer.mergeAll(runtimeProviderLayer, pluginsRuntimeLayer))");
+    expect(provider).toContain("Layer.provide(Layer.mergeAll(providerRegistryLayer, commandsRuntimeLayer))");
     expect(provider).toContain("urlScannerLayer");
   });
 
@@ -115,6 +115,17 @@ describe("generated bootstrap layers", () => {
 
     // Then: file-sync resolution stays behind the core plugin-module seam.
     expect(importsMutagenPackage).toBe(false);
+  });
+
+  test("provider bootstrap wires FileSyncResolver and app does not eager-load FileSyncEngine", async () => {
+    const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
+    const app = await readFile(resolve(generatedLayersDir, "app.ts"), "utf8");
+
+    expect(provider).toContain('from "@lando/engine/plugins/file-sync-resolver"');
+    expect(provider).toContain("FileSyncResolver.layer");
+    expect(provider).toContain("fileSyncResolverLayer");
+    expect(app).not.toContain("BundledFileSyncEngine");
+    expect(app).not.toContain("file-sync-from-modules");
   });
 
   test("generated layers resolve composition through engine accessors", async () => {

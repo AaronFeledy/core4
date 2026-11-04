@@ -21,6 +21,7 @@ import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import { type SyncResult, SyncResult as SyncResultSchema, appIdentityKey } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
 import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
 
 type RemoteConfigInput = { readonly source: string } & Readonly<Record<string, unknown>>;
 
@@ -287,7 +288,7 @@ describe("remote sync command skeleton", () => {
           confirms += 1;
           return true;
         });
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
 
       const pullProgram = operations
         .appPull(
@@ -342,7 +343,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       let confirms = 0;
       const interaction: InteractionServiceShape = InteractionService.of({
         id: "remote-cli-interaction",
@@ -375,7 +376,9 @@ describe("remote sync command skeleton", () => {
                   Layer.succeed(
                     LandofileService,
                     LandofileService.of({
-                      discover: Effect.succeed({ name: "remote-skeleton", services: {} }),
+                      discover: Effect.succeed(
+                        literalLandofile({ name: "remote-skeleton", services: {} }, dir),
+                      ),
                     }),
                   ),
                   Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
@@ -408,7 +411,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "default-env", config: { source: "default-env" } }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -495,7 +498,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -553,7 +556,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -608,7 +611,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "multi", config: { source: "multi" } }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -685,7 +688,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
 
       const exit = await Effect.runPromiseExit(
         operations
@@ -763,7 +766,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "no-push", config: { source: "test-no-push" } }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const baseLayer = Layer.mergeAll(
         Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
         Layer.succeed(
@@ -891,7 +894,7 @@ describe("remote sync command skeleton", () => {
         findOrphanedSnapshots: Effect.succeed([]),
         removeOrphanedSnapshot: () => Effect.void,
       });
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const result = (await Effect.runPromise(
         operations
           .appPull(

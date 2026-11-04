@@ -2,11 +2,19 @@ import { Context, type Effect, type Scope } from "effect";
 
 import type {
   AppPlacementError,
+  DebuggerHostUnavailableError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
 } from "../errors/index.ts";
-import type { AbsolutePath, PortNumber, ProviderId, ServiceConfig, ServiceName } from "../schema/index.ts";
+import type {
+  AbsolutePath,
+  PortNumber,
+  ProviderId,
+  ServiceConfig,
+  ServiceName,
+  StartedService,
+} from "../schema/index.ts";
 
 export interface GlobalAppPaths {
   readonly root: AbsolutePath;
@@ -40,13 +48,11 @@ export class GlobalAppService extends Context.Service<
     >;
     /** Restart an existing running global service so it reloads externally stored configuration. */
     readonly restartRunningService?: (service: ServiceName) => Effect.Effect<boolean, GlobalAppError>;
-    readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<
-      ReadonlyArray<{
-        readonly name: string;
-        readonly state: string;
-        readonly endpoints: ReadonlyArray<string>;
-      }>,
-      GlobalAppError | AppPlacementError
+    readonly ensureRunning: (
+      services: ReadonlyArray<string>,
+    ) => Effect.Effect<
+      ReadonlyArray<StartedService>,
+      GlobalAppError | AppPlacementError | DebuggerHostUnavailableError
     >;
     /** Read-only provider-host TCP occupancy for published port candidates. */
     readonly occupiedPublishPorts?: (
@@ -57,9 +63,9 @@ export class GlobalAppService extends Context.Service<
       service: ServiceName,
       ports: ReadonlyArray<PortNumber>,
     ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
-    readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
-      GlobalDistResult,
-      GlobalAppError | GlobalDistConflictError
-    >;
+    readonly regenerateDist: (input?: {
+      readonly services?: Record<string, ServiceConfig>;
+      readonly content?: string;
+    }) => Effect.Effect<GlobalDistResult, GlobalAppError | GlobalDistConflictError>;
   }
 >()("@lando/core/GlobalAppService") {}

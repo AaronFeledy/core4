@@ -11,6 +11,7 @@ import * as FileSystemLayer from "@lando/engine/services/file-system";
 import { defaultGlobalServiceModuleLoader } from "@lando/engine/services/global-services";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -61,12 +62,18 @@ test("the generated global Landofile preserves the real router services' route o
         }),
       );
       const landofile = Schema.decodeUnknownSync(LandofileShape)(parsed);
+      const compiled = await Effect.runPromise(
+        loadAuthoredDocuments([{ file: generated.path, value: parsed }], {
+          appRoot: join(root, "global"),
+          file: generated.path,
+        }),
+      );
       const plan = await withCwd(
         join(root, "global"),
         () =>
           Effect.runPromise(
             Effect.flatMap(AppPlanner, (planner) =>
-              planner.plan(landofile, TestRuntimeProvider.capabilities),
+              planner.plan(compiled, TestRuntimeProvider.capabilities),
             ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer)))),
           ),
         [root],

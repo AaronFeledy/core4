@@ -143,7 +143,13 @@ const groupToRow = (group: ReadonlyArray<DoctorCheckLike>): SummaryRow => {
   const head = group[0];
   if (head === undefined) throw new Error("doctor summary group cannot be empty");
   const tone = doctorStatusTone(head.status);
-  if (head.status === "pass") return { label: head.name, tone, value: "pass" };
+  if (head.status === "pass")
+    return {
+      label: head.name,
+      tone,
+      value: "pass",
+      ...(head.name === "app-listener" ? { fields: groupFields(group) } : {}),
+    };
   const fields = groupFields(group);
   const remedy = remedyText(head.solutions);
   return {
@@ -203,14 +209,20 @@ const appConfigSection = (
   result: ConfigLintResult,
   options: DoctorRenderOptions,
 ): SummarySection | undefined => {
-  if (result.valid) {
+  if (result.valid && result.violations.length === 0) {
     return options.all === true
       ? { title: "app config", rows: [{ label: "lint", tone: "ok", value: "pass" }] }
       : undefined;
   }
   return {
     title: "app config",
-    rows: [{ label: "lint", tone: "error", fields: [{ label: "file", value: result.file }] }],
+    rows: [
+      {
+        label: "lint",
+        tone: result.valid ? "warn" : "error",
+        fields: [{ label: "file", value: result.file }],
+      },
+    ],
     notes: renderConfigLintViolations(result.violations),
   };
 };
@@ -231,6 +243,7 @@ const selfSection = (report: DoctorSelfReport): SummarySection => ({
 
 const allChecks = (report: DoctorReport): ReadonlyArray<DoctorCheckLike> => [
   ...report.provider.checks,
+  ...(report.appListeners?.checks ?? []),
   ...report.subsystems.checks,
   ...report.globalApp.checks,
   ...report.mcp.checks,
@@ -262,6 +275,7 @@ export const countDoctorChecks = (
 } => {
   const checks = allChecks(report);
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const appConfigWarned = report.appConfig?.violations.some((issue) => issue.severity === "warning") === true;
   const selfChecks = report.self?.checks ?? [];
   const deprecations = report.deprecations?.entries ?? [];
   const deprecationWarnings = deprecations.filter((entry) => entry.severity === "warn").length;
@@ -269,13 +283,17 @@ export const countDoctorChecks = (
   return {
     checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
     passed:
-      checks.filter((check) => check.status === "pass").length + (report.appConfig?.valid === true ? 1 : 0),
+      checks.filter((check) => check.status === "pass").length +
+      (report.appConfig?.valid === true && !appConfigWarned ? 1 : 0),
     failed:
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
       selfChecks.length +
       deprecationErrors,
-    warned: checks.filter((check) => check.status === "warn").length + deprecationWarnings,
+    warned:
+      checks.filter((check) => check.status === "warn").length +
+      deprecationWarnings +
+      (appConfigWarned ? 1 : 0),
   };
 };
 
@@ -367,6 +385,8 @@ export const buildDoctorReportSummary = (
       })),
     });
   push(checkSection("provider", report.provider.checks, options));
+  if (report.appListeners !== undefined)
+    push(checkSection("app-listeners", report.appListeners.checks, options));
   push(checkSection("subsystems", report.subsystems.checks, options));
   push(checkSection("global app", report.globalApp.checks, options));
   push(checkSection("mcp", report.mcp.checks, options));
@@ -434,7 +454,11 @@ const renderSelfSection = (report: DoctorSelfReport): string => {
 };
 
 const renderAppConfigSection = (result: ConfigLintResult): string => {
-  const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
+  const warned = result.violations.some((issue) => issue.severity === "warning");
+  const lines = [
+    `app-config-lint: ${result.valid ? (warned ? "warn" : "pass") : "fail"}`,
+    `file: ${result.file}`,
+  ];
   lines.push(...renderConfigLintViolations(result.violations));
   return lines.join("\n");
 };
@@ -474,6 +498,7 @@ export const renderDoctorReport = (
         ]),
     ...(report.skipped ?? []).map((entry) => `${entry.section}: SKIPPED · ${entry.reason}`),
     provider,
+    ...(report.appListeners === undefined ? [] : ["app-listeners:", renderDoctorResult(report.appListeners)]),
     subsystems,
     globalApp,
     mcp,

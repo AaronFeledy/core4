@@ -8,13 +8,22 @@ tags: [beta, docs, scratch, run]
 
 # Run a command in a disposable scratch
 
-`lando run` boots a throwaway scratch app, waits for startup readiness, runs the argv after `--`, then destroys the scratch. An exhausted healthcheck or unsupervised startup exit fails acquisition before the tool runs; interrupted acquisition also cleans up. Unlike a user-app start, a failed scratch acquisition cleans up at every phase.
+Run `lando run` on the host to execute a command in a temporary app, then remove
+the app. Lando waits for startup readiness before running the command after `--`.
+By default, it bind-mounts your current directory, so the tool can access your
+project files. Use `--no-mount` if the tool should not see them.
 
 ```sh
 lando run -- composer --version
 ```
 
-No `--from` means the bundled `toolbox` recipe. Tokens after `--` are the tool, not Lando flags. Think hotel minibar: use it, then it is gone.
+This prints the tool's version and destroys the scratch when the tool exits.
+Without `--from`, Lando uses the bundled `toolbox` recipe. Arguments after `--`
+belong to the tool, not to Lando.
+
+If a healthcheck exhausts its attempts or an unsupervised service exits during
+startup, the tool does not run. Failed or interrupted scratch acquisition cleans
+up at every phase, unlike a failed user-app start.
 
 ## Pick a recipe and service
 

@@ -3,10 +3,18 @@ import { Cause, Effect } from "effect";
 
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceMountIntent } from "@lando/sdk/services";
-import { ContractFailure, runServiceFeatureContract } from "@lando/sdk/test";
+import {
+  ContractFailure,
+  type ServiceFeatureContractHarness,
+  runServiceFeatureContract,
+} from "@lando/sdk/test";
 
-const expectFeatureFailure = async (feature: ServiceFeatureDefinition, assertion: string): Promise<void> => {
-  const result = await Effect.runPromiseExit(runServiceFeatureContract({ feature }));
+const expectFeatureFailure = async (
+  feature: ServiceFeatureDefinition,
+  assertion: string,
+  input: Omit<ServiceFeatureContractHarness, "feature"> = {},
+): Promise<void> => {
+  const result = await Effect.runPromiseExit(runServiceFeatureContract({ ...input, feature }));
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
@@ -21,6 +29,73 @@ const expectFeatureFailure = async (feature: ServiceFeatureDefinition, assertion
 };
 
 describe("runServiceFeatureContract", () => {
+  test.each(["config", "normalizedConfig", "connection", "appRoot"] as const)(
+    "rejects declaration mutation of %s",
+    async (field) => {
+      // Given
+      const feature: ServiceFeatureDefinition = {
+        id: "mutated-declaration-facts",
+        priority: 100,
+        declareEndpoints: (ctx) =>
+          Effect.sync(() => {
+            switch (field) {
+              case "config":
+                Reflect.set(ctx.config, "port", 9000);
+                break;
+              case "normalizedConfig":
+                Reflect.set(ctx.normalizedConfig, "port", 9000);
+                break;
+              case "connection":
+                if (ctx.connection === undefined) throw new Error("Missing fixture connection");
+                Reflect.set(ctx.connection.creds, "user", "changed");
+                break;
+              case "appRoot":
+                Reflect.set(ctx, "appRoot", "/changed");
+                break;
+              default:
+                field satisfies never;
+            }
+            return [];
+          }),
+        apply: () => Effect.void,
+      };
+      // When / Then
+      await expectFeatureFailure(feature, "service feature endpoint declaration facts are immutable", {
+        connection: {
+          family: "postgres",
+          port: 5432,
+          creds: { user: "app", password: "secret", database: "app" },
+        },
+      });
+    },
+  );
+
+  test.each([0, 65536])("rejects schema-invalid declared endpoint port %s", async (port) => {
+    // Given
+    const feature: ServiceFeatureDefinition = {
+      id: "malformed-declaration",
+      priority: 100,
+      declareEndpoints: () => Effect.succeed([{ _tag: "internal", protocol: "http", port }]),
+      apply: () => Effect.void,
+    };
+    // When / Then
+    await expectFeatureFailure(feature, "service feature endpoint declarations match EndpointPlan");
+  });
+
+  test.each(["throw", "defect"] as const)("reports a declaration %s as ContractFailure", async (failure) => {
+    // Given
+    const feature: ServiceFeatureDefinition = {
+      id: "failed-declaration",
+      priority: 100,
+      declareEndpoints: () => {
+        if (failure === "throw") throw new Error("Declaration fixture failure");
+        return Effect.die("Declaration fixture defect");
+      },
+      apply: () => Effect.void,
+    };
+    // When / Then
+    await expectFeatureFailure(feature, "endpoint declaration succeeds");
+  });
   test("passes for a feature that emits provider-neutral intent only", async () => {
     const feature: ServiceFeatureDefinition = {
       id: "intent-only",
@@ -93,12 +168,6 @@ describe("runServiceFeatureContract", () => {
           ctx.addStorage({ name: "db", target: "/data", realization: "volume" } as unknown as Parameters<
             typeof ctx.addStorage
           >[0]);
-          ctx.addEndpoint({
-            name: "web",
-            port: 8080,
-            protocol: "tcp",
-            realization: "host",
-          } as unknown as Parameters<typeof ctx.addEndpoint>[0]);
         }),
     };
 
@@ -109,15 +178,17 @@ describe("runServiceFeatureContract", () => {
     const feature: ServiceFeatureDefinition = {
       id: "realization-leak-endpoint",
       priority: 45,
-      apply: (ctx) =>
-        Effect.sync(() => {
-          ctx.addEndpoint({
+      declareEndpoints: () =>
+        Effect.succeed([
+          {
+            _tag: "internal" as const,
             name: "web",
             port: 8080,
-            protocol: "tcp",
+            protocol: "tcp" as const,
             realization: "host",
-          } as unknown as Parameters<typeof ctx.addEndpoint>[0]);
-        }),
+          },
+        ]),
+      apply: () => Effect.void,
     };
 
     await expectFeatureFailure(feature, "feature emits endpoint intent without realization decisions");

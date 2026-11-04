@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Effect, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -43,22 +43,12 @@ test("the live shared port reads engine creation state and does not expose a cre
             subscribe: () => Stream.empty,
             subscribeQueue: Effect.never,
             waitFor: () => Effect.never,
+            subscribeWithHistory: () => Effect.never,
             waitForAny: () => Effect.never,
             query: () => Effect.succeed([]),
           }),
         ),
-        Effect.provideService(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => []),
-            forProfile: () =>
-              Effect.succeed({
-                redactString: (text: string) => text,
-                redactValue: (value: unknown) => value,
-              }),
-          }),
-        ),
+        Effect.provideService(RedactionService, makeRedactionService()),
       ),
     );
     expect(mover.volumeInitialization).toBeDefined();

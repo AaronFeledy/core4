@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { isPluginUnlinkNotLinkedCause, revertPluginLink } from "@lando/engine/operations/plugin-link";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { resolvePluginsRoot } from "./plugin-roots";
@@ -16,7 +16,7 @@ export class PluginUnlinkNotLinkedError extends Schema.TaggedError<PluginUnlinkN
     message: Schema.String,
     commandId: Schema.Literal("meta:plugin:unlink"),
     pluginName: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -107,7 +107,7 @@ export const pluginUnlink = Effect.fn("PluginUnlink.unlink")(function* (
           });
         },
       });
-      yield* invalidatePluginCommandCache({
+      yield* invalidateAppToolingCaches({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       });
       return revertedResult;

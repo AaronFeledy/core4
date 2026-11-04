@@ -12,8 +12,8 @@ import { AppPlanner, ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 test("bundled mkcert setup issues certs through the production app planner", async () => {
   // Given: isolated roots containing a fingerprinted, preinstalled fake mkcert.
@@ -101,7 +101,7 @@ test("bundled mkcert setup issues certs through the production app planner", asy
           const authority = yield* Context.get(context, CertificateAuthorityResolver).resolve;
           yield* authority.setup({ force: false });
           const plan = yield* Context.get(context, AppPlanner).plan(
-            rememberLandofileAppRoot(landofile, appRoot),
+            literalLandofile(landofile, appRoot),
             TestRuntimeProvider.capabilities,
           );
           return { authorityId: authority.id, plan };

@@ -375,19 +375,11 @@ describe("Landofile authoring schemas", () => {
       },
     });
     expect(fragment).toMatchObject({ $defs: { DeprecationNotice: { required: ["since", "note"] } } });
+    expect(shape).toHaveProperty(["properties", "tooling", "anyOf", 0, "additionalProperties"], {
+      $ref: "#/$defs/ToolingTaskInputAuthoring",
+    });
     expect(shape).toHaveProperty(
-      [
-        "properties",
-        "tooling",
-        "anyOf",
-        0,
-        "additionalProperties",
-        "anyOf",
-        0,
-        "properties",
-        "deprecated",
-        "anyOf",
-      ],
+      ["$defs", "ToolingTaskInputAuthoring", "anyOf", 0, "anyOf", 0, "properties", "deprecated", "anyOf"],
       [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string", pattern: expect.any(String) }],
     );
     expect(decoded._tag).toBe("Success");

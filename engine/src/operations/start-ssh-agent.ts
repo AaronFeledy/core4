@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { type SshAgentTransportError, SshAgentUnavailableError } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
+import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
   type AppId,
   type AppPlan,
@@ -19,7 +19,9 @@ import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-
 import {
   type HostAgentDiscoveryOptions,
   discoverHostSshAgent,
+  hostSshAgentSourceLabel,
 } from "../subsystems/ssh-agent/host-agent-discovery.ts";
+import { hostKnownHostsFile } from "../subsystems/ssh-agent/host-known-hosts.ts";
 import {
   sshAgentEligibleServices,
   stripSshAgentOverlay,
@@ -139,6 +141,17 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
         ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
         gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
       });
+      if (discovered.danglingEnvSocket !== undefined) {
+        const events = yield* EventService;
+        yield* events
+          .publish(
+            MessageInfoEvent.make({
+              body: `SSH_AUTH_SOCK points at a socket that no longer exists; using the ${hostSshAgentSourceLabel(discovered.upstream.source)} agent instead.`,
+              timestamp: DateTime.nowUnsafe(),
+            }),
+          )
+          .pipe(Effect.catch(() => Effect.void));
+      }
       return discovered.upstream;
     }
     default:
@@ -163,7 +176,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
     appName: plan.name,
     provider: plan.provider,
     intent,
-    platform: options.platform ?? paths.platform,
+    platform: paths.platform,
   });
   if (upstream._tag === "volume") {
     return {
@@ -198,7 +211,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
               delivery,
               kind: "ssh",
               socketName: SSH_AGENT_SOCKET_NAME,
-              paths: { ...paths.roots, platform: options.platform ?? paths.platform },
+              paths: { ...paths.roots, platform: paths.platform },
               privateFileAccess,
             }),
           (session) => tree.completeTask("session").pipe(Effect.as(session)),
@@ -261,7 +274,18 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
     }),
   );
   const session = yield* acquire;
+  if (session === undefined) return yield* options.use(stripSshAgentOverlay(plan));
+  const knownHostsFile = yield* hostKnownHostsFile(options.home ?? homedir());
   return yield* options.use(
-    session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session),
+    yield* withSshAgentOverlay(
+      plan,
+      session,
+      knownHostsFile === undefined
+        ? {}
+        : {
+            knownHostsFile: knownHostsFile.path,
+            knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+          },
+    ),
   );
 });

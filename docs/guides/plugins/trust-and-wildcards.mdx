@@ -8,17 +8,17 @@ tags: [beta, docs, plugins, trust]
 
 # Trust plugins by name
 
-Trust matches one plugin name. Org globs are not up.
+Trust applies to one exact plugin name. Organization wildcards are not
+supported. Review the current trusted names before adding or revoking one:
 
 ```sh
 lando plugin:trust list
 ```
 
-Trust is a guest list, not a glob.
-
 ## What works today
 
-List trusted names. Add one package name. Revoke that name.
+The first command below trusts a package name; the second revokes that trust.
+Choose the action you need. Trust permits plugin code to run on your host.
 
 ```sh
 lando plugin:trust @lando/plugin-php
@@ -27,7 +27,8 @@ lando plugin:trust revoke @lando/plugin-php
 
 Authorize a local checkout with an absolute path.
 
-Relative paths are rejected.
+Replace `/absolute/path/to/plugin` with your checkout's absolute path. Relative
+paths are rejected.
 
 ```sh
 lando meta:plugin:trust-authoring-root /absolute/path/to/plugin

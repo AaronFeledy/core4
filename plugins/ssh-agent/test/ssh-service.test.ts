@@ -83,6 +83,7 @@ test("setup reports the deepest cause when global service startup fails", async 
   const cause = new GlobalAppError({
     message: "Unable to ensure global services are running.",
     cause: { _tag: "ServiceStartError", message: "container create failed with HTTP 500", cause: rootCause },
+    remediation: "Run `lando doctor`, fix the reported issue, then retry the global operation.",
   });
   try {
     // When the real SSH service attempts setup.

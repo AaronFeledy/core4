@@ -1,10 +1,17 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
 
+import { Effect, Match } from "effect";
+
+import { CommandInputValidationError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 
+import type { EnvironmentValue } from "@lando/sdk/schema";
+import { isUsableExactRedactionValue } from "@lando/sdk/secrets";
 import type { DbAction, DbCommandInput } from "./command-types.ts";
-import { DEFAULT_SQL_PASSWORD } from "./creds.ts";
-import type { SqlLandofileService, SqlPlan } from "./views.ts";
+import { compressionFromExportPath } from "./compression.ts";
+import { classifySqlPlan } from "./environment.ts";
+
+import type { SqlPlan } from "./views.ts";
 
 export const hostFile = (
   plan: SqlPlan,
@@ -25,26 +32,60 @@ export const parseCount = (stdout: string): number | undefined => {
   return Number.isFinite(value) ? value : undefined;
 };
 
+export const validateExportCompressionLevel = (
+  input: DbCommandInput,
+): Effect.Effect<void, CommandInputValidationError> => {
+  if (input.action !== "export" || input.compressionLevel === undefined) return Effect.void;
+  const compression = compressionFromExportPath(input.file ?? "dump.sql.gz");
+  const level = input.compressionLevel;
+  const message = !Number.isSafeInteger(level)
+    ? "--compression-level must be an integer."
+    : Match.value(compression).pipe(
+        Match.when("none", () => "--compression-level cannot be used with an uncompressed export."),
+        Match.when("gzip", () =>
+          level < 0 || level > 9 ? "gzip --compression-level must be between 0 and 9." : undefined,
+        ),
+        Match.when("zstd", () =>
+          level < 1 || level > 22 ? "zstd --compression-level must be between 1 and 22." : undefined,
+        ),
+        Match.exhaustive,
+      );
+  return message === undefined
+    ? Effect.void
+    : Effect.fail(
+        new CommandInputValidationError({
+          message,
+          target: "db:export",
+          field: "compression-level",
+          kind: "flag",
+          reason: "constraint",
+          remediation:
+            "Use an integer from 0-9 with a .gz destination or 1-22 with a .zst destination, or omit --compression-level.",
+        }),
+      );
+};
+
 export const secretTokens = (
-  creds: { readonly password?: string; readonly rootPassword?: string },
-  authored?: SqlLandofileService,
+  creds: {
+    readonly user?: EnvironmentValue;
+    readonly database?: EnvironmentValue;
+    readonly password?: EnvironmentValue;
+    readonly rootPassword?: EnvironmentValue;
+  },
+  plan: SqlPlan,
 ): string[] => {
-  const authoredPasswords = [
-    authored?.creds?.password,
-    authored?.creds?.rootPassword,
-    ...Object.entries(authored?.environment ?? {})
-      .filter(([key]) => /PASSWORD$/u.test(key))
-      .map(([, value]) => value),
-  ];
-  const password =
-    creds.password === undefined ||
-    creds.password.length === 0 ||
-    (creds.password === DEFAULT_SQL_PASSWORD && !authoredPasswords.includes(creds.password))
-      ? []
-      : [creds.password];
-  const rootPassword =
-    creds.rootPassword === undefined || creds.rootPassword.length === 0 ? [] : [creds.rootPassword];
-  return [...password, ...rootPassword];
+  // Result tokens are substring-only; never promote whole-token or public values.
+  const classified = classifySqlPlan(plan);
+  const tokens: string[] = [];
+  for (const value of [creds.password, creds.rootPassword]) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    if (!isUsableExactRedactionValue(value)) continue;
+    if (classified.publicValues.has(value)) continue;
+    if (value === creds.user || value === creds.database) continue;
+    if (classified.wholeToken.has(value) && !classified.substring.has(value)) continue;
+    tokens.push(value);
+  }
+  return tokens;
 };
 
 export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {
@@ -69,6 +110,9 @@ export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInp
   ...(typeof input.flags["from-path"] === "string" ? { fromPath: input.flags["from-path"] } : {}),
   ...(typeof input.flags["from-service"] === "string" ? { fromService: input.flags["from-service"] } : {}),
   ...(typeof input.flags["keep-latest"] === "number" ? { keepLatest: input.flags["keep-latest"] } : {}),
+  ...(action === "export" && typeof input.flags["compression-level"] === "number"
+    ? { compressionLevel: input.flags["compression-level"] }
+    : {}),
   ...(input.flags.preview === true ? { preview: true } : {}),
   ...(input.flags.compression === "gzip" ||
   input.flags.compression === "zstd" ||

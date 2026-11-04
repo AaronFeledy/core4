@@ -8,8 +8,9 @@ tags: [beta, docs, schemas]
 
 # Generated schema reference docs
 
-Regenerate public JSON Schema artifacts and the Starlight schema reference
-pages from the same public schema registry:
+From the repository root, run the schema snapshot generator to rebuild public
+JSON Schema artifacts and Starlight reference pages from the public schema
+registry. Edit the owning schema annotations rather than generated pages:
 
 ```sh
 bun run scripts/build-schema-snapshot.ts
@@ -20,4 +21,3 @@ Generated Starlight MDX pages live in the reference tree declared by
 `docs/reference/schemas/*.mdx`. Titles, descriptions, required fields,
 accepted values, examples, defaults, and deprecation callouts are all
 derived from schema annotations and Effect Schema AST nodes, not hand-written.
-

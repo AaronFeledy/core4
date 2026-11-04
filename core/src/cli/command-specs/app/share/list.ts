@@ -17,6 +17,5 @@ export const shareListSpec: LandoCommandSpec<ReadonlyArray<TunnelSessionType>> =
   flags: shareListFlags,
   resultSchema: Schema.Array(TunnelSession),
   run: (input) => appShareList(shareListOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderShareListResult(result as ReadonlyArray<TunnelSessionType>, shareFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderShareListResult(result, shareFormatFromInput(input), ctx),
 };

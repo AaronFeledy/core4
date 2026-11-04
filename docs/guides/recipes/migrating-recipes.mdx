@@ -8,13 +8,17 @@ tags: [beta, docs, recipes, config, migrate]
 
 # Move your Landofile to a newer recipe version without losing your edits
 
+Preview and apply recipe migrations from the root of an app created with `lando init --recipe=<id>`. Review the dry-run before continuing: migration rewrites the Landofile in place and removes YAML comments. Commit or stash your changes first if you need to preserve them.
+
+Bundled recipes currently publish no migration history, so a freshly initialized bundled app reports no changes. The procedure also supports installed recipes that do publish migrations.
+
 ```sh
 lando app:config:migrate --dry-run
 lando app:config:migrate
 lando start
 ```
 
-Run that from an app you created with `lando init --recipe=<id>`. Lando reads the recipe version recorded under `recipe.version`, walks the ordered migration edges the installed recipe publishes from that version forward, and rewrites the Landofile one edge at a time. Values you took over stay yours. Options you changed stay changed. When it lands anything, the report ends with `run \`lando start\``. The file changed and the containers have not. `lando start` applies that Landofile.
+Lando reads the recipe version recorded under `recipe.version`, walks the ordered migration edges the installed recipe publishes from that version forward, and rewrites the Landofile one edge at a time. Values you took over stay yours. Options you changed stay changed. When it lands anything, the report ends with `run \`lando start\``. The file changed and the containers have not. `lando start` applies that Landofile.
 
 Migration never plans or applies the app, never follows `includes:`, and never executes a `.lando.ts`. It only edits the file.
 
@@ -122,8 +126,10 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
 
 <Guide>
   <Scenario id="already-current" render>
+    <Step name="scaffold-current">
+      <Run command="lando init --recipe lamp --name=migrate-demo --yes" />
+    </Step>
     <Step name="dry-run-current">
-      <UseFixture name="managed-lamp" />
       <Run command="lando app:config:migrate --dry-run" />
       <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"mode\":\\s*\"dry-run\"" } }} />
       <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"status\":\\s*\"no-op\"" } }} />
@@ -131,8 +137,9 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
     <Step name="write-current">
       <Run command="lando app:config:migrate --yes" />
       <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"noMutation\":\\s*\"already-current\"" } }} />
-      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "name: migrate-demo" }} />
-      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
+      <Verify file="migrate-demo/.lando.yml" expect={{ regex: "name: migrate-demo" }} />
+      <Verify file="migrate-demo/.lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
+      <Verify file="migrate-demo/.lando.yml" expect={{ regex: "sourceKind: bundled" }} />
     </Step>
     <Step name="current-cleanup">
       <Cleanup />

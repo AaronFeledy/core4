@@ -5,7 +5,7 @@ import { ConfigService, GlobalAppService, HealthcheckRunner, UrlScanner } from "
 import { Effect, Layer, Schema } from "effect";
 import { DefaultGlobalAppDoctorLayer } from "../../src/cli/commands/doctor-global-app.ts";
 import { DefaultMcpDoctorLayer } from "../../src/cli/commands/doctor-mcp.ts";
-import { DefaultSubsystemDoctorLayer } from "../../src/cli/commands/doctor-subsystems.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const characterizeBuilds = async <R, S>(live: Layer.Layer<R>, read: Effect.Effect<S, never, R>) => {
   // Given: observe the real doctor graph and also count distinct constructed service objects.
@@ -44,12 +44,18 @@ const characterizeBuilds = async <R, S>(live: Layer.Layer<R>, read: Effect.Effec
   expect(fresh).not.toBe(outer);
 };
 
-test("the subsystem doctor healthcheck layer builds once per runtime", async () => {
-  await characterizeBuilds(DefaultSubsystemDoctorLayer, HealthcheckRunner);
+test("subsystem diagnostics do not manufacture a healthcheck runner", async () => {
+  const runner = await Effect.runPromise(
+    Effect.serviceOption(HealthcheckRunner).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+  );
+  expect(runner._tag).toBe("None");
 });
 
-test("the subsystem doctor scanner layer builds once per runtime", async () => {
-  await characterizeBuilds(DefaultSubsystemDoctorLayer, UrlScanner);
+test("subsystem diagnostics do not manufacture a scanner", async () => {
+  const scanner = await Effect.runPromise(
+    Effect.serviceOption(UrlScanner).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+  );
+  expect(scanner._tag).toBe("None");
 });
 
 test("the global-app doctor layer builds once per runtime", async () => {

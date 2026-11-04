@@ -1,0 +1,14 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: &runner ubuntu-latest
+    steps:
+      - run: echo build
+  publish:
+    needs: build
+    runs-on: *runner
+    steps:
+      - run: echo publish

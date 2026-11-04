@@ -8,7 +8,19 @@ tags: [beta, docs, subsystems, gpg]
 
 # Sign commits with your host gpg-agent
 
-Put this in the Landofile and restart the app:
+Forward your host `gpg-agent` to let services sign with keys that stay on the
+host. Before enabling it, install GnuPG on the host and start `gpg-agent`. Every
+service receiving forwarding also needs `gpg` in its image; stock `node:22` does
+not include it, so adapt the image before using this configuration.
+
+Forwarding gives every `type: lando` service in the app access to the restricted
+agent socket. That socket can sign and decrypt, but cannot export, import, or
+delete secret keys. On Windows, the Podman-machine bridge uses an unauthenticated
+loopback broker that another local account could reach while the app runs. Review
+that risk before enabling forwarding on a shared host.
+
+Add the top-level `gpgAgent` setting to your Landofile, then restart from the app
+directory:
 
 ```yaml
 name: signed
@@ -25,8 +37,6 @@ lando restart
 ```
 
 The service can now ask your host `gpg-agent` to sign. Private keys stay on the host. The container talks to the agent's restricted extra socket, so it can sign and cannot export or import secret keys.
-
-Prereq: GnuPG on the host, with `gpg-agent` running. The service image has to ship `gpg` too. A stock `node:22` image does not.
 
 ## Turn forwarding on
 
@@ -48,7 +58,9 @@ That path has to be the restricted extra socket (`gpgconf --list-dirs agent-extr
 
 ## Tell git to sign
 
-Inside the service, point git at the key you already have on the host:
+Replace `YOUR_KEY` below with the fingerprint printed by `gpg -K` on the host.
+Run these commands from the app directory to configure Git inside the service.
+The final command creates a signed commit from your staged changes:
 
 ```sh
 lando ssh -- git config --global user.signingkey YOUR_KEY
@@ -98,7 +110,8 @@ Forwarding is opt-in, and it fails closed. A provider without `agentSocket` deli
 
 If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTransportError`. The applied app and the relay stay up. Install `gpg` in the service image, fix write permissions for the service user, then run `lando start`; it prepares `GNUPGHOME` again.
 
-The relay socket on the host is mode `0666` inside a per-user `0700` run directory. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token, so another local account on that host could reach it while the app runs. Private keys still never leave `gpg-agent`; the restricted socket only signs.
+The relay socket on the host is mode `0666` inside a per-user `0700` run directory. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token, so another local account on that host could reach it while the app runs. Private keys still never leave `gpg-agent`; the restricted socket permits signing
+and decryption, not secret-key export.
 
 `lando stop` and `lando destroy` tear the relay down. Another `lando start` on a running app reuses a relay that is still healthy and unchanged, the same way as SSH agent forwarding, and it refreshes the public keyring and `GNUPGHOME` either way.
 

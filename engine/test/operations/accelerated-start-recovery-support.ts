@@ -29,14 +29,19 @@ export const acceleratedPlan: AppPlan = {
   services: {
     [web.name]: {
       ...web,
-      appMount: {
-        source: plan.root,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   fileSync: [{ engineId: "mutagen", session }],
@@ -100,6 +105,7 @@ export const recoveryHarness = Effect.fnUntraced(function* (
                 engineId: "mutagen",
                 sessionRef: String(app.id),
                 message: "App has no Mutagen sessions to drain.",
+                remediation: "Skip drain when the app owns no sessions, or create sessions before draining.",
               }),
             )
           : Effect.sync(() => {
@@ -165,7 +171,14 @@ export const recoveryHarness = Effect.fnUntraced(function* (
       }).pipe(
         Effect.andThen(
           options.failFlush
-            ? Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "flush failed" }))
+            ? Effect.fail(
+                new FileSyncStartError({
+                  engineId: "mutagen",
+                  message: "flush failed",
+                  remediation:
+                    "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+                }),
+              )
             : Effect.void,
         ),
       ),

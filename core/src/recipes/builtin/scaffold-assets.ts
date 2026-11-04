@@ -1,4 +1,4 @@
-import type { RecipeAuxiliaryContentSource } from "../init-pipeline/files.ts";
+import type { RecipeFile } from "@lando/sdk/schema";
 import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH } from "./drupal-cms/php-config.ts";
 import { HUGO_SCAFFOLD } from "./hugo/scaffold.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./mean/scaffold.ts";
@@ -35,6 +35,6 @@ const BUNDLED_SCAFFOLD_ASSETS: ReadonlyMap<string, ReadonlyMap<string, string>> 
 
 /** A content source over the bundled assets of one recipe. */
 export const bundledRecipeContentSource =
-  (recipeId: string): RecipeAuxiliaryContentSource =>
-  (file) =>
+  (recipeId: string) =>
+  (file: RecipeFile): Promise<string | undefined> =>
     Promise.resolve(BUNDLED_SCAFFOLD_ASSETS.get(recipeId)?.get(file.dest));

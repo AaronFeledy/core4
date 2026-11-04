@@ -37,16 +37,18 @@ const node: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "-e", "console.log('lando logs ready'); setInterval(() => {}, 1000)"],
   environment: {},
-  appMount: {
-    source: appRoot,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: appRoot,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -56,6 +58,7 @@ const node: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Logs App",
   slug: "logsapp",
@@ -63,7 +66,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -96,12 +98,14 @@ const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   return { api, calls };
 };
 
+const FileLogSource = LogSource.members[0];
+
 const collectLines = (chunks: Iterable<LogChunk>) => Array.from(chunks, (chunk) => chunk.line);
 
 describe("provider-lando logs", () => {
   test("prefers injected file access over a different helper fallback", async () => {
     // Given: an injected file and a fallback API without helper request transport.
-    const source = Schema.decodeUnknownSync(LogSource)({
+    const source = Schema.decodeUnknownSync(FileLogSource)({
       id: "file",
       path: "/app.log",
       stream: "stdout",
@@ -164,7 +168,7 @@ describe("provider-lando logs", () => {
     expect(collectLines(chunks)).toContain("lando logs ready");
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0]?.method).toBe("GET");
-    expect(fake.calls[0]?.path).toContain("/containers/lando-logsapp-node/logs?");
+    expect(fake.calls[0]?.path).toContain("/containers/lando-logsapp--node/logs?");
     expect(fake.calls[0]?.path).toContain("follow=false");
   });
 

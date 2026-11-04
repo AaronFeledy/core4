@@ -25,14 +25,14 @@ describe("ToolExtractError", () => {
       message: 'Member "mutagen" not found in archive.',
       toolId: "mutagen",
       member: "mutagen",
-      remediation: "Retry `lando setup`; if it persists report the archive URL.",
+      remediation: "Verify the pinned manifest member path against the upstream archive layout.",
       cause: new Error("missing"),
     });
 
     expect(error._tag).toBe("ToolExtractError");
     expect(error.toolId).toBe("mutagen");
     expect(error.member).toBe("mutagen");
-    expect(error.remediation).toContain("lando setup");
+    expect(error.remediation).toContain("manifest member");
   });
 });
 

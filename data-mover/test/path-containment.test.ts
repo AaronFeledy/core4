@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
 import { makeDataMoverService } from "../src/service.ts";
@@ -29,7 +28,7 @@ afterEach(async () => {
 
 const transfer = (source: string, target: string) => {
   const mover = makeDataMoverService(
-    TestRuntimeProvider,
+    Effect.die("Local transfers must not resolve a runtime provider"),
     { redactText: (text) => text, publish: () => Effect.void },
     { paths: { ...makeLandoPaths(), scratchDir: scratchRoot }, stateStore: makeTestStateStore().service },
   );
@@ -59,7 +58,7 @@ test("copies from ..local into missing scratch suffixes", async () => {
   expect(await fs.readFile(join(target, "file"), "utf8")).toBe("payload");
 });
 
-test("climbs past injected source EACCES rather than reconstructing the target", async () => {
+test("refuses injected source EACCES rather than climbing past an unverified source", async () => {
   // Given a denied realpath for an existing app source
   const source = join(appRoot, "source");
   const target = join(scratchRoot, "missing", "root");
@@ -68,12 +67,13 @@ test("climbs past injected source EACCES rather than reconstructing the target",
   const denied = Object.assign(new Error("denied"), { code: "EACCES" });
   const lookup = spyOn(fs, "realpath").mockResolvedValueOnce(appRoot).mockRejectedValueOnce(denied);
   try {
-    // When data-mover validates and copies the source
+    // When data-mover validates the source
     const result = await transfer(source, target);
-    // Then its catch-all ancestor policy still permits the in-root source
-    expect(result._tag).toBe("Success");
-    expect(lookup.mock.calls.slice(0, 3).map(([path]) => path)).toEqual([appRoot, source, appRoot]);
-    expect(await fs.readFile(join(target, "file"), "utf8")).toBe("payload");
+    // Then no transfer is authorized and no parent lookup hides the denied source.
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure")
+      expect(result.failure).toMatchObject({ _tag: "DataSourceOutsideRootError", path: source });
+    expect(lookup.mock.calls.map(([path]) => path)).toEqual([appRoot, source]);
   } finally {
     lookup.mockRestore();
   }

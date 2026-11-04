@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   LandofileShape,
@@ -13,6 +12,7 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const APP_ROOT = process.cwd();
 const plan = (service: typeof ServiceConfig.Encoded) => {
@@ -22,7 +22,7 @@ const plan = (service: typeof ServiceConfig.Encoded) => {
     services: { web: { home: false, certs: false, ...service } },
   });
   return Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
+    planner.plan(literalTestLandofile(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(AppPlannerLayer.layer));
 };
 
@@ -66,7 +66,7 @@ test("Ruby preserves authored nested context and cwd through the complete planne
   expect(web?.environment.LANDO_WEBROOT).toBe("/site/frontend/public");
   expect(web?.extensions["lando-service-ruby"]).toMatchObject({ webroot: "/site/frontend/public" });
   expect(String(web?.workingDirectory)).toBe("/site");
-  expect(web?.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+  expect(web?.command).toEqual(["tail", "-f", "/dev/null"]);
 });
 
 test("Ruby omits only implicit context when the app mount is disabled", async () => {
@@ -93,43 +93,46 @@ test.each(["php:8.3", "nginx", "apache", "static:nginx", "tomcat"])(
     // Then the supporting server composition plans without app-context env.
     const web = result.services[ServiceName.make("web")];
     expect(web?.environment.LANDO_WEBROOT).toBeUndefined();
-    expect(web?.appMount).toBeUndefined();
+    expect(serviceAppMount(web ?? { mounts: [] })).toBeUndefined();
   },
 );
 
-test.each([undefined, null, 7, ""])("does not accept invalid feature declaration %j", async (webroot) => {
-  // Given a custom type, not a built-in language identifier.
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const registry = yield* PluginRegistry;
-      const type: ServiceType = {
-        id: "custom-context",
-        name: "custom-context",
-        base: "l337",
-        schema: Schema.Unknown,
-        resolve: (input) =>
-          Effect.succeed({
-            base: "l337",
-            normalizedConfig: input.service,
-            features: [{ id: "custom.marker", config: { webroot } }],
+test.each([undefined, null, 7, "", "public"])(
+  "does not infer support from feature config %j",
+  async (webroot) => {
+    // Given a custom type, not a built-in language identifier.
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const registry = yield* PluginRegistry;
+        const type: ServiceType = {
+          id: "custom-context",
+          name: "custom-context",
+          base: "l337",
+          schema: Schema.Unknown,
+          resolve: (input) =>
+            Effect.succeed({
+              base: "l337",
+              normalizedConfig: input.service,
+              features: [{ id: "custom.marker", config: { webroot } }],
+            }),
+        };
+        // When
+        return yield* plan({ type: type.id, image: "busybox", webroot: "public" }).pipe(
+          Effect.provideService(PluginRegistry, {
+            ...registry,
+            loadServiceType: () => Effect.succeed(type),
+            loadServiceFeature: () =>
+              Effect.succeed({ id: "custom.marker", priority: 900, apply: () => Effect.void }),
           }),
-      };
-      // When
-      return yield* plan({ type: type.id, image: "busybox", webroot: "public" }).pipe(
-        Effect.provideService(PluginRegistry, {
-          ...registry,
-          loadServiceType: () => Effect.succeed(type),
-          loadServiceFeature: () =>
-            Effect.succeed({ id: "custom.marker", priority: 900, apply: () => Effect.void }),
-        }),
-      );
-    }).pipe(Effect.provide(PluginRegistryLayer.layer)),
-  );
-  // Then
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (!Exit.isFailure(exit)) throw new Error("Expected declaration rejection");
-  expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(LandofileValidationError);
-});
+        );
+      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("Expected declaration rejection");
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(LandofileValidationError);
+  },
+);
 
 test.each(["python:3.12", "ruby:3.3"])(
   "an inherited supporting feature handles a %s root without changing language policy",
@@ -180,6 +183,7 @@ test.each(["python:3.12", "ruby:3.3"])(
                     id,
                     priority: 900,
                     schema: Schema.Unknown,
+                    validateEffective: () => Effect.succeed({ handledServiceFields: ["webroot"] }),
                     apply: (ctx) =>
                       Effect.sync(() => {
                         const config = Schema.decodeUnknownSync(
@@ -206,3 +210,22 @@ test.each(["python:3.12", "ruby:3.3"])(
     expect(web?.extensions["custom.root"]).toEqual({ webroot: "/srv/public" });
   },
 );
+test("a custom Tomcat image without a mount cannot claim image-owned root configuration", async () => {
+  // Given / When / Then
+  await expect(
+    Effect.runPromise(
+      plan({
+        type: "tomcat",
+        image: "example.test/tomcat:fixture",
+        appMount: false,
+        webroot: "/srv/public",
+      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    ),
+  ).rejects.toMatchObject({
+    _tag: "LandofileValidationError",
+    issues: [
+      expect.objectContaining({ path: ["services", "web", "webroot"], suggestion: expect.any(String) }),
+    ],
+  });
+});
+import { serviceAppMount } from "@lando/sdk/schema";

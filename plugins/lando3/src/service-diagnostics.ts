@@ -30,7 +30,7 @@ const serviceDiagnostic = (
   return {
     kind,
     sourceId: occurrence?.sourceId ?? ConfigTranslateSourceId.make(args.ctx.fallbackSourceId),
-    keyPath: [...args.ctx.keyPath, ...args.relative],
+    keyPath: occurrence === undefined ? [...args.ctx.keyPath, ...args.relative] : [...occurrence.keyPath],
     ...spanOf(occurrence),
     message: args.message,
     remediation:

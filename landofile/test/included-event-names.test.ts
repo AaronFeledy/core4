@@ -29,8 +29,8 @@ test("loads a tooling event when its task exists only in an included fragment", 
     // Then
     expect(result).toMatchObject({ _tag: "Success" });
     if (result._tag === "Success") {
-      expect(result.success.tooling?.build).toBeDefined();
-      expect(result.success.events?.["pre-build"]).toEqual(["echo preparing"]);
+      expect(result.success.document.tooling?.build).toBeDefined();
+      expect(result.success.document.events?.["pre-build"]).toEqual(["echo preparing"]);
     }
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -29,7 +29,12 @@ class LegacyBlockParser extends LegacyInlineParser {
       const empty = s.scalar("", "plain", start);
       s.finishLine();
       s.significant();
-      node = !s.done && s.position().column - 1 > parentIndent ? this.block(depth) : empty;
+      const indent = s.position().column - 1;
+      if (!s.done && indent > parentIndent) node = this.block(depth);
+      // Only mapping values can own a sequence at their key's indentation.
+      else if (!s.done && !compact && indent === parentIndent && this.sequenceIndicator())
+        node = this.sequence(indent, depth, true);
+      else node = empty;
     } else if (s.char === "|" || s.char === ">") {
       s.depth(depth);
       node = parseBlockScalar(s, parentIndent);
@@ -58,7 +63,7 @@ class LegacyBlockParser extends LegacyInlineParser {
           "Align sibling mapping keys at the same indentation.",
         );
       const colon = s.mappingColon();
-      if (colon < 0)
+      if (colon < 0 || this.sequenceIndicator())
         s.fail(
           "Expected a YAML mapping entry.",
           s.offset,
@@ -82,8 +87,9 @@ class LegacyBlockParser extends LegacyInlineParser {
     };
   }
 
-  private sequence(indent: number, depth: number): LegacyNode {
+  private sequence(indent: number, depth: number, indentationless = false): LegacyNode {
     const s = this.scan;
+    s.depth(depth);
     const start = s.offset;
     const items: LegacyNode[] = [];
     while (!s.done && s.position().column - 1 >= indent) {
@@ -94,6 +100,7 @@ class LegacyBlockParser extends LegacyInlineParser {
           s.offset,
           "Align sibling sequence indicators at the same indentation.",
         );
+      if (indentationless && !this.sequenceIndicator()) break;
       if (!this.sequenceIndicator())
         s.fail("Expected a YAML sequence item.", s.offset, "Begin each item at this indentation with '- '.");
       s.offset += 1;

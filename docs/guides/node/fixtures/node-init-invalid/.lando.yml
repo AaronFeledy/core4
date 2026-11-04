@@ -1,0 +1,7 @@
+# lando-lint: expect-invalid init must be a boolean spelling so the guide can show the plan-time rejection
+name: node-init-invalid
+services:
+  app:
+    type: "node:22"
+    primary: true
+    init: sometimes

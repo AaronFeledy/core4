@@ -7,7 +7,8 @@ import { Schema } from "effect";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 
 import { AppConfigExplainResultSchema } from "../../src/cli/commands/app-config-explain.ts";
-import { lampProducer } from "../../src/recipes/builtin/lamp/snapshot.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { producer: lampProducer } = bundledRecipe("lamp");
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

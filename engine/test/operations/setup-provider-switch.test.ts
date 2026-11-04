@@ -28,7 +28,6 @@ const planAt = (root: AbsolutePath, id: string): AppPlan => ({
   provider: ProviderId.make("lando"),
   identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
   services: {},
-  networks: [],
   stores: [],
   routes: [],
   fileSync: [],
@@ -90,6 +89,7 @@ const withSwitch = async (
             providerId: user.provider,
             service: ServiceName.make("web"),
             status: "running",
+            publications: { status: "unknown" as const },
             containerId: "user-container",
           },
         ]

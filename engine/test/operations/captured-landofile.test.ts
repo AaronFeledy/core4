@@ -3,7 +3,7 @@ import { LandofileParseError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   GlobalConfig,
   type LandofileShape,
   ProviderId,
@@ -24,7 +24,10 @@ import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { execApp } from "../../src/operations/exec.ts";
 import { infoApp } from "../../src/operations/info.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
 const fixture = () => {
   const metadata = {
@@ -34,7 +37,8 @@ const fixture = () => {
   };
   const name = ServiceName.make("web");
   const providerId = ProviderId.make("test");
-  const plan: AppPlan = {
+  const plan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("captured"),
     name: "captured",
     slug: "captured",
@@ -48,7 +52,6 @@ const fixture = () => {
         primary: true,
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -58,7 +61,6 @@ const fixture = () => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -81,14 +83,16 @@ const fixture = () => {
     },
   };
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
+    testEnvironmentResolverLayer,
     PrivateFileAccessService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
         discover: Effect.suspend(() => {
           loads++;
-          return failure === undefined ? Effect.succeed(live) : Effect.fail(failure);
+          return failure === undefined ? compileTestLandofile(live) : Effect.fail(failure);
         }),
       }),
     ),
@@ -137,12 +141,42 @@ const operations = {
   tooling: (target?: ResolvedAppTarget) => runTooling({ name: "probe" }, target).pipe(Effect.asVoid),
 } as const;
 
+test("direct tooling instantiates authored vars without activating copied data and normalizes env scalars", async () => {
+  // Given
+  const f = fixture();
+  const landofile = await Effect.runPromise(
+    compileTestLandofile({
+      name: "captured",
+      tooling: {
+        probe: {
+          service: "web",
+          cmd: "{{ vars.copied }}",
+          vars: { copied: "{{{{ event.CANARY }}", count: 17 },
+          env: { COUNT: "{{ vars.count }}" },
+        },
+      },
+    }),
+  );
+  // When
+  await Effect.runPromise(
+    runTooling({ name: "probe" }, { ...f.target, landofile }).pipe(Effect.provide(f.layer)),
+  );
+  // Then
+  expect(f.calls[0]?.command[2]).toBe('{{ event.CANARY }} "$@"');
+  expect(f.calls[0]?.env?.COUNT).toBe("17");
+});
+
 for (const [name, invoke] of Object.entries(operations)) {
   test(`${name} loads once for each plan-only or ordinary invocation and zero times with a snapshot`, async () => {
     const f = fixture();
     const captured = {
       ...f.target,
-      landofile: { name: "captured", tooling: { probe: { service: "web", cmd: "echo {{ app.name }}" } } },
+      landofile: await Effect.runPromise(
+        compileTestLandofile({
+          name: "captured",
+          tooling: { probe: { service: "web", cmd: "echo {{ app.name }}" } },
+        }),
+      ),
     };
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -174,6 +208,7 @@ for (const [name, invoke] of Object.entries(operations)) {
       filePath: "/captured/.lando.yml",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /captured/.lando.yml.",
     });
     f.setFailure(error);
     const result = await Effect.runPromise(
@@ -196,6 +231,7 @@ test("supplied shallow info never loads, even when a fallback load would fail", 
       filePath: "/captured/.lando.yml",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /captured/.lando.yml.",
     }),
   );
   const result = await Effect.runPromise(infoApp({}, f.target).pipe(Effect.provide(f.layer)));
@@ -207,7 +243,9 @@ test("captured operations still read invocation-time global and emergency contro
   const f = fixture();
   const captured = {
     ...f.target,
-    landofile: { name: "captured", tooling: { probe: { service: "web", cmd: "env" } } },
+    landofile: await Effect.runPromise(
+      compileTestLandofile({ name: "captured", tooling: { probe: { service: "web", cmd: "env" } } }),
+    ),
   };
   const saved = { claude: process.env.CLAUDECODE, veto: process.env.LANDO_AGENT_ENV };
   process.env.CLAUDECODE = "1";

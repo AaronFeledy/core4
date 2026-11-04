@@ -62,5 +62,5 @@ export const redirectLogSourceBuildSteps = (
  * build-time reification, so they are never followed and never consult the
  * `serviceLogSources` capability.
  */
-export const runtimeFollowLogSources = (logSources: ReadonlyArray<LogSource>): LogSource[] =>
+export const runtimeFollowLogSources = (logSources: ReadonlyArray<LogSource>) =>
   logSources.filter((source) => source.strategy === "follow");

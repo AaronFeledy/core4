@@ -74,6 +74,7 @@ test("debug cause evidence classifies a closed registry authentication diagnosti
     message: "pull failed",
     details: { failureKind: "registry-auth", details: { status: 401 } },
     cause: transport,
+    remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
   });
 
   try {
@@ -111,6 +112,7 @@ test("debug cause evidence classifies a closed pull transport connection diagnos
     message: "pull failed",
     details: { failureKind: "generic" },
     cause: transport,
+    remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
   });
 
   try {
@@ -150,6 +152,7 @@ test("debug cause evidence retains a closed pull stream-frame signature", async 
       reference: secret,
       error: `manifest unknown for ${secret}`,
     },
+    remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
   });
 
   try {
@@ -191,6 +194,7 @@ test("debug cause evidence retains an allowlisted transport read code", async ()
     message: "pull failed",
     details: { failureKind: "generic" },
     cause: transport,
+    remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
   });
 
   try {

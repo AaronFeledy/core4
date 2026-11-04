@@ -11,6 +11,7 @@ import type {
 import type { RendererContribution } from "../renderer/index.ts";
 import type {
   AppPlan,
+  AppliedStateInventory,
   HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -54,7 +55,11 @@ export type RuntimeProviderFactoryRequirements =
   | AppPlanSanitizer;
 
 export interface RuntimeProviderContribution {
+  readonly appliedStateInventory?: (
+    ctx: LandoPluginContext,
+  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;
   readonly id: ProviderId;
+  readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
   readonly resourceOwnership?: (
     ctx: LandoPluginContext,
     root: AbsolutePath,
@@ -140,7 +145,11 @@ export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
  */
 export type ConfigTranslatorLoader = () => Promise<ConfigTranslatorShape>;
 
-export type FileSyncEngineContributionLayer = Layer.Layer<FileSyncEngine, unknown, unknown>;
+export type FileSyncEngineContributionLayer = Layer.Layer<
+  FileSyncEngine,
+  unknown,
+  PathsService | Downloader | ProcessRunner
+>;
 export interface FileSyncEngineContribution {
   readonly make: (ctx: LandoPluginContext) => FileSyncEngineContributionLayer;
 }

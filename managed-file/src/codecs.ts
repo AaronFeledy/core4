@@ -33,14 +33,14 @@ const DEFERRED_TO_4X = "Structured keys-mode merge is deferred to 4.x.";
 const fail = (
   reason: ManagedFileError["reason"],
   operation: ManagedFileOperation,
-  detail: { readonly remediation?: string; readonly cause?: unknown } = {},
+  detail: { readonly remediation: string; readonly cause?: unknown },
 ): Effect.Effect<never, ManagedFileError> =>
   Effect.fail(
     new ManagedFileError({
       reason,
       operation,
       remediation: detail.remediation,
-      cause: detail.cause,
+      ...(detail.cause === undefined ? {} : { cause: detail.cause }),
     }),
   );
 
@@ -123,7 +123,13 @@ export const encode = (
     case "json":
       return Effect.try({
         try: () => `${JSON.stringify(value, null, 2)}\n`,
-        catch: (cause) => new ManagedFileError({ reason: "format", operation, cause }),
+        catch: (cause) =>
+          new ManagedFileError({
+            reason: "format",
+            operation,
+            cause,
+            remediation: "Provide JSON-serializable content for the managed file.",
+          }),
       });
     case "env":
       return encodeEnv(value, operation);
@@ -140,7 +146,9 @@ export const encode = (
           new ManagedFileError({
             reason: "format",
             operation,
-            remediation: cause instanceof LandofileEmitError ? cause.message : undefined,
+            ...(cause instanceof LandofileEmitError
+              ? { remediation: cause.message }
+              : { remediation: "Correct the structured content so it can be emitted as Landofile YAML." }),
             cause,
           }),
       });
@@ -173,14 +181,29 @@ export const decode = (
     case "json":
       return Effect.try({
         try: () => JSON.parse(text) as unknown,
-        catch: (cause) => new ManagedFileError({ reason: "decode", operation, cause }),
+        catch: (cause) =>
+          new ManagedFileError({
+            reason: "decode",
+            operation,
+            cause,
+            remediation: "Fix the on-disk JSON so it parses, then retry the managed-file operation.",
+          }),
       });
     case "env":
       return Effect.succeed(decodeEnv(text));
     case "yaml":
     case "landofile":
       return parseLandofile({ file: `<managed-file:${format}>`, content: text, cwd: "." }).pipe(
-        Effect.mapError((cause) => new ManagedFileError({ reason: "decode", operation, cause })),
+        Effect.mapError(
+          (cause) =>
+            new ManagedFileError({
+              reason: "decode",
+              operation,
+              cause,
+              remediation:
+                "Fix the on-disk YAML/Landofile so it parses, then retry the managed-file operation.",
+            }),
+        ),
       );
     case "toml":
     case "ini":

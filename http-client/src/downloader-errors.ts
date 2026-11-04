@@ -9,6 +9,7 @@ import {
   DownloadSizeMismatchError,
   type DownloadSourceForbiddenError,
 } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { VerifiedStreamError } from "@lando/sdk/verified-stream";
 import type * as HttpClientError from "effect/http/HttpClientError";
 
@@ -27,12 +28,14 @@ export const statusError = (status: number, origin: string): DownloadFetchError 
         message: `The download request failed with HTTP status ${status}.`,
         urlOrigin: origin,
         status,
+        remediation: `Inspect HTTP status ${status} from ${origin}; fix the origin response, auth, or routing, then retry the download.`,
       });
 
 /** Convert Effect `HttpClientError` → `DownloadFetchError`, keeping cause/remediation. */
 export const mapHttpClientError = (
   error: HttpClientError.HttpClientError,
   origin: string,
+  redactor: Redactor,
 ): DownloadFetchError => {
   const reason = error.reason;
   const cause = "cause" in reason ? reason.cause : undefined;
@@ -51,11 +54,16 @@ export const mapHttpClientError = (
     }
   }
   return new DownloadFetchError({
-    message,
+    message: redactor.redactString(message),
     urlOrigin: origin,
     ...(status === undefined ? {} : { status }),
-    ...(remediation === undefined ? {} : { remediation }),
-    ...(cause === undefined ? {} : { cause }),
+    remediation: redactor.redactString(
+      remediation ??
+        (status !== undefined
+          ? `Inspect HTTP status ${status} from ${origin}, fix the origin response or request, then retry the download.`
+          : `Inspect the transport failure for ${origin} (DNS, TLS, proxy, or connectivity), then retry the download.`),
+    ),
+    ...(cause === undefined ? {} : { cause: redactor.redactValue(cause) }),
   });
 };
 
@@ -68,6 +76,7 @@ export const mapVerifiedError = (error: VerifiedStreamError, origin: string): Do
         expectedSha256: error.expectedSha256 ?? "",
         actualSha256: error.actualSha256 ?? "",
         ...(error.actualSizeBytes === undefined ? {} : { sizeBytes: error.actualSizeBytes }),
+        remediation: "Retry the download from a trusted source; the artifact checksum did not match.",
       });
     case "size":
       return new DownloadSizeMismatchError({
@@ -75,12 +84,15 @@ export const mapVerifiedError = (error: VerifiedStreamError, origin: string): Do
         urlOrigin: origin,
         expectedSizeBytes: error.expectedSizeBytes ?? 0,
         actualSizeBytes: error.actualSizeBytes ?? 0,
+        remediation: "Retry the download from a trusted source; the artifact size did not match.",
       });
     case "persist":
       return new DownloadPersistError({
         message: error.message,
         operation: "write",
         ...(error.cause === undefined ? {} : { cause: error.cause }),
+        remediation:
+          "Free disk space or repair the destination path and parent directory, then retry the download write.",
       });
   }
 };

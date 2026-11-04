@@ -20,6 +20,8 @@ export const makePublishRender = (
             event: event._tag,
             message: `Plugin render event failed schema decoding: ${event._tag}`,
             cause,
+            remediation:
+              "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
           }),
       ),
     );

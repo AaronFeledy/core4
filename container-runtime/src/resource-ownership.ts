@@ -8,12 +8,13 @@ import {
   ProviderId,
   ResourceOwnership,
   ServiceName,
+  landoOwnedNetworkNames,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { SCRATCH_ID_LABEL, scratchLabelsForPlan } from "./labels.ts";
 import { isSharedNetwork } from "./native-ownership.ts";
 import { serviceContainerName } from "./plan.ts";
-import { podmanNetworkNames } from "./podman/networks.ts";
 import { volumeClassForStore } from "./volume-classes.ts";
 
 const ResourceOwner = Schema.Struct({
@@ -28,7 +29,12 @@ const ContainerIdentity = Schema.Struct({
   kind: Schema.Literal("container"),
   service: ServiceName,
 });
-const NetworkIdentity = Schema.Struct({ ...ResourceOwner.fields, kind: Schema.Literal("network") });
+const NetworkIdentity = Schema.Struct({
+  ...ResourceOwner.fields,
+  kind: Schema.Literal("network"),
+  role: Schema.optionalKey(Schema.Literal("authored")),
+  scratchId: Schema.optionalKey(AppId),
+});
 const VolumeIdentity = Schema.Struct({
   ...ResourceOwner.fields,
   kind: Schema.Literal("volume"),
@@ -79,6 +85,9 @@ const validate = (inventory: ResourceInventory, root: AbsolutePath, providerId: 
       resource.ownerKey !== owner.ownerKey ||
       resource.providerId !== providerId ||
       (resource.kind === "network" && isSharedNetwork({}, resource.nativeName)) ||
+      (resource.kind === "network" &&
+        resource.scratchId !== undefined &&
+        resource.scratchId !== resource.appId) ||
       identityDigest !== digest(identity) ||
       !inventory.appIds.includes(resource.appId)
     )
@@ -106,6 +115,8 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
                 reason: "version",
                 operation: "resource-ownership",
                 cause: version,
+                remediation:
+                  "Upgrade Lando or clear the resource-ownership state written by an incompatible build.",
               });
             },
           })
@@ -144,6 +155,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         appId: attempt.id,
         providerId: attempt.provider,
       };
+      const scratchId = scratchLabelsForPlan(attempt)[SCRATCH_ID_LABEL];
       for (const service of Object.values(attempt.services))
         resources.push(
           identify({
@@ -153,9 +165,20 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
             service: service.name,
           }),
         );
-      for (const name of podmanNetworkNames(attempt)) {
+      for (const name of landoOwnedNetworkNames(attempt)) {
+        const authored = attempt.networking?.authoredNetworks?.some(
+          (network) => !network.external && network.name === name,
+        );
         if (!isSharedNetwork(attempt, name))
-          resources.push(identify({ ...identity, kind: "network", nativeName: name }));
+          resources.push(
+            identify({
+              ...identity,
+              kind: "network",
+              nativeName: name,
+              ...(authored ? { role: "authored" as const } : {}),
+              ...(scratchId === undefined ? {} : { scratchId: AppId.make(scratchId) }),
+            }),
+          );
       }
       for (const store of attempt.stores)
         resources.push(
@@ -172,11 +195,59 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
     yield* bucket
       .modify((current) => {
         if (current !== null) validate(current, root, providerId);
-        const union = [
-          ...new Map(
-            [...(current?.resources ?? []), ...resources].map((item) => [keyFor(item), item]),
-          ).values(),
-        ];
+        const networkSlot = (item: OwnedResource) =>
+          item.kind === "network"
+            ? canonicalJson({
+                appRoot: item.appRoot,
+                ownerKey: item.ownerKey,
+                providerId: item.providerId,
+                appId: item.appId,
+                nativeName: item.nativeName,
+                role: item.role ?? null,
+              })
+            : undefined;
+        const finalScratchId = scratchLabelsForPlan(plan)[SCRATCH_ID_LABEL];
+        const finalNetworkNames = new Set(
+          landoOwnedNetworkNames(plan).filter((name) => !isSharedNetwork(plan, name)),
+        );
+        const finalScratchSlots = new Set(
+          finalScratchId === undefined
+            ? []
+            : resources
+                .filter(
+                  (item) =>
+                    item.kind === "network" &&
+                    item.scratchId === finalScratchId &&
+                    finalNetworkNames.has(item.nativeName) &&
+                    (item.role === "authored") ===
+                      !!plan.networking?.authoredNetworks?.some(
+                        (network) => !network.external && network.name === item.nativeName,
+                      ),
+                )
+                .map((item) => networkSlot(item)),
+        );
+        const unionByKey = new Map<string, OwnedResource>();
+        for (const item of [...(current?.resources ?? []), ...resources]) {
+          const slot = networkSlot(item);
+          const key = slot === undefined ? `resource:${keyFor(item)}` : `network:${slot}`;
+          const existing = unionByKey.get(key);
+          if (slot !== undefined && existing?.kind === "network" && item.kind === "network") {
+            if (existing.scratchId !== undefined && item.scratchId === undefined) {
+              // A prior scratch proof cannot be downgraded by an ordinary plan.
+              // A previous ordinary attempt is allowed only when the final plan restores proof.
+              if (!finalScratchSlots.has(slot)) throw ownershipFailure(providerId);
+              continue;
+            }
+            if (
+              existing.scratchId !== undefined &&
+              item.scratchId !== undefined &&
+              existing.scratchId !== item.scratchId
+            )
+              throw ownershipFailure(providerId);
+          }
+          unionByKey.set(key, item);
+        }
+        const union = [...unionByKey.values()];
         return [
           undefined,
           {
@@ -188,7 +259,12 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
           },
         ];
       })
-      .pipe(Effect.mapError((cause) => ownershipFailure(providerId, cause)));
+      .pipe(
+        Effect.mapError((cause) => ownershipFailure(providerId, cause)),
+        Effect.catchDefect((defect) =>
+          Schema.is(ProviderUnavailableError)(defect) ? Effect.fail(defect) : Effect.die(defect),
+        ),
+      );
   });
   const retire = Effect.fn("ResourceOwnership.retire")(function* (
     root: AbsolutePath,

@@ -87,17 +87,25 @@ describe("dotnet ServiceType", () => {
   test("plans keepalive, app mount, NuGet cache, and HTTP endpoint defaults", async () => {
     const plan = await planDotnetService(dotnetServiceType, { type: "dotnet" });
 
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+    expect(plan.environment.ASPNETCORE_HTTP_PORTS).toBe("5000");
     expect(String(plan.workingDirectory)).toBe("/app");
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.appMount?.realization).toBe("passthrough");
-    expect(plan.mounts).toEqual([]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]).toMatchObject({ store: "lando-cache-nuget", readOnly: false });
-    expect(String(plan.storage[0]?.target)).toBe("/root/.nuget/packages");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5000, protocol: "http", name: "api" }]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.realization).toBe("passthrough");
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]).toMatchObject({ store: "lando-cache-nuget", readOnly: false });
+    expect(String(volumes[0]?.target)).toBe("/root/.nuget/packages");
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5000, protocol: "http", name: "api", primary: true },
+    ]);
   });
 
   test("resolves certificates and NuGet cache metadata", async () => {
@@ -123,8 +131,11 @@ describe("dotnet ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.test/dotnet-sdk:custom" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8123, protocol: "http", name: "api" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8123, protocol: "http", name: "api", primary: true },
+    ]);
     expect(plan.command).toEqual(["dotnet", "watch"]);
+    expect(plan.environment.ASPNETCORE_HTTP_PORTS).toBe("8123");
     expect(plan.user).toBe("1000:1000");
   });
 
@@ -135,3 +146,4 @@ describe("dotnet ServiceType", () => {
     expect(resolution.normalizedConfig.routes).toEqual(routes);
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

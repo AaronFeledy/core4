@@ -8,7 +8,9 @@ import { type Context, Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
+import { scopedLandofileRuntimeInputs } from "../../src/services/landofile-live.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test("loadUserLandofile resolves toolingIncludes-only injected services", async () => {
@@ -23,9 +25,15 @@ test("loadUserLandofile resolves toolingIncludes-only injected services", async 
       name: "injected",
       toolingIncludes: { docs: { file: "./tasks.yml" } },
     };
-    const service = { discover: Effect.succeed(shape) } satisfies Context.Service.Shape<
-      typeof LandofileService
-    >;
+    const service = {
+      discover: Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+        loadAuthoredDocuments(
+          [{ file: join(appRoot, ".lando.yml"), value: shape }],
+          { appRoot, file: join(appRoot, ".lando.yml") },
+          inputs,
+        ),
+      ),
+    } satisfies Context.Service.Shape<typeof LandofileService>;
 
     // When the user Landofile is loaded through the injected service path
     const resolved = await Effect.runPromise(
@@ -33,8 +41,8 @@ test("loadUserLandofile resolves toolingIncludes-only injected services", async 
     );
 
     // Then the tooling include is resolved instead of returning the injected shape untouched
-    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("make");
-    expect(resolved.toolingIncludes).toBeUndefined();
+    expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("make");
+    expect(resolved.document.toolingIncludes).toBeUndefined();
   } finally {
     process.chdir(previous);
     await rm(appRoot, { recursive: true, force: true });

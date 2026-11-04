@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 
 import {
   OOM_CHECK_NAME,
@@ -10,6 +11,7 @@ import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/co
 
 const PROVIDER = { id: "lando", displayName: "Lando Managed Runtime", version: "0.0.0" } as const;
 const CONTEXT = { provider: PROVIDER, providerKind: "managed" as const, platform: "linux" as const };
+const REDACTOR = createStandaloneRedactor("secrets", { sourceEnv: {} });
 
 const solutionText = (solutions: ReadonlyArray<{ readonly description: string }>): string =>
   solutions
@@ -23,7 +25,7 @@ const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unkn
   Actor: {
     ID: "abc123",
     Attributes: {
-      name: "lando-myapp-web",
+      name: "lando-myapp--web",
       image: "docker.io/library/php:8.3",
       containerExitCode: "137",
       "dev.lando.app": "myapp",
@@ -38,7 +40,7 @@ describe("classifyDiedEvent", () => {
     const result = classifyDiedEvent(diedEvent({ OOMKilled: true }));
     expect(result.kind).toBe("oom");
     if (result.kind !== "oom") throw new Error("expected oom");
-    expect(result.correlation.containerName).toBe("lando-myapp-web");
+    expect(result.correlation.containerName).toBe("lando-myapp--web");
     expect(result.correlation.app).toBe("myapp");
     expect(result.correlation.service).toBe("web");
     expect(result.correlation.image).toBe("docker.io/library/php:8.3");
@@ -50,7 +52,7 @@ describe("classifyDiedEvent", () => {
       diedEvent({
         Actor: {
           Attributes: {
-            name: "lando-x-db",
+            name: "lando-x--db",
             OOMKilled: "true",
             "dev.lando.app": "x",
             "dev.lando.service": "db",
@@ -155,7 +157,7 @@ describe("classifyDiedEvent", () => {
 describe("buildOomDoctorCheck", () => {
   test("oom classification produces a failure check with memory remediation", () => {
     const classification = classifyDiedEvent(diedEvent({ OOMKilled: true }));
-    const check = buildOomDoctorCheck(classification, CONTEXT);
+    const check = buildOomDoctorCheck(classification, CONTEXT, REDACTOR);
     expect(check).toBeDefined();
     if (check === undefined) throw new Error("expected check");
     expect(check.name).toBe(OOM_CHECK_NAME);
@@ -176,7 +178,7 @@ describe("buildOomDoctorCheck", () => {
   });
 
   test("non-oom classifications return undefined (no false diagnostic)", () => {
-    expect(buildOomDoctorCheck(classifyDiedEvent(diedEvent()), CONTEXT)).toBeUndefined();
+    expect(buildOomDoctorCheck(classifyDiedEvent(diedEvent()), CONTEXT, REDACTOR)).toBeUndefined();
     expect(
       buildOomDoctorCheck(
         classifyDiedEvent(
@@ -186,20 +188,22 @@ describe("buildOomDoctorCheck", () => {
           }),
         ),
         CONTEXT,
+        REDACTOR,
       ),
     ).toBeUndefined();
     expect(
-      buildOomDoctorCheck(classifyDiedEvent({ Type: "image", Action: "died" }), CONTEXT),
+      buildOomDoctorCheck(classifyDiedEvent({ Type: "image", Action: "died" }), CONTEXT, REDACTOR),
     ).toBeUndefined();
-    expect(buildOomDoctorCheck(classifyDiedEvent(null), CONTEXT)).toBeUndefined();
+    expect(buildOomDoctorCheck(classifyDiedEvent(null), CONTEXT, REDACTOR)).toBeUndefined();
   });
 
   test("macOS and Windows remediation mention Podman Desktop machine resource settings", () => {
     for (const platform of ["darwin", "win32"] as const) {
-      const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
-        ...CONTEXT,
-        platform,
-      });
+      const check = buildOomDoctorCheck(
+        classifyDiedEvent(diedEvent({ OOMKilled: true })),
+        { ...CONTEXT, platform },
+        REDACTOR,
+      );
       if (check === undefined) throw new Error("expected check");
       expect(solutionText(check.solutions)).toContain("podman desktop");
     }
@@ -207,10 +211,11 @@ describe("buildOomDoctorCheck", () => {
 
   test("linux and WSL remediation do not mention Podman Desktop", () => {
     for (const platform of ["linux", "wsl"] as const) {
-      const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
-        ...CONTEXT,
-        platform,
-      });
+      const check = buildOomDoctorCheck(
+        classifyDiedEvent(diedEvent({ OOMKilled: true })),
+        { ...CONTEXT, platform },
+        REDACTOR,
+      );
       if (check === undefined) throw new Error("expected check");
       expect(solutionText(check.solutions)).not.toContain("podman desktop");
     }
@@ -222,7 +227,7 @@ describe("buildOomDoctorCheck", () => {
         OOMKilled: true,
         Actor: {
           Attributes: {
-            name: "lando-secret-web",
+            name: "lando-secret--web",
             image: "oci://user:s3cr3t@registry.example.com/team/app:latest",
             "dev.lando.app": "https://user:pw@app.example.com",
             "dev.lando.service": "web",
@@ -230,7 +235,7 @@ describe("buildOomDoctorCheck", () => {
         },
       }),
     );
-    const check = buildOomDoctorCheck(classification, CONTEXT);
+    const check = buildOomDoctorCheck(classification, CONTEXT, REDACTOR);
     if (check === undefined) throw new Error("expected check");
     const serialized = JSON.stringify(check);
     expect(serialized).not.toContain("s3cr3t");
@@ -259,6 +264,7 @@ describe("collectOomDoctorChecks", () => {
         }),
       ],
       CONTEXT,
+      REDACTOR,
     );
     expect(checks.length).toBe(2);
     expect(checks.every((c) => c.name === OOM_CHECK_NAME)).toBe(true);
@@ -273,7 +279,7 @@ describe("doctor rendering of oom checks", () => {
           OOMKilled: true,
           Actor: {
             Attributes: {
-              name: "lando-x-web",
+              name: "lando-x--web",
               image: "oci://user:s3cr3t@r.example.com/a",
               "dev.lando.app": "x",
               "dev.lando.service": "web",
@@ -282,6 +288,7 @@ describe("doctor rendering of oom checks", () => {
         }),
       ),
       CONTEXT,
+      REDACTOR,
     );
     if (check === undefined) throw new Error("expected check");
     const text = renderDoctorResult({ checks: [check] });
@@ -297,7 +304,7 @@ describe("doctor rendering of oom checks", () => {
           OOMKilled: true,
           Actor: {
             Attributes: {
-              name: "lando-x-web",
+              name: "lando-x--web",
               image: "oci://user:s3cr3t@r.example.com/a",
               "dev.lando.app": "x",
               "dev.lando.service": "web",
@@ -306,6 +313,7 @@ describe("doctor rendering of oom checks", () => {
         }),
       ),
       CONTEXT,
+      REDACTOR,
     );
     if (check === undefined) throw new Error("expected check");
     const ndjson = renderDoctorResultAsNdjson({ checks: [check] });

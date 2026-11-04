@@ -54,10 +54,13 @@ export class ManagedFileService extends Context.Service<
  * migration UI. `pending` is the read-only dry run: it reports what recovery
  * would do without acquiring the write lock and without mutating stages,
  * journals, backups, targets, or removals.
+ * `assertReadable` uses that inspection to refuse incomplete or blocked updates;
+ * a committed journal is readable and remains untouched until ordinary recovery.
  */
 export class ManagedFileTransactionGuard extends Context.Service<
   ManagedFileTransactionGuard,
   {
+    readonly assertReadable: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
     readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
     readonly pending: (
       appRoot: string,

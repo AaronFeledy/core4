@@ -1,0 +1,19 @@
+Fixture source: https://github.com/actions/languageservices
+Exact commit: b71ac284fc6a7382c22ecbf3e0009a6ae216823b
+Packages: @actions/expressions 0.3.61 and @actions/workflow-parser 0.3.61
+The expressions directory contains the complete upstream expressions/testdata JSON
+corpus at this commit, unchanged. License: MIT (see LICENSE).
+The test harness explicitly skips upstream cases marked options.skip=typescript;
+these represent upstream unsupported behavior, not adapter conformance passes.
+Finite adapter budgets can reject larger inputs than upstream accepts.
+
+The workflows directory contains the complete unchanged upstream
+workflow-parser/testdata/reader corpus (195 YAML files). The copied
+workflow-upstream-unsupported.txt is byte-identical to upstream
+workflow-parser/testdata/skipped-tests.txt at this commit (93 entries).
+Harness coverage: 85 reader fixtures execute with complete converted-model
+comparison (or fixed-code failure admission for expected error fixtures).
+Explicit exclusions, applied in precedence order: 93 upstream unsupported,
+16 require external reusable-workflow file resolution, 1 experimental feature.
+Expression corpus: 1020 cases, 1015 execute and 5 upstream TypeScript exclusions.
+These exclusions are recorded skips, not conformance passes.

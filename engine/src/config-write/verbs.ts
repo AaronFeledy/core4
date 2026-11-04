@@ -1,11 +1,12 @@
 import { Effect, Result } from "effect";
 
-import { LandofileWriteValidationError } from "@lando/sdk/errors";
-import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
-import { recordPreexistingConfigIssues } from "../config/config-warnings.ts";
+import type { ValidationIssue } from "@lando/sdk/schema";
+import { collectDocumentDiagnostics } from "./diagnostics.ts";
+import { type ConfigDocument, persistMutation, resolveDocumentEffect as resolve } from "./document.ts";
 import { parsePathSegments, setAtPath } from "./dot-path";
 import { prepareConfigEdit } from "./prepare-edit";
 import { parseTypedValue } from "./value-parse";
+import { authoredTreesEqual } from "./yaml-verify.ts";
 
 import {
   type ValueType,
@@ -14,70 +15,12 @@ import {
   writeValidationErrorFromIssues,
 } from "./write-core";
 
-export const noEditorError = (file: string): LandofileWriteValidationError =>
-  new LandofileWriteValidationError({
-    message: "No editor is configured.",
-    file,
-    issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-    remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-  });
-
-export const editorFailedError = (
-  file: string,
-  reason: string,
-  remediation: string,
-): LandofileWriteValidationError =>
-  new LandofileWriteValidationError({
-    message: `The editor session failed: ${reason}`,
-    file,
-    issues: [validationIssue([], reason)],
-    remediation,
-  });
-
-export interface ConfigVerbIo<
-  D extends Result.Result<unknown, readonly ValidationIssue[]>,
-  ERead,
-  EWrite,
-  EAfter = never,
-  R = never,
-  EParse = never,
-> {
-  readonly file: string;
-  readonly readText: Effect.Effect<string, ERead, R>;
-  readonly parse: (
-    text: string,
-  ) => Record<string, unknown> | Effect.Effect<Record<string, unknown>, EParse, R>;
-  readonly editCommand: string;
-  readonly decode: (next: unknown) => D | Effect.Effect<D, EAfter, R>;
-  /** Decodes the unchanged file for comparison; must not record warnings. Defaults to `decode`. */
-  readonly decodeBaseline?: ((current: unknown) => D | Effect.Effect<D, EAfter, R>) | undefined;
-  readonly afterDecode?: (decoded: D) => EAfter | undefined;
-  readonly writeText: (file: string, text: string) => Effect.Effect<void, EWrite, R>;
-}
-
-const persistMutation = Effect.fnUntraced(function* <
-  D extends Result.Result<unknown, readonly ValidationIssue[]>,
-  ERead,
-  EWrite,
-  EAfter = never,
-  R = never,
-  EParse = never,
->(
-  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R, EParse> & { readonly key: string },
-  mutation: { readonly text: string; readonly shouldWrite: boolean; readonly decoded: D },
-): Effect.fn.Return<void, LandofileWriteValidationError | EAfter | EWrite, R> {
-  const afterError = input.afterDecode?.(mutation.decoded);
-  if (afterError !== undefined) return yield* Effect.fail(afterError);
-  if (mutation.shouldWrite) {
-    yield* input.writeText(input.file, mutation.text);
-  }
-  if (Result.isFailure(mutation.decoded)) {
-    yield* recordPreexistingConfigIssues(input.file, mutation.decoded.failure);
-  }
-});
-
-const resolve = <A, E, R>(value: A | Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  Effect.isEffect(value) ? value : Effect.succeed(value);
+export {
+  type ConfigDocument,
+  editorFailedError,
+  noEditorError,
+} from "./document.ts";
+export { runEditVerb } from "./edit.ts";
 
 interface DecodeAttempt {
   readonly label: string;
@@ -91,7 +34,15 @@ const interpretationLabel = (value: unknown): string => {
   return typeof value;
 };
 
-const issueIdentity = (issue: ValidationIssue): string => JSON.stringify([issue.path, issue.message]);
+const issueIdentity = ({ path, message, source }: ValidationIssue): string =>
+  JSON.stringify([
+    path,
+    message,
+    source?.layer,
+    source?.path,
+    source !== undefined && "file" in source ? source.file : undefined,
+    source !== undefined && "variable" in source ? source.variable : undefined,
+  ]);
 
 const blockingIssues = (
   issues: readonly ValidationIssue[],
@@ -147,7 +98,7 @@ export const runSetVerb = Effect.fnUntraced(function* <
   R = never,
   EParse = never,
 >(
-  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R, EParse> & {
+  input: ConfigDocument<D, ERead, EWrite, EAfter, R, EParse> & {
     readonly key: string;
     readonly raw: string;
     readonly type?: ValueType | undefined;
@@ -174,26 +125,39 @@ export const runSetVerb = Effect.fnUntraced(function* <
   const attempts: DecodeAttempt[] = [];
   let baseline: readonly ValidationIssue[] | undefined;
   for (const candidate of candidates) {
-    const decoded = yield* resolve(input.decode(candidate.next));
+    const evaluated = yield* collectDocumentDiagnostics(
+      Effect.suspend(() => resolve(input.decode(candidate.next))),
+    );
+    const decoded = evaluated.value;
     const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
     if (Result.isFailure(decoded) && baseline === undefined) {
-      const original = yield* resolve((input.decodeBaseline ?? input.decode)(tree));
+      const { value: original } = yield* collectDocumentDiagnostics(
+        Effect.suspend(() => resolve((input.decodeBaseline ?? input.decode)(tree))),
+      );
       baseline = Result.isFailure(original) ? original.failure : [];
     }
     const blocking = blockingIssues(remainingIssues, baseline ?? [], input.key);
     if (blocking.length === 0) {
-      const text = yield* prepareConfigEdit({
-        ...input,
-        source,
-        tree,
-        next: candidate.next,
-        operation: "set",
+      const changed = !authoredTreesEqual(tree, candidate.next);
+      const text = changed
+        ? yield* prepareConfigEdit({
+            ...input,
+            source,
+            tree,
+            next: candidate.next,
+            operation: "set",
+          })
+        : source;
+      yield* persistMutation(input, {
+        text,
+        shouldWrite: changed && !input.dryRun,
+        decoded,
+        warnings: evaluated.warnings,
       });
-      yield* persistMutation(input, { text, shouldWrite: !input.dryRun, decoded });
       return {
         key: input.key,
         value: candidate.value,
-        changed: true as const,
+        changed,
         dryRun: input.dryRun,
         ...(remainingIssues.length > 0 ? { remainingIssues } : {}),
       };
@@ -219,7 +183,7 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
   R = never,
   EParse = never,
 >(
-  input: ConfigVerbIo<D, ERead, EWrite, EAfter, R, EParse> & {
+  input: ConfigDocument<D, ERead, EWrite, EAfter, R, EParse> & {
     readonly key: string;
     readonly dryRun: boolean;
   },
@@ -228,10 +192,15 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
   const tree = yield* resolve(input.parse(source));
   const mutation = applyUnsetMutation({ tree, key: input.key, file: input.file });
   if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const decoded = yield* resolve(input.decode(mutation.success.next));
+  const evaluated = yield* collectDocumentDiagnostics(
+    Effect.suspend(() => resolve(input.decode(mutation.success.next))),
+  );
+  const decoded = evaluated.value;
   const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
   const original = Result.isFailure(decoded)
-    ? yield* resolve((input.decodeBaseline ?? input.decode)(tree))
+    ? (yield* collectDocumentDiagnostics(
+        Effect.suspend(() => resolve((input.decodeBaseline ?? input.decode)(tree))),
+      )).value
     : decoded;
   const baseline = Result.isFailure(original) ? original.failure : [];
   const issues = blockingIssues(remainingIssues, baseline, input.key);
@@ -251,6 +220,7 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
     text,
     shouldWrite: !input.dryRun && mutation.success.changed,
     decoded,
+    warnings: evaluated.warnings,
   });
   return {
     key: input.key,

@@ -1,11 +1,11 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 const remoteFields = {
   message: Schema.String,
   remote: Schema.optional(Schema.String),
   env: Schema.optional(Schema.String),
   dataset: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 };
 
@@ -13,7 +13,7 @@ const datasetFields = {
   message: Schema.String,
   dataset: Schema.optional(Schema.String),
   service: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 };
 
@@ -37,7 +37,11 @@ export class RemoteProviderUnavailableError extends Schema.TaggedError<RemotePro
     message: Schema.String,
     requested: Schema.optional(Schema.String),
     installOptions: Schema.optional(Schema.Array(Schema.String)),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed("Install a RemoteSource plugin for this remote, then rerun the command."),
+      ),
+    ),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}

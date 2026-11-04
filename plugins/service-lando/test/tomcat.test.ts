@@ -5,6 +5,7 @@ import { composeService } from "@lando/engine/services/feature";
 import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   TOMCAT_FEATURE_ID,
@@ -85,6 +86,7 @@ describe("tomcat ServiceType", () => {
             defaultFeatures: [],
           },
           baseKind: "lando",
+          appSlug: "myapp",
           appRoot: "/srv/apps/myapp",
           normalizedConfig: {},
           features: [{ id: TOMCAT_FEATURE_ID, definition: tomcatServiceFeature, config }],
@@ -117,17 +119,22 @@ describe("tomcat ServiceType", () => {
         expect(plan.type).toBe("tomcat");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8080, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8080, protocol: "http", name: "appserver", primary: true },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/app");
-        expect(plan.mounts).toEqual([]);
+        expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+        expect(
+          plan.mounts.filter(
+            (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+          ),
+        ).toEqual([]);
         expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
         expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
         expect(plan.environment.LANDO_WEBROOT).toBe("/app");
         expect(String(plan.workingDirectory)).toBe("/app");
         expect(plan.healthcheck).toEqual({
           kind: "command",
-          command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],
+          command: tcpProbe(8080, 20).command,
+          target: { port: 8080, transport: "tcp", names: [], primary: false },
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,
@@ -161,9 +168,9 @@ describe("tomcat ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "tomcat:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8888, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8888, protocol: "http", name: "appserver", primary: true },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/app");
+        expect(String(serviceAppMount(plan)?.target)).toBe("/app");
         expect(plan.command).toEqual(["catalina.sh", "run"]);
         expect(plan.user).toBe("1000:1000");
       });
@@ -255,3 +262,4 @@ describe("tomcat ServiceType", () => {
     });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

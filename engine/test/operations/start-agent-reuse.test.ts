@@ -72,22 +72,17 @@ for (const failFirst of [false, true]) {
         }),
       );
       const registered: string[] = [];
-      const redaction = makeRedactionService({
-        id: "test",
-        list: Effect.succeed([]),
-        get: () => Effect.succeed("unused"),
-        has: () => Effect.succeed(false),
-      });
+      const redaction = makeRedactionService();
       const target = {
         plan: selected,
         root: selected.root,
         app: { kind: "user" as const, id: selected.id, root: selected.root },
-        landofile: {
+        landofile: literalTestLandofile({
           name: selected.name,
           services: {},
           sshAgent: { sidecar: false, socket: socketPath },
           gpgAgent: { forward: kind === "gpg", socket: socketPath },
-        },
+        }),
       };
       const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         effect.pipe(
@@ -188,3 +183,4 @@ for (const failFirst of [false, true]) {
     },
   );
 }
+import { literalTestLandofile } from "../compiled-landofile.ts";

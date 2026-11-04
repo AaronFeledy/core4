@@ -174,6 +174,8 @@ Use the master key to manage API keys, then give backend code an admin or narrow
 
 The service type uses `getmeili/meilisearch:v1.11`, listens on `7700`, and stores index data under `/meili_data`. It sets `MEILI_ENV=development`, `MEILI_NO_ANALYTICS=true`, and the default `MEILI_MASTER_KEY=lando` unless you override them.
 
+Set the service's `port:` to change its listener; Lando derives `MEILI_HTTP_ADDR` and the healthcheck from that port. If you also set `MEILI_HTTP_ADDR`, including through an env file or `appEnv`, it must use `:port`, `0.0.0.0:port`, or `[::]:port` with the same port. Lando preserves accepted text, but rejects malformed, loopback, or mismatched binds before starting containers. Remove the conflicting variable and set `port:` instead.
+
 Check the running server's actual release rather than assuming the patch version behind the image tag:
 
 ```sh
@@ -201,10 +203,9 @@ services:
   search:
     type: meilisearch
     image: getmeili/meilisearch:v1.11.3
-    home: false
 ```
 
-`home: false` disables home-directory persistence for the custom image. Without it or an explicit `home.path`, Lando can't infer the home and planning fails. The separate `/meili_data` volume still persists index data.
+With your own `image:`, Lando plans no home store for `search`. The separate `/meili_data` volume still persists index data.
 
 After an authorized version change and any required migration, run `lando rebuild`, then repeat the health and `/version` checks. Also rerun a search; a running container alone doesn't prove the data is usable.
 
@@ -243,7 +244,7 @@ These checks exercise the declared services, tooling, and app plan. They don't v
 
 ## Keep or remove the index data
 
-`lando destroy -y` removes app containers and networks but keeps the `<app>-meilisearch-data` volume, so the index remains available after the next start:
+`lando destroy -y` removes app containers and networks but keeps the `lando-<app>--<service>--meilisearch-data` volume, so the index remains available after the next start:
 
 ```sh
 lando destroy -y

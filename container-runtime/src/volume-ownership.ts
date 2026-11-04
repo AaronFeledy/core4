@@ -34,8 +34,9 @@
  * either form. The labels are not collapsed into one, so nothing here needs a
  * migration path for volumes an earlier build created.
  */
-import { type AppPlan, planAppIdentity } from "@lando/sdk/schema";
+import { type AppPlan, appIdentityKey, planAppIdentity } from "@lando/sdk/schema";
 
+import { isOwnershipRoot } from "./ownership-root.ts";
 import {
   type VolumeFilterMap,
   type VolumeSelectorClass,
@@ -43,12 +44,47 @@ import {
   volumeSelectorValue,
 } from "./podman/volume-prune.ts";
 import { volumeClassForStore } from "./volume-classes.ts";
+import { volumeClassFromLabels } from "./volume-classes.ts";
 
 /** Canonical app root, written verbatim; the ownership proof readers compare against. */
 export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";
 
 /** Ownership-complete selection value; the only label a prune filter may select on. */
 export const VOLUME_SELECTOR_LABEL = "dev.lando.volume-selector";
+
+export const coherentVolumeOwnership = (
+  labels: Readonly<Record<string, string>>,
+  providerId: string,
+): boolean => {
+  const root = labels[VOLUME_OWNER_LABEL];
+  const app = labels["dev.lando.app"];
+  const scope = labels["dev.lando.scope"];
+  const kind = labels["dev.lando.storage-kind"];
+  if (
+    !root ||
+    !isOwnershipRoot(root) ||
+    !app ||
+    !labels["dev.lando.store"] ||
+    !labels["dev.lando.volume-instance"]
+  )
+    return false;
+  if (scope !== "app" && scope !== "service" && scope !== "global") return false;
+  if (kind !== undefined && kind !== "cache") return false;
+  if (labels["dev.lando.provider"] !== undefined && labels["dev.lando.provider"] !== providerId) return false;
+  if (labels["dev.lando.app-root"] !== undefined && labels["dev.lando.app-root"] !== root) return false;
+  if (labels["dev.lando.owner"] !== undefined && labels["dev.lando.owner"] !== appIdentityKey("owner", root))
+    return false;
+  if (labels["com.lando.app"] !== undefined && labels["com.lando.app"] !== app) return false;
+  return (
+    labels[VOLUME_SELECTOR_LABEL] ===
+    volumeSelectorValue({
+      providerId,
+      appId: app,
+      ownerKey: appIdentityKey("owner", root),
+      volumeClass: volumeClassFromLabels(labels),
+    })
+  );
+};
 
 /** The ownership label pair for one store; neither label is ever written without the other. */
 export const volumeOwnershipLabels = (

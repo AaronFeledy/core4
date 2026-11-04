@@ -1,4 +1,13 @@
-import { AbsolutePath, planAppIdentity } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppPlan,
+  DatabaseConnection,
+  Environment,
+  ServiceCreds,
+  type ServicePlan,
+  planAppIdentity,
+} from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { Predicate } from "effect";
 import type { SqlCreds } from "./creds.ts";
 
@@ -16,7 +25,10 @@ export type SqlLandofile = {
 export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
-  readonly environment: Readonly<Record<string, string>>;
+  readonly environment: Environment;
+  readonly connection?: DatabaseConnection;
+  readonly extensions: Readonly<Record<string, unknown>>;
+  readonly nonSqlCreds?: NonNullable<ServicePlan["nonSqlCreds"]>;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
 
@@ -29,6 +41,9 @@ export type SqlPlan = {
     readonly ownerKey: string;
     readonly repoGroupKey?: string;
   };
+  readonly committedLiteralDigests?: NonNullable<AppPlan["committedLiteralDigests"]>;
+  readonly extensions?: AppPlan["extensions"];
+  readonly events?: NonNullable<AppPlan["events"]>;
   readonly services: Readonly<Record<string, SqlPlanService>>;
 };
 
@@ -107,31 +122,44 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
   const mapped: Record<string, SqlPlanService> = {};
   for (const [name, service] of Object.entries(services)) {
     if (!objectOrArray(service)) continue;
-    const environment: Record<string, string> = {};
-    if (objectOrArray(service.environment)) {
-      for (const [key, item] of Object.entries(service.environment)) {
-        if (typeof item === "string") environment[key] = item;
-      }
-    }
-    const storage = Array.isArray(service.storage)
-      ? service.storage.flatMap((entry) => {
-          if (!objectOrArray(entry) || typeof entry.store !== "string") return [];
-          const target = asString(entry.target);
-          return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
-        })
-      : [];
+    const environment = Schema.decodeUnknownSync(Environment)(
+      Object.fromEntries(Object.entries(objectOrArray(service.environment) ? service.environment : {})),
+    );
+    // Volume entries live on ServicePlan.mounts; keep a narrow storage projection for SQL.
+    const mounts = Array.isArray(service.mounts) ? service.mounts : [];
+    const storage = mounts.flatMap((entry) => {
+      if (!objectOrArray(entry) || entry.type !== "volume" || typeof entry.store !== "string") return [];
+      const target = asString(entry.target);
+      return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
+    });
+    const extensions = objectOrArray(service.extensions) ? service.extensions : {};
     mapped[name] = {
       name: asString(service.name) ?? name,
       type: asString(service.type) ?? name,
       environment,
+      ...(service.connection === undefined
+        ? {}
+        : { connection: Schema.decodeUnknownSync(DatabaseConnection)(service.connection) }),
+      extensions,
+      ...(service.nonSqlCreds === undefined
+        ? {}
+        : { nonSqlCreds: Schema.decodeUnknownSync(ServiceCreds)(service.nonSqlCreds) }),
       storage,
     };
   }
+  const committedLiteralDigests =
+    record.committedLiteralDigests === undefined
+      ? undefined
+      : Schema.decodeUnknownSync(AppPlan.fields.committedLiteralDigests)(record.committedLiteralDigests);
+  const appPlan = Schema.is(AppPlan)(value) ? value : undefined;
   return {
     id: asString(record.id) ?? "app",
     name: asString(record.name) ?? "app",
     root: asString(record.root) ?? "/",
     ...(identity === undefined ? {} : { identity }),
+    ...(committedLiteralDigests === undefined ? {} : { committedLiteralDigests }),
+    ...(objectOrArray(record.extensions) ? { extensions: record.extensions } : {}),
+    ...(appPlan?.events === undefined ? {} : { events: appPlan.events }),
     services: mapped,
   };
 };
@@ -141,7 +169,7 @@ export const sqlPlanFromLandofile = (landofile: SqlLandofile): SqlPlan => {
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
     const type = service?.type;
     if (type === undefined) continue;
-    services[name] = { name, type, environment: {}, storage: [] };
+    services[name] = { name, type, environment: {}, extensions: {}, storage: [] };
   }
   return {
     id: landofile.name ?? "app",

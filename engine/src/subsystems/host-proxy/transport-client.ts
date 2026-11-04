@@ -16,7 +16,6 @@ import type { HostProxyRunLandoResult } from "./dispatch.ts";
 import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
 import { decodeNdjsonResponse } from "./transport-frames.ts";
 import {
-  HOST_PROXY_MAX_FRAME_BYTES,
   type HostProxyRunLandoClientRequest,
   type HostProxyRunLandoConnectionSession,
   type HostProxyTransportError,
@@ -35,7 +34,8 @@ const decodeWireResponse = (raw: string): HostProxyRunLandoResult => {
     });
   }
   const response = Schema.decodeUnknownSync(WireResponse)(JSON.parse(raw));
-  if (response._tag === "ok") return { envelope: response.envelope, exitCode: response.exitCode };
+  if (response._tag === "ok")
+    return { stdout: response.stdout, stderr: response.stderr, exitCode: response.exitCode };
   switch (response.tag) {
     case "HostProxyAuthenticationError":
       throw authError(
@@ -77,7 +77,7 @@ export const sendHostProxyRunLando = (
   options: { readonly depth?: number; readonly callerService?: string } = {},
 ): Effect.Effect<HostProxyRunLandoResult, HostProxyTransportError> =>
   Effect.tryPromise({
-    try: () =>
+    try: (signal) =>
       new Promise<HostProxyRunLandoResult>((resolveResult, reject) => {
         let response = "";
         let responseStarted = false;
@@ -86,11 +86,13 @@ export const sendHostProxyRunLando = (
         const resolveOnce = (result: HostProxyRunLandoResult): void => {
           if (settled) return;
           settled = true;
+          signal.removeEventListener("abort", abort);
           resolveResult(result);
         };
         const rejectOnce = (cause: unknown): void => {
           if (settled) return;
           settled = true;
+          signal.removeEventListener("abort", abort);
           reject(cause);
         };
         const rejectIncomplete = (): void => {
@@ -118,8 +120,6 @@ export const sendHostProxyRunLando = (
           res.setEncoding("utf8");
           res.on("data", (chunk) => {
             response += chunk;
-            if (response.length > HOST_PROXY_MAX_FRAME_BYTES)
-              req.destroy(new Error("Host-proxy response exceeded maximum frame size."));
           });
           res.once("aborted", rejectIncomplete);
           res.once("error", rejectOnce);
@@ -144,6 +144,9 @@ export const sendHostProxyRunLando = (
               )
             : httpRequest(new URL("/runLando", session.url), requestOptions, onResponse);
         req.once("error", rejectOnce);
+        const abort = () => req.destroy(new TypeError("Host-proxy call cancelled."));
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
         req.once("close", () => {
           if (!responseStarted) rejectIncomplete();
         });

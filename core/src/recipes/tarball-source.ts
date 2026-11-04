@@ -1,60 +1,33 @@
 /**
  * `tarball` recipe source resolver.
  *
- * Downloads a `https://…` (or any `fetch`-able) archive, verifies its SHA-256,
- * extracts it under `<userDataRoot>/recipe-cache/tarball/<sha256>/`, and
- * resolves `recipe.yml` at the archive top level (or a monorepo `--path`
- * subpath). Mirrors the `git` source's cache/publish/subpath discipline.
+ * Downloads through SourceSession.acquireArchive (shared source cache, SHA-256
+ * identity), then resolves recipe.yml at the archive root or a monorepo --path.
  *
  * Checksum policy:
- *   - `--checksum=<hash>` supplied → SHA-256 is REQUIRED; a mismatch fails with
- *     a tagged `checksum-mismatch` error before anything is extracted.
- *   - no checksum → warn-only; when an interactive confirm seam is supplied
- *     (i.e. not `--yes`/`--no-interactive`) the user is prompted once and a
- *     decline aborts with `checksum-unverified`.
+ *   - `--checksum=<hash>` supplied → SHA-256 is REQUIRED; mismatch fails before extract.
+ *   - no checksum → warn/confirm via onUnverified; decline aborts with checksum-unverified.
  */
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { RecipeSourceError } from "@lando/sdk/errors";
+import { type SourceSession, displaySource } from "@lando/source-acquisition";
 
-import { Effect, Layer } from "effect";
-
-import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
-import { Downloader } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { layer as downloaderLayer } from "@lando/http-client/downloader";
-import { layer as httpClientLayer } from "@lando/http-client/live";
-import { sha256Hex } from "@lando/sdk/digest";
-import { publish } from "./git-source";
 import type { ResolvedRecipe } from "./source";
-import {
-  normalizeRecipeSubpath,
-  recipeFileExists,
-  recipeUserDataRoot,
-  resolveRecipeManifest,
-} from "./source-support";
-
-export interface TarballRecipeFetcher {
-  readonly fetch: (url: string) => Promise<Uint8Array>;
-}
-
-export interface TarballRecipeExtractor {
-  readonly extract: (archiveBytes: Uint8Array, destDir: string) => Promise<void>;
-}
+import { runSourceSession } from "./source-session";
+import { normalizeRecipeSubpath, resolveRecipeManifest } from "./source-support";
 
 export interface ResolveTarballRecipeSourceOptions {
   readonly url: string;
   readonly path?: string;
   readonly checksum?: string;
-  readonly userDataRoot?: string;
-  readonly fetcher?: TarballRecipeFetcher;
-  readonly extractor?: TarballRecipeExtractor;
-  // Emitted once with the computed SHA-256 when no `--checksum` was supplied.
+  readonly sources: SourceSession;
+  /** Aborts in-flight acquisition when the caller is cancelled. */
+  readonly signal?: AbortSignal;
+  /** Emitted once with the computed SHA-256 when no `--checksum` was supplied. */
   readonly onWarn?: (message: string) => void | Promise<void>;
-  // Interactive confirmation seam for the unverified-checksum case. Returning
-  // `false` aborts the init. Absent ⇒ warn-only (i.e. `--yes`/non-interactive).
+  /**
+   * Interactive confirmation for the unverified-checksum case. Returning false
+   * aborts. Absent ⇒ warn-only (`--yes`/non-interactive).
+   */
   readonly confirmUnverified?: (sha256: string) => Promise<boolean>;
 }
 
@@ -74,164 +47,13 @@ const sourceError = (input: {
     | "subpath-missing"
     | "cache";
   readonly remediation: string;
-}): RecipeSourceError => new RecipeSourceError(input);
-
-const SHA256_RE = /^[0-9a-f]{64}$/u;
-
-export const makeTarballRecipeFetcher = (
-  retainedDownloader?: typeof Downloader.Service,
-): TarballRecipeFetcher => ({
-  fetch: (url) =>
-    Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const directory = yield* Effect.acquireRelease(
-            Effect.promise(() => mkdtemp(join(tmpdir(), "lando-tarball-fetch-"))),
-            (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
-          );
-          const downloader = yield* Downloader;
-          const result = yield* downloader.download({
-            url,
-            destination: { kind: "file", directory, filename: "archive" },
-          });
-          const bytes = yield* Effect.promise(() => readFile(result.path ?? join(directory, "archive")));
-          return new Uint8Array(bytes);
-        }).pipe(
-          Effect.provide(
-            retainedDownloader === undefined
-              ? downloaderLayer.pipe(
-                  Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
-                )
-              : Layer.succeed(Downloader, retainedDownloader),
-          ),
-        ),
-      ),
-    ),
-});
-export const defaultTarballRecipeFetcher = makeTarballRecipeFetcher();
-
-const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-
-const TAR_BLOCK = 512;
-// Decompression-bomb guard for gzip-compressed recipe tarballs.
-const DEFAULT_MAX_DECOMPRESSED_BYTES = 2 * 1024 ** 3;
-
-interface TarballExtractionPolicy {
-  readonly source: string;
-  readonly maxDecompressedBytes: number;
-}
-
-/**
- * Safe relative path for a tar entry: forward-slash normalized, leading slashes
- * and `.` segments dropped, and any `..` segment rejects the whole archive
- * (path-traversal guard, mirroring the git subpath invariant).
- */
-const safeEntryPath = (entryName: string, source: string): string => {
-  const segments = entryName
-    .replace(/\\/gu, "/")
-    .split("/")
-    .filter((segment) => segment !== "" && segment !== ".");
-  if (segments.some((segment) => segment === "..")) {
-    throw sourceError({
-      message: `Tarball entry escapes the extraction directory: ${entryName}`,
-      source,
-      kind: "extract-failed",
-      remediation: "The archive contains an unsafe path; re-publish it without parent-directory entries.",
-    });
-  }
-  return segments.join("/");
-};
-
-/**
- * Minimal in-memory tar(.gz) extractor (ustar + GNU longname). The whole
- * archive is buffered — recipe tarballs are small. Regular files and
- * directories are written; links/devices/PAX headers are skipped.
- */
-const extractTarballToDirImpl = async (
-  archiveBytes: Uint8Array,
-  destDir: string,
-  policy: TarballExtractionPolicy,
-): Promise<void> => {
-  const archiveBuffer = Buffer.from(archiveBytes);
-  const tar = (() => {
-    if (!isGzip(archiveBytes)) return archiveBuffer;
-    try {
-      return gunzipSync(archiveBuffer, { maxOutputLength: policy.maxDecompressedBytes });
-    } catch (cause) {
-      if (cause instanceof Error && "code" in cause && cause.code === "ERR_BUFFER_TOO_LARGE") {
-        throw sourceError({
-          message: `Tarball recipe source ${policy.source} exceeded the decompressed-size cap of ${policy.maxDecompressedBytes} bytes.`,
-          source: policy.source,
-          kind: "extract-failed",
-          remediation:
-            "The archive is unreasonably large or likely malformed; re-publish a smaller archive and retry.",
-        });
-      }
-      throw cause;
-    }
-  })();
-  await mkdir(destDir, { recursive: true });
-  let pos = 0;
-  let longName: string | undefined;
-  while (pos + TAR_BLOCK <= tar.length) {
-    const header = tar.subarray(pos, pos + TAR_BLOCK);
-    if (header[0] === 0) break; // end-of-archive sentinel
-    let nameEnd = 0;
-    while (nameEnd < 100 && header[nameEnd] !== 0) nameEnd += 1;
-    const name = Buffer.from(header.subarray(0, nameEnd)).toString("utf8");
-    let prefixEnd = 0;
-    while (prefixEnd < 155 && header[345 + prefixEnd] !== 0) prefixEnd += 1;
-    const prefix = Buffer.from(header.subarray(345, 345 + prefixEnd)).toString("utf8");
-    const sizeOctal = Buffer.from(header.subarray(124, 136))
-      .toString("ascii")
-      .replace(/[^0-7]/gu, "");
-    const size = sizeOctal.length > 0 ? Number.parseInt(sizeOctal, 8) : 0;
-    const typeflag = header[156];
-    pos += TAR_BLOCK;
-    const dataStart = pos;
-    pos += Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
-
-    if (typeflag === 76 /* 'L' GNU longname */) {
-      longName = Buffer.from(tar.subarray(dataStart, dataStart + size))
-        .toString("utf8")
-        .replace(/\0+$/u, "");
-      continue;
-    }
-    if (typeflag === 120 /* 'x' */ || typeflag === 103 /* 'g' PAX */) {
-      longName = undefined;
-      continue;
-    }
-
-    const fullName = longName ?? (prefix === "" ? name : `${prefix}/${name}`);
-    longName = undefined;
-    const safeRel = safeEntryPath(fullName, policy.source);
-    if (safeRel === "") continue;
-    const target = join(destDir, safeRel);
-
-    const isDir = typeflag === 53 /* '5' */ || fullName.endsWith("/");
-    if (isDir) {
-      await mkdir(target, { recursive: true });
-      continue;
-    }
-    if (typeflag === 0 || typeflag === 48 /* '0' regular */) {
-      await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, tar.subarray(dataStart, dataStart + size));
-    }
-    // links/devices/fifos are skipped intentionally.
-  }
-};
-
-export const makeTarballRecipeExtractor = (options?: {
-  readonly maxDecompressedBytes?: number;
-}): TarballRecipeExtractor => {
-  const maxDecompressedBytes = options?.maxDecompressedBytes ?? DEFAULT_MAX_DECOMPRESSED_BYTES;
-  return {
-    extract: (archiveBytes, destDir) =>
-      extractTarballToDirImpl(archiveBytes, destDir, { source: "tarball", maxDecompressedBytes }),
-  };
-};
-
-export const defaultTarballRecipeExtractor: TarballRecipeExtractor = makeTarballRecipeExtractor();
+}): RecipeSourceError =>
+  new RecipeSourceError({
+    ...input,
+    message: displaySource(input.message),
+    source: displaySource(input.source),
+    remediation: displaySource(input.remediation),
+  });
 
 export const resolveTarballRecipeSource = async (
   options: ResolveTarballRecipeSourceOptions,
@@ -244,99 +66,55 @@ export const resolveTarballRecipeSource = async (
     },
   );
   const expectedChecksum = options.checksum?.trim().toLowerCase();
-
-  const root = await recipeUserDataRoot(options.userDataRoot).catch((cause) => {
+  if (
+    expectedChecksum !== undefined &&
+    expectedChecksum !== "" &&
+    !/^[0-9a-f]{64}$/u.test(expectedChecksum)
+  ) {
     throw sourceError({
-      message: `Could not resolve the Lando user data root for tarball recipe caching: ${causeMessage(cause)}`,
-      source: "tarball",
-      kind: "cache",
-      remediation: "Set LANDO_USER_DATA_ROOT or fix the Lando config file, then retry lando init.",
-    });
-  });
-  const cacheRoot = join(root, "recipe-cache", "tarball");
-  await mkdir(cacheRoot, { recursive: true }).catch((cause) => {
-    throw sourceError({
-      message: `Could not create tarball recipe cache at ${cacheRoot}: ${causeMessage(cause)}`,
+      message: `--checksum must be a 64-character hex SHA-256 digest: ${options.checksum}`,
       source: options.url,
-      kind: "cache",
-      remediation: "Check permissions for the Lando user data root and retry lando init.",
+      kind: "checksum-mismatch",
+      remediation: "Pass --checksum=<sha256> as 64 lowercase hex characters.",
     });
+  }
+
+  let declined: RecipeSourceError | undefined;
+  const snapshot = await runSourceSession(
+    options.sources.acquireArchive(
+      {
+        url: options.url,
+        ...(expectedChecksum === undefined || expectedChecksum === "" ? {} : { sha256: expectedChecksum }),
+      },
+      {
+        onUnverified: async (sha256) => {
+          await options.onWarn?.(
+            `No --checksum supplied for tarball recipe ${displaySource(options.url)}; downloaded SHA-256 is ${sha256}. Pass --checksum=<sha256> to verify the archive on future runs.`,
+          );
+          if (options.confirmUnverified !== undefined) {
+            const confirmed = await options.confirmUnverified(sha256);
+            if (!confirmed) {
+              declined = sourceError({
+                message: `Tarball recipe ${displaySource(options.url)} was not verified (no --checksum) and the prompt was declined.`,
+                source: displaySource(options.url),
+                kind: "checksum-unverified",
+                remediation: "Re-run with --checksum=<sha256> to verify the archive, or accept the prompt.",
+              });
+              throw declined;
+            }
+          }
+        },
+      },
+    ),
+    "archive",
+    options.signal,
+  ).catch((cause: unknown) => {
+    throw declined ?? cause;
   });
 
-  let archiveBytes: Uint8Array;
-  try {
-    archiveBytes = await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(options.url);
-  } catch (cause) {
-    throw sourceError({
-      message: `Could not download tarball recipe source ${options.url}: ${causeMessage(cause)}`,
-      source: options.url,
-      kind: "download-failed",
-      remediation: "Check that the tarball URL is reachable and retry lando init.",
-    });
-  }
+  const sha256 = snapshot.pin.sha256;
 
-  const sha256 = sha256Hex(archiveBytes);
-
-  if (expectedChecksum !== undefined && expectedChecksum !== "") {
-    if (!SHA256_RE.test(expectedChecksum)) {
-      throw sourceError({
-        message: `--checksum must be a 64-character hex SHA-256 digest: ${options.checksum}`,
-        source: options.url,
-        kind: "checksum-mismatch",
-        remediation: "Pass --checksum=<sha256> as 64 lowercase hex characters.",
-      });
-    }
-    if (sha256 !== expectedChecksum) {
-      throw sourceError({
-        message: `Tarball recipe SHA-256 mismatch for ${options.url}: expected ${expectedChecksum}, got ${sha256}.`,
-        source: options.url,
-        kind: "checksum-mismatch",
-        remediation: "Verify the --checksum value or re-download the tarball; the archive was not extracted.",
-      });
-    }
-  } else {
-    await options.onWarn?.(
-      `No --checksum supplied for tarball recipe ${options.url}; downloaded SHA-256 is ${sha256}. Pass --checksum=<sha256> to verify the archive on future runs.`,
-    );
-    if (options.confirmUnverified !== undefined) {
-      const confirmed = await options.confirmUnverified(sha256);
-      if (!confirmed) {
-        throw sourceError({
-          message: `Tarball recipe ${options.url} was not verified (no --checksum) and the prompt was declined.`,
-          source: options.url,
-          kind: "checksum-unverified",
-          remediation: "Re-run with --checksum=<sha256> to verify the archive, or accept the prompt.",
-        });
-      }
-    }
-  }
-
-  const publishedDir = join(cacheRoot, sha256);
-  if (!(await recipeFileExists(publishedDir))) {
-    const stagingDir = await mkdtemp(join(cacheRoot, ".staging-"));
-    try {
-      await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingDir);
-    } catch (cause) {
-      await rm(stagingDir, { recursive: true, force: true });
-      if (cause instanceof RecipeSourceError) throw cause;
-      throw sourceError({
-        message: `Could not extract tarball recipe source ${options.url}: ${causeMessage(cause)}`,
-        source: options.url,
-        kind: "extract-failed",
-        remediation: "The archive could not be read as a tar/tar.gz; check the URL points at a tarball.",
-      });
-    }
-    await publish(stagingDir, publishedDir).catch(async (cause) => {
-      await rm(stagingDir, { recursive: true, force: true });
-      throw sourceError({
-        message: `Could not publish tarball recipe cache at ${publishedDir}: ${causeMessage(cause)}`,
-        source: options.url,
-        kind: "cache",
-        remediation: "Check permissions for the Lando user data root and retry lando init.",
-      });
-    });
-  }
-
+  const publishedDir = snapshot.root;
   const { recipeRoot, manifestPath, manifestYaml } = await resolveRecipeManifest({
     publishedDir,
     safeSubpath,
@@ -352,6 +130,8 @@ export const resolveTarballRecipeSource = async (
     source: manifestPath,
     manifestYaml,
     root: recipeRoot,
+    acquisitionRoot: publishedDir,
     sha256,
+    transport: { kind: "archive", digest: sha256 },
   };
 };

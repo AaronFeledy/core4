@@ -144,6 +144,11 @@ export const buildCompiledBinary = async (
       compile: {
         target: bunTargetFor(platform),
         outfile: options.outfile,
+        // Baked into the executable: eval(), new Function(), node:vm, data: imports, eval Workers
+        // and source-returning plugins all throw. Lando has none; the jq engine is an AST
+        // interpreter and .lando.ts / recipe.ts load through file-path import(). BUN_BE_BUN=1
+        // re-entry runs Bun without this flag, so the host-shell --eval path keeps working.
+        execArgv: ["--disallow-code-generation-from-strings=strict"],
         // Bun applies PE branding only on Windows hosts; CI uses native Windows runners.
         ...(isWindowsCiPlatform(platform) && isWindowsCiPlatform({ id: host })
           ? { windows: { ...WINDOWS_BRANDING, version: windowsPeVersion(version) } }

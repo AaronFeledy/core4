@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +13,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -21,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -36,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -83,9 +88,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -111,15 +132,22 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -127,13 +155,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -154,12 +182,12 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -180,9 +208,19 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       kind: "ref",
       ref: "opensearchproject/opensearch:2",
     });
-    expect(search.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "search" }]);
-    expect(search.storage).toHaveLength(1);
-    expect(search.storage[0]?.store).toBe("myapp-opensearch-data");
+    expect(search.endpoints).toEqual([
+      {
+        _tag: "internal",
+        port: 9200,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
+    ]);
+    const volumes = search.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("lando-myapp--search--opensearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual([
       "bash",
@@ -203,7 +241,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       tooling: {
         "os-cli": {
           service: "search",
-          cmd: ["sh", "-c", 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"', "os-cli"],
+          cmd: ["sh", "-c", 'path=$${1:-/}; curl -sf -- "http://localhost:9200$${path}"', "os-cli"],
         },
       },
     });
@@ -213,7 +251,9 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "os-cli", args: ["/_cluster/health"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "os-cli", input: { _tag: "RawArgv", argv: ["/_cluster/health"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("os-cli");
@@ -238,7 +278,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       tooling: {
         "os-cli": {
           service: "search",
-          cmd: ["sh", "-c", 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"', "os-cli"],
+          cmd: ["sh", "-c", 'path=$${1:-/}; curl -sf -- "http://localhost:9200$${path}"', "os-cli"],
         },
       },
     });
@@ -249,7 +289,9 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "os-cli", args: ["/_cat/indices"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "os-cli", input: { _tag: "RawArgv", argv: ["/_cat/indices"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);

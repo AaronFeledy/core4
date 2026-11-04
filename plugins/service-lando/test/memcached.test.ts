@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
   MEMCACHED_FEATURE_ID,
   memcachedServiceFeature,
@@ -43,9 +44,11 @@ describe("memcached ServiceType", () => {
     expect(plan.type).toBe("memcached");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
     expect(plan.command).toEqual(["memcached", "-p", "11211"]);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 11211, protocol: "tcp", name: "cache" }]);
-    expect(plan.storage).toEqual([]);
-    expect(plan.appMount).toBeUndefined();
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 11211, protocol: "tcp", name: "cache", primary: true },
+    ]);
+    expect(plan.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
+    expect(serviceAppMount(plan)).toBeUndefined();
   });
 
   test("respects image, port, and command overrides", async () => {
@@ -72,7 +75,8 @@ describe("memcached ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/11211"],
+      command: tcpProbe(11211, 30).command,
+      target: { port: 11211, transport: "tcp", names: [], primary: false },
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -84,7 +88,7 @@ describe("memcached ServiceType", () => {
     const plan = await planMemcachedService({ type: "memcached", port: 21211 });
 
     expect(firstEndpointPort(plan)).toBe(21211);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21211"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(21211, 30));
   });
 
   test("user environment variables merge into the plan environment", async () => {
@@ -111,3 +115,4 @@ describe("memcached ServiceType", () => {
     expect(plan.user).toBe("memcache");
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

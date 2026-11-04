@@ -1,3 +1,4 @@
+import type { InvocationProgram } from "@lando/landofile/compiled-sites";
 import type {
   AppPlan,
   EventStep,
@@ -15,6 +16,7 @@ import {
   LANDO_HOST_EVENT_ENV,
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
+import { sitesUnder } from "./invocation-authority.ts";
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
@@ -82,6 +84,7 @@ const compileHostStep = (input: {
   readonly primary: string | undefined;
   readonly serviceNames: ReadonlySet<string>;
   readonly projectKeys: ReadonlySet<string>;
+  readonly key: string;
   readonly skipHostEvents: boolean;
 }): EventStepPlan => {
   const step = input.step;
@@ -94,7 +97,7 @@ const compileHostStep = (input: {
       skipReason: `${LANDO_HOST_EVENT_ENV}=1`,
     };
   }
-  if (input.projectKeys.has(canonicalEventStepKey(step, input.primary))) {
+  if (input.projectKeys.has(input.key)) {
     return { step, source: "host", sourceIndex: input.sourceIndex, status: "deduped" };
   }
   const service = stepService(step, input.primary);
@@ -129,6 +132,7 @@ export const compileEffectiveEvents = (input: {
   readonly hostEvents?: HostEvents;
   readonly services?: Readonly<Record<string, { readonly primary?: boolean }>>;
   readonly skipHostEvents?: boolean;
+  readonly invocationSites?: InvocationProgram;
 }): EventsPlan => {
   const primary = primaryServiceName(input.services);
   const serviceNames = new Set(Object.keys(input.services ?? {}));
@@ -139,8 +143,24 @@ export const compileEffectiveEvents = (input: {
   ]);
   const compiled: Record<string, ReadonlyArray<EventStepPlan>> = {};
   for (const name of names) {
+    const key = (step: EventStep, source: "hostEvents" | "events", index: number) =>
+      JSON.stringify([
+        canonicalEventStepKey(step, primary),
+        sitesUnder(input.invocationSites ?? [], [source, name, index])
+          .filter(
+            (site) =>
+              !site.template.segments.every(
+                (segment) => segment.kind === "LiteralSegment" && segment.text === site.expression,
+              ),
+          )
+          .map((site) => ({
+            path: site.path,
+            template: site.template,
+            captures: site.captures,
+          })),
+      ]);
     const projectSteps = input.landofile.events?.[name as keyof LandofileEvents] ?? [];
-    const projectKeys = new Set(projectSteps.map((step) => canonicalEventStepKey(step, primary)));
+    const projectKeys = new Set(projectSteps.map((step, index) => key(step, "events", index)));
     const hostSteps = HOST_EVENT_NAMES.includes(name as HostEventName)
       ? (input.hostEvents?.[name as HostEventName] ?? []).map((step, sourceIndex) =>
           compileHostStep({
@@ -149,6 +169,7 @@ export const compileEffectiveEvents = (input: {
             primary,
             serviceNames,
             projectKeys,
+            key: key(step, "hostEvents", sourceIndex),
             skipHostEvents,
           }),
         )
@@ -178,13 +199,13 @@ export const effectiveEventsForPlan = (plan: AppPlan): LandofileEvents | undefin
   plan.events === undefined ? undefined : eventStepsFromCompiled(plan.events);
 
 /** Return the plan carrying `events`; the plan is a value, so later spreads keep them. */
-export const withEventsPlan = (plan: AppPlan, events: EventsPlan): AppPlan => ({
+export const withEventsPlan = <Plan extends AppPlan>(plan: Plan, events: EventsPlan): Plan => ({
   ...plan,
   events: sortedCompiled(events),
 });
 
 /** `withEventsPlan` for plans built without host events: tests and hand-built plans. */
-export const withProjectEvents = (plan: AppPlan, events: LandofileEvents): AppPlan =>
+export const withProjectEvents = <Plan extends AppPlan>(plan: Plan, events: LandofileEvents): Plan =>
   withEventsPlan(plan, projectEventsPlan(events));
 
 export const hostEventStatusesForApp = (

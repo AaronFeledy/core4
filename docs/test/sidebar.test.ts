@@ -30,7 +30,12 @@ const RECIPE_IDS = [
   "symfony",
   "wordpress",
 ] as const;
-const CONTRIBUTING_SLUGS = ["contributing/ci", "contributing/release", "contributing/decisions"] as const;
+const CONTRIBUTING_SLUGS = [
+  "contributing/repository",
+  "contributing/ci",
+  "contributing/release",
+  "contributing/decisions",
+] as const;
 const TELEMETRY_SLUGS = ["telemetry/events", "telemetry/retention"] as const;
 const ALPHA_INSTALL_SLUG = "alpha-install-and-bug-reports";
 
@@ -140,6 +145,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/laravel-workflow");
     expect(slugs).toContain("guides/recipes/laravel-reverb");
     expect(slugs).toContain("guides/recipes/laravel-horizon");
+    expect(slugs).toContain("guides/recipes/laravel-vite");
     expect(slugs).toContain("guides/recipes/sveltekit-workflow");
     expect(slugs).toContain("guides/recipes/nextjs-workflow");
     expect(slugs).toContain("guides/recipes/node-api-workflow");
@@ -224,12 +230,12 @@ describe("docs sidebar", () => {
     expect(slugsOf(telemetry)).toEqual([...TELEMETRY_SLUGS]);
   });
 
-  test("lists exactly the three contributing pages", () => {
+  test("lists exactly the four contributing pages", () => {
     // Given: the Contributing group.
     const contributing = findGroup("Contributing");
 
     // When: its slugs are collected.
-    // Then: CI, release, and decision records are the whole group.
+    // Then: The source map, CI, release, and decision records are the whole group.
     expect(slugsOf(contributing)).toEqual([...CONTRIBUTING_SLUGS]);
   });
 

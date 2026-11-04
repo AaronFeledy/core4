@@ -30,7 +30,9 @@ const BooleanOptionType = Schema.Struct({
 
 const EnumOptionType = Schema.Struct({
   kind: Schema.Literal("enum").annotate({ description: "Enumerated option discriminator." }),
-  values: Schema.NonEmptyArray(Schema.String).annotate({ description: "Closed set of accepted values." }),
+  values: Schema.NonEmptyArray(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])).annotate({
+    description: "Closed set of accepted scalar values.",
+  }),
 });
 
 const ScalarOptionType = Schema.Union([

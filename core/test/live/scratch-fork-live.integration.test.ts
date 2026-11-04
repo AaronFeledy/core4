@@ -7,11 +7,14 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type CurrentExecutableAppPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
   landoAppNetworkName,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
 const webName = ServiceName.make("web");
@@ -49,7 +52,6 @@ const webService = (): ServicePlan => ({
   command: ["node", "-e", webScript],
   environment: { PORT: String(webPort) },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -66,7 +68,6 @@ const postgresService = (): ServicePlan => ({
   artifact: { kind: "ref", ref: "docker.io/library/postgres:16-alpine" },
   environment: { POSTGRES_PASSWORD: "lando" },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -75,10 +76,10 @@ const postgresService = (): ServicePlan => ({
   extensions: {},
 });
 
-const appPlan = (slug: string): AppPlan => {
+const appPlan = (slug: string): CurrentExecutableAppPlan => {
   const web = webService();
   const db = postgresService();
-  return {
+  return currentTestPlan({
     id: AppId.make(slug),
     name: slug,
     slug,
@@ -86,19 +87,17 @@ const appPlan = (slug: string): AppPlan => {
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
     extensions: {},
-  };
+  });
 };
 
 const cloneService = (service: ServicePlan): ServicePlan => ({
   ...service,
   environment: { ...service.environment },
   mounts: [...service.mounts],
-  storage: [...service.storage],
   endpoints: [...service.endpoints],
   routes: [...service.routes],
   dependsOn: [...service.dependsOn],
@@ -112,7 +111,7 @@ const requireService = (plan: AppPlan, serviceName: ServiceName): ServicePlan =>
   return service;
 };
 
-const rewritePlanIdentity = (plan: AppPlan, slug: string): AppPlan => {
+const rewritePlanIdentity = (plan: CurrentExecutableAppPlan, slug: string): CurrentExecutableAppPlan => {
   const web = cloneService(requireService(plan, webName));
   const db = cloneService(requireService(plan, dbName));
   return {
@@ -125,7 +124,7 @@ const rewritePlanIdentity = (plan: AppPlan, slug: string): AppPlan => {
 };
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  landoServiceContainerName(plan.slug, String(service.name));
 
 const inspectContainers = async (plan: AppPlan, api: ReturnType<typeof makePodmanApiClient>) => {
   const request = api.request;

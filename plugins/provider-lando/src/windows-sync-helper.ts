@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { decodeImageInspectDigest, parseImageReference } from "@lando/container-runtime/dialect";
 import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
 import {
   buildVolumePruneRequest,
@@ -8,7 +9,11 @@ import { sha256Hex } from "@lando/sdk/digest";
 
 import { Duration, Effect, Predicate, Schema } from "effect";
 
-import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import {
+  type EngineHttpRequest,
+  type PodmanApiClient,
+  buildContainerRemoveRequest,
+} from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
@@ -98,12 +103,13 @@ const parse = (body: string): JsonRecord | undefined => {
   }
 };
 
-const failure = (operation: string, message: string): ProviderUnavailableError =>
+const failure = (operation: string, message: string, cause?: unknown): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: "lando",
     operation,
     message,
     remediation: REMEDIATION,
+    cause,
   });
 
 const request = (api: Api, input: EngineHttpRequest) =>
@@ -206,8 +212,8 @@ const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonReco
     method: "GET",
     path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
   }).pipe(
-    Effect.mapError(() =>
-      failure("syncHelper.image.inspect", "Podman image identity could not be verified."),
+    Effect.mapError((cause) =>
+      failure("syncHelper.image.inspect", "Podman image identity could not be verified.", cause),
     ),
   );
   if (inspected.status !== 200) return false;
@@ -220,8 +226,7 @@ const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonReco
     typeof body.Image === "string" &&
     body.Image.length > 0 &&
     resolvedId.replace(/^sha256:/u, "") === body.Image.replace(/^sha256:/u, "") &&
-    Array.isArray(repoDigests) &&
-    repoDigests.includes(image)
+    decodeImageInspectDigest({ RepoDigests: repoDigests }, image) === parseImageReference(image).tag
   );
 });
 
@@ -751,10 +756,7 @@ export const removeWindowsSyncHelper = (
           labelsFor(spec, digest, "helper", receipt.helperNonce),
           receipt.containerId,
         );
-        const removed = yield* request(api, {
-          method: "DELETE",
-          path: `/containers/${encodeURIComponent(id)}?force=true`,
-        });
+        const removed = yield* request(api, buildContainerRemoveRequest(id));
         if (removed.status !== 200 && removed.status !== 204 && removed.status !== 404) {
           return yield* Effect.fail(
             failure(
@@ -772,7 +774,7 @@ export const removeWindowsSyncHelper = (
           const pruned = yield* request(
             api,
             buildVolumePruneRequest({
-              ctx: { providerId: "lando", remediation: REMEDIATION },
+              ctx: { providerId: "lando", remediation: REMEDIATION, env: { ...process.env } },
               filters: { label: [`dev.lando.sync.nonce=${receipt.volumeNonce}`] },
               all: true,
             }),

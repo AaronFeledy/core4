@@ -70,11 +70,14 @@ describe("opensearch ServiceType", () => {
         ref: "opensearchproject/opensearch:2",
       });
       expect(plan.command).toBeUndefined();
-      expect(plan.storage).toHaveLength(1);
-      expect(plan.storage[0]?.store).toBe("myapp-opensearch-data");
-      expect(String(plan.storage[0]?.target)).toBe("/usr/share/opensearch/data");
-      expect(plan.storage[0]?.readOnly).toBe(false);
-      expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "search" }]);
+      const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+      expect(volumes).toHaveLength(1);
+      expect(volumes[0]?.store).toBe("lando-myapp--search--opensearch-data");
+      expect(String(volumes[0]?.target)).toBe("/usr/share/opensearch/data");
+      expect(volumes[0]?.readOnly).toBe(false);
+      expect(plan.endpoints).toEqual([
+        { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
+      ]);
     });
 
     test(`${label} includes single-node and security-disabled env defaults for local dev`, async () => {
@@ -137,24 +140,94 @@ describe("opensearch ServiceType", () => {
     });
   }
 
-  test("opensearch:2 and opensearch alias resolve to the same canonical service plan", async () => {
+  test("opensearch aliases preserve declaration identity with otherwise identical canonical plans", async () => {
     const primary = await planOpenSearchService(opensearch2ServiceType, { type: "opensearch:2" });
     const alias = await planOpenSearchService(opensearchServiceType, { type: "opensearch" });
 
     expect(primary.type).toBe("opensearch");
     expect(alias.type).toBe("opensearch");
-    expect(alias).toEqual(primary);
+    const { serviceTypeId: primaryId, ...primaryFacts } = primary;
+    const { serviceTypeId: aliasId, ...aliasFacts } = alias;
+    expect(primaryId).toBe("opensearch:2");
+    expect(aliasId).toBe("opensearch");
+    expect(aliasFacts).toEqual(primaryFacts);
   });
 
   test("uses the authored service name for the endpoint", async () => {
     const plan = await planOpenSearchService(opensearchServiceType, { type: "opensearch" }, "indexer");
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "indexer" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9200, protocol: "http", name: "indexer", primary: true },
+    ]);
   });
 
   test("service description documents Apache 2.0 licensing compared to Elasticsearch", () => {
     expect(OPENSEARCH_SERVICE_DESCRIPTION).toMatch(/Apache 2\.0/);
     expect(OPENSEARCH_SERVICE_DESCRIPTION).toMatch(/Elastic License/);
     expect(OPENSEARCH_SERVICE_DESCRIPTION).toMatch(/elasticsearch/i);
+  });
+  test("pins transport.port to 9300 by default and rejects primary collision", async () => {
+    const plan = await planOpenSearchService(opensearchServiceType, { type: "opensearch" });
+    expect(plan.environment["transport.port"]).toBe("9300");
+    await expect(
+      planOpenSearchService(opensearchServiceType, { type: "opensearch", port: 9300 }),
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["port"],
+          message: expect.stringContaining("transport listener"),
+          suggestion: "Set port: to another TCP port number.",
+        },
+      ],
+    });
+  });
+
+  test("releases 9300 when transport.port moves and accepts a valid scalar", async () => {
+    const plan = await planOpenSearchService(opensearchServiceType, {
+      type: "opensearch",
+      port: 9300,
+      environment: { "transport.port": "19300" },
+    });
+    expect(plan.environment["http.port"]).toBe("9300");
+    expect(plan.environment["transport.port"]).toBe("19300");
+    expect(firstEndpointPort(plan)).toBe(9300);
+  });
+
+  test.each(["9300-9400", "1.5", "0", "65536", "abc", ""])(
+    "rejects malformed transport.port %j",
+    async (value) => {
+      await expect(
+        planOpenSearchService(opensearchServiceType, {
+          type: "opensearch",
+          environment: { "transport.port": value },
+        }),
+      ).rejects.toMatchObject({
+        issues: [
+          {
+            path: ["environment", "transport.port"],
+            message: expect.stringMatching(/not a TCP port number|requires a literal/),
+            suggestion: expect.stringContaining("1 to 65535"),
+          },
+        ],
+      });
+    },
+  );
+
+  test("does not reserve 9600 for the primary listener", async () => {
+    const plan = await planOpenSearchService(opensearchServiceType, { type: "opensearch", port: 9600 });
+    expect(firstEndpointPort(plan)).toBe(9600);
+    expect(plan.environment["http.port"]).toBe("9600");
+    expect(plan.environment["transport.port"]).toBe("9300");
+  });
+
+  test("rejects conflicting http.port native variable", async () => {
+    await expect(
+      planOpenSearchService(opensearchServiceType, {
+        type: "opensearch",
+        environment: { "http.port": "19200" },
+      }),
+    ).rejects.toMatchObject({
+      issues: [{ path: ["environment", "http.port"], suggestion: expect.stringContaining("port:") }],
+    });
   });
 });

@@ -20,20 +20,9 @@ import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_HEADER_BYTES,
   COMMAND_INDEX_SCHEMA_VERSION,
-  PLUGIN_COMMAND_MAGIC,
   decodeAppCommandIndex,
-  decodePluginCommandIndex,
   encodeAppCommandIndex,
-  encodePluginCommandIndex,
 } from "@lando/engine/cache/command-index";
-import {
-  CWD_APP_MAP_CACHE_FILE,
-  CWD_APP_MAP_CACHE_HEADER_BYTES,
-  CWD_APP_MAP_CACHE_MAGIC,
-  CWD_APP_MAP_CACHE_SCHEMA_VERSION,
-  listCwdAppMapEntries,
-  writeCwdAppMapEntry,
-} from "@lando/engine/cache/cwd-app-map";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 import * as AppCacheService from "@lando/engine/cache/service";
 
@@ -51,15 +40,8 @@ const appCommandPayload = {
   entries: [{ id: "fixture:task", summary: "Fixture task", hidden: false, service: "appserver" }],
 };
 
-const pluginCommandPayload = {
-  schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
-  landoVersion: "0.0.0",
-  pluginNames: ["@lando/fixture"],
-  generatedAtMs: 1_700_000_200_000,
-  entries: [{ id: "meta:fixture", summary: "Fixture plugin command", hidden: false }],
-};
-
 const appPlanFixture: AppPlan = {
+  valueModel: 1,
   id: AppId.make("fixture-app"),
   name: "fixture-app",
   slug: "fixture-app",
@@ -67,7 +49,6 @@ const appPlanFixture: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -104,34 +85,12 @@ const makeAppPlanBytes = async (): Promise<Buffer> => {
   return readFile(path);
 };
 
-const makeCwdAppMapBytes = async (): Promise<Buffer> => {
-  const cacheRoot = join(tmpdir(), `lando-cwd-app-map-fixture-${crypto.randomUUID()}`);
-  await Effect.runPromise(
-    writeCwdAppMapEntry({
-      cacheRoot,
-      entry: {
-        cwd: "/workspace/fixture-app/subdir",
-        appRoot: "/workspace/fixture-app",
-        primaryLandofilePath: "/workspace/fixture-app/.lando.yml",
-        mtimeNs: 1,
-        sizeBytes: 128,
-        lastUsedAt: 1_700_000_400_000,
-      },
-    }),
-  );
-  return readFile(join(cacheRoot, CWD_APP_MAP_CACHE_FILE));
-};
-
 const makeFixtureBytes = async (name: string): Promise<Buffer> => {
   switch (name) {
     case "app-command":
       return Buffer.from(encodeAppCommandIndex(appCommandPayload));
-    case "plugin-command":
-      return Buffer.from(encodePluginCommandIndex(pluginCommandPayload));
     case "app-plan":
       return makeAppPlanBytes();
-    case "cwd-app-map":
-      return makeCwdAppMapBytes();
     default:
       throw new Error(`Unknown fixture ${name}`);
   }
@@ -143,17 +102,14 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v5.bin",
-      previousFixtures: ["app-command-v4.bin", "app-command-v3.bin", "app-command-v2.bin"],
+      fixture: "app-command-v6.bin",
+      previousFixtures: [
+        "app-command-v5.bin",
+        "app-command-v4.bin",
+        "app-command-v3.bin",
+        "app-command-v2.bin",
+      ],
       decode: decodeAppCommandIndex,
-    },
-    {
-      name: "plugin-command",
-      magic: PLUGIN_COMMAND_MAGIC,
-      version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "plugin-command-v5.bin",
-      previousFixtures: ["plugin-command-v4.bin", "plugin-command-v3.bin", "plugin-command-v2.bin"],
-      decode: decodePluginCommandIndex,
     },
   ] as const;
 
@@ -197,12 +153,14 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v27.bin")));
+    expect(await makeAppPlanBytes()).toEqual(
+      await readFile(join(fixtureRoot, `app-plan-v${APP_PLAN_CACHE_SCHEMA_VERSION}.bin`)),
+    );
   });
 
   test("app-plan rejects the previous schema fixture", async () => {
-    const fixture = await readFile(join(fixtureRoot, "app-plan-v26.bin"));
-    const cacheRoot = join(tmpdir(), `lando-app-plan-v23-${crypto.randomUUID()}`);
+    const fixture = await readFile(join(fixtureRoot, "app-plan-v27.bin"));
+    const cacheRoot = join(tmpdir(), `lando-app-plan-v27-${crypto.randomUUID()}`);
     const path = appPlanCachePath(cacheRoot, "fixture-app", "/workspace/fixture-app");
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, fixture);
@@ -263,29 +221,5 @@ describe("binary cache encoding policy", () => {
         }),
       ),
     ).toBeNull();
-  });
-
-  test("cwd-app-map fixture matches the encoder output", async () => {
-    expect(await makeCwdAppMapBytes()).toEqual(await readFile(join(fixtureRoot, "cwd-app-map-v1.bin")));
-  });
-
-  test("cwd-app-map writes magic, schema version, and payload checksum in the binary header", async () => {
-    const bytes = await makeCwdAppMapBytes();
-    expectMagic(bytes, CWD_APP_MAP_CACHE_MAGIC);
-    expect(Buffer.from(bytes).readBigUInt64BE(4)).toBe(CWD_APP_MAP_CACHE_SCHEMA_VERSION);
-    expect(Array.from(Buffer.from(bytes).subarray(12, CWD_APP_MAP_CACHE_HEADER_BYTES))).toEqual(
-      Array.from(sha256(bytes.subarray(CWD_APP_MAP_CACHE_HEADER_BYTES))),
-    );
-  });
-
-  test("cwd-app-map ignores unknown header schema versions", async () => {
-    const cacheRoot = join(tmpdir(), `lando-cwd-app-map-version-${crypto.randomUUID()}`);
-    const path = join(cacheRoot, CWD_APP_MAP_CACHE_FILE);
-    const bytes = Buffer.from(await makeCwdAppMapBytes());
-    bytes.writeBigUInt64BE(999n, 4);
-    await mkdir(cacheRoot, { recursive: true });
-    await writeFile(path, bytes);
-
-    expect(await Effect.runPromise(listCwdAppMapEntries(cacheRoot))).toEqual([]);
   });
 });

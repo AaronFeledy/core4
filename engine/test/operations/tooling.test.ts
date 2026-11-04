@@ -1,9 +1,13 @@
 import { expect, test } from "bun:test";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
+  type DatabaseConnection,
   GlobalConfig,
+  type LoadScopedLandofile,
+  PortNumber,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -23,10 +27,10 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { attachServiceCredsScope } from "../../src/planner/landofile-scopes.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
-const fixture = (task: ToolingTaskShape, failureCode = 0) => {
+const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseConnection) => {
   const calls: {
     readonly service: string;
     readonly command: readonly string[];
@@ -35,6 +39,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     readonly env?: Readonly<Record<string, string>>;
   }[] = [];
   const selections: number[] = [];
+  let discovery = compileTestLandofile({ name: "tooling-test", tooling: { custom: task } });
   const metadata = {
     resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
     source: "tooling.test",
@@ -47,7 +52,6 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -55,15 +59,27 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     metadata,
     extensions: {},
   };
-  const plan: AppPlan = {
+  let plan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("tooling-test"),
     name: "tooling-test",
     slug: "tooling-test",
     root: AbsolutePath.make(process.cwd()),
     provider: service.provider,
-    services: { [service.name]: service },
+    services: {
+      [service.name]: service,
+      ...(database === undefined
+        ? {}
+        : {
+            [ServiceName.make("database")]: {
+              ...service,
+              name: ServiceName.make("database"),
+              primary: false,
+              connection: database,
+            },
+          }),
+    },
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
@@ -84,12 +100,14 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
+    testEnvironmentResolverLayer,
     PrivateFileAccessService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),
+        discover: Effect.suspend(() => discovery),
       }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
@@ -135,6 +153,12 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     calls,
     selections,
     plan,
+    setTooling: (tooling: Readonly<Record<string, ToolingTaskShape>>) => {
+      plan = attachEffectiveTooling(plan, tooling);
+    },
+    setLandofile: (compiled: LoadScopedLandofile) => {
+      discovery = Effect.succeed(compiled);
+    },
     run: (options: Omit<RunToolingOptions, "name"> = {}) =>
       Effect.runPromise(
         runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.result),
@@ -145,7 +169,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
 test("rejects a freshly disabled task even when the plan carries an enabled task", async () => {
   // Given an enabled cached plan and a freshly loaded disabled declaration
   const f = fixture({ cmd: "echo ok", disabled: true });
-  attachEffectiveTooling(f.plan, { custom: { cmd: "echo stale" } });
+  f.setTooling({ custom: { cmd: "echo stale" } });
   // When invoked
   const result = await f.run();
   // Then the fresh declaration is authoritative
@@ -155,6 +179,46 @@ test("rejects a freshly disabled task even when the plan carries an enabled task
   });
   expect(f.selections).toHaveLength(0);
 });
+
+test.each([false, { disabled: true }])(
+  "attributes a fresh disabled value %j rather than the task root",
+  async (disabled) => {
+    const root = process.cwd();
+    const file = `${root}/.lando.local.yml`;
+    const compiled = await Effect.runPromise(
+      loadAuthoredDocuments(
+        [
+          {
+            file: `${root}/.lando.yml`,
+            value: { name: "tooling-test", tooling: { custom: { cmd: "echo base" } } },
+          },
+          { file, value: { tooling: { custom: disabled } } },
+          {
+            file: `${root}/.lando.user.yml`,
+            value: {
+              tooling:
+                disabled === false
+                  ? { other: { cmd: "echo user" } }
+                  : { custom: { description: "higher task root" } },
+            },
+          },
+        ],
+        { appRoot: root, file: `${root}/.lando.yml` },
+      ),
+    );
+    const f = fixture({ disabled: true });
+    f.setLandofile(compiled);
+    const result = await f.run();
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ToolingDisabledError",
+        source: { path: file, task: "custom" },
+        remediation: expect.stringContaining(file),
+      },
+    });
+  },
+);
 
 test("resolves app and proxy expressions in a freshly authored task", async () => {
   // Given a fresh declaration carrying deferred-scope expressions
@@ -174,14 +238,18 @@ test("resolves app and proxy expressions in a freshly authored task", async () =
 
 test("resolves services.<name>.creds.* in a freshly authored task from the plan's service scope", async () => {
   // Given a fresh declaration reading another service's credentials, and a plan resolved with them
-  const f = fixture({
-    cmd: "psql -U {{ services.database.creds.user }} -d {{ services.database.creds.database }}@{{ app.name }}",
-    service: "worker",
-  });
-  attachServiceCredsScope(f.plan, {
-    worker: {},
-    database: { creds: { user: "lando", password: "pw", database: "appdb" } },
-  });
+  const f = fixture(
+    {
+      cmd: "psql -U {{ services.database.creds.user }} -d {{ services.database.creds.database }}@{{ app.name }}",
+      service: "worker",
+    },
+    0,
+    {
+      family: "postgres",
+      port: PortNumber.make(5432),
+      creds: { user: "lando", password: "pw", database: "appdb" },
+    },
+  );
   // When invoked
   const result = await f.run();
   // Then the container sees the credentials the planner published, never the literal template
@@ -198,7 +266,7 @@ test("fails with ConfigExpressionError when a fresh task reads a service the pla
   // Then the tagged planner error names the tooling path
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { _tag: "ConfigExpressionError", path: "tooling.custom.cmd" },
+    failure: { _tag: "ConfigExpressionError", path: ["tooling", "custom", "cmd"] },
   });
   expect(f.calls).toHaveLength(0);
 });
@@ -211,7 +279,7 @@ test("fails with ConfigExpressionError when a fresh task references an unknown a
   // Then the tagged planner error names the tooling path
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { _tag: "ConfigExpressionError", path: "tooling.custom.cmd" },
+    failure: { _tag: "ConfigExpressionError", path: ["tooling", "custom", "cmd"] },
   });
   expect(f.calls).toHaveLength(0);
 });
@@ -221,7 +289,7 @@ test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchang
   const f = fixture({ cmd });
   const args = ["--bogus", "a b", "", "--", "$literal"];
   // When invoked
-  const result = await f.run({ args });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: args } });
   // Then raw tokens reach the provider
   expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.command.slice(-args.length)).toEqual(args);
@@ -230,9 +298,9 @@ test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchang
 const invalidInputs: readonly {
   readonly task: ToolingTaskShape;
   readonly args: readonly string[];
-  readonly field: string;
+  readonly field: string | undefined;
 }[] = [
-  { task: { cmd: "echo", flags: { verbose: { boolean: true } } }, args: ["--bogus"], field: "bogus" },
+  { task: { cmd: "echo", flags: { verbose: { boolean: true } } }, args: ["--bogus"], field: undefined },
   { task: { cmd: "echo", args: { mode: { choices: ["safe"] } } }, args: ["unsafe"], field: "mode" },
   { task: { cmd: "echo", service: ":svc", flags: { svc: { alias: "s" } } }, args: [], field: "svc" },
   ...[":host", ":other", ":"].map((value) => ({
@@ -252,9 +320,12 @@ test.each([...invalidInputs])(
     // Given a declared input
     const f = fixture(task);
     // When invalid argv is submitted
-    const result = await f.run({ args });
+    const result = await f.run({ input: { _tag: "RawArgv", argv: args } });
     // Then validation prevents all execution
-    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError", field } });
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ToolingInputError", ...(field === undefined ? {} : { field }) },
+    });
     expect(f.selections).toHaveLength(0);
     expect(f.calls).toHaveLength(0);
   },
@@ -264,7 +335,7 @@ test("resolves a service from its validated flag alias", async () => {
   // Given a service reference and alias
   const f = fixture({ cmd: "echo", service: ":svc", flags: { svc: { alias: "s", choices: ["worker"] } } });
   // When the alias supplies the service
-  const result = await f.run({ args: ["-s", "worker"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["-s", "worker"] } });
   // Then the provider receives the resolved service
   expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.service).toBe("worker");
@@ -274,7 +345,7 @@ test("never selects a provider for all-host tooling", async () => {
   // Given host-only steps
   const f = fixture({ service: ":host", cmds: ["echo first", "echo last"] });
   // When invoked with raw argv
-  const result = await f.run({ args: ["a b"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["a b"] } });
   // Then host steps run without provider selection and only the last receives argv
   expect(Result.isSuccess(result)).toBe(true);
   expect(f.selections).toHaveLength(0);
@@ -354,9 +425,9 @@ test("preserves arguments false rejection", async () => {
   // Given a task that rejects arguments
   const f = fixture({ cmd: "echo", arguments: false });
   // When arguments are provided
-  const result = await f.run({ args: ["extra"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["extra"] } });
   // Then the original compile error tag is retained
-  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError" } });
   expect(f.selections).toHaveLength(0);
 });
 
@@ -369,8 +440,10 @@ test("accepts declared flags when arguments is false", async () => {
     service: ":host",
   });
   // When a declared flag is supplied
-  const result = await f.run({ args: ["--verbose"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["--verbose"] } });
   // Then the flag is parsed instead of treated as a forbidden positional
   expect(result).toMatchObject({ _tag: "Success" });
   expect(f.selections).toHaveLength(0);
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

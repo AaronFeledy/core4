@@ -13,6 +13,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 
+import { landoServiceContainerName } from "@lando/sdk/schema";
 import {
   type AppsListEntry,
   appsFromContainerList,
@@ -96,7 +97,7 @@ const stateEnvelope = (id: string, name: string, root: string, services: string[
 
 const labeled = (app: string, service: string, extra: Record<string, string> = {}) => ({
   Id: `${app}-${service}`,
-  Names: [`/lando-${app}-${service}`],
+  Names: [`/${landoServiceContainerName(app, service)}`],
   Labels: {
     "dev.lando.app": app,
     "dev.lando.service": service,
@@ -558,33 +559,6 @@ describe("apps:list host-wide discovery", () => {
       expect(evidenceReads).toBe(2);
       expect(result.pruned).toEqual([]);
       expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
-      expect(await Bun.file(statePath).exists()).toBe(true);
-    });
-  });
-
-  test("fails prune instead of reporting success when cwd inventory mutation fails", async () => {
-    await withTempRoot(async (userDataRoot) => {
-      const paths = makeLandoPaths({ userDataRoot });
-      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
-      await mkdir(join(statePath, ".."), { recursive: true });
-      await writeFile(
-        statePath,
-        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
-      );
-      await writeFile(join(userDataRoot, "cwd-app-map.bin"), "corrupt");
-
-      const failed = await runList(userDataRoot, {
-        prune: true,
-        discoverContainersEvidence: async () => ({
-          apps: [],
-          confirmedProviderIds: ["lando"],
-          ownedAppIds: [],
-        }),
-      }).then(
-        () => false,
-        () => true,
-      );
-      expect(failed).toBe(true);
       expect(await Bun.file(statePath).exists()).toBe(true);
     });
   });

@@ -48,8 +48,9 @@ const plan: AppPlan = {
       primary: true,
       artifact: { kind: "ref", ref: "mysql:8" },
       environment: {},
-      mounts: [],
-      storage: [{ store: "data", target: PortablePath.make("/var/lib/mysql"), readOnly: false }],
+      mounts: [
+        { type: "volume", store: "data", target: PortablePath.make("/var/lib/mysql"), readOnly: false },
+      ],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -59,7 +60,6 @@ const plan: AppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [{ name: "data", scope: "service", kind: "data" }],
   fileSync: [],
   metadata,
@@ -86,6 +86,8 @@ test.each(["created", "existing", "adopted", "replaced", "identity-less", "sibli
                   providerId: "test",
                   operation: "locateVolume",
                   message: "Sibling lookup failed.",
+                  remediation:
+                    "Re-run the command after checking `test` logs for the `locateVolume` failure; if it persists, report the error with that operation name.",
                 }),
               )
             : Effect.sync(() => {

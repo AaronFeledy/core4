@@ -53,7 +53,7 @@ describe("Redis authentication and persistence", () => {
     // Given / When
     const result = await plan({ type: "redis", persist: false });
     // Then
-    expect(result.storage).toEqual([]);
+    expect(result.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     expect(result.command).toEqual(["redis-server", "--appendonly", "no", "--save", ""]);
   });
 
@@ -63,7 +63,7 @@ describe("Redis authentication and persistence", () => {
       // Given / When
       const result = await plan({ type: "redis", ...options });
       // Then
-      expect(result.storage).toHaveLength(1);
+      expect(result.mounts.filter((mount) => mount.type === "volume")).toHaveLength(1);
       expect(result.command).toEqual(["redis-server", "--appendonly", "yes"]);
     },
   );

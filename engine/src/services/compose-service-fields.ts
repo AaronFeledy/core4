@@ -20,7 +20,7 @@ const compareServiceFieldUses = (left: ComposeServiceFieldUse, right: ComposeSer
 };
 
 export const collectComposeServiceFields = (
-  services: Readonly<Record<string, ServicePlan>>,
+  services: Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>,
 ): ReadonlyArray<ComposeServiceFieldUse> => {
   const uses: Array<ComposeServiceFieldUse> = [];
 

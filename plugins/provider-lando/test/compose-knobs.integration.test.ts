@@ -18,7 +18,7 @@ import {
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("composeknobsapp");
 const appRoot = AbsolutePath.make("/tmp/lando-compose-knobs-app");
-const containerName = "lando-composeknobsapp-web";
+const containerName = "lando-composeknobsapp--web";
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
@@ -35,7 +35,6 @@ const web: ServicePlan = {
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -51,6 +50,7 @@ const web: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Compose Knobs App",
   slug: "composeknobsapp",
@@ -58,7 +58,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

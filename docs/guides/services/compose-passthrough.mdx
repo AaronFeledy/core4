@@ -7,7 +7,7 @@ tags: [beta, docs, compose, service]
 
 # Add a Compose service
 
-Put `type: compose` in your services block to run a third-party image outside the catalog. Compose ports use the short form, which maps to the container port. The app root is mounted at `/app` by default:
+Add `type: compose` under `services` in `.lando.yml` to run a third-party image outside the catalog. Compose ports use the short form, which maps to the container port. The app root is mounted at `/app` by default:
 
 ```yaml
 name: compose-passthrough-demo
@@ -17,15 +17,9 @@ services:
     image: traefik/whoami:v1.10
     ports:
       - 80:80
-tooling:
-  probe:
-    service: whoami
-    cmd:
-      - sh
-      - -c
-      - 'curl -sf http://localhost:80/'
-      - probe
 ```
+
+Because the image comes from your Landofile, Lando plans no home store for it. The example publishes host port `80`, which must be free; choose another host-side port in `ports:` if needed and use it in the probe below.
 
 Start it. Lando puts the passthrough service on the app network:
 
@@ -56,22 +50,36 @@ services:
     type: compose
     image: alpine:3.20
     appMount: false
-    home: false
     command: sh -c "printf ready && exec sleep infinity"
 ```
 
 That becomes `["sh", "-c", "printf ready && exec sleep infinity"]`. Malformed quotes fail planning with `LandofileValidationError`. Only `type: compose` splits strings this way; other service types run a string `command` as a shell script.
 
-## Probe the service
+## Choose an init process
 
-The fixture above declares `probe` as an app tooling alias. Run it once the
-service is up to curl the HTTP surface:
+A `type: compose` service leaves init unspecified unless you configure it, preserving the container runtime's default. Set `init: true` when the image's process does not handle SIGTERM as PID 1 or leaves zombie children behind, and Lando runs the runtime's init as PID 1, forwarding the stop signal to your command and reaping orphans. Set `init: false` to explicitly disable the runtime's init, even if the runtime enables it by default.
 
-```sh
-lando probe
+```yaml
+services:
+  worker:
+    type: compose
+    image: alpine:3.20
+    appMount: false
+    init: true
+    command: sleep infinity
 ```
 
-`traefik/whoami` responds with a body that starts with `Hostname: ...`.
+Init forwards the signal to the process it started, which is the first word of your argv. With `sh -c '...'` that is the shell; use `exec` so your program takes its place. Catalog services such as `type: node` already default to `init: true`; see [Stop cleanly](./node.mdx#stop-cleanly).
+
+## Probe the service
+
+From your host terminal, curl the published HTTP port after the service starts:
+
+```sh
+curl -sf http://localhost:80/
+```
+
+Use your chosen host port if you changed the mapping. The response's `Hostname:` line shows the container name, `lando-compose-passthrough-demo--whoami`. The [whoami image](https://github.com/traefik/whoami/blob/v1.10.0/Dockerfile) contains a standalone binary, not a shell or curl, so probe it from the host rather than running those tools inside the service.
 
 ## See which Compose keys work
 
@@ -80,6 +88,11 @@ generated key matrix at `docs/reference/compose-key-matrix.mdx` publishes
 every accepted, preserved, and rejected key. If a key is rejected, the
 remediation is to move unsupported provider-specific config under
 `providers.<id>`, or open an issue to grow the subset.
+
+Compose `hostname` and `domainname` are rejected. Lando sets each container's
+hostname to its container name, `lando-<app>--<service>`. To give a service
+another name that other services can use, add a `hostnames:` alias. See
+[Reach services by name](../subsystems/service-dns.mdx).
 
 ## Know what Lando adds
 
@@ -90,7 +103,11 @@ else the image needs with `environment:` or `env_file:`.
 
 Lando still bind-mounts the app source at `/app`, or at `appMount.target`
 when you set one, and joins the service to the per-app network `lando-<slug>`
-so it can reach the rest of the app by service name.
+so it can reach the rest of the app by service name. To put it on more
+networks as well, declare them under top-level `networks:` and list them on
+the service; see [Reach another project's services](../config/networks.mdx).
+To bring a whole compose file in as services of your app, use top-level
+`include:`; the same guide covers it.
 
 ## Skip the app mount
 

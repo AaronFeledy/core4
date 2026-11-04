@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
+import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -10,7 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { DateTime, Effect, Exit } from "effect";
+import { DateTime, Effect, Exit, Result } from "effect";
 import { quiesceRetainedWindowsSyncWriters } from "../src/windows-sync-recovery.ts";
 
 const root = AbsolutePath.make("C:\\Users\\me\\demo");
@@ -26,16 +27,20 @@ const service = (name: string): ServicePlan => ({
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
-  appMount: {
-    source: root,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    realization: "accelerated",
-    excludes: [],
-    includes: [],
-  },
-  mounts: [],
-  storage: [],
+
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      excludes: [],
+      includes: [],
+      mountKey: "app-mount",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -51,7 +56,6 @@ const plan = (): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: { [ServiceName.make("web")]: service("web") },
   routes: [],
-  networks: [],
   stores: [],
   metadata,
   extensions: {},
@@ -133,6 +137,23 @@ const fake = (initial: Container[]) => {
 };
 
 describe("retained Windows sync writer quiescence", () => {
+  test("preserves the provider inspection cause before quiescing any writer", async () => {
+    const cause = new ProviderInternalError({
+      providerId: "lando",
+      operation: "request",
+      message: "The managed Podman API rejected inspection.",
+      remediation: "Restore the managed Podman API connection before destroying retained writers.",
+    });
+    const result = await Effect.runPromise(
+      quiesceRetainedWindowsSyncWriters({ request: () => Effect.fail(cause) }, plan(), targets).pipe(
+        Effect.result,
+      ),
+    );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure).toMatchObject({ _tag: "ProviderUnavailableError", cause });
+  });
+
   test("removes exact app writer IDs and leaves helpers and unrelated containers intact", async () => {
     const unrelated = writer("unrelated-id");
     unrelated.Config.Labels = null;
@@ -142,7 +163,7 @@ describe("retained Windows sync writer quiescence", () => {
     expect([...runtime.containers.keys()]).toEqual(["helper-id", "unrelated-id"]);
     expect(runtime.mutations().map(({ path }) => path)).toEqual([
       "/containers/writer-id/stop",
-      "/containers/writer-id?force=true",
+      "/containers/writer-id?force=true&v=true",
     ]);
   });
 

@@ -6,11 +6,12 @@ import {
   type LandofileLoadExpressionError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import type { AppPlan, HostTerminal, LandofileShape, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, HostTerminal, LoadScopedLandofile, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type CommandSpec,
   type ConfigService,
+  EnvironmentValueResolver,
   type ExecTarget,
   LandofileService,
   RuntimeProviderRegistry,
@@ -21,7 +22,7 @@ import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
@@ -48,7 +49,12 @@ export const execAppRedactionTokens = (result: unknown): ReadonlyArray<string> =
   return tokens.filter((token): token is string => typeof token === "string");
 };
 
-export type ExecAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
+export type ExecAppServices =
+  | AppPlanner
+  | ConfigService
+  | LandofileService
+  | RuntimeProviderRegistry
+  | EnvironmentValueResolver;
 
 const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
@@ -59,9 +65,10 @@ const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError 
         ? "exec needs a service, but this app has none."
         : `exec needs a service (available: ${list}).`,
     tool: "app:exec",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando exec ${first} -- <command>` }),
+    remediation:
+      first === undefined || first.length === 0
+        ? "Add a service to the Landofile before running lando exec."
+        : `Example: lando exec ${first} -- <command>`,
   });
 };
 
@@ -119,13 +126,15 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
 ) {
   const { provider, target, service, options } = input;
   const tty = inheritTty(options);
-  const mergedEnv = withTerminalEnv({
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
+  const typedEnv = withTerminalEnv({
     tty,
     hostEnv: process.env,
     ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
     serviceEnv: service.environment,
     ...(options.env === undefined ? {} : { env: options.env }),
   });
+  const mergedEnv = typedEnv === undefined ? undefined : yield* session.resolveEnvironment(typedEnv);
   const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
   const spec: CommandSpec = {
     command: options.command,
@@ -144,7 +153,7 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
   return yield* collectExecStream(provider.execStream(target, spec), sink);
-});
+}, Effect.scoped);
 
 export const execApp = Effect.fn("AppOperation.exec")(function* (
   options: ExecAppRuntimeOptions,
@@ -154,7 +163,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   const registry = yield* RuntimeProviderRegistry;
 
   let plan: AppPlan;
-  let landofile: LandofileShape;
+  let landofile: LoadScopedLandofile;
   if (appTarget?.plan !== undefined) {
     plan = appTarget.plan;
     landofile = appTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, appTarget.root));
@@ -170,14 +179,16 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
       new ToolingExecError({
         message: "exec requires a command to run.",
         tool: "app:exec",
-        ...(first === undefined || first.length === 0
-          ? {}
-          : { remediation: `Example: lando exec ${first} -- <command>` }),
+        remediation:
+          first === undefined || first.length === 0
+            ? "Pass a command after --, e.g. lando exec -- ls."
+            : `Example: lando exec ${first} -- <command>`,
       }),
     );
   }
 
   const service = yield* resolveService(split.service, plan);
+  yield* registerPlanRedaction(plan);
   const provider = yield* registry.select(plan);
   const target: ExecTarget = {
     app: plan.id,
@@ -185,7 +196,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     plan,
     ...(options.user === undefined ? {} : { user: options.user }),
   };
-  const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+  const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
   const env = withAgentContextEnv(options.env, process.env, {
     allowlist,
     lowerThanEnv: service.environment,
@@ -205,10 +216,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     app: plan.name,
     service: String(service.name),
     command: split.command,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    redactionTokens: collectAppPlanRedactionTokens(plan),
+    ...result,
   };
   return withTokens;
 });

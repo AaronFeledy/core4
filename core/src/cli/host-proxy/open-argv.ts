@@ -10,7 +10,12 @@ export type OpenArgvParseResult =
   | { readonly _tag: "failure"; readonly error: LandoCommandError; readonly additionalErrors: readonly [] };
 
 const invalidOpenArgvError = (message: string): LandoCommandError =>
-  new LandoCommandError({ message, commandId: OPEN_COMMAND, exitCode: 2 });
+  new LandoCommandError({
+    message,
+    commandId: OPEN_COMMAND,
+    exitCode: 2,
+    remediation: `Correct the \`${OPEN_COMMAND}\` flags and arguments, then re-run.`,
+  });
 
 const invalidOpenArgv = (message: string): OpenArgvParseResult => ({
   _tag: "failure",

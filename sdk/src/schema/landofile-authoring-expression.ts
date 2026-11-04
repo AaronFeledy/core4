@@ -3,6 +3,7 @@ import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effec
 import { type ExpressionNode, ExpressionTemplate, type PathSegment } from "../expressions/ast.ts";
 import { EXPRESSION_HELPER_NAMES } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
+import { PLAIN_TEXT_SLOT_REJECTION } from "./authoring-issue-metadata.ts";
 
 // ==== Parsed authoring expressions retain source without resolving values.
 export const AuthoringExpressionExpectedType = Schema.Literals([
@@ -209,31 +210,34 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
 const slots = new Map<AuthoringExpressionExpectedType, Schema.Codec<AuthoringExpression, string>>();
 
 // JSON Schema approximates syntax only; parsed scope/type checks remain authoritative.
-const wholeTemplatePattern = /^\{\{-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
+const wholeTemplatePattern = /^\{\{(?!#)-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
+const compositeTemplatePattern =
+  /^(?:\{\{\{\{|\$\$\{|\{\{#(?:(?!#\}\})[\s\S])*#\}\}|(?!\{\{|\$\$\{|\$\{|\$[A-Za-z_])[\s\S])*(?:\{\{(?!#)(?:(?!\{\{|\}\})[\s\S])+\}\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\?|:\+)[^}]*)?)\}))/;
 
 export const authoringExpressionSlot = (
   expectedType: AuthoringExpressionExpectedType,
 ): Schema.Codec<AuthoringExpression, string> => {
   const cached = slots.get(expectedType);
   if (cached !== undefined) return cached;
-  const input =
-    expectedType === "string" || expectedType === "unknown"
-      ? Schema.String
-      : Schema.String.check(
-          Schema.makeFilter(() => true, {
-            "~structural": true,
-            toJsonSchema: () => ({ pattern: wholeTemplatePattern.source }),
-          }),
-        );
-  const slot = input.pipe(
+  const slot = Schema.String.check(
+    Schema.makeFilter(() => true, {
+      "~structural": true,
+      toJsonSchema: () => ({
+        pattern: (expectedType === "string" ? compositeTemplatePattern : wholeTemplatePattern).source,
+      }),
+    }),
+  ).pipe(
     Schema.decodeTo(
       Schema.toType(AuthoringExpression),
       SchemaTransformation.transformEffect<AuthoringExpression, string>({
         decode: (source, options) => {
-          const fail = (message: string) =>
+          const fail = (message: string, plainText = false) =>
             Effect.fail(
               new SchemaIssue.InvalidValue(
-                { message: `${expectedType} authoring site: ${message}` },
+                {
+                  message: `${expectedType} authoring site: ${message}`,
+                  [PLAIN_TEXT_SLOT_REJECTION]: plainText,
+                },
                 source,
                 options,
               ),
@@ -241,7 +245,7 @@ export const authoringExpressionSlot = (
           const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
           if (Result.isFailure(parsed)) return fail("Invalid expression syntax.");
           const template = parsed.success;
-          if (!hasExpression(template)) return fail("Expected an expression, not plain text.");
+          if (!hasExpression(template)) return fail("Expected an expression, not plain text.", true);
           const form = template.whole ? "whole" : "composite";
           if (!template.whole && expectedType !== "string")
             return fail("Composite expressions require a string site.");

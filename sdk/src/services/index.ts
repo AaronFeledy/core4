@@ -31,3 +31,4 @@ export * from "./state-store.ts";
 export * from "./tunnel.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";
 export type { VolumeInitialization } from "./volume-initialization.ts";
+export * from "./environment-value-resolver.ts";

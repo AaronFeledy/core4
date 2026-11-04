@@ -122,6 +122,7 @@ export const makeScratchReaper = Effect.gen(function* () {
               operation: "cleanup",
               message: `Unable to remove scratch root ${input.instanceRoot}.`,
               cause,
+              remediation: `Remove ${input.instanceRoot} manually or fix directory permissions, then retry destroy.`,
             }),
         });
         yield* registry.remove(input.id);

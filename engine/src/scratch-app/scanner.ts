@@ -20,7 +20,12 @@ const scratchIdFromLabels = (
 };
 
 const scannerError = (operation: string, message: string, cause: unknown): ScratchAppError =>
-  new ScratchAppError({ operation, message, cause });
+  new ScratchAppError({
+    operation,
+    message,
+    cause,
+    remediation: "Run `lando doctor`, fix the provider runtime, then retry scratch resource cleanup.",
+  });
 
 export interface ScratchResourceScannerService {
   readonly listScratchIds: Effect.Effect<ReadonlyArray<string>, ScratchAppError>;

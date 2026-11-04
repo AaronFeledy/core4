@@ -2,6 +2,7 @@ import { resolveLandoRoots } from "@lando/paths";
 import { ManagedFileTransactionGuard, PathsService } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
+import { transactionError } from "./transaction-error.ts";
 import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
 /**
@@ -19,6 +20,23 @@ export const makeManagedFileTransactionGuard = (options: {
     privateFileAccess: options.privateFileAccess,
   });
   return ManagedFileTransactionGuard.of({
+    assertReadable: Effect.fn("ManagedFileTransactionGuard.assertReadable")(function* (appRoot: string) {
+      const report = yield* recovery.pending(appRoot);
+      if (report === null) return;
+      switch (report.state) {
+        case "committed":
+          return;
+        case "prepared":
+        case "committing":
+          return yield* Effect.fail(transactionError("pending-transaction", "inspect", appRoot));
+        case "blocked":
+          return yield* Effect.fail(transactionError("blocked", "inspect", appRoot));
+        default: {
+          const exhaustive: never = report.state;
+          return exhaustive;
+        }
+      }
+    }),
     ensureConsistent: recovery.ensureConsistent,
     pending: recovery.pending,
   });

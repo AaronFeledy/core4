@@ -101,7 +101,6 @@ const planFor = async (
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: planMetadata,

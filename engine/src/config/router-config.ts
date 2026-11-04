@@ -50,10 +50,21 @@ const COMPILED_DEFAULTS: MergedRouterConfig = {
   bindAddress: DEFAULT_BIND_ADDRESS,
 };
 
+/**
+ * Merge compiled defaults, then global config, then Landofile. `bindAddress` is
+ * global-only (`config.yml` or `LANDO_ROUTER_BIND_ADDRESS`); a Landofile value
+ * cannot widen the shared router.
+ */
 export const mergeRouterConfig = (
   globalRouter: RouterConfig | undefined,
   landofileRouter: RouterConfig | undefined,
-): MergedRouterConfig => overlayRouter(overlayRouter(COMPILED_DEFAULTS, globalRouter), landofileRouter);
+): MergedRouterConfig => {
+  if (landofileRouter === undefined) {
+    return overlayRouter(overlayRouter(COMPILED_DEFAULTS, globalRouter), undefined);
+  }
+  const { bindAddress: _landofileBind, ...landofileWithoutBind } = landofileRouter;
+  return overlayRouter(overlayRouter(COMPILED_DEFAULTS, globalRouter), landofileWithoutBind);
+};
 
 /**
  * Router enablement under normal precedence: the compiled default, then the

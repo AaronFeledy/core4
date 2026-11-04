@@ -24,14 +24,13 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const service = (input: Partial<ServicePlan>): ServicePlan => ({
+const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds">>): ServicePlan => ({
   name: serviceName,
   type: "node",
   provider: providerId,
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -49,7 +48,6 @@ const plan = (servicePlan: ServicePlan): AppPlan => ({
   provider: providerId,
   services: { [serviceName]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -84,7 +82,7 @@ test.each([
           plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
           buildKey: "stream-error",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     ),
   );
@@ -115,7 +113,7 @@ test("finds a valid error frame among malformed and partial JSON lines", async (
           plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
           buildKey: "malformed-stream",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     ),
   );
@@ -143,7 +141,7 @@ test("returns an artifact without a digest when exact-tag image inspect succeeds
         plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
         buildKey: "inspect-success",
       },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -173,7 +171,7 @@ test("fails buildArtifact when exact-tag image inspect returns 404", async () =>
           plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
           buildKey: "inspect-missing",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     ),
   );
@@ -210,7 +208,7 @@ test("verifies base and derived tags when both builds run", async () => {
           ),
           buildKey: "two-builds",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     );
 
@@ -253,7 +251,7 @@ test("redacts build arguments from surfaced stream errors", async () => {
             ),
             buildKey: "secret-stream",
           },
-          { providerId, api },
+          { providerId, api, sourceEnv: {} },
         ),
       ),
     );

@@ -1,8 +1,9 @@
 import { availableParallelism } from "node:os";
 
 import { gateId } from "@lando/container-runtime/dependency-gates";
-import type { ScheduleOutcome } from "@lando/container-runtime/dependency-schedule";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
+import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { dependencyGateRemediation } from "@lando/container-runtime/podman/bring-up";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { BuildPhaseFailedError, BuildStepFailedError, ProviderInternalError } from "@lando/sdk/errors";
@@ -13,11 +14,12 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import type { BuildStep, ServiceName } from "@lando/sdk/schema";
+import type { BuildStep } from "@lando/sdk/schema";
 import type { BuildAppOptions } from "@lando/sdk/services";
 
-import { makeHealthcheckRunner } from "../subsystems/healthcheck/runner-factory.ts";
-import { type AppNode, buildAppGraph } from "./build-app-graph.ts";
+import { validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
+import { type AppBuildGateResult, runAppBuildGate } from "./build-app-gates.ts";
+import { buildAppGraph } from "./build-app-graph.ts";
 import { type AppStep, appSteps } from "./build-app-plan.ts";
 import { type AppBuildInput, runAppBuildStep } from "./build-app-step-runner.ts";
 import { findCompleteBuildResult, openAppBuildResults, recordBuildResult } from "./build-results.ts";
@@ -31,6 +33,8 @@ const cacheError = (providerId: string, cause: unknown) =>
     operation: "buildResults",
     message: "Unable to access the build-results cache.",
     cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const planError = (input: AppBuildInput, edges: ReadonlyArray<string>) =>
@@ -57,54 +61,11 @@ const appRefFor = (input: AppBuildInput) =>
     ? ({ kind: "scratch", id: input.redactor.redactString(input.plan.slug) } as const)
     : ({ kind: "user", id: input.redactor.redactString(input.plan.slug) } as const);
 
-/**
- * Resolves one synthetic `depends_on` gate.
- *
- * `service_started` resolves without inspecting provider state: a one-shot
- * dependency that already exited is still "started", and inspecting it would
- * wrongly fail its dependents. Only `kind: "command"` healthchecks are verifiable
- * through the provider exec channel, so any other shape fails closed.
- */
-const runGate = (
-  input: AppBuildInput,
-  gate: Extract<AppNode, { readonly _tag: "gate" }>,
-  signal?: AbortSignal,
-): Effect.Effect<ScheduleOutcome> => {
-  const service: ServiceName = gate.service;
-  switch (gate.condition) {
-    case "service_started":
-      return Effect.succeed<ScheduleOutcome>("succeeded");
-    case "service_healthy": {
-      const healthcheck = Object.values(input.plan.services).find(
-        (candidate) => String(candidate.name) === String(service),
-      )?.healthcheck;
-      if (healthcheck === undefined || healthcheck.kind !== "command" || healthcheck.command === undefined) {
-        return Effect.succeed<ScheduleOutcome>("failed");
-      }
-      return makeHealthcheckRunner({ exec: input.provider.exec, ...(signal === undefined ? {} : { signal }) })
-        .run(healthcheck, input.plan.id, service)
-        .pipe(
-          Effect.map((result): ScheduleOutcome => (result.healthy ? "succeeded" : "failed")),
-          Effect.catch(() => Effect.succeed<ScheduleOutcome>("failed")),
-        );
-    }
-    case "service_completed_successfully":
-      return Effect.scoped(
-        input.provider.waitForExit(
-          { app: input.plan.id, service },
-          signal === undefined ? undefined : { signal },
-        ),
-      ).pipe(
-        Effect.map((result): ScheduleOutcome => (result.exitCode === 0 ? "succeeded" : "failed")),
-        Effect.catch(() => Effect.succeed<ScheduleOutcome>("failed")),
-      );
-  }
-};
-
 export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* (
   input: AppBuildInput,
   options: BuildAppOptions = {},
 ) {
+  yield* validateHealthcheckExecution(input.plan, input.hostProbeRunners ?? {});
   const steps = appSteps(input.plan);
   if (steps.length === 0) return;
   const graphPlan = buildAppGraph(input.plan, steps);
@@ -129,16 +90,22 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   const settledIds = new Set<string>();
   const succeededIds = new Set<string>();
   const failures = new Map<string, BuildStepFailedError>();
+  const gateEvidence = new Map<string, AppBuildGateResult>();
+  const blockingGates = new Map<string, readonly string[]>();
   let treeSettled = false;
 
-  const runStep = Effect.fnUntraced(function* (appStep: AppStep, blockedBy: ReadonlyArray<string>) {
+  const runStep = Effect.fnUntraced(function* (
+    appStep: AppStep,
+    blockedBy: ReadonlyArray<string>,
+    detail: string | undefined,
+  ) {
     const { step } = appStep;
     const transcriptPath = transcriptPathFor(input, step);
     startedIds.add(step.id);
     // The blocked check stays ahead of the build-results lookup: a cached step
     // must not bypass a gate or predecessor that just failed.
     if (blockedBy.length > 0) {
-      const summary = `${step.id} blocked by ${blockedBy.join(", ")}`;
+      const summary = `${step.id} blocked by ${blockedBy.join(", ")}${detail === undefined ? "" : `: ${detail}`}`;
       yield* input.events.publish(
         TaskStartEvent.make({
           taskId: step.id,
@@ -170,7 +137,16 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         }),
       );
       settledIds.add(step.id);
-      failures.set(step.id, new BuildStepFailedError({ step, exitCode: 1, transcriptPath, summary }));
+      failures.set(
+        step.id,
+        new BuildStepFailedError({
+          step,
+          exitCode: 1,
+          transcriptPath,
+          summary,
+          remediation: `Resolve the blocking failures (${blockedBy.join(", ")}), then rebuild step ${step.id}. Inspect the transcript at ${transcriptPath} if needed.`,
+        }),
+      );
       return "blocked" as const;
     }
     if (!options.force && findCompleteBuildResult(cached, step) !== undefined) {
@@ -227,6 +203,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         exitCode: result.exitCode,
         transcriptPath,
         summary: `${step.id} failed`,
+        remediation: `Inspect the build transcript at ${transcriptPath}, fix step ${step.id}, and rebuild.`,
       }),
     );
     return "failed" as const;
@@ -234,10 +211,27 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
 
   const execution = Effect.gen(function* () {
     const nodeById = new Map(graphPlan.graph.nodes.map((node) => [node.id, node.value]));
+    const gateDetail = (blockedBy: ReadonlyArray<string>): string | undefined => {
+      for (const id of blockedBy) {
+        const node = nodeById.get(id);
+        const listener = gateEvidence.get(id)?.listener;
+        const service = node?._tag === "gate" ? input.plan.services[node.service] : undefined;
+        if (listener !== undefined && service !== undefined)
+          return listenerDiagnostic(listener, service).finding;
+      }
+      return undefined;
+    };
     const settled = yield* runDependencySchedule(graphPlan.graph, {
       concurrency: Math.max(1, Math.min(4, availableParallelism())),
       run: (node, blockedBy) => {
-        if (node.value._tag === "gate") return runGate(input, node.value, options.signal);
+        if (node.value._tag === "gate")
+          return runAppBuildGate(input, node.value, options.signal).pipe(
+            Effect.map((result) => {
+              gateEvidence.set(node.id, result);
+              return result.outcome;
+            }),
+          );
+        blockingGates.set(node.value.appStep.step.id, blockedBy);
         const labels = blockedBy.map((id) => {
           const blockedNode = nodeById.get(id);
           if (blockedNode?._tag === "gate") {
@@ -246,7 +240,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
           if (blockedNode?._tag === "step") return blockedNode.appStep.step.id;
           return id;
         });
-        return runStep(node.value.appStep, labels);
+        return runStep(node.value.appStep, labels, gateDetail(blockedBy));
       },
     });
     if (settled._tag === "Cycle") return yield* planError(input, settled.edges);
@@ -266,6 +260,24 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
     );
     treeSettled = true;
     if (ordered.length > 0) {
+      const blockers = ordered.flatMap((failure) => blockingGates.get(failure.step.id) ?? []);
+      const primaryGate = graphPlan.graph.nodes.find(
+        (node) => node.value._tag === "gate" && blockers.includes(node.id),
+      );
+      const evidence = primaryGate === undefined ? undefined : gateEvidence.get(primaryGate.id);
+      const listener = evidence?.listener;
+      const service =
+        primaryGate?.value._tag === "gate" ? input.plan.services[primaryGate.value.service] : undefined;
+      const diagnostic =
+        listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
+      const action =
+        diagnostic?.action ??
+        (primaryGate?.value._tag === "gate" && primaryGate.value.condition === "service_healthy"
+          ? listenerAuthorityAction(service)
+          : undefined);
+      const remediation =
+        ordered[0]?.remediation ??
+        "Inspect the reported app-phase build step failures, fix them, and rebuild.";
       yield* new BuildPhaseFailedError({
         app: {
           kind: String(input.plan.id).startsWith("scratch-") ? "scratch" : "user",
@@ -274,6 +286,13 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         },
         phase: "app",
         failures: ordered,
+        ...(listener === undefined ? {} : { listener }),
+        remediation:
+          action === undefined || service === undefined
+            ? remediation
+            : input.redactor.redactString(
+                `${action}\n${diagnostic?.authority === undefined ? "" : `${diagnostic.authority}\n`}${dependencyGateRemediation(input.plan, service.name)}`,
+              ),
       });
     }
   });

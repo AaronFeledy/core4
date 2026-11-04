@@ -1,21 +1,11 @@
-import type { ServicePlan } from "@lando/sdk/schema";
-
-export class ContainerPlanError extends Error {
-  readonly _tag = "ContainerPlanError";
-  readonly details?: unknown;
-
-  constructor(message: string, details?: unknown) {
-    super(message);
-    this.name = "ContainerPlanError";
-    if (details !== undefined) this.details = details;
-  }
-}
+import { type AppPlan, ServiceName, type ServicePlan, probeTargetError } from "@lando/sdk/schema";
+import { compileServiceProbe } from "./service-probe.ts";
 
 export const normalizeCommand = (
   command: ReadonlyArray<string> | string | undefined,
 ): Array<string> | undefined => {
   if (command === undefined) return undefined;
-  if (typeof command === "string") return ["sh", "-lc", command];
+  if (typeof command === "string") return ["sh", "-c", command];
   return [...command];
 };
 
@@ -29,16 +19,20 @@ export const normalizeEntrypoint = (
 
 export const containerHealthcheck = (
   healthcheck: ServicePlan["healthcheck"],
-): Record<string, unknown> | undefined => {
+  plan?: Pick<AppPlan, "slug" | "networking">,
+  service?: Pick<ServicePlan, "name" | "endpoints">,
+) => {
   if (healthcheck === undefined) return undefined;
+  const invalid = probeTargetError(healthcheck, service?.name ?? ServiceName.make("unknown"), "healthcheck");
+  if (invalid !== undefined) throw invalid;
   switch (healthcheck.kind) {
     case "none":
       return { Test: ["NONE"] };
     case "command": {
-      const command = healthcheck.command;
+      const command = compileServiceProbe(healthcheck, plan, service);
       if (command === undefined) return undefined;
       return {
-        Test: typeof command === "string" ? ["CMD-SHELL", command] : ["CMD", ...command],
+        Test: ["CMD", ...command],
         Interval: healthcheck.intervalSeconds * 1_000_000_000,
         Timeout: healthcheck.timeoutSeconds * 1_000_000_000,
         Retries: healthcheck.retries,

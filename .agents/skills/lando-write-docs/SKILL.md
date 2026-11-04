@@ -1,15 +1,25 @@
 ---
 name: lando-write-docs
 description: >
-  Write and edit Lando 4 docs, executable guide MDX, recipe READMEs,
-  and user-facing prose. Owns voice, page shape, and prose-first executable guides.
-  Use when editing docs/**, recipes/**/README.mdx, INDEX coverage, guide fixtures,
-  or doc wording. Do not use for changelogs or marketing.
+  Write and edit reader-facing Lando documentation: tutorials, how-to guides,
+  explanations, reference pages, recipe READMEs, and their executable-guide
+  fixtures and coverage metadata. Use for documentation work under docs/**
+  and recipes/**/README.mdx. Do not use for normative architecture or behavioral
+  specifications, spec/**, RFCs, ADRs, implementation plans, issue/PR descriptions,
+  changelogs, or marketing. Markdown format or the word "docs" alone does not
+  make a task eligible. For mixed tasks, apply this skill only to the
+  documentation portion.
 ---
 
 # Write Lando docs
 
-Single source of truth for how to write docs in this monorepo. Load this skill before drafting. Do not invent a parallel style guide.
+## Scope
+
+Apply this skill to reader-facing documentation, including contributor documentation and architecture explanations, not normative specifications, design decisions, or implementation plans. Artifact purpose determines scope, not its audience, subject, or Markdown format.
+
+Determine scope per artifact. In mixed tasks, do not carry these editorial rules into specification work. Reading a specification as source material does not make that specification subject to this skill.
+
+If loaded for an excluded task, stop applying it and follow the artifact's existing conventions. For documentation within scope, this is the editorial source of truth; do not invent a parallel style guide.
 
 This is an editorial acceptance contract, not a replacement for repository instructions or a second documentation system. [Examples and page patterns](examples.md) support this contract; use the [review checklist](review-checklist.md) for detailed acceptance review. [Supporting reading](references.md) is optional, not required reading for every task.
 

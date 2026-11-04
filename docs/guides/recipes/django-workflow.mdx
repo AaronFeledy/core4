@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, django, python, postgres, redis]
 
 # Run the Django recipe
 
+Create a Python, Postgres, and Redis environment, then add and serve a Django project. Run the commands from your host terminal.
+
 ```sh
 lando init --recipe django --name=django-demo --yes
 cd django-demo
@@ -16,6 +18,75 @@ lando start
 `--yes` keeps Celery off. The named init creates `django-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis. The web container stays up without starting Django. Drop a Django project in so `manage.py` exists, then serve it.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## Scaffold Django with pip and django-admin
+
+Install Django into the running `web` service, then create the project in the app root (`.lando.yml` can already be there):
+
+```sh
+lando pip install 'Django>=5,<6' 'psycopg[binary]>=3'
+lando exec web -- django-admin startproject config .
+```
+
+Pin what you installed for the next rebuild:
+
+```sh
+lando pip freeze > requirements.txt
+```
+
+Check that Django and the database clients are available:
+
+```sh
+lando django --version
+lando django check
+lando pip --version
+lando redis-cli ping
+lando psql -c 'SELECT 1'
+```
+
+Add a Celery worker at init with `--answer=celery=true`:
+
+```sh
+lando init --recipe django --name=django-celery --yes --answer=celery=true
+```
+
+That service runs `celery -A app worker --loglevel=info` with `restart: unless-stopped`. Point Celery at your real app module. If the application or dependencies are missing, start warns about the worker and reports it as `restarting`; the worker retries and starts on its own after installation. Use `lando logs --service=worker` to check it. Python has no default healthcheck; author `healthcheck:` when your web service needs an application readiness gate.
+
+## Connect Django to Postgres and Redis
+
+`web` (and `worker`, when you asked for Celery) already has the connection strings:
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | `postgresql://lando:<password>@database:5432/django-demo` |
+| `REDIS_URL` | `redis://cache:6379` |
+
+Django does not read `DATABASE_URL` by itself. Install `dj-database-url` and let it parse the value:
+
+```sh
+lando pip install dj-database-url
+```
+
+```python
+import os
+import dj_database_url
+
+DATABASES = {"default": dj_database_url.config()}
+CELERY_BROKER_URL = os.environ["REDIS_URL"]
+```
+
+Prefer no extra dependency? Split `os.environ["DATABASE_URL"]` with `urllib.parse.urlparse` and fill `DATABASES["default"]` from the parts. Either way, nothing in `settings.py` names host, user, or password, and the Landofile fills them from the database service's resolved credentials, so the application uses the credentials resolved from your `creds:` block after a rebuild.
+
+`lando info` lists the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/django-demo`. Django inside `web` still reads the real value.
+
+Also set `ALLOWED_HOSTS` so the proxy hostname is accepted (for a local demo, `ALLOWED_HOSTS = ['*']` is fine).
+
+```sh
+lando django migrate --noinput
+lando django runserver 0.0.0.0:8000
+```
+
+Bind `0.0.0.0` so Traefik can reach the process. Then open the URL from `lando info`.
 
 ## See what the recipe writes
 
@@ -64,75 +135,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They re
     </Step>
   </Scenario>
 </Guide>
-
-## Scaffold Django with pip and django-admin
-
-Install Django into the running `web` service, then create the project in the app root (`.lando.yml` can already be there):
-
-```sh
-lando pip install 'Django>=5,<6' 'psycopg[binary]>=3'
-lando exec web -- django-admin startproject config .
-```
-
-Pin what you installed for the next rebuild:
-
-```sh
-lando pip freeze > requirements.txt
-```
-
-Then the day-to-day tools work:
-
-```sh
-lando django --version
-lando django check
-lando pip --version
-lando redis-cli ping
-lando psql -c 'SELECT 1'
-```
-
-Add a Celery worker at init with `--answer=celery=true`:
-
-```sh
-lando init --recipe django --name=django-celery --yes --answer=celery=true
-```
-
-That service runs `celery -A app worker --loglevel=info` with `restart: unless-stopped`. Point Celery at your real app module. If the application or dependencies are missing, start warns about the worker and reports it as `restarting`; the worker retries and starts on its own after installation. Use `lando logs --service=worker` to check it. Python has no default healthcheck; author `healthcheck:` when your web service needs an application readiness gate.
-
-## Connect Django to Postgres and Redis
-
-`web` (and `worker`, when you asked for Celery) already has the connection strings:
-
-| Variable | Value |
-| --- | --- |
-| `DATABASE_URL` | `postgresql://lando:<password>@database:5432/django-demo` |
-| `REDIS_URL` | `redis://cache:6379` |
-
-Django does not read `DATABASE_URL` by itself. Install `dj-database-url` and let it parse the value:
-
-```sh
-lando pip install dj-database-url
-```
-
-```python
-import os
-import dj_database_url
-
-DATABASES = {"default": dj_database_url.config()}
-CELERY_BROKER_URL = os.environ["REDIS_URL"]
-```
-
-Prefer no extra dependency? Split `os.environ["DATABASE_URL"]` with `urllib.parse.urlparse` and fill `DATABASES["default"]` from the parts. Either way, nothing in `settings.py` names host, user, or password, and the Landofile fills them from the database service's resolved credentials, so an authored `creds:` block and a rebuild both just work.
-
-`lando info` lists the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/django-demo`. Django inside `web` still reads the real value.
-
-Also set `ALLOWED_HOSTS` so the proxy hostname is accepted (for a local demo, `ALLOWED_HOSTS = ['*']` is fine).
-
-```sh
-lando django migrate --noinput
-lando django runserver 0.0.0.0:8000
-```
-
-Bind `0.0.0.0` so Traefik can reach the process. Then open the URL from `lando info`.
 
 ## Destroy the app
 

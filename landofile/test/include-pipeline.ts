@@ -30,6 +30,7 @@ const compileScope = (options: Pick<ResolveLandofileIncludesOptions, "landofile"
 export const resolveAuthoredIncludes = (options: Omit<ResolveLandofileIncludesOptions, "loadScope">) =>
   compileScope(options).pipe(
     Effect.flatMap((loadScope) => resolveLandofileIncludes({ ...options, loadScope })),
+    Effect.map((compiled) => compiled.document),
   );
 export const updateAuthoredIncludes = (options: Omit<UpdateLandofileIncludesOptions, "loadScope">) =>
   compileScope(options).pipe(

@@ -8,13 +8,15 @@ tags: [beta, docs, provider-podman, setup, macos, podman-desktop]
 
 # Use Podman Desktop on macOS
 
-Alpha binaries are Linux x64 today. There is no macOS `lando` binary in Alpha. This page records the Podman Desktop provider path so the facts are here when that host is supported.
+Download the macOS binary for your architecture from a `v4.0.0-dev.N` [GitHub prerelease](../install/github-releases.mdx), then [put it on PATH](../install/path-and-setup.mdx). System Podman is an opt-in provider; setup does not install it for you.
 
-When a macOS binary ships, you need a running Podman Desktop machine first. Then:
+Start your existing Podman Desktop machine before running:
 
 ```sh
 lando setup --provider=podman
 ```
+
+Run `lando doctor` after setup. Confirm Podman is selected and the runtime is running.
 
 `--yes` consents to confirmation. It does not switch providers. See [What persists](./provider-selection.mdx#what-persists).
 
@@ -33,4 +35,4 @@ podman machine start podman-machine-default
 ```
 
 Or open Podman Desktop and start `podman-machine-default`.
-See [Pick a container provider](./provider-selection.mdx) for the Linux commands that work today.
+See [Pick a container provider](./provider-selection.mdx) for provider selection, persistence, and the Docker Desktop path required for managed-provider setup on Intel Macs.

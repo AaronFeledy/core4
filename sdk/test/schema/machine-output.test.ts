@@ -201,7 +201,7 @@ describe("StreamFrame", () => {
         apiVersion: "v4",
         command: "app:exec",
         ok: false,
-        error: { _tag: "ProcessExecError", message: "exit 1" },
+        error: { _tag: "ProcessExecError", message: "exit 1", remediation: "Fix the command that exited 1." },
         warnings: [],
         deprecations: [],
       },

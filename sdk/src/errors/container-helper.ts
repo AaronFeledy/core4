@@ -8,7 +8,7 @@ export class ContainerHelperUnavailableError extends Schema.TaggedError<Containe
       arch: Schema.Literals(["x64", "arm64"]),
     }),
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}

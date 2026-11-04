@@ -1,7 +1,6 @@
 import { readdir, rmdir } from "node:fs/promises";
-import { join } from "node:path";
 import { UpdateResultSchema, makeUpdateHandoff } from "@lando/engine/operations/update";
-import { resolveLandoRoots } from "@lando/paths";
+import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
 import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
@@ -25,8 +24,9 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
   const receipt = await Effect.runPromise(
     Effect.gen(function* () {
       const handoff = makeUpdateHandoff(yield* StateStore);
+      const handoffDir = updateHandoffDir(resolveLandoRoots().userDataRoot);
       const names = yield* Effect.tryPromise(() =>
-        readdir(join(resolveLandoRoots().userCacheRoot, "update-handoff")).catch((cause: unknown) => {
+        readdir(handoffDir).catch((cause: unknown) => {
           if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return [];
           throw cause;
         }),
@@ -38,7 +38,7 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
       return undefined;
     }).pipe(Effect.provide(StateStoreLayer.layer)),
   );
-  await rmdir(join(resolveLandoRoots().userCacheRoot, "update-handoff")).catch((cause: unknown) => {
+  await rmdir(updateHandoffDir(resolveLandoRoots().userDataRoot)).catch((cause: unknown) => {
     if (cause instanceof Error && "code" in cause && (cause.code === "ENOTEMPTY" || cause.code === "ENOENT"))
       return;
     throw cause;
@@ -51,14 +51,15 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
     resultFormat: format,
     resultSchema: UpdateResultSchema,
     deprecationWarnings: false,
-    successExitCode: (result) =>
+    completion: (result) =>
       result.hasFailures === true || result.coreFailure !== undefined || result.coreBlocked === true
-        ? 1
-        : undefined,
+        ? { ok: false, exitCode: 1 }
+        : { ok: true, exitCode: 0 },
     render: (result) => `Previous Windows update result:\n${renderUpdateResult(result)}`,
-    formatError: (failure) =>
+    formatError: (failure, redactor) =>
       formatBugReport({
         ...failure,
+        redactor,
         context: { commandId: "meta:update" },
         rendererMode: renderer.mode,
       }),

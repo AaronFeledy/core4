@@ -7,6 +7,8 @@ import { GlobalAppService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { readGlobalLandofile } from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { globalPolicyFixture } from "./global-policy-fixture.ts";
 
 test.each(["node:22", "compose"])("merges global declared logs before decoding (%s)", async (type) => {
   // Given a generated global service and an authored override for the same log source.
@@ -39,14 +41,21 @@ test.each(["node:22", "compose"])("merges global declared logs before decoding (
     // When the real global adapter composes its generated and authored layers.
     const loaded = await Effect.runPromise(
       readGlobalLandofile().pipe(
-        Effect.provide(Layer.merge(BunFileSystem.layer, Layer.succeed(GlobalAppService, globalApp))),
+        Effect.provide(
+          Layer.mergeAll(
+            globalPolicyFixture,
+            makeTestStateStore().layer,
+            BunFileSystem.layer,
+            Layer.succeed(GlobalAppService, globalApp),
+          ),
+        ),
       ),
     );
 
     // Then omitted override fields retain authored values rather than decoding defaults early.
     expect(loaded.materialized).toBe(true);
     if (!loaded.materialized) throw new Error("Expected a materialized global Landofile");
-    expect(loaded.landofile.services?.[ServiceName.make("app")]?.logs).toEqual([
+    expect(loaded.landofile.document.services?.[ServiceName.make("app")]?.logs).toEqual([
       {
         id: LogSourceId.make("applog"),
         path: AbsolutePath.make("/tmp/app.log"),

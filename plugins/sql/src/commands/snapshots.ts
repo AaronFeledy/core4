@@ -49,7 +49,6 @@ const render: NonNullable<ExecutableCommandSpec<DbCommandResult>["render"]> = Ef
 
 export const spec = {
   id: "db:snapshots",
-  summary: "List database snapshots and recovery points.",
   namespace: "db",
   bootstrap: "app",
   flags: {

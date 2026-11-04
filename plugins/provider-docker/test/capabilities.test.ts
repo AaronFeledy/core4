@@ -87,7 +87,7 @@ const listenTcp = (server: Server): Promise<number> =>
     });
   });
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "fileSyncTargets"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -221,6 +221,8 @@ describe("provider-docker capabilities", () => {
                   providerId: "docker",
                   operation: "capabilities",
                   message: "injected failure",
+                  remediation:
+                    "Install or start the `docker` provider and confirm it can perform `capabilities`.",
                 }),
               ),
             },
@@ -552,7 +554,7 @@ describe("provider-docker capabilities", () => {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
       if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
       const chunks = await Effect.runPromise(
-        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+        client.stream({ method: "GET", path: "/containers/lando-myapp--web/logs?stdout=true" }).pipe(
           Stream.runCollect,
           Effect.map((collected) => Array.from(collected)),
         ),
@@ -631,7 +633,7 @@ describe("provider-docker capabilities", () => {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
       if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
       const chunks = await Effect.runPromise(
-        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+        client.stream({ method: "GET", path: "/containers/lando-myapp--web/logs?stdout=true" }).pipe(
           Stream.runCollect,
           Effect.map((collected) => Array.from(collected)),
         ),

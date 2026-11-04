@@ -96,6 +96,8 @@ const bootstrapError = (message: string, cause?: unknown) =>
     message,
     stage: "minimal",
     cause,
+    remediation:
+      "Fix the minimal runtime bootstrap failure (paths, permissions, or install layout) and re-run the command.",
   });
 
 export const layer = Layer.effect(

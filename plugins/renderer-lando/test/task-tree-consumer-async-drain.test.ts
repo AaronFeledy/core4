@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
 import { TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
@@ -16,7 +17,7 @@ const timestamp = "2026-07-17T12:00:00.000Z";
 const deferredBody = (prefix: string): string =>
   Array.from({ length: 3_000 }, (_, index) => `${prefix}-${index}-${"x".repeat(100)}`).join("\n");
 
-test("collapse drains deferred output before later output and scope close awaits spool disposal", async () => {
+const verifyAsyncDrain = async (): Promise<void> => {
   // given
   const firstSpoolAppend = Promise.withResolvers<void>();
   const firstSpoolRead = Promise.withResolvers<void>();
@@ -146,4 +147,28 @@ test("collapse drains deferred output before later output and scope close awaits
   expect(newIndex).toBeGreaterThan(oldIndex);
   expect(closedBeforeRemove).toBe(false);
   expect(secondSpoolRemoved).toBe(true);
+};
+
+test("collapse drains deferred output before later output and scope close awaits spool disposal", async () => {
+  if (process.env.LANDO_TEST_ASYNC_DRAIN_CHILD === "1") {
+    await verifyAsyncDrain();
+    return;
+  }
+
+  // A previous test can cache the real OpenTUI module in this process. The
+  // fixture injects a fake module and needs a fresh process for that contract.
+  const child = Bun.spawn({
+    cmd: [process.execPath, "--no-orphans", "test", import.meta.path],
+    cwd: resolve(import.meta.dirname, "../../.."),
+    env: { ...process.env, LANDO_TEST_ASYNC_DRAIN_CHILD: "1" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  expect({ exitCode, stdout, stderr }).toMatchObject({ exitCode: 0 });
+  expect(stderr).toMatch(/1 pass\s*\n\s*0 fail/u);
 });

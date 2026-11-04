@@ -19,13 +19,12 @@ const plan = {
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 } satisfies AppPlan;
-const ctx = { providerId: "test", remediation: "Run doctor." } as const;
+const ctx = { providerId: "test", remediation: "Run doctor.", env: {} } as const;
 
 const noPlanError = (missingApp: AppId, operation: string) =>
   new ProviderUnavailableError({
@@ -59,7 +58,13 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
   },
   inspect: (resolvedPlan, selector) => {
     calls.push({ name: "inspect", args: [resolvedPlan, selector] });
-    return Effect.succeed({ app, service, providerId: ProviderId.make("test"), status: "running" });
+    return Effect.succeed({
+      app,
+      service,
+      providerId: ProviderId.make("test"),
+      status: "running",
+      publications: { status: "unknown" as const },
+    });
   },
 });
 
@@ -143,13 +148,34 @@ const makeInput = (
     resolvePlan,
     noPlanError,
     readAppEnvironment: () => Effect.succeed([]),
-    before: Effect.sync(() => calls.push({ name: "before", args: [] })),
+    before: () => Effect.sync(() => calls.push({ name: "before", args: [] })),
     service: makeService(calls),
     ...(dataPlane === undefined ? {} : { dataPlane }),
   };
 };
 
 describe("resolved provider operations", () => {
+  test.each(["start", "stop", "restart"] as const)(
+    "%s checks durable state even with a supplied plan",
+    async (operation) => {
+      const calls: Call[] = [];
+      const error = noPlanError(app, "applied-state.read");
+      const ops = makeResolvedProviderOps({ ...makeInput(calls), beforeMutation: () => Effect.fail(error) });
+      const failure = await Effect.runPromise(ops[operation]({ ...target, plan }).pipe(Effect.flip));
+      expect(failure).toBe(error);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  test("inspect does not use the strict mutation guard", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps({
+      ...makeInput(calls),
+      beforeMutation: () => Effect.fail(noPlanError(app, "applied-state.read")),
+    });
+    expect(await Effect.runPromise(ops.inspect({ ...target, plan }))).toMatchObject({ status: "running" });
+    expect(calls.map((call) => call.name)).toEqual(["before", "inspect"]);
+  });
   test("secret read-back never invokes the runtime-starting before hook", async () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
@@ -183,7 +209,7 @@ describe("resolved provider operations", () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps({
       ...makeInput(calls),
-      before: Effect.die("must not start runtime"),
+      before: () => Effect.die("must not start runtime"),
     });
     if (ops.listVolumeSnapshots === undefined) throw new Error("Expected snapshot listing adapter");
     expect(await Effect.runPromise(ops.listVolumeSnapshots())).toEqual([]);
@@ -218,6 +244,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -242,6 +269,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -541,7 +569,7 @@ describe("resolved provider operations", () => {
       if (!Exit.isFailure(exit)) throw new Error("Expected unavailable failure");
       const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderUnavailableError);
-      expect(error.providerId).toBe(ctx.providerId);
+      expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: ctx.providerId });
     }
   });
 });

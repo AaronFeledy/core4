@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, CacheService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -51,13 +52,19 @@ const plannerLayer = AppPlannerLayer.layer.pipe(
 );
 // When
 const next = await Effect.runPromise(
-  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
+  loadAuthoredDocuments([{ file: join(appRoot, ".lando.yml"), value: landofile }], {
+    appRoot,
+    file: join(appRoot, ".lando.yml"),
+  }).pipe(
+    Effect.flatMap((compiled) =>
+      Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, TestRuntimeProvider.capabilities)),
+    ),
     Effect.provide(plannerLayer),
   ),
 );
 
 // Then: only tilde sources change, and unchanged home avoids a cache rewrite.
-const mounts = next.services[service]?.mounts;
+const mounts = next.services[service]?.mounts.flatMap((mount) => (mount.type === "bind" ? [mount] : []));
 assert.equal(mounts?.find((mount) => mount.target === "/ssh")?.source, `${homedir()}/.ssh`);
 assert.equal(mounts?.find((mount) => mount.target === "/host-home")?.source, homedir());
 assert.equal(mounts?.find((mount) => mount.target === "/socket")?.source, "/var/run/example.sock");

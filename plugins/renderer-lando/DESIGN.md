@@ -1,7 +1,9 @@
 # Renderer-Lando Design System
 
-Quiet TTY task trees for the bundled `lando` renderer. Extracted from the existing
-left-rail painter and locked to the quiet grammar. Not a web surface.
+Use this contract when changing the bundled `lando` renderer's TTY task trees.
+The layout uses an open-right left rail, one status glyph per row, and a final
+verdict. It is a terminal surface, not a web interface; plain and machine output
+stay undecorated.
 
 ## 0. Research Log
 
@@ -18,12 +20,12 @@ A quiet operations rail. Identity at the top, one glyph per row, one verdict
 at the bottom. The signature is the Lando-pink open-right left rail: `╭─` /
 `│` / `╰─` with no right closure, no `LANDO OPS` banner, no status chips.
 
-Personas: a developer watching `lando start`, a contributor reading goldens,
-an agent consuming undecorated plain/JSON.
+The task tree serves developers watching `lando start`. Contributors verify its
+frames against golden fixtures; agents consume undecorated plain or JSON output.
 
 ## 2. Color
 
-ANSI SGR tokens from `csi` in `task-tree-frame.ts`. Terminal default background
+ANSI SGR tokens from `@lando/renderer/palette`; internal painters require an explicit palette or color decision. Terminal default background
 and default foreground. Status colors are the standard 16-color palette only:
 red 31, green 32, yellow 33, cyan 36, dim 2. No RGB or custom status palette.
 `csi.amber` is the local name for standard yellow (33). Bright magenta 95 is
@@ -46,6 +48,7 @@ Rules:
 
 - Never introduce a color outside this table.
 - Never communicate state by color alone. Glyph or compact word first.
+- A non-empty host `NO_COLOR` (including `0`) or `TERM=dumb` suppresses chromatic SGR without changing glyphs, text, or layout. `TERM=dumb` also keeps narration append-only. Child payload bytes are unchanged. OpenTUI prompts use terminal-default foreground/background under the opt-out, retain the `▶` selection indicator, and preserve the terminal's cursor color. Confirmations render inline as plain text. Preview, search, and validation text follow the same per-driver theme.
 - Title text is bold default, not pink. Footer copy is dim default, not pink.
 - Pink is rail chrome, the active moving spinner glyph, and the opt-in brand icon. It is not a status
   color and must not paint labels, static `·`, wrap continuations, durations,

@@ -5,6 +5,7 @@ import { AppPlanner, RuntimeProvider, RuntimeProviderRegistry, makeLandoRuntime 
 import { type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { withEnvVar } from "../_support/temp-cwd.ts";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 describe("library makeLandoRuntime app bootstrap", () => {
   test("runs a simple app operation with TestRuntimeProvider", () =>
@@ -22,7 +23,10 @@ describe("library makeLandoRuntime app bootstrap", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const planner = yield* AppPlanner;
-          const plan = yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
+          const plan = yield* planner.plan(
+            literalLandofile(landofile, process.cwd()),
+            TestRuntimeProvider.capabilities,
+          );
           const registry = yield* RuntimeProviderRegistry;
           const provider = yield* registry.select(plan);
           const apply = yield* provider.apply(plan, { reconcile: false });

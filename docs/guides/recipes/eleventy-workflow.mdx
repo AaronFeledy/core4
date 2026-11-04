@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, eleventy, static, node]
 
 # Run the Eleventy recipe
 
+Build an Eleventy site inside a Node service and preview it through Lando. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe eleventy --name=eleventy-demo --yes
 cd eleventy-demo
@@ -14,6 +16,36 @@ lando start
 ```
 
 `--yes` skips prompts. Eleventy declares no recipe options, so the only prompt is the app name. First start builds `builder` and `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+## Install Eleventy, then build
+
+Init does not create Eleventy templates. Install into `builder`, then add a single entry page (one input that maps to `_site/index.html`, not both `index.md` and `index.html`):
+
+```sh
+lando npm init -y
+lando npm install @11ty/eleventy
+```
+
+Confirm tooling:
+
+```sh
+lando npm --version
+lando eleventy --version
+lando eleventy --help
+```
+
+Write a tiny page, then build:
+
+```sh
+printf '%s\n' '# Hello from Eleventy on Lando' > index.md
+lando eleventy
+```
+
+That writes `_site/index.html`. The recipe already runs `npx @11ty/eleventy --serve --port 8080` on `builder`, so open the `builder` URL `lando info` prints (for example `https://builder.eleventy-demo.lndo.site` or the same host with a fallback port). That development server provides live reload.
+
+Once a build has written `_site/`, the app hostname URL (the **web** entry from `lando info`, for example `https://eleventy-demo.lndo.site`) serves it through nginx. `web` ships with `webroot: _site`, so there's nothing to configure. Keep editing against the **builder** URL for live reload; nginx picks up the next `lando eleventy` build.
+
+Need a one-off rebuild while the development server keeps running? Use `lando eleventy`.
 
 ## See what the recipe writes
 
@@ -65,36 +97,6 @@ Init writes `.lando.yml` only. Put an Eleventy app in after start.
     </Step>
   </Scenario>
 </Guide>
-
-## Install Eleventy, then build
-
-Init does not drop templates. Install into `builder`, then add a single entry page (one input that maps to `_site/index.html`, not both `index.md` and `index.html`):
-
-```sh
-lando npm init -y
-lando npm install @11ty/eleventy
-```
-
-Confirm tooling:
-
-```sh
-lando npm --version
-lando eleventy --version
-lando eleventy --help
-```
-
-Write a tiny page, then build:
-
-```sh
-printf '%s\n' '# Hello from Eleventy on Lando' > index.md
-lando eleventy
-```
-
-That writes `_site/index.html`. The recipe already runs `npx @11ty/eleventy --serve --port 8080` on `builder`, so open the `builder` URL `lando info` prints (for example `https://builder.eleventy-demo.lndo.site` or the same host with a fallback port). Live reload rides with that serve.
-
-Once a build has written `_site/`, the app hostname URL (the **web** entry from `lando info`, for example `https://eleventy-demo.lndo.site`) serves it through nginx. `web` ships with `webroot: _site`, so there's nothing to configure. Keep editing against the **builder** URL for live reload; nginx picks up the next `lando eleventy` build.
-
-Need a one-off rebuild while the development server keeps running? Use `lando eleventy`.
 
 ## Destroy without surprises
 

@@ -34,7 +34,11 @@ const manifestWithProviders = (providers: ReadonlyArray<unknown>) =>
   });
 
 const notRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `not wired for this characterization test: ${id}`, pluginName: id });
+  new PluginLoadError({
+    message: `not wired for this characterization test: ${id}`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 interface FakeRegistryOptions {
   readonly manifests: ReadonlyArray<PluginManifest>;

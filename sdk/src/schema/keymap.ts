@@ -228,6 +228,7 @@ export const decodeKeymapConfig = (input: unknown): Result.Result<KeymapConfig, 
       message,
       path: "keymap",
       cause: issue,
+      remediation: "Correct the keymap entry so it matches the expected shape, then retry.",
     }),
   );
 };

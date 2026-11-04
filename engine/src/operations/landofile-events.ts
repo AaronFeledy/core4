@@ -1,9 +1,8 @@
-import { DateTime, Effect, Option, Result, Schema } from "effect";
+import { DateTime, Effect, Option, Result } from "effect";
 
-import type { LandofileEventsOutcome } from "@lando/sdk/app";
 import { LandofileEventsSkippedError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
+import type { AppPlan, LandofileEventsOutcome } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
@@ -13,9 +12,9 @@ import {
 } from "@lando/sdk/services";
 
 import { presentLandofileLayers, representativeLandofileLayer } from "@lando/landofile/layers";
+import { planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 
 type LandofileEventSource =
   | { readonly kind: "plan"; readonly plan: AppPlan }
@@ -39,10 +38,8 @@ const errorText = (error: unknown): string =>
 
 /** Whether the applied root itself holds a Landofile; a Landofile in a parent folder is another app's. */
 const landofilePresentAt = (root: string): Effect.Effect<Result.Result<boolean, string>> =>
-  Effect.tryPromise({
-    try: () => presentLandofileLayers(root),
-    catch: errorText,
-  }).pipe(
+  presentLandofileLayers(root).pipe(
+    Effect.mapError(errorText),
     Effect.map((layers) => representativeLandofileLayer(layers) !== undefined),
     Effect.result,
   );
@@ -90,11 +87,6 @@ const planLandofileEvents = Effect.fnUntraced(function* (
   return planned;
 });
 
-export const LandofileEventsOutcomeSchema = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("ran") }),
-  Schema.Struct({ status: Schema.Literal("skipped"), reason: Schema.String }),
-]);
-
 export interface LandofileEventPlan {
   /** The plan whose steps the operation runs; carries no events when they were skipped. */
   readonly plan: AppPlan;
@@ -125,6 +117,7 @@ export const resolveLandofileEventPlan = Effect.fnUntraced(function* (
   if (source.kind === "plan") return { plan: source.plan, outcome: { status: "ran" } };
   const events = yield* EventService;
   const redaction = yield* Effect.serviceOption(RedactionService);
+  const values = planRedactionValues(target.plan);
   // Without a redactor the loader text stays out of the notice rather than risk leaking a value.
   const detail =
     source.detail === undefined || Option.isNone(redaction)
@@ -132,7 +125,8 @@ export const resolveLandofileEventPlan = Effect.fnUntraced(function* (
       : `. ${(
           yield* redaction.value.forProfile("secrets", {
             sourceEnv: process.env,
-            redactionTokens: collectAppPlanRedactionTokens(target.plan),
+            redactionTokens: values.substring,
+            wholeTokenValues: values.wholeToken,
           })
         ).redactString(source.detail)}`;
   const reason = `${source.reason}${detail}`;

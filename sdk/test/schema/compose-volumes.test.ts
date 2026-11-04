@@ -16,6 +16,28 @@ const decodeVolumesEither = (input: unknown) =>
 const bindLongInput = { type: "bind", source: "./src", target: "/app" } as const;
 const volumeLongInput = { type: "volume", source: "db", target: "/data" } as const;
 
+test.each([0, 0o755, 0o770, 0o1770, 0o2770, 0o3770, 0o7777])(
+  "tmpfs bitmask %i is idempotent through raw, canonical and encoded forms",
+  (mode) => {
+    const raw = [{ type: "tmpfs", target: "/run/app", read_only: true, tmpfs: { mode } }] as const;
+    const canonical = [{ type: "tmpfs", target: "/run/app", readOnly: true, tmpfs: { mode } }] as const;
+    const decoded = decodeVolumes(raw);
+    expect(decoded).toEqual(canonical);
+    expect(decodeVolumes(decoded)).toEqual(canonical);
+    expect(Schema.encodeSync(ComposeVolumesField)(decoded)).toEqual(raw);
+    expect(decodeVolumes(Schema.encodeSync(ComposeVolumesField)(decoded))).toEqual(canonical);
+  },
+);
+
+test.each(["1770", "0o1770", "1780", true, null, {}])(
+  "tmpfs mode rejects nonnumeric bitmasks: %j",
+  (mode) => {
+    expect(
+      Result.isFailure(decodeVolumesEither([{ type: "tmpfs", target: "/run/app", tmpfs: { mode } }])),
+    ).toBe(true);
+  },
+);
+
 const rejectedLongCases: ReadonlyArray<
   readonly [label: string, properties: ReadonlyArray<string>, input: unknown]
 > = [

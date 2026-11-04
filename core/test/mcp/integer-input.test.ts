@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService } from "@lando/redaction/service";
+import { McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Layer, Result, Schema } from "effect";
-import { logsSpec } from "../../src/cli/command-specs/app/logs";
+import { logsSpec as typedLogsSpec } from "../../src/cli/command-specs/app/logs";
+import { metaSourcesGcSpec } from "../../src/cli/command-specs/meta/sources/gc";
 import { parseFlagValue } from "../../src/cli/compiled-argv";
 import { validateEventCommandInput } from "../../src/cli/event-command-input";
 import { validateCliFlagValues } from "../../src/cli/flag-value-validation";
@@ -13,8 +14,12 @@ import {
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
 } from "../../src/cli/run-plugin-owned-command";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec";
 import { Flags } from "../../src/cli/spec/metadata";
 import { serviceLayer } from "../../src/mcp-command-executor";
+
+const logsSpec: LandoCommandSpec = typedLogsSpec;
+const sourcesGcSpec: LandoCommandSpec = metaSourcesGcSpec;
 
 test("projects logs tail as an integer", () => {
   expect(deriveToolInputSchema(logsSpec)).toMatchObject({
@@ -23,6 +28,13 @@ test("projects logs tail as an integer", () => {
 });
 test("accepts JSON integer tail through the shared validator", () => {
   expect(validateToolInput(logsSpec, { flags: { tail: 7 } }).flags.tail).toBe(7);
+});
+test("projects and enforces an integer flag minimum for MCP callers", () => {
+  expect(deriveToolInputSchema(sourcesGcSpec)).toMatchObject({
+    properties: { flags: { properties: { "older-than": { type: "integer", minimum: 0 } } } },
+  });
+  expect(validateToolInput(sourcesGcSpec, { flags: { "older-than": 0 } }).flags["older-than"]).toBe(0);
+  expect(() => validateToolInput(sourcesGcSpec, { flags: { "older-than": -1 } })).toThrow(McpToolInputError);
 });
 test("uses integer metadata rather than the flag name on native inputs", () => {
   const flags = { count: Flags.integer(), tail: Flags.string() };
@@ -73,7 +85,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
     run: (input: { readonly flags: Record<string, unknown> }) =>
       Effect.sync(() => {
         executed.push(input.flags.tail);
-        return { lines: [] };
+        return { app: "demo", lines: [] };
       }),
   };
   const layer = serviceLayer.pipe(
@@ -87,14 +99,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
             runtimeLayer: Layer.empty,
           }),
         ),
-        Layer.succeed(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => []),
-            forProfile: () => Effect.succeed(createRedactor("secrets")),
-          }),
-        ),
+        RedactionService.layer,
       ),
     ),
   );

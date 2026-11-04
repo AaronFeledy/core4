@@ -57,20 +57,20 @@ describe("lingering exec conmon", () => {
   test("recognizes only this runtime's exec monitors", () => {
     expect(managedConmonPath("/tmp/udr/runtime/bin/")).toBe("/tmp/udr/runtime/bin/conmon");
     expect(managedConmonPathForPodman("/tmp/udr/runtime/bin/podman")).toBe("/tmp/udr/runtime/bin/conmon");
-    expect(isLingeringExecConmon(execArgv("lando-global-traefik-diagnostics"), conmonPath)).toBe(true);
+    expect(isLingeringExecConmon(execArgv("lando-global--traefik-diagnostics"), conmonPath)).toBe(true);
     expect(isLingeringExecConmon([conmonPath, "--exec-attach"], conmonPath)).toBe(false);
-    expect(isLingeringExecConmon(monitorArgv("lando-global-traefik-diagnostics"), conmonPath)).toBe(false);
+    expect(isLingeringExecConmon(monitorArgv("lando-global--traefik-diagnostics"), conmonPath)).toBe(false);
     expect(isLingeringExecConmon(["/usr/bin/conmon", "--exec-attach", "-n", "other"], conmonPath)).toBe(
       false,
     );
     expect(
-      isLingeringExecConmon(execArgv("lando-app-database"), conmonPath, {
-        names: new Set(["lando-global-traefik-diagnostics"]),
+      isLingeringExecConmon(execArgv("lando-app--database"), conmonPath, {
+        names: new Set(["lando-global--traefik-diagnostics"]),
       }),
     ).toBe(false);
     expect(
       isLingeringExecConmon(
-        execArgv("lando-global-traefik-diagnostics", "abcdef1234567890ffff"),
+        execArgv("lando-global--traefik-diagnostics", "abcdef1234567890ffff"),
         conmonPath,
         {
           containerIds: new Set(["abcdef1234567890"]),
@@ -82,17 +82,17 @@ describe("lingering exec conmon", () => {
   test("SIGKILLs exec monitors for removed containers and leaves other conmon alone", async () => {
     const killed: number[] = [];
     const processes: ReadonlyArray<ExecConmonProcess> = [
-      { pid: 10, argv: execArgv("lando-global-traefik-diagnostics") },
-      { pid: 11, argv: execArgv("lando-global-traefik-diagnostics") },
-      { pid: 12, argv: monitorArgv("lando-global-traefik-diagnostics") },
-      { pid: 13, argv: execArgv("lando-app-appserver") },
-      { pid: 14, argv: ["/usr/bin/conmon", "--exec-attach", "-n", "lando-global-traefik-diagnostics"] },
+      { pid: 10, argv: execArgv("lando-global--traefik-diagnostics") },
+      { pid: 11, argv: execArgv("lando-global--traefik-diagnostics") },
+      { pid: 12, argv: monitorArgv("lando-global--traefik-diagnostics") },
+      { pid: 13, argv: execArgv("lando-app--appserver") },
+      { pid: 14, argv: ["/usr/bin/conmon", "--exec-attach", "-n", "lando-global--traefik-diagnostics"] },
     ];
 
     const killedCount = await run(
       reapLingeringExecConmons({
         conmonPath,
-        names: new Set(["lando-global-traefik-diagnostics"]),
+        names: new Set(["lando-global--traefik-diagnostics"]),
         reaper: reaperFor(processes, killed),
       }),
     );
@@ -104,13 +104,13 @@ describe("lingering exec conmon", () => {
   test("on runtime stop, SIGKILLs orphaned exec monitors and ignores a kill failure", async () => {
     const killed: number[] = [];
     const processes: ReadonlyArray<ExecConmonProcess> = [
-      { pid: 21, argv: execArgv("lando-us-appserver") },
-      { pid: 22, argv: execArgv("lando-global-ssh-agent") },
-      { pid: 23, argv: monitorArgv("lando-global-ssh-agent") },
+      { pid: 21, argv: execArgv("lando-us--appserver") },
+      { pid: 22, argv: execArgv("lando-global--ssh-agent") },
+      { pid: 23, argv: monitorArgv("lando-global--ssh-agent") },
       {
         pid: 24,
         argv: execArgv(
-          "lando-global-ssh-agent",
+          "lando-global--ssh-agent",
           "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         ),
       },

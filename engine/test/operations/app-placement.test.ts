@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { AppResolveError } from "@lando/sdk/errors";
+import { AppResolveError, FileSyncSelectionError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -40,7 +40,8 @@ const observations: ReadonlyArray<{
   { name: "logs", run: logsApp() },
 ];
 for (const operation of observations) {
-  test(`${operation.name} reads applied placement without planning the unavailable desired provider`, async () => {
+  test(`${operation.name} reads applied placement when desired planning is unavailable`, async () => {
+    let planningAttempts = 0;
     const harness = makeHarness({
       plannedApp: desired,
       appliedPlans: [applied],
@@ -53,12 +54,27 @@ for (const operation of observations) {
           operation.run.pipe(
             Effect.provideService(
               AppPlanner,
-              AppPlanner.of({ plan: () => Effect.die("observation must not plan desired state") }),
+              AppPlanner.of({
+                plan: () => {
+                  planningAttempts += 1;
+                  return operation.name === "info"
+                    ? Effect.fail(
+                        new FileSyncSelectionError({
+                          reason: "missing",
+                          candidates: [],
+                          message: "Desired engine is unavailable",
+                          remediation: "Install the desired file-sync engine.",
+                        }),
+                      )
+                    : Effect.die("logs must not plan desired state");
+                },
+              }),
             ),
           ),
         ).pipe(Effect.provide(harness.layer)),
       );
       expect(result.app).toBe(applied.name);
+      expect(planningAttempts).toBe(operation.name === "info" ? 1 : 0);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });
     }

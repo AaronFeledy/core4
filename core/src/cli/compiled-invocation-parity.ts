@@ -22,7 +22,7 @@ export class InvalidCliInvocationError extends Schema.TaggedError<InvalidCliInvo
   {
     message: Schema.String,
     commandId: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

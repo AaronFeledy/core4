@@ -3,6 +3,7 @@ import {
   type ProjectedFailure,
   buildCommandResultEnvelope,
   identityRedactor,
+  taggedErrorJson,
 } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
 import { FailureRole } from "@lando/sdk/schema";
@@ -17,6 +18,7 @@ export interface McpProgressData {
   readonly _tag: "stdout" | "stderr";
   readonly chunk: string;
   readonly service?: string;
+  readonly source?: string;
 }
 
 export const projectMcpProgressFrame = (value: unknown): McpProgressData => {
@@ -28,12 +30,18 @@ export const projectMcpProgressFrame = (value: unknown): McpProgressData => {
   const tag = Object.getOwnPropertyDescriptor(value, "_tag")?.value;
   const chunk = Object.getOwnPropertyDescriptor(value, "chunk")?.value;
   const serviceDescriptor = Object.getOwnPropertyDescriptor(value, "service");
+  const sourceDescriptor = Object.getOwnPropertyDescriptor(value, "source");
   if ((tag !== "stdout" && tag !== "stderr") || typeof chunk !== "string") throw inspectionFailure(context);
   if (serviceDescriptor !== undefined && typeof serviceDescriptor.value !== "string")
     throw inspectionFailure(context);
-  return serviceDescriptor === undefined
-    ? { _tag: tag, chunk }
-    : { _tag: tag, chunk, service: serviceDescriptor.value };
+  if (sourceDescriptor !== undefined && typeof sourceDescriptor.value !== "string")
+    throw inspectionFailure(context);
+  return {
+    _tag: tag,
+    chunk,
+    ...(serviceDescriptor === undefined ? {} : { service: serviceDescriptor.value }),
+    ...(sourceDescriptor === undefined ? {} : { source: sourceDescriptor.value }),
+  };
 };
 
 const ownString = (value: object, key: string): string | undefined => {
@@ -44,32 +52,12 @@ const ownString = (value: object, key: string): string | undefined => {
 };
 
 const projectFailure = (error: unknown): object => {
-  if (error === null || typeof error !== "object") {
-    return { _tag: "UnknownError", message: typeof error === "string" ? error : "Command failed." };
+  if (error !== null && typeof error === "object" && isRuntimeProxy(error))
+    throw inspectionFailure("MCP command failure");
+  if (error !== null && typeof error === "object") {
+    for (const field of ["_tag", "message", "remediation", "reason"]) ownString(error, field);
   }
-  if (isRuntimeProxy(error)) throw inspectionFailure("MCP command failure");
-  const tag = ownString(error, "_tag") ?? ownString(error, "name") ?? "UnknownError";
-  const message = ownString(error, "message") ?? "Command failed.";
-  const remediation = ownString(error, "remediation");
-  const reason = ownString(error, "reason");
-  const projected = Object.create(
-    Object.getPrototypeOf(error),
-    Object.fromEntries(
-      Object.keys(error)
-        .filter((key) => key !== "cause" && key !== "stack" && key !== "redactionTokens")
-        .flatMap((key) => {
-          const descriptor = Object.getOwnPropertyDescriptor(error, key);
-          return descriptor !== undefined && "value" in descriptor ? [[key, descriptor]] : [];
-        }),
-    ),
-  );
-  Object.assign(projected, {
-    _tag: tag,
-    message,
-    ...(remediation === undefined ? {} : { remediation }),
-    ...(reason === undefined ? {} : { reason }),
-  });
-  return projected;
+  return taggedErrorJson(error);
 };
 
 const inspectAdditionalFailures = (
@@ -113,6 +101,9 @@ export const inspectMcpCommandOutcome = (
         _tag: "failure",
         error: projectFailure(outcome.error),
         additionalErrors: inspectAdditionalFailures(outcome.additionalErrors),
+        ...(Object.hasOwn(outcome, "value")
+          ? { value: new BoundedDataInspector("MCP command result").inspect(outcome.value) }
+          : {}),
       } as const;
       const envelope = Effect.runSync(
         buildCommandResultEnvelope({

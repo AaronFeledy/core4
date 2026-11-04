@@ -19,13 +19,17 @@ You do not start Traefik by hand. See [Use the Traefik proxy](./proxy-traefik.md
 
 ## Issue a service certificate
 
+Add `certs: true` to the service in your Landofile when it needs its own leaf
+certificate, rather than only HTTPS at the proxy. The fragments below belong
+under your existing service definition:
+
 ```yaml
 services:
   appserver:
     certs: true
 ```
 
-Disable issuance:
+To disable service certificate issuance, use this alternative:
 
 ```yaml
 services:
@@ -33,7 +37,7 @@ services:
     certs: false
 ```
 
-Supply your own cert and key:
+To supply your own certificate instead, set both paths relative to the app root:
 
 ```yaml
 services:
@@ -47,7 +51,8 @@ The object form requires both `cert` and `key`. Custom paths must stay inside th
 
 With `certs: true`, Lando issues a leaf that covers the service name, its internal alias, `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`. Each `hostnames:` entry must be a plain DNS name: letters, digits, and hyphens in each label, no scheme, port, path, or wildcard. `lando app:config:lint` and `lando start` both reject anything else at `services.<name>.hostnames[<index>]`.
 
-Inside the service the cert lands at:
+After starting the app, the service receives these certificate-path environment
+variables (`<service>` is its service name):
 
 ```text
 LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt

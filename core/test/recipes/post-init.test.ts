@@ -5,9 +5,17 @@ import { join } from "node:path";
 
 import { NotImplementedError, RecipePostInitError, RecipeRunNotAllowedError } from "@lando/sdk/errors";
 
-import type { BunSelfSpawner, BunSelfSpawnerOptions } from "../../src/cli/commands/bun-self-runner.ts";
-import { type PostInitIO, redactBunOutput, runPostInit } from "../../src/recipes/post-init/runtime.ts";
+import { ProcessRunner } from "@lando/sdk/services";
+import { Effect } from "effect";
+import { bunSelfRun, childEnv } from "../../src/cli/commands/bun-self-runner.ts";
+import {
+  type PostInitIO,
+  type RunPostInitOptions,
+  redactBunOutput,
+  runPostInit,
+} from "../../src/recipes/post-init/runtime.ts";
 import type { ChoicesCommandInput, ChoicesCommandRunner } from "../../src/recipes/prompts/choices-command.ts";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-post-init-")));
@@ -45,14 +53,31 @@ interface RecordedSpawn {
 
 const makeFakeSpawner = (
   exitCode: number,
-): { readonly spawner: BunSelfSpawner; readonly calls: RecordedSpawn[] } => {
+): { readonly spawner: RunPostInitOptions["runBun"]; readonly calls: RecordedSpawn[] } => {
   const calls: RecordedSpawn[] = [];
-  const spawner: BunSelfSpawner = {
-    spawn: async (options: BunSelfSpawnerOptions) => {
-      calls.push({ cmd: options.cmd, cwd: options.cwd, env: options.env });
-      return { exitCode };
-    },
-  };
+  const spawner: RunPostInitOptions["runBun"] = (options) =>
+    Effect.runPromise(
+      bunSelfRun({
+        argv: options.argv,
+        cwd: options.cwd,
+        env: childEnv(options.env),
+        ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((request) =>
+            Effect.sync(() => {
+              calls.push({
+                cmd: [request.cmd, ...request.args],
+                cwd: request.cwd ?? "",
+                env: { ...request.env },
+              });
+              return { exitCode };
+            }),
+          ),
+        ),
+      ),
+    );
   return { spawner, calls };
 };
 
@@ -72,7 +97,7 @@ describe("runPostInit — bun.install", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -100,7 +125,7 @@ describe("runPostInit — bun.install", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -122,7 +147,7 @@ describe("runPostInit — bun.install", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -155,7 +180,7 @@ describe("runPostInit — bun.install", () => {
             recipeId: "fixture",
             appName: "fixture",
             answers: {},
-            spawner,
+            runBun: spawner,
             execPath: "/fake/bun",
             env: { PATH: "/usr/bin" },
           });
@@ -188,7 +213,7 @@ describe("runPostInit — bun.install", () => {
             recipeId: "fixture",
             appName: "fixture",
             answers: {},
-            spawner,
+            runBun: spawner,
             execPath: "/fake/bun",
             env: { PATH: "/usr/bin" },
           });
@@ -217,7 +242,7 @@ describe("runPostInit — bun.install", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -247,7 +272,7 @@ describe("runPostInit — bun.install", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -295,7 +320,7 @@ describe("runPostInit — bun.install", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -332,7 +357,7 @@ describe("runPostInit — bun.add", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -361,7 +386,7 @@ describe("runPostInit — bun.add", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -391,7 +416,7 @@ describe("runPostInit — bun.create", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -412,7 +437,7 @@ describe("runPostInit — bun.create", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: { framework: "vue" },
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -433,7 +458,7 @@ describe("runPostInit — bun.create", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -461,7 +486,7 @@ describe("runPostInit — bun.create", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -488,7 +513,7 @@ describe("runPostInit — bun.create", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -512,7 +537,7 @@ describe("runPostInit — bun.create", () => {
             recipeId: "fixture",
             appName: "fixture",
             answers: {},
-            spawner,
+            runBun: spawner,
             execPath: "/fake/bun",
             env: { PATH: "/usr/bin" },
           });
@@ -542,7 +567,7 @@ describe("runPostInit — bun.create", () => {
             recipeId: "fixture",
             appName: "fixture",
             answers: { tpl },
-            spawner,
+            runBun: spawner,
             execPath: "/fake/bun",
             env: { PATH: "/usr/bin" },
           });
@@ -571,7 +596,7 @@ describe("runPostInit — bun.create", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: { tpl: "" },
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -601,7 +626,7 @@ describe("runPostInit — bun.run", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -623,7 +648,7 @@ describe("runPostInit — bun.run", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -656,7 +681,7 @@ describe("runPostInit — bun.script", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -682,7 +707,7 @@ describe("runPostInit — bun.script", () => {
             recipeId: "fixture",
             appName: "fixture",
             answers: {},
-            spawner,
+            runBun: spawner,
             execPath: "/fake/bun",
             env: { PATH: "/usr/bin" },
           });
@@ -711,7 +736,7 @@ describe("runPostInit — bun.script", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -741,7 +766,7 @@ describe("runPostInit — bun.script", () => {
             recipeId: "fixture",
             appName: "fixture",
             answers: {},
-            spawner,
+            runBun: spawner,
             execPath: "/fake/bun",
             env: { PATH: "/usr/bin" },
           });
@@ -770,7 +795,7 @@ describe("runPostInit — bun.x", () => {
         recipeId: "fixture",
         appName: "fixture",
         answers: {},
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -793,7 +818,7 @@ describe("runPostInit — bun.x", () => {
         appName: "fixture",
         answers: {},
         runs: ["degit"],
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -815,7 +840,7 @@ describe("runPostInit — bun.x", () => {
           appName: "fixture",
           answers: {},
           runs: ["degit"],
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -844,7 +869,7 @@ describe("runPostInit — bun.x", () => {
         appName: "fixture",
         answers: {},
         io,
-        spawner,
+        runBun: spawner,
         execPath: "/fake/bun",
         env: { PATH: "/usr/bin" },
       });
@@ -868,7 +893,7 @@ describe("runPostInit — bun.x", () => {
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
-          spawner,
+          runBun: spawner,
           execPath: "/fake/bun",
           env: { PATH: "/usr/bin" },
         });
@@ -891,6 +916,7 @@ describe("runPostInit — message", () => {
       const io = makeBufferedIO();
       const outcome = await runPostInit({
         actions: [{ type: "message", text: "Run `lando start` next." }],
+        runBun: makeFakeSpawner(0).spawner,
         destination: dir,
         recipeId: "fixture",
         appName: "fixture",
@@ -911,6 +937,7 @@ describe("runPostInit — unimplemented action types", () => {
       try {
         await runPostInit({
           actions: [{ type: "gitInit" }],
+          runBun: makeFakeSpawner(0).spawner,
           destination: dir,
           recipeId: "fixture",
           appName: "fixture",
@@ -943,6 +970,7 @@ describe("runPostInit — command", () => {
       const { runner, calls } = makeCommandRunner();
       const outcome = await runPostInit({
         actions: [{ type: "command", cmd: "app:config:translate", args: ["--help"] }],
+        runBun: makeFakeSpawner(0).spawner,
         destination: dir,
         recipeId: "fixture",
         appName: "fixture",
@@ -963,6 +991,7 @@ describe("runPostInit — command", () => {
       try {
         await runPostInit({
           actions: [{ type: "command", cmd: "rm", args: ["-rf", "."] }],
+          runBun: makeFakeSpawner(0).spawner,
           destination: dir,
           recipeId: "fixture",
           appName: "fixture",
@@ -985,6 +1014,7 @@ describe("runPostInit — command", () => {
       const io = makeBufferedIO();
       const outcome = runPostInit({
         actions: [{ type: "command", cmd: "rsync", args: ["--version"] }],
+        runBun: makeFakeSpawner(0).spawner,
         destination: dir,
         recipeId: "fixture",
         appName: "fixture",
@@ -1006,6 +1036,7 @@ describe("runPostInit — command", () => {
       try {
         await runPostInit({
           actions: [{ type: "command", cmd: "app:config:translate", args: ["--help"] }],
+          runBun: makeFakeSpawner(0).spawner,
           destination: dir,
           recipeId: "fixture",
           appName: "fixture",

@@ -8,14 +8,19 @@ tags: [beta, docs, plugins, discovery]
 
 # See plugin discovery scopes
 
-Lando merges three plugin sources. App wins over user. User wins over the bundled set.
+Lando discovers plugins from three sources: the bundled set, your user registry,
+and the current app's registry. When the same plugin name appears in more than
+one source, app entries take precedence over user entries, and user entries take
+precedence over bundled entries.
+
+To install a user-scoped plugin, use the commands below only after deciding to
+trust that package as code running on your host. For installation details, see
+[Install a plugin from npm](./install-from-npm.mdx).
 
 ```sh
 lando plugin:add @lando/plugin-php --trust
 lando plugin:trust list
 ```
-
-Think of bundled plugins as the house band. User and app plugins sit in later, and they can cover the same song.
 
 ## Bundled (system)
 
@@ -25,7 +30,7 @@ The compiled CLI already contains the bundled plugin set. You do not install tho
 
 `lando plugin:add` writes the per-user registry at `<userDataRoot>/plugins/registry.json` and unpacks the package under `<userDataRoot>/plugins/<name>/<version>/`.
 
-That is the scope you get after a normal install.
+`plugin:add` installs into this user scope, not the app registry.
 
 ## App
 

@@ -195,8 +195,13 @@ for (const phase of phases) {
         };
         return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
       });
-      const barrier = spyOn(readiness, "waitForServiceReadiness").mockImplementation(() =>
-        phase === "readiness" ? gate(errors.readiness) : Effect.succeed([]),
+      const globalReadiness = readiness.waitForServiceReadiness;
+      const barrier = spyOn(readiness, "waitForServiceReadiness").mockImplementation((input) =>
+        input.plan.id === "global"
+          ? globalReadiness(input)
+          : phase === "readiness"
+            ? gate(errors.readiness)
+            : Effect.succeed([]),
       );
       try {
         const operation = startApp(
@@ -205,12 +210,12 @@ for (const phase of phases) {
             plan: planned,
             root: planned.root,
             app,
-            landofile: {
+            landofile: literalTestLandofile({
               name: planned.name,
               services: {},
               sshAgent: { sidecar: false },
               gpgAgent: { forward: true },
-            },
+            }),
           },
           { scope },
         ).pipe(
@@ -311,6 +316,7 @@ test.each(["restart", "rebuild"] as const)(
           service: target.service,
           providerId: plan.provider,
           status: applied ? "stopped" : "running",
+          publications: { status: "unknown" },
           state: applied ? "stopped" : "running",
           containerId: "container",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
@@ -328,3 +334,4 @@ test.each(["restart", "rebuild"] as const)(
     expect(cleanupAfterApply).toBe(0);
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

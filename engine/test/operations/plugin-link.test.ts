@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyPluginLink } from "../../src/operations/plugin-link.ts";
+import { applyPluginLink, revertPluginLink } from "../../src/operations/plugin-link.ts";
 import { replaceInstalledPluginRegistry } from "../../src/plugins/installed-registry.ts";
 import { readLinkedState, writeLinkedState } from "../../src/plugins/linked-state.ts";
 
@@ -28,6 +28,12 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
+});
+
+test("unlink preserves a registry inspection failure instead of reporting a missing link", async () => {
+  const scope = join(pluginsRoot, "@acme");
+  await symlink(scope, scope);
+  await expect(revertPluginLink({ pluginsRoot, name: pluginName })).rejects.toMatchObject({ code: "ELOOP" });
 });
 
 describe("applyPluginLink rollback", () => {

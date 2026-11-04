@@ -3,8 +3,7 @@ import { Effect, Schema } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import { HostProxyOpenUrlSchemeError } from "@lando/sdk/errors";
-import type { ShellExecError } from "@lando/sdk/errors";
-import { ProcessRunner, ShellRunner } from "@lando/sdk/services";
+import { ProcessRunner } from "@lando/sdk/services";
 
 export interface HostOpenerCapabilityInput {
   readonly platform: NodeJS.Platform;
@@ -16,9 +15,6 @@ export interface OpenUrlOptions {
 }
 
 const OPENABLE_SCHEMES = new Set(["http:", "https:"]);
-
-const shellQuote = (value: string): string => `'${value.replace(/'/gu, "'\\''")}'`;
-const cmdQuote = (value: string): string => `"${value.replace(/"/gu, '""')}"`;
 
 export const openerArgvFor = (platform: NodeJS.Platform, target: string): readonly [string, ...string[]] =>
   platform === "win32"
@@ -40,7 +36,8 @@ export class HostProxyOpenerError extends Schema.TaggedError<HostProxyOpenerErro
   opener: Schema.String,
   operation: Schema.Literals(["openUrl", "revealPath"]),
   exitCode: Schema.optionalKey(Schema.Number),
-  remediation: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 const runHostOpener = Effect.fn("HostOpener.run")(function* (
@@ -51,15 +48,16 @@ const runHostOpener = Effect.fn("HostOpener.run")(function* (
   const redaction = yield* Effect.serviceOption(RedactionService);
   const [cmd, ...args] = argv;
   const runner = yield* ProcessRunner;
-  const failure = (exitCode?: number) =>
+  const failure = (exitCode?: number, cause?: unknown) =>
     new HostProxyOpenerError({
       message: "The host opener failed.",
       opener: cmd,
       operation,
+      cause,
       ...(exitCode === undefined ? {} : { exitCode }),
       remediation: "Check that your host has a working default browser or file manager and desktop session.",
     });
-  const launch = runner.run({ cmd, args }).pipe(Effect.mapError(() => failure()));
+  const launch = runner.run({ cmd, args }).pipe(Effect.mapError((cause) => failure(undefined, cause)));
   const result = yield* redaction._tag === "Some"
     ? launch.pipe(
         Effect.provideService(RedactionService, {
@@ -96,11 +94,6 @@ export const revealHostPath = Effect.fn("HostOpener.revealHostPath")(function* (
   );
 });
 
-export const openerCommandFor = (platform: NodeJS.Platform, url: string): string => {
-  if (platform === "win32") return `start "" ${cmdQuote(url)}`;
-  return `${platform === "darwin" ? "open" : "xdg-open"} ${shellQuote(url)}`;
-};
-
 export const canOpenHost = (input: HostOpenerCapabilityInput): boolean => {
   if (input.platform === "darwin" || input.platform === "win32") return true;
   return input.env.DISPLAY !== undefined || input.env.WAYLAND_DISPLAY !== undefined;
@@ -117,7 +110,7 @@ const parseScheme = (url: string): string | undefined => {
 export const openUrl = Effect.fn("HostOpener.openUrl")(function* (
   url: string,
   options?: OpenUrlOptions,
-): Effect.fn.Return<void, HostProxyOpenUrlSchemeError | ShellExecError, ShellRunner> {
+): Effect.fn.Return<void, HostProxyOpenUrlSchemeError | HostProxyOpenerError, ProcessRunner> {
   const protocol = parseScheme(url);
   if (protocol === undefined || !OPENABLE_SCHEMES.has(protocol)) {
     return yield* Effect.fail(
@@ -129,7 +122,6 @@ export const openUrl = Effect.fn("HostOpener.openUrl")(function* (
       }),
     );
   }
-  const shell = yield* ShellRunner;
-  const platform = options?.platform ?? process.platform;
-  yield* shell.exec(openerCommandFor(platform, url));
+  // Exact argv, never shell text: a URL is data, so no quoting can turn it into syntax.
+  yield* openHostTarget(url, options);
 });

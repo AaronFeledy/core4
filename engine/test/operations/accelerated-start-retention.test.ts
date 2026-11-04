@@ -4,6 +4,7 @@ import { FileSyncEngine } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import { readJournal } from "../../src/operations/accelerated-start-journal.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 
 test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
@@ -13,11 +14,14 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
       providerId: "lando",
       operation: "apply",
       message: "apply failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const secondary = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "old",
       message: "drain failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = await Effect.runPromise(
       recoveryHarness({ phase, harnessOptions: { applyEffect: Effect.fail(original) } }),
@@ -29,7 +33,7 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
           return yield* Effect.die(new TypeError("Expected durable engine"));
         const { bindPreparedTargets: _, ...unboundEngine } = engine;
         return yield* startApp({}, target).pipe(
-          Effect.provideService(FileSyncEngine, {
+          provideFileSyncEngine({
             ...unboundEngine,
             appLifecycle: { ...engine.appLifecycle, drain: () => Effect.fail(secondary) },
           }),

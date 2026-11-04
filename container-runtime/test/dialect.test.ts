@@ -155,6 +155,90 @@ describe("container engine dialects", () => {
   });
 
   describe.each([dockerPullDialect, libpodPullDialect])("digest decoding", (dialect) => {
+    const hubRepos = [
+      "php",
+      "library/php",
+      "docker.io/php",
+      "docker.io/library/php",
+      "index.docker.io/php",
+      "index.docker.io/library/php",
+    ];
+
+    test.each(hubRepos)("canonicalizes Docker Hub repository %s", (requested) => {
+      for (const reported of hubRepos) {
+        const inspect = {
+          RepoDigests: [
+            "registry.example/library/php@sha256:pinned",
+            `${reported}@sha256:first`,
+            `${reported}@sha256:pinned`,
+          ],
+        };
+        expect(dialect.inspect?.decodeDigest(inspect, `${requested}:8.2-apache-bookworm`)).toBe(
+          "sha256:first",
+        );
+        expect(dialect.inspect?.decodeDigest(inspect, `${requested}@sha256:pinned`)).toBe("sha256:pinned");
+      }
+    });
+
+    test.each([
+      "registry.example/php",
+      "localhost/php",
+      "localhost:5000/php",
+      "docker.io:5000/php",
+      "index.docker.io:5000/php",
+    ])("preserves non-Hub repository %s", (requested) => {
+      const unrelated = ["php@sha256:pinned", "docker.io/library/php@sha256:pinned"];
+      expect(
+        dialect.inspect?.decodeDigest({ RepoDigests: unrelated }, `${requested}@sha256:pinned`),
+      ).toBeUndefined();
+      expect(
+        dialect.inspect?.decodeDigest(
+          { RepoDigests: [...unrelated, `${requested}@sha256:first`, `${requested}@sha256:pinned`] },
+          `${requested}@sha256:pinned`,
+        ),
+      ).toBe("sha256:pinned");
+    });
+
+    test.each([
+      {
+        reference: "php:8.2-apache-bookworm",
+        entries: ["other/app@sha256:wrong", "docker.io/library/php@sha256:right"],
+        expected: "sha256:right",
+      },
+      {
+        reference: "php",
+        entries: ["myreg:5000/php@sha256:wrong", "docker.io/library/php@sha256:right"],
+        expected: "sha256:right",
+      },
+      {
+        reference: "team/app@sha256:second",
+        entries: ["other/app@sha256:second", "team/app@sha256:first", "team/app@sha256:second"],
+        expected: "sha256:second",
+      },
+      {
+        reference: "team/app@sha256:second",
+        entries: ["other/app@sha256:second", "team/app@sha256:first"],
+        expected: "sha256:first",
+      },
+      { reference: "php", entries: ["other/php@sha256:wrong"], expected: undefined },
+      { reference: "php", entries: ["php@bad", "php@sha256:", "php@sha256:right"], expected: "sha256:right" },
+    ])("matches the requested repository and digest: %j", ({ reference, entries, expected }) => {
+      expect(dialect.inspect?.decodeDigest({ RepoDigests: entries }, reference)).toBe(expected);
+    });
+
+    test("uses the registry Digest fallback without treating local ids as registry digests", () => {
+      expect(dialect.inspect?.decodeDigest({ Id: "sha256:local-only" }, "php")).toBeUndefined();
+      expect(
+        dialect.inspect?.decodeDigest({ RepoDigests: [], Digest: "sha256:local-build" }, "php"),
+      ).toBeUndefined();
+      expect(
+        dialect.inspect?.decodeDigest(
+          { RepoDigests: ["other/app@sha256:other"], Digest: "sha256:pulled" },
+          "php",
+        ),
+      ).toBe("sha256:pulled");
+    });
+
     test.each([
       { reference: "team/app@sha256:second", expected: "sha256:second" },
       { reference: "team/app:latest", expected: "sha256:first" },

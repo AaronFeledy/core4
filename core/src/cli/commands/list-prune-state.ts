@@ -87,7 +87,14 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   const names = yield* fs.readDir(directory).pipe(
     Effect.catchTag("FileNotFoundError", () => Effect.succeed([])),
     Effect.mapError(
-      (cause) => new StateStoreError({ reason: "io", operation: "readDir", path: directory, cause }),
+      (cause) =>
+        new StateStoreError({
+          reason: "io",
+          operation: "readDir",
+          path: directory,
+          cause,
+          remediation: `Fix permissions on ${directory} so Lando can list legacy app state.`,
+        }),
     ),
   );
   let removedLegacy = false;

@@ -1,0 +1,7 @@
+name: wait-native-host-invalid
+services:
+  app:
+    type: "node:22"
+    healthcheck:
+      target: host
+      command: test -f .ready

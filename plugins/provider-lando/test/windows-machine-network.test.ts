@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, landoNetworkingPlan } from "@lando/sdk/schema";
 
 import { windowsMachineNetworkPlan } from "../src/windows-machine-network.ts";
 
@@ -18,6 +18,35 @@ const plan = {
 } as unknown as AppPlan;
 
 describe("Windows managed-machine physical network names", () => {
+  test("renames owned authored networks while preserving external names, members and aliases", () => {
+    // Given
+    const logical = {
+      ...plan,
+      networking: landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: true,
+        bridgeAliases: { web: ["frontend"] },
+        authoredNetworks: [
+          { key: "extra", external: false, members: { web: ["alias"] } },
+          { key: "sibling", external: true, name: "sibling_default", members: { web: ["shared-alias"] } },
+        ],
+      }),
+    };
+    // When
+    const physical = windowsMachineNetworkPlan(logical, "2026-09-22T08:16:19Z");
+    // Then
+    expect(physical.networking?.authoredNetworks?.[0]?.name).toMatch(/^lando-vm-[0-9a-f]{12}-[0-9a-f]{12}$/u);
+    expect(physical.networking?.authoredNetworks?.[0]?.members).toEqual(
+      logical.networking.authoredNetworks?.[0]?.members,
+    );
+    expect(physical.networking?.authoredNetworks?.[1]).toEqual(logical.networking.authoredNetworks?.[1]);
+    expect(physical.networking?.perAppBridge?.aliases).toEqual(logical.networking.perAppBridge?.aliases);
+    expect(windowsMachineNetworkPlan(physical, "2026-09-22T08:16:19Z")).toEqual(physical);
+    expect(
+      windowsMachineNetworkPlan(logical, "2026-09-23T08:16:19Z").networking?.authoredNetworks?.[0]?.name,
+    ).not.toBe(physical.networking?.authoredNetworks?.[0]?.name);
+  });
   test("maps private and shared network names consistently for one machine", () => {
     const first = windowsMachineNetworkPlan(plan, "2026-09-22T08:16:19Z");
     const repeated = windowsMachineNetworkPlan(plan, "2026-09-22T08:16:19Z");

@@ -14,7 +14,7 @@ import { snapshotArchivePath, snapshotPaths, stateFailure } from "./snapshot-pat
 
 export const removeCatalogSnapshot = Effect.fn("DataMover.removeCatalogSnapshot")(function* (
   persistence: SnapshotPersistence,
-  provider: RuntimeProviderShape,
+  selectedProvider: Effect.Effect<RuntimeProviderShape, DataTransferError>,
   handle: SnapshotHandle,
 ) {
   yield* snapshotPaths(persistence.paths, handle);
@@ -33,13 +33,11 @@ export const removeCatalogSnapshot = Effect.fn("DataMover.removeCatalogSnapshot"
               cause,
               remediation: `Make the recording provider ${recordingId} available and retry; the snapshot remains catalogued.`,
             });
-          const recording =
-            recordingId === provider.id
-              ? provider
-              : yield* (
-                  persistence.providerRegistry?.select(ProviderId.make(recordingId)) ??
-                  Effect.fail(failure("Provider registry is unavailable."))
-                ).pipe(Effect.mapError(failure));
+          const recording = yield* (
+            persistence.providerRegistry?.select(ProviderId.make(recordingId)) ?? selectedProvider
+          ).pipe(Effect.mapError(failure));
+          if (recording.id !== recordingId)
+            return yield* Effect.fail(failure("The recording provider is unavailable."));
           yield* Effect.scoped(recording.removeVolumeSnapshot(info.native)).pipe(Effect.mapError(failure));
         }
         yield* removeSnapshotArchive(archive);

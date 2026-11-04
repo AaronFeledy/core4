@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 
 import { DataChecksumMismatchError } from "@lando/sdk/errors";
 import { runImport } from "../src/actions.ts";
 import { withHostDumpCompression, writeDumpTransform } from "../src/compression.ts";
+import { SqlEnvironmentSession } from "../src/environment.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 describe("host dump compression safety", () => {
@@ -101,18 +102,29 @@ describe("host dump compression safety", () => {
     };
     // When
     const failure = await Effect.runPromise(
-      runImport(
-        {
-          ...harness.deps,
-          transfer: () =>
-            Effect.sync(() => {
-              transferred = true;
-              return { accelerated: false };
-            }),
-        },
-        harness.deps.exec,
-        input,
-      ).pipe(Effect.flip),
+      Effect.scoped(
+        harness.deps.environmentResolver.openSession().pipe(
+          Effect.flatMap((session) =>
+            runImport(
+              {
+                ...harness.deps,
+                transfer: () =>
+                  Effect.sync(() => {
+                    transferred = true;
+                    return { accelerated: false };
+                  }),
+              },
+              (service, command, env) =>
+                Stream.unwrap(
+                  session
+                    .resolveEnvironment(env ?? {})
+                    .pipe(Effect.map((resolved) => harness.deps.exec(service, command, resolved))),
+                ),
+              { ...input, secrets: () => ({ substring: [], wholeToken: [] }) },
+            ).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.flip),
+          ),
+        ),
+      ),
     );
     // Then
     expect(failure).toBeInstanceOf(DataChecksumMismatchError);

@@ -13,7 +13,6 @@ const plan = (id: string, extensionId: string | undefined): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

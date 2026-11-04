@@ -3,13 +3,12 @@ import { dirname, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
+import type { AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
-import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
+import { isOwnerOnlyRecordFile, withDetachedWorkerLock } from "../detached-worker/state-file.ts";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,
@@ -97,40 +96,52 @@ export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
     );
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const recordPath = resolve(paths.hostProxyRunRoot, entry.name, "worker.json");
-      if (!(yield* isOwnerOnlyRecordFile(recordPath, options.privateFileAccess))) {
-        yield* Effect.promise(() => rm(dirname(recordPath), { recursive: true, force: true }));
-        continue;
-      }
-      const record = yield* readWorkerRecordAt(recordPath);
-      if (record === undefined) {
-        const legacyRecord = yield* readLegacyWorkerRecordAt(recordPath);
-        if (legacyRecord === undefined) continue;
-        const state = yield* readWorkerRecordStateAt(recordPath);
-        if (state._tag !== "legacy" || state.appRoot === null) continue;
-        const legacyDir =
-          state.appRoot === undefined
-            ? resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId))
-            : resolve(paths.hostProxyRunDir(legacyRecord.appId, state.appRoot));
-        if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) continue;
-        yield* withAdvisoryLockUsing(options.privateFileAccess)(
-          recordPath,
-          "host-proxy-worker",
-          terminateControlRecord(
-            legacyRecord,
-            options,
-            Effect.promise(() => rm(legacyDir, { recursive: true, force: true })),
-          ),
-        ).pipe(Effect.catch(() => Effect.void));
-        continue;
-      }
+      const runDir = resolve(paths.hostProxyRunRoot, entry.name);
       if (
-        resolve(paths.hostProxyRunDir(record.appId, record.appRoot)) !==
-        resolve(paths.hostProxyRunRoot, entry.name)
+        entry.name.endsWith("-ssh-agent") ||
+        entry.name.endsWith("-gpg-agent") ||
+        runDir === resolve(paths.tunnelRunDir)
       )
         continue;
-      const app = { id: record.appId, root: AbsolutePath.make(record.appRoot) };
-      yield* terminateOwnedHostProxyWorker(app, { ...options, paths: { userDataRoot } }).pipe(Effect.asVoid);
+      const recordPath = resolve(runDir, "worker.json");
+      yield* withDetachedWorkerLock(
+        {
+          path: recordPath,
+          label: "host-proxy-worker",
+          paths: { userDataRoot },
+          privateFileAccess: options.privateFileAccess,
+        },
+        Effect.gen(function* () {
+          if (!(yield* isOwnerOnlyRecordFile(recordPath, options.privateFileAccess))) {
+            yield* Effect.promise(() => rm(runDir, { recursive: true, force: true }));
+            return;
+          }
+          const record = yield* readWorkerRecordAt(recordPath);
+          if (record === undefined) {
+            const legacyRecord = yield* readLegacyWorkerRecordAt(recordPath);
+            if (legacyRecord === undefined) return;
+            const state = yield* readWorkerRecordStateAt(recordPath);
+            if (state._tag !== "legacy" || state.appRoot === null) return;
+            const legacyDir =
+              state.appRoot === undefined
+                ? resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId))
+                : resolve(paths.hostProxyRunDir(legacyRecord.appId, state.appRoot));
+            if (legacyDir !== runDir) return;
+            yield* terminateControlRecord(
+              legacyRecord,
+              options,
+              Effect.promise(() => rm(legacyDir, { recursive: true, force: true })),
+            );
+            return;
+          }
+          if (resolve(paths.hostProxyRunDir(record.appId, record.appRoot)) !== runDir) return;
+          yield* terminateControlRecord(
+            record,
+            options,
+            Effect.promise(() => rm(runDir, { recursive: true, force: true })),
+          );
+        }),
+      ).pipe(Effect.catch(() => Effect.void));
     }
   },
   Effect.catch(() => Effect.void),

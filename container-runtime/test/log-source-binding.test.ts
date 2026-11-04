@@ -22,6 +22,7 @@ describe("provider log source binding", () => {
       },
     };
     const binding = makeProviderLogSourceBinding({
+      sourceEnv: {},
       providerId: "docker",
       logFileAccess: memory.access,
       helperTarget: target,
@@ -40,6 +41,7 @@ describe("provider log source binding", () => {
     test(`omits helper access when ${unavailable} is unavailable`, () => {
       // Given: one missing helper prerequisite.
       const binding = makeProviderLogSourceBinding({
+        sourceEnv: {},
         providerId: "lando",
         logFileAccess: undefined,
         helperTarget: target,
@@ -60,6 +62,7 @@ describe("provider log source binding", () => {
     // Given: only injected access.
     const memory = makeMemoryLogFileAccess();
     const binding = makeProviderLogSourceBinding({
+      sourceEnv: {},
       providerId: "lando",
       logFileAccess: memory.access,
       helperTarget: undefined,
@@ -76,6 +79,7 @@ describe("provider log source binding", () => {
     // Given: an API that refuses uploads.
     const calls: string[] = [];
     const binding = makeProviderLogSourceBinding({
+      sourceEnv: {},
       providerId: "podman",
       logFileAccess: undefined,
       helperTarget: target,

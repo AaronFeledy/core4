@@ -7,7 +7,7 @@ tags: [beta, docs, phpmyadmin, service]
 
 # Add phpMyAdmin
 
-Put `type: phpmyadmin` in your services block. In an app with one MySQL or MariaDB service, that is enough. Lando points the UI at that database and gives it a default hostname route:
+Add `type: phpmyadmin` under `services` in `.lando.yml`. In an app with one MySQL or MariaDB service, that is enough. Lando points the UI at that database and gives it a default hostname route:
 
 ```yaml
 name: phpmyadmin-demo
@@ -53,7 +53,7 @@ services:
 phpMyAdmin auto-discovers every `mysql` and `mariadb` service in the app
 and lists them in the UI. It does not wire PostgreSQL or SQL Server.
 
-Each database connects on its planned port: Lando sets `PMA_PORTS` alongside `PMA_HOSTS`, one entry per host, so a sibling with `port: 3307` just works.
+Each database connects on its planned port: Lando sets `PMA_PORTS` alongside `PMA_HOSTS`, one entry per host, so a sibling configured with `port: 3307` is reached on that port.
 
 ## Override discovered hosts
 

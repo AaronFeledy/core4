@@ -15,11 +15,31 @@ export const table = {
     { name: "dots dashes underscores", input: "build_user.v2-a", expected: "build_user.v2-a" },
   ],
   rejected: [
-    { name: "empty user", input: "", expectedErrorFragment: "matching the RegExp" },
-    { name: "embedded whitespace", input: "root wheel", expectedErrorFragment: "matching the RegExp" },
-    { name: "leading hyphen", input: "-root", expectedErrorFragment: "matching the RegExp" },
-    { name: "shell metacharacter", input: "root;id", expectedErrorFragment: "matching the RegExp" },
-    { name: "path separator", input: "/root", expectedErrorFragment: "matching the RegExp" },
-    { name: "empty group", input: "root:", expectedErrorFragment: "matching the RegExp" },
+    { name: "empty user", input: "", expectedErrorFragment: "Expected a container user name or numeric id" },
+    {
+      name: "embedded whitespace",
+      input: "root wheel",
+      expectedErrorFragment: "Expected a container user name or numeric id",
+    },
+    {
+      name: "leading hyphen",
+      input: "-root",
+      expectedErrorFragment: "Expected a container user name or numeric id",
+    },
+    {
+      name: "shell metacharacter",
+      input: "root;id",
+      expectedErrorFragment: "Expected a container user name or numeric id",
+    },
+    {
+      name: "path separator",
+      input: "/root",
+      expectedErrorFragment: "Expected a container user name or numeric id",
+    },
+    {
+      name: "empty group",
+      input: "root:",
+      expectedErrorFragment: "Expected a container user name or numeric id",
+    },
   ],
 } as const satisfies NamedContractTable;

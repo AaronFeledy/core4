@@ -7,8 +7,8 @@
  * typed settings and remove the hand wiring instead of copying it.
  */
 import { isLegacyTagged } from "@lando/sdk/landofile";
-import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { SERVICE_HOMES } from "./catalog.ts";
+import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId, ServiceName } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import type { Lando3Path } from "./contract.ts";
 import {
   type LoweringPatch,
@@ -18,7 +18,6 @@ import {
 import { type Report, lowerText } from "./lowering-report.ts";
 import {
   droppedServiceKey,
-  generatedService,
   needsReviewServiceKey,
   rewrittenServiceKey,
   unsupportedServiceKey,
@@ -108,7 +107,9 @@ const lowerScanner = (
   }
   if (retries !== undefined || typeof scanner.timeout === "number") {
     diagnostics.push(
-      rewrittenServiceKey({
+      (timeout !== undefined || (retry !== undefined && retry > MAX_RETRIES)
+        ? needsReviewServiceKey
+        : rewrittenServiceKey)({
         ctx,
         relative: ["scanner"],
         message: `Rewrote scanner retry as retries${retry !== undefined && retry > MAX_RETRIES ? ` capped at ${MAX_RETRIES}` : ""} and the per-attempt timeout as one deadline covering every attempt.`,
@@ -124,6 +125,18 @@ const lowerAuthoredHome = (
   ctx: ServiceLoweringContext,
   diagnostics: ConfigTranslateDiagnostic[],
 ): unknown => {
+  if (value === true) {
+    diagnostics.push(
+      droppedServiceKey({
+        ctx,
+        relative: ["home"],
+        message: "home: true is the Lando 4 default.",
+        remediation:
+          "Nothing to set: Lando 4 keeps the service user's home when it knows where that home is.",
+      }),
+    );
+    return undefined;
+  }
   const rawPath = hasPlainObjectPrototype(value) && !isLegacyTagged(value) ? value.path : value;
   const report: Report = (kind, relative, message, remediation) => {
     const input = { ctx, relative, message, remediation };
@@ -152,14 +165,8 @@ const lowerAuthoredHome = (
     droppedServiceKey({
       ctx,
       relative: ["home"],
-      message:
-        value === true
-          ? "home: true is the Lando 4 default."
-          : "Home must be false or an absolute container path.",
-      remediation:
-        value === true
-          ? "Nothing to set: Lando 4 persists the service user's home when it knows where home is."
-          : "Set home: false or home.path to an absolute container path by hand.",
+      message: "Home must be false or an absolute container path.",
+      remediation: "Set home: false or home.path to an absolute container path by hand.",
     }),
   );
   return undefined;
@@ -170,6 +177,11 @@ export const lowerScannerAndHome = (
   service: Readonly<Record<string, unknown>>,
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
+  const cursor = serviceCursor(service, ctx);
+  cursor.take(["scanner"]);
+  for (const key of ["path", "okCodes", "retry", "timeout", "maxRedirects"]) cursor.mapTo(["scanner", key]);
+  cursor.take(["home"]);
+  cursor.mapTo(["home", "path"]);
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   const patch: Record<string, unknown> = {};
   if (Object.hasOwn(service, "scanner")) {
@@ -180,21 +192,12 @@ export const lowerScannerAndHome = (
     const home = lowerAuthoredHome(service.home, ctx, diagnostics);
     if (home !== undefined) patch.home = home;
   }
-  return { patch, diagnostics };
+  return { patch, claims: cursor.claims, diagnostics };
 };
 
-const suppliedImage = (patch: Readonly<Record<string, unknown>>): boolean =>
-  typeof patch.image === "string" ||
-  (hasPlainObjectPrototype(patch.build) && Object.hasOwn(patch.build, "context"));
-
-const principal = (user: unknown): string | undefined =>
-  typeof user === "string" && user.length > 0 ? (user.split(":")[0] ?? user) : undefined;
-
 /**
- * Lando 3 persisted a home for every Lando service. Lando 4 does the same by
- * default, but only where it knows the planned user's home; anywhere else it
- * refuses to start. Such services get `home: false` plus the explicit path
- * remediation, so the converted app starts and the author decides.
+ * Record source intent only. The host assesses the real catalog after merging
+ * conversion outputs. Raw Lando 3 Compose services had no implicit home.
  */
 export const withHomeIntent = (
   lowered: LoweringPatch,
@@ -203,45 +206,19 @@ export const withHomeIntent = (
 ): LoweringPatch => {
   const patch = lowered.patch;
   if (lowered.blocked === true || Object.hasOwn(patch, "home")) return lowered;
-  const typeId = typeof patch.type === "string" ? patch.type.split(":")[0] : undefined;
-  const known =
-    typeId === undefined || !Object.hasOwn(SERVICE_HOMES, typeId) ? undefined : SERVICE_HOMES[typeId];
-  let reason: string | undefined;
-  if (suppliedImage(patch) || known === undefined) {
-    if (service.api !== 4 && service.type === "compose") {
-      return {
-        ...lowered,
-        patch: { ...patch, home: false },
-        diagnostics: [
-          ...lowered.diagnostics,
-          generatedService({
-            ctx,
-            relative: [],
-            message: "Set home: false because Lando 3 never persisted a home for a Compose service.",
-            remediation: `Set services.${ctx.serviceName}.home.path if this service should keep its home.`,
-          }),
-        ],
-      };
-    }
-    reason = "its image comes from the Landofile, so Lando 4 cannot tell where the user's home is";
-  } else {
-    const user = principal(patch.user) ?? known.defaultUser;
-    if (!known.users.includes(user)) {
-      reason = `the ${typeId} service type does not declare a home for user ${user}`;
-    }
-  }
-  if (reason === undefined) return lowered;
+  if (service.home !== undefined && service.home !== true) return lowered;
+  if (service.api !== 4 && service.type === "compose") return lowered;
+  if (service.api === 4 && service.type === "l337") return lowered;
+  const occurrence = ctx.occurrenceAt([]);
   return {
     ...lowered,
-    patch: { ...patch, home: false },
-    diagnostics: [
-      ...lowered.diagnostics,
-      needsReviewServiceKey({
-        ctx,
-        relative: [],
-        message: `Lando 3 persisted this service's home, but ${reason}; the converted service sets home: false.`,
-        remediation: `Set services.${ctx.serviceName}.home.path to that user's home directory (Lando 3 used /var/www) to keep persisting it, or keep home: false.`,
-      }),
+    expectations: [
+      {
+        _tag: "PersistedHome",
+        sourceId: occurrence?.sourceId ?? ConfigTranslateSourceId.make(ctx.fallbackSourceId),
+        keyPath: ctx.keyPath,
+        service: ServiceName.make(ctx.serviceName),
+      },
     ],
   };
 };

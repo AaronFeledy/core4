@@ -1,4 +1,3 @@
-import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/session-env.ts";
 import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
@@ -81,7 +80,7 @@ export const resolveAgentEnvAllowlist = (policy: AgentEnvPolicy, hostEnv: HostEn
 
 interface AgentContextEnvMergeOptions {
   readonly allowlist?: ReadonlyArray<string>;
-  readonly lowerThanEnv?: Readonly<Record<string, string>>;
+  readonly lowerThanEnv?: Readonly<Record<string, unknown>>;
 }
 
 export const resolveAgentContextEnv = (
@@ -95,25 +94,25 @@ export const resolveForwardedAgentEnvNames = (
 ): ReadonlyArray<string> =>
   Object.keys(resolveAgentContextEnv(hostEnv, resolveAgentEnvAllowlist(policy, hostEnv)));
 
-export const withAgentContextEnv = (
-  explicitEnv: Readonly<Record<string, string>> | undefined,
+export const withAgentContextEnv = <Value = string>(
+  explicitEnv: Readonly<Record<string, Value>> | undefined,
   hostEnv: HostEnv,
   options: AgentContextEnvMergeOptions = {},
-): Record<string, string> | undefined => {
+): Record<string, Value | string> | undefined => {
   const forwarded = resolveAgentContextEnv(hostEnv, options.allowlist ?? AGENT_CONTEXT_ENV_ALLOWLIST);
   for (const name of Object.keys(options.lowerThanEnv ?? {})) delete forwarded[name];
   const merged = { ...forwarded, ...(explicitEnv ?? {}) };
   return Object.keys(merged).length === 0 ? undefined : merged;
 };
 
-export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LANDO_", "LC_"];
+export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LC_"];
 export const HOST_PROXY_ENV_NAMES: ReadonlyArray<string> = ["LANG", "TERM"];
 
 export const isHostProxyForwardedEnvName = (
   name: string,
   allowlist: ReadonlyArray<string> = AGENT_CONTEXT_ENV_ALLOWLIST,
 ): boolean =>
-  !isHostProxyRunLandoEnvName(name) &&
+  !name.toUpperCase().startsWith("LANDO_") &&
   (HOST_PROXY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
     HOST_PROXY_ENV_NAMES.includes(name) ||
     allowlist.includes(name));

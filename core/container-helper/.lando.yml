@@ -4,7 +4,6 @@ services:
   builder:
     type: compose
     image: golang:1.23.12-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
-    home: false
     command: sleep infinity
     # Bind the default-excluded folders through instead of shadowing them with app-named
     # volumes, so several checkouts (git worktrees) can build the helper side by side.

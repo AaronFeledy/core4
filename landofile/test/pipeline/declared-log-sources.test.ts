@@ -43,7 +43,7 @@ for (const type of ["node:22", "compose"]) {
           );
 
           // Then decoded-only fields survive without being rejected as authored excess keys.
-          expect(result.services?.[ServiceName.make("app")]?.logs).toEqual([
+          expect(result.document.services?.[ServiceName.make("app")]?.logs).toEqual([
             {
               id: LogSourceId.make("applog"),
               path: AbsolutePath.make("/tmp/app.log"),
@@ -54,9 +54,9 @@ for (const type of ["node:22", "compose"]) {
               ...(mode === "layers" ? { label: "merged log" } : {}),
             },
           ]);
-          const encoded = Schema.encodeSync(LandofileShape)(result);
+          const encoded = Schema.encodeSync(LandofileShape)(result.document);
           expect(Schema.decodeUnknownSync(LandofileShape, { onExcessProperty: "error" })(encoded)).toEqual(
-            result,
+            result.document,
           );
         } finally {
           await rm(root, { recursive: true, force: true });

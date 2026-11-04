@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 export class GlobalServiceCapabilityError extends Schema.TaggedError<GlobalServiceCapabilityError>()(
   "GlobalServiceCapabilityError",
@@ -8,7 +8,7 @@ export class GlobalServiceCapabilityError extends Schema.TaggedError<GlobalServi
     plugin: Schema.optional(Schema.String),
     missing: Schema.Array(Schema.String),
     providerId: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -18,7 +18,7 @@ export class GlobalServiceCollisionError extends Schema.TaggedError<GlobalServic
     message: Schema.String,
     id: Schema.String,
     plugins: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -30,7 +30,27 @@ export class GlobalServiceCollisionError extends Schema.TaggedError<GlobalServic
 export class AppIdReservedError extends Schema.TaggedError<AppIdReservedError>()("AppIdReservedError", {
   reserved: Schema.String,
   suggested: Schema.optional(Schema.String),
-}) {}
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+    Schema.withConstructorDefault(
+      Effect.succeed("Set name in your Landofile to an app name other than global."),
+    ),
+  ),
+}) {
+  constructor(props: Schema.Struct.MakeIn<typeof AppIdReservedError.fields>, options?: Schema.MakeOptions) {
+    super(
+      {
+        ...props,
+        remediation:
+          props.remediation ??
+          `Rename the project in your Landofile${props.suggested === undefined ? "." : `, e.g. name: ${props.suggested}.`}`,
+      },
+      options,
+    );
+  }
+
+  override readonly message =
+    `The app id "${this.reserved}" is reserved for the global Lando app and cannot be used as a project name.`;
+}
 
 /**
  * Umbrella error for global-app state transitions and path management
@@ -39,7 +59,7 @@ export class AppIdReservedError extends Schema.TaggedError<AppIdReservedError>()
 export class GlobalAppError extends Schema.TaggedError<GlobalAppError>()("GlobalAppError", {
   message: Schema.String,
   operation: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -55,7 +75,7 @@ export class GlobalServiceMissingError extends Schema.TaggedError<GlobalServiceM
     message: Schema.String,
     requested: Schema.Array(Schema.String),
     available: Schema.Array(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -69,7 +89,13 @@ export class GlobalAutoStartError extends Schema.TaggedError<GlobalAutoStartErro
   message: Schema.String,
   app: Schema.String,
   services: Schema.Array(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+    Schema.withConstructorDefault(
+      Effect.succeed(
+        "Run lando meta global start to diagnose and repair the required global services before starting this app.",
+      ),
+    ),
+  ),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -77,7 +103,7 @@ export class GlobalDestroyConfirmationError extends Schema.TaggedError<GlobalDes
   "GlobalDestroyConfirmationError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -87,7 +113,7 @@ export class GlobalDistConflictError extends Schema.TaggedError<GlobalDistConfli
     message: Schema.String,
     path: Schema.String,
     reason: Schema.Literals(["foreign-file", "manual-edit"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -98,6 +124,6 @@ export class GlobalLandofilePathConflictError extends Schema.TaggedError<GlobalL
     path: Schema.String,
     expected: Schema.Literals(["file", "directory"]),
     actual: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

@@ -4,13 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { type LandofileShape, ServiceName } from "@lando/core/schema";
+import { ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 import { InitTargetExistsError } from "@lando/sdk/errors";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const nodeTsRecipe = bundledRecipe("node-ts");
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
@@ -36,6 +38,7 @@ const providerCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native" as const,
@@ -110,7 +113,7 @@ const withEnv = async <T>(
   }
 };
 
-const planLandofile = (landofile: LandofileShape) =>
+const planLandofile = (landofile: LoadScopedLandofile) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
@@ -180,9 +183,11 @@ describe("node-ts recipe pipeline", () => {
     }
   });
 
-  test("manifest yaml advertises .lando.yml as the only emitted dest", () => {
-    expect(nodeTsRecipeYaml).toContain("dest: .lando.yml");
-    expect(nodeTsRecipeYaml).not.toContain("dest: .lando.ts");
+  test("authored node-ts config derives the Landofile without declaring auxiliary output", () => {
+    expect(Bun.YAML.parse(nodeTsRecipe.manifestYaml)).toEqual(nodeTsRecipe.authoredSource);
+    expect(nodeTsRecipe.authoredSource.files).toBeUndefined();
+    expect(nodeTsRecipe.manifest.files).toEqual([]);
+    expect(nodeTsRecipe.snapshot.assets).toEqual([]);
   });
 });
 
@@ -217,10 +222,10 @@ describe("lando init — canonical Landofile (node-ts)", () => {
 
       await withEnv({ LANDO_NODE_VERSION: undefined, NODE_ENV: undefined }, async () => {
         const landofile = await discoverFrom(result.directory);
-        expect(landofile.name).toBe("discovered-ts-app");
-        const web = landofile.services?.[ServiceName.make("web")];
+        expect(landofile.document.name).toBe("discovered-ts-app");
+        const web = landofile.document.services?.[ServiceName.make("web")];
         expect(web).toBeDefined();
-        expect(web?.image).toBe("node:lts");
+        expect(web?.image).toBe("node:24");
         expect(web?.environment).toEqual({ NODE_ENV: "development" });
       });
     });
@@ -239,7 +244,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
 
       await withEnv({ LANDO_NODE_VERSION: "22", NODE_ENV: "production" }, async () => {
         const landofile = await discoverFrom(result.directory);
-        const web = landofile.services?.[ServiceName.make("web")];
+        const web = landofile.document.services?.[ServiceName.make("web")];
         expect(web?.image).toBe("node:22");
         expect(web?.environment).toEqual({ NODE_ENV: "production" });
       });
@@ -276,7 +281,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), text, "utf8");
       const landofile = await discoverFrom(dir);
-      expect(landofile.name).toBe(trickyName);
+      expect(landofile.document.name).toBe(trickyName);
     });
   });
 

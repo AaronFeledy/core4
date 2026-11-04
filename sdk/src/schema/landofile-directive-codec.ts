@@ -1,6 +1,7 @@
 import { Schema, type SchemaAST, SchemaTransformation } from "effect";
 import { isLandofileOverride, isLandofileReset, override, reset } from "../landofile/merge-directives.ts";
 import { isPlainRecord } from "../landofile/record.ts";
+import { recordDirectiveUnion } from "./authoring-issue-metadata.ts";
 import {
   LandofileLiteralWire,
   LandofileOverride,
@@ -76,7 +77,11 @@ export const directiveMember = (value: Schema.Top, native: boolean): Schema.Top 
 };
 
 const makeDirectiveMember = (value: Schema.Top, native: boolean): Schema.Top => {
-  if (native) return Schema.Union([LandofileOverride(value), LandofileReset, value]);
+  if (native) {
+    const member = Schema.Union([LandofileOverride(value), LandofileReset, value]);
+    recordDirectiveUnion(member.ast, value.ast);
+    return member;
+  }
   if (value.ast._tag === "Unknown" || value.ast._tag === "Any") return opaque;
   const replace = LandofileOverrideWire(value).pipe(
     Schema.decodeTo(
@@ -87,5 +92,7 @@ const makeDirectiveMember = (value: Schema.Top, native: boolean): Schema.Top => 
       }),
     ),
   );
-  return Schema.Union([replace, remove, value]);
+  const member = Schema.Union([replace, remove, value]);
+  recordDirectiveUnion(member.ast, value.ast);
+  return member;
 };

@@ -27,7 +27,6 @@ const key = (buildSteps: ReadonlyArray<MsmtpStep>) => {
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

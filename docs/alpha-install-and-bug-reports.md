@@ -5,7 +5,9 @@ description: Install the Lando 4 Alpha, run setup, and attach the right diagnost
 
 # Get a v4.0.0-dev.N binary and run setup
 
-Get a `v4.0.0-dev.N` binary for your platform, then run setup and doctor. Lando v4 is an experimental Alpha.
+Install an unsigned `v4.0.0-dev.N` binary, set up its container provider, and check the result with `lando doctor`. Lando v4 is an experimental Alpha, not a production-ready release.
+
+The recommended path is the GitHub prerelease below. Source builds and troubleshooting follow the installation and setup steps.
 
 ## Current install options
 
@@ -23,7 +25,7 @@ The GitHub prerelease ships unsigned `v4.0.0-dev.N` binaries for every compile t
 
 Targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`.
 
-On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stays `lando` on every other target.
+Lando's managed runtime does not require Docker or a system Podman installation. On Intel Macs (`darwin-x64`), the managed runtime is not supported: install and start Docker Desktop before setup, then choose Docker when setup asks.
 
 **To install:**
 
@@ -65,39 +67,35 @@ Rename the verified Windows binary to `lando.exe` and put it on PATH before setu
 
 Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run (GitHub login required). Extract the zip and verify the binary yourself.
 
-### Option 2: Build from source
-
-For contributors or when prebuilt binaries are unavailable:
-
-```bash
-git clone https://github.com/AaronFeledy/core4.git
-cd core4
-bun install
-bun run codegen
-bun run core/bin/lando.ts setup
-bun run --filter='@lando/core' build:container-helper
-bun run build
-# Use the source CLI directly:
-bun run core/bin/lando.ts --version
-```
-
-The in-container helper is built with Lando itself, so run setup first. You don't need Go installed.
-
 ## Run lando setup
 
-You need the Alpha binary from the steps above. Follow [Put lando on PATH and run setup](./guides/install/path-and-setup.mdx) and verify the executable path before continuing; an existing `lando` command can still run an older installation.
+Put the verified Alpha binary on PATH before continuing. Check that `lando` resolves to that binary, not an existing Lando 3 installation. See [Put lando on PATH and run setup](./guides/install/path-and-setup.mdx).
 
-1. Run setup. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
+### Choose setup for your platform
+
+Run setup in your terminal and follow the prompts. On supported hosts, choose the recommended Lando-managed runtime; it does not require Docker or system Podman. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you.
 
 ```bash
 lando setup
 ```
 
-`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers on its own. See [What persists](./guides/setup/provider-selection.mdx#what-persists).
+Setup saves your choice for later commands. If you already have a saved provider or an environment override, setup keeps that selection instead of showing the provider menu. See [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) when you need to change it.
 
-Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime, and the runtime may not come up. Do not treat this path as guaranteed.
+`lando setup --yes` consents to automatic prerequisite installation, including uidmap on Ubuntu and Debian. It does not switch providers. Alpha setup can still fail if host prerequisites or the managed runtime cannot start; follow the reported diagnosis rather than assuming setup completed.
 
-2. If setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor`.
+### Verify setup
+
+After setup, run:
+
+```bash
+lando doctor
+```
+
+Review any reported issues before starting an app. If doctor offers a fix, use `lando doctor --fix` when appropriate. Once setup is working, continue with [Start, inspect, and tear down an app](./guides/tutorial/app-lifecycle.mdx).
+
+### Fix Linux host prerequisites
+
+Use these steps only when setup identifies the corresponding missing prerequisite. They change host configuration and may need administrator privileges. After fixing the reported problem, rerun `lando setup`, then `lando doctor`.
 
 **uidmap (Fedora/RHEL and unrecognized distros):**
 
@@ -124,31 +122,33 @@ lando setup
 
 **Missing `XDG_RUNTIME_DIR`:** log out and back in. If it is still missing, your session manager needs a distro-specific fix.
 
-3. On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Docker is the live path. Install Docker Desktop, then:
+### Use Docker as a Linux fallback
+
+If the managed runtime still cannot install and system Docker is already working, use the fallback below. If you already have apps on another provider, follow [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) first.
 
 ```bash
 lando setup --provider=docker
 ```
 
-Or:
+Setup saves Docker as your provider. Run `lando doctor` to verify the result. Docker is the supported path on Intel Mac and a fallback on Linux, not the default on other targets. See [Override the provider for one command](./guides/setup/provider-selection.mdx#override-the-provider-for-one-command) for temporary overrides.
+
+### Option 2: Build from source
+
+Use this alternative if you are contributing or prebuilt binaries are unavailable. You need Git and the repository-supported Bun version. Run the following in your terminal:
 
 ```bash
-LANDO_PROVIDER=docker lando setup
+git clone https://github.com/AaronFeledy/core4.git
+cd core4
+bun install
+bun run codegen
+bun run core/bin/lando.ts setup
+bun run --filter='@lando/core' build:container-helper
+bun run build
+# Use the source CLI directly:
+bun run core/bin/lando.ts --version
 ```
 
-On Linux, if the managed runtime still cannot install and you have working system Docker, use the same commands as the supported fallback.
-
-`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. The flag persists; the env var does not. See [What persists](./guides/setup/provider-selection.mdx#what-persists).
-
-Docker is the live path on Intel Mac. On Linux it is a fallback, not the default. The default provider stays `lando` on every other target. See [Pick a container provider](./guides/setup/provider-selection.mdx).
-
-4. Verify:
-
-```bash
-lando doctor
-```
-
-If doctor still reports issues, try `lando doctor --fix` when it offers one.
+The in-container helper is built with Lando itself, so run setup first. You don't need Go installed.
 
 ## Installers and update manifests (not yet available)
 

@@ -25,6 +25,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
   hostnames: [],
   authoredArtifact: undefined,
   authored: { byStore: new Map() },
+  authoredStorage: undefined,
   homeIntent: { serviceType: "lando", home: false as const },
   draft: {
     name: ServiceName.make("appserver"),
@@ -38,8 +39,8 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
     normalizedConfig: {},
     environment: {},
     mounts: [],
-    buildSteps: [],
     storage: [],
+    buildSteps: [],
     endpoints: [HTTP_ENDPOINT],
     dependsOn: [],
     hostAliases: [],
@@ -65,17 +66,19 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider,
         providerCapabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
     const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
     expect(service.endpoints).toEqual([HTTP_ENDPOINT]);
   });
-  test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
+  test("routes to the marked HTTP primary after TCP using the configured default domain", async () => {
     // Given
     const draft = phpishDraft(undefined);
     const plannedServiceDraft: PlannedServiceDraft = {
@@ -84,8 +87,8 @@ describe("finalizeServices auto-generated hostnames", () => {
         ...draft.draft,
         endpoints: [
           { _tag: "internal", protocol: "tcp", port: 1025, name: "smtp" },
-          { _tag: "internal", protocol: "http", port: 8025, name: "ui" },
           { _tag: "internal", protocol: "http", port: 8080, name: "secondary" },
+          { _tag: "internal", protocol: "http", port: 8025, name: "ui", primary: true },
         ],
       },
     };
@@ -97,11 +100,13 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: "lando.test",
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
 
@@ -123,11 +128,13 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
 

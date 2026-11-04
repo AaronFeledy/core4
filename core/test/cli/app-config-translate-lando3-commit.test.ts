@@ -11,7 +11,8 @@ import {
 import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
-import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { decomposer: wordpressDecomposer } = bundledRecipe("wordpress");
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { failure, originals, snapshot, withFixture } from "./translate-lando3-fixture.ts";
 
@@ -63,6 +64,7 @@ test("a layered recipe removal emits native tags without relocation diagnostics"
     await Bun.write(join(root, ".lando.local.yml"), "config: {redis: false}\n");
     await Bun.write(join(root, ".lando.recipe.yml"), "services: {}\n");
     const load = makeConfigTranslators({
+      serviceFacts: serviceTypeFacts(),
       decomposers: new Map([["wordpress", wordpressDecomposer]]),
       redactor: createRedactor("secrets"),
     }).get("lando3");
@@ -76,7 +78,9 @@ test("a layered recipe removal emits native tags without relocation diagnostics"
     const local = result.targets.find(({ path }) => basename(path) === ".lando.local.yml");
     expect(local?.content).toContain("!reset");
     expect(local?.content).toContain("!override");
-    expect(result.diagnostics.filter(({ kind }) => kind === "needs-review")).toEqual([]);
+    expect(
+      result.diagnostics.filter(({ kind }) => kind === "needs-review").map(({ keyPath }) => keyPath),
+    ).toEqual([["recipe"], ["recipe"]]);
   }));
 
 const boundaries: readonly (readonly [TransactionCheckpoint, number])[] = [
@@ -159,3 +163,4 @@ test.each([
     );
   }),
 );
+import { serviceTypeFacts } from "@lando/service-lando";

@@ -59,9 +59,7 @@ describe("managed-file codecs", () => {
   test("tags malformed and deferred decode failures with the current operation", async () => {
     // Given / When
     const jsonError = await failure(decode("json", "{not-json", { operation: "status" }));
-    const landofileError = await failure(
-      decode("landofile", "name: ${env.MISSING}\n", { operation: "status" }),
-    );
+    const landofileError = await failure(decode("landofile", "name: *missing\n", { operation: "status" }));
     const tomlError = await failure(decode("toml", "value = 1", { operation: "status" }));
 
     // Then
@@ -72,4 +70,16 @@ describe("managed-file codecs", () => {
     expect(tomlError.reason).toBe("format");
     expect(tomlError.operation).toBe("status");
   });
+
+  test.each(["${env.MISSING}", "{{ env.MISSING }}", "$${HOME}"])(
+    "keeps authored expression text %s inert during syntax decoding",
+    async (name) => {
+      // Given
+      const text = `name: ${JSON.stringify(name)}\n`;
+      // When
+      const value = await run(decode("landofile", text));
+      // Then
+      expect(value).toEqual({ name });
+    },
+  );
 });

@@ -12,8 +12,11 @@ The visual QA gate is a deterministic unit suite that captures committed golden 
 provider, or network. It covers the default `lando` renderer's task-tree progress and grouped result
 summaries, plus the frame snapshot harness used by the renderer-lando plugin.
 
-The committed reference frames are read directly by reviewers, so output that is technically
-structured but visually drab can still be rejected in review.
+Run the read-only suites from the repository root before updating any fixtures:
+`bun test core/test/cli/renderer/visual-qa.test.ts` and
+`bun test plugins/renderer-lando/test/frame-snapshots.test.ts`. A passing run
+confirms that captures match the committed frames. Review the frames themselves
+as well: snapshot agreement does not establish readability.
 
 ## Why the goldens are tokenized
 

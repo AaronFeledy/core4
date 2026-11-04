@@ -1,4 +1,5 @@
 import type { DatabaseFamily } from "@lando/sdk/database-creds";
+import { mssqlClient, mssqlResetCommand, mssqlRestoreCommand } from "./mssql.ts";
 
 export type SqlFamily = DatabaseFamily;
 
@@ -34,36 +35,6 @@ export const familyFromServiceType = (type: string): SqlFamily | undefined => {
 
 export const isSqlServiceType = (type: string): boolean => familyFromServiceType(type) !== undefined;
 
-export const mssqlBackupServicePath = (database: string): string => `/var/opt/mssql/backup/${database}.bak`;
-
-const mssqlClient = (port: number, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
-  "/opt/mssql-tools18/bin/sqlcmd",
-  "-S",
-  `localhost,${port}`,
-  "-U",
-  "sa",
-  "-C",
-  ...extra,
-];
-
-export const mssqlPrepareBackupCommand = (): ReadonlyArray<string> => [
-  "mkdir",
-  "-p",
-  "/var/opt/mssql/backup",
-];
-
-export const mssqlBackupCommand = (database: string, port: number): ReadonlyArray<string> =>
-  mssqlClient(port, [
-    "-Q",
-    `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
-  ]);
-
-export const mssqlRestoreCommand = (database: string, port: number): ReadonlyArray<string> =>
-  mssqlClient(port, [
-    "-Q",
-    `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
-  ]);
-
 type MysqlFamily = "mysql" | "mariadb";
 
 const MYSQL_FAMILY_BINARIES = {
@@ -91,6 +62,9 @@ const mysqlClient = (
 
 const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "psql",
+  "-X",
+  "-v",
+  "ON_ERROR_STOP=on",
   "-p",
   String(creds.port),
   "-U",
@@ -103,15 +77,19 @@ const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): R
 const quoteShell = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
 
 const mongoTool = (program: string, extra: string): ReadonlyArray<string> => [
-  "sh",
+  "bash",
   "-c",
-  `${program} --uri="$MONGO_URI" ${extra}`,
+  `exec 3< <(mongosh --nodb --quiet --eval 'print(JSON.stringify({uri:process.env.MONGO_URI}))' </dev/null); exec ${program} --config=/dev/fd/3 ${extra}`,
 ];
 
 const mongoShell = (extra: string): ReadonlyArray<string> => [
-  "sh",
-  "-c",
-  `mongosh "$MONGO_URI" --quiet ${extra}`,
+  "mongosh",
+  "--nodb",
+  "--quiet",
+  "--eval",
+  "db=connect(process.env.MONGO_URI)",
+  "--eval",
+  extra,
 ];
 
 export const dumpCommand = (
@@ -136,7 +114,19 @@ export const dumpCommand = (
         creds.database,
       ];
     case "postgres":
-      return ["pg_dump", "-p", String(creds.port), "-U", creds.user, "-d", creds.database];
+      return [
+        "pg_dump",
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-acl",
+        "-p",
+        String(creds.port),
+        "-U",
+        creds.user,
+        "-d",
+        creds.database,
+      ];
     case "mongodb":
       return mongoTool("mongodump --archive", `--db=${quoteShell(creds.database)}`);
     default:
@@ -186,7 +176,7 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
       ]);
     case "mongodb":
-      return mongoShell(`--eval=${quoteShell("db.getCollectionNames().length")}`);
+      return mongoShell("db.getCollectionNames().length");
     case "mssql":
       return mssqlClient(creds.port, [
         "-d",
@@ -209,11 +199,11 @@ export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): Reado
     case "postgres":
       return postgresClient(creds, ["-tAc", "SHOW server_version"]);
     case "mongodb":
-      return mongoShell(`--eval=${quoteShell("print(db.version())")}`);
+      return mongoShell("print(db.version())");
     case "mssql":
       return mssqlClient(creds.port, [
         "-d",
-        creds.database,
+        "master",
         "-h",
         "-1",
         "-W",
@@ -265,12 +255,9 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         `DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${creds.user};`,
       ]);
     case "mongodb":
-      return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
+      return mongoShell("db.dropDatabase()");
     case "mssql":
-      return mssqlClient(creds.port, [
-        "-Q",
-        `ALTER DATABASE [${creds.database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${creds.database}]; CREATE DATABASE [${creds.database}];`,
-      ]);
+      return mssqlResetCommand(creds.database, creds.port);
     default:
       return assertNever(family);
   }

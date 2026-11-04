@@ -8,7 +8,7 @@ tags: [beta, docs, provider-lando, setup, windows]
 
 # Use the managed Lando runtime on Windows
 
-Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the GitHub `v4.0.0-dev.N` prerelease. Then run default `lando setup`. The managed path creates a Lando-owned Podman machine without system Docker or Podman. Windows setup is still being validated in Alpha, so it may fail.
+Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the GitHub `v4.0.0-dev.N` prerelease. [Put the binary on PATH](../install/path-and-setup.mdx), then run `lando setup` followed by `lando doctor` in PowerShell. Check that doctor reports the `lando` provider before starting an app. The managed path creates a Lando-owned Podman machine without system Docker or Podman. Windows setup is still being validated in Alpha, so it may fail.
 
 Lando talks to that machine over the named pipe `\\.\pipe\podman-lando`, not a Unix socket. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
 

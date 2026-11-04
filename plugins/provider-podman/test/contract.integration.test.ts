@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -20,6 +21,8 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import {
@@ -76,7 +79,6 @@ const servicePlan: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -86,6 +88,7 @@ const servicePlan: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Persisted Podman",
   slug: "persisted-podman",
@@ -93,7 +96,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -166,7 +168,19 @@ const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
   const hostConfig = Reflect.get(parsed, "HostConfig");
   if (typeof hostConfig !== "object" || hostConfig === null) return [];
   const binds = Reflect.get(hostConfig, "Binds");
-  return Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : [];
+  const mounts = Reflect.get(hostConfig, "Mounts");
+  const strictBinds = Array.isArray(mounts)
+    ? mounts.flatMap((mount: unknown) => {
+        if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") return [];
+        const source = Reflect.get(mount, "Source");
+        const target = Reflect.get(mount, "Target");
+        return typeof source === "string" && typeof target === "string" ? [`${source}:${target}`] : [];
+      })
+    : [];
+  return [
+    ...(Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : []),
+    ...strictBinds,
+  ];
 };
 
 const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string): Uint8Array | undefined => {
@@ -223,13 +237,30 @@ const makeFakeApi = () => {
           return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
         }
 
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
+              Driver: Schema.String,
               Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(request.body);
+          )(
+            payload === undefined
+              ? request.body
+              : { Name: payload.name, Driver: payload.driver, Labels: payload.labels },
+          );
           networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
@@ -283,9 +314,9 @@ const makeFakeApi = () => {
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = decodeURIComponent(
-            request.path.slice("/containers/".length, -"?force=true".length),
+            request.path.slice("/containers/".length, -"?force=true&v=true".length),
           ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
@@ -362,6 +393,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -465,7 +497,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         }
         if (
           request.path.startsWith("/containers/") &&
-          request.path.endsWith("?force=true") &&
+          request.path.endsWith("?force=true&v=true") &&
           request.method === "DELETE"
         )
           return { status: 204, body: "" };
@@ -622,6 +654,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -676,13 +709,30 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
           volumeLabels.clear();
           return { status: 200, body: "[]" };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
+              Driver: Schema.String,
               Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(request.body);
+          )(
+            payload === undefined
+              ? request.body
+              : { Name: payload.name, Driver: payload.driver, Labels: payload.labels },
+          );
           networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
@@ -756,9 +806,9 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
           running.delete(name);
           return { status: 204, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = resolveContainerName(
-            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length)),
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true&v=true".length)),
           );
           const id = containerIds.get(name);
           const existed = existing.delete(name);
@@ -793,6 +843,18 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
             }),
           };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          const containers = Array.from(existing).map((name) => ({
+            Id: containerIds.get(name) ?? `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: {
+              "dev.lando.app": appId,
+              "dev.lando.service": name.includes("--db") || name.endsWith("-db") ? "db" : "web",
+            },
+          }));
+          return { status: 200, body: JSON.stringify(containers) };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
     stream: (request) => {
@@ -801,6 +863,7 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls, running, existing, volumes, containerIds, retentionHooks };
 };
 
@@ -815,7 +878,6 @@ const dbServicePlan: ServicePlan = {
   command: ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -825,6 +887,7 @@ const dbServicePlan: ServicePlan = {
 };
 
 const multiServicePlan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Persisted Podman",
   slug: "persisted-podman",
@@ -832,7 +895,6 @@ const multiServicePlan: AppPlan = {
   provider: providerId,
   services: { [dbServiceName]: dbServicePlan, [serviceName]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -861,7 +923,18 @@ describe("provider-podman RuntimeProvider contract", () => {
           ).length,
       ),
     );
-    expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
+    expect(fake.calls.find((call) => call.path === "/libpod/networks/create")?.body).toEqual({
+      name: "lando-myapp",
+      driver: "bridge",
+      dns_enabled: true,
+      options: { metric: "50" },
+      labels: {
+        "dev.lando.app": "myapp",
+        "dev.lando.app-root": "/tmp/lando-sdk-contract-myapp",
+        "dev.lando.owner": appIdentityKey("owner", "/tmp/lando-sdk-contract-myapp"),
+        "dev.lando.provider": "podman",
+      },
+    });
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
   });
 
@@ -1026,7 +1099,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     await Effect.runPromise(
       fake.api.request({
         method: "POST",
-        path: `/containers/create?name=lando-${plan.slug}-${serviceName}`,
+        path: `/containers/create?name=${landoServiceContainerName(plan.slug, serviceName)}`,
         body: {
           Labels: {
             "dev.lando.app": plan.id,
@@ -1041,7 +1114,7 @@ describe("provider-podman RuntimeProvider contract", () => {
         Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
       ),
     );
-    const containerName = `lando-${plan.slug}-${serviceName}`;
+    const containerName = landoServiceContainerName(plan.slug, serviceName);
 
     const chunks = await Effect.runPromise(
       Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
@@ -1052,7 +1125,8 @@ describe("provider-podman RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId, plan }, { volumes: false }));
     expect(
       fake.calls.some(
-        (call) => call.method === "DELETE" && call.path === `/containers/${containerName}-id?force=true`,
+        (call) =>
+          call.method === "DELETE" && call.path === `/containers/${containerName}-id?force=true&v=true`,
       ),
     ).toBe(true);
   });
@@ -1113,7 +1187,7 @@ describe("provider-podman RuntimeProvider contract", () => {
   });
 
   test("retains containers and network when a service start fails", async () => {
-    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-persisted-podman-web"]) });
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-persisted-podman--web"]) });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
@@ -1125,8 +1199,8 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.has("lando-persisted-podman-db")).toBe(true);
-    expect(fake.existing.has("lando-persisted-podman-web")).toBe(true);
+    expect(fake.existing.has("lando-persisted-podman--db")).toBe(true);
+    expect(fake.existing.has("lando-persisted-podman--web")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
       false,
     );

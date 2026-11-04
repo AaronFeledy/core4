@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +32,7 @@ import {
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
@@ -55,11 +56,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres"],
   environment: name === "web" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "crossprocessapp_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -83,6 +84,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 const web = servicePlan("web");
 const database = servicePlan("database");
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Cross Process App",
   slug: "crossprocessapp",
@@ -90,7 +92,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [web.name]: web },
   routes: [],
-  networks: [],
   stores: [{ name: "crossprocessapp_database_data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,
@@ -212,7 +213,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
   const running = new Set<string>();
   const existing = new Set<string>();
   const networks = new Set<string>();
-  const networkLabels = new Map<string, Readonly<Record<string, string>>>();
+  const networkDetails = new Map<string, object>();
   const containerLabels = new Map<string, Readonly<Record<string, string>>>();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
@@ -246,16 +247,12 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
             }),
           };
         }
-        if (request.path === "/networks/create") {
-          const body = Schema.decodeUnknownSync(
-            Schema.Struct({
-              Name: Schema.String,
-              Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-            }),
-          )(request.body);
-          networks.add(body.Name);
-          networkLabels.set(body.Name, body.Labels ?? {});
-          return { status: 201, body: JSON.stringify({ Id: `${body.Name}-id` }) };
+        const networkCreate = decodeNetworkCreate(request);
+        if (networkCreate !== undefined) {
+          networks.add(networkCreate.Name);
+          const network = { Id: `${networkCreate.Name}-id`, ...networkCreate };
+          networkDetails.set(networkCreate.Name, network);
+          return { status: 201, body: JSON.stringify({ Id: network.Id }) };
         }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const reference = decodeURIComponent(request.path.slice("/networks/".length));
@@ -266,11 +263,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
             ? { status: 404, body: "{}" }
             : {
                 status: 200,
-                body: JSON.stringify({
-                  Id: `${network}-id`,
-                  Name: network,
-                  Labels: networkLabels.get(network),
-                }),
+                body: JSON.stringify(networkDetails.get(network)),
               };
         }
         if (request.path === "/volumes/create") {
@@ -290,7 +283,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
             (name) => name === reference || `${name}-id` === reference,
           );
           const deleted = network !== undefined && networks.delete(network);
-          if (network !== undefined) networkLabels.delete(network);
+          if (network !== undefined) networkDetails.delete(network);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create")) {
@@ -348,6 +341,9 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           const deleted = volumes.delete(volume);
           volumeLabels.delete(volume);
           return { status: deleted ? 204 : 404, body: "" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -546,8 +542,8 @@ describe("provider-lando cross-process state", () => {
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);
-      expect(fake.existing.has("lando-crossprocessapp-database")).toBe(true);
-      expect(fake.existing.has("lando-crossprocessapp-web")).toBe(true);
+      expect(fake.existing.has("lando-crossprocessapp--database")).toBe(true);
+      expect(fake.existing.has("lando-crossprocessapp--web")).toBe(true);
 
       const providerB = await runOnce(
         RuntimeProvider.pipe(
@@ -645,6 +641,31 @@ describe("provider-lando cross-process state", () => {
         if (!(failed.failure instanceof ProviderUnavailableError)) throw new Error("expected volume failure");
         expect(failed.failure.operation).toBe("bringDown.volume");
         expect(failed.failure.details).toEqual({
+          shutdownObservations: [
+            {
+              appId: plan.id,
+              providerId,
+              service: web.name,
+              containerId: "lando-crossprocessapp--web-id",
+              status: "unknown",
+              reason: "not-exited",
+            },
+            {
+              appId: plan.id,
+              providerId,
+              service: database.name,
+              containerId: "lando-crossprocessapp--database-id",
+              status: "unknown",
+              reason: "not-exited",
+            },
+          ],
+        });
+        expect(failed.failure.cause).toBeInstanceOf(ProviderUnavailableError);
+        if (!(failed.failure.cause instanceof ProviderUnavailableError))
+          throw new Error("expected volume cause");
+        expect(failed.failure.cause.providerId).toBe(providerId);
+        expect(failed.failure.cause.operation).toBe("bringDown.volume");
+        expect(failed.failure.cause.details).toEqual({
           name: "crossprocessapp_database_data",
           body: "volume busy",
         });
@@ -731,7 +752,7 @@ describe("provider-lando cross-process state", () => {
     });
   });
 
-  test("the same provider layer self-heals a killed managed runtime before inspect", async () => {
+  test("inspect reports an unavailable killed managed runtime without repairing it", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakePodmanState();
       const paths = runtimePaths(stateDir);
@@ -743,19 +764,23 @@ describe("provider-lando cross-process state", () => {
         (pid) => livePids.has(pid),
         (pid) => livePids.add(pid),
       );
-      let forceUnreachableUntilNextLaunch = false;
-      let launchBaseline = 0;
+      let runtimeAvailable = true;
+      let downloads = 0;
       const pingObservations: string[] = [];
+      const requestApi = fake.api.request;
+      if (requestApi === undefined) throw new Error("expected request-capable fixture");
       const podmanApi: PodmanApiClient = {
         ...fake.api,
         ping: Effect.gen(function* () {
-          if (!forceUnreachableUntilNextLaunch || launchCount() > launchBaseline) {
+          if (runtimeAvailable) {
             pingObservations.push("reachable");
             return;
           }
           pingObservations.push("unreachable-after-kill");
           return yield* Effect.fail(unavailable());
         }),
+        request: (request) =>
+          Effect.suspend(() => (runtimeAvailable ? requestApi(request) : Effect.fail(unavailable()))),
       };
 
       const provider = await runOnce(
@@ -765,6 +790,10 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi,
               podmanService: serviceRunner,
+              artifactDownload: () => {
+                downloads += 1;
+                return Effect.fail(unavailable());
+              },
               stateDir,
               appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
@@ -781,25 +810,33 @@ describe("provider-lando cross-process state", () => {
       const firstPid = Number(await readFile(paths.providerPidPath, "utf8"));
       expect(livePids.has(firstPid)).toBe(true);
 
-      launchBaseline = firstLaunches;
-      forceUnreachableUntilNextLaunch = true;
+      const serviceCallsBeforeInspect = [...serviceCalls];
+      const pingCountBeforeInspect = pingObservations.length;
+      const configFiles = await readdir(paths.runtimeConfigDir);
+      const configStats = await Promise.all(
+        configFiles.map((file) => stat(join(paths.runtimeConfigDir, file))),
+      );
+      runtimeAvailable = false;
       livePids.delete(firstPid);
 
-      const snapshot = await runOnce(provider.inspect({ app: plan.id, service: web.name }));
+      const result = await runOnce(Effect.result(provider.inspect({ app: plan.id, service: web.name })));
 
-      expect(snapshot.app).toBe(plan.id);
-      expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("running");
-      expect(launchCount()).toBe(firstLaunches + 1);
-      expect(serviceCalls.slice(-2)).toEqual([
-        ["isAlive", firstPid],
-        ["launch", canonicalRuntimeArgs(paths)],
-      ]);
-      const healedPid = Number(await readFile(paths.providerPidPath, "utf8"));
-      expect(healedPid).not.toBe(firstPid);
-      expect(livePids.has(healedPid)).toBe(true);
-      expect(pingObservations).toContain("unreachable-after-kill");
-      expect(pingObservations.at(-1)).toBe("reachable");
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("expected unavailable inspection");
+      expect(result.failure).toBeInstanceOf(ProviderUnavailableError);
+      if (!(result.failure instanceof ProviderUnavailableError)) throw new Error("expected provider failure");
+      expect(result.failure.providerId).toBe(providerId);
+      expect(result.failure.operation).toBe("podman-api");
+      expect(launchCount()).toBe(firstLaunches);
+      expect(serviceCalls).toEqual(serviceCallsBeforeInspect);
+      expect(downloads).toBe(0);
+      expect(pingObservations).toHaveLength(pingCountBeforeInspect);
+      expect(await readFile(paths.providerPidPath, "utf8")).toBe(String(firstPid));
+      expect(await readdir(paths.runtimeConfigDir)).toEqual(configFiles);
+      const afterStats = await Promise.all(
+        configFiles.map((file) => stat(join(paths.runtimeConfigDir, file))),
+      );
+      expect(afterStats.map((info) => info.mtimeMs)).toEqual(configStats.map((info) => info.mtimeMs));
     });
   });
 

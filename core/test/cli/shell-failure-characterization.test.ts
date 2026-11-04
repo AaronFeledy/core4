@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createBufferedRendererIO } from "@lando/core/testing";
+import { internalErrorRemediation } from "@lando/sdk/command-result";
 import { Layer } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
@@ -48,7 +49,7 @@ describe("native shell failure characterization", () => {
         if (format === "text") {
           expect(io.stdout()).toBe("");
           expect(io.stderr()).toBe(
-            `${scenario.kind === "combined" ? "operation refused\n  ↳ Retry with valid input.\nAlso failed (Error): cleanup defect\ncode: ShellFailure" : scenario.text}\ncommandId: meta:characterize\nlogsDir: /cache/logs\ncacheDir: /cache\n`,
+            `${scenario.kind === "combined" ? `operation refused\n  ↳ Retry with valid input.\nAlso failed (LandoInternalError): cleanup defect\n  ↳ ${internalErrorRemediation}\ncode: ShellFailure` : scenario.text}\ncommandId: meta:characterize\nlogsDir: /cache/logs\ncacheDir: /cache\n`,
           );
         } else {
           expect(io.stderr()).toBe("");
@@ -62,7 +63,14 @@ describe("native shell failure characterization", () => {
                     _tag: "ShellFailure",
                     message: "operation refused",
                     remediation: "Retry with valid input.",
-                    additionalErrors: [{ _tag: "Error", role: "peer", message: "cleanup defect" }],
+                    additionalErrors: [
+                      {
+                        _tag: "LandoInternalError",
+                        role: "peer",
+                        message: "cleanup defect",
+                        remediation: internalErrorRemediation,
+                      },
+                    ],
                   }
                 : scenario.error,
             warnings: [],

@@ -1,70 +1,25 @@
 import { homedir } from "node:os";
 import { isAbsolute, posix, resolve as resolvePath, win32 } from "node:path";
-import { Schema, SchemaIssue } from "effect";
-
-import {
-  type ComposeVolumeEntry,
-  type MountInput,
-  PortablePath,
-  type ServiceConfig,
-  parseShortVolume,
-} from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
-import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
-/** Canonical spelling of a container destination, so equivalent spellings compare equal. */
 export const canonicalTarget = (target: string): string => posix.resolve("/", target);
 
 export const appMountTarget = (appMount: ServiceConfig["appMount"]): PortablePath =>
   PortablePath.make(canonicalTarget(typeof appMount === "object" ? appMount.target : "/app"));
 
-interface ComposeTmpfsEntry {
-  readonly target: string;
-  readonly read_only?: true;
-  readonly size?: number | string;
-  readonly mode?: number;
-}
-
-export type ClassifiedComposeVolume =
-  | {
-      readonly _tag: "mount";
-      readonly target: string;
-      readonly mount: {
-        readonly type: "bind";
-        readonly source: string;
-        readonly target: string;
-        readonly readOnly: boolean;
-        readonly createHostPath?: boolean;
-      };
-    }
-  | {
-      readonly _tag: "storage";
-      readonly target: string;
-      readonly storage: {
-        readonly store: string;
-        readonly target: string;
-        readonly readOnly: boolean;
-        readonly subpath?: string;
-      };
-    }
-  | {
-      readonly _tag: "tmpfs";
-      readonly target: string;
-      readonly tmpfs: ComposeTmpfsEntry;
-    };
+export const isAppRelativeSource = (source: string): boolean =>
+  !source.startsWith("~") && !isAbsolute(source) && !win32.isAbsolute(source) && !/^[A-Za-z]:/u.test(source);
 
 export const resolveBindSource = (source: string, appRoot: string): string => {
   if (DRIVE_LETTER_PREFIX.test(source)) return source;
   const expanded =
     source === "~" ? homedir() : source.startsWith("~/") ? homedir() + source.slice(1) : source;
-  // Absolute sources (including VM-side paths such as /var/run/docker.sock)
-  // pass through unchanged; only relative sources resolve against a Windows root.
   if (isAbsolute(expanded) || win32.isAbsolute(expanded)) return expanded;
-  if (DRIVE_LETTER_PREFIX.test(appRoot) || appRoot.startsWith("\\\\")) {
+  if (DRIVE_LETTER_PREFIX.test(appRoot) || appRoot.startsWith("\\\\"))
     return win32.resolve(appRoot, expanded);
-  }
   return resolvePath(appRoot, expanded);
 };
 
@@ -79,143 +34,7 @@ export const addServerConfigMount = (
     source: resolveBindSource(server, ctx.appRoot),
     target,
     readOnly: true,
+    ...(isAppRelativeSource(server) ? { relativeTo: "app" as const } : {}),
   });
   return true;
-};
-
-const parseShortMount = (entry: string, index: number): ComposeVolumeEntry => {
-  try {
-    return parseShortVolume(entry);
-  } catch (cause) {
-    if (!(cause instanceof SchemaIssue.InvalidValue)) throw cause;
-    const message = new Schema.SchemaError(cause).message;
-    throw new ServiceConfigIssue(
-      ["mounts", index],
-      message.endsWith(".") ? message : `${message}.`,
-      "Use source:target[:mode] mount syntax.",
-    );
-  }
-};
-
-export const parseServiceMount = (
-  entry: MountInput,
-  appRoot: string,
-  index = 0,
-): {
-  readonly type: "bind" | "volume" | "tmpfs";
-  readonly source?: string;
-  readonly target: string;
-  readonly readOnly: boolean;
-} => {
-  if (typeof entry === "string") {
-    const parsed = parseShortMount(entry, index);
-    const source =
-      parsed.type === "bind" && parsed.source !== undefined
-        ? resolveBindSource(parsed.source, appRoot)
-        : parsed.source;
-    return {
-      type: parsed.type,
-      ...(source === undefined ? {} : { source }),
-      target: parsed.target,
-      readOnly: parsed.readOnly,
-    };
-  }
-  const type = entry.type ?? "bind";
-  if (type === "bind" && entry.source === undefined) {
-    throw new ServiceConfigIssue(
-      ["mounts", index],
-      `Bind mount at "${entry.target}" requires a source.`,
-      "Set source to a host path.",
-    );
-  }
-  const source =
-    type === "bind" && entry.source !== undefined ? resolveBindSource(entry.source, appRoot) : entry.source;
-  return {
-    type,
-    ...(source === undefined ? {} : { source }),
-    target: entry.target,
-    readOnly: entry.readOnly ?? false,
-  };
-};
-
-const kebabTarget = (target: string): string =>
-  target
-    .split("/")
-    .filter((segment) => segment.length > 0)
-    .join("-");
-
-export const occupiedTargets = (service: ServiceConfig): ReadonlySet<string> => {
-  const targets = new Set<string>();
-  if (service.appMount !== false) {
-    targets.add(appMountTarget(service.appMount));
-  }
-  for (const [index, mount] of (service.mounts ?? []).entries()) {
-    targets.add(
-      canonicalTarget(typeof mount === "string" ? parseShortMount(mount, index).target : mount.target),
-    );
-  }
-  for (const storage of service.storage ?? []) {
-    targets.add(canonicalTarget(typeof storage === "string" ? storage : storage.target));
-  }
-  return targets;
-};
-
-export const classifyComposeVolume = (
-  entry: ComposeVolumeEntry,
-  context: { readonly appRoot: string; readonly appName: string; readonly serviceName: string },
-  index = 0,
-): ClassifiedComposeVolume => {
-  switch (entry.type) {
-    case "bind": {
-      if (entry.source === undefined)
-        throw new ServiceConfigIssue(
-          ["volumes", index],
-          `Compose bind mount at "${entry.target}" requires a source.`,
-          "Set source to a host path.",
-        );
-      const source = resolveBindSource(entry.source, context.appRoot);
-      return {
-        _tag: "mount",
-        target: entry.target,
-        mount: {
-          type: "bind",
-          source,
-          target: entry.target,
-          readOnly: entry.readOnly,
-          ...(entry.createHostPath === false ? { createHostPath: false } : {}),
-        },
-      };
-    }
-    case "volume": {
-      const store =
-        entry.source === undefined
-          ? `${context.appName}-${context.serviceName}-${kebabTarget(entry.target)}`
-          : `${context.appName}-${entry.source}`;
-      return {
-        _tag: "storage",
-        target: entry.target,
-        storage: {
-          store,
-          target: entry.target,
-          readOnly: entry.readOnly,
-          ...(entry.subpath === undefined ? {} : { subpath: entry.subpath }),
-        },
-      };
-    }
-    case "tmpfs":
-      return {
-        _tag: "tmpfs",
-        target: entry.target,
-        tmpfs: {
-          target: entry.target,
-          ...(entry.readOnly ? { read_only: true } : {}),
-          ...(entry.tmpfs?.size === undefined ? {} : { size: entry.tmpfs.size }),
-          ...(entry.tmpfs?.mode === undefined ? {} : { mode: entry.tmpfs.mode }),
-        },
-      };
-    default: {
-      const exhaustive: never = entry.type;
-      throw new Error(`Unsupported Compose volume type: ${exhaustive}`);
-    }
-  }
 };

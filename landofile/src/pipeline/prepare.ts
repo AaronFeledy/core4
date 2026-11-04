@@ -57,6 +57,7 @@ export const prepareOverlay = Effect.fnUntraced(function* (
         const origins: ValueOrigins<AuthoredOrigin> = {
           source: { ...source, path: cursor.path },
           deleted: isLandofileReset(input),
+          ...(isMergeDirective(input) ? { replaced: true as const } : {}),
           children: emptyChildren,
         };
         if (isMergeDirective(input)) {
@@ -69,7 +70,7 @@ export const prepareOverlay = Effect.fnUntraced(function* (
           if (!isLandofileOverride(input)) return { value: input, origins };
           if (isMergeDirective(input.value)) fail(cursor.path, "A directive cannot wrap another directive.");
           const payload = visit(input.value, path, cursor);
-          return { value: override(payload.value), origins: payload.origins };
+          return { value: override(payload.value), origins: { ...payload.origins, replaced: true } };
         }
         if (Array.isArray(input)) {
           const children = new Map<string | number, ValueOrigins<AuthoredOrigin>>();

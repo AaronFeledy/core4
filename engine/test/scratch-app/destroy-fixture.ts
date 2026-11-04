@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { DataTransferError, ProviderUnavailableError, ProxyError, ScratchAppError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -18,16 +19,38 @@ import {
   EventService,
   type LandoEvent,
   LandofileService,
+  PathsService,
   RouterService,
   RuntimeProviderRegistry,
   ScratchAppService,
+  StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
 import { ScratchRegistry, type ScratchRegistryEntry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
+
+export const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const store = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+      const bucket = yield* store.open({
+        root: { path: AbsolutePath.make(instanceRoot) },
+        key: "plan.bin",
+        schema: AppPlan,
+        version: 1,
+        codec: "binary",
+        mode: 0o600,
+        onCorrupt: "quarantine",
+        onVersionMismatch: "discard",
+      });
+      yield* bucket.set(plan);
+    }),
+  );
 
 interface DestroyFixtureOptions {
   readonly orphan?: boolean;
@@ -42,15 +65,23 @@ export const withDestroyFixture = async (
   options: DestroyFixtureOptions,
   use: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
 ) => {
-  const root = await mkdtemp(join(tmpdir(), "scratch-destroy-"));
-  const previous = process.env.LANDO_USER_CACHE_ROOT;
-  process.env.LANDO_USER_CACHE_ROOT = root;
+  const base = await mkdtemp(join(tmpdir(), "scratch-destroy-"));
+  const root = join(base, "data");
+  const cacheRoot = join(base, "cache");
+  await mkdir(root, { recursive: true });
+  await mkdir(cacheRoot, { recursive: true });
+  const previousData = process.env.LANDO_USER_DATA_ROOT;
+  const previousCache = process.env.LANDO_USER_CACHE_ROOT;
+  process.env.LANDO_USER_DATA_ROOT = root;
+  process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   try {
     await use(await makeFixture(root, options));
   } finally {
-    if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
-    else process.env.LANDO_USER_CACHE_ROOT = previous;
-    await rm(root, { recursive: true, force: true });
+    if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = previousData;
+    if (previousCache === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+    else process.env.LANDO_USER_CACHE_ROOT = previousCache;
+    await rm(base, { recursive: true, force: true });
   }
 };
 
@@ -65,7 +96,6 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     provider: ProviderId.make("lando"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {
@@ -103,8 +133,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   };
   if (!options.orphan) entries.set(id, entry);
   await mkdir(join(instanceRoot, "root"), { recursive: true });
-  if (!options.orphan)
-    await writeFile(join(instanceRoot, "plan.bin"), JSON.stringify(Schema.encodeSync(AppPlan)(plan)));
+  if (!options.orphan) await seedScratchPlan(instanceRoot, plan);
+  const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
   const provider = {
     ...TestRuntimeProvider,
     destroy: (_target: unknown, request: { readonly volumes: boolean; readonly removeState?: boolean }) =>
@@ -119,6 +149,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                   providerId: "lando",
                   operation: "destroy",
                   message: "injected",
+                  remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
                 }),
               )
             : Effect.succeed(outcome),
@@ -137,15 +168,23 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     }),
   );
   const dependencies = Layer.mergeAll(
+    testEnvironmentResolverLayer,
     FileSystem.layer,
+    Layer.succeed(PathsService, makeLandoPaths()),
+    Layer.succeed(StateStore, stateStore),
     providers,
     ScratchResourceScanner.layer.pipe(Layer.provide(providers)),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({ plan: () => Effect.succeed({ ...plan, valueModel: 1 as const }) }),
+    ),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
         discover: Effect.succeed(
-          Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
+          literalTestLandofile(
+            Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
+          ),
         ),
       }),
     ),
@@ -166,7 +205,11 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
             Effect.andThen(() =>
               options.registryFail
                 ? Effect.fail(
-                    new ScratchAppError({ operation: "registry.write", message: "injected write failure" }),
+                    new ScratchAppError({
+                      operation: "registry.write",
+                      message: "injected write failure",
+                      remediation: "Injected registry write failure for destroy fixture.",
+                    }),
                   )
                 : Effect.sync(() => {
                     entries.set(value.id, value);
@@ -190,7 +233,14 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
           }).pipe(
             Effect.andThen(
               options.routeFail
-                ? Effect.fail(new ProxyError({ proxyId: "test", message: "route failure" }))
+                ? Effect.fail(
+                    new ProxyError({
+                      proxyId: "test",
+                      message: "route failure",
+                      remediation:
+                        "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+                    }),
+                  )
                 : Effect.void,
             ),
           ),
@@ -215,6 +265,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused queue"),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),
@@ -224,7 +275,13 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       DataMover.of({
         transfer: () =>
           options.copyFail
-            ? Effect.fail(new DataTransferError({ operation: "copy", message: "injected copy failure" }))
+            ? Effect.fail(
+                new DataTransferError({
+                  operation: "copy",
+                  message: "injected copy failure",
+                  remediation: "Injected copy failure for destroy fixture.",
+                }),
+              )
             : Effect.die("unused transfer"),
         transferStream: () => Stream.empty,
         snapshot: () => Effect.die("unused snapshot"),
@@ -256,7 +313,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     rootObservations,
     removed,
     entries,
-    layer: Scratch.layer.pipe(Layer.provide(dependencies)),
+    layer: Scratch.layer.pipe(Layer.provideMerge(dependencies)),
   };
 };
 
@@ -266,3 +323,5 @@ export const runDestroy = (fixture: Awaited<ReturnType<typeof makeFixture>>, kee
       Effect.provide(fixture.layer),
     ),
   );
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

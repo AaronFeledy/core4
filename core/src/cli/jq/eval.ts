@@ -1,7 +1,10 @@
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { JqExpressionError, causeMessage } from "@lando/sdk/errors";
 
 import { redactString } from "../redact.ts";
 import type { JqEngine } from "./types.ts";
+
+const jqErrorRedactor = () => createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
 
 export const JQ_EVAL_TIMEOUT_MS = 5000;
 export const JQ_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -150,7 +153,7 @@ const assertOutputSize = (text: string, expr: string): void => {
 
 const jqEvalError = (expr: string, cause: unknown): JqExpressionError => {
   const raw = causeMessage(cause);
-  const detail = redactString(raw);
+  const detail = redactString(raw, jqErrorRedactor());
   return new JqExpressionError({
     message: "jq expression failed.",
     expression: expr,

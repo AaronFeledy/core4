@@ -29,9 +29,15 @@ for (const prefix of ["exec", "shell", "meta:global:start", "meta:global:info"] 
         `${prefix}: service nosuch is not in the ${planLabel}${names.length === 0 ? "." : names.length === 1 ? " (available: web)." : " (available: alpha, web, zebra)."}`,
       );
       expect(error.tool).toBe(tool);
-      expect(error.remediation).toBe(
-        names.length === 0 || prefix === "meta:global:info" ? undefined : example.replace("FIRST", first),
-      );
+      if (names.length === 0) {
+        expect(error.remediation).toBe(
+          "Add service nosuch to the Landofile, or pick an existing service name.",
+        );
+      } else if (prefix === "meta:global:info") {
+        expect(error.remediation).toContain("available services");
+      } else {
+        expect(error.remediation).toBe(example.replace("FIRST", first));
+      }
     });
   }
 }

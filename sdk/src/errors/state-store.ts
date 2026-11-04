@@ -12,5 +12,5 @@ export class StateStoreError extends Schema.TaggedError<StateStoreError>()("Stat
   operation: Schema.String,
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}

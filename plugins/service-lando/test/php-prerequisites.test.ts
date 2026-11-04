@@ -5,7 +5,12 @@ import { Schema } from "effect";
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
-import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
+import {
+  PHP_COMPOSER_RELEASES,
+  PHP_PREREQUISITES_STEP_ID,
+  phpPrerequisiteBuildSteps,
+  phpPrerequisitesBuildKeyInputs,
+} from "../src/services/php-prerequisites.ts";
 import { PHP_WP_CLI } from "../src/services/php-wp-cli.ts";
 import {
   PHP_APT_PACKAGE_PINS,
@@ -84,7 +89,7 @@ describe("stock PHP prerequisite plan", () => {
   test.each(["mysqli", "pcntl"])("builds %s when using a stock PHP image", async (extension) => {
     // Given / When: compose the stock service without extra extensions.
     const plan = await composePhpPlan();
-    const prerequisites = buildStepsFor(plan).find((step) => step.id === "service-lando.php:prerequisites");
+    const prerequisites = buildStepsFor(plan).find((step) => step.id === PHP_PREREQUISITES_STEP_ID);
 
     // Then: the extension is installed and participates in the build cache key.
     expect(prerequisites?.command).toMatch(new RegExp(`docker-php-ext-install[^&]*\\b${extension}\\b`));
@@ -146,30 +151,29 @@ describe("stock PHP prerequisite plan", () => {
     const rawSteps =
       (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
         ?.buildSteps ?? [];
-    const rawPrereq = rawSteps.find(
-      (step) => (step as { id?: string }).id === "service-lando.php:prerequisites",
-    );
+    const rawPrereq = rawSteps.find((step) => (step as { id?: string }).id === PHP_PREREQUISITES_STEP_ID);
     const rawComposer = rawSteps.find(
       (step) => (step as { id?: string }).id === "service-lando.php:composer",
     );
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
-      "service-lando.php:prerequisites",
+      "service-lando.php:baseline",
+      PHP_PREREQUISITES_STEP_ID,
       "service-lando.php:composer",
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
     ]);
-    expect(steps[1]?.buildKeyInputs).toEqual({
+    expect(steps[2]?.buildKeyInputs).toEqual({
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
     });
-    expect(steps[1]?.command).toBe(PHP_PREREQUISITES_COMMAND);
-    expect(steps[1]?.user).toBe("root");
-    expect("privileged" in (rawPrereq ?? {})).toBe(false);
-    expect(steps[2]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
-    expect(steps[2]?.command).toBe(PHP_COMPOSER_COMMAND);
+    expect(steps[2]?.command).toBe(PHP_PREREQUISITES_COMMAND);
     expect(steps[2]?.user).toBe("root");
+    expect("privileged" in (rawPrereq ?? {})).toBe(false);
+    expect(steps[3]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
+    expect(steps[3]?.command).toBe(PHP_COMPOSER_COMMAND);
+    expect(steps[3]?.user).toBe("root");
     expect("privileged" in (rawComposer ?? {})).toBe(false);
   });
 
@@ -185,7 +189,8 @@ describe("stock PHP prerequisite plan", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
-      "service-lando.php:prerequisites",
+      "service-lando.php:baseline",
+      PHP_PREREQUISITES_STEP_ID,
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
     ]);
@@ -253,7 +258,8 @@ describe("PHP Composer compatibility", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
-      "service-lando.php:prerequisites",
+      "service-lando.php:baseline",
+      PHP_PREREQUISITES_STEP_ID,
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
     ]);
@@ -264,5 +270,18 @@ describe("PHP Composer compatibility", () => {
     const composerStep = steps.find((step) => step.id === "service-lando.php:composer");
 
     expect(composerStep?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER_RELEASES["2.7.7"] });
+  });
+});
+
+describe("PHP prerequisites build key", () => {
+  test("keeps planned step inputs on the apt pins and extensions", () => {
+    const [step] = phpPrerequisiteBuildSteps(false);
+
+    expect(step?.id).toBe(PHP_PREREQUISITES_STEP_ID);
+    expect(step?.buildKeyInputs).toEqual(phpPrerequisitesBuildKeyInputs());
+    expect(step?.buildKeyInputs).toEqual({
+      aptPackages: PHP_APT_PACKAGE_PINS,
+      extensions: PHP_COMMON_EXTENSIONS,
+    });
   });
 });

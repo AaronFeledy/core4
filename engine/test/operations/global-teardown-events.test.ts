@@ -36,7 +36,6 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       provider: providerId,
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {
@@ -85,6 +84,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
                   providerId,
                   service: ServiceName.make("web"),
                   status: "running",
+                  publications: { status: "unknown" },
                   containerId: "observed",
                 },
               ],
@@ -152,6 +152,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
           subscribe: () => Stream.empty,
           subscribeQueue: Effect.die("unused queue"),
           waitFor: () => Effect.never,
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.never,
           query: () => Effect.succeed([]),
         }),

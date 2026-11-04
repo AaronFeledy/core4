@@ -98,7 +98,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   };
 
   test("collapsed by default — only the most recent 4 detail lines surface", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     seed(vm, "a", 10);
     expect(vm.expandedTaskId).toBeUndefined();
     const panelLines = vm.snapshot().frameLines.filter((l) => l.includes("line-"));
@@ -108,7 +108,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   });
 
   test("focusableTaskIds lists started tasks in order", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["a", "b"]));
     vm.apply(taskStart("a", "step a", "build"));
     vm.apply(taskStart("b", "step b", "build"));
@@ -116,7 +116,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   });
 
   test("expanding a task surfaces the persisted transcript instead of the 4-line ring", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     seed(vm, "a", 10);
     vm.expandTask("a");
     vm.setExpandedTranscript(
@@ -131,7 +131,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   });
 
   test("expanded transcript budget is bounded by available terminal rows", () => {
-    const vm = new TaskTreeViewModel({ terminalRows: 6 });
+    const vm = new TaskTreeViewModel({ color: true, terminalRows: 6 });
     seed(vm, "a", 30);
     vm.expandTask("a");
     expect(vm.expandedLineBudget()).toBe(3);
@@ -144,7 +144,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   });
 
   test("collapsing restores the 4-line ring", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     seed(vm, "a", 10);
     vm.expandTask("a");
     vm.collapse();
@@ -155,7 +155,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   });
 
   test("finished tasks remain expandable", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     seed(vm, "a", 10);
     vm.apply(taskComplete("a"));
     expect(vm.canExpandTask("a")).toBe(true);
@@ -164,7 +164,7 @@ describe("TaskTreeViewModel — expand / collapse", () => {
   });
 
   test("completion keeps the expanded task visible", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     seed(vm, "a", 10);
     vm.expandTask("a");
     expect(vm.expandedTaskId).toBe("a");
@@ -177,7 +177,7 @@ describe("TaskTreeInputController", () => {
   const fixedClock = () => "2026-05-19T12:00:00.000Z";
 
   const make = (taskIds: ReadonlyArray<string>) => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", taskIds));
     for (const id of taskIds) vm.apply(taskStart(id, `step ${id}`, "build"));
     for (const id of taskIds) {

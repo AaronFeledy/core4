@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import { serviceTypes } from "../src/index.ts";
 
 import { resolveBindSource } from "../src/services/_volume-helpers.ts";
 import { MARIADB_CONFIG_TARGET, mariadbServiceFeature } from "../src/services/mariadb.ts";
@@ -28,10 +29,21 @@ describe.each([
   ["postgres", postgresServiceFeature, POSTGRES_CONFIG_TARGET],
   ["mongodb", mongodbServiceFeature, MONGODB_CONFIG_TARGET],
 ] as const)("%s server config mount", (serviceType, feature, target) => {
+  const type = serviceTypes.get(serviceType);
+  if (type === undefined) throw new Error("missing service type");
+  const { connection } = Effect.runSync(
+    type.resolve({
+      name: "web",
+      service: { type: serviceType },
+      appRoot: "/srv/apps/myapp",
+      metadata: { resolvedAt: "2026-10-23T00:00:00Z", source: "/srv/apps/myapp/.lando.yml", runtime: 4 },
+    }),
+  );
   test.each([undefined, ""])("omits the mount and config startup when server is %p", (server) => {
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType,
+      connection,
       normalizedConfig: { config: server === undefined ? {} : { server } },
       config: {},
     });
@@ -42,14 +54,15 @@ describe.each([
   });
 
   test.each([
-    ["./conf/server.conf", "/srv/apps/myapp", "/srv/apps/myapp/conf/server.conf"],
-    ["/etc/server.conf", "/srv/apps/myapp", "/etc/server.conf"],
-    ["C:\\conf\\server.conf", "/srv/apps/myapp", "C:\\conf\\server.conf"],
-    ["./conf/server.conf", "C:\\app", "C:\\app\\conf\\server.conf"],
-  ])("resolves %s against %s as a read-only mount", (server, appRoot, source) => {
+    ["./conf/server.conf", "/srv/apps/myapp", "/srv/apps/myapp/conf/server.conf", "app"],
+    ["/etc/server.conf", "/srv/apps/myapp", "/etc/server.conf", undefined],
+    ["C:\\conf\\server.conf", "/srv/apps/myapp", "C:\\conf\\server.conf", undefined],
+    ["./conf/server.conf", "C:\\app", "C:\\app\\conf\\server.conf", "app"],
+  ])("resolves %s against %s as a read-only mount", (server, appRoot, source, relativeTo) => {
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType,
+      connection,
       normalizedConfig: { config: { server } },
       config: {},
     });
@@ -57,7 +70,10 @@ describe.each([
     Effect.runSync(feature.apply({ ...ctx, appRoot }));
     // Then
     expect(calls.filter(([method]) => method === "addMount")).toEqual([
-      ["addMount", { type: "bind", source, target, readOnly: true }],
+      [
+        "addMount",
+        { type: "bind", source, target, readOnly: true, ...(relativeTo === undefined ? {} : { relativeTo }) },
+      ],
     ]);
   });
 });

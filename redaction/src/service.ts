@@ -3,16 +3,16 @@ import { Context, Effect, Inspectable, Layer, Redactable } from "effect";
 import {
   type CreateRedactorOptions,
   REDACTED,
+  type RedactionMatch,
   type RedactionProfile,
   type Redactor,
+  type TieredRedactionValues,
   type TranscriptRedactionEnv,
   createRedactor,
-  isUsableExactRedactionValue,
 } from "@lando/sdk/secrets";
-import { SecretStore } from "@lando/sdk/services";
 
 import { expandRedactionValues } from "./exact-values.ts";
-import { collectSecretEnvValues, nonEmpty } from "./heuristic-values.ts";
+import { collectSecretEnvValues } from "./heuristic-values.ts";
 
 export {
   collectPublicCredentialValues,
@@ -22,6 +22,9 @@ export {
 
 export interface RedactionForProfileOptions {
   readonly redactionTokens?: Iterable<string> | undefined;
+  readonly wholeTokenValues?: Iterable<string> | undefined;
+  /** Already byte-redacted framed bodies only; metadata still needs full matching. */
+  readonly excludeWholeTokenValues?: boolean;
   /** Exact values masked like resolved secrets; an unusable one suppresses any text that contains it. */
   readonly authoritativeTokens?: Iterable<string> | undefined;
   readonly sourceEnv?: Record<string, string | undefined> | undefined;
@@ -30,9 +33,14 @@ export interface RedactionForProfileOptions {
 }
 
 export interface RedactionServiceShape {
-  readonly registerValues: (values: ReadonlyArray<string>) => Effect.Effect<void>;
-  /** Snapshot the store once, then read process registrations live by generation. */
-  readonly payloadValues: (options?: RedactionForProfileOptions) => Effect.Effect<() => Iterable<string>>;
+  readonly registerValues: (
+    values: ReadonlyArray<string>,
+    options?: { readonly match?: RedactionMatch },
+  ) => Effect.Effect<void>;
+  /** Read this runtime's registrations live without performing secret lookups. */
+  readonly payloadValues: (
+    options?: RedactionForProfileOptions,
+  ) => Effect.Effect<() => TieredRedactionValues>;
   readonly forProfile: (
     profile: RedactionProfile,
     options?: RedactionForProfileOptions,
@@ -45,7 +53,13 @@ export class RedactionService extends Context.Service<RedactionService, Redactio
   static readonly layer = Layer.effect(
     this,
     Effect.gen(function* () {
-      return RedactionService.of(makeRedactionService(yield* SecretStore));
+      const parent = yield* Effect.serviceOption(RedactionService);
+      if (parent._tag === "Some") return parent.value;
+      const owner = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRedactionOwner()),
+        (owner) => Effect.sync(owner.dispose),
+      );
+      return owner.service;
     }),
   );
 }
@@ -88,30 +102,27 @@ export class RedactionValues extends Inspectable.Class implements Redactable.Red
   }
 }
 
-const collectSecretStoreValues = Effect.fnUntraced(function* (
-  secretStore: Context.Service.Shape<typeof SecretStore>,
-) {
-  const ids = yield* secretStore.list;
-  const values = yield* Effect.all(
-    ids.map((id) => secretStore.get(id).pipe(Effect.catch(() => Effect.succeed(undefined)))),
-  );
-  return new RedactionValues(
-    values.filter((value): value is string => value !== undefined && value.length > 0),
-  );
-});
-
-const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined): string[] => {
-  if (proxyUrls === undefined) return [];
+/** Extract only authored URL userinfo; malformed escapes retain their encoded exact value. */
+export const collectUrlCredentialValues = (urls: Iterable<string | undefined> | undefined): string[] => {
   const values: string[] = [];
-  for (const proxyUrl of proxyUrls) {
-    if (proxyUrl === undefined) continue;
+  for (const url of urls ?? []) {
+    if (url === undefined) continue;
+    let parsed: URL;
     try {
-      const parsed = new URL(proxyUrl);
-      if (nonEmpty(parsed.password)) values.push(parsed.password);
-      if (nonEmpty(parsed.username)) values.push(parsed.username);
+      parsed = new URL(url);
     } catch (error) {
       if (error instanceof TypeError) continue;
       throw error;
+    }
+    for (const component of [parsed.password, parsed.username]) {
+      if (component.length === 0) continue;
+      values.push(component);
+      try {
+        const decoded = decodeURIComponent(component);
+        if (decoded.length > 0) values.push(decoded);
+      } catch (error) {
+        if (!(error instanceof URIError)) throw error;
+      }
     }
   }
   return values;
@@ -119,57 +130,84 @@ const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined)
 
 const collectOptionValues = (options: RedactionForProfileOptions | undefined): string[] => [
   ...collectSecretEnvValues(options?.sourceEnv),
-  ...collectProxyValues(options?.proxyUrls),
+  ...collectUrlCredentialValues(options?.proxyUrls),
   ...(options?.redactionTokens ?? []),
 ];
 
 /**
- * Explicit values (secret store, registrations, authoritative tokens) are authoritative: an
+ * Substring registrations and authoritative tokens are authoritative: an
  * unusable one suppresses any string that contains it. Heuristic sources drop public defaults
  * when they are collected, never here.
  */
 const makeRedactorOptions = (
-  secretValues: Iterable<string>,
+  secretValues: TieredRedactionValues,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => {
-  const authoritativeValues = [...secretValues, ...registeredValues, ...(options?.authoritativeTokens ?? [])];
+  const authoritativeValues = [...secretValues.substring, ...(options?.authoritativeTokens ?? [])];
+  const values = expandRedactionValues([...collectOptionValues(options), ...authoritativeValues]);
+  const substring = new Set(values);
   return {
-    values: expandRedactionValues([...collectOptionValues(options), ...authoritativeValues]),
+    values,
+    wholeTokenValues: options?.excludeWholeTokenValues
+      ? []
+      : expandRedactionValues(
+          [...secretValues.wholeToken, ...(options?.wholeTokenValues ?? [])],
+          "whole-token",
+        ).filter((value) => !substring.has(value)),
     authoritativeValues,
     ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
   };
 };
 
-const registeredValues = new RedactionValues();
-let registeredGeneration = 0;
+/** Key the profile and every value so cache hits cannot inherit another caller's secrets. */
+type CompiledRedactors = Map<string, Redactor>;
 
-export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
-  Effect.sync(() => {
-    for (const value of values) {
-      if (!isUsableExactRedactionValue(value) || registeredValues.has(value)) continue;
-      registeredValues.add(value);
-      registeredGeneration += 1;
-    }
-  });
+const COMPILED_REDACTOR_LIMIT = 32;
 
-/** Clears process-lifetime registrations. Tests call this so cases do not leak values. */
-export const resetRegisteredRedactionValuesForTesting = (): void => {
-  if (registeredValues.size === 0) return;
-  registeredValues.clear();
-  registeredGeneration += 1;
+const compileRedactor = (
+  cache: CompiledRedactors,
+  profile: RedactionProfile,
+  options: CreateRedactorOptions,
+): Redactor => {
+  // Transcript environment roots are not part of the value key.
+  if (options.env !== undefined) return createRedactor(profile, options);
+  const key = JSON.stringify([
+    profile,
+    [...(options.values ?? [])],
+    [...(options.wholeTokenValues ?? [])],
+    [...(options.authoritativeValues ?? [])],
+  ]);
+  const cached = cache.get(key);
+  if (cached !== undefined) {
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached;
+  }
+  const compiled = createRedactor(profile, options);
+  cache.set(key, compiled);
+  if (cache.size > COMPILED_REDACTOR_LIMIT) {
+    const oldest = cache.keys().next();
+    if (oldest.done !== true) cache.delete(oldest.value);
+  }
+  return compiled;
 };
+
+/** Standalone redactors hold only caller-supplied values, so they share one cache. */
+const standaloneCompiled: CompiledRedactors = new Map();
 
 const makeRegisteredRedactor = (
   profile: RedactionProfile,
-  secretValues: Iterable<string>,
+  registry: TieredRedactionValues & { readonly generation: () => number },
   options: RedactionForProfileOptions | undefined,
+  cache: CompiledRedactors,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => {
-  let generation = registeredGeneration;
-  let redactor = createRedactor(profile, makeRedactorOptions(secretValues, options));
+  // Compile on first use: many redactors are built for error paths that never run.
+  let generation = -1;
+  let redactor: Redactor | undefined;
   const current = (): Redactor => {
-    if (generation !== registeredGeneration) {
-      redactor = createRedactor(profile, makeRedactorOptions(secretValues, options));
-      generation = registeredGeneration;
+    if (redactor === undefined || generation !== registry.generation()) {
+      generation = registry.generation();
+      redactor = compileRedactor(cache, profile, makeRedactorOptions(registry, options));
     }
     return redactor;
   };
@@ -187,42 +225,79 @@ const makeRegisteredRedactor = (
 /**
  * Fail-safe redactor for callers where `RedactionService` may be absent but a
  * payload must never be retained raw. Applies the same profile pattern classes
- * and option-derived exact values as the service path; only secret-store values
- * are unavailable.
+ * and explicit option-derived exact values as the service path. No runtime
+ * registrations or lookup authority are inherited.
  */
 export const createStandaloneRedactor = (
   profile: RedactionProfile,
   options?: RedactionForProfileOptions,
-): Redactor & Redactable.Redactable & Inspectable.Inspectable => makeRegisteredRedactor(profile, [], options);
+): Redactor & Redactable.Redactable & Inspectable.Inspectable =>
+  makeRegisteredRedactor(
+    profile,
+    { substring: [], wholeToken: [], generation: () => 0 },
+    options,
+    standaloneCompiled,
+  );
 
 export const createPayloadValues = (
-  secretValues: Iterable<string>,
+  secretValues: Iterable<string> | TieredRedactionValues,
   options?: RedactionForProfileOptions,
-): (() => Iterable<string>) => {
-  // Every usable value the string redactor masks. A byte stream cannot suppress a whole detail,
-  // so unusable authoritative values have no payload equivalent.
-  const initial = [...collectOptionValues(options), ...secretValues, ...(options?.authoritativeTokens ?? [])];
-  let generation = -1;
-  let values = new RedactionValues();
-  return () => {
-    if (generation !== registeredGeneration) {
-      values = new RedactionValues(expandRedactionValues([...initial, ...registeredValues]));
-      generation = registeredGeneration;
-    }
-    return values;
+): (() => TieredRedactionValues) => {
+  const tiers = "substring" in secretValues ? secretValues : { substring: secretValues, wholeToken: [] };
+  const compiled = makeRedactorOptions(tiers, options);
+  const substring = [...(compiled.values ?? []), ...(compiled.authoritativeValues ?? [])].filter(
+    (value) => value.length > 0,
+  );
+  const values = {
+    substring: new RedactionValues(substring),
+    wholeToken: new RedactionValues(compiled.wholeTokenValues),
+  };
+  return () => values;
+};
+
+/** Explicit host owner; dispose only after all output and producer finalizers drain. */
+export const makeRedactionOwner = () => {
+  const values = new RedactionValues();
+  const wholeToken = new RedactionValues();
+  let generation = 0;
+  const registry = { substring: values, wholeToken, generation: () => generation };
+  const compiled: CompiledRedactors = new Map();
+  const service: RedactionServiceShape = {
+    registerValues: (incoming, options) =>
+      Effect.sync(() => {
+        const target = options?.match === "whole-token" ? wholeToken : values;
+        for (const value of incoming) {
+          if (value.length === 0 || target.has(value) || (target === wholeToken && values.has(value)))
+            continue;
+          target.add(value);
+          generation += 1;
+        }
+      }),
+    payloadValues: (options) =>
+      Effect.sync(() => {
+        let previous = -1;
+        let supplier = createPayloadValues([], options);
+        return () => {
+          if (previous !== generation) {
+            supplier = createPayloadValues(registry, options);
+            previous = generation;
+          }
+          return supplier();
+        };
+      }),
+    forProfile: (profile, options) =>
+      Effect.sync(() => makeRegisteredRedactor(profile, registry, options, compiled)),
+  };
+  return {
+    service,
+    dispose: () => {
+      values.clear();
+      wholeToken.clear();
+      compiled.clear();
+      generation += 1;
+    },
   };
 };
 
-export const makeRedactionService = (
-  secretStore: Context.Service.Shape<typeof SecretStore>,
-): RedactionServiceShape => ({
-  registerValues: registerRedactionValues,
-  payloadValues: Effect.fnUntraced(function* (options?: RedactionForProfileOptions) {
-    const storeValues = yield* collectSecretStoreValues(secretStore);
-    return createPayloadValues(storeValues, options);
-  }),
-  forProfile: Effect.fnUntraced(function* (profile: RedactionProfile, options?: RedactionForProfileOptions) {
-    const secretValues = yield* collectSecretStoreValues(secretStore);
-    return makeRegisteredRedactor(profile, secretValues, options);
-  }),
-});
+/** Independent unscoped service for explicit hosts and fixtures. */
+export const makeRedactionService = (): RedactionServiceShape => makeRedactionOwner().service;

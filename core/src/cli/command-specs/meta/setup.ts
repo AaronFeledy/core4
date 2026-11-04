@@ -1,3 +1,4 @@
+import { RedactionService } from "@lando/redaction/service";
 /**
  * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
@@ -29,7 +30,6 @@ import {
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
 import { GlobalConfigSources } from "@lando/engine/services/config";
-import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { formatSummary } from "@lando/renderer/summary";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
@@ -46,7 +46,6 @@ import {
   inputNetworkProbe,
   inputProviderFlag,
   inputStringFlag,
-  shouldDisableHostProxyForSetup,
   sourceInstallDir,
 } from "./setup-inputs";
 import { authorizeProviderSetupPlan } from "./setup-provider-authorization";
@@ -66,7 +65,7 @@ import {
 } from "./setup-steps";
 import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary";
 
-export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
+export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
 export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
@@ -153,7 +152,12 @@ export const setupSpec: LandoCommandSpec<
     const userDataRootRaw = globalConfig.userDataRoot;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
-    const recorder = makeSetupReadinessRecorder(userDataRoot, selectedProviderId);
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const recorder = makeSetupReadinessRecorder(
+      userDataRoot,
+      selectedProviderId,
+      redaction._tag === "Some" ? redaction.value : undefined,
+    );
     const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
@@ -225,10 +229,6 @@ export const setupSpec: LandoCommandSpec<
     yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
-    if (shouldDisableHostProxyForSetup(input)) {
-      yield* HostProxyServiceDisabled.setup({ mode: "none" });
-    }
-
     if (
       process.platform !== "win32" &&
       !inputBooleanFlag(input, "skip-shell-integration") &&
@@ -243,6 +243,8 @@ export const setupSpec: LandoCommandSpec<
           return new ShellProfileIntegrationError({
             message: "Shell profile integration failed.",
             stderr: cause.message,
+            remediation:
+              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
           });
         },
       }).pipe(
@@ -255,6 +257,8 @@ export const setupSpec: LandoCommandSpec<
           new ShellProfileIntegrationError({
             message: "Shell profile integration failed.",
             stderr: shellProfile.stderr,
+            remediation:
+              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
           }),
         );
       }
@@ -266,6 +270,9 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       network,
       recorder,
+      ...(globalConfig.defaultFileSyncEngine === undefined
+        ? {}
+        : { defaultEngine: globalConfig.defaultFileSyncEngine }),
     }).pipe(withHostProvider);
 
     const failedStep = recorder.firstFailedStep();

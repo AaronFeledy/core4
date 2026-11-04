@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { PLAN_IDENTITY_EXPRESSION_SCOPES, materializeExpressionScopes } from "../src/recipe-expressions.ts";
+import { consumeSites } from "../src/compiled-sites.ts";
+import { PLAN_IDENTITY_EXPRESSION_SCOPES } from "../src/recipe-expressions.ts";
 import { loadLandofileFile } from "../src/service.ts";
 
 let root: string;
@@ -20,7 +21,7 @@ test.each([
   "load('./payload.yml')",
   "import('./payload.json').value",
   "import('./payload.yml').value",
-])("escapes nested plain data produced by %s in the loaded document", async (expression) => {
+])("preserves nested plain data produced by %s in the loaded document", async (expression) => {
   // Given
   const value = { nested: { values: ["{{ app.name }} ${VALUE}", "${ONLY}"] } };
   await writeFile(join(root, "payload.json"), JSON.stringify(value));
@@ -33,10 +34,10 @@ test.each([
   // When
   const loaded = await Effect.runPromise(loadLandofileFile(file));
   // Then
-  expect(loaded["x-produced"]).toEqual({ nested: { values: ["{{{{ app.name }} $${VALUE}", "${ONLY}"] } });
+  expect(loaded.document["x-produced"]).toEqual(value);
 });
 
-test("escapes a plain text file-helper result at a string site", async () => {
+test("preserves a plain text file-helper result at a string site", async () => {
   // Given
   await writeFile(join(root, "payload.txt"), "{{ app.name }}");
   const file = join(root, ".lando.yml");
@@ -47,7 +48,7 @@ test("escapes a plain text file-helper result at a string site", async () => {
   // When
   const loaded = await Effect.runPromise(loadLandofileFile(file));
   // Then
-  expect(loaded.services?.[ServiceName.make("web")]?.environment?.FOO).toBe("{{{{ app.name }}");
+  expect(loaded.document.services?.[ServiceName.make("web")]?.environment?.FOO).toBe("{{ app.name }}");
 });
 
 test.each(["{{ app.name }}", "{{ env.QA_UNSET }}"])(
@@ -63,18 +64,20 @@ test.each(["{{ app.name }}", "{{ env.QA_UNSET }}"])(
     );
     // When
     const loaded = await Effect.runPromise(loadLandofileFile(file));
-    const materialized = materializeExpressionScopes(loaded, file, {
+    const materialized = consumeSites({
+      document: loaded.document,
+      pendingSites: loaded.pendingSites,
       context: { app: { name: "not-the-file-content" }, env: {} },
       scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
-      textOnly: true,
     });
     // Then
-    expect(loaded.services?.[ServiceName.make("web")]?.security?.ca).toMatchObject([
+    expect(loaded.document.services?.[ServiceName.make("web")]?.security?.ca).toMatchObject([
       { _tag: "ImportRef", path: `./${basename}`, basename, value: content },
     ]);
-    expect(materialized.value.services?.[ServiceName.make("web")]?.security?.ca).toEqual(
-      loaded.services?.[ServiceName.make("web")]?.security?.ca,
-    );
+    expect(materialized).toMatchObject({
+      _tag: "Success",
+      success: { document: loaded.document, pendingSites: [] },
+    });
   },
 );
 
@@ -87,5 +90,7 @@ test("preserves file-reference metadata nested in a produced object", async () =
   // When
   const loaded = await Effect.runPromise(loadLandofileFile(file));
   // Then
-  expect(loaded["x-produced"]).toMatchObject({ ref: { _tag: "FileRef", path: join(root, basename) } });
+  expect(loaded.document["x-produced"]).toMatchObject({
+    ref: { _tag: "FileRef", path: join(root, basename) },
+  });
 });

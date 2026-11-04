@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import { SecretNotFoundError } from "@lando/core/errors";
-import { SecretStore } from "@lando/core/services";
 import { StreamFrame } from "@lando/sdk/schema";
 
-import { RedactionService } from "@lando/redaction/service";
+import { makeRedactionService } from "@lando/redaction/service";
 import { type DoctorNdjsonCheck, renderDoctorChecksAsNdjson } from "../../src/cli/commands/doctor-ndjson.ts";
 
 interface LeakyCheck extends DoctorNdjsonCheck {
@@ -20,28 +18,13 @@ const checkEventPayload = (check: LeakyCheck): Record<string, unknown> => ({
   context: { detail: check.detail },
 });
 
-const secretStoreLayer = (values: Record<string, string>) =>
-  Layer.succeed(
-    SecretStore,
-    SecretStore.of({
-      id: "test",
-      get: (secret: string) => {
-        const value = values[secret];
-        return value === undefined
-          ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-          : Effect.succeed(value);
-      },
-      has: (secret: string) => Effect.succeed(values[secret] !== undefined),
-      list: Effect.succeed(Object.keys(values)),
-    }),
-  );
-
 const secretsRedactor = (values: Record<string, string>) =>
   Effect.runPromise(
-    Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")).pipe(
-      Effect.provide(RedactionService.layer),
-      Effect.provide(secretStoreLayer(values)),
-    ),
+    Effect.gen(function* () {
+      const service = makeRedactionService();
+      yield* service.registerValues(Object.values(values));
+      return yield* service.forProfile("secrets");
+    }),
   );
 
 const eventLines = (ndjson: string): ReadonlyArray<StreamFrame> =>

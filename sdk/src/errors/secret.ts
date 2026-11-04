@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 /**
  * Raised when a `${secret:…}` reference (or a `SecretStore.get` call) cannot be
@@ -8,7 +8,11 @@ import { Schema } from "effect";
 export class SecretNotFoundError extends Schema.TaggedError<SecretNotFoundError>()("SecretNotFoundError", {
   message: Schema.String,
   secret: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+    Schema.withConstructorDefault(
+      Effect.succeed("Create the named secret in the active secret store, then retry."),
+    ),
+  ),
 }) {}
 
 export class SecretStoreUnavailableError extends Schema.TaggedError<SecretStoreUnavailableError>()(
@@ -17,7 +21,7 @@ export class SecretStoreUnavailableError extends Schema.TaggedError<SecretStoreU
     message: Schema.String,
     storeId: Schema.String,
     reason: Schema.Literals(["locked", "unauthenticated", "denied", "timeout", "cli-missing"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -26,7 +30,7 @@ export class SecretReferenceInvalidError extends Schema.TaggedError<SecretRefere
   {
     message: Schema.String,
     reference: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

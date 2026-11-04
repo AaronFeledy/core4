@@ -32,16 +32,20 @@ const service = (name: "web" | "worker"): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "server.js"],
   environment: {},
-  appMount: {
-    source: root,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    realization: "accelerated",
-    excludes: [],
-    includes: [],
-  },
-  mounts: [],
-  storage: [],
+
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      excludes: [],
+      includes: [],
+      mountKey: "app-mount",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -61,7 +65,6 @@ const plan = (): AppPlan => {
     provider,
     services: { [web.name]: web, [worker.name]: worker },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [web, worker].map((entry) => ({
       engineId: "mutagen",

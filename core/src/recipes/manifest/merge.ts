@@ -1,91 +1,52 @@
-import { Predicate } from "effect";
+import type { RecipeFile, RecipeSource } from "@lando/sdk/schema";
+import type {
+  ResolvedAuthoredSource,
+  ResolvedRecipeDeclaration,
+  ResolvedRecipeSource,
+} from "../resolved-source-types";
 
-const SCALAR_KEYS = [
-  "id",
-  "title",
-  "description",
-  "version",
-  "tags",
-  "authors",
-  "requires",
-  "runs",
-  "fetchAllowlist",
-  "deprecated",
-  "snapshot",
-  "migrations",
-] as const;
-
-const asRecords = (value: unknown): ReadonlyArray<Record<string, unknown>> =>
-  Array.isArray(value) ? value.filter(Predicate.isObject) : [];
-
-const stripDrop = (item: Record<string, unknown>): Record<string, unknown> => {
-  const { drop: _drop, ...rest } = item;
-  return rest;
-};
-
-const mergeByKey = (
-  parent: ReadonlyArray<Record<string, unknown>>,
-  child: ReadonlyArray<Record<string, unknown>>,
-  key: string,
-): ReadonlyArray<Record<string, unknown>> => {
-  const result = parent.map(stripDrop);
-  const indexByKey = new Map<string, number>();
-  for (const [index, item] of result.entries()) {
-    const id = item[key];
-    if (typeof id === "string") indexByKey.set(id, index);
-  }
-  for (const item of child) {
-    const id = item[key];
-    if (typeof id !== "string") continue;
-    if (item.drop === true) {
-      const index = indexByKey.get(id);
-      if (index === undefined) continue;
-      result.splice(index, 1);
-      indexByKey.delete(id);
-      for (const [existing, existingIndex] of indexByKey) {
-        if (existingIndex > index) indexByKey.set(existing, existingIndex - 1);
-      }
-      continue;
+/** Compose declarations, not compiled manifests. Config semantics belong to the SDK compiler. */
+export const composeRecipeSources = (
+  sources: readonly ResolvedAuthoredSource[],
+  child: ResolvedAuthoredSource,
+): ResolvedRecipeSource => {
+  const ordered = [...sources, child];
+  const options = new Map<string, NonNullable<RecipeSource["options"]>[string]>();
+  const files = new Map<string, ResolvedRecipeDeclaration<RecipeFile>>();
+  for (const declaration of ordered) {
+    for (const [name, option] of Object.entries(declaration.value.options ?? {})) {
+      if ("drop" in option) options.delete(name);
+      else options.set(name, option);
     }
-    const stripped = stripDrop(item);
-    const index = indexByKey.get(id);
-    if (index === undefined) {
-      indexByKey.set(id, result.length);
-      result.push(stripped);
-    } else {
-      result[index] = stripped;
+    for (const file of declaration.value.files ?? []) {
+      if ("drop" in file) files.delete(file.dest);
+      else
+        files.set(file.dest, {
+          value: file,
+          origin: declaration.origin,
+          evidence: declaration.evidence,
+          evaluation: declaration.evaluation,
+        });
     }
   }
-  return result;
-};
-
-/** Strip authoring-only `extends` and `drop` while preserving every other key. */
-export const stripExtendsAndDrop = (raw: Record<string, unknown>): Record<string, unknown> => {
-  const { extends: _extends, ...rest } = raw;
-  const stripList = (value: unknown): unknown =>
-    Array.isArray(value) ? value.map((item) => (Predicate.isObject(item) ? stripDrop(item) : item)) : value;
+  const postInit = ordered.flatMap(({ value, origin, evidence, evaluation }) =>
+    (value.postInit ?? []).map((action) => ({ value: action, origin, evidence, evaluation })),
+  );
+  const { extends: _extends, ...metadata } = child.value;
   return {
-    ...rest,
-    ...(Object.hasOwn(rest, "prompts") ? { prompts: stripList(rest.prompts) } : {}),
-    ...(Object.hasOwn(rest, "files") ? { files: stripList(rest.files) } : {}),
-    ...(Object.hasOwn(rest, "postInit") ? { postInit: stripList(rest.postInit) } : {}),
+    sources: ordered,
+    source: {
+      ...metadata,
+      options: Object.fromEntries(options),
+      files: [...files.values()].map(({ value }) => value),
+      postInit: postInit.map(({ value }) => value),
+    },
+    files: [...files.values()],
+    postInit,
+    configLayers: ordered.flatMap(({ value }) => [
+      ...(value.config === undefined ? [] : [{ config: value.config }]),
+      ...(value.variants ?? []),
+    ]),
+    historyEligible: ordered.every(({ evaluation }) => evaluation === "declarative"),
   };
-};
-
-/** Pure parent-then-child recipe merge. Child whole-value keys win with no parent fallback. */
-export const mergeRecipeManifests = (
-  parent: Record<string, unknown>,
-  child: Record<string, unknown>,
-): Record<string, unknown> => {
-  const merged: Record<string, unknown> = {};
-  for (const key of SCALAR_KEYS) {
-    if (Object.hasOwn(child, key)) merged[key] = child[key];
-  }
-  const prompts = mergeByKey(asRecords(parent.prompts), asRecords(child.prompts), "name");
-  const files = mergeByKey(asRecords(parent.files), asRecords(child.files), "dest");
-  const postInit = [...asRecords(parent.postInit), ...asRecords(child.postInit)].map(stripDrop);
-  if (prompts.length > 0) merged.prompts = prompts;
-  if (files.length > 0) merged.files = files;
-  if (postInit.length > 0) merged.postInit = postInit;
-  return merged;
 };

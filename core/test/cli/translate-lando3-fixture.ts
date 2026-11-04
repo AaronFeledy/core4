@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry";
 import { makeConfigTranslators } from "@lando/lando3";
 import { configTranslators } from "@lando/lando4";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -10,9 +11,13 @@ import {
   type AppConfigTranslateOptions,
   appConfigTranslate,
 } from "../../src/cli/commands/app-config-translate.ts";
-import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { decomposer: lampDecomposer } = bundledRecipe("lamp");
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
+
+// The bundled service catalog the CLI supplies through its plugin bootstrap.
+const bundledCatalog = pluginRegistryLayer({ user: false, app: false });
 
 export const originals = {
   ".lando.yml": "name: commit-test\nrecipe: lamp\nconfig: {php: '8.3'}\n",
@@ -40,6 +45,7 @@ export const withFixture = async (
   const loader = configTranslators.get("lando4");
   if (loader === undefined) throw new Error("missing lando4 encoder");
   const legacyLoader = makeConfigTranslators({
+    serviceFacts: serviceTypeFacts(),
     decomposers: new Map([["lamp", lampDecomposer]]),
     redactor: createRedactor("secrets"),
   }).get("lando3");
@@ -59,7 +65,7 @@ export const withFixture = async (
             translators,
             privateFileAccess: ownerOnlyFileAccess,
             ...options,
-          }),
+          }).pipe(Effect.provide(bundledCatalog)),
       }),
     );
   } finally {
@@ -67,3 +73,4 @@ export const withFixture = async (
   }
 };
 export const failure = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.result(effect));
+import { serviceTypeFacts } from "@lando/service-lando";

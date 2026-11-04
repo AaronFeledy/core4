@@ -10,10 +10,103 @@ tags: [beta, docs, cli, init, recipes]
 
 `lando init` can load a recipe hosted somewhere other than the bundled set: a
 git repository, a tarball, an npm package, or the recipe registry. It fetches
-and validates the recipe, then stops before writing files, because file
-rendering only works for bundled recipes so far. Each source requires the flag that tells Lando where to find
-`recipe.yml`, and each fails fast, before any clone or download, when that
-flag is missing:
+the tree, compiles its `recipe.yml`, and writes the app the same way a bundled
+recipe does. A remote tree is read as YAML only: a `recipe.ts` in the fetched
+tree is never evaluated. See [remote recipe sources](../recipes/remote-sources.mdx)
+for a complete `recipe.yml` and what `validate` reports before anything is written.
+
+Each source requires the flag that tells Lando where to find `recipe.yml`, and
+each fails fast, before any clone or download, when that flag is missing.
+`--source` only accepts `git`, `tarball`, `npm`, and `registry`; any other
+value is rejected outright.
+
+## git
+
+```sh
+lando init --source=git --url=<git-url>
+```
+
+Fetches the repository's default branch, then reads `recipe.yml` from its
+root. Append `@ref` to the URL for a tag, branch, or full commit SHA, such as
+`--url=https://github.com/acme/lando-recipes.git@v2.1.0`. Add `--path` when
+`recipe.yml` lives in a subdirectory of a monorepo:
+
+```sh
+lando init --source=git --url=<git-url> --path=packages/my-recipe
+```
+
+## tarball
+
+```sh
+lando init --source=tarball --url=<tarball-url> --checksum=<sha256>
+```
+
+Downloads a tar/tar.gz archive, verifies it against the 64-hex `--checksum`,
+then reads `recipe.yml` from the extracted root. A `--checksum` that matches
+an archive already in the source store skips the download. `--checksum` is
+optional; without it Lando warns with the computed digest and, when
+interactive, prompts once before continuing. Add `--path` when `recipe.yml` lives in a
+subdirectory of the archive:
+
+```sh
+lando init --source=tarball --url=<tarball-url> --path=packages/my-recipe
+```
+
+## npm
+
+```sh
+lando init --source=npm --package=@lando/recipe-foo
+```
+
+Resolves the package's metadata, downloads the published tarball, checks it
+against the first hash in the registry's `dist.integrity` (falling back to the
+older sha1 `shasum` when that hash is missing, malformed, or uses an algorithm
+Lando doesn't support), and reads `recipe.yml` from the extracted `package/`
+root. A package the registry publishes neither usable value for is refused
+with `RecipeSourceError` kind `integrity-missing`; a tarball that doesn't
+match fails with kind `integrity-mismatch`. An `@version` suffix pins an exact published version or dist-tag;
+without it Lando uses the registry latest dist-tag:
+
+```sh
+lando init --source=npm --package=@lando/recipe-foo@1.2.3
+```
+
+Add `--path` when `recipe.yml` lives in a subdirectory of the published
+package:
+
+```sh
+lando init --source=npm --package=@lando/recipe-foo --path=recipes/my-recipe
+```
+
+Npm sources read your npm user config (`~/.npmrc`, or
+`NPM_CONFIG_USERCONFIG`) for scoped registries and `_authToken` bearer tokens,
+including `${VAR}` environment references. The same configuration applies to npm
+recipe parents and Landofile `npm:` includes. See
+[private registry setup](../plugins/install-from-npm.mdx#install-from-a-private-registry).
+An explicit `--registry-url=<url>` overrides npm registry selection for this
+initialization. Lando doesn't read project-level `.npmrc` files or save tokens.
+After initialization, run `lando app:config --format=json` from the generated
+app directory to verify the resulting Landofile.
+
+## registry
+
+```sh
+lando init --source=registry --id=<recipe-id>
+```
+
+Resolves a recipe id through the configured registry, then reads
+`recipe.yml` from the resolved git clone or tarball extract. With no
+override, Lando queries the default recipe registry URL,
+`https://registry.lando.dev/recipes/`. Override the registry base URL for
+private or test registries:
+
+```sh
+lando init --source=registry --id=<recipe-id> --registry-url=<url>
+```
+
+See [remote recipe sources](../recipes/remote-sources.mdx) for the source
+store location, ref handling, and the `RecipeSourceError` kinds raised before
+a clone.
 
 <Guide>
   <Scenario id="missing-url-fails-fast" render>
@@ -44,79 +137,3 @@ flag is missing:
     </Step>
   </Scenario>
 </Guide>
-
-`--source` only accepts `git`, `tarball`, `npm`, and `registry`; any other
-value is rejected outright.
-
-## git
-
-```sh
-lando init --source=git --url=<git-url>
-```
-
-Fetches the repository's default branch, then reads `recipe.yml` from its
-root. Append `@ref` to the URL for a tag, branch, or full commit SHA, such as
-`--url=https://github.com/acme/lando-recipes.git@v2.1.0`. Add `--path` when
-`recipe.yml` lives in a subdirectory of a monorepo:
-
-```sh
-lando init --source=git --url=<git-url> --path=packages/my-recipe
-```
-
-## tarball
-
-```sh
-lando init --source=tarball --url=<tarball-url> --checksum=<sha256>
-```
-
-Downloads a tar/tar.gz archive, verifies it against the 64-hex `--checksum`,
-then reads `recipe.yml` from the extracted root. `--checksum` is optional;
-without it Lando warns with the computed digest and, when interactive,
-prompts once before continuing. Add `--path` when `recipe.yml` lives in a
-subdirectory of the archive:
-
-```sh
-lando init --source=tarball --url=<tarball-url> --path=packages/my-recipe
-```
-
-## npm
-
-```sh
-lando init --source=npm --package=@lando/recipe-foo
-```
-
-Resolves the package's metadata, downloads the published tarball, and reads
-`recipe.yml` from the extracted `package/` root. An `@version` suffix pins an
-exact published version or dist-tag; without it Lando uses the registry
-latest dist-tag:
-
-```sh
-lando init --source=npm --package=@lando/recipe-foo@1.2.3
-```
-
-Add `--path` when `recipe.yml` lives in a subdirectory of the published
-package:
-
-```sh
-lando init --source=npm --package=@lando/recipe-foo --path=recipes/my-recipe
-```
-
-## registry
-
-```sh
-lando init --source=registry --id=<recipe-id>
-```
-
-Resolves a recipe id through the configured registry, then reads
-`recipe.yml` from the resolved git clone or tarball extract. With no
-override, Lando queries the default recipe registry URL,
-`https://registry.lando.dev/recipes/`. Override the registry base URL for
-private or test registries:
-
-```sh
-lando init --source=registry --id=<recipe-id> --registry-url=<url>
-```
-
-See [remote recipe sources](../recipes/remote-sources.mdx) for cache
-location, verification behavior, and every `RecipeSourceError` kind each
-source can raise.

@@ -70,7 +70,7 @@ describe("runtime-bundle workflow", () => {
       "  assemble:\n    needs: [classify]\n    if: github.ref == 'refs/heads/main' && needs.classify.outputs.state == 'publish_new'\n    runs-on",
     );
     expect(workflow).toContain(
-      "      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0\n        with:\n          persist-credentials: false",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false",
     );
     expect(workflow).toContain(
       "  publish:\n    needs: [classify, assemble]\n    if: github.ref == 'refs/heads/main' && always() && ((needs.classify.outputs.state == 'publish_new' && needs.assemble.result == 'success') || needs.classify.outputs.state == 'recover_pin')\n    permissions:\n      contents: write",

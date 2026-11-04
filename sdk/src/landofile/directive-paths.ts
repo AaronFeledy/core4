@@ -61,7 +61,14 @@ export const directivePathProblem = (input: unknown, path: DirectivePath): strin
     const prefix = canonicalDirectivePath(path.slice(0, index));
     if (typeof segment === "number") {
       const rule = resolveLayerMergeRule(LandofileShape, prefix).descriptor;
-      if (!Array.isArray(current) || rule.kind !== "keyed")
+      const entry: unknown = Array.isArray(current) ? current[segment] : undefined;
+      const toolingVars =
+        prefix.length === 1 &&
+        prefix[0] === "includes" &&
+        isPlainRecord(entry) &&
+        entry.kind === "tooling" &&
+        path[index + 1] === "vars";
+      if (!Array.isArray(current) || (rule.kind !== "keyed" && !toolingVars))
         return "Directive crosses a non-index-preserving decode branch.";
       current = current[segment];
     } else {
