@@ -627,7 +627,8 @@ const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransfe
         try: () => Bun.file(path).stream().getReader(),
         catch: (cause) => hostReadError(path, cause),
       }),
-      (reader) => Effect.sync(() => reader.releaseLock()),
+      // Cancel, not just release the lock, so a consumer that stops early closes the file now.
+      (reader) => Effect.promise(() => reader.cancel().catch(() => undefined)),
     ).pipe(
       Effect.map((reader) =>
         Stream.fromEffectRepeat(

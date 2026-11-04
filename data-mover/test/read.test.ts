@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -335,5 +335,46 @@ describe("DataMover.read", () => {
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
     }
+  });
+
+  test.skipIf(process.platform !== "linux")("closes a host file when the consumer stops early", async () => {
+    const openDescriptors = async (path: string) => {
+      const links = await Promise.all(
+        (await readdir("/proc/self/fd")).map((fd) => readlink(`/proc/self/fd/${fd}`).catch(() => "")),
+      );
+      return links.filter((link) => link === path).length;
+    };
+    await withTempDir(async (dir) => {
+      // Given a host file far larger than one read chunk.
+      await writeFile(join(dir, ".lando.yml"), "name: data-root\n");
+      const source = join(dir, "large.bin");
+      await writeFile(source, new Uint8Array(8 * 1024 * 1024));
+
+      // When the consumer takes one chunk and stops.
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover
+              .read({ _tag: "hostPath", path: AbsolutePath.make(source) })
+              .pipe(Stream.take(1), Stream.runDrain);
+          }),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            Layer.mergeAll(
+              stateStoreLayer,
+              Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
+              Layer.succeed(RuntimeProvider, RuntimeProvider.of({ ...TestRuntimeProvider })),
+              captureEvents().layer,
+              redactionLayer,
+            ),
+          ),
+        ),
+      );
+
+      // Then the file is closed when the read's scope closes, not whenever GC runs.
+      expect(await openDescriptors(source)).toBe(0);
+    });
   });
 });
