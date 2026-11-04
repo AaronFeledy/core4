@@ -94,4 +94,4 @@ lando start
 lando info
 ```
 
-`lando info` lists URLs built from the new name, like `web.new-name.lndo.site`, and hostnames built from the old name no longer route. Routes and certificates belong to the app folder, not the name, so you never restart the proxy or delete router files by hand. Hostnames you authored without the app name keep routing because they're still in your Landofile.
+`lando info` lists URLs built from the new name, like `web.new-name.lndo.site`, and hostnames built from the old name no longer route. Routes and certificates belong to the app folder, not the name, so you don't restart the proxy after a rename. Hostnames you authored without the app name keep routing because they're still in your Landofile. Route files written by development builds are named after the app instead, so `lando start` can't replace them; if `lando doctor` reports `legacy-route-files`, see [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check).
