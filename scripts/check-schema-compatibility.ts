@@ -4,7 +4,6 @@ import {
   type SchemaArtifactFamily,
   type SchemaArtifactSet,
   SchemaCompatibilityInputError,
-  loadCompatibilityExceptions,
   loadWorkingSchemaArtifacts,
 } from "./schema-compatibility-artifacts.ts";
 import {
@@ -18,6 +17,7 @@ import {
   acceptCompatibilityExceptions,
   classifySchemaChange,
 } from "./schema-compatibility/classifier.ts";
+import { loadCompatibilityExceptions } from "./schema-compatibility/exceptions.ts";
 import type { JsonSchema } from "./schema-compatibility/model.ts";
 import { buildPersistedSurfaceStores, readPersistedStoreVersions } from "./schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "./schema-compatibility/store-versions.ts";
@@ -83,14 +83,6 @@ const rootSchemasFromArtifacts = (artifacts: SchemaArtifactSet): Map<string, Jso
   return roots;
 };
 
-const publishedSchemaIdsFromArtifacts = (artifacts: SchemaArtifactSet): Set<string> => {
-  const ids = new Set<string>();
-  for (const surface of artifacts.keys()) {
-    if (surface.startsWith("schema:")) ids.add(surface.slice("schema:".length));
-  }
-  return ids;
-};
-
 const compareArtifactSets = (
   before: SchemaArtifactSet,
   after: SchemaArtifactSet,
@@ -144,13 +136,12 @@ export const checkSchemaCompatibility = async (
   const before = await regenerateBaseSchemaArtifacts({ repoRoot: REPO_ROOT, baseRef });
   const baseStoreVersions = await loadBasePersistedStoreVersions(REPO_ROOT, baseRef);
   const skips = skippedFamilyNotices(after, baseRef, before.unavailableFamilies);
+  const afterRoots = rootSchemasFromArtifacts(after);
+  const beforeRoots = rootSchemasFromArtifacts(before.artifacts);
   const persistedStoresBySurface = buildPersistedSurfaceStores(
-    rootSchemasFromArtifacts(after),
-    new Set([
-      ...publishedSchemaIdsFromArtifacts(after),
-      ...publishedSchemaIdsFromArtifacts(before.artifacts),
-    ]),
-    rootSchemasFromArtifacts(before.artifacts),
+    afterRoots,
+    new Set([...afterRoots.keys(), ...beforeRoots.keys()]),
+    beforeRoots,
   );
   const findings = compareArtifactSets(
     before.artifacts,

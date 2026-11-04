@@ -13,12 +13,8 @@ import { encodeFrame } from "@lando/state-store/codec";
 import * as StateStoreLayer from "@lando/state-store/service";
 
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
-import { migrateTunnelRegistryEntries } from "../../src/tunnel/registry-migrate.ts";
-import {
-  TUNNEL_REGISTRY_VERSION,
-  reconcileTunnelRegistry,
-  recordTunnelSession,
-} from "../../src/tunnel/registry.ts";
+import { TUNNEL_REGISTRY_VERSION, migrateTunnelRegistryEntries } from "../../src/tunnel/registry-migrate.ts";
+import { reconcileTunnelRegistry, recordTunnelSession } from "../../src/tunnel/registry.ts";
 
 const stateStoreLayer = Layer.merge(
   StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer)),

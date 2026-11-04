@@ -19,33 +19,29 @@ const shallowShapeKey = (schema: JsonSchema, depth = 2): string =>
         : null,
   });
 
-export const persistedShallowKeys = (schemas: ReadonlyArray<JsonSchema>): ReadonlySet<string> => {
+/** Key every object node reachable from the roots. */
+const nodeKeys = (
+  roots: ReadonlyArray<JsonValue>,
+  keyOf: (node: JsonSchema) => string,
+): ReadonlySet<string> => {
   const keys = new Set<string>();
-  const pending: JsonValue[] = [...schemas];
+  const pending: JsonValue[] = [...roots];
   while (pending.length > 0) {
     const node = pending.pop();
     if (Array.isArray(node)) pending.push(...node);
     else if (isJsonObject(node)) {
-      keys.add(shallowShapeKey(node));
+      keys.add(keyOf(node));
       pending.push(...Object.values(node));
     }
   }
   return keys;
 };
 
-export const persistedShapeKeys = (schema: JsonSchema): ReadonlySet<string> => {
-  const keys = new Set<string>();
-  const pending: JsonValue[] = [normalizeJsonSchema(schema)];
-  while (pending.length > 0) {
-    const node = pending.pop();
-    if (Array.isArray(node)) pending.push(...node);
-    else if (isJsonObject(node)) {
-      keys.add(jsonValueKey(node));
-      pending.push(...Object.values(node));
-    }
-  }
-  return keys;
-};
+export const persistedShallowKeys = (schemas: ReadonlyArray<JsonSchema>): ReadonlySet<string> =>
+  nodeKeys(schemas, (node) => shallowShapeKey(node));
+
+export const persistedShapeKeys = (schema: JsonSchema): ReadonlySet<string> =>
+  nodeKeys([normalizeJsonSchema(schema)], jsonValueKey);
 
 export const publishedShapeKey = (
   schema: JsonSchema,

@@ -11,13 +11,13 @@ import { persistedShallowKeys, persistedShapeKeys, publishedShapeKey } from "./p
  * Bare scalars and open dictionaries need explicit domain names because their
  * JSON Schema shapes also match unrelated contracts.
  */
-export const PERSISTED_SCHEMA_ROOTS = [
+const PERSISTED_SCHEMA_ROOTS = [
   { schemaId: "AppPlan", store: "applied-state" },
   { schemaId: "TunnelSession", store: "tunnel-registry" },
 ] as const satisfies ReadonlyArray<{ readonly schemaId: string; readonly store: PersistedStoreId }>;
 
 /** Separately published plan/tunnel surfaces embedded in the roots above. */
-export const PERSISTED_COMPONENT_SCHEMA_IDS = {
+const PERSISTED_COMPONENT_SCHEMA_IDS = {
   "applied-state": [
     "ServicePlan",
     "RoutePlan",
@@ -40,7 +40,7 @@ export const PERSISTED_COMPONENT_SCHEMA_IDS = {
 
 const DEF_SUFFIX = /_\d+$/;
 
-export const normalizeSchemaDefName = (name: string): string => name.replace(DEF_SUFFIX, "");
+const normalizeSchemaDefName = (name: string): string => name.replace(DEF_SUFFIX, "");
 
 const collectLocalRefNames = (value: JsonValue, into: Set<string>): void => {
   if (Array.isArray(value)) {
@@ -53,13 +53,11 @@ const collectLocalRefNames = (value: JsonValue, into: Set<string>): void => {
     const match = /^#\/(?:\$defs|definitions)\/([^/]+)$/.exec(ref);
     if (match?.[1] !== undefined) into.add(decodeURIComponent(match[1]));
   }
-  for (const child of Object.values(value)) {
-    if (child !== undefined) collectLocalRefNames(child, into);
-  }
+  for (const child of Object.values(value)) collectLocalRefNames(child, into);
 };
 
 /** Local `$defs` / `definitions` names and `$ref` targets reachable inside one document. */
-export const collectJsonSchemaRefNames = (schema: JsonSchema): ReadonlySet<string> => {
+const collectJsonSchemaRefNames = (schema: JsonSchema): ReadonlySet<string> => {
   const names = new Set<string>();
   collectLocalRefNames(schema, names);
   const defs = schema.$defs ?? schema.definitions;

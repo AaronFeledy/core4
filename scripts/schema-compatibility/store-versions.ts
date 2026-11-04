@@ -20,7 +20,6 @@ export const loadBasePersistedStoreVersions = async (
     for (const source of STORE_VERSION_SOURCES[store]) {
       const child = Bun.spawn(["git", "show", `${baseRef}:${source.path}`], {
         cwd: repoRoot,
-        env: { ...Bun.env, GIT_MASTER: "1" },
         stdout: "pipe",
         stderr: "pipe",
       });

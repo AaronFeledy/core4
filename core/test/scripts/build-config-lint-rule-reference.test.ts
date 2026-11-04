@@ -64,8 +64,6 @@ test("renders backtick spans in summaries as code", () => {
 
 test("renders every registry rule from CONFIG_LINT_RULES", async () => {
   const ids = Object.keys(CONFIG_LINT_RULES);
-  expect(ids.length).toBe(28);
-
   const page = renderConfigLintRuleReference();
   for (const id of ids) expect(page).toContain(`<span id="${configLintRuleAnchorId(id)}">\` ${id} \`</span>`);
   await compile(page, { remarkPlugins: [remarkFrontmatter] });

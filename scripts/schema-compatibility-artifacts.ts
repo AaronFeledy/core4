@@ -1,15 +1,6 @@
 import { resolve } from "node:path";
 
-import {
-  CompatibilityExceptionsError,
-  loadCompatibilityExceptionsFile,
-} from "./schema-compatibility/exceptions.ts";
-import type {
-  CompatibilityException,
-  JsonSchema,
-  JsonValue,
-  SchemaPolarity,
-} from "./schema-compatibility/model.ts";
+import type { JsonSchema, JsonValue, SchemaPolarity } from "./schema-compatibility/model.ts";
 import { isJsonObject } from "./schema-compatibility/model.ts";
 import { schemaPolarity } from "./schema-compatibility/polarity.ts";
 
@@ -55,7 +46,7 @@ const parseJsonValue = (value: unknown, source: string): JsonValue => {
   throw new SchemaCompatibilityInputError(`Invalid JSON value in ${source}.`);
 };
 
-const parseJson = (text: string, source: string): JsonValue => {
+export const parseJson = (text: string, source: string): JsonValue => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -123,17 +114,4 @@ export const loadWorkingSchemaArtifacts = async (repoRoot: string): Promise<Sche
     });
   }
   return artifacts;
-};
-
-export const loadCompatibilityExceptions = async (
-  path: string,
-): Promise<ReadonlyArray<CompatibilityException>> => {
-  try {
-    return await loadCompatibilityExceptionsFile(path);
-  } catch (error) {
-    if (error instanceof CompatibilityExceptionsError) {
-      throw new SchemaCompatibilityInputError(error.message, error.detail);
-    }
-    throw error;
-  }
 };

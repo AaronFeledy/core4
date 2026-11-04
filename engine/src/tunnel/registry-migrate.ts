@@ -2,11 +2,7 @@ import { Schema } from "effect";
 
 import { RouteHostname, TunnelSession as TunnelSessionSchema, TunnelTarget } from "@lando/sdk/schema";
 
-/**
- * On-disk tunnel registry frame version. Bumped when TunnelTarget hostname
- * narrowed onto RouteHostname so entry-level migration can keep valid sessions
- * instead of quarantining the whole registry.bin on one bad host.
- */
+/** On-disk tunnel registry frame version; version 2 narrowed route target hostnames to RouteHostname. */
 export const TUNNEL_REGISTRY_VERSION = 2 as const;
 
 const TunnelRegistryEntry = Schema.Struct({
@@ -15,12 +11,10 @@ const TunnelRegistryEntry = Schema.Struct({
   updatedAt: Schema.String,
 });
 
-const TunnelRegistryEntries = Schema.Array(TunnelRegistryEntry);
+export const TunnelRegistryEntries = Schema.Array(TunnelRegistryEntry);
 
 export type TunnelRegistryEntry = typeof TunnelRegistryEntry.Type;
 export type TunnelRegistryEntries = typeof TunnelRegistryEntries.Type;
-
-export { TunnelRegistryEntries as TunnelRegistryEntriesSchema };
 
 const HistoricalRouteTarget = Schema.Struct({
   ...TunnelTarget.members[0].fields,
@@ -37,10 +31,8 @@ const HistoricalEntries = Schema.Array(
 );
 
 /**
- * Upgrade a legacy tunnel registry payload to the current entry schema.
- *
- * Only rejected hostname strings drop their entry; malformed records fail closed.
- * Main allowed a 253-character suffix after `*.` (255 characters in total).
+ * Upgrade a version 1 registry: drop only entries whose hostname string the narrowed grammar
+ * rejects (version 1 allowed a 253-character suffix after `*.`); malformed records fail closed.
  */
 export const migrateTunnelRegistryEntries = (raw: unknown, fromVersion: number): TunnelRegistryEntries => {
   Schema.decodeUnknownSync(Schema.Literal(1))(fromVersion);

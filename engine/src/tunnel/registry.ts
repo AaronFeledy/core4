@@ -9,19 +9,16 @@ import { PathsService, StateStore } from "@lando/sdk/services";
 
 import {
   TUNNEL_REGISTRY_VERSION,
-  type TunnelRegistryEntries,
-  TunnelRegistryEntriesSchema,
+  TunnelRegistryEntries,
   type TunnelRegistryEntry,
   migrateTunnelRegistryEntries,
 } from "./registry-migrate.ts";
-
-export { TUNNEL_REGISTRY_VERSION } from "./registry-migrate.ts";
 
 const registrySpec = {
   root: "userData",
   namespace: "tunnels",
   key: "registry.bin",
-  schema: TunnelRegistryEntriesSchema,
+  schema: TunnelRegistryEntries,
   version: TUNNEL_REGISTRY_VERSION,
   codec: "binary",
   lock: "advisory",

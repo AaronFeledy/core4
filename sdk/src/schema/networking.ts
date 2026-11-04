@@ -93,7 +93,6 @@ export const RoutePlan = Schema.Struct({
     }),
   }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });
-
 export type RoutePlan = typeof RoutePlan.Type;
 
 export const ScannerConfig = Schema.Union([

@@ -186,13 +186,11 @@ The router has its own, separate watcher record. That one reports what the Traef
 lando doctor --app
 ```
 
-That adds Landofile lint (the same pass as `lando app:config:lint`, including
-final planning after no earlier errors when the provider declares offline
-capabilities), version-constraint checks, and a point-in-time TCP listener check
-for this app. Lint still skips final planning when capabilities are undeclared,
-and it never constructs a provider, issues certificates, or reads or writes the
-plan cache. A missing or invalid Landofile shows up as its own section. The rest
-of the report still runs.
+That adds Landofile lint (the same pass as
+[`lando app:config:lint`](../landofile/config-lint.mdx), including its offline
+final-planning stage), version-constraint checks, and a point-in-time TCP
+listener check for this app. A missing or invalid Landofile shows up as its own
+section. The rest of the report still runs.
 
 ### Check the app's TCP listeners
 

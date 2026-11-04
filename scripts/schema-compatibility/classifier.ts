@@ -16,8 +16,6 @@ export type {
   CompatibilityException,
   CompatibilityFinding,
   JsonSchema,
-  PersistedStateRef,
-  PersistedStoreId,
   SchemaPolarity,
 } from "./model.ts";
 

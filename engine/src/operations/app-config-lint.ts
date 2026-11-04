@@ -18,7 +18,7 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ConfigLintResult, ProviderId, ValidationIssue } from "@lando/sdk/schema";
+import type { ConfigLintResult, ConfigLintViolation, ProviderId, ValidationIssue } from "@lando/sdk/schema";
 
 import {
   type LintLandofileOptions,
@@ -123,7 +123,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     )
     .map((issue) => attributeEffectiveLintIssue(landofile, issue));
   const earlier = [...result.violations, ...envFindings, ...evaluated];
-  const planningFindings = [];
+  const planningFindings: ConfigLintViolation[] = [];
   if (!earlier.some((issue) => issue.severity === "error") && resolution.capabilities !== undefined) {
     const policy = makeFileSyncPolicy({
       candidates: fileSyncMetadata(resolution.manifests),

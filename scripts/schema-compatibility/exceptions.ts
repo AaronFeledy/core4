@@ -1,15 +1,6 @@
+import { SchemaCompatibilityInputError, parseJson } from "../schema-compatibility-artifacts.ts";
 import type { CompatibilityException, JsonValue, PersistedStateRef } from "./model.ts";
 import { isJsonObject } from "./model.ts";
-
-export class CompatibilityExceptionsError extends Error {
-  constructor(
-    message: string,
-    readonly detail?: string,
-  ) {
-    super(message);
-    this.name = "CompatibilityExceptionsError";
-  }
-}
 
 const parsePersistedState = (value: JsonValue, source: string): PersistedStateRef => {
   if (
@@ -19,46 +10,19 @@ const parsePersistedState = (value: JsonValue, source: string): PersistedStateRe
     !Number.isInteger(value.version) ||
     value.version < 1
   ) {
-    throw new CompatibilityExceptionsError(
+    throw new SchemaCompatibilityInputError(
       `${source} has invalid persistedState; expected { store: "applied-state"|"tunnel-registry", version: positive integer }.`,
     );
   }
   return { store: value.store, version: value.version };
 };
 
-const parseJsonValue = (value: unknown, source: string): JsonValue => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "number" ||
-    typeof value === "string"
-  ) {
-    return value;
-  }
-  if (Array.isArray(value)) return value.map((entry) => parseJsonValue(entry, source));
-  if (value !== null && typeof value === "object") {
-    const parsed: Record<string, JsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) parsed[key] = parseJsonValue(entry, source);
-    return parsed;
-  }
-  throw new CompatibilityExceptionsError(`Invalid JSON value in ${source}.`);
-};
-
 export const parseCompatibilityExceptions = (
   text: string,
   source: string,
 ): ReadonlyArray<CompatibilityException> => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new CompatibilityExceptionsError(`Invalid JSON in ${source}.`, error.message);
-    }
-    throw error;
-  }
-  const value = parseJsonValue(parsed, source);
-  if (!Array.isArray(value)) throw new CompatibilityExceptionsError(`${source} must contain an array.`);
+  const value = parseJson(text, source);
+  if (!Array.isArray(value)) throw new SchemaCompatibilityInputError(`${source} must contain an array.`);
   const seen = new Set<string>();
   return value.map((entry) => {
     if (
@@ -69,11 +33,11 @@ export const parseCompatibilityExceptions = (
       typeof entry.justification !== "string" ||
       entry.justification.trim().length === 0
     ) {
-      throw new CompatibilityExceptionsError(`${source} contains an invalid compatibility exception.`);
+      throw new SchemaCompatibilityInputError(`${source} contains an invalid compatibility exception.`);
     }
     const key = `${entry.surface}\0${entry.changeKind}\0${entry.path}`;
     if (seen.has(key)) {
-      throw new CompatibilityExceptionsError(
+      throw new SchemaCompatibilityInputError(
         `${source} contains duplicate exception ${entry.surface} ${entry.path}.`,
       );
     }
@@ -94,7 +58,7 @@ export const parseCompatibilityExceptions = (
   });
 };
 
-export const loadCompatibilityExceptionsFile = async (
+export const loadCompatibilityExceptions = async (
   path: string,
 ): Promise<ReadonlyArray<CompatibilityException>> =>
   parseCompatibilityExceptions(await Bun.file(path).text(), path);
