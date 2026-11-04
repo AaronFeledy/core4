@@ -3,6 +3,7 @@ import { delimiter } from "node:path";
 
 import { Effect, Predicate } from "effect";
 
+import { managedLaunchStatePath } from "@lando/container-runtime/podman/managed-invocation";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
@@ -14,7 +15,7 @@ interface RuntimeLaunchState {
   readonly runtimeBundleVersion?: string;
 }
 
-export const launchStatePath = (pidPath: string): string => `${pidPath}.launch.json`;
+export const launchStatePath = managedLaunchStatePath;
 
 const parseRuntimeLaunchState = (raw: string): RuntimeLaunchState | undefined => {
   const parsed: unknown = JSON.parse(raw);
@@ -38,7 +39,7 @@ const parseRuntimeLaunchState = (raw: string): RuntimeLaunchState | undefined =>
   return { pid: parsed.pid, env, ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }) };
 };
 
-const readLaunchState = (pidPath: string): Effect.Effect<RuntimeLaunchState | undefined> =>
+export const readLaunchState = (pidPath: string): Effect.Effect<RuntimeLaunchState | undefined> =>
   Effect.tryPromise({
     try: async () => parseRuntimeLaunchState(await readFile(launchStatePath(pidPath), "utf8")),
     catch: () => undefined,

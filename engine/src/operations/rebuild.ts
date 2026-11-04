@@ -20,7 +20,7 @@ import {
   type EventService,
   type LandofileService,
   type RouterService,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 
@@ -31,9 +31,10 @@ import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { type PreparedRuntimeProvider, selectPreparedProvider } from "../providers/prepared.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -87,6 +88,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   options: Pick<RebuildAppOptions, "signal"> & {
     readonly managed?: StartManagedScope;
     readonly preparedOverlays: PreparedStartOverlays;
+    readonly provider: PreparedRuntimeProvider;
   },
 ): Effect.fn.Return<
   RebuildAppResult["servicesStarted"],
@@ -102,10 +104,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | RedactionService
   | GlobalConsumerAdmissionServices
 > {
-  const { signal, managed, preparedOverlays } = options;
-  const registry = yield* RuntimeProviderRegistry;
+  const { signal, managed, preparedOverlays, provider } = options;
   const builds = yield* BuildOrchestrator;
-  const provider = yield* registry.select(plan);
   const services = Object.values(plan.services);
 
   const stopSelected = Effect.forEach(
@@ -187,17 +187,16 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
   ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
     const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
-    const registry = yield* RuntimeProviderRegistry;
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
     const scoped = options.services !== undefined && options.services.length > 0;
     const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
-    const provider = yield* registry.select(plan);
+    const provider = yield* selectPreparedProvider(plan);
     const preparedOverlays = yield* prepareStartOverlays({ ...resolvedTarget, plan: selectedPlan }, provider);
     return yield* withAppMutationLock(
       appLockTarget(plan),
-      withPlanVolumeCoordination({
+      withLaunchVolumeCoordination({
         plan,
         provider,
         stateStore,
@@ -228,6 +227,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                 app: plan.name,
                 servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
                   ...options,
+                  provider,
                   preparedOverlays,
                   ...(managed === undefined ? {} : { managed }),
                 }),

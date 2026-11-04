@@ -32,6 +32,7 @@ import {
   applyGlobalServiceGroups as applyGlobalServiceGroupsEffect,
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
+import { prepareProvider } from "../../src/providers/prepared.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
@@ -75,8 +76,21 @@ const leaseLayer = Layer.mergeAll(
   ),
 );
 const applyGlobalServiceGroups = <E, R, AdmissionE = never, AdmissionR = never>(
-  ...args: Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>
-) => withGlobalMutation(applyGlobalServiceGroupsEffect(...args)).pipe(Effect.provide(leaseLayer));
+  plan: AppPlan,
+  apply: Omit<
+    Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>[1],
+    "provider"
+  > & {
+    readonly provider: RuntimeProviderShape;
+  },
+  build: Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>[2],
+) =>
+  withGlobalMutation(
+    Effect.gen(function* () {
+      const provider = yield* prepareProvider(apply.provider);
+      return yield* applyGlobalServiceGroupsEffect(plan, { ...apply, provider }, build);
+    }),
+  ).pipe(Effect.provide(leaseLayer));
 
 const globalPlan: AppPlan = {
   id: AppId.make("global"),
@@ -598,7 +612,7 @@ test("each global group reserves its selected IDs inside provider apply while sh
       applyGlobalServiceGroupsEffect(
         plan,
         {
-          provider,
+          provider: await Effect.runPromise(prepareProvider(provider)),
           services: [first, second],
           options: { reconcile: false },
         },

@@ -1,4 +1,4 @@
-import { delimiter } from "node:path";
+import { managedPodmanOverlayEnv } from "@lando/container-runtime/podman/managed-invocation";
 
 import { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
 
@@ -15,13 +15,6 @@ const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
   return separator > 0 ? podmanBin.slice(0, separator) : undefined;
 };
 
-const managedServicePath = (runtimeBinDir: string | undefined): string | undefined => {
-  const hostPath = process.env.PATH ?? "";
-  if (runtimeBinDir === undefined) return hostPath.length > 0 ? hostPath : undefined;
-  if (hostPath.length === 0) return runtimeBinDir;
-  return `${runtimeBinDir}${delimiter}${hostPath}`;
-};
-
 export const buildPodmanServiceArgs = (p: {
   readonly podmanBin: string;
   readonly storageDir: string;
@@ -29,21 +22,19 @@ export const buildPodmanServiceArgs = (p: {
   readonly configDir: string;
   readonly socketPath: string;
   readonly useSystemdRunShim?: boolean;
+  readonly privateRuntimeDir: string | undefined;
 }): PodmanServiceSpec => {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
   // Always prepend the runtime bin so netavark can exec the bundled nft helper.
   // The systemd-run shim (when present) lives in the same directory.
-  const pathValue = managedServicePath(runtimeBinDir);
   return {
     command: p.podmanBin,
-    env: {
-      CONTAINERS_CONF: `${p.configDir}/containers.conf`,
-      CONTAINERS_REGISTRIES_CONF: `${p.configDir}/registries.conf`,
-      XDG_CONFIG_HOME: p.configDir,
-      DISABLE_HC_SYSTEMD: "true",
-      LANDO_MANAGED_CONFIG_REVISION: "2-native-init",
-      ...(pathValue === undefined ? {} : { PATH: pathValue }),
-    },
+    env: managedPodmanOverlayEnv({
+      runtimeConfigDir: p.configDir,
+      ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
+      ...(p.privateRuntimeDir === undefined ? {} : { privateRuntimeDir: p.privateRuntimeDir }),
+      ...(process.env.PATH === undefined ? {} : { hostPath: process.env.PATH }),
+    }),
     args: buildManagedRuntimeServiceArgs({
       runtimeStorageDir: p.storageDir,
       runtimeRunDir: p.runRoot,

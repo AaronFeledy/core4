@@ -48,13 +48,23 @@ const baseSpec: ManagedRuntimeServiceSpec = {
   pidPath: "/tmp/udr/runtime/run/podman.pid",
 };
 
-const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => ({
-  readPid: () => Effect.succeed("123\n"),
-  isAlive: () => Effect.succeed(true),
-  readCmdline: () => Effect.succeed([baseSpec.command, ...baseSpec.args]),
-  terminate: () => Effect.void,
-  ...overrides,
-});
+const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => {
+  let terminated = false;
+  return {
+    readPid: () => Effect.succeed("123\n"),
+    isAlive: () => Effect.sync(() => !terminated),
+    readCmdline: () => Effect.succeed([baseSpec.command, ...baseSpec.args]),
+    ...overrides,
+    terminate: (pid) =>
+      (overrides.terminate?.(pid) ?? Effect.void).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            terminated = true;
+          }),
+        ),
+      ),
+  };
+};
 
 describe("buildManagedRuntimeServiceArgs (contract: exact managed Podman service argv)", () => {
   test("emits --root/--runroot/--config, the fuse-overlayfs storage-opt, and a unix:// socket URL with --time=0", () => {

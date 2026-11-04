@@ -267,12 +267,12 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
             ),
           };
 
-    const provider = yield* registry.select(plan.provider);
     const retained = yield* retainGlobalPlanSiblings(
       plan,
-      provider,
+      yield* registry.select(plan.provider),
       selected.map((service) => String(service.name)),
     );
+    const provider = retained.provider;
     const beforeStartup = yield* captureGlobalEnsureInputs(plan, loaded.landofile, provider);
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.

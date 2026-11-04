@@ -9,8 +9,10 @@ import { Effect, Layer } from "effect";
 import {
   type DiscoveredApp,
   buildUninstallPlan,
+  contributedStepId,
   uninstall as uninstallEffect,
 } from "@lando/engine/operations/uninstall";
+import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
   metaUninstallSpec as declarativeUninstallSpec,
@@ -84,26 +86,12 @@ const sandboxCliExtras = (root: string) => ({
   _userConfRoot: join(root, "conf"),
   _cgroupsDelegatePath: join(root, "delegate.conf"),
   _shellProfilePath: join(root, ".profile"),
-  _socketProxyUnitPaths: [
-    join(root, "lando-proxy-http.socket"),
-    join(root, "lando-proxy-http.service"),
-    join(root, "lando-proxy-https.socket"),
-    join(root, "lando-proxy-https.service"),
-  ],
-  _socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
 });
 
 const sandboxUninstallIo = (root: string) => ({
   userConfRoot: join(root, "conf"),
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
-  socketProxyUnitPaths: [
-    join(root, "lando-proxy-http.socket"),
-    join(root, "lando-proxy-http.service"),
-    join(root, "lando-proxy-https.socket"),
-    join(root, "lando-proxy-https.service"),
-  ],
-  socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
   listDiscoveredApps: async () => [],
 });
 
@@ -1397,7 +1385,7 @@ describe("meta:uninstall", () => {
           "export LANDO3_LINE=leave-me",
           "# <<< LANDO shellenv <<<",
           "# >>> LANDO4 shellenv >>>",
-          "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+          `export LANDO_USER_DATA_ROOT='${userDataRoot}'`,
           "export PATH='/tmp/lando/bin'\":${PATH}\"",
           "# <<< LANDO4 shellenv <<<",
           "export AFTER=still-here",
@@ -1467,65 +1455,138 @@ describe("meta:uninstall", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
-  test("dry-run lists owned socket-proxy helper files and skips marker-mismatch files", async () => {
-    // Given: one owned unit, one unmarked unit, and an owned polkit rule.
+
+  test("dry-run lists contributed host-maintenance uninstall steps from the registry", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
-    const ownedSocket = join(root, "lando-proxy-http.socket");
-    const foreignService = join(root, "lando-proxy-http.service");
-    const ownedHttpsSocket = join(root, "lando-proxy-https.socket");
-    const ownedHttpsService = join(root, "lando-proxy-https.service");
-    const polkit = join(root, "10-lando-proxy.rules");
-    writeFileSync(ownedSocket, "# lando-proxy-socket-helper\n[Socket]\n", "utf-8");
-    writeFileSync(foreignService, "[Service]\nExecStart=/usr/bin/unrelated\n", "utf-8");
-    writeFileSync(ownedHttpsSocket, "# lando-proxy-socket-helper\n[Socket]\n", "utf-8");
-    writeFileSync(ownedHttpsService, "# lando-proxy-socket-helper\n[Service]\n", "utf-8");
-    writeFileSync(polkit, "# lando-proxy-socket-helper\npolkit.addRule(function () {});\n", "utf-8");
     try {
-      // When: uninstall plans a dry-run.
+      const maintainer = {
+        id: "fake-helper",
+        uninstall: {
+          plan: () =>
+            Effect.succeed([
+              {
+                id: "unit-files",
+                label: "unit files",
+                target: join(root, "helper.unit"),
+                destructive: true,
+                status: "owned" as const,
+                detail: "owned helper",
+                preserveOnKeepData: true,
+              },
+            ]),
+          execute: () => Effect.succeed({ outcome: "completed" as const }),
+        },
+      };
       const result = await Effect.runPromise(
         uninstall({
           dryRun: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
-        }),
+        }).pipe(
+          Effect.provide(
+            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+          ),
+        ),
       );
-      const step = result.steps.find((entry) => entry.id === "socket-proxy-helper");
-
-      // Then: owned files are listed and the unmarked file is not treated as owned.
+      const step = result.steps.find((entry) => entry.id === contributedStepId("fake-helper", "unit-files"));
       expect(step?.status).toBe("owned");
-      expect(step?.target).toContain(ownedSocket);
-      expect(step?.target).toContain(ownedHttpsSocket);
-      expect(step?.target).toContain(ownedHttpsService);
-      expect(step?.target).toContain(polkit);
-      expect(step?.target).not.toContain(foreignService);
-      expect(formatUninstallResult(result)).toContain(ownedSocket);
+      expect(formatUninstallResult(result)).toContain(join(root, "helper.unit"));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("does not delete a marker-mismatch socket-proxy helper file", async () => {
-    // Given: a unit file without the Lando ownership marker.
+  test("foreign contributed step stays manual and is not deleted", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
-    const foreignService = join(root, "lando-proxy-http.service");
-    writeFileSync(foreignService, "[Service]\nExecStart=/usr/bin/unrelated\n", "utf-8");
+    const target = join(root, "foreign.unit");
+    writeFileSync(target, "foreign\n", "utf-8");
     try {
-      // When: uninstall runs destructively.
+      let executeCalls = 0;
+      const maintainer = {
+        id: "fake-helper",
+        uninstall: {
+          plan: () =>
+            Effect.succeed([
+              {
+                id: "unit-files",
+                label: "unit files",
+                target,
+                destructive: true,
+                status: "user-owned" as const,
+                detail: "belongs to another install",
+              },
+            ]),
+          execute: () => {
+            executeCalls += 1;
+            return Effect.succeed({ outcome: "completed" as const });
+          },
+        },
+      };
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          purge: true,
+          userDataRoot,
+          userCacheRoot,
+          ...sandboxUninstallIo(root),
+          elevate: async () => {
+            throw new Error("must not elevate for foreign helper");
+          },
+        }).pipe(
+          Effect.provide(
+            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+          ),
+        ),
+      );
+      const step = result.steps.find((entry) => entry.id === contributedStepId("fake-helper", "unit-files"));
+      expect(step?.status).toBe("user-owned");
+      expect(step?.outcome).toBe("manual");
+      expect(executeCalls).toBe(0);
+      expect(existsSync(target)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not delete a contribution that reports user-owned", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const target = join(root, "mismatch.unit");
+    writeFileSync(target, "unmarked\n", "utf-8");
+    try {
+      const maintainer = {
+        id: "fake-helper",
+        uninstall: {
+          plan: () =>
+            Effect.succeed([
+              {
+                id: "unit-files",
+                label: "unit files",
+                target,
+                destructive: true,
+                status: "user-owned" as const,
+                detail: "unmarked helper",
+              },
+            ]),
+          execute: () => Effect.succeed({ outcome: "completed" as const }),
+        },
+      };
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
-          listDiscoveredApps: async () => [],
-        }),
+        }).pipe(
+          Effect.provide(
+            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+          ),
+        ),
       );
-      const step = result.steps.find((entry) => entry.id === "socket-proxy-helper");
-
-      // Then: the unmarked file is left in place.
+      const step = result.steps.find((entry) => entry.id === contributedStepId("fake-helper", "unit-files"));
       expect(step?.status).toBe("user-owned");
-      expect(existsSync(foreignService)).toBe(true);
+      expect(existsSync(target)).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

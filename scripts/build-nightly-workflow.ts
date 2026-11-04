@@ -10,6 +10,7 @@ import { serviceListenerMatrixNightlyJob } from "./_service-listener-matrix-nigh
 import { serviceListenerNightlyJob } from "./_service-listener-nightly.ts";
 
 import {
+  landoManagedPodmanRuntimeDirCommands,
   landoManagedPodmanTeardownCommands,
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
@@ -445,6 +446,11 @@ ${regenerateDerivedSourcesStep}
         run: |
           wrapper="$RUNNER_TEMP/lando-managed-podman"
           printf '%s\\n' '#!/bin/sh' 'set -eu' \
+            'LAUNCH_STATE="'"$LANDO_USER_DATA_ROOT"'/runtime/run/podman.pid.launch.json"' \
+            'if test -f "$LAUNCH_STATE"; then' \
+            '  XDG_FROM_LAUNCH="$(jq -r ".env.XDG_RUNTIME_DIR // empty" "$LAUNCH_STATE" 2>/dev/null || true)"' \
+            '  if test -n "$XDG_FROM_LAUNCH"; then export XDG_RUNTIME_DIR="$XDG_FROM_LAUNCH"; fi' \
+            'fi' \
             "export CONTAINERS_CONF=\\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\\"" \
             "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\\"\\$@\\\"" \
             > "$wrapper"
@@ -463,6 +469,7 @@ ${regenerateDerivedSourcesStep}
         if: always()
         run: |
           dist/${linuxArm64.binaryName} poweroff || true
+${landoManagedPodmanRuntimeDirCommands}
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           if test -x "$LANDO_PODMAN"; then

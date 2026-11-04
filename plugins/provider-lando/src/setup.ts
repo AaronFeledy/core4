@@ -6,6 +6,7 @@ import { Cause, DateTime, Effect, Exit } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -336,7 +337,12 @@ const readText = (stream: ReadableStream<Uint8Array> | null) =>
 export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommandRunner => ({
   version: Effect.tryPromise({
     try: async () => {
-      const proc = Bun.spawn([command, "--version"], { stderr: "pipe", stdout: "pipe", windowsHide: true });
+      const proc = Bun.spawn([command, "--version"], {
+        stderr: "pipe",
+        stdout: "pipe",
+        windowsHide: true,
+        env: managedMachineCliEnv(),
+      });
       const [stdout, stderr, exitCode] = await Promise.all([
         readText(proc.stdout),
         readText(proc.stderr),
@@ -430,8 +436,17 @@ interface MachineProcess {
 
 export type MachineSpawn = (argv: ReadonlyArray<string>) => MachineProcess;
 
+export const managedMachineCliEnv = (
+  hostEnv: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<Record<string, string>> => withoutPodmanRedirectsDefined(hostEnv);
+
 const defaultMachineSpawn: MachineSpawn = (argv) =>
-  Bun.spawn([...argv], { stderr: "pipe", stdout: "pipe", windowsHide: true });
+  Bun.spawn([...argv], {
+    stderr: "pipe",
+    stdout: "pipe",
+    windowsHide: true,
+    env: managedMachineCliEnv(),
+  });
 
 const readProcess = async (proc: MachineProcess) => {
   const stdoutStream = proc.stdout instanceof ReadableStream ? proc.stdout : null;

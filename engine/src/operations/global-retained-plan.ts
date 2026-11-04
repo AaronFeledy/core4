@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { readGlobalResolution } from "../global-app/resolution.ts";
 import { makeRouteAccumulator } from "../planner/route-identity.ts";
+import { prepareProvider } from "../providers/prepared.ts";
 
 const conflict = (message: string) =>
   new GlobalAppError({
@@ -290,7 +291,7 @@ export const advanceGlobalRecordedPlan = Effect.fn("GlobalApp.advanceRecordedPla
 /** Preserve observed siblings in metadata; desired configuration alone controls execution. */
 export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings")(function* (
   desired: AppPlan,
-  provider: RuntimeProviderShape,
+  selectedProvider: RuntimeProviderShape,
   selectedIds: ReadonlyArray<string>,
 ) {
   const { plan: prior } = yield* resolveGlobalPlacement();
@@ -298,7 +299,7 @@ export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings"
     return yield* Effect.fail(
       conflict("Prior global applied state does not match selected startup placement."),
     );
-  if (provider.ensureReady !== undefined) yield* provider.ensureReady;
+  const provider = yield* prepareProvider(selectedProvider);
   const observed = yield* provider.list({ app: desired.id, includeUnplanned: true });
   const selected = new Set(selectedIds);
   const priorNames = new Set(Object.keys(prior?.services ?? {}));
@@ -353,5 +354,5 @@ export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings"
     active,
     disabled,
   );
-  return { plan: expected, recordedPlan, disabledIds, retainedIds: [...retained].sort() };
+  return { plan: expected, provider, recordedPlan, disabledIds, retainedIds: [...retained].sort() };
 });

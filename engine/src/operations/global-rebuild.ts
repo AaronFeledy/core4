@@ -33,8 +33,9 @@ import {
   type PluginRegistry,
   type ProviderError,
   RouterService,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { selectPreparedProvider } from "../providers/prepared.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
 
@@ -99,8 +100,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
     }
     const preparedOverlays = yield* prepareDebuggerOverlay(loaded.plan);
 
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan.provider);
+    const provider = yield* selectPreparedProvider(loaded.plan);
     const events = yield* EventService;
     const builder = yield* BuildOrchestrator;
     const verifyAdmission = yield* captureGlobalStartupAdmission();

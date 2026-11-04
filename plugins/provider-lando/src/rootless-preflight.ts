@@ -1,7 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
+import {
+  type ManagedRuntimeDirFsSeam,
+  type ManagedRuntimeDirSeams,
+  resolveManagedRuntimeDir,
+  synchronousManagedRuntimeDirFsSeam,
+} from "@lando/container-runtime/podman/managed-runtime-dir";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 import { hasHostSystemd } from "./user-systemd-session.ts";
 
@@ -65,9 +72,9 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
       "Enable systemd user cgroup delegation (create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`), run `systemctl daemon-reload`, then rerun `lando setup`. Alternatively, run `lando setup --provider=docker`.",
   },
   "xdg-runtime-dir": {
-    message: "Rootless Podman requires XDG_RUNTIME_DIR to be set for your session.",
+    message: "Rootless Podman requires a private runtime directory base for your session.",
     remediation:
-      "Start a full user session so XDG_RUNTIME_DIR is set, or export XDG_RUNTIME_DIR=/run/user/$(id -u), then rerun `lando setup`.",
+      "Ensure /run/user/$(id -u) exists, is owned by your user, and has mode 0700 (no group/other bits), or export XDG_RUNTIME_DIR to a directory with the same properties, then rerun `lando setup`.",
   },
 };
 
@@ -237,7 +244,34 @@ export const hasCgroupsV2Delegation = (
   }
 };
 
-export const makeSystemRootlessProbes = (env: Environment = process.env): RootlessProbes => ({
+/**
+ * Production uses sync realpath/stat so the rootless probe stays synchronous.
+ */
+interface RootlessRuntimeBaseSeams {
+  readonly fs?: ManagedRuntimeDirFsSeam;
+  readonly getuid?: () => number | undefined;
+  /** Path only used so resolveManagedRuntimeDir can realpath a runtime identity. */
+  readonly runtimeDirForProbe?: string;
+}
+
+export const hasPrivateRuntimeBase = (
+  env: Environment = process.env,
+  seams: RootlessRuntimeBaseSeams = {},
+): boolean => {
+  const runtimeDir = seams.runtimeDirForProbe ?? process.cwd();
+  const managedSeams: ManagedRuntimeDirSeams = {
+    fs: seams.fs ?? synchronousManagedRuntimeDirFsSeam,
+    getuid: seams.getuid ?? (() => process.getuid?.()),
+    env,
+  };
+  const resolved = Effect.runSync(resolveManagedRuntimeDir(runtimeDir, managedSeams));
+  return resolved !== undefined;
+};
+
+export const makeSystemRootlessProbes = (
+  env: Environment = process.env,
+  seams: RootlessRuntimeBaseSeams = {},
+): RootlessProbes => ({
   probe: () => {
     const user = env.USER;
     const subuid =
@@ -256,7 +290,7 @@ export const makeSystemRootlessProbes = (env: Environment = process.env): Rootle
       hasUidmapTools:
         hasExecutableOnPath("newuidmap", env.PATH) && hasExecutableOnPath("newgidmap", env.PATH),
       cgroupsV2Delegated: hasCgroupsV2Delegation("/sys/fs/cgroup", uidFromRuntimeDir(env.XDG_RUNTIME_DIR)),
-      hasXdgRuntimeDir: typeof env.XDG_RUNTIME_DIR === "string" && env.XDG_RUNTIME_DIR.length > 0,
+      hasXdgRuntimeDir: hasPrivateRuntimeBase(env, seams),
     };
   },
 });

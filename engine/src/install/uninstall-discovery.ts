@@ -9,6 +9,7 @@ import { assertManagedStorageResolved } from "./uninstall-managed-storage.ts";
 import { cleanupUninstallResources } from "./uninstall-resource-cleanup.ts";
 import {
   type RuntimeExec,
+  type UninstallRuntimeSeams,
   availableUninstallRuntimes,
   defaultRuntimeExec,
   runUninstallRuntime,
@@ -73,9 +74,13 @@ const assertNoRecordedUserApps = async (userDataRoot: string): Promise<void> => 
 };
 
 export const makeListDiscoveredApps =
-  (exec: RuntimeExec = defaultRuntimeExec, platform: NodeJS.Platform = process.platform) =>
+  (
+    exec: RuntimeExec = defaultRuntimeExec,
+    platform: NodeJS.Platform = process.platform,
+    seams: UninstallRuntimeSeams = {},
+  ) =>
   async (userDataRoot: string, _userCacheRoot: string): Promise<readonly DiscoveredApp[]> => {
-    const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec });
+    const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
     if (runtimes.length === 0)
       await assertNoRecordedUserApps(userDataRoot).catch((cause: unknown) => {
         if (cause instanceof UninstallResourceCleanupError) throw cause;
@@ -88,9 +93,14 @@ export const makeListDiscoveredApps =
     for (const runtime of runtimes) {
       const ids = new Set<string>();
       for (const label of ["dev.lando.app", "com.lando.app"]) {
-        const result = await runUninstallRuntime(exec, runtime, {
-          args: ["ps", "--filter", `label=${label}`, "--format", `{{.Label "${label}"}}`],
-        }).catch((cause: unknown) => {
+        const result = await runUninstallRuntime(
+          exec,
+          runtime,
+          {
+            args: ["ps", "--filter", `label=${label}`, "--format", `{{.Label "${label}"}}`],
+          },
+          seams,
+        ).catch((cause: unknown) => {
           throw uninstallCleanupFailure(
             `Cannot discover Lando apps with runtime ${runtime.cmd} (${runtime.providerId}, label=${label}); preserve state and restore runtime access.`,
             cause,
@@ -115,9 +125,10 @@ export const makeCleanupDiscoveredApps =
     userDataRoot = makeLandoPaths().roots.userDataRoot,
     exec: RuntimeExec = defaultRuntimeExec,
     platform: NodeJS.Platform = process.platform,
+    seams: UninstallRuntimeSeams = {},
   ) =>
   async (_apps: readonly DiscoveredApp[]): Promise<void> => {
-    const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec });
+    const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
     if (platform === "win32") await assertUninstallSyncSafe({ userDataRoot, runtimes, exec });
     for (const runtime of runtimes) await cleanupUninstallResources(exec, runtime);
     for (const runtime of runtimes) await assertManagedStorageResolved(exec, runtime);
