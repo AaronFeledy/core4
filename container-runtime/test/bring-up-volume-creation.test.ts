@@ -60,6 +60,8 @@ test.each([false, true])(
           }),
         api: {
           request: (request) => {
+            if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             if (request.path !== "/volumes/create") return Effect.succeed({ status: 200, body: "{}" });
             return Schema.decodeUnknownEffect(Request)(request.body).pipe(
               Effect.orDie,
@@ -107,6 +109,8 @@ test.each([false, true])(
           api: {
             request: (request) =>
               Effect.sync(() => {
+                if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                  return { status: 200, body: "[]" };
                 if (request.path === "/volumes/create") {
                   const body = Schema.decodeUnknownSync(Request)(request.body);
                   events.push(`create:${body.Name}`);
@@ -171,6 +175,8 @@ test.each(["fails", "interrupts"] as const)(
         api: {
           request: (request) =>
             Effect.sync(() => {
+              if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                return { status: 200, body: "[]" };
               if (request.path === "/volumes/create") {
                 const volume = Schema.decodeUnknownSync(Request)(request.body);
                 volumes.set(volume.Name, volume);

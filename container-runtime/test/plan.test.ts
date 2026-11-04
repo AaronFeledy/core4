@@ -11,6 +11,7 @@ import {
   fingerprintPlannedPublishPorts,
   mergeAppliedPlan,
   mountSuffix,
+  serviceContainerName,
 } from "@lando/container-runtime/plan";
 import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
@@ -491,6 +492,7 @@ describe("container plan helpers", () => {
       }),
     ).toEqual({
       Image: "nginx:latest",
+      Hostname: "lando-myapp--web",
       Env: ["FOO=bar", "BAZ=qux"],
       Cmd: ["sh", "-c", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
@@ -515,6 +517,16 @@ describe("container plan helpers", () => {
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
     });
+  });
+
+  test.each(["web", "web_1", "a".repeat(70)])("uses the container name as hostname for %s", (name) => {
+    // Given a planned service, including keys requiring a hashed physical name.
+    const selected = { ...service, name: ServiceName.make(name) };
+    const containerName = serviceContainerName(plan, name);
+    // When
+    const body = containerCreateBodyFragment(plan, selected, { name: containerName });
+    // Then
+    expect(body).toMatchObject({ name: containerName, Hostname: containerName });
   });
 
   test("passes the planned runtime user through to the create body", () => {

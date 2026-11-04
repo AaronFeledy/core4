@@ -11,6 +11,7 @@ import {
   ServiceConfig,
   ServiceName,
   ServicePlan,
+  landoServiceStoreName,
 } from "../schema/index.ts";
 import type {
   AppFeatureContext,
@@ -301,6 +302,7 @@ export interface ServiceFeatureContractHarness {
   readonly base?: "l337" | "lando";
   readonly primary?: boolean;
   readonly appName?: string;
+  readonly appSlug?: string;
   readonly appRoot?: string;
   readonly normalizedConfig?: ServiceConfig;
   readonly connection?: DatabaseConnection;
@@ -332,6 +334,8 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     normalizedConfig: input.normalizedConfig ?? { type: "test" },
     ...(input.connection === undefined ? {} : { connection: input.connection }),
     config: input.config ?? {},
+    serviceStoreName: (role) =>
+      landoServiceStoreName(input.appSlug ?? "myapp", input.serviceName ?? "web", role),
     addEnv(name, value) {
       recorded.env.set(name, value);
     },

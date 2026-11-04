@@ -22,13 +22,35 @@ export const privateCaptureBudget = (input: ProcessSpawnOptions) => {
 export const collectPrivateText = async (
   stream: ReadableStream<Uint8Array> | undefined,
   append: (chunk: Uint8Array) => void,
+  stop?: AbortSignal,
 ): Promise<string> => {
   if (stream === undefined) return "";
   const chunks: Uint8Array[] = [];
-  for await (const chunk of stream) {
-    append(chunk);
-    chunks.push(chunk);
+  const reader = stream.getReader();
+  // A killed child's descendants can keep the pipe open; stopping cancels the read instead of waiting for them.
+  let cancelFailure: unknown;
+  const cancel = () => {
+    reader.cancel(stop?.reason).then(undefined, (cause: unknown) => {
+      cancelFailure = cause;
+    });
+  };
+  if (stop?.aborted) cancel();
+  else stop?.addEventListener("abort", cancel, { once: true });
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      append(next.value);
+      chunks.push(next.value);
+    }
+  } catch (cause) {
+    cancel();
+    throw cause;
+  } finally {
+    stop?.removeEventListener("abort", cancel);
+    reader.releaseLock();
   }
+  if (cancelFailure !== undefined) throw cancelFailure;
   // Decode once, after the byte budget accepts every chunk, preserving split UTF-8 sequences.
   return new TextDecoder("utf-8", { ignoreBOM: true }).decode(Buffer.concat(chunks));
 };

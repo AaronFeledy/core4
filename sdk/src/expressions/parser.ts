@@ -37,7 +37,9 @@ const IDENTIFIER_START = /^[A-Za-z_]$/;
 const IDENTIFIER_PART = /^[A-Za-z0-9_]$/;
 const NUMBER_START = /^\d$/;
 const NAMESPACES = new Set(["path", "fs", "url", "semver"]);
-const REMEDIATION = "Check the Landofile configuration expression syntax.";
+const REMEDIATION = "Fix the {{ }} expression, or write {{{{ to keep {{ as text.";
+const SHELL_PARAMETER_REMEDIATION =
+  "Lando reads ${...} as an expression. Write $${...} to keep the text as written.";
 
 const isIdentifierStart = (char: string | undefined): boolean =>
   char !== undefined && IDENTIFIER_START.test(char);
@@ -64,7 +66,12 @@ const parseError = (
     filePath: context.filePath,
     line: reported.line,
     column: reported.column,
-    remediation: REMEDIATION,
+    remediation:
+      message === "Unterminated shell parameter expression." ||
+      message === "Shell parameter names must be identifiers." ||
+      message.startsWith("Unsupported shell parameter operator ")
+        ? SHELL_PARAMETER_REMEDIATION
+        : REMEDIATION,
     ...(expression === undefined ? {} : { expression }),
     ...(cause === undefined ? {} : { cause }),
   });

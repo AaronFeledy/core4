@@ -77,7 +77,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   );
   ctx.addStorage(
     {
-      store: `${appName}-minio-data`,
+      store: ctx.serviceStoreName("minio-data"),
       target: DATA_TARGET,
       readOnly: false,
     },

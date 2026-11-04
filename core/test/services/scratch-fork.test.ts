@@ -48,6 +48,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { makeStateStore } from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -59,23 +60,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      fetchTarball: async () => {
-        throw new Error("Unexpected npm download");
-      },
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -370,8 +355,9 @@ const makeScratchForkLayer = (
     }),
   );
   const scratchRegistryLive = (() => {
-    if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLayer.ScratchRegistry.layer;
-    const registry = makeScratchRegistry(ownerOnlyFileAccess);
+    if (options.failSecondRegistryUpsert !== true)
+      return ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer));
+    const registry = makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
     let upsertCount = 0;
     return Layer.succeed(
       ScratchRegistry,

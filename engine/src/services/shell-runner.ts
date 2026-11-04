@@ -35,9 +35,12 @@ import { environmentForRedaction } from "./tooling-input-environment.ts";
 
 export type ShellRedactionCarrier = RunnerRedactionCarrier;
 
-const ShellRedactionTokens = Context.Reference<ShellRedactionCarrier>("@lando/engine/ShellRedactionTokens", {
-  defaultValue: (): ShellRedactionCarrier => ({ substring: [] }),
-});
+export const ShellRedactionTokens = Context.Reference<ShellRedactionCarrier>(
+  "@lando/engine/ShellRedactionTokens",
+  {
+    defaultValue: (): ShellRedactionCarrier => ({ substring: [] }),
+  },
+);
 
 const shellError = (
   command: string,

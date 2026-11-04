@@ -23,14 +23,15 @@ import { readFile } from "node:fs/promises";
 import tls from "node:tls";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Context, Effect, Schema } from "effect";
-
+import { HttpTrustError } from "@lando/sdk/errors";
 import {
   type NetworkTrustPlan,
   type ResolvedNetworkTrust,
   resolveNetworkTrustPlan,
 } from "@lando/sdk/network-trust";
 import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Context, Effect, Option, Schema } from "effect";
 
 export type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 export {
@@ -155,6 +156,50 @@ export const withWindowsHostTrust = (
     trustHost: false,
   };
 };
+
+/**
+ * Resolve outbound network trust for a request fiber or host-side transport.
+ *
+ * Precedence is fixed: an already-injected {@link ResolvedNetworkTrust} wins;
+ * otherwise load the plan from `ConfigService` in `context` (plus `env`) and
+ * read CA PEMs. Missing config yields `undefined` (bare request / no projection),
+ * not "trust nothing".
+ */
+export const resolveTrust = Effect.fnUntraced(function* (
+  context: Context.Context<never>,
+  injected: ResolvedNetworkTrust | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+) {
+  if (injected !== undefined) return injected;
+  const config = Context.getOption(context, ConfigService);
+  if (Option.isNone(config)) return undefined;
+  const globalConfig = yield* config.value.load;
+  const plan = yield* Effect.try({
+    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }, env),
+    catch: (cause) =>
+      new HttpTrustError({
+        message: cause instanceof Error ? cause.message : "Could not resolve network trust",
+        urlOrigin: "unknown",
+        kind: "missing-custom-ca",
+        remediation:
+          "Check network.ca.certs, LANDO_NETWORK_CA_CERTS, and proxy trust settings (HTTPS_PROXY / network.proxy), then retry.",
+        cause,
+      }),
+  });
+  const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
+    Effect.mapError(
+      (cause) =>
+        new HttpTrustError({
+          message: cause.message,
+          urlOrigin: "unknown",
+          kind: "missing-custom-ca",
+          remediation: cause.remediation,
+          cause,
+        }),
+    ),
+  );
+  return { proxy: plan.proxy, caPems: loaded.map((cert) => cert.pem), trustHost: plan.trustHost };
+});
 
 /**
  * Optional injected trust for one fiber. Callers that already resolved trust

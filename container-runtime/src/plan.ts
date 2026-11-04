@@ -1,5 +1,6 @@
 import type { AppPlan, InternalEndpoint, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
 import { containerMountIntent } from "./container-mounts.ts";
+import { serviceContainerName } from "./container-name.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
@@ -15,6 +16,7 @@ import {
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
 export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
+export { serviceContainerName } from "./container-name.ts";
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
@@ -34,10 +36,6 @@ export const mergeAppliedPlan = (
   }
   return merged;
 };
-
-/** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
-export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
-  `lando-${plan.slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 export const envArrayFromRecord = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
   Object.entries(environment).map(([key, value]) => `${key}=${value}`);
@@ -191,6 +189,7 @@ export const containerCreateBodyFragment = (
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
+    Hostname: serviceContainerName(plan, service.name),
     Env: envArrayFromRecord(options.environment ?? literalServiceEnvironment(service)),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),

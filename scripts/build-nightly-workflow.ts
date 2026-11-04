@@ -21,6 +21,7 @@ import {
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_TEST_RUNNER,
+  isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
@@ -490,6 +491,75 @@ ${regenerateDerivedSourcesStep}
           if-no-files-found: ignore
           retention-days: 7`;
 
+const SOURCE_STORE_ACCEPTANCE_SUITE = "core/test/build/source-store-acceptance.integration.test.ts";
+
+const SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS = ["linux-x64", "darwin-arm64", "windows-x64"] as const;
+
+const sourceStoreAcceptancePlatform = (
+  id: (typeof SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS)[number],
+): CiPlatform => {
+  const platform = CI_PLATFORMS.find((candidate) => candidate.id === id);
+  if (platform === undefined) {
+    throw new Error(`CI_PLATFORMS is missing ${id}`);
+  }
+  // Nightly test jobs prefer the current Linux host; portable builds keep the older glibc baseline.
+  if (id === "linux-x64") {
+    return { ...platform, runsOn: LINUX_X64_TEST_RUNNER };
+  }
+  return platform;
+};
+
+const renderSourceStoreAcceptanceJob = (platform: CiPlatform): string => {
+  const binaryPath = `./dist/${platform.binaryName}`;
+  const gitPrereqSteps = isWindowsCiPlatform(platform)
+    ? `
+      - name: Verify git and git-http-backend
+        shell: bash
+        run: |
+          git --version
+          test -x "$(git --exec-path)/git-http-backend.exe" || test -x "$(git --exec-path)/git-http-backend"
+`
+    : `
+      - name: Verify git
+        run: git --version
+`;
+
+  return `
+  source-store-acceptance-${platform.id}:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ${platform.runsOn}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${isolateLandoRootsStep}
+${bunSetupStep}
+
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
+${gitPrereqSteps}
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
+
+      - name: Build ${platform.id} binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ${binaryPath} --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ${binaryPath}
+
+      - name: Run source-store acceptance
+        env:
+          LANDO_TEST_COMPILED_CLI: ${binaryPath}
+        run: bun test ${SOURCE_STORE_ACCEPTANCE_SUITE}`;
+};
+
+const sourceStoreAcceptanceJobs = SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS.map((id) =>
+  renderSourceStoreAcceptanceJob(sourceStoreAcceptancePlatform(id)),
+);
+
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
     renderContainerHelperJob(),
@@ -500,6 +570,7 @@ export const renderNightlyWorkflow = (): string => {
     serviceListenerMatrixNightlyJob,
     publishedManifestSetupJob,
     mysqlArmClientLinuxArm64Job,
+    ...sourceStoreAcceptanceJobs,
     nightlyTierUnitTestsJob,
     refreshTestTimingsJob,
     runtimeBundleManifestLiveJob,

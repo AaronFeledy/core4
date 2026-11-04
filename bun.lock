@@ -46,6 +46,7 @@
         "@lando/redaction": "workspace:*",
         "@lando/renderer": "workspace:*",
         "@lando/sdk": "workspace:*",
+        "@lando/source-acquisition": "workspace:*",
         "@lando/state-store": "workspace:*",
         "@lando/telemetry": "workspace:*",
         "@types/mdast": "4.0.4",
@@ -113,6 +114,7 @@
         "@lando/paths": "workspace:*",
         "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
+        "@lando/source-acquisition": "workspace:*",
         "@lando/state-store": "workspace:*",
         "@lando/telemetry": "workspace:*",
         "effect": "catalog:",
@@ -138,6 +140,7 @@
       "dependencies": {
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
+        "@lando/source-acquisition": "workspace:*",
         "@lando/state-store": "workspace:*",
         "effect": "catalog:",
         "semver": "^7.8.5",
@@ -204,6 +207,9 @@
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
         "yaml": "2.9.1",
+      },
+      "devDependencies": {
+        "@lando/state-store": "workspace:*",
       },
     },
     "plugins/lando3": {
@@ -396,6 +402,16 @@
       },
       "devDependencies": {
         "@types/semver": "^7.8.0",
+      },
+    },
+    "source-acquisition": {
+      "name": "@lando/source-acquisition",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+        "effect": "catalog:",
       },
     },
     "state-store": {
@@ -671,6 +687,8 @@
     "@lando/secret-store-1password": ["@lando/secret-store-1password@workspace:plugins/secret-store-1password"],
 
     "@lando/service-lando": ["@lando/service-lando@workspace:plugins/service-lando"],
+
+    "@lando/source-acquisition": ["@lando/source-acquisition@workspace:source-acquisition"],
 
     "@lando/sql": ["@lando/sql@workspace:plugins/sql"],
 

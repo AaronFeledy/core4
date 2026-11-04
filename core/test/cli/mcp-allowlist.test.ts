@@ -98,6 +98,16 @@ describe("assertMcpAllowlistSafe", () => {
     );
   });
 
+  test("sources:gc is destructive like snapshots:gc and must not self-allow", () => {
+    const sources = specFor("meta:sources:gc");
+    const snapshots = specFor("meta:snapshots:gc");
+    expect(sources.flags?.yes).toBeDefined();
+    expect(snapshots.flags?.yes).toBeDefined();
+    expect(sources.flags?.prune).toBeDefined();
+    expect(() => assertMcpAllowlistSafe({ ...sources, mcpAllowed: true })).toThrow(McpAllowlistConflictError);
+    expect(MCP_DEFAULT_ALLOWLIST).not.toContain("meta:sources:gc");
+  });
+
   test("allows a destructive command that does not self-allow", () => {
     expect(() => assertMcpAllowlistSafe(makeSpec("app:destroy", false))).not.toThrow();
     expect(() => assertMcpAllowlistSafe(makeSpec("app:destroy", undefined))).not.toThrow();

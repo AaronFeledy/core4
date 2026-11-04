@@ -186,7 +186,7 @@ describe("@lando/service-lando registration", () => {
     expect(queue.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "catalog-app-rabbitmq-data",
+      store: "lando-catalog-app--queue--rabbitmq-data",
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
     });
@@ -213,7 +213,7 @@ describe("@lando/service-lando registration", () => {
     expect(objectStore.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "catalog-app-minio-data",
+      store: "lando-catalog-app--object-store--minio-data",
       target: PortablePath.make("/data"),
       readOnly: false,
     });
@@ -226,7 +226,7 @@ describe("@lando/service-lando registration", () => {
     expect(aws.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "catalog-app-localstack-data",
+      store: "lando-catalog-app--aws--localstack-data",
       target: PortablePath.make("/var/lib/localstack"),
       readOnly: false,
     });
@@ -378,7 +378,7 @@ describe("@lando/service-lando registration", () => {
     expect(database.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "sql-app-mssql-data",
+      store: "lando-sql-app--database--mssql-data",
       target: PortablePath.make("/var/opt/mssql"),
       readOnly: false,
     });

@@ -66,3 +66,33 @@ describe("a host-wide step Bun Shell can't run", () => {
     expect(result.exitCode).toBe(0);
   });
 });
+
+describe("a host-wide step with ${NAME} or an unreadable expression", () => {
+  beforeAll(async () => {
+    await writeFile(
+      join(root, "conf", "config.yml"),
+      'hostEvents:\n  post-start:\n    - "echo ${USER}"\n    - cmd: "echo {{ env.USER"\n      service: ":host"\n',
+    );
+  });
+
+  test("config validate reports both steps", async () => {
+    const result = await runLando(["config", "validate", "--format=json"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain('"path":["hostEvents","post-start",0]');
+    expect(result.stdout).toContain("Lando does not expand ${USER} in hostEvents.");
+    expect(result.stdout).toContain('"path":["hostEvents","post-start",1,"cmd"]');
+  });
+
+  test("planning reports them against config.yml before compiling the steps", async () => {
+    const result = await runLando(["app:cache:refresh", "--format=json"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain('"_tag":"LandofileValidationError"');
+    expect(result.stdout).toContain(join(root, "conf", "config.yml"));
+    expect(result.stdout).not.toContain("ConfigExpressionError");
+  });
+
+  test("a nested Lando that skips host events never compiles them", async () => {
+    const result = await runLando(["app:cache:refresh", "--format=json"], { LANDO_HOST_EVENT: "1" });
+    expect(result.exitCode).toBe(0);
+  });
+});

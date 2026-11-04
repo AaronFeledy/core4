@@ -1,11 +1,13 @@
+import { NetworkTrust, resolveTrust } from "@lando/http-client/network-trust";
 import {
   Downloader,
   type LandofileService,
   type ManagedFileTransactionGuard,
   PathsService,
+  ProcessRunner,
   StateStore,
 } from "@lando/sdk/services";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, type Scope } from "effect";
 
 import {
   type ResolveLandofileIncludesOptions,
@@ -42,8 +44,10 @@ const ReadOnlyLandofile = Context.Reference<boolean>("@lando/engine/ReadOnlyLand
   defaultValue: () => false,
 });
 
-export const withReadOnlyLandofile = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  body.pipe(Effect.provideService(ReadOnlyLandofile, true));
+export const withReadOnlyLandofile = <A, E, R>(
+  body: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, Exclude<R, Scope.Scope>> =>
+  body.pipe(Effect.provideService(ReadOnlyLandofile, true), Effect.scoped);
 
 export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs> = Effect.gen(function* () {
   const inputs = landofileRuntimeInputs();
@@ -51,9 +55,15 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const stateStore = yield* Effect.serviceOption(StateStore);
   const client = yield* Effect.serviceOption(HttpClient.HttpClient);
   const downloader = yield* Effect.serviceOption(Downloader);
+  const processRunner = yield* Effect.serviceOption(ProcessRunner);
   const redaction = yield* Effect.serviceOption(RedactionService);
   const readPolicy = yield* hostConfigReadPolicy;
+  const requestContext = yield* Effect.context<never>();
+  const injectedTrust = Context.get(requestContext, NetworkTrust);
+  const trustEnv = readPolicy?.env ?? { ...process.env };
+  const resolveNetworkTrust = () => Effect.runPromise(resolveTrust(requestContext, injectedTrust, trustEnv));
   const runtime = {
+    ...(Option.isSome(processRunner) ? { processRunner: processRunner.value } : {}),
     ...(Option.isSome(redaction)
       ? {
           registerSecrets: (values: ReadonlyArray<string>) =>
@@ -61,6 +71,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
         }
       : {}),
     ...(readPolicy === undefined ? {} : { readPolicy }),
+    resolveNetworkTrust,
   };
   return {
     ...inputs,
@@ -68,9 +79,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
     ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
     ports: {
       ...inputs.ports,
-      ...(Option.isSome(client) && Option.isSome(downloader)
-        ? landofileSourcePorts(client.value, downloader.value, runtime)
-        : {}),
+      ...landofileSourcePorts(Option.getOrUndefined(client), Option.getOrUndefined(downloader), runtime),
       ...(Option.isNone(paths)
         ? {}
         : {

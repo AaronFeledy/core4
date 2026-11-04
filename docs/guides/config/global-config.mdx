@@ -89,6 +89,40 @@ Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a
 
 `defaultProviderId` is the provider `lando setup` persisted. `LANDO_PROVIDER` overrides it per command and never writes it. See [What persists](../setup/provider-selection.mdx#what-persists).
 
+## Find where Lando keeps files
+
+Lando writes to three directories, called roots. Print the ones in effect on your machine:
+
+```sh
+lando config get userConfRoot
+lando config get userDataRoot
+lando config get userCacheRoot
+```
+
+  <Scenario id="find-roots" render>
+    <Step name="print-roots">
+      <Run command="lando config get userCacheRoot --format=json" />
+      <Verify command="lando config get userCacheRoot --format=json" expect={{ stdout: { regex: "\"key\":\\s*\"userCacheRoot\"" } }} />
+      <Verify command="lando config get userDataRoot --format=json" expect={{ stdout: { regex: "\"key\":\\s*\"userDataRoot\"" } }} />
+    </Step>
+  </Scenario>
+
+| Root | Linux | macOS | Windows | What lives there |
+| --- | --- | --- | --- | --- |
+| `userConfRoot` | `~/.config/lando` | `~/Library/Application Support/Lando` | `%APPDATA%\Lando` | Files you edit: `config.yml`, `config.d/`, `global.config.yml`, plugin trust, and shared includes |
+| `userDataRoot` | `~/.local/share/lando` | `~/Library/Application Support/Lando` | `%LOCALAPPDATA%\Lando\Data` | What Lando can't rebuild: the managed runtime and its storage, plugins, the global app, scratch apps, snapshots, file-sync history, shell history, and update records |
+| `userCacheRoot` | `~/.cache/lando` | `~/Library/Caches/Lando` | `%LOCALAPPDATA%\Lando\Cache` | What Lando can rebuild or do without: app plan and command caches, fetched includes, verified downloads, logs, and temporary transfer files |
+
+On Linux, the defaults follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_CACHE_HOME` when you set them. On macOS, config and data share one directory. To move a root, set `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, or `LANDO_USER_CACHE_ROOT`; the data and cache roots also accept a `config.yml` key of the same name.
+
+### Clear the cache
+
+You can delete the user cache root whenever no Lando command is running, even while apps are up. Nothing in it is the only copy of anything, so the next command rebuilds what it needs. That command takes longer, and it needs network access if your Landofile pulls a remote include. You lose old logs.
+
+Deleting it while a command runs can fail that command, for example a `lando db:export` halfway through its transfer. Run the command again.
+
+Don't delete the user data root by hand. It holds the runtime your apps run on, your scratch apps, and file-sync history, so removing it can destroy app data and leave containers Lando can no longer manage. To remove Lando and everything it stores, use [`lando uninstall --purge`](../setup/uninstall-and-purge.mdx).
+
 ## Allow additional host URL schemes
 
 Use `hostProxy.allowedSchemes` to allow URL schemes beyond the host proxy's built-in list. From your host terminal, set the full list of additional schemes and check the effective value:
@@ -379,7 +413,7 @@ hostEvents:
       service: ":host"
 ```
 
-Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
+Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. Validation reports a step that uses `${NAME}`, which Lando never expands here; write `$NAME` for the step's shell or `{{ env.NAME }}` for your host's value. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
 
   <Scenario id="host-events-hand-edit" render={false} reason="Reject config set/unset of hostEvents">
     <Step name="reject-set">

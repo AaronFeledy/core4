@@ -124,6 +124,6 @@ describe("provider-podman log source binding", () => {
       ),
     );
     // Then: upload targets this service, not another container.
-    expect(paths).toContain("/containers/lando-bindingapp-web/archive?path=/tmp");
+    expect(paths).toContain("/containers/lando-bindingapp--web/archive?path=/tmp");
   });
 });

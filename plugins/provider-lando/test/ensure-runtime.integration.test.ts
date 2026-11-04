@@ -186,6 +186,9 @@ const makeFakePodmanApi = (
         if (request.method === "GET" && request.path.includes("/exec/")) {
           return { status: 200, body: JSON.stringify({ ExitCode: 0 }) };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
     stream: (request) => {
@@ -343,7 +346,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
 
     expect(events.filter((event) => event === "service.launch")).toHaveLength(0);
     expect(events.filter((event) => event === "artifact.download")).toHaveLength(0);
-    expect(events).toContain("api.request POST /containers/lando-ensureapp-node/exec");
+    expect(events).toContain("api.request POST /containers/lando-ensureapp--node/exec");
   });
 
   test("setup prepares verified native init and apply reuses the ready runtime", async () => {

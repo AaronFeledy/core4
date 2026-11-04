@@ -6,7 +6,6 @@ import { RecipeSourceError } from "@lando/sdk/errors";
 import {
   normalizeRecipeSubpath,
   recipeFileExists,
-  recipeUserDataRoot,
   resolveRecipeManifest,
 } from "../../src/recipes/source-support.ts";
 
@@ -61,13 +60,6 @@ describe("recipe source support", () => {
       );
     });
   }
-
-  test("returns an explicit user data root without resolving config", async () => {
-    // Given / When: a non-default override.
-    const result = await recipeUserDataRoot(root);
-    // Then: it is passed through unchanged.
-    expect(result).toBe(root);
-  });
 
   test.each(["directory", "file", "missing"])("tests existence of a %s", async (kind) => {
     // Given: directories count as existing, just like stat in the original sources.

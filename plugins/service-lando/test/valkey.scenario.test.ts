@@ -211,7 +211,7 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     ]);
     const volumes = cache.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(cache.healthcheck?.kind).toBe("command");
     expect(cache.healthcheck).toEqual(tcpProbe(6379, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("valkey");

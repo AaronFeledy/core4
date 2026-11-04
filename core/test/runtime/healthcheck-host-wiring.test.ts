@@ -3,14 +3,18 @@ import { makeLandoRuntime } from "@lando/core";
 import { ProcessRunner, ShellRunner } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-test.each(["provider", "app"] as const)(
+const runtimes = {
+  minimal: () => makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "bundled-only" } }),
+  tooling: () => makeLandoRuntime({ bootstrap: "tooling", plugins: { policy: "bundled-only" } }),
+  provider: () => makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "bundled-only" } }),
+  app: () => makeLandoRuntime({ bootstrap: "app", plugins: { policy: "bundled-only" } }),
+};
+
+test.each(["minimal", "tooling", "provider", "app"] as const)(
   "%s bootstrap supplies captured host execution without provider setup",
   async (bootstrap) => {
     // Given
-    const runtime =
-      bootstrap === "provider"
-        ? makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "bundled-only" } })
-        : makeLandoRuntime({ bootstrap: "app", plugins: { policy: "bundled-only" } });
+    const runtime = runtimes[bootstrap]();
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {

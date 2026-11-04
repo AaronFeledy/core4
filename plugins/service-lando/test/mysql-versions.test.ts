@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { homeStoreName } from "@lando/engine/planner/home";
 import { ServiceName } from "@lando/sdk/schema";
 
@@ -32,6 +33,8 @@ describe("MySQL managed versions", () => {
 
       expect(appPlan.services[ServiceName.make("db")]?.type).toBe(expectedType);
       expect(appPlan.services[ServiceName.make("db")]?.artifact).toEqual({ kind: "ref", ref });
+      expect(appPlan.identity?.ownerKey).toBeDefined();
+      expect(effectiveToolingForPlan(appPlan)?.mysql?.service).toBe("db");
     },
   );
 
@@ -61,15 +64,15 @@ describe("MySQL managed versions", () => {
       .filter((mount) => mount.type === "volume")
       .find((mount) => mount.target === "/var/lib/mysql")?.store;
 
-    expect(dbStore).toBe("mysql-versions-db-mysql-data");
-    expect(analyticsStore).toBe("mysql-versions-analytics-mysql-data");
+    expect(dbStore).toBe("lando-mysql-versions--db--mysql-data");
+    expect(analyticsStore).toBe("lando-mysql-versions--analytics--mysql-data");
     expect(dbStore).not.toContain("8.0");
     expect(analyticsStore).not.toContain("9.7");
     expect(appPlan.stores.map((store) => store.name)).toEqual([
       homeStoreName("mysql-versions", "db", "root"),
-      "mysql-versions-db-mysql-data",
+      "lando-mysql-versions--db--mysql-data",
       homeStoreName("mysql-versions", "analytics", "root"),
-      "mysql-versions-analytics-mysql-data",
+      "lando-mysql-versions--analytics--mysql-data",
     ]);
   });
 

@@ -108,6 +108,14 @@ describe("workspace source-root drift gate", () => {
     expect(NON_PLUGIN_SOURCE_ROOTS).toContain("managed-file/src");
   });
 
+  test("covers source-acquisition implementation code in every primitive source tier", () => {
+    // Given / When / Then
+    expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("source-acquisition/src");
+    expect(ALL_PACKAGE_SOURCE_ROOTS).toContain("source-acquisition/src");
+    expect(ALL_PACKAGE_WALK_ROOTS).toContain("source-acquisition/src");
+    expect(NON_PLUGIN_SOURCE_ROOTS).toContain("source-acquisition/src");
+  });
+
   test("classifies narrow-by-design rules with their exact current roots", () => {
     // Given: rules that are deliberately scoped narrower than the shared tiers
     for (const [id, expectedRoots] of NARROW_BY_DESIGN) {

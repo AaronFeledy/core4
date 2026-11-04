@@ -1398,8 +1398,8 @@ describe("provider data plane", () => {
   test.each([
     {
       status: 409,
-      body: JSON.stringify({ message: "volume data is being used by container lando-orphan-db" }),
-      reason: "lando-orphan-db",
+      body: JSON.stringify({ message: "volume data is being used by container lando-orphan--db" }),
+      reason: "lando-orphan--db",
     },
     {
       status: 500,
@@ -1576,7 +1576,7 @@ describe("provider data plane", () => {
       ),
     );
 
-    expect(calls[0]).toContain("/containers/lando-app-slug-web/archive?");
+    expect(calls[0]).toContain("/containers/lando-app-slug--web/archive?");
     expect(uploadChunks).toBeGreaterThan(1);
   });
 });

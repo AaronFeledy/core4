@@ -10,7 +10,7 @@ const diedEvent = {
   Type: "container",
   Action: "died",
   OOMKilled: true,
-  Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
+  Actor: { Attributes: { name: "lando-myapp--web", "dev.lando.app": "myapp" } },
 };
 
 const landoCtx: ProviderErrorContext = {

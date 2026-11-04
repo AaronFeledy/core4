@@ -120,7 +120,7 @@ The pipeline SHOULD produce reproducible binaries from identical source, Bun ver
 
 #### 17.6.1 Update manifest
 
-`UpdateManifestSchema` is published by `@lando/sdk/schema`. Its load-bearing fields are `channel`, `latest`, `released`, `minimum`, per-platform binary URL/checksum/size records, checksum URLs and signature, and release notes. Stable URLs live under `https://update.lando.dev/v4/<channel>.json`; each manifest has a cosign signature. Binaries older than `minimum` MUST refuse auto-update and direct the user to manual installation.
+`UpdateManifestSchema` is published by `@lando/sdk/schema`. Its load-bearing fields are `channel`, `latest`, `released`, `minimum`, per-platform binary URL/checksum/size records, checksum URLs and signature, and release notes. Stable URLs live under `https://update.lando.dev/v4/<channel>.json`; each manifest has a cosign signature. Binaries older than `minimum` MUST refuse auto-update and direct the user to manual installation. The updater records each channel's last accepted `latest` under the user data root and MUST reject a verified manifest whose `latest` is older, so replaying an earlier signed manifest cannot roll a channel back; clearing the user cache root MUST NOT reset that floor (§12.1). The freshness check and the floor advance are one compare-and-advance under the floor record's advisory lock, and every writer, including success and failure bookkeeping, merges so a channel's floor never decreases, even when two updates overlap. An unreadable or unrecognized floor record fails the update rather than reading as empty.
 
 #### 17.6.2 Atomic replace and rollback
 

@@ -1,10 +1,11 @@
 import { RedactionService } from "@lando/redaction/service";
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { bunSelfRun } from "../../cli/commands/bun-self-runner.ts";
 import { recipeAssetDigest } from "../builtin/snapshot-asset.ts";
 import type { RecipeInitPipelineRequest } from "../init-pipeline.ts";
-import { type PostInitExecutedAction, type PostInitOutcome, runPostInit } from "../post-init/runtime.ts";
+import { type PostInitExecutedAction, runPostInit } from "../post-init/runtime.ts";
 import { landoInvocationPrefix } from "../prompts/choices-command.ts";
 import { resolveRecipeDeclarationPath } from "../source-declaration-path.ts";
 import { RecipeInitPostInitError } from "./errors.ts";
@@ -70,87 +71,76 @@ export const runBoundPostInit = Effect.fn("RecipeInitPipeline.postInit")(functio
     const redaction = yield* Effect.serviceOption(RedactionService);
     if (redaction._tag === "Some")
       yield* redaction.value.registerValues([...Object.values(env), ...(stdin === undefined ? [] : [stdin])]);
-    let pending: Promise<PostInitOutcome> | undefined;
-    const outcome = yield* Effect.tryPromise({
-      try: (signal) => {
-        const execute = async () => {
+    const outcome = yield* tryPromiseSettled({
+      try: async (signal) => {
+        await verifyScript(signal);
+        const invoke = async (
+          cmd: readonly string[],
+          cwd: string,
+          childEnv: Readonly<Record<string, string>>,
+        ) => {
           await verifyScript(signal);
-          const invoke = async (
-            cmd: readonly string[],
-            cwd: string,
-            childEnv: Readonly<Record<string, string>>,
-          ) => {
+          const [executable, ...args] = cmd;
+          if (executable === undefined)
+            return Promise.reject(options.postFailure(`postInit[${index}] (${action.type})`));
+          return run(
+            runner
+              .run({
+                cmd: executable,
+                args,
+                cwd,
+                env: childEnv,
+                capture: true,
+                ...(stdin === undefined ? {} : { stdin }),
+              })
+              .pipe(
+                Effect.map((result) => ({
+                  ...result,
+                  stdout: redact(result.stdout),
+                  stderr: redact(result.stderr),
+                })),
+              ),
+            { signal },
+          );
+        };
+        return (request.runPostInit ?? runPostInit)({
+          redact,
+          actions: [action],
+          destination: plan.appRoot,
+          recipeId: plan.compiled.manifest.id,
+          appName: plan.appName,
+          answers: plan.answers,
+          ...(origin.kind === "directory" ? { recipeRoot: origin.root } : {}),
+          env,
+          ...(plan.compiled.manifest.runs === undefined ? {} : { runs: plan.compiled.manifest.runs }),
+          runBun: async ({ argv, cwd, execPath }) => {
             await verifyScript(signal);
-            const [executable, ...args] = cmd;
-            if (executable === undefined)
-              return Promise.reject(options.postFailure(`postInit[${index}] (${action.type})`));
             return run(
-              runner
-                .run({
-                  cmd: executable,
-                  args,
-                  cwd,
-                  env: childEnv,
-                  capture: true,
-                  ...(stdin === undefined ? {} : { stdin }),
-                })
-                .pipe(
-                  Effect.map((result) => ({
-                    ...result,
-                    stdout: redact(result.stdout),
-                    stderr: redact(result.stderr),
-                  })),
-                ),
+              bunSelfRun({
+                argv,
+                cwd,
+                env,
+                signal,
+                ...(execPath === undefined ? {} : { execPath }),
+                callerSubsystem: "recipe-post-init",
+                ...(stdin === undefined ? {} : { stdin }),
+              }),
               { signal },
             );
-          };
-          return (request.runPostInit ?? runPostInit)({
-            redact,
-            actions: [action],
-            destination: plan.appRoot,
-            recipeId: plan.compiled.manifest.id,
-            appName: plan.appName,
-            answers: plan.answers,
-            ...(origin.kind === "directory" ? { recipeRoot: origin.root } : {}),
-            env,
-            ...(plan.compiled.manifest.runs === undefined ? {} : { runs: plan.compiled.manifest.runs }),
-            runBun: async ({ argv, cwd, execPath }) => {
-              await verifyScript(signal);
-              return run(
-                bunSelfRun({
-                  argv,
-                  cwd,
-                  env,
-                  signal,
-                  ...(execPath === undefined ? {} : { execPath }),
-                  callerSubsystem: "recipe-post-init",
-                  ...(stdin === undefined ? {} : { stdin }),
-                }),
-                { signal },
-              );
-            },
-            commandRunner: ({ command, args }) =>
-              invoke(
-                [...landoInvocationPrefix(process.execPath, process.argv), command, ...args],
-                plan.appRoot,
-                env,
-              ),
-          });
-        };
-        pending = execute();
-        return pending;
+          },
+          commandRunner: ({ command, args }) =>
+            invoke(
+              [...landoInvocationPrefix(process.execPath, process.argv), command, ...args],
+              plan.appRoot,
+              env,
+            ),
+        });
       },
       catch: (cause) =>
         cause instanceof RecipeInitPostInitError
           ? cause
           : options.postFailure(`postInit[${index}] (${action.type})`),
-    }).pipe(
-      Effect.onInterrupt(() =>
-        Effect.promise(async () => {
-          if (pending !== undefined) await Promise.allSettled([pending]);
-        }),
-      ),
-    );
+    });
     for (const item of outcome.executed)
       executed.push({
         index,

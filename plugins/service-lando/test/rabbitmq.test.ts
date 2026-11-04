@@ -132,7 +132,7 @@ describe("rabbitmq ServiceType", () => {
         ]);
         const volumes = plan.mounts.filter((mount) => mount.type === "volume");
         expect(volumes).toHaveLength(1);
-        expect(volumes[0]?.store).toBe("myapp-rabbitmq-data");
+        expect(volumes[0]?.store).toBe("lando-myapp--queue--rabbitmq-data");
         expect(String(volumes[0]?.target)).toBe("/var/lib/rabbitmq");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({

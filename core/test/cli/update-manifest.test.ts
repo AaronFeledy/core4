@@ -26,6 +26,7 @@ import {
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
 import { updateOptionsFromInput, updateSpec } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
@@ -218,6 +219,7 @@ const runUpdate = (options: Parameters<typeof update>[0]) =>
   update({ updateStatePath: join(updateStateRoot, "state.json"), ...options }).pipe(
     Effect.provideService(ProcessRunner, noopProcessRunner),
     Effect.provideService(Telemetry, noopTelemetry),
+    Effect.provide(StateStoreLayer.layer),
   );
 
 const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<string | undefined> => {
@@ -576,6 +578,54 @@ describe("update signed manifest", () => {
     expect(tag).toBe("UpdateManifestReplayError");
   });
 
+  test("manifest replay floor lives under userData and survives user cache deletion", async () => {
+    const root = await makeTempRoot("lando-manifest-durable-");
+    const cache = join(root, "cache");
+    const data = join(root, "data");
+    await mkdir(cache, { recursive: true });
+    await mkdir(data, { recursive: true });
+    await writeFile(join(cache, "disposable"), "scratch");
+    const previousCache = process.env.LANDO_USER_CACHE_ROOT;
+    const previousData = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_CACHE_ROOT = cache;
+    process.env.LANDO_USER_DATA_ROOT = data;
+    const withDefaultStatePath = (options: Parameters<typeof update>[0]) =>
+      // Omit updateStatePath so the production default (userData) is exercised.
+      update(options).pipe(
+        Effect.provideService(ProcessRunner, noopProcessRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+        Effect.provide(StateStoreLayer.layer),
+      );
+    try {
+      await Effect.runPromise(
+        withDefaultStatePath({
+          channel: "stable",
+          currentVersion: "4.2.0",
+          dryRun: false,
+          fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
+          verifyManifestSignature: verifierFor(),
+        }),
+      );
+      await rm(cache, { recursive: true, force: true });
+
+      const tag = await failureTag(
+        withDefaultStatePath({
+          channel: "stable",
+          currentVersion: "4.2.0",
+          dryRun: true,
+          fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.3.0" }),
+          verifyManifestSignature: verifierFor(),
+        }),
+      );
+      expect(tag).toBe("UpdateManifestReplayError");
+    } finally {
+      if (previousCache === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+      else process.env.LANDO_USER_CACHE_ROOT = previousCache;
+      if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousData;
+    }
+  });
+
   test("dry-run verifies the signed manifest without persisting replay state", async () => {
     const updateStatePath = join(updateStateRoot, "dry-run-state.json");
 
@@ -609,7 +659,10 @@ describe("update signed manifest", () => {
     );
 
     expect(result.updatedCore).toBe(true);
-    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({ stable: { latest: "4.4.0" } });
+    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
+      version: 1,
+      data: { stable: { latest: "4.4.0" } },
+    });
   });
 
   test("normal update verification preserves the previous failure while refreshing replay state", async () => {
@@ -618,12 +671,15 @@ describe("update signed manifest", () => {
       updateStatePath,
       `${JSON.stringify(
         {
-          stable: {
-            latest: "4.3.0",
-            lastFailure: {
-              category: "launch_probe_failure",
-              targetVersion: "4.3.0",
-              platform: "linux-x64",
+          version: 1,
+          data: {
+            stable: {
+              latest: "4.3.0",
+              lastFailure: {
+                category: "launch_probe_failure",
+                targetVersion: "4.3.0",
+                platform: "linux-x64",
+              },
             },
           },
         },
@@ -645,12 +701,15 @@ describe("update signed manifest", () => {
 
     expect(result.updatedCore).toBe(true);
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
-      stable: {
-        latest: "4.4.0",
-        lastFailure: {
-          category: "launch_probe_failure",
-          targetVersion: "4.3.0",
-          platform: "linux-x64",
+      version: 1,
+      data: {
+        stable: {
+          latest: "4.4.0",
+          lastFailure: {
+            category: "launch_probe_failure",
+            targetVersion: "4.3.0",
+            platform: "linux-x64",
+          },
         },
       },
     });
@@ -1256,12 +1315,15 @@ describe("update signed manifest", () => {
     expect(probes).toHaveLength(2);
     const updateState = JSON.parse(await readFile(updateStatePath, "utf8"));
     expect(updateState).toEqual({
-      stable: {
-        latest: "4.4.0",
-        lastFailure: {
-          category: "launch_probe_failure",
-          targetVersion: "4.4.0",
-          platform: `${process.platform}-${process.arch}`,
+      version: 1,
+      data: {
+        stable: {
+          latest: "4.4.0",
+          lastFailure: {
+            category: "launch_probe_failure",
+            targetVersion: "4.4.0",
+            platform: `${process.platform}-${process.arch}`,
+          },
         },
       },
     });

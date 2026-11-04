@@ -15,7 +15,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -133,7 +132,6 @@ const solrListener = (service: ServiceConfig): ListenerContract => {
 
 const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, solrListener(service));
   const port = plannedPort(service, SOLR_LISTENER);
   const cores = service.cores ?? [];
@@ -149,7 +147,7 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.addStorage(
     {
-      store: `${appName}-solr-data`,
+      store: ctx.serviceStoreName("solr-data"),
       target: DATA_TARGET,
       readOnly: false,
     },

@@ -3,6 +3,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Schema } from "effect";
 
+import { UPDATE_HANDOFF_NAMESPACE } from "@lando/paths";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { CoreUpdateFailureSchema, UpdateNetworkError } from "./errors.ts";
 import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
@@ -37,15 +38,15 @@ const handoffError = (operation: string, cause: unknown): UpdateNetworkError =>
   new UpdateNetworkError({
     message: `Failed to ${operation} the one-shot update replacement receipt.`,
     url: "state://update/handoff",
-    remediation: "Clear the update handoff receipt under the user cache and retry `lando update`.",
+    remediation: "Clear the update handoff receipt under the user data root and retry `lando update`.",
     cause,
   });
 
 export const makeUpdateHandoff = (store: StateStoreShape, token?: string) => {
   const bucketFor = (opaqueToken: string) =>
     store.open({
-      root: "userCache",
-      namespace: "update-handoff",
+      root: "userData",
+      namespace: UPDATE_HANDOFF_NAMESPACE,
       key: `${opaqueToken}.json`,
       schema: Schema.NullOr(UpdateHandoffReceiptSchema),
       version: 1,

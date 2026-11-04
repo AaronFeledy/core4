@@ -58,6 +58,8 @@ test("shutdown inspects and deletes the owned id even when its name has been rep
       api: {
         request: (input) => {
           calls.push(input);
+          if (input.method === "GET" && input.path.startsWith("/containers/json?"))
+            return Effect.succeed({ status: 200, body: "[]" });
           if (input.path.startsWith("/networks/")) return Effect.succeed({ status: 404, body: "" });
           if (input.method === "POST") {
             replaced = true;
@@ -103,7 +105,8 @@ test("shutdown inspects and deletes the owned id even when its name has been rep
       .filter((input) => input.path.startsWith("/containers/"))
       .map((input) => `${input.method} ${input.path}`),
   ).toEqual([
-    `GET /containers/lando-${plan.slug}-web/json`,
+    "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dnetworks%22%5D%7D",
+    `GET /containers/lando-${plan.slug}--web/json`,
     "POST /containers/owned-before/stop",
     "GET /containers/owned-before/json",
     "DELETE /containers/owned-before?force=true&v=true",
@@ -122,6 +125,8 @@ test("later cleanup failure retains earlier shutdown facts and the original erro
         ctx: { providerId: "docker", remediation: "retry", env: {} },
         api: {
           request: (input) => {
+            if (input.method === "GET" && input.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             if (input.method !== "GET") return Effect.succeed({ status: 204, body: "" });
             if (input.path.startsWith("/networks/"))
               return Effect.succeed({ status: 500, body: "unavailable" });

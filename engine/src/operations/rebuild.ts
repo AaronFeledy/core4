@@ -33,7 +33,6 @@ import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/ap
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
@@ -111,7 +110,11 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
 
   const stopSelected = Effect.forEach(
     [...services].reverse(),
-    (service) => provider.stop({ app: plan.id, service: service.name, plan }),
+    // A planned service whose container is already gone needs no stop before it is rebuilt.
+    (service) =>
+      provider
+        .stop({ app: plan.id, service: service.name, plan })
+        .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
     { discard: true },
   );
   yield* markStartMutation(target.plan);
@@ -182,10 +185,9 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     target?: ResolvedAppTarget,
     managed?: StartManagedScope,
   ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
-    const plannedTarget = target ?? (yield* resolveDesiredAppTarget);
-    const placement = yield* ensureAppPlacementState(plannedTarget.app, plannedTarget.plan.provider);
+    const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
+    const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
-    const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
     const scoped = options.services !== undefined && options.services.length > 0;

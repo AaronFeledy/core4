@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "@lando/landofile/git-ref";
+import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "@lando/source-acquisition/locator";
 
 for (const [raw, value, ref] of [
   ["git@host:repo@main", "git@host:repo", "main"],

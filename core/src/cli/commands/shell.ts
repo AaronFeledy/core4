@@ -24,6 +24,7 @@ import {
   DeprecationService,
   type ExecTarget,
   LandofileService,
+  PathsService,
   type ProviderError,
   RuntimeProviderRegistry,
   SecretStore,
@@ -33,7 +34,6 @@ import {
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
-import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";
@@ -120,6 +120,7 @@ export type ShellAppServices =
   | AppPlanner
   | ConfigService
   | LandofileService
+  | PathsService
   | RuntimeProviderRegistry
   | SecretStore
   | ShellRunner;
@@ -324,6 +325,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   }
 
   const shellRunner = yield* ShellRunner;
+  const paths = yield* PathsService;
   const secretStore = yield* SecretStore;
   const interactive =
     options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
@@ -352,7 +354,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const historyFile =
     options.noHistory === true
       ? undefined
-      : (options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root)));
+      : (options.historyFile ?? paths.shellHistoryFile(plan.name, String(plan.root)));
 
   const launched = yield* shellRunner.interactive({
     cwd,

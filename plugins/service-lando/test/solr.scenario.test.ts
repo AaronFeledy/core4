@@ -218,7 +218,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-solr-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--search--solr-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual([
       "bash",

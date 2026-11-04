@@ -62,7 +62,6 @@ const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCH
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { creds, port } = connectionFor(ctx);
-  const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
   const { ownsStartup } = Schema.decodeUnknownSync(MssqlFeatureConfig)(ctx.config);
 
@@ -75,7 +74,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     MSSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
-    store: `${appName}-mssql-data`,
+    store: ctx.serviceStoreName("mssql-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

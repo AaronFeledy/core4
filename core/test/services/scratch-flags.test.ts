@@ -52,23 +52,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      fetchTarball: async () => {
-        throw new Error("Unexpected npm download");
-      },
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -211,18 +195,25 @@ const makeLayer = (
   );
   const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
     admissionLayer,
     environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     initApp === undefined
-      ? ScratchInitAppPortLayer.layer
+      ? ScratchInitAppPortLayer.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer, BunProcessRunner.layer),
+          ),
+        )
       : Layer.succeed(ScratchAppServiceLayer.ScratchInitAppPort, initApp),
     BunDataMover.layer.pipe(
       Layer.provide(registryLive),

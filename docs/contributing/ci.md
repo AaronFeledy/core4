@@ -574,6 +574,10 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
 
+## Nightly source-store acceptance
+
+The nightly workflow runs compiled source-store acceptance on `linux-x64`, `darwin-arm64`, and `windows-x64`. Each `source-store-acceptance-<platform>` job downloads the current run's container helper, rebuilds the command registry manifest, compiles that platform's CLI the same way `build-<platform>` does in `ci`, points `LANDO_TEST_COMPILED_CLI` at the binary (including the Windows `.exe`), and runs `core/test/build/source-store-acceptance.integration.test.ts`. Every job checks `git --version`; the Windows job also requires `git-http-backend` under `git --exec-path` because the suite serves bare repos through Git's CGI backend. The suite ends in `.integration.test.ts`, so PR unit shards exclude it.
+
 ## Provider matrix
 
 The `provider-matrix` workflow runs weekly, on manual dispatch, on pull request when provider-matrix or Docker exec paths change, and automatically after the runtime-bundle publisher successfully repins the committed runtime-bundle manifest on `main`. The publisher dispatch uses the GitHub Actions API (`gh workflow run provider-matrix.yml --ref main`) because its manifest-repin push uses `github.token` and does not trigger another `push:` workflow.

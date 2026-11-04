@@ -159,7 +159,7 @@ services:
     type: postgres:18
 ```
 
-Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the `<app>-postgresql-data` volume.
+Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the service's own `lando-<app>--<service>--postgresql-data` volume.
 
 Changing the major doesn't upgrade an existing database. Postgres refuses to start on files from another major, so the `lando start` that applies the change fails with the server's own error. Move the data through a dump. The volume-deletion step below removes app service volumes, not only this database. Verify that the export exists and back up any other service data you need before continuing:
 

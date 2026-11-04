@@ -144,6 +144,9 @@ const makeApi = (options: {
     request: (request) =>
       Effect.sync(() => {
         record(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start|\/stop)?/u);
         const name = containerMatch?.[1];
         if (request.method === "GET" && request.path.startsWith("/networks/")) {

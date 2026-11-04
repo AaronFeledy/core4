@@ -162,6 +162,9 @@ const makeFakeApi = () => {
           running.delete(name);
           return { status: 204, body: "" };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
@@ -192,7 +195,7 @@ describe("provider-lando inspect", () => {
     for (const snapshot of snapshots) {
       expect(snapshot.state).toBe("running");
       expect(snapshot.status).toBe("running");
-      expect(snapshot.containerId).toBe(`lando-inspectapp-${snapshot.service}-id`);
+      expect(snapshot.containerId).toBe(`lando-inspectapp--${snapshot.service}-id`);
       expect(snapshot.publications).toEqual({ status: "unknown" });
     }
     const callsBeforeInspect = fake.calls.length;
@@ -204,7 +207,7 @@ describe("provider-lando inspect", () => {
 
   test("reports a stopped service without starting or removing it", async () => {
     const fake = makeFakeApi();
-    fake.existing.add("lando-inspectapp-node");
+    fake.existing.add("lando-inspectapp--node");
 
     const snapshot = await Effect.runPromise(
       inspect(plan, { app: appId, service: node.name }, { api: fake.api }),
@@ -216,10 +219,10 @@ describe("provider-lando inspect", () => {
       providerId,
       state: "stopped",
       status: "stopped",
-      containerId: "lando-inspectapp-node-id",
+      containerId: "lando-inspectapp--node-id",
       publications: { status: "unknown" },
     });
-    expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp-node/json" }]);
+    expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp--node/json" }]);
   });
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(

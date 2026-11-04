@@ -165,7 +165,7 @@ describe("provider-docker waitForExit", () => {
     // Then
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
-      { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
+      { method: "POST", path: "/containers/lando-wait-for-exit-app--web/wait" },
     ]);
   });
 
@@ -189,7 +189,7 @@ describe("provider-docker waitForExit", () => {
 
     // Then
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
-      { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
+      { method: "POST", path: "/containers/lando-wait-for-exit-app--web/wait" },
     ]);
   });
 

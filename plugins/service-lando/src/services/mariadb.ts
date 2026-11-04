@@ -101,7 +101,6 @@ const mariadbCreds = (
 
 const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -111,7 +110,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
     MYSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
-    store: `${appName}-mariadb-data`,
+    store: ctx.serviceStoreName("mariadb-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

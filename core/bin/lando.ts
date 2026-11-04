@@ -11,7 +11,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
-import { resolveLandoRoots } from "@lando/paths";
+import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
 
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
@@ -66,7 +66,7 @@ const main = async (): Promise<void> => {
     return;
   }
   await runWithProcessSignalReraise(async (state) => {
-    if (existsSync(join(resolveLandoRoots().userCacheRoot, "update-handoff"))) {
+    if (existsSync(updateHandoffDir(resolveLandoRoots().userDataRoot))) {
       const { surfaceDeferredUpdateReceipts } = await import("../src/cli/update-receipts.ts");
       if (await surfaceDeferredUpdateReceipts(argv)) return;
     }

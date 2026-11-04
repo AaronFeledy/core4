@@ -40,7 +40,7 @@ Each `db` line has a job:
 | `type: postgres:18` | Select Lando's Postgres 18 service type while keeping the custom image below |
 | `image: pgvector/pgvector:pg18` | Postgres 18 with the `vector` extension already compiled in |
 
-Lando sets `PGDATA` to `/var/lib/postgresql/data` and mounts the `<app>-postgresql-data` volume there for every supported Postgres major, including 18. You don't need an environment override for this image.
+Lando sets `PGDATA` to `/var/lib/postgresql/data` and mounts the service's `lando-<app>--<service>--postgresql-data` volume there for every supported Postgres major, including 18. You don't need an environment override for this image.
 
 Use a fresh app for this example. Changing an existing database's image from another Postgres major does not upgrade its files. Export the data before changing the major, then restore into a fresh volume.
 
