@@ -77,7 +77,11 @@ describe("mkcert CertificateAuthority", () => {
     }
   });
 
-  test("terminates option parsing before option-shaped certificate names", async () => {
+  test.each([
+    { cn: "-uninstall", sans: ["-cert-file", "/tmp/overwrite.pem", "-key-file"] },
+    { cn: "app.lndo.site", sans: ["*-app.lndo.site"] },
+    { cn: "app.lndo.site", sans: ["wild.*.app.lndo.site"] },
+  ])("rejects names that are not certificate names before running mkcert (%j)", async (spec) => {
     const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
@@ -85,25 +89,10 @@ describe("mkcert CertificateAuthority", () => {
       const { ca } = makeCa(harness, runner);
       await Effect.runPromise(ca.setup({ force: false, skipTrustInstall: true }));
 
-      const result = await Effect.runPromise(
-        ca.issueCert({
-          cn: "-uninstall",
-          sans: ["-cert-file", "/tmp/overwrite.pem", "-key-file"],
-        }),
-      );
+      const error = failure(await Effect.runPromiseExit(ca.issueCert(spec)));
 
-      const issueCall = runner.calls().find((call) => call.args.includes("-cert-file"));
-      expect(issueCall?.args).toEqual([
-        "-cert-file",
-        result.certPath,
-        "-key-file",
-        result.keyPath,
-        "--",
-        "-cert-file",
-        "/tmp/overwrite.pem",
-        "-key-file",
-        "-uninstall",
-      ]);
+      expect(error).toBeInstanceOf(CaError);
+      expect(runner.calls().some((call) => call.args.includes("-cert-file"))).toBe(false);
     } finally {
       restore();
       await harness.cleanup();

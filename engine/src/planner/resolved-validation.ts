@@ -3,6 +3,7 @@ import { getLandofileValueSource } from "@lando/landofile/validation";
 import {
   type ConfigLintRuleId,
   DomainName,
+  HostAliasName,
   LANDO_SHARED_CROSS_APP_NETWORK,
   type LandofileShape,
   type RouteInput,
@@ -126,6 +127,18 @@ export const validateResolvedLandofile = (input: {
   }
   issues.push(...dnsNameIssues({ landofile, isBlocked, appSlug: input.appSlug }));
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
+    for (const hostname of Object.keys(service.extra_hosts ?? {})) {
+      const path = ["services", name, "extra_hosts", hostname];
+      if (isBlocked(path) || hostname.includes("{{")) continue;
+      if (!Schema.is(HostAliasName)(hostname))
+        issues.push({
+          path,
+          rule: "landofile.hostname",
+          message: `Invalid host alias ${JSON.stringify(hostname)}.`,
+          suggestion:
+            "Use labels of at most 63 letters, digits, hyphens, or underscores, with no leading or trailing hyphen and at most 253 characters total; omit wildcards, schemes, ports, paths, whitespace, and trailing dots.",
+        });
+    }
     for (const key of Object.keys(service.networks ?? {})) {
       if (key !== "default" && !Object.hasOwn(landofile.networks ?? {}, key))
         networkIssue(

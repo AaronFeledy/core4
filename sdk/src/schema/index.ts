@@ -135,7 +135,14 @@ export * from "./container-helper.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";
-export { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+export {
+  CertificateName,
+  certificateNameForHostname,
+  DomainName,
+  HostAliasName,
+  RouteHostname,
+  RoutePathPrefix,
+} from "./hostname.ts";
 export * from "./networking.ts";
 export * from "./route-filter.ts";
 export * from "./notify-config.ts";

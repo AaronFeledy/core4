@@ -114,6 +114,90 @@
     "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
   },
   {
+    "surface": "command:app:share",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 aligns tunnel route targets with RouteHostname, including leftmost wildcard patterns and 253-character hostnames selected by defaultTunnelTarget. Session and provider identifiers retain filename-safe TunnelIdentifier validation. SDK and share-target regressions cover this intentional grammar change."
+  },
+  {
+    "surface": "command:app:share:list",
+    "changeKind": "unsupported-construct",
+    "path": "$.items.target.anyOf",
+    "justification": "Pre-release #1583 propagates the reviewed TunnelTarget route grammar into share-list results. Route ids accept RouteHostname or TunnelIdentifier; hostname accepts RouteHostname, while session ids remain filename-safe."
+  },
+  {
+    "surface": "schema:CertificatePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.cn.allOf",
+    "justification": "Pre-release #1583 intentionally narrows certificate common names to CertificateName: ASCII host-alias DNS names, optional whole leftmost wildcard label, or unbracketed IP literals without zones. Mandatory service identities fail with a tagged validation error before CA issuance."
+  },
+  {
+    "surface": "schema:CertificatePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.sans.items.allOf",
+    "justification": "Pre-release #1583 intentionally validates every certificate SAN with CertificateName. Partial leftmost route wildcards map to the covering *.rest SAN; deeper wildcard routes require HTTP and contribute no certificate identity. Service-certs and proxy issuance regressions verify the CA receives valid mapped names."
+  },
+  {
+    "surface": "schema:HostAliasPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-release #1583 intentionally replaces unrestricted host alias strings with HostAliasName: underscore-capable DNS-shaped labels bounded to 63 characters each and 253 total, without wildcard, scheme, port, path, whitespace, trailing dot, or boundary hyphen. Authored extra_hosts and feature-contributed aliases fail with structured field paths."
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.authorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates RouteHostname into proxy authority results. Published authorities preserve the route pattern, including partial leftmost wildcards, while rejecting malformed host strings."
+  },
+  {
+    "surface": "schema:ProxyAuthority",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-release #1583 intentionally constrains proxy authority hostnames to the same RouteHostname grammar as planned routes. Scheme, port, path, whitespace, and malformed labels belong outside this field; valid wildcard route patterns remain representable."
+  },
+  {
+    "surface": "schema:ProxyStatus",
+    "changeKind": "unsupported-keyword",
+    "path": "$.authorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates the reviewed ProxyAuthority RouteHostname contract into proxy status observations, preserving authored route patterns and rejecting malformed authority hostnames."
+  },
+  {
+    "surface": "schema:RouteEvidence",
+    "changeKind": "unsupported-keyword",
+    "path": "$.configuredAuthorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates RouteHostname into configured authorities retained as route evidence. These values describe planned route patterns, so their grammar now matches RoutePlan rather than unrestricted strings."
+  },
+  {
+    "surface": "schema:RouteEvidence",
+    "changeKind": "unsupported-construct",
+    "path": "$.observation.anyOf",
+    "justification": "Pre-release #1583 propagates the reviewed ProxyAuthority hostname grammar into observed route evidence. Observation variants and lifecycle meaning remain unchanged; their authority hostname fields now use RouteHostname."
+  },
+  {
+    "surface": "schema:TunnelSession",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 propagates the shared RouteHostname target grammar into tunnel sessions. Wildcard and maximum-length route hostnames selected by the planner decode correctly; session ids continue to reject wildcard characters and remain filename-safe."
+  },
+  {
+    "surface": "schema:TunnelSessionFilter",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 lets tunnel session filters address the same RouteHostname patterns accepted by TunnelTarget, including wildcard and long hostnames. Provider and session identifiers retain TunnelIdentifier."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 aligns tunnel start targets with routes copied by defaultTunnelTarget: hostname uses RouteHostname and routeId accepts RouteHostname or TunnelIdentifier. Non-route targets and filename-safe session identifiers retain their contracts."
+  },
+  {
+    "surface": "schema:TunnelTarget",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1583 replaces the private tunnel hostname grammar with RouteHostname and lets routeId carry RouteHostname or TunnelIdentifier. This accepts valid wildcard and 253-character routes while rejecting malformed hostnames; session and provider ids remain separately constrained for filenames."
+  },
+  {
     "surface": "schema:ServiceFeatureValidationResult",
     "changeKind": "enum-widened",
     "path": "$.handledServiceFields.items",
