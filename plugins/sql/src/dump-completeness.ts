@@ -88,8 +88,8 @@ export const trackDumpCompleteness = (rule: DumpCompletenessRule | undefined) =>
       tracker?.push(chunk);
     },
     requireComplete: (label: string, fromStdin: boolean) => {
-      const reason = size === 0 ? "empty" : tracker?.verdict() === "truncated" ? "truncated" : undefined;
-      if (reason === undefined) return Effect.void;
+      if (size !== 0 && tracker?.verdict() !== "truncated") return Effect.void;
+      const reason = size === 0 ? "empty" : "truncated";
       const source = fromStdin ? "the command feeding stdin" : "the dump file";
       const truncatedRemediation = fromStdin
         ? "Recreate the dump and check that the export command succeeded (in bash, set -o pipefail), then retry."

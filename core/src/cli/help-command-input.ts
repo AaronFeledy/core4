@@ -31,16 +31,10 @@ export const commandHelpInput = (
     .filter(([name]) => !universalFlags.has(name))
     .map(([name, flag]) => {
       const char = flag.char ?? spellings?.[name]?.char;
+      const type = flag.type !== "boolean" && flag.valueType === "integer" ? "integer" : flag.type;
       return {
         name: flag.name ?? name,
-        type:
-          flag.type === "boolean"
-            ? "boolean"
-            : flag.valueType === "integer"
-              ? "integer"
-              : flag.type === "number"
-                ? "number"
-                : "string",
+        type: type === "option" ? "string" : type,
         required: flag.required === true,
         multiple: flag.multiple === true,
         ...(flag.description === undefined ? {} : { description: flag.description }),
@@ -59,6 +53,7 @@ export const commandHelpInput = (
       multiple: arg.multiple === true || (spec.strict === false && args.length === 1),
       ...(description === undefined ? {} : { description }),
       ...(arg.options === undefined ? {} : { options: arg.options }),
+      ...(arg.default === undefined ? {} : { default: arg.default }),
       ...(arg.stdio === undefined ? {} : { stdio: arg.stdio }),
     };
   }),

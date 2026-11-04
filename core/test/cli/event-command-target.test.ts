@@ -70,6 +70,7 @@ describe("resolveEventCommandTarget", () => {
     { args: { file: { type: "string", stdio: "stdin", multiple: true } } },
     { args: { file: { type: "option", stdio: "stdin", valueType: "integer" } } },
     { args: { file: { type: "number", stdio: "stdin" } } },
+    { args: { file: { type: "string", stdio: "stdout", default: "-" } } },
     { args: { first: { type: "string", stdio: "stdout" }, second: { type: "string", stdio: "stdout" } } },
     { flags: { file: { type: "string", stdio: "stdin" } } },
     { stdio: () => ({ stdout: true }) },

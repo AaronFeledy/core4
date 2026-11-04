@@ -95,10 +95,11 @@ const memberSchema = (view: McpInputMemberView): JsonSchemaObject => {
     ...(memberType(view) === "integer" && view.min !== undefined ? { minimum: view.min } : {}),
   };
   const base: JsonSchemaObject = view.multiple === true ? { type: "array", items: scalar } : scalar;
-  const description =
-    view.stdio === undefined
-      ? view.description
-      : `${view.description ? `${view.description} ` : ""}A filesystem path is required; - is CLI-only.`;
+  let description = view.description;
+  if (view.stdio !== undefined) {
+    const sentence = "A filesystem path is required; - is CLI-only.";
+    description = description ? `${description} ${sentence}` : sentence;
+  }
   return description === undefined ? base : { ...base, description };
 };
 

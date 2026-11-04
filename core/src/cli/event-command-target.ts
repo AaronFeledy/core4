@@ -92,6 +92,8 @@ export const loadPluginSpec = (
             (arg.type !== "string" && arg.type !== "option") ||
             arg.valueType === "integer" ||
             arg.multiple === true ||
+            // The dash must be the user's explicit choice; a defaulted dash would claim the stream unasked.
+            arg.default === "-" ||
             streams.has(arg.stdio)
           )
             return true;
@@ -103,7 +105,7 @@ export const loadPluginSpec = (
           pluginName,
           message: `Plugin ${pluginName} command ${id} has an invalid stdio declaration.`,
           remediation:
-            "Declare stdio as stdin or stdout only on a non-multiple string/option positional arg with string values, at most once per stream. Remove command-level and flag stdio declarations.",
+            "Declare stdio as stdin or stdout only on a non-multiple string/option positional arg with string values and no - default, at most once per stream. Remove command-level and flag stdio declarations.",
         });
       if (descriptor !== undefined && spec.summary !== undefined && spec.summary !== descriptor.summary)
         issues.push("module summary differs from the manifest summary");

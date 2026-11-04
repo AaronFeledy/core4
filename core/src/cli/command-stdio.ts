@@ -13,12 +13,13 @@ export type CommandStdioStdin = Parameters<typeof cancellableTerminalStdin>[0] &
 export const commandStdioRequest = (
   spec: Pick<ExecutableCommandSpec, "args">,
   args: Readonly<Record<string, unknown>>,
-): { readonly stdin?: boolean; readonly stdout?: boolean } =>
-  Object.fromEntries(
-    Object.entries(spec.args ?? {})
-      .filter(([name, arg]) => arg.stdio !== undefined && args[name] === "-")
-      .map(([, arg]) => [arg.stdio, true]),
-  );
+): { readonly stdin?: boolean; readonly stdout?: boolean } => {
+  const request: { stdin?: boolean; stdout?: boolean } = {};
+  for (const [name, arg] of Object.entries(spec.args ?? {})) {
+    if (arg.stdio !== undefined && args[name] === "-") request[arg.stdio] = true;
+  }
+  return request;
+};
 
 export interface GrantCommandStdioOptions {
   readonly command: string;

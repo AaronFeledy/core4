@@ -2,6 +2,12 @@ import { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { PluginCommandDiagnostic } from "./plugin-command-catalog";
 
+const defaultValue = Schema.optionalKey(
+  Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+).annotate({
+  description: "Default value when declared.",
+});
+
 const inputItemFields = {
   name: Schema.String.annotate({ description: "Declared input name." }),
   description: Schema.optionalKey(Schema.String).annotate({ description: "Help text for this input." }),
@@ -17,9 +23,7 @@ export const HelpCommandInput = Schema.Struct({
       type: Schema.Literals(["boolean", "string", "integer", "number"]).annotate({
         description: "Flag value type.",
       }),
-      default: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])).annotate({
-        description: "Default value when declared.",
-      }),
+      default: defaultValue,
       char: Schema.optionalKey(Schema.String).annotate({
         description: "Single-character short flag spelling.",
       }),
@@ -34,6 +38,7 @@ export const HelpCommandInput = Schema.Struct({
   args: Schema.Array(
     Schema.Struct({
       ...inputItemFields,
+      default: defaultValue,
       stdio: Schema.optionalKey(Schema.Literals(["stdin", "stdout"])).annotate({
         description: "Payload stream selected by a bare dash argument.",
       }),

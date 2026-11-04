@@ -43,8 +43,8 @@ export const commands = new Map([["fixture:dump", async () => ({
   },
   args: {
     service: { type: "string", description: "Source service.", required: true, options: ["database", "replica"] },
-    file: { type: "string", description: "Output file, or - for stdout.", stdio: "stdout" },
-    source: { type: "string", description: "Input file, or - for stdin.", stdio: "stdin" },
+    file: { type: "string", description: "Output file.", default: "dump.out", stdio: "stdout" },
+    source: { type: "string", description: "Input file.", stdio: "stdin" },
     extra: { type: "string", description: "Additional inputs.", multiple: true },
   },
   resultSchema: Schema.String, run: () => Effect.succeed("unused"),
@@ -109,14 +109,15 @@ export const commands = new Map([["fixture:dump", async () => ({
         },
         {
           name: "file",
-          description: "Output file, or - for stdout. Use - to write to stdout.",
+          description: "Output file. Use - to write to stdout.",
           required: false,
           multiple: false,
+          default: "dump.out",
           stdio: "stdout",
         },
         {
           name: "source",
-          description: "Input file, or - for stdin. Use - to read from stdin.",
+          description: "Input file. Use - to read from stdin.",
           required: false,
           multiple: false,
           stdio: "stdin",

@@ -25,23 +25,22 @@ export const ensureExportDestination = (
   }).pipe(
     Effect.flatMap((info) => {
       if (info === undefined || info.isFile()) return Effect.void;
-      const refusal = info.isDirectory()
-        ? {
-            message: `Export destination is a directory: ${path}`,
-            remediation: "Pass a file path, for example a dump.sql.gz inside that directory.",
-          }
-        : info.isSymbolicLink()
-          ? {
-              message: `Export destination is a symbolic link to a missing file: ${path}`,
-              remediation: "Point the link at an existing file, remove it, or pass another path.",
-            }
-          : {
-              message: `Export destination is not a regular file: ${path}`,
-              remediation: `To stream into a pipe or another program, pass - and redirect stdout: lando db:export - > ${path}`,
-            };
+      let message: string;
+      let remediation: string;
+      if (info.isDirectory()) {
+        message = `Export destination is a directory: ${path}`;
+        remediation = "Pass a file path, for example a dump.sql.gz inside that directory.";
+      } else if (info.isSymbolicLink()) {
+        message = `Export destination is a symbolic link to a missing file: ${path}`;
+        remediation = "Point the link at an existing file, remove it, or pass another path.";
+      } else {
+        message = `Export destination is not a regular file: ${path}`;
+        remediation = `To stream into a pipe or another program, pass - and redirect stdout: lando db:export - > ${path}`;
+      }
       return Effect.fail(
         new CommandInputValidationError({
-          ...refusal,
+          message,
+          remediation,
           target: "db:export",
           field: "file",
           kind: "arg",
