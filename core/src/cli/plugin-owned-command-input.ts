@@ -58,6 +58,8 @@ export const renderPluginOwnedCommandHelp = (
       name,
       {
         type: "option",
+        ...(definition.description === undefined ? {} : { description: definition.description }),
+        ...(definition.options === undefined ? {} : { options: definition.options }),
         ...(definition.required === undefined ? {} : { required: definition.required }),
         ...(definition.multiple === undefined ? {} : { multiple: definition.multiple }),
       },
