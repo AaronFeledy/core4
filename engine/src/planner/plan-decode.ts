@@ -63,6 +63,12 @@ export const decodeAppPlan = (
           ...issue,
           rule: issue.rule ?? ("landofile.route" as const),
           message: `Route for service ${String(route.service)} with hostname ${String(route.hostname)}: ${issue.message}`,
+          ...(issue.suggestion === undefined && issue.path[2] === "hostname"
+            ? {
+                suggestion:
+                  "Default routes are built from the service and app names, and plugins can add routes. Keep those names valid DNS labels (letters, digits, and hyphens, at most 63 characters each), or declare the service's routes yourself.",
+              }
+            : {}),
         };
       });
   if (Result.isSuccess(decoded) && issues.length === 0) return Effect.succeed(decoded.success);

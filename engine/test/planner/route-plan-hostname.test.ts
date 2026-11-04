@@ -28,7 +28,9 @@ test("rejects an invalid generated route at the final AppPlan boundary", async (
   if (Result.isFailure(result)) {
     expect(result.failure).toBeInstanceOf(LandofileValidationError);
     if (result.failure instanceof LandofileValidationError)
-      expect(result.failure.issues.map(({ path }) => path)).toEqual([["routes", 0, "hostname"]]);
+      expect(result.failure.issues.map(({ path, suggestion }) => [path, suggestion !== undefined])).toEqual([
+        [["routes", 0, "hostname"], true],
+      ]);
   }
 });
 import { planTestLandofile } from "../compiled-landofile.ts";
