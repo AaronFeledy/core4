@@ -76,7 +76,7 @@ import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
-import { decodeAppPlan } from "./plan-decode.ts";
+import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
 import {
   agentSocketCapabilityErrors,
   assertRouteNetworkingSupported,
@@ -414,6 +414,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
+      yield* assertRoutesCertificateCoverable(appRoot, cached.routes);
       yield* validateServiceProbes(cached);
       if (cached.fileSync.length > 0) yield* selectFileSyncEngine;
       yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);

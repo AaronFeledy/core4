@@ -42,6 +42,14 @@ const uncoverableHttpsRouteIssues = (routes: ReadonlyArray<RoutePlan>): Readonly
         ];
   });
 
+const invalidPlan = (appRoot: string, issues: ReadonlyArray<ValidationIssue>) =>
+  new LandofileValidationError({
+    message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
+    remediation: "Correct the reported plan fields or the plugin that produced them.",
+    file: `${appRoot}/.lando.yml`,
+    issues,
+  });
+
 export const decodeAppPlan = (
   appRoot: string,
   plan: unknown,
@@ -72,12 +80,11 @@ export const decodeAppPlan = (
         };
       });
   if (Result.isSuccess(decoded) && issues.length === 0) return Effect.succeed(decoded.success);
-  return Effect.fail(
-    new LandofileValidationError({
-      message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
-      remediation: "Correct the reported plan fields or the plugin that produced them.",
-      file: `${appRoot}/.lando.yml`,
-      issues,
-    }),
-  );
+  return Effect.fail(invalidPlan(appRoot, issues));
+};
+
+/** Cached plans skip decodeAppPlan, so the cache-hit path re-applies the coverage policy. */
+export const assertRoutesCertificateCoverable = (appRoot: string, routes: ReadonlyArray<RoutePlan>) => {
+  const issues = uncoverableHttpsRouteIssues(routes);
+  return issues.length === 0 ? Effect.void : Effect.fail(invalidPlan(appRoot, issues));
 };
