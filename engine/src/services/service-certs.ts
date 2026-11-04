@@ -201,7 +201,10 @@ const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
     .issueCert({ cn, sans })
     .pipe(
       Effect.mapError((cause) =>
-        validationError(input, `could not be issued: ${cause.message}. ${CA_REMEDIATION}`),
+        validationError(
+          input,
+          `could not be issued: ${cause.message.replace(/\.$/u, "")}. ${CA_REMEDIATION}`,
+        ),
       ),
     );
   return { certPath: issued.certPath, keyPath: issued.keyPath, cn, sans, caId: ca.id };

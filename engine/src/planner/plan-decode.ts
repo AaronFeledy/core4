@@ -44,7 +44,10 @@ const uncoverableHttpsRouteIssues = (routes: ReadonlyArray<RoutePlan>): Readonly
 
 const invalidPlan = (appRoot: string, issues: ReadonlyArray<ValidationIssue>) =>
   new LandofileValidationError({
-    message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
+    message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}`.replace(
+      /(?<![.?!])$/u,
+      ".",
+    ),
     remediation: "Correct the reported plan fields or the plugin that produced them.",
     file: `${appRoot}/.lando.yml`,
     issues,
