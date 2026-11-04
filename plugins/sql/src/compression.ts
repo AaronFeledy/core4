@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 
 import { Effect, Stream, absurd } from "effect";
 
-import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/errors";
+import { DataChecksumMismatchError, SqlDumpCompressionError, errnoCode } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 
@@ -67,6 +67,9 @@ const streamThrough = (
   }
 };
 
+const EXPORT_DISK_REMEDIATION =
+  "Retry the export after checking host disk space. Dump compression runs on the host process, not inside the database service.";
+
 const dumpCompressionError = (
   path: string,
   compression: Exclude<DumpCompression, "none">,
@@ -82,9 +85,33 @@ const dumpCompressionError = (
     operation,
     remediation:
       operation === "compress"
-        ? "Retry the export after checking host disk space. Dump compression runs on the host process, not inside the database service."
+        ? EXPORT_DISK_REMEDIATION
         : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import.",
   });
+
+const stagingDirectoryError = (
+  parent: string,
+  compression: Exclude<DumpCompression, "none">,
+  operation: "compress" | "decompress",
+  cause: unknown,
+): SqlDumpCompressionError => {
+  const code = errnoCode(cause);
+  const unwritable = code === "EACCES" || code === "EPERM";
+  return new SqlDumpCompressionError({
+    message: `Failed to create a dump staging directory in ${parent}`,
+    path: parent,
+    compression,
+    operation,
+    remediation: unwritable
+      ? operation === "compress"
+        ? "Verify the destination directory is writable, then retry the export."
+        : "Verify the host temp directory is writable, then retry the import."
+      : operation === "compress"
+        ? EXPORT_DISK_REMEDIATION
+        : "Retry the import after checking free space in the host temp directory.",
+    cause,
+  });
+};
 
 export const writeDumpTransform = (
   sourcePath: string,
@@ -149,7 +176,7 @@ export const acquireStagedDump = (
       await mkdir(parent, { recursive: true });
       return mkdtemp(join(parent, ".lando-dump-"));
     },
-    catch: () => dumpCompressionError(parent, compression, operation),
+    catch: (cause) => stagingDirectoryError(parent, compression, operation, cause),
   });
 
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { SqlDumpCompressionError } from "@lando/sdk/errors";
 
 import {
+  acquireStagedDump,
   collectDumpPrefix,
   compressionFromExportPath,
   detectDumpCompression,
@@ -151,6 +152,34 @@ describe("dump compression helpers", () => {
 
       // Then
       expect(new Uint8Array(await readFile(destination))).toEqual(new Uint8Array(expected));
+    },
+  );
+});
+
+describe("compressed export staging", () => {
+  // Issue #2021: an unwritable destination was reported as a disk-space problem.
+  test.skipIf(process.getuid?.() === 0)(
+    "an unwritable destination directory keeps its cause and points at permissions",
+    async () => {
+      // Given
+      const parent = await mkdtemp(join(tmpdir(), "lando-sql-ro-"));
+      await chmod(parent, 0o555);
+      try {
+        // When
+        const exit = await Effect.runPromiseExit(acquireStagedDump(parent, "gzip", "compress"));
+        // Then
+        const error = Exit.isFailure(exit)
+          ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+          : undefined;
+        expect(error).toBeInstanceOf(SqlDumpCompressionError);
+        if (!(error instanceof SqlDumpCompressionError)) return;
+        expect(error.cause).toMatchObject({ code: "EACCES" });
+        expect(error.remediation).toContain("writable");
+        expect(error.remediation).not.toContain("disk space");
+      } finally {
+        await chmod(parent, 0o755);
+        await rm(parent, { recursive: true, force: true });
+      }
     },
   );
 });
