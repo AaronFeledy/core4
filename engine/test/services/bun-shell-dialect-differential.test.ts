@@ -206,7 +206,11 @@ describe.skipIf(!hasSh)("Bun Shell differential against accepted POSIX sh forms"
 
   test("star glob matches the same names as sh but in directory order", async () => {
     const { bun, reference } = await compare("printf '%s\\n' *.txt");
-    const names = (stdout: Buffer) => stdout.toString().split("\n").filter((line) => line !== "");
+    const names = (stdout: Buffer) =>
+      stdout
+        .toString()
+        .split("\n")
+        .filter((line) => line !== "");
     expect(bun.exitCode).toBe(reference.exitCode);
     expect(names(bun.stdout).toSorted()).toEqual(names(reference.stdout));
   });
