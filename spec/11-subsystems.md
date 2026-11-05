@@ -76,7 +76,7 @@ Full withdrawal through `removeRoutes` or `applyRoutes([])` remains an idempoten
 
 Core owns `TunnelService`, `TunnelTarget`, `TunnelStartRequest`, `TunnelStopRequest`, `TunnelStatusRequest`, `TunnelSessionFilter`, `TunnelSession`, `TunnelStatus`, tagged errors, CLI/API shape, detached-state rules, and the contract suite. Plugins own provider realization through `tunnelServices:` (§9.5).
 
-`TunnelTarget` identifies a `RoutePlan`, a service endpoint, or a core-derived loopback URL. Plugins MUST NOT expose arbitrary host ports by default; raw host-port forwarding requires an advanced option and is rejected by canonical `lando share` UX.
+`TunnelTarget` identifies a `RoutePlan`, a service endpoint, or a core-derived loopback URL. A tunnel route target's `hostname` is a `RouteHostname` (the same public grammar as routes, including leftmost and deep wildcards). Its `routeId` is either that hostname or a `TunnelIdentifier` used for session and provider filenames; session identifiers MUST NOT accept `*`. Plugins MUST NOT expose arbitrary host ports by default; raw host-port forwarding requires an advanced option and is rejected by canonical `lando share` UX.
 
 - Selection precedence is explicit command/API provider, Landofile or global default, then sole installed implementation (§4.3). Missing implementations fail with installation remediation.
 - Control-plane egress MUST use `HttpClient`; connector tools MUST use pinned `ToolManifest` entries through tool provisioning and `Downloader`; connector processes MUST use scoped `ProcessRunner` execution.
@@ -116,7 +116,7 @@ The default router publishes one host-global HTTP/HTTPS pair on `127.0.0.1`; URL
 `CertificateAuthority` exposes identity, `CaCapabilities`, scoped `RootCaInfo` acquisition, host trust installation, `LeafCertRequest` to `LeafCertInfo` issuance, and `LeafCertId` revocation; failures use `CaError`. Core owns certificate intent; plugins own issuance and trust installation.
 
 - `lando setup` can create and trust a development CA.
-- Leaf SANs include service id, canonical internal alias, configured and routed hostnames, `localhost`, and `127.0.0.1`.
+- Service leaf SANs include service id, canonical internal alias, configured `hostnames:`, route hostnames mapped through `certificateNameForHostname` (§6.6, §6.8), `localhost`, and `127.0.0.1`. A partial leftmost route wildcard expands to the broader `*.<rest>` certificate name; deep-wildcard routes are HTTP-only and contribute no SAN. App proxy certificates use mapped HTTPS route names only, and currency checks compare wildcard SANs by exact DNS entry and concrete names by host match.
 - Services receive `LANDO_SERVICE_CERT` and `LANDO_SERVICE_KEY`.
 - Landofile `security.ca:` and global `network.ca` are supported through `lando.security` (§6.8); platform elevation uses `PrivilegeService`.
 - Container trust injection does not require host elevation. `CertificateAuthority.installToTrustStore` separately trusts Lando's development CA on the workstation.

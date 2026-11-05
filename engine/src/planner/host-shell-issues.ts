@@ -2,6 +2,7 @@ import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import type {
+  ConfigLintRuleId,
   EventStep,
   HostEvents,
   LandofileShape,
@@ -100,7 +101,7 @@ export const hostEventCommands = (
 const findings = (
   command: HostCommand,
   keep: (issue: BunShellDialectIssue) => boolean = () => true,
-): ReadonlyArray<ValidationIssue & { readonly rule: string }> =>
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> =>
   bunShellDialectIssues(command.command)
     .filter(keep)
     .map((dialect) => ({
@@ -185,7 +186,7 @@ const hostEventRunText = (command: string): string | undefined => {
  */
 const hostEventExpressionIssues = (
   hostEvents: HostEvents,
-): ReadonlyArray<ValidationIssue & { readonly rule: string }> =>
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> =>
   Object.entries(hostEvents).flatMap(([event, steps]) =>
     (steps ?? []).flatMap((step, index) => {
       const command = typeof step === "string" ? step : "cmd" in step ? step.cmd : undefined;
@@ -230,7 +231,7 @@ const hostEventExpressionIssues = (
  */
 export const hostEventsShellIssues = (
   hostEvents: HostEvents,
-): ReadonlyArray<ValidationIssue & { readonly rule: string }> => {
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> => {
   const events = Object.keys(hostEvents);
   return [
     ...hostEventExpressionIssues(hostEvents),

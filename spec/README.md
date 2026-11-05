@@ -136,7 +136,7 @@ If you are looking for a public surface or policy:
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication | 07 | §7.8 |
-| Shared resolved-Landofile validation, lint rules, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
+| Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |

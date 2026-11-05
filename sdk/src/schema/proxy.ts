@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { DomainName } from "./hostname.ts";
+import { DomainName, RouteHostname } from "./hostname.ts";
 import { RoutePlan } from "./networking.ts";
 import { AppId, PortNumber } from "./primitives.ts";
 import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
@@ -131,7 +131,7 @@ export const ProxyAuthority = Schema.Struct({
   scheme: Schema.Literals(["http", "https"]).annotateKey({
     description: "Externally visible authority scheme.",
   }),
-  hostname: Schema.String.annotateKey({
+  hostname: RouteHostname.annotateKey({
     description: "Externally visible authority hostname.",
   }),
   port: PortNumber,

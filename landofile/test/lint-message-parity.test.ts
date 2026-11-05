@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LandofileShape } from "@lando/sdk/schema";
+import { type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { violationsFromSchema } from "../src/lint-violations.ts";
 import { lintLandofile, mergeLintFindings } from "../src/lint.ts";
@@ -106,12 +106,14 @@ test("merges a missing required key reported by both issue-conversion paths", ()
   const effective = validationErrorFromCause(".lando.yml", parsed, decoded.failure).issues;
   const findings = mergeLintFindings([
     ...fragment.map((issue) => ({ ...issue, scopes: ["fragment"] as const })),
-    ...effective.map((issue) => ({
-      ...issue,
-      rule: "landofile.validation",
-      severity: "error" as const,
-      scopes: ["effective"] as const,
-    })),
+    ...effective.map(
+      (issue): ConfigLintViolation => ({
+        ...issue,
+        rule: "landofile.validation",
+        severity: "error",
+        scopes: ["effective"],
+      }),
+    ),
   ]);
   // Then
   expect(findings).toEqual([

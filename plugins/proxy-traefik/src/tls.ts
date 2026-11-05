@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import type { AppRouteOwner, RoutePlan } from "@lando/sdk/schema";
+import { type AppRouteOwner, type RoutePlan, certificateNameForHostname } from "@lando/sdk/schema";
 
 import {
   TRAEFIK_CONTAINER_CERTIFICATE_DIR,
@@ -15,8 +15,23 @@ import {
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { type TraefikTlsFiles, renderTraefikDefaultTlsConfig } from "./routing.ts";
 
-export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> =>
-  [...new Set(routes.filter((route) => route.scheme !== "http").map((route) => route.hostname))].sort();
+export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> => {
+  // HTTPS leaf SANs use certificate-coverable names: leftmost partial wildcards
+  // map to *.<rest>; deep wildcards (HTTP-only after plan validation) are skipped.
+  const byLower = new Map<string, string>();
+  for (const route of routes) {
+    if (route.scheme === "http") continue;
+    const name = certificateNameForHostname(route.hostname);
+    if (name === undefined) continue;
+    const key = name.toLowerCase();
+    if (!byLower.has(key)) byLower.set(key, name);
+  }
+  return [...byLower.values()].sort(
+    (left, right) =>
+      Number(left.startsWith("*.")) - Number(right.startsWith("*.")) ||
+      left.localeCompare(right, "en", { sensitivity: "base" }),
+  );
+};
 
 export const normalizeDefaultDomain = (defaultDomain: string): string =>
   defaultDomain.trim().toLowerCase().replace(/\.+$/, "");

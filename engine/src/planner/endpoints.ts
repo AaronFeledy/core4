@@ -1,5 +1,5 @@
 import type { FileSystem } from "@lando/sdk/services";
-import { type Context, Effect, Predicate, Schema } from "effect";
+import { type Context, Effect, Predicate } from "effect";
 
 import {
   type CapabilityError,
@@ -19,7 +19,7 @@ import {
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
-  ServicePlan,
+  type ServicePlan,
   type StorageScope,
   selectHttpEndpoint,
   serviceAppMount,
@@ -43,6 +43,7 @@ import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
 import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
+import { encodeServicePlan } from "./plan-decode.ts";
 import {
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
@@ -349,7 +350,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
 
     serviceHostnames[name] = hostnames;
-    services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithRoutes);
+    services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
       const authoredInfo = authored.byStore.get(mount.store);

@@ -15,11 +15,19 @@ export interface CompatibilityFinding {
   readonly justification?: string;
 }
 
+export type PersistedStoreId = "applied-state" | "tunnel-registry";
+
+export interface PersistedStateRef {
+  readonly store: PersistedStoreId;
+  readonly version: number;
+}
+
 export interface CompatibilityException {
   readonly surface: string;
   readonly changeKind: string;
   readonly path: string;
   readonly justification: string;
+  readonly persistedState?: PersistedStateRef | ReadonlyArray<PersistedStateRef>;
 }
 
 export const isJsonObject = (value: unknown): value is JsonObject =>

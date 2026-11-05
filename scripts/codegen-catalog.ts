@@ -231,6 +231,14 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports CONFIG_LINT_RULES from @lando/sdk/schema; see core-service-env-catalog consumers.
+    dependsOn: ["core-service-env-catalog"],
+    id: "config-lint-rule-reference",
+    ownership: "derived",
+    script: "build-config-lint-rule-reference.ts",
+    workspace: "repo",
+  },
+  {
     id: "opentui-native-stubs",
     ownership: "derived",
     script: "build-opentui-native-stubs.ts",
