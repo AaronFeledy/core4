@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 import { ToolingInputRevision } from "@lando/sdk/schema";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
+import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/describe.ts";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
 import { listSpec as typedListSpec } from "../../src/cli/command-specs/apps/list.ts";
@@ -30,6 +31,24 @@ const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEnt
 });
 
 describe("deriveToolInputSchema", () => {
+  test("config describe accepts an optional key and runs without app context", async () => {
+    const spec: LandoCommandSpec = appConfigDescribeSpec;
+    const input = validateToolInput(spec, {});
+    const catalog = buildCatalog({
+      commandEntries: [{ spec }],
+      effective: computeEffectiveAllowlist({ defaults: ["app:config:describe"] }),
+    });
+    expect(catalog.tools[0]).toMatchObject({
+      commandId: "app:config:describe",
+      destructive: false,
+      inputSchema: { properties: { args: { properties: { key: { type: "string" } } } } },
+    });
+    expect(await Effect.runPromise(appConfigDescribeSpec.run(input))).toMatchObject({
+      subcommand: "describe",
+      key: "",
+      keys: expect.arrayContaining([expect.objectContaining({ key: "services" })]),
+    });
+  });
   test("projects repeatable service arrays for app info and rebuild", () => {
     // Given
     const specs: ReadonlyArray<LandoCommandSpec> = [infoSpec, rebuildSpec];

@@ -17,6 +17,7 @@ import { BUNDLED_COMMAND_DESCRIPTORS } from "../../src/cli/generated/bundled-com
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
+  "app:config:describe",
   "app:config:get",
   "app:config:view",
   "app:exec",
@@ -171,6 +172,11 @@ describe("MCP default allowlist derivation", () => {
     expect(specFor("app:config").mcpAllowed).toBeUndefined();
     expect(mcpSpecFor("app:config:get").id).toBe("app:config:get");
     expect(mcpSpecFor("app:config:view").id).toBe("app:config:view");
+    expect(
+      mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.filter(
+        ({ spec }) => spec.id === "app:config:describe",
+      ),
+    ).toHaveLength(1);
     expect(MCP_DEFAULT_ALLOWLIST).not.toContain("app:config");
   });
 

@@ -1,4 +1,5 @@
 import { RendererSelectionError } from "@lando/sdk/errors";
+import { RENDERER_MODES } from "@lando/sdk/schema";
 
 import { scanArgvFlags } from "./argv-walk";
 import {
@@ -8,7 +9,7 @@ import {
   isDeferredRendererMode,
 } from "./renderer-deferred";
 
-export const RENDERER_MODES = ["lando", "json", "plain", "verbose"] as const;
+export { RENDERER_MODES };
 export type RendererMode = (typeof RENDERER_MODES)[number];
 export const DEFAULT_RENDERER_MODE: RendererMode = "lando";
 export const RENDERER_ENV_VAR = "LANDO_RENDERER" as const;

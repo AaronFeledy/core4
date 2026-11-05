@@ -39,6 +39,21 @@ const compiledInput = (
   });
 
 describe("native argv parser seam", () => {
+  test.each([
+    [["app", "config", "describe"], "app:config:describe"],
+    [["app:config", "describe"], "app:config:describe"],
+    [["global", "config", "describe"], "meta:global:config:describe"],
+    [["global:config", "describe"], "meta:global:config:describe"],
+    [["meta", "global", "config", "describe"], "meta:global:config:describe"],
+    [["meta:global:config", "describe"], "meta:global:config:describe"],
+  ] as const)("normalizes %j before bootstrap", (argv, command) => {
+    expect(normalizeCompiledCommandArgv([...argv, "services", "--format=json"])).toEqual([
+      command,
+      "services",
+      "--format=json",
+    ]);
+    expect(compiledInput(command, ["services"], "json", "json").args).toEqual({ key: "services" });
+  });
   test("strict:false inputs strip the option terminator and preserve the command remainder", () => {
     const input = compiledInput("app:exec", ["--user", "www-data", "--", "echo", "-n", "hello"]);
 

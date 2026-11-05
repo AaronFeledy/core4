@@ -1,17 +1,19 @@
 import { dirname } from "node:path";
+import { ConfigDescribeResultSchema, describeConfigKey } from "@lando/engine/config-write/key-schema";
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 
 import { Effect, Schema } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { AbsolutePath, LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
-import { type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
+import { GlobalAppService } from "@lando/sdk/services";
 
 import { runEditVerb, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import type { ValueType } from "@lando/engine/config-write/write-core";
 import { readGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
+import { renderConfigKeyDescription } from "../config-key-render";
 import { renderConfigWriteResult } from "../config-write-render";
 import {
   compileGlobalConfigDocument,
@@ -22,7 +24,8 @@ import {
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
 
 export interface GlobalConfigOptions {
-  readonly subcommand?: GlobalConfigSubcommand;
+  /** `describe` is schema-only; `runGlobalConfig` dispatches it without the global app. */
+  readonly subcommand?: GlobalConfigSubcommand | "describe";
   readonly key?: string;
   readonly value?: string;
   readonly type?: ValueType;
@@ -34,31 +37,13 @@ export interface GlobalConfigOptions {
   readonly editorRunner?: EditorRunner;
 }
 
-export interface GlobalConfigResult {
-  readonly app?: string;
-  readonly source?: "global";
-  readonly materialized?: boolean;
-  readonly distLandofile?: string;
-  readonly userLandofile?: string;
-  readonly paths?: GlobalAppPaths;
-  readonly landofile?: LandofileShapeType;
-  readonly subcommand?: GlobalConfigSubcommand;
-  readonly key?: string;
-  readonly value?: unknown;
-  readonly changed?: boolean;
-  readonly dryRun?: boolean;
-  readonly valid?: boolean;
-  readonly issues?: ReadonlyArray<string>;
-  readonly filePath?: string;
-}
-
 export const GlobalAppPathsSchema = Schema.Struct({
   root: AbsolutePath,
   distLandofile: AbsolutePath,
   userLandofile: AbsolutePath,
 });
 
-export const GlobalConfigResultSchema = Schema.Struct({
+const GlobalConfigValueResultSchema = Schema.Struct({
   app: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(Schema.Literal("global")),
   materialized: Schema.optionalKey(Schema.Boolean),
@@ -75,6 +60,11 @@ export const GlobalConfigResultSchema = Schema.Struct({
   issues: Schema.optionalKey(Schema.Array(Schema.String)),
   filePath: Schema.optionalKey(Schema.String),
 });
+export const GlobalConfigResultSchema = Schema.Union([
+  GlobalConfigValueResultSchema,
+  ConfigDescribeResultSchema,
+]);
+export type GlobalConfigResult = typeof GlobalConfigResultSchema.Type;
 
 type GlobalConfigReadError = Effect.Error<ReturnType<typeof readGlobalLandofile>>;
 type GlobalConfigWriteError =
@@ -84,12 +74,12 @@ type GlobalConfigWriteError =
 
 type GlobalConfigServices = Effect.Services<ReturnType<typeof readGlobalLandofile>> | GlobalMutationServices;
 type GlobalConfigWriteReturn = Effect.fn.Return<
-  GlobalConfigResult,
+  typeof GlobalConfigValueResultSchema.Type,
   GlobalConfigWriteError,
   Effect.Services<ReturnType<typeof compileGlobalConfigDocument>>
 >;
 type GlobalConfigMutationReturn = Effect.fn.Return<
-  GlobalConfigResult,
+  typeof GlobalConfigValueResultSchema.Type,
   GlobalConfigWriteError,
   Effect.Services<ReturnType<typeof compileGlobalConfigDocument>> | GlobalMutationServices
 >;
@@ -210,6 +200,7 @@ export const renderGlobalConfigResult = (
   _format: "json" | "table" = "table",
 ): string => {
   void _format;
+  if (result.subcommand === "describe") return renderConfigKeyDescription(result, "Global Landofile");
   const writeResult = renderConfigWriteResult({
     file: result.filePath ?? "",
     subcommand: result.subcommand,
@@ -230,8 +221,14 @@ export const renderGlobalConfigResult = (
   ].join("\n");
 };
 
+/** Describes a global Landofile key from the Landofile schema; reads no global app state. */
+export const describeGlobalConfig = (options: Pick<GlobalConfigOptions, "key" | "path">) =>
+  describeConfigKey("global", options.key ?? options.path).pipe(
+    Effect.map((description) => ({ subcommand: "describe" as const, ...description })),
+  );
+
 const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
-  GlobalConfigResult,
+  typeof GlobalConfigValueResultSchema.Type,
   GlobalConfigReadError,
   GlobalConfigServices
 > {
@@ -251,9 +248,9 @@ const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
 });
 
 export const globalConfig = Effect.fn("GlobalConfig.run")(function* (
-  options: GlobalConfigOptions = {},
+  options: GlobalConfigOptions & { readonly subcommand?: GlobalConfigSubcommand } = {},
 ): Effect.fn.Return<
-  GlobalConfigResult,
+  typeof GlobalConfigValueResultSchema.Type,
   GlobalConfigReadError | GlobalConfigWriteError,
   GlobalConfigServices
 > {
