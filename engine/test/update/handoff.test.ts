@@ -6,7 +6,7 @@ import { updateHandoffDir } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
-import { Effect, Schema } from "effect";
+import { Effect, Exit, Schema } from "effect";
 
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
@@ -64,6 +64,36 @@ describe("update replacement handoff", () => {
     expect(first).toEqual(result);
     expect(second).toBeUndefined();
     expect(stateStore.snapshot().size).toBe(0);
+  });
+
+  test("a finished deferred receipt cannot be finished again or consumed as a one-shot", async () => {
+    // Given: a Windows replacement already recorded success.
+    const handoff = makeUpdateHandoff(makeTestStateStore().service);
+    const token = await Effect.runPromise(handoff.saveDeferred({ updatedCore: false, updatedPlugins: [] }));
+    await Effect.runPromise(handoff.finishDeferred(token));
+    // When: a late failure path and the one-shot consumer reach the same receipt.
+    const refinished = await Effect.runPromiseExit(
+      handoff.finishDeferred(token, { tag: "UpdatePermissionError", message: "late", remediation: "retry" }),
+    );
+    const oneShot = await Effect.runPromise(handoff.consume(token));
+    // Then: the recorded success survives for the deferred consumer.
+    expect(Exit.isFailure(refinished)).toBe(true);
+    expect(oneShot).toBeUndefined();
+    expect(await Effect.runPromise(handoff.consumeDeferred(token))).toEqual({
+      updatedCore: true,
+      updatedPlugins: [],
+    });
+  });
+
+  test("a one-shot receipt cannot be finished as a deferred replacement", async () => {
+    const handoff = makeUpdateHandoff(makeTestStateStore().service);
+    const result = { updatedCore: true, updatedPlugins: [] };
+    const token = await Effect.runPromise(handoff.save(result));
+    expect(Exit.isFailure(await Effect.runPromiseExit(handoff.finishDeferred(token)))).toBe(true);
+    expect(Exit.isFailure(await Effect.runPromiseExit(handoff.finishDeferred(crypto.randomUUID())))).toBe(
+      true,
+    );
+    expect(await Effect.runPromise(handoff.consume(token))).toEqual(result);
   });
 
   test("persists under userData and survives user cache deletion", async () => {
