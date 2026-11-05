@@ -10,6 +10,7 @@ import type { Effect, Schema } from "effect";
 
 import type { AppFeatureError } from "../errors/index.ts";
 import type {
+  CommandSpec,
   DatabaseConnection,
   EndpointPlan,
   EnvironmentValue,
@@ -97,6 +98,23 @@ export interface AppFeatureServiceMutators {
  * drafts. The context exposes no provider id, capabilities, or realization
  * decision — app-features emit provider-neutral intent only.
  */
+/**
+ * Request to materialize a new service draft by cloning a resolved parent
+ * after the app-feature pass. The clone copies the parent's image, build,
+ * mounts, environment, user, and networks. Override `command` (required) and
+ * optionally `user`, extra build steps, extra env, or omitted config keys.
+ * Clones that later leave the plan are removed on start and rebuild.
+ */
+export interface ClonedServiceRequest {
+  readonly from: string;
+  readonly name: string;
+  readonly command: CommandSpec;
+  readonly user?: string;
+  readonly extraBuildSteps?: ReadonlyArray<ServiceBuildStepIntent>;
+  readonly extraEnv?: Readonly<Record<string, EnvironmentValue>>;
+  readonly omitConfigKeys?: ReadonlyArray<string>;
+}
+
 export interface AppFeatureContext {
   readonly featureId: string;
   readonly appName?: string | undefined;
@@ -105,6 +123,14 @@ export interface AppFeatureContext {
   readonly selected: ReadonlyArray<AppFeatureServiceView>;
   forEachSelected(mutate: (service: AppFeatureServiceMutators) => void): void;
   select(name: string): AppFeatureServiceMutators | undefined;
+  /**
+   * Queue a companion service cloned from a resolved parent. Intended for
+   * feature-created sidecars that must share the parent's image, mounts,
+   * environment, and networks without becoming an authored Landofile service.
+   * The planner materializes the clone after the app-feature pass; start and
+   * rebuild remove clones that are no longer requested.
+   */
+  addClonedService(request: ClonedServiceRequest): void;
 }
 
 /**

@@ -49,6 +49,7 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
+import { removeStaleClonedServices } from "./stale-cloned-services.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -118,6 +119,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
     { discard: true },
   );
   yield* markStartMutation(target.plan);
+  yield* removeStaleClonedServices(target.plan);
   yield* stopSelected;
   const builtPlan = yield* withBuildProvider(builds.build(plan, { refresh: true }), provider);
   const readinessPlan = { ...target.plan, services: { ...target.plan.services, ...builtPlan.services } };
@@ -234,6 +236,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
               }
             : yield* Effect.gen(function* () {
                 yield* markStartMutation(plan);
+                yield* removeStaleClonedServices(plan);
                 yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
                 yield* managed?.onStopped ?? Effect.void;
                 return yield* startApp(

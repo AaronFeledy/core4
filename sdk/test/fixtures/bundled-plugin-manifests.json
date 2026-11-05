@@ -286,6 +286,35 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
+        "appFeatures": ["schedule.compile"],
+        "commands": [
+          {
+            "id": "schedule:list",
+            "mcpAllowed": true,
+            "summary": "List scheduled jobs and their next run times."
+          },
+          {
+            "id": "schedule:run",
+            "summary": "Run a scheduled job once in its parent service."
+          }
+        ]
+      },
+      "description": "Bundled per-service scheduled jobs for Lando.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/schedule",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/schedule"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
         "secretStores": [
           {
             "id": "1password",

@@ -33,6 +33,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
+  "@lando/schedule",
   "@lando/lando4",
   "@lando/lando3",
 ];

@@ -655,6 +655,7 @@ const makeRecordingAppFeatureContext = (
       for (const name of selectedNames) mutate(mutatorsFor(name));
     },
     select: (name) => (selectedSet.has(name) ? mutatorsFor(name) : undefined),
+    addClonedService: () => undefined,
   };
 
   const proxiedContext = new Proxy(context, {

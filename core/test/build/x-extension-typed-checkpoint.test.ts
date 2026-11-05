@@ -19,6 +19,7 @@ import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadat
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
@@ -46,8 +47,8 @@ const historicalExpected = evolveHistoricalConsolePort(
     ),
   ),
 );
-const expected = evolveHistoricalUploadDirs(
-  evolveHistoricalAuthoringProjection(historicalExpected, "services"),
+const expected = evolveHistoricalSchedule(
+  evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historicalExpected, "services")),
 );
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {

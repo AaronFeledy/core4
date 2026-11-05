@@ -25,6 +25,7 @@ import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
@@ -180,7 +181,7 @@ test.each([
     ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(jsonEquals(evolveHistoricalUploadDirs(expected), current)).toBe(true);
+  expect(jsonEquals(evolveHistoricalSchedule(evolveHistoricalUploadDirs(expected)), current)).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;

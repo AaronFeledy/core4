@@ -17,3 +17,12 @@ export const canonicalImageReference = (ref: string): string => {
 
 export const sameImageReference = (a: string, b: string): boolean =>
   canonicalImageReference(a) === canonicalImageReference(b);
+
+/** True when the image reference is scratch or distroless and cannot run install steps. */
+export const imageLacksInstallShell = (image: string | undefined): boolean => {
+  if (image === undefined || image.length === 0) return false;
+  const withoutDigest = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
+  if (withoutDigest === "scratch" || withoutDigest.startsWith("scratch:")) return true;
+  if (withoutDigest.endsWith("/scratch") || withoutDigest.includes("/scratch:")) return true;
+  return withoutDigest.includes("distroless");
+};

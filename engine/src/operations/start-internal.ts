@@ -65,6 +65,7 @@ import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
+import { removeStaleClonedServices } from "./stale-cloned-services.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import {
@@ -290,6 +291,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   }
 
   yield* markStartMutation(target.plan);
+  yield* removeStaleClonedServices(plan);
   return yield* withAcquiredStartOverlays({ ...target, plan }, preparedOverlays, {
     provider,
     workerPlan: plan,

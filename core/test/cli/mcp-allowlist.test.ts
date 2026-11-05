@@ -33,6 +33,7 @@ const EXPECTED_DEFAULT_ALLOWLIST = [
   "meta:recipes:list",
   "meta:recipes:validate",
   "meta:version",
+  "schedule:list",
 ];
 
 const specFor = (id: string): LandoCommandSpec => {

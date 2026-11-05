@@ -19,6 +19,7 @@ import type {
   AppFeatureApplicationInput,
   ComposeAppFeaturesInput,
   ComposeAppFeaturesResult,
+  RecordedClonedService,
 } from "./app-feature-types.ts";
 
 export type * from "./app-feature-types.ts";
@@ -90,6 +91,7 @@ export const applyPreparedAppFeatures = Effect.fn("AppPlanner.applyPreparedFeatu
   const activatedFeatures: ActivatedAppFeature[] = [];
   const globalServices: string[] = [];
   const providerCapabilities: Array<keyof ProviderCapabilities> = [];
+  const clones: RecordedClonedService[] = [];
   for (const plan of activations) {
     const config = plan.originalDecodedConfig ?? (yield* decodeAppFeatureConfig(plan.feature));
     const applyExit = yield* Effect.exit(
@@ -101,6 +103,7 @@ export const applyPreparedAppFeatures = Effect.fn("AppPlanner.applyPreparedFeatu
             config,
             selectedNames: plan.selectedServices,
             ledger,
+            clones,
           }),
         ),
       ),
@@ -126,6 +129,7 @@ export const applyPreparedAppFeatures = Effect.fn("AppPlanner.applyPreparedFeatu
       globalServices: [...new Set(globalServices)],
       providerCapabilities: [...new Set(providerCapabilities)],
     },
+    clones,
   };
 });
 
