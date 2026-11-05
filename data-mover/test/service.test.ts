@@ -72,6 +72,7 @@ import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 import { makeDataMoverService } from "../src/service.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -3584,7 +3585,7 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
@@ -3640,7 +3641,7 @@ test("serviceCmd whole-token secrets mask whole tokens only on failure tails", a
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
@@ -3696,7 +3697,7 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({

@@ -174,7 +174,7 @@ export const renderProvider = (): string =>
     "    certificateAuthorityResolverLayer,",
     "    fileSyncResolverLayer,",
     "    urlScannerLayer,",
-    "    BunDataMover.layer.pipe(Layer.provide(Layer.mergeAll(providerRegistryLayer, commandsRuntimeLayer))),",
+    "    BunDataMover.layerWithPrivateFileAccess.pipe(Layer.provide(Layer.mergeAll(providerRegistryLayer, commandsRuntimeLayer))),",
     "    providerRegistryLayer,",
     "    globalAppServiceLayer,",
     "  );",

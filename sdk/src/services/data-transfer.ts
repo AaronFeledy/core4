@@ -16,6 +16,7 @@ import type {
   VolumeNotFoundError,
 } from "../errors/index.ts";
 import type {
+  DataEndpoint,
   DataTransferProgress,
   DataTransferResult,
   DataTransferSpec,
@@ -54,6 +55,12 @@ export class DataMover extends Context.Service<
     readonly transferStream: (
       spec: DataTransferSpec,
     ) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
+    /**
+     * Yield source endpoint bytes for a caller-owned sink.
+     * Success means the source reached EOF and its producer exited cleanly;
+     * it does not certify sink receipt.
+     */
+    readonly read: (from: DataEndpoint) => Stream.Stream<Uint8Array, DataMoverError, Scope.Scope>;
     readonly snapshot: (
       store: VolumeRef,
       opts?: SnapshotOptions,

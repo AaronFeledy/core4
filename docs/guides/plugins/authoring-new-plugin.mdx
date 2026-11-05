@@ -208,6 +208,34 @@ module only when someone runs the command or asks for its `--help`, so a module
 that fails to load still appears in listings; the load error surfaces at that
 point, naming the problem.
 
+`lando <command> --help` and `lando help <command> --format=json` both list the
+flags and positional arguments the module declares. JSON help puts them under
+`result.target.input`, with each input's type, description, choices, and whether
+it's required.
+
+### Accept `-` for stdin or stdout
+
+A command that moves a data payload, like a dump, can let users pass `-` to use
+their shell's stdin or stdout. Declare it on the positional argument:
+
+```ts
+args: {
+  file: { type: "string", description: "Destination dump file.", stdio: "stdout" },
+},
+```
+
+When someone runs the command with `-` for that argument, the CLI hands your
+`run` a byte stream in `input.stdio`: `input.stdio.stdout` writes bytes to stdout
+exactly as given, and `input.stdio.stdin` is a stream you can read once. Write
+nothing else to stdout. Lando refuses `-` before your code runs when that stream
+is a terminal, and with `--format=json` it writes the result envelope to stderr
+so stdout stays yours. MCP rejects `-` for the argument, and event invocations
+get no stream, so when `input.stdio` lacks the stream you asked for, fail with
+`CommandStdioError` (reason `unavailable`) and suggest a file path. Help appends
+"Use - to write to stdout." (or "read from stdin") to the argument's
+description, so leave it out of your own. Each stream can be claimed by one
+argument, which can't be `multiple`.
+
 ## Verify
 
 Check your generated service and package before you start replacing the example.

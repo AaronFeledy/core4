@@ -487,6 +487,7 @@ export const makeTestDataset = () =>
           return progress;
         });
       },
+      read: (_from) => Stream.make(expectedBytes),
       snapshot: (store) =>
         Effect.succeed({
           id: "remote-sync-contract-snapshot",

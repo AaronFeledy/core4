@@ -1,9 +1,10 @@
-import { Effect, type Scope, type Stream } from "effect";
+import { Effect, type Scope, Stream } from "effect";
 
 import type { VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
+  type DataEndpoint,
   type DataTransferResult,
   type DataTransferSpec,
   type Environment,
@@ -22,7 +23,7 @@ import type { ExecChunk } from "@lando/sdk/services";
 import { checkedSqlExecution } from "./checked-execution.ts";
 
 import type { DumpCompression } from "./compression.ts";
-import { withHostDumpCompression } from "./compression.ts";
+import { compressDumpStream, withHostDumpCompression } from "./compression.ts";
 import type { SqlCreds } from "./creds.ts";
 import { type SqlCredentialSecrets, resolveSqlEnvironment } from "./environment.ts";
 import { type SqlFamily, dumpCommand, loadCommand, resetCommand } from "./families.ts";
@@ -43,6 +44,7 @@ export type SqlExec = (
 
 export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
+  readonly read: (from: DataEndpoint) => Stream.Stream<Uint8Array, unknown, Scope.Scope>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (
     handle: SnapshotHandle,
@@ -66,6 +68,10 @@ export const requireVolume = (
     Effect.map((mount) => ({ app: AppId.make(plan.id), store: mount.store })),
   );
 
+export type ExportDestination =
+  | { readonly _tag: "file"; readonly path: string }
+  | { readonly _tag: "stdout"; readonly write: (chunk: Uint8Array) => Effect.Effect<void> };
+
 export const runExport = Effect.fn("Sql.export")(function* (
   mover: SqlMover,
   exec: SqlExec,
@@ -76,65 +82,78 @@ export const runExport = Effect.fn("Sql.export")(function* (
     readonly creds: SqlCreds;
     readonly env: Environment;
     readonly secrets: () => SqlCredentialSecrets;
-    readonly file: string;
+    readonly destination: ExportDestination;
     readonly compression: DumpCompression;
     readonly compressionLevel?: number;
   },
 ) {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
+  // SQL Server writes its backup inside the service first; other families stream the dump client.
+  const dumpSource = Effect.fn("Sql.export.source")(function* () {
+    if (input.family === "mssql") {
+      const prepare = mssqlPrepareBackupCommand(input.creds.database);
+      yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
+        ...input,
+        command: prepare,
+        stdout: "discard",
+      });
+      const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
+      yield* checkedSqlExecution(exec(input.service, backup, input.env), {
+        ...input,
+        command: backup,
+        stdout: "discard",
+      });
+      return {
+        _tag: "servicePath",
+        app,
+        service,
+        path: PortablePath.make(mssqlBackupServicePath(input.creds.database)),
+      } satisfies DataEndpoint;
+    }
+    return {
+      _tag: "serviceCmd",
+      app,
+      service,
+      command: dumpCommand(input.family, input.creds),
+      env: yield* resolveSqlEnvironment(input.env),
+      secrets: input.secrets(),
+    } satisfies DataEndpoint;
+  });
+  const destination = input.destination;
+  if (destination._tag === "stdout") {
+    const source = mover.read(yield* dumpSource());
+    const body =
+      input.compression === "none"
+        ? source
+        : compressDumpStream(source, input.compression, input.compressionLevel);
+    let sizeBytes = 0;
+    yield* Stream.runForEach(body, (chunk) =>
+      Effect.suspend(() => {
+        sizeBytes += chunk.byteLength;
+        return destination.write(chunk);
+      }),
+    );
+    return { accelerated: false, sizeBytes } satisfies DataTransferResult;
+  }
   return yield* withHostDumpCompression({
-    path: input.file,
+    path: destination.path,
     compression: input.compression,
     ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
-    direction: "export",
-    transfer: Effect.fn("Sql.export.transfer")(function* (workingPath: string) {
-      const path = AbsolutePath.make(workingPath);
-      if (input.family === "mssql") {
-        const bak = mssqlBackupServicePath(input.creds.database);
-        const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
-        return yield* Effect.gen(function* () {
-          const prepare = mssqlPrepareBackupCommand(input.creds.database);
-          yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
-            ...input,
-            command: prepare,
-            stdout: "discard",
-          });
-          yield* checkedSqlExecution(exec(input.service, backup, input.env), {
-            ...input,
-            command: backup,
-            stdout: "discard",
-          });
-          return yield* mover.transfer({
-            from: {
-              _tag: "servicePath",
-              app,
-              service,
-              path: PortablePath.make(bak),
-            },
-            to: { _tag: "hostPath", path },
+    transfer: (workingPath) =>
+      dumpSource().pipe(
+        Effect.flatMap((from) =>
+          mover.transfer({
+            from,
+            to: { _tag: "hostPath", path: AbsolutePath.make(workingPath) },
             overwrite: true,
-          });
-        });
-      }
-      const env = yield* resolveSqlEnvironment(input.env);
-      const secrets = input.secrets();
-      return yield* mover.transfer({
-        from: {
-          _tag: "serviceCmd",
-          app,
-          service,
-          command: dumpCommand(input.family, input.creds),
-          env,
-          secrets,
-        },
-        to: { _tag: "hostPath", path },
-        overwrite: true,
-      });
-    }),
+          }),
+        ),
+      ),
   });
 });
 
+/** Imports a prepared plaintext dump (see prepareImportDump); `expectedDigest` guards it until transfer. */
 export const runImport = Effect.fn("Sql.import")(function* (
   mover: SqlMover,
   exec: SqlExec,
@@ -146,68 +165,55 @@ export const runImport = Effect.fn("Sql.import")(function* (
     readonly env: Environment;
     readonly secrets: () => SqlCredentialSecrets;
     readonly file: string;
-    readonly compression: DumpCompression;
     readonly expectedDigest?: string;
   },
 ) {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
-  return yield* withHostDumpCompression({
-    path: input.file,
-    compression: input.compression,
-    direction: "import",
-    ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
-    transfer: Effect.fn("Sql.import.transfer")(function* (workingPath: string, stagedDigest?: string) {
-      // DataMover checks the file at workingPath. Uncompressed imports keep the
-      // original dump digest from ensureReadableDump; compressed imports pass
-      // the staged uncompressed digest from the helper.
-      const digest = stagedDigest ?? input.expectedDigest;
-      const path = AbsolutePath.make(workingPath);
-      if (input.family === "mssql") {
-        const bak = mssqlBackupServicePath(input.creds.database);
-        return yield* Effect.gen(function* () {
-          const prepare = mssqlPrepareBackupCommand(input.creds.database);
-          yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
-            ...input,
-            command: prepare,
-            stdout: "discard",
-          });
-          const transfer = yield* mover.transfer({
-            from: { _tag: "hostPath", path, trusted: true },
-            to: {
-              _tag: "servicePath",
-              app,
-              service,
-              path: PortablePath.make(bak),
-            },
-            overwrite: true,
-            ...(digest === undefined ? {} : { expectedDigest: digest }),
-          });
-          const restore = mssqlRestoreCommand(input.creds.database, input.creds.port);
-          yield* checkedSqlExecution(exec(input.service, restore, input.env), {
-            ...input,
-            command: restore,
-            stdout: "discard",
-          });
-          return transfer;
-        });
-      }
-      const env = yield* resolveSqlEnvironment(input.env);
-      const secrets = input.secrets();
-      return yield* mover.transfer({
-        from: { _tag: "hostPath", path, trusted: true },
-        to: {
-          _tag: "serviceCmd",
-          app,
-          service,
-          command: loadCommand(input.family, input.creds),
-          env,
-          secrets,
-        },
-        overwrite: true,
-        ...(digest === undefined ? {} : { expectedDigest: digest }),
-      });
-    }),
+  const from = {
+    _tag: "hostPath",
+    path: AbsolutePath.make(input.file),
+    trusted: true,
+  } satisfies DataEndpoint;
+  const digest = input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest };
+  if (input.family === "mssql") {
+    const prepare = mssqlPrepareBackupCommand(input.creds.database);
+    yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
+      ...input,
+      command: prepare,
+      stdout: "discard",
+    });
+    const transfer = yield* mover.transfer({
+      from,
+      to: {
+        _tag: "servicePath",
+        app,
+        service,
+        path: PortablePath.make(mssqlBackupServicePath(input.creds.database)),
+      },
+      overwrite: true,
+      ...digest,
+    });
+    const restore = mssqlRestoreCommand(input.creds.database, input.creds.port);
+    yield* checkedSqlExecution(exec(input.service, restore, input.env), {
+      ...input,
+      command: restore,
+      stdout: "discard",
+    });
+    return transfer;
+  }
+  return yield* mover.transfer({
+    from,
+    to: {
+      _tag: "serviceCmd",
+      app,
+      service,
+      command: loadCommand(input.family, input.creds),
+      env: yield* resolveSqlEnvironment(input.env),
+      secrets: input.secrets(),
+    },
+    overwrite: true,
+    ...digest,
   });
 });
 

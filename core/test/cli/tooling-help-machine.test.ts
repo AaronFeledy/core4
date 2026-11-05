@@ -57,6 +57,50 @@ const runHelp = async (root: string, cacheRoot: string, argv: readonly string[])
   return { code, stdout, stderr };
 };
 
+test("built-in machine help carries declared flags and positional arguments (#2053)", async () => {
+  await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
+    const result = await runHelp(root, cacheRoot, ["help", "exec"]);
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).result.target.input).toEqual({
+      flags: [
+        {
+          name: "user",
+          type: "string",
+          description: "User to run the command as inside the service.",
+          required: false,
+          multiple: false,
+          char: "u",
+        },
+        {
+          name: "cwd",
+          type: "string",
+          description: "Working directory inside the service.",
+          required: false,
+          multiple: false,
+        },
+        {
+          name: "interactive",
+          type: "boolean",
+          description: "Attach your terminal keyboard to the command. Piped stdin is always attached.",
+          required: false,
+          multiple: false,
+          default: false,
+          char: "i",
+        },
+      ],
+      args: [
+        {
+          name: "command",
+          description: "Command argv after `--`. An optional service name may come first.",
+          required: false,
+          multiple: true,
+        },
+      ],
+    });
+  });
+});
+
 test("explicit machine help rejects an unknown target instead of returning a root catalog", async () => {
   // Given
   await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
