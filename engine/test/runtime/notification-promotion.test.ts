@@ -20,14 +20,19 @@ test.each([
   expect(effectiveBootstrapForCommand(id, declared, [])).toBe(declared);
 });
 
-test.each(["meta:config", "meta:doctor", "meta:version", "meta:shellenv", "meta:uninstall"])(
-  "%s retains safe-mode bootstrap even when configured for notification",
-  (id) => {
-    // Given: a repair or diagnostic command selected by notification policy.
-    const configured = [id];
-    // When: the cold dispatcher resolves its bootstrap.
-    const selected = effectiveBootstrapForCommand(id, "none", configured);
-    // Then: notification policy cannot force config validation or app discovery.
-    expect(selected).toBe("none");
-  },
-);
+test.each([
+  "meta:config",
+  "meta:doctor",
+  "meta:version",
+  "meta:shellenv",
+  "meta:uninstall",
+  "app:config:describe",
+  "meta:global:config:describe",
+])("%s retains safe-mode bootstrap even when configured for notification", (id) => {
+  // Given: a repair or diagnostic command selected by notification policy.
+  const configured = [id];
+  // When: the cold dispatcher resolves its bootstrap.
+  const selected = effectiveBootstrapForCommand(id, "none", configured);
+  // Then: notification policy cannot force config validation or app discovery.
+  expect(selected).toBe("none");
+});
