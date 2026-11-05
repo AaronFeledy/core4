@@ -420,6 +420,7 @@ import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
 import { RouteEvidence } from "./proxy.ts";
 import {
+  AppRouteOwner,
   ProxyApplyResult,
   ProxyAuthority,
   ProxyCapabilities,
@@ -717,6 +718,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
+  AppRouteOwner,
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
@@ -1176,6 +1178,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProxyConfig: "Proxy setup configuration supplied by core.",
   RouterConfig: "Shared host-router bind address and port policy.",
   ProxyAuthority: "Externally visible authority selected by a proxy implementation.",
+  AppRouteOwner: "Rename-stable owner of durable router artifacts for one application.",
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
   EndpointScan: "Sparse plan-only startup scan defaults for a logical listener.",

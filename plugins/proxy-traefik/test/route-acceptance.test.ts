@@ -7,12 +7,13 @@ import { renderTraefikDynamicConfig } from "../src/routing.ts";
 import { persistedRuntimeGraph } from "./apply-runtime-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";
+import { routeFileBasename, routeObjectName } from "./route-owner-fixture.ts";
 
 const first = httpsRoutes[0];
 if (first === undefined) throw new Error("route fixture missing");
 const route = { ...first, scheme: "both" as const };
 const graphFor = (routes = [route]) =>
-  persistedRuntimeGraph(new Map([["routes-demo.yml", renderTraefikDynamicConfig(routes, app)]]));
+  persistedRuntimeGraph(new Map([[routeFileBasename(app), renderTraefikDynamicConfig(routes, app)]]));
 
 test("waits through empty and partial graphs until every requested scheme is accepted", async () => {
   const fixture = makeAcceptanceFixture();
@@ -33,7 +34,8 @@ test("waits through empty and partial graphs until every requested scheme is acc
       expect(completed).toBe(false);
       expect(yield* fixture.service.readAppliedRoutes(app)).toEqual([]);
       const full = graphFor();
-      const { "route-demo%2Fapp-0-https@file": _https, ...routers } = full.routers;
+      const httpsKey = `${routeObjectName(app, 0)}-https@file`;
+      const { [httpsKey]: _https, ...routers } = full.routers;
       fixture.runtime.setGraph({ ...full, routers });
       yield* TestClock.adjust(250);
       expect(completed).toBe(false);
@@ -89,7 +91,7 @@ test.each(["backend", "priority", "middleware", "entrypoint", "tls", "index", "r
   "rejects a graph with incorrect %s",
   (mismatch) => {
     const graph = graphFor();
-    const key = "route-demo%2Fapp-0-http@file";
+    const key = `${routeObjectName(app, 0)}-http@file`;
     const router = graph.routers[key];
     if (router === undefined) throw new Error("router fixture missing");
     let routers = { ...graph.routers };
@@ -97,7 +99,7 @@ test.each(["backend", "priority", "middleware", "entrypoint", "tls", "index", "r
     switch (mismatch) {
       case "backend":
         services = {
-          "route-demo%2Fapp-0@file": {
+          [`${routeObjectName(app, 0)}@file`]: {
             status: "enabled",
             loadBalancer: { servers: [{ url: "http://wrong:9999" }] },
           },
@@ -120,7 +122,7 @@ test.each(["backend", "priority", "middleware", "entrypoint", "tls", "index", "r
         break;
       case "index":
         routers = Object.fromEntries(Object.entries(routers).filter(([name]) => name !== key));
-        routers["route-demo%2Fapp-7-http@file"] = router;
+        routers[`${routeObjectName(app, 7)}-http@file`] = router;
         break;
       default:
         return mismatch satisfies never;
@@ -131,18 +133,22 @@ test.each(["backend", "priority", "middleware", "entrypoint", "tls", "index", "r
 
 test("ignores unrelated routers and orphan resources but not stale owned routers", () => {
   const graph = graphFor();
-  const router = graph.routers["route-demo%2Fapp-0-http@file"];
+  const router = graph.routers[`${routeObjectName(app, 0)}-http@file`];
   if (router === undefined) throw new Error("router fixture missing");
   const unrelated = {
     ...graph,
-    routers: { ...graph.routers, "route-demo%2Fapp-other-0-http@file": router, "dashboard@internal": {} },
+    routers: {
+      ...graph.routers,
+      "route-other-demo%2Fapp-other-0-http@file": router,
+      "dashboard@internal": {},
+    },
     services: { ...graph.services, "orphan@file": {} },
     middlewares: { "orphan@file": {} },
   };
   expect(acceptsAllRoutes(unrelated, app, [route])).toBe(true);
   expect(
     acceptsAllRoutes(
-      { ...unrelated, routers: { ...unrelated.routers, "route-demo%2Fapp-1-http@file": router } },
+      { ...unrelated, routers: { ...unrelated.routers, [`${routeObjectName(app, 1)}-http@file`]: router } },
       app,
       [route],
     ),
@@ -154,12 +160,12 @@ test("preserves observer any-index semantics without accepting the wrong applica
   const routers = Object.fromEntries(
     Object.entries(graph.routers).map(([name, router]) => [
       name.replace("-0-", "-7-"),
-      { ...router, service: "route-demo%2Fapp-7" },
+      { ...router, service: routeObjectName(app, 7) },
     ]),
   );
-  const service = graph.services["route-demo%2Fapp-0@file"];
+  const service = graph.services[`${routeObjectName(app, 0)}@file`];
   if (service === undefined) throw new Error("service fixture missing");
-  const shifted = { ...graph, routers, services: { "route-demo%2Fapp-7@file": service } };
+  const shifted = { ...graph, routers, services: { [`${routeObjectName(app, 7)}@file`]: service } };
   expect(matchesLiveRoute(shifted, app, { route, scheme: "http" })).toBe(true);
   expect(acceptsAllRoutes(shifted, app, [route])).toBe(false);
 });

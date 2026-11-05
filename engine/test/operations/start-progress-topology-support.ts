@@ -409,13 +409,13 @@ export const makeHarness = (
       RouterService,
       RouterService.of({
         ...TestRouterService,
-        applyRoutes: (routes, app) =>
-          TestRouterService.applyRoutes(routes, app).pipe(
+        applyRoutes: (routes, owner) =>
+          TestRouterService.applyRoutes(routes, owner).pipe(
             Effect.tap(() => options.afterApplyRoutes ?? Effect.void),
           ),
-        removeRoutes: (app) =>
+        removeRoutes: (owner) =>
           Effect.sync(() => options.onRemoveRoutes?.()).pipe(
-            Effect.andThen(TestRouterService.removeRoutes(app)),
+            Effect.andThen(TestRouterService.removeRoutes(owner)),
           ),
       }),
     ),

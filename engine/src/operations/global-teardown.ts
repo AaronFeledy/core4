@@ -14,6 +14,7 @@ import {
 
 import { globalObserveProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
+import { routeOwnerFromGlobalTeardown, routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
@@ -205,7 +206,7 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
   if (selection.routePolicyError !== undefined) return yield* Effect.fail(selection.routePolicyError);
   if (selection.routes !== undefined) {
     const router = yield* RouterService;
-    yield* router.applyRoutes(selection.routes, selection.plan.id);
+    yield* router.applyRoutes(selection.routes, routeOwnerFromPlan(selection.plan));
   }
   return withShutdownObservations(
     {
@@ -254,7 +255,9 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       const result = yield* work.pipe(Effect.tapError(() => tree.failTask("provider")));
       yield* tree.completeTask("provider");
       yield* tree.startTask("routes");
-      yield* router.removeRoutes(app.id).pipe(Effect.tapError(() => tree.failTask("routes")));
+      yield* router
+        .removeRoutes(routeOwnerFromGlobalTeardown(resolved))
+        .pipe(Effect.tapError(() => tree.failTask("routes")));
       yield* tree.completeTask("routes");
       return result;
     }),

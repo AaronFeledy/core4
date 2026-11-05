@@ -227,7 +227,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
-        removeRoutes: () =>
+        removeRoutes: (_owner) =>
           Effect.sync(() => {
             calls.push("routes");
           }).pipe(

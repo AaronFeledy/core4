@@ -12,7 +12,7 @@ import {
   RouterWatcherError,
 } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AppId, type ProxyConfig, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { AppId, type AppRouteOwner, type ProxyConfig, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
   EventService,
@@ -59,6 +59,8 @@ import {
   publishFallbackWarn,
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
+import { isOwnerRouteFileName } from "./route-file-metadata.ts";
+import { requireOwnedRouteFile } from "./route-file-ownership.ts";
 import { invalidateAcknowledgement, routeReloadLockKey } from "./route-reload-state.ts";
 import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./router-bind-address.ts";
 import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS } from "./routing.ts";
@@ -263,7 +265,7 @@ const routerPinFromConfig = (pin: NonNullable<ProxyConfig["routerPin"]>): Traefi
 export const makeTraefikRouterService = (
   dependencies: TraefikProxyDependencies,
 ): RouterServiceShape & {
-  readonly readAppliedRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
+  readonly readAppliedRoutes: (owner: AppRouteOwner) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 } => {
   const routes = new Map<string, ReadonlyArray<RoutePlan>>();
   const pendingReload = new Set<string>();
@@ -413,19 +415,20 @@ export const makeTraefikRouterService = (
               : apply;
           return guarded;
         },
-        (effect, _nextRoutes, app) => effect.pipe(Effect.mapError((cause) => applyError(app, cause))),
+        (effect, _nextRoutes, owner) => effect.pipe(Effect.mapError((cause) => applyError(owner.id, cause))),
       ),
       removeRoutes: Effect.fn("RouterService.removeRoutes")(
-        (app) => {
+        (owner) => {
           const remove = Effect.gen(function* () {
-            const appKey = String(app);
-            const file = routeFile(dependencies.paths, app);
+            yield* requireOwnedRouteFile(dependencies, owner);
+            const appKey = owner.ownerKey;
+            const file = routeFile(dependencies.paths, owner);
             const hadRouteFile = yield* dependencies.fileSystem.exists(file);
             if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-              yield* invalidateAcknowledgement(dependencies.stateStore, app);
+              yield* invalidateAcknowledgement(dependencies.stateStore, appKey);
             }
             yield* Effect.uninterruptible(dependencies.fileSystem.remove(file));
-            yield* removeAppCertificates(dependencies, app);
+            yield* removeAppCertificates(dependencies, owner);
             routes.delete(appKey);
             if (hadRouteFile) pendingReload.add(appKey);
             if (pendingReload.has(appKey)) yield* reloadWindowsRouter(appKey);
@@ -459,10 +462,13 @@ export const makeTraefikRouterService = (
                 ),
                 (file) =>
                   Effect.gen(function* () {
-                    const encodedApp = file.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length);
-                    const routeApp = AppId.make(decodeURIComponent(encodedApp));
-                    if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-                      yield* invalidateAcknowledgement(dependencies.stateStore, routeApp);
+                    const ownerKey = file.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length);
+                    if (
+                      dependencies.paths.platform === "win32" &&
+                      dependencies.stateStore !== undefined &&
+                      isOwnerRouteFileName(file)
+                    ) {
+                      yield* invalidateAcknowledgement(dependencies.stateStore, ownerKey);
                     }
                     yield* dependencies.fileSystem.remove(joinFor(dependencies.paths)(directory, file));
                   }),
@@ -490,7 +496,7 @@ export const makeTraefikRouterService = (
         Effect.mapError((cause) => proxyError("stop", cause)),
       )(),
     }),
-    readAppliedRoutes: (app: AppId) => Effect.succeed(routes.get(String(app)) ?? []),
+    readAppliedRoutes: (owner: AppRouteOwner) => Effect.succeed(routes.get(owner.ownerKey) ?? []),
   };
 };
 

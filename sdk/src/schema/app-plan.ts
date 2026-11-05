@@ -366,6 +366,9 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
  * canonicalizes an app root before hashing it, and every other producer of an
  * ownership key — including volume labels written by a provider — derives it
  * from this function so one root always yields one key.
+ * Scratch routes are the exception: they reserve `scratch:<unique scratch id>`
+ * as the owner input because cwd forks share a source root and their configured
+ * instance path need not be canonical or survive until orphan cleanup.
  */
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);

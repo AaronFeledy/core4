@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PluginStateStore } from "@lando/sdk/plugins";
+import { AppId } from "@lando/sdk/schema";
 import { Clock, Effect, Fiber } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -10,6 +11,7 @@ import { persistedRuntimeGraph } from "./apply-runtime-fixture.ts";
 import { makeAckStore } from "./observe-routes-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 const first = httpsRoutes[0];
 if (first === undefined) throw new Error("route fixture missing");
@@ -208,4 +210,57 @@ test("interrupts a convergence delay without acknowledging or caching the genera
   );
 
   expect(events).not.toContain("ack:set");
+});
+
+test("Windows rename acknowledges the owner generation only after old-slug routers disappear", async () => {
+  const fixture = makeAcceptanceFixture("win32");
+  const events: string[] = [];
+  const service = makeTraefikRouterService({
+    ...fixture.dependencies,
+    stateStore: makeAckStore(events),
+    globalApp: {
+      ...fixture.dependencies.globalApp,
+      restartRunningService: () =>
+        Effect.sync(() => {
+          events.push("restart");
+          return true;
+        }),
+    },
+  });
+  const sharedRoot = "/apps/shared-root";
+  const before = routeOwner("old-name", sharedRoot);
+  const after = { ...before, id: AppId.make("new-name") };
+  await Effect.runPromise(service.applyRoutes([route], before));
+  const stale = persistedRuntimeGraph(fixture.files);
+  fixture.runtime.setGraph(stale);
+  events.length = 0;
+  const path = routeFile(fixture.dependencies.paths, before);
+  expect(path).toBe(routeFile(fixture.dependencies.paths, after));
+  expect(fixture.files.has(path)).toBe(true);
+
+  const renamed = { ...route, hostname: "new.example.test" };
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(service.applyRoutes([renamed], after));
+      yield* TestClock.adjust(0);
+      const current = persistedRuntimeGraph(fixture.files);
+      fixture.runtime.setGraph({
+        routers: { ...stale.routers, ...current.routers },
+        services: { ...stale.services, ...current.services },
+      });
+      yield* TestClock.adjust(250);
+      expect(events).toEqual(["lock", "ack:remove", "restart"]);
+      expect((yield* service.observeRoutes(after, [renamed])).observation.status).toBe("unknown");
+      fixture.runtime.followPersisted();
+      yield* TestClock.adjust(250);
+      yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect(events).toEqual(["lock", "ack:remove", "restart", "ack:set"]);
+
+  const content = fixture.files.get(path) ?? "";
+  expect(content).toContain('"app":"new-name"');
+  expect(content).toContain("new.example.test");
+  expect(content).not.toContain('"app":"old-name"');
+  expect(await Effect.runPromise(service.readAppliedRoutes(after))).toEqual([renamed]);
 });

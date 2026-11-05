@@ -138,11 +138,11 @@ const runSelected = (
   ).pipe(
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      applyRoutes: (routes, app) =>
+      applyRoutes: (routes, owner) =>
         Effect.sync(() => {
           applyRoutes.push(routes.length);
-        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, app))),
-      removeRoutes: (app) => Effect.sync(() => void removeRoutes.push(String(app))),
+        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, owner))),
+      removeRoutes: (owner) => Effect.sync(() => void removeRoutes.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );

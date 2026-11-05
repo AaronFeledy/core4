@@ -366,12 +366,12 @@
       "output:{ stdout:(chunk:string|Uint8Array) => Effect.Effect<void>;stderr:(chunk:string|Uint8Array) => Effect.Effect<void>;}"
     ],
     "RouterService": [
-      "applyRoutes:(routes:ReadonlyArray<RoutePlan>,appId:AppId) => Effect.Effect<ProxyApplyResult,ProxyApplyError>",
+      "applyRoutes:(routes:ReadonlyArray<RoutePlan>,owner:AppRouteOwner) => Effect.Effect<ProxyApplyResult,ProxyApplyError>",
       "capabilities:ProxyCapabilities",
       "id:string",
       "prepare?:(config:ProxyConfig) => Effect.Effect<void,AppPlacementError|ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch>",
-      "observeRoutes:(app:AppId,requestedRoutes:ReadonlyArray<RoutePlan>) => Effect.Effect<RouteEvidence,ProxyError>",
-      "removeRoutes:(appId:AppId) => Effect.Effect<void,ProxyError>",
+      "observeRoutes:(owner:AppRouteOwner,requestedRoutes:ReadonlyArray<RoutePlan>) => Effect.Effect<RouteEvidence,ProxyError>",
+      "removeRoutes:(owner:AppRouteOwner) => Effect.Effect<void,ProxyError>",
       "revalidateStartup:Effect.Effect<void,ProxyError|RouterWatcherError>",
       "setup:(config:ProxyConfig,options?:{ intent?:\"configure\"|\"ensure\";autoApprove?:boolean;/** Rescan host ports instead of reusing the persisted pair;set only by explicit `lando setup`. */ reacquirePorts?:boolean;}) => Effect.Effect<void,AppPlacementError|ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch|RouterWatcherError,Scope.Scope>",
       "status:Effect.Effect<ProxyStatus,ProxyError>",
@@ -1205,6 +1205,7 @@
       "AppRef",
       "AppRemoteEntry",
       "AppRemoteMutationResult",
+      "AppRouteOwner",
       "AppliedStateInventory",
       "ArchiveFormat",
       "ArtifactBuildSpec",

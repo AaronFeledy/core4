@@ -8,6 +8,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import {
   observedPublicationConnection,
   projectServiceConnections,
@@ -31,7 +32,7 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
   const routeEvidence =
     router._tag === "Some" && plan.routes.length > 0
       ? yield* router.value
-          .observeRoutes(plan.id, plan.routes)
+          .observeRoutes(routeOwnerFromPlan(plan), plan.routes)
           .pipe(Effect.catchTag("ProxyError", () => Effect.succeed(undefined)))
       : undefined;
   const services = Object.values(plan.services);

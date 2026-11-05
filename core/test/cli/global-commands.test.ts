@@ -573,9 +573,9 @@ const makeHarness = async (
         applyRoutes: (routes, app) =>
           Effect.sync(() => {
             options.timeline?.push("routes-applied");
-            calls.routes.push({ app: String(app), hostnames: routes.map((route) => route.hostname) });
+            calls.routes.push({ app: String(app.id), hostnames: routes.map((route) => route.hostname) });
             return {
-              app,
+              app: app.id,
               appliedRoutes: [...routes],
               authorities: routes.map((route) => ({
                 scheme: "https" as const,
@@ -589,14 +589,14 @@ const makeHarness = async (
                 ? Effect.fail(
                     new ProxyApplyError({
                       proxyId: "test",
-                      app: String(app),
+                      app: String(app.id),
                       message: "route publication failed",
                       remediation: "Retry route publication.",
                     }),
                   )
                 : Effect.sync(() => {
                     calls.publishedRoutes.push({
-                      app: String(app),
+                      app: String(app.id),
                       hostnames: routes.map((route) => route.hostname),
                     });
                     return result;
@@ -605,9 +605,10 @@ const makeHarness = async (
           ),
         removeRoutes: (app) =>
           Effect.sync(() => {
-            calls.routesRemoved.push(String(app));
-            calls.publishedRoutes.push({ app: String(app), hostnames: [] });
+            calls.routesRemoved.push(String(app.id));
+            calls.publishedRoutes.push({ app: String(app.id), hostnames: [] });
           }),
+        stop: Effect.die("Global lifecycle must not stop the shared router"),
       }),
     ),
     Layer.succeed(BuildOrchestrator, buildOrchestrator),

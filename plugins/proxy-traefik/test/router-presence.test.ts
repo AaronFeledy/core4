@@ -6,7 +6,7 @@ import { makeLandoPaths } from "@lando/paths";
 
 import { FileNotFoundError, GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
   FileSystem,
@@ -15,6 +15,7 @@ import {
   RouterService,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 import { layer, makeTraefikRouterService } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
@@ -264,7 +265,7 @@ test.each([false, true])(
           _tag: "Failure",
           failure: { _tag: "ProxySetupError", cause: { _tag: "ProxyError" } },
         });
-        expect(yield* Effect.result(router.applyRoutes([], AppId.make("example")))).toMatchObject({
+        expect(yield* Effect.result(router.applyRoutes([], routeOwner("example")))).toMatchObject({
           _tag: "Failure",
           failure: { _tag: "ProxyApplyError", app: "example", cause: { _tag: "ProxyError" } },
         });

@@ -41,7 +41,7 @@ export const deferredRouter = Effect.fnUntraced(function* (
           (cause) =>
             new ProxyApplyError({
               proxyId: identity.id,
-              app: String(app),
+              app: String(app.id),
               message: cause.message,
               remediation: cause.remediation,
               cause,

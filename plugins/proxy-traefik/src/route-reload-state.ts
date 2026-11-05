@@ -3,7 +3,7 @@ import { X509Certificate, createPublicKey } from "node:crypto";
 import { Effect, Schema } from "effect";
 
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { type AppId, certificateNameForHostname } from "@lando/sdk/schema";
+import { type AppRouteOwner, certificateNameForHostname } from "@lando/sdk/schema";
 
 const AckSchema = Schema.Struct({ digest: Schema.String });
 type Ack = typeof AckSchema.Type;
@@ -13,10 +13,10 @@ type Ack = typeof AckSchema.Type;
 // has already replaced the running configuration.
 export const routeReloadLockKey = (): string => "routes.lock";
 
-export const openRouteReloadAck = (stateStore: PluginStateStore, app: AppId) =>
+export const openRouteReloadAck = (stateStore: PluginStateStore, ownerKey: AppRouteOwner["ownerKey"]) =>
   stateStore.open({
     namespace: "route-reloads",
-    key: `app-${encodeURIComponent(String(app))}.json`,
+    key: `owner-${ownerKey}.json`,
     schema: AckSchema,
     version: 1,
     codec: "json",
@@ -73,13 +73,22 @@ export const certificatePairIsCurrent = (
   }
 };
 
-export const isAcknowledged = (stateStore: PluginStateStore, app: AppId, digest: string) =>
-  openRouteReloadAck(stateStore, app).pipe(
+export const isAcknowledged = (
+  stateStore: PluginStateStore,
+  ownerKey: AppRouteOwner["ownerKey"],
+  digest: string,
+) =>
+  openRouteReloadAck(stateStore, ownerKey).pipe(
     Effect.flatMap((bucket) => bucket.get),
     Effect.map((ack: Ack | null) => ack?.digest === digest),
   );
 
-export const acknowledge = (stateStore: PluginStateStore, app: AppId, digest: string) =>
-  openRouteReloadAck(stateStore, app).pipe(Effect.flatMap((bucket) => bucket.set({ digest })));
-export const invalidateAcknowledgement = (stateStore: PluginStateStore, app: AppId) =>
-  openRouteReloadAck(stateStore, app).pipe(Effect.flatMap((bucket) => bucket.remove));
+export const acknowledge = (
+  stateStore: PluginStateStore,
+  ownerKey: AppRouteOwner["ownerKey"],
+  digest: string,
+) => openRouteReloadAck(stateStore, ownerKey).pipe(Effect.flatMap((bucket) => bucket.set({ digest })));
+export const invalidateAcknowledgement = (
+  stateStore: PluginStateStore,
+  ownerKey: AppRouteOwner["ownerKey"],
+) => openRouteReloadAck(stateStore, ownerKey).pipe(Effect.flatMap((bucket) => bucket.remove));
