@@ -21,6 +21,7 @@ export type PublicSchemaContractFixture = {
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
+  ConfigKeyDescription: "sdk/test/schema/config-key.test.ts",
   CommandContribution: "sdk/test/schema/command-contribution.test.ts",
   LandofileSourceValue: "sdk/test/schema/landofile-source.test.ts",
   LandofileSourceDocument: "sdk/test/schema/landofile-source.test.ts",

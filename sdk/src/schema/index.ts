@@ -1,4 +1,6 @@
 export * from "./agent-forwarding.ts";
+export * from "./default-key.ts";
+export * from "./renderer-mode.ts";
 export * from "./host-maintenance.ts";
 export * from "./tooling-input.ts";
 export * from "./app-plan.ts";
@@ -13,6 +15,7 @@ export * from "./database-connection.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
+export * from "./config-key.ts";
 export * from "./config-view.ts";
 export * from "./certificate-authority-contribution.ts";
 export {

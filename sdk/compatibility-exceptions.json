@@ -1,5 +1,71 @@
 [
   {
+    "surface": "command:app:config",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The shared app:config result union gains a `subcommand: \"describe\"` member; existing members and their discriminators are unchanged."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The shared app:config result union gains a `subcommand: \"describe\"` member; existing members and their discriminators are unchanged."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The shared app:config result union gains a `subcommand: \"describe\"` member; existing members and their discriminators are unchanged."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The shared app:config result union gains a `subcommand: \"describe\"` member; existing members and their discriminators are unchanged."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The shared app:config result union gains a `subcommand: \"describe\"` member; existing members and their discriminators are unchanged."
+  },
+  {
+    "surface": "command:meta:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+  },
+  {
     "surface": "command:app:config:lint",
     "changeKind": "unsupported-construct",
     "path": "$.violations.items.rule.anyOf",

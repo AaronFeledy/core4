@@ -193,6 +193,7 @@ import {
   ServiceScopedLandofile,
   SourceCompiledLandofile,
 } from "./compiled-landofile.ts";
+import { ConfigKeyDescription } from "./config-key.ts";
 import { ConfigLintRuleDescriptor, ConfigLintRuleId } from "./config-lint-rules.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
@@ -600,6 +601,7 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = schemaRegistry({
+  ConfigKeyDescription,
   SecretReference,
   SecretRef,
   BoundTextReference,
