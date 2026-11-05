@@ -66,7 +66,7 @@ lando app:config --source merged --format=yaml
 
 Only the full resolved view emits a bare Landofile. Raw, merged, selected values, and get use normal YAML result envelopes. Literal secrets are redacted before emission, including values in shadowed layers. Inspection doesn't read secret stores or env files to discover more secrets.
 
-The read-only MCP `app:config:view` and `app:config:get` tools accept `source` and `path`; get also accepts an optional `key`. The fixed `lando://app/config` resource remains resolved.
+The read-only MCP `app:config:view` and `app:config:get` tools accept `source` and `path`; get also accepts an optional `key`. The fixed `lando://app/config` resource remains resolved. To learn what a key accepts rather than what it holds, use `lando app:config describe <key>` or the `app:config:describe` MCP tool.
 
 ## Repair one key without fixing the whole file
 
