@@ -2175,6 +2175,7 @@
       "resolveHostKey",
       "toolVersionMarkerPath"
     ],
+    "./transitions": ["defineTransitions", "illegalTransitionMessage"],
     "./verified-stream": ["VerifiedStreamError", "collectVerifiedStream", "persistVerifiedStream"],
     "./yaml": [
       "YamlEmitError",
