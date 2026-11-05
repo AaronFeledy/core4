@@ -114,13 +114,13 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.3 Type gates
 
-`tsc --noEmit` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
+`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
 
 ### 13.4 Quality gates
 
 A PR cannot merge unless:
 
-- `bun test`, `tsc --noEmit`, and Biome checks pass.
+- `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
 - Provider, plugin-abstraction, library API, machine-output, deprecation, redaction, managed-file, coexistence, scenario, recipe, executable-guide, and applicable renderer/OpenTUI contracts pass.
 - `lint:guides`, guide coverage, public transcript, source-mapper, and guide component-schema gates pass (§19).
