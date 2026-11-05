@@ -14,6 +14,8 @@ Read the root [repository instructions](../../AGENTS.md) and any package-specifi
 
 You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version); the current minimum is Bun 1.4.3. Node is not a supported host runtime. Use Bun for dependency installation, scripts, and tests.
 
+`bun install` provides TypeScript 7 for type checking and the TypeScript 6 compiler API under the `typescript` name. The [TypeScript 7 toolchain decision](./decisions.md#typescript-7-toolchain-decision) explains the two packages.
+
 Follow the [source-build steps](../alpha-install-and-bug-reports.md#option-2-build-from-source)
 to clone the repository, install dependencies, and generate sources. Before
 building the container helper, configure a working provider using the

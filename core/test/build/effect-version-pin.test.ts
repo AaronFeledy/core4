@@ -71,8 +71,9 @@ describe("Effect version pin", () => {
     expect(workspaces?.catalog?.effect).toBe(EFFECT_VERSION);
   });
 
-  test("the TypeScript devDependency floor is ^5.9.0", () => {
-    expect(rootManifest.devDependencies?.typescript).toBe("^5.9.0");
+  test("type-checks with TypeScript 7 and keeps the TypeScript 6 compiler API as typescript", () => {
+    expect(rootManifest.devDependencies?.["@typescript/native"]).toMatch(/^npm:typescript@\^7\./);
+    expect(rootManifest.devDependencies?.typescript).toMatch(/^npm:@typescript\/typescript6@\^6\./);
   });
 
   test("every workspace declares effect through the catalog and depends on no @effect package", async () => {
