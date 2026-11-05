@@ -112,7 +112,7 @@ echo 'fib(25) = ' . fib(25) . "\n";
 ```sh
 lando start
 lando exec app -- php -m
-lando composer require perftools/php-profiler
+lando composer require perftools/php-profiler:1.4.2
 ```
 
 Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
@@ -127,9 +127,92 @@ If no run appears, check that `xhprof` and `curl` are in `lando exec app -- php 
 
 The profiler suppresses upload exceptions during shutdown, so an empty app log doesn't prove that a profile was saved. Check `lando logs -s xhgui` and `lando logs -s profiles` for import or database errors. After correcting an error, reload the app page and look for a new run containing `fib`.
 
+## Large profiles disappear without an error
+
+A request that calls many distinct functions can produce a profile of several megabytes. The XHGui `0.23.7` image, published under the `0.23` tag, sets `client_max_body_size 5M` in its nginx site config. Its Alpine PHP configuration uses `post_max_size = 8M` and `memory_limit = 128M`. nginx rejects a body above its limit with HTTP 413. After nginx accepts it, PHP can run out of memory while XHGui decodes the JSON profile.
+
+PHP warns when the body exceeds `post_max_size`, but that isn't a reliable rejection limit for this raw-JSON endpoint: XHGui reads the request body directly, rather than using PHP's parsed form fields. `upload_max_filesize` doesn't apply to this request either, because the profiler sends JSON rather than a multipart file upload. The profiler suppresses its upload exceptions during shutdown, so the app page can load normally without a saved run or an upload error in the app log.
+
+To generate a large profile, save this as `big.php` next to the Landofile. It defines and calls `n` small functions. Start with `n=120000`; the serialized size depends on the profiler and extension versions, so this count doesn't guarantee a particular upload size:
+
+```php
+<?php
+ini_set('memory_limit', '1G');
+$n = (int) ($_GET['n'] ?? 20000);
+for ($i = 0; $i < $n; $i++) {
+    eval("function profile_padding_function_$i() { return $i; }");
+    ("profile_padding_function_$i")();
+}
+echo "called $n functions\n";
+```
+
+Request it from inside `app`, then read the XHGui log:
+
+```sh
+lando exec app -- curl -s "http://localhost/big.php?n=120000"
+lando logs -s xhgui
+```
+
+Look for `client intended to send too large body` and a `413` for `POST /run/import`. If present, they identify an nginx rejection before XHGui saw the upload. If the upload reached XHGui instead, check for PHP memory errors and look for the run in the UI before changing limits. The curl command requests Apache inside `app`; it does not send the profile itself.
+
+To raise the limits, copy the image's nginx site config to your app directory:
+
+```sh
+lando exec xhgui -- cat /etc/nginx/http.d/default.conf > xhgui-nginx.conf
+```
+
+In `xhgui-nginx.conf`, change `client_max_body_size 5M;` to `client_max_body_size 100M;`. Save this as `xhgui-php.ini` next to the Landofile:
+
+```ini
+post_max_size = 100M
+memory_limit = -1
+```
+
+XHGui decodes the whole profile in memory, so a large profile can need much more memory than its upload size. `-1` removes PHP's memory limit, not container or host memory limits; use this only for local profiling. Raising `post_max_size` avoids the oversized-POST warning. Mount both files into the `xhgui` service:
+
+```yaml
+services:
+  xhgui:
+    type: compose
+    image: xhgui/xhgui:0.23
+    appMount: false
+    mounts:
+      - source: "./xhgui-nginx.conf"
+        target: "/etc/nginx/http.d/default.conf"
+        readOnly: true
+      - source: "./xhgui-php.ini"
+        target: "/etc/php83/conf.d/zz-xhgui.ini"
+        readOnly: true
+```
+
+Keep the rest of the `xhgui` service as it was. Relative mount sources resolve from the app root. The `/etc/php83` path matches the image described above; if you already have an older `0.23` image cached, check its configuration paths with `lando exec xhgui -- php-fpm -i` before choosing the mount target. Versions `0.23.0` and `0.23.1` used `/etc/php8` instead.
+
+The profiler gives each upload 3 seconds by default, so a large profile can also time out. Raise `timeout` in `xhgui-header.php`:
+
+```php
+        'save.handler.upload' => [
+            'url' => 'http://xhgui/run/import',
+            'timeout' => 30,
+        ],
+```
+
+Restart the whole app to apply the new mounts and reload nginx and PHP-FPM. A bare `lando restart` applies changed mounts; a rebuild isn't required for these config files. Then check the configuration and repeat the request:
+
+```sh
+lando restart
+lando exec xhgui -- nginx -T
+lando exec xhgui -- php-fpm -i
+lando exec app -- curl -s "http://localhost/big.php?n=120000"
+lando logs -s xhgui
+```
+
+Check that `nginx -T` succeeds and its site config sets `client_max_body_size 100M`. The image provides `php-fpm` as a symlink to `php-fpm83`; `php-fpm -i` prints text, not HTML. Check its parsed ini files for `/etc/php83/conf.d/zz-xhgui.ini` and its settings for `post_max_size => 100M` and `memory_limit => -1`. These commands inspect the configuration available to new processes, not the state of an already-running worker.
+
+After the request, check that the log shows a `200` for `POST /run/import`, then open the `xhgui` URL and check that a new run shows `/big.php?n=120000`. The saved run is the end-to-end check. If it is still missing, check XHGui and Postgres logs for errors; raising body limits does not fix every import failure.
+
 ## Check the Lando configuration
 
-These checks exercise the declared services and tooling. They don't build XHProf or upload a profile; use the steps above for that:
+These checks exercise the declared services and tooling, with the large-profile mounts applied. They don't build XHProf or upload a profile; use the steps above for that:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -148,6 +231,8 @@ These checks exercise the declared services and tooling. They don't build XHProf
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"php:8.3\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pecl install xhprof" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"xhgui/xhgui:0.23\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/etc/nginx/http.d/default.conf" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/etc/php83/conf.d/zz-xhgui.ini" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"profiles\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
     </Step>

@@ -8,7 +8,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { type PodmanApiClient, type PodmanServiceRunner, makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId } from "@lando/sdk/schema";
+import { catatonitFixture } from "./fixtures/catatonit.ts";
 
 const fakeServiceRunner: PodmanServiceRunner = {
   launch: () => Effect.succeed(4242),
@@ -23,6 +23,7 @@ describe("provider-lando runtime path resolution", () => {
     Reflect.deleteProperty(process.env, "LANDO_TEST_PODMAN_SOCKET");
     const tempDir = await mkdtemp(join(tmpdir(), "lando-runtime-paths-"));
     const observedSockets: string[] = [];
+    const init = catatonitFixture();
     try {
       const providerSocketPath = join(tempDir, "runtime", "run", "podman.sock");
       const providerPidPath = join(tempDir, "runtime", "run", "podman.pid");
@@ -34,6 +35,8 @@ describe("provider-lando runtime path resolution", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
+          artifactDownload: init.download,
+          _catatonitPackage: init.pkg,
           podmanApiFactory,
           podmanService: fakeServiceRunner,
           providerSocketPath,
@@ -55,7 +58,7 @@ describe("provider-lando runtime path resolution", () => {
         }),
       );
 
-      await Effect.runPromiseExit(provider.listVolumes({ app: AppId.make("path-resolution") }));
+      await Effect.runPromiseExit(provider.ensureReady ?? Effect.die("managed readiness is missing"));
 
       expect(observedSockets).toEqual([providerSocketPath]);
       expect(await readFile(providerPidPath, "utf8")).toBe("4242");
@@ -71,6 +74,7 @@ describe("provider-lando runtime path resolution", () => {
     process.env.LANDO_TEST_PODMAN_SOCKET = "/tmp/should-never-be-used.sock";
     const tempDir = await mkdtemp(join(tmpdir(), "lando-runtime-paths-env-"));
     const observedSockets: string[] = [];
+    const init = catatonitFixture();
     try {
       const providerSocketPath = join(tempDir, "runtime", "run", "podman.sock");
       const providerPidPath = join(tempDir, "runtime", "run", "podman.pid");
@@ -82,6 +86,8 @@ describe("provider-lando runtime path resolution", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
+          artifactDownload: init.download,
+          _catatonitPackage: init.pkg,
           podmanApiFactory,
           podmanService: fakeServiceRunner,
           providerSocketPath,
@@ -103,7 +109,7 @@ describe("provider-lando runtime path resolution", () => {
         }),
       );
 
-      await Effect.runPromiseExit(provider.listVolumes({ app: AppId.make("path-resolution-env") }));
+      await Effect.runPromiseExit(provider.ensureReady ?? Effect.die("managed readiness is missing"));
 
       expect(observedSockets).toEqual([providerSocketPath]);
       expect(observedSockets).not.toContain("/tmp/should-never-be-used.sock");
@@ -216,7 +222,7 @@ describe("provider-lando runtime path resolution", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        provider.listVolumes({ app: AppId.make("path-resolution-darwin-missing") }),
+        provider.ensureReady ?? Effect.die("managed readiness is missing"),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -254,7 +260,7 @@ describe("provider-lando runtime path resolution", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        provider.listVolumes({ app: AppId.make("path-resolution-darwin-bundle") }),
+        provider.ensureReady ?? Effect.die("managed readiness is missing"),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);

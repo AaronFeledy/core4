@@ -6,7 +6,7 @@ import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginContext, LandoPluginModule } from "@lando/sdk/plugins";
-import { AppId, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
+import { AppId, GlobalConfig, PluginManifest, appIdentityKey } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
   ConfigService,
@@ -39,7 +39,7 @@ const service = (id: string): RouterServiceShape =>
     setup: () => Effect.void,
     revalidateStartup: Effect.void,
     observeRoutes: () => Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
-    applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+    applyRoutes: (routes, owner) => Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
     removeRoutes: () => Effect.void,
     status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
     stop: Effect.void,
@@ -137,6 +137,7 @@ const buildSelectedProxy = (
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(RouterServiceRegistry, RouterServiceRegistry.of(registry)),
+              stateStoreLayer,
               Layer.succeed(CertificateAuthorityResolver, CertificateAuthorityResolver.of(resolver)),
               Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/proxy-registry-test" })),
               provideTestRuntime({ bootstrap: "global" }),
@@ -252,15 +253,15 @@ describe("RouterService registry selection", () => {
       RouterService,
       Effect.map(CertificateAuthority, (authority) => ({
         ...service("needs-ca"),
-        applyRoutes: (routes, app) =>
+        applyRoutes: (routes, owner) =>
           authority.issueCert({ cn: "proxy.test", sans: ["proxy.test"] }).pipe(
-            Effect.as({ app, appliedRoutes: routes, authorities: [] }),
+            Effect.as({ app: owner.id, appliedRoutes: routes, authorities: [] }),
             Effect.mapError(
               (cause) =>
                 new ProxyApplyError({
                   message: "proxy CA failed",
                   proxyId: "needs-ca",
-                  app: String(app),
+                  app: String(owner.id),
                   remediation: "Run lando setup.",
                   cause,
                 }),
@@ -290,7 +291,9 @@ describe("RouterService registry selection", () => {
     expect(resolutions).toBe(0);
 
     // When
-    await Effect.runPromise(selected.applyRoutes([], AppId.make("demo")));
+    await Effect.runPromise(
+      selected.applyRoutes([], { id: AppId.make("demo"), ownerKey: appIdentityKey("owner", "/apps/demo") }),
+    );
 
     // Then
     expect(resolutions).toBe(1);

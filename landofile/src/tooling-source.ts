@@ -1,27 +1,33 @@
+import { stat } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   type ComposeKeyRejectedError,
   LandofileIncludeError,
+  type LandofileLoadError,
+  type LandofileLoadFailure,
   type LandofileParseError,
   type LandofileValidationError,
   type NotImplementedError,
-  causeMessage,
 } from "@lando/sdk/errors";
 import { type ValueOrigins, isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import { type LandofileLayer, type LandofileShape, ToolingTaskInput } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { materializeIncludeConditions } from "./include-conditions.ts";
 import type { LandofileRelaxedRead } from "./include-context.ts";
-import { assertUnderRoot, includeError } from "./include-guard.ts";
+import { assertUnderRoot } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
+import { includeReadError } from "./include-read-error.ts";
+import { prepareIncludeAcquisition } from "./load-acquisition.ts";
 import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
   type ResolveLandofileLoadExpressionError,
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
+import type { LoadFailureRecorder } from "./load-failures.ts";
 import { parseLandofile } from "./parser.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
@@ -33,6 +39,8 @@ import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
 export type ToolingIncludeError =
+  | LandofileLoadFailure
+  | LandofileLoadError
   | import("@lando/sdk/errors").ConfigExpressionError
   | ComposeKeyRejectedError
   | LandofileIncludeError
@@ -50,25 +58,20 @@ interface ToolingFragment {
 }
 
 export interface ToolingSourceContext {
+  readonly recorder?: LoadFailureRecorder | undefined;
   readonly layer?: LandofileLayer;
   readonly appRoot: string;
   readonly loadScope: LandofileLoadScope;
   readonly loadPolicy: LandofileLoadPolicy;
   readonly onRelaxedRead?: ((read: LandofileRelaxedRead) => Effect.Effect<void>) | undefined;
 }
-const MISSING_REMEDIATION = "Create the tooling fragment, fix its path, or mark the include optional: true.";
 const ToolingWire = Schema.Struct({
   tooling: Schema.optionalKey(Schema.Record(Schema.String, Schema.toEncoded(ToolingTaskInput))),
 });
 const readFragmentText = (filePath: string, source: string): Effect.Effect<string, LandofileIncludeError> =>
   Effect.tryPromise({
     try: () => Bun.file(filePath).text(),
-    catch: (cause) =>
-      includeError({
-        message: `Could not read tooling include ${source} at ${filePath}: ${causeMessage(cause)}`,
-        source,
-        kind: "fetch-failed",
-      }),
+    catch: (cause) => includeReadError(filePath, source, cause),
   });
 export const locateFragment = (
   entry: NormalizedToolingInclude,
@@ -79,21 +82,17 @@ export const locateFragment = (
     try: async (): Promise<string | undefined> => {
       const candidate = isAbsolute(entry.source) ? entry.source : resolve(sourceRoot, entry.source);
       const contained = await assertUnderRoot(appRoot, candidate, entry.source);
-      if (!(await Bun.file(contained).exists())) {
-        if (entry.optional) return undefined;
-        throw includeError({
-          message: `Tooling include ${entry.source} was not found at ${candidate}.`,
-          source: entry.source,
-          kind: "fetch-failed",
-          remediation: MISSING_REMEDIATION,
-        });
-      }
-      return contained;
+      const found = await stat(contained).catch((cause: unknown) => {
+        if (entry.optional && cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+          return undefined;
+        throw includeReadError(contained, entry.source, cause);
+      });
+      return found === undefined ? undefined : contained;
     },
     catch: (cause) =>
       cause instanceof LandofileIncludeError
         ? cause
-        : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
+        : includeReadError(resolve(sourceRoot, entry.source), entry.source, cause),
   });
 export const loadFragment = (
   entry: NormalizedToolingInclude,
@@ -120,14 +119,20 @@ export const loadFragment = (
       ),
     ),
     Effect.tap((parsed) =>
-      assertToolingFragment(
-        isPlainRecord(parsed) ? mergeLandofiles([parsed]) : parsed,
-        entry.source,
+      assertToolingFragment(isPlainRecord(parsed) ? mergeLandofiles([parsed]) : parsed, entry.source, {
         filePath,
-      ),
+        layer: context.layer ?? "canonical",
+        recorder: context.recorder,
+      }),
     ),
-    Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
-    Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
+    Effect.tap((parsed) => {
+      const check = rejectComposeKeys(entry.source, parsed).pipe(
+        Effect.flatMap(() => rejectUnsupportedToolingFeatures(filePath, parsed)),
+      );
+      if (context.recorder === undefined) return check;
+      context.recorder.effectiveChecks.push(check);
+      return Effect.void;
+    }),
     Effect.flatMap((parsed) =>
       resolveLandofileLoadExpressions({
         value: parsed,
@@ -139,6 +144,7 @@ export const loadFragment = (
         },
         policy: context.loadPolicy,
         pendingSites: context.loadScope.pendingSites,
+        recorder: context.recorder,
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,
@@ -164,23 +170,34 @@ export const loadFragment = (
         isPlainRecord(value) ? (getSourceDocuments(value)[0]?.document ?? value) : value,
       ).pipe(
         Effect.flatMap((prepared) =>
-          materializeLandofileLayer(
-            filePath,
+          materializeIncludeConditions(
             isPlainRecord(value)
               ? copyLandofileProvenance(value, rememberOrigins(prepared.value, prepared.origins))
               : rememberOrigins(prepared.value, prepared.origins),
-            context.loadScope,
+            {
+              source: {
+                sourcePath: filePath,
+                sourceRoot: dirname(filePath),
+                appRoot: context.appRoot,
+                layer: context.layer ?? "canonical",
+              },
+              policy: context.loadPolicy,
+              scope: context.loadScope,
+              ...(context.onRelaxedRead === undefined ? {} : { onRelaxedRead: context.onRelaxedRead }),
+            },
           ),
         ),
+        Effect.flatMap((conditioned) => materializeLandofileLayer(filePath, conditioned, context.loadScope)),
         Effect.tap((materialized) =>
           assertToolingFragment(
             isPlainRecord(materialized) ? mergeLandofiles([materialized]) : materialized,
             entry.source,
-            filePath,
+            { filePath, layer: context.layer ?? "canonical", recorder: context.recorder },
           ),
         ),
-        Effect.tap((materialized) => rejectUnsupportedToolingFeatures(filePath, materialized)),
         Effect.tap((materialized) => {
+          if (context.recorder?.blocked.some((source) => "file" in source && source.file === filePath))
+            return Effect.void;
           const projection = isPlainRecord(materialized) ? mergeLandofiles([materialized]) : materialized;
           return Schema.decodeUnknownEffect(ToolingWire)(projection, { errors: "all" }).pipe(
             Effect.mapError((cause) => validationErrorFromCause(filePath, materialized, cause)),
@@ -188,18 +205,28 @@ export const loadFragment = (
         }),
         Effect.flatMap((decoded) =>
           Effect.try({
-            try: () => ({
-              filePath,
-              tooling: isPlainRecord(decoded) ? decoded.tooling : undefined,
-              nested: includeAcquisitionView(isPlainRecord(decoded) ? decoded : {}),
-              origins: getOrigins(isPlainRecord(decoded) ? decoded : {}) ?? {
-                source: { file: filePath, layer: context.layer ?? "canonical", path: [] },
-                deleted: false,
-                children: new Map(),
-              },
-              sources: isPlainRecord(decoded) ? getSourceDocuments(decoded) : [],
-              referencedFiles: dependencies,
-            }),
+            try: () => {
+              const document = isPlainRecord(decoded) ? decoded : {};
+              const acquired =
+                context.recorder === undefined
+                  ? document
+                  : prepareIncludeAcquisition(document, {
+                      recorder: context.recorder,
+                      source: { file: filePath, layer: context.layer ?? "canonical", path: [] },
+                    });
+              return {
+                filePath,
+                tooling: document.tooling,
+                nested: includeAcquisitionView(acquired),
+                origins: getOrigins(acquired) ?? {
+                  source: { file: filePath, layer: context.layer ?? "canonical", path: [] },
+                  deleted: false,
+                  children: new Map(),
+                },
+                sources: getSourceDocuments(document),
+                referencedFiles: dependencies,
+              };
+            },
             catch: (cause) => validationErrorFromCause(filePath, decoded, cause),
           }),
         ),

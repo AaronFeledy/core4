@@ -3,8 +3,8 @@ import { Schema } from "effect";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 
+import { csi } from "@lando/renderer/palette";
 import { TASK_DETAIL_TAIL_CAPACITY, TaskDetailRing } from "./task-detail-ring.ts";
-import { csi } from "./task-tree-frame.ts";
 import {
   SPINNER_FRAMES,
   type TaskState,
@@ -24,6 +24,7 @@ const asAbsolutePath = (value: unknown): typeof AbsolutePath.Type | undefined =>
   Schema.is(AbsolutePath)(value) ? value : undefined;
 
 export interface TaskTreeViewModelOptions {
+  readonly color: boolean;
   readonly detailCapacity?: number;
   readonly terminalColumns?: number | undefined;
   readonly getTerminalColumns?: (() => number | undefined) | undefined;
@@ -57,6 +58,7 @@ type NewTaskInput = {
 };
 
 export class TaskTreeViewModel implements TaskTreeInteractionModel {
+  readonly #color: boolean;
   readonly #detailCapacity: number;
   readonly #terminalColumns: number | undefined;
   readonly #getTerminalColumns: (() => number | undefined) | undefined;
@@ -70,7 +72,8 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
   #expandedTaskId: string | undefined;
   #expandedLines: ReadonlyArray<string> = [];
 
-  constructor(options: TaskTreeViewModelOptions = {}) {
+  constructor(options: TaskTreeViewModelOptions) {
+    this.#color = options.color;
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
     this.#terminalColumns = options.terminalColumns;
     this.#getTerminalColumns = options.getTerminalColumns;
@@ -182,11 +185,11 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
   }
 
   frameLines(): ReadonlyArray<string> {
-    return styleFrame(renderLogicalFrame(this.renderState()));
+    return styleFrame(renderLogicalFrame(this.renderState()), this.#color);
   }
 
   treeFrameLines(): ReadonlyArray<string> {
-    return styleFrame(renderTreeFrame(this.renderState()));
+    return styleFrame(renderTreeFrame(this.renderState()), this.#color);
   }
 
   renderState(): TaskTreeRenderState {

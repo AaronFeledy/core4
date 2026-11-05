@@ -23,7 +23,6 @@ import * as EnvironmentValueResolverLayer from "@lando/engine/services/environme
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { makeLandoPaths } from "@lando/paths";
@@ -46,6 +45,7 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { appConfig } from "../../src/cli/commands/app-config.ts";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 
 test.each([
   ["canary-956-f6d042c1-opaque-resolved-value", false],

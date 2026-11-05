@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect } from "effect";
 
 import { ServiceStartError } from "@lando/sdk/errors";
-import { type AppId, type AppPlan, ProviderId, type ServiceName } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type AppPlan,
+  ProviderId,
+  type ServiceName,
+  landoServiceContainerName,
+} from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -15,7 +21,7 @@ const testProviderId = ProviderId.make(TestRuntimeProvider.id);
 
 /** Private mirror of the contract's native container name convention. */
 const retentionContainerName = (slug: string, service: string): string =>
-  `lando-${slug}-${service}`.replace(/[^a-zA-Z0-9_.-]+/gu, "-");
+  landoServiceContainerName(slug, String(service));
 
 /**
  * In-memory provider double that retains resources on start failure / interrupt

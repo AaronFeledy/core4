@@ -27,7 +27,9 @@ const renderViolation = (violation: ConfigLintViolation): string => {
     lines.push(`    scopes: ${scopeText}`);
   }
   if (violation.suggestion !== undefined) {
-    lines.push(`    fix: ${escapeDiagnosticText(violation.suggestion)}`);
+    for (const [index, line] of violation.suggestion.split("\n").entries()) {
+      lines.push(`${index === 0 ? "    fix: " : "       | "}${escapeDiagnosticText(line)}`);
+    }
   }
   return lines.join("\n");
 };

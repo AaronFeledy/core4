@@ -41,6 +41,7 @@ const providerWithComposeServiceFields = {
 } satisfies typeof TestRuntimeProvider;
 
 const OPTIONAL_CAPABILITY_FIELDS = new Set([
+  "fileSyncTargets",
   "authoredNetworks",
   "composePreservedPaths",
   "composeProjectFields",
@@ -450,6 +451,7 @@ describe("meta:doctor command", () => {
         sharedCrossAppNetwork: false,
         bindMountPerformance: "slow" as const,
         copyMounts: false,
+        fileSyncTargets: "prepared-volume" as const,
       },
       getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
     };

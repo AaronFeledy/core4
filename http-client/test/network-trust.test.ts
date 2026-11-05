@@ -4,11 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Context, Effect, Schema } from "effect";
 
 import { GlobalConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
 
-import { loadCaPems, resolveServiceNetworkInject, withWindowsHostTrust } from "../src/network-trust.ts";
+import {
+  loadCaPems,
+  resolveServiceNetworkInject,
+  resolveTrust,
+  withWindowsHostTrust,
+} from "../src/network-trust.ts";
 
 describe("Windows host CA trust", () => {
   const configured = {
@@ -179,5 +185,88 @@ describe("core network trust", () => {
       landofileCaPaths: ["./service.pem"],
       proxy: { https: "http://proxy.example:3128", noProxy: [] },
     });
+  });
+});
+
+describe("resolveTrust", () => {
+  test("returns injected trust without reading ConfigService", async () => {
+    const injected = {
+      proxy: { https: "http://proxy.example:3128", noProxy: [] as const },
+      caPems: ["injected-pem"],
+      trustHost: false,
+    };
+    let loaded = false;
+    const context = Context.make(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.sync(() => {
+          loaded = true;
+          return Schema.decodeUnknownSync(GlobalConfig)({});
+        }),
+        get: () => Effect.die("injected trust must not read config"),
+      }),
+    );
+    const resolved = await Effect.runPromise(resolveTrust(context, injected, {}));
+    expect(resolved).toEqual(injected);
+    expect(loaded).toBe(false);
+  });
+
+  test("returns undefined when ConfigService is absent", async () => {
+    const resolved = await Effect.runPromise(resolveTrust(Context.empty(), undefined, {}));
+    expect(resolved).toBeUndefined();
+  });
+
+  test("loads plan from ConfigService and CA PEMs from disk", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lando-resolve-trust-"));
+    const caPath = join(directory, "custom.pem");
+    const pem = "-----BEGIN CERTIFICATE-----\nresolve-trust\n-----END CERTIFICATE-----\n";
+    try {
+      await writeFile(caPath, pem, "utf-8");
+      const config = Schema.decodeUnknownSync(GlobalConfig)({
+        network: {
+          ca: { certs: [caPath], trustHost: false },
+          proxy: { https: "http://cfg-proxy:8080" },
+        },
+      });
+      const context = Context.make(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: (key) => Effect.succeed(config[key]),
+        }),
+      );
+      const resolved = await Effect.runPromise(resolveTrust(context, undefined, {}));
+      expect(resolved).toEqual({
+        proxy: { https: "http://cfg-proxy:8080", noProxy: [] },
+        caPems: [pem],
+        trustHost: false,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("fails with HttpTrustError when a CA path is unreadable", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lando-resolve-trust-miss-"));
+    const missing = join(directory, "missing.pem");
+    try {
+      const config = Schema.decodeUnknownSync(GlobalConfig)({
+        network: { ca: { certs: [missing] } },
+      });
+      const context = Context.make(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: (key) => Effect.succeed(config[key]),
+        }),
+      );
+      const result = await Effect.runPromise(Effect.result(resolveTrust(context, undefined, {})));
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("expected resolveTrust failure");
+      expect(result.failure._tag).toBe("HttpTrustError");
+      expect(result.failure.kind).toBe("missing-custom-ca");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

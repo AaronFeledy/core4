@@ -187,8 +187,8 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
       ),
       sink,
     );
-    stdout += result.stdout;
-    stderr += result.stderr;
+    stdout += result.stdout ?? "";
+    stderr += result.stderr ?? "";
     exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
     if (exitCode !== 0) break;
   }

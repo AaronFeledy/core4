@@ -63,5 +63,5 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
     "dry-run": dryRunFlag,
   },
   run: (input) => config(metaConfigOptionsFromInput(input)),
-  render: (result) => renderConfigResult(result as ConfigResult),
+  render: (result) => renderConfigResult(result),
 };

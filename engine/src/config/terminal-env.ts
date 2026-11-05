@@ -19,6 +19,7 @@ export const withTerminalEnv = <Value = string>(
   };
   if (options.hostTerminal?.term !== undefined) terminalEnv.TERM = options.hostTerminal.term;
   if (options.hostTerminal?.colorterm !== undefined) terminalEnv.COLORTERM = options.hostTerminal.colorterm;
+  if (options.hostTerminal?.noColor === true) terminalEnv.NO_COLOR = "1";
   for (const name of Object.keys(options.serviceEnv ?? {})) delete terminalEnv[name];
 
   const merged = { ...terminalEnv, ...(options.env ?? {}) };

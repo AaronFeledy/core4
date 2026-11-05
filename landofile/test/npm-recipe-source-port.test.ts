@@ -1,15 +1,16 @@
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
-
+import { Effect } from "effect";
 import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
-import { makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
+import {
+  makeNpmPackageTarball,
+  makeTestLandofilePorts,
+  makeTestLandofileStateStore,
+  makeTestNpmRegistry,
+} from "./support.ts";
 
 describe("npm include recipe-source port", () => {
   const roots: string[] = [];
@@ -24,7 +25,18 @@ describe("npm include recipe-source port", () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-npm-port-cache-"));
     roots.push(appRoot, cacheRoot);
     const packageSpecs: string[] = [];
-    const bytes = new Uint8Array([1, 2, 3]);
+    const tarball = makeNpmPackageTarball({
+      "fragments/web.yml": "services:\n  web:\n    type: node\n",
+    });
+    const npmRegistry = makeTestNpmRegistry({
+      name: "@acme/fragments",
+      version: "1.2.3",
+      tarball,
+      tags: { next: "1.2.3", latest: "1.2.3" },
+      onPackument: (name) => {
+        packageSpecs.push(`${name}@next`);
+      },
+    });
 
     // When
     const result = await Effect.runPromise(
@@ -32,34 +44,9 @@ describe("npm include recipe-source port", () => {
         landofile: { includes: ["npm:@acme/fragments/fragments/web.yml@next"] },
         appRoot,
         cacheRoot,
-        stateStore: makeTestLandofileStateStore(),
-        ports: {
-          resolveUserCacheRoot: () => cacheRoot,
-          resolveUserIncludesDir: () => cacheRoot,
-          npmRecipeSource: {
-            resolve: async (packageSpec) => {
-              packageSpecs.push(packageSpec);
-              return {
-                packageName: "@acme/fragments",
-                version: "1.2.3",
-                dist: {
-                  tarball: "https://registry.example/fragments.tgz",
-                  shasum: createHash("sha1").update(bytes).digest("hex"),
-                },
-              };
-            },
-          },
-          git: { clone: async () => ({ commitSha: "unused" }) },
-          tarball: {
-            fetch: async () => bytes,
-            extract: async (_archive, destDir) => {
-              const fragmentDir = join(destDir, "package", "fragments");
-              await mkdir(fragmentDir, { recursive: true });
-              await writeFile(join(fragmentDir, "web.yml"), "services:\n  web:\n    type: node\n");
-            },
-          },
-          publication: makeTestPublicationPort(),
-        },
+        stateStore: makeTestLandofileStateStore(cacheRoot),
+        ports: makeTestLandofilePorts(cacheRoot, cacheRoot, { npmRegistry }),
+        deps: { npmRegistry },
       }),
     );
 

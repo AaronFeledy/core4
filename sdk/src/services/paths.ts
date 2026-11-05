@@ -9,7 +9,13 @@ import type { HostPlatform } from "../schema/index.ts";
  */
 export interface LandoRoots {
   readonly userConfRoot: string;
+  /**
+   * Regenerable caches, logs, and operation-scoped temporary files. Users and
+   * OS cleaners may delete it, so it must never hold the only copy of
+   * ownership records, live-resource state, security floors, or user data.
+   */
   readonly userCacheRoot: string;
+  /** Durable Lando-managed state, including everything `userCacheRoot` must not hold. */
   readonly userDataRoot: string;
   readonly systemPluginRoot: string;
 }
@@ -41,10 +47,8 @@ export class PathsService extends Context.Service<
     readonly platform: HostPlatform;
     // userData-scoped
     readonly pluginsDir: string;
-    readonly systemPluginsDir: string;
     readonly pluginStateDir: (pluginId: string) => string;
     readonly appPluginsDir: (appId: string) => string;
-    readonly pluginAuthFile: string;
     readonly binDir: string;
     readonly installRecordFile: string;
     readonly keysDir: string;
@@ -63,18 +67,18 @@ export class PathsService extends Context.Service<
     readonly snapshotsDir: string;
     readonly ownerSnapshotsDir: (ownerKey: string) => string;
     readonly managedFileLedger: (appId: string) => string;
-    readonly toolDownloadsDir: (toolId: string) => string;
-    // userCache-scoped
-    readonly logsDir: string;
     readonly scratchDir: string;
-    readonly scratchRegistryFile: string;
-    readonly scratchRegistryLockFile: string;
-    readonly tunnelRegistryFile: string;
     readonly tunnelRunDir: string;
-    readonly appCacheDir: (appName: string, appRoot: string) => string;
-    readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
     readonly shellHistoryFile: (appName: string, appRoot: string) => string;
     readonly fileSyncSessionsDir: string;
+    // userCache-scoped
+    readonly logsDir: string;
+    readonly toolDownloadsDir: (toolId: string) => string;
+    readonly transferStagingDir: string;
+    readonly appCacheDir: (appName: string, appRoot: string) => string;
+    readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
+    // systemPluginRoot-scoped
+    readonly systemPluginsDir: string;
     // userConf-scoped
     readonly configFile: string;
     readonly configDir: string;

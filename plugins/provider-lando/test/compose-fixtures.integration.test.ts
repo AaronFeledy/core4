@@ -15,7 +15,13 @@ import {
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName, landoAppNetworkName, landoAuthoredNetworkName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  ServiceName,
+  landoAppNetworkName,
+  landoAuthoredNetworkName,
+  landoServiceContainerName,
+} from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -281,7 +287,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     }
     await Effect.runPromise(bringUp(plan, { api }));
 
-    const containerName = `lando-${plan.slug}-${fixture.service}`;
+    const containerName = landoServiceContainerName(plan.slug, fixture.service);
     const response = await Effect.runPromise(
       liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),
     );
@@ -308,11 +314,14 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     }
     for (const [service, keys] of Object.entries(fixture.authoredNetworks ?? {})) {
       const response = await Effect.runPromise(
-        liveRequest({ method: "GET", path: `/containers/lando-${plan.slug}-${service}/json` }),
+        liveRequest({
+          method: "GET",
+          path: `/containers/${landoServiceContainerName(plan.slug, service)}/json`,
+        }),
       );
       expect(response.status).toBe(200);
       const serviceInspect: unknown = JSON.parse(response.body);
-      assertServiceContainerRunning(serviceInspect, `lando-${plan.slug}-${service}`);
+      assertServiceContainerRunning(serviceInspect, landoServiceContainerName(plan.slug, service));
       const networks = field(field(serviceInspect, "NetworkSettings"), "Networks");
       const names = typeof networks === "object" && networks !== null ? Object.keys(networks) : [];
       const appNetwork = landoAppNetworkName(plan);

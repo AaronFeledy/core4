@@ -287,9 +287,11 @@ describe("doctor chaos: plugin-contributed checks", () => {
       reason: "failure",
       context: { failure: "PluginDescriptorMismatchError" },
     });
-    expect(selfChecks[0]?.solutions.some((solution) => solution.description.includes("plugin list"))).toBe(
-      true,
-    );
+    expect(
+      selfChecks[0]?.solutions.some((solution) =>
+        solution.description.includes("lando plugin:remove <name>"),
+      ),
+    ).toBe(true);
     expect(result.checks.some((check) => check.name.startsWith("duplicate-report-"))).toBe(false);
     expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
     expect(JSON.stringify(result)).not.toContain(secret);

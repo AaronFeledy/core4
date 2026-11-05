@@ -199,6 +199,7 @@ describe("Effect service tags", () => {
       subscribe: (_name: string) => Stream.empty,
       subscribeQueue: Effect.never as Context.Service.Shape<typeof EventService>["subscribeQueue"],
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     };

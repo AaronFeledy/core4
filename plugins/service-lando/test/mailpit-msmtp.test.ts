@@ -12,6 +12,7 @@ import type {
 
 import { mailpitWireFeature } from "../src/app-features/mailpit.ts";
 import { PHP_FEATURE_ID } from "../src/services/php.ts";
+import { phpResolution } from "./support/php-resolution.ts";
 
 const unsupported = (name: string) => () => {
   throw new Error(`unexpected mutator ${name}`);
@@ -22,38 +23,44 @@ const view = (
   serviceType: string,
   config: Record<string, unknown>,
   featureIds: ReadonlyArray<string> = [],
-): AppFeatureServiceView => ({
-  serviceName,
-  serviceType,
-  base: "lando",
-  primary: false,
-  featureIds,
-  normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)(config),
-});
+): AppFeatureServiceView => {
+  const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)(config);
+  return {
+    serviceName,
+    serviceType,
+    base: "lando",
+    primary: false,
+    featureIds,
+    normalizedConfig,
+    resolutionMetadata: featureIds.includes(PHP_FEATURE_ID)
+      ? phpResolution(normalizedConfig).metadata
+      : undefined,
+  };
+};
 
 const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
   const steps: ServiceBuildStepIntent[] = [];
-  const mutatorsFor = (target: AppFeatureServiceView): AppFeatureServiceMutators =>
-    ({
-      service: target,
-      addEnv: () => {},
-      addDependency: () => {},
-      addBuildStep: (step: ServiceBuildStepIntent) => {
-        steps.push(step);
-      },
-      addMount: unsupported("addMount"),
-      setAppMount: unsupported("setAppMount"),
-      addStorage: unsupported("addStorage"),
-      addHostAlias: unsupported("addHostAlias"),
-      setHealthcheck: unsupported("setHealthcheck"),
-      setReadiness: unsupported("setReadiness"),
-      setCerts: unsupported("setCerts"),
-      setEntrypoint: unsupported("setEntrypoint"),
-      setCommand: unsupported("setCommand"),
-      setArtifact: unsupported("setArtifact"),
-      setUser: unsupported("setUser"),
-      setWorkingDirectory: unsupported("setWorkingDirectory"),
-    }) as unknown as AppFeatureServiceMutators;
+  const mutatorsFor = (target: AppFeatureServiceView): AppFeatureServiceMutators => ({
+    service: target,
+    addEnv: () => {},
+    addDependency: () => {},
+    addBuildStep: (step: ServiceBuildStepIntent) => {
+      steps.push(step);
+    },
+    addMount: unsupported("addMount"),
+    setAppMount: unsupported("setAppMount"),
+    addStorage: unsupported("addStorage"),
+    addHostAlias: unsupported("addHostAlias"),
+    setHealthcheck: unsupported("setHealthcheck"),
+    setReadiness: unsupported("setReadiness"),
+    setCerts: unsupported("setCerts"),
+    setEntrypoint: unsupported("setEntrypoint"),
+    setCommand: unsupported("setCommand"),
+    setInit: unsupported("setInit"),
+    setArtifact: unsupported("setArtifact"),
+    setUser: unsupported("setUser"),
+    setWorkingDirectory: unsupported("setWorkingDirectory"),
+  });
 
   const context: AppFeatureContext = {
     featureId: mailpitWireFeature.id,

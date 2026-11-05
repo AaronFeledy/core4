@@ -74,6 +74,9 @@ jobs:
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
 
+      - name: Host Bun Shell dialect conformance
+        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
+
       - name: Lint
         run: bun run lint
 
@@ -978,6 +981,13 @@ jobs:
 
       - name: Pre-pull container images
         run: |
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
@@ -1028,6 +1038,13 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
@@ -1261,6 +1278,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload darwin-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1333,6 +1360,16 @@ jobs:
           LANDO_RELEASE_TARGET: darwin-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1407,6 +1444,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload linux-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1480,6 +1527,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload linux-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1549,6 +1606,16 @@ jobs:
           LANDO_RELEASE_TARGET: windows-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-x64.exe
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload windows-x64 binary
         if: always()
@@ -1620,6 +1687,16 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-arm64.exe
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload windows-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1680,6 +1757,8 @@ jobs:
           set -euo pipefail
           UBUNTU_SNAPSHOT=20261019T000000Z
           printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
+          # Prefer snapshot dependencies even when the runner has newer versions installed.
+          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
           for DELAY in 0 5 15 45; do
             if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
             if sudo apt-get update --error-on=any; then break; fi
@@ -2148,6 +2227,13 @@ jobs:
 
       - name: Pre-pull container images
         run: |
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
@@ -2199,6 +2285,8 @@ jobs:
       - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -2218,6 +2306,13 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true

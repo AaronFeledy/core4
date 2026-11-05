@@ -58,5 +58,5 @@ export const appIncludesUpdateSpec: LandoCommandSpec<
       sources: sourcesFromInput(input),
     }),
   completion: (result) => ({ ok: true, exitCode: result.checkMode && result.drift ? 1 : 0 }),
-  render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
+  render: (result) => renderIncludesUpdateResult(result, "text"),
 };

@@ -1,11 +1,6 @@
 import { resolve } from "node:path";
 
-import type {
-  CompatibilityException,
-  JsonSchema,
-  JsonValue,
-  SchemaPolarity,
-} from "./schema-compatibility/model.ts";
+import type { JsonSchema, JsonValue, SchemaPolarity } from "./schema-compatibility/model.ts";
 import { isJsonObject } from "./schema-compatibility/model.ts";
 import { schemaPolarity } from "./schema-compatibility/polarity.ts";
 
@@ -51,7 +46,7 @@ const parseJsonValue = (value: unknown, source: string): JsonValue => {
   throw new SchemaCompatibilityInputError(`Invalid JSON value in ${source}.`);
 };
 
-const parseJson = (text: string, source: string): JsonValue => {
+export const parseJson = (text: string, source: string): JsonValue => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -119,36 +114,4 @@ export const loadWorkingSchemaArtifacts = async (repoRoot: string): Promise<Sche
     });
   }
   return artifacts;
-};
-
-export const loadCompatibilityExceptions = async (
-  path: string,
-): Promise<ReadonlyArray<CompatibilityException>> => {
-  const parsed = parseJson(await Bun.file(path).text(), path);
-  if (!Array.isArray(parsed)) throw new SchemaCompatibilityInputError(`${path} must contain an array.`);
-  const seen = new Set<string>();
-  return parsed.map((entry) => {
-    if (
-      !isJsonObject(entry) ||
-      typeof entry.surface !== "string" ||
-      typeof entry.changeKind !== "string" ||
-      typeof entry.path !== "string" ||
-      typeof entry.justification !== "string" ||
-      entry.justification.trim().length === 0
-    ) {
-      throw new SchemaCompatibilityInputError(`${path} contains an invalid compatibility exception.`);
-    }
-    const key = `${entry.surface}\0${entry.changeKind}\0${entry.path}`;
-    if (seen.has(key))
-      throw new SchemaCompatibilityInputError(
-        `${path} contains duplicate exception ${entry.surface} ${entry.path}.`,
-      );
-    seen.add(key);
-    return {
-      surface: entry.surface,
-      changeKind: entry.changeKind,
-      path: entry.path,
-      justification: entry.justification,
-    };
-  });
 };

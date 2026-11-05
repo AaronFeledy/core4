@@ -17,6 +17,7 @@ test.each([...serviceTypes].filter(([type]) => type !== "node"))(
       type,
       home: false,
       ...(type === "compose" || type === "lando" ? { image: "alpine:3" } : {}),
+      ...(type === "minio" ? { image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z" } : {}),
       ...(type.startsWith("varnish") ? { backend: "origin" } : {}),
     };
     const compose = (service: ServiceConfig) =>
@@ -64,6 +65,7 @@ test.each([...serviceTypes].filter(([type]) => type !== "node"))(
         ...(listener.primary ? { primary: true } : {}),
         name: `published-${listener.port}`,
         appProtocol: "opaque/hint",
+        ...(declaration.scan === undefined ? {} : { scan: declaration.scan }),
         publication: { hostPort: listener.port, bindAddress: "127.0.0.1" },
       });
     }

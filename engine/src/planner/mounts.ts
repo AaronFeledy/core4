@@ -14,7 +14,6 @@ import type { FileSystem } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
 import { compileAuthoredMounts, excludeDestination, literalIncludeError } from "./authored-mounts.ts";
-import { bindRealization } from "./compose-capabilities.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY, serviceFeatureExtension } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
 import { kebab, shortHash } from "./naming.ts";
@@ -135,12 +134,13 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
 export const realizeServiceMounts = (
   service: ServicePlan,
   capabilities: ProviderCapabilities,
+  accelerate = capabilities.bindMountPerformance === "slow",
 ): ServicePlan => ({
   ...service,
   mounts: orderMounts(service.mounts).map((mount) => {
     if (mount.type !== "bind") return mount;
     const { mountKey: _mountKey, ...bind } = mount;
-    const realization = bind.role === "app" ? bindRealization(capabilities) : "passthrough";
+    const realization = bind.role === "app" && accelerate ? "accelerated" : "passthrough";
     if (realization === "passthrough") return { ...bind, realization };
     return {
       ...bind,

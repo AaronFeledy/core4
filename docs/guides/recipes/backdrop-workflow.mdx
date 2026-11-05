@@ -21,6 +21,8 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 ## See what the recipe writes
 
+The appserver sets `uploadDirs: [files]` to keep PHP out of uploaded files.
+
 | Piece | What you get |
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: backdrop`, Apache on port `80`, depends on `database` |

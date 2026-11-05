@@ -7,13 +7,82 @@ import {
 } from "@lando/sdk/command-result";
 import {
   ComposeKeyRejectedError,
+  ConfigExpressionError,
   LandoInternalError,
+  LandofileIncludeError,
+  LandofileLoadError,
   LandofileParseError,
   ManagedFileTransactionError,
   RecipeSourceError,
+  landofileLoadFailures,
 } from "@lando/sdk/errors";
 import { CommandResultEnvelope, TaggedErrorJson } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+
+test("expression failure provenance preserves literal namespace keys through the diagnostic boundary", () => {
+  const source = {
+    file: "/app/fragment.yml",
+    layer: "local" as const,
+    path: ["toolingIncludes", "docs.v2", "when"],
+  };
+  const error = new ConfigExpressionError({
+    message: "Missing condition value.",
+    expression: "{{ env.MISSING }}",
+    filePath: source.file,
+    path: source.path,
+    source,
+    remediation: "Provide the value or a default.",
+  });
+  const roundTrip = Schema.decodeUnknownSync(ConfigExpressionError)(
+    Schema.encodeSync(ConfigExpressionError)(error),
+  );
+  expect(taggedErrorJson(roundTrip)).toMatchObject({ _tag: "ConfigExpressionError", source });
+});
+
+test("aggregate load failures survive schema round trips and command envelopes (#1646)", () => {
+  const first = new LandofileParseError({
+    message: "Invalid YAML",
+    filePath: "/app/.lando.local.yml",
+    line: 2,
+    column: 3,
+    cause: new Error("private"),
+    remediation: "Fix YAML.",
+  });
+  const second = new LandofileIncludeError({
+    message: "Missing include",
+    file: "/app/.lando.yml",
+    path: ["includes", 1],
+    source: "./missing.yml",
+    kind: "fetch-failed",
+    remediation: "Fix the path.",
+  });
+  const error = new LandofileLoadError({
+    file: "/app/.lando.yml",
+    message: "Two failures",
+    failures: [first, second],
+    remediation: "Fix both.",
+  });
+  const roundTrip = Schema.decodeUnknownSync(LandofileLoadError)(
+    Schema.encodeSync(LandofileLoadError)(error),
+  );
+  const line = Effect.runSync(
+    encodeCommandResult({
+      command: "app:start",
+      resultSchema: Schema.Void,
+      outcome: { _tag: "failure", error, additionalErrors: [] },
+      redactor: identityRedactor,
+    }),
+  );
+  const envelope = JSON.parse(line);
+  expect(roundTrip.failures[0]).toBeInstanceOf(LandofileParseError);
+  expect(landofileLoadFailures(first)).toEqual([first]);
+  expect(envelope.error.failures).toMatchObject([
+    { _tag: "LandofileParseError", line: 2 },
+    { _tag: "LandofileIncludeError", path: ["includes", 1] },
+  ]);
+  expect(envelope.error.failures[0]).not.toHaveProperty("cause");
+  expect(envelope.error.failures[1]).not.toHaveProperty("stack");
+});
 
 test("projects declared non-enumerable error fields without exposing runtime source locations", () => {
   // Given real tagged errors, including fields that collide with Bun's Error metadata.
@@ -42,6 +111,37 @@ test("projects declared non-enumerable error fields without exposing runtime sou
   expect(unrelated).not.toHaveProperty("column");
   expect(projected).not.toHaveProperty("sourceURL");
   expect(projected).not.toHaveProperty("stack");
+});
+
+test("projects failures by field name without exposing member causes or looping over cycles", () => {
+  const member = new LandofileIncludeError({
+    file: "/app/.lando.yml",
+    path: ["includes", 0],
+    source: "./missing.yml",
+    kind: "fetch-failed",
+    message: "Missing fragment.",
+    remediation: "Correct its path.",
+  });
+  const error = {
+    _tag: "CustomAggregate",
+    message: "Failed.",
+    remediation: "Fix members.",
+    failures: [member],
+  };
+  Object.assign(member, { cause: new Error("private"), failures: [error] });
+  const projected = taggedErrorJson(error);
+  expect(projected.failures).toEqual([
+    {
+      _tag: "LandofileIncludeError",
+      file: "/app/.lando.yml",
+      path: ["includes", 0],
+      source: "./missing.yml",
+      kind: "fetch-failed",
+      message: "Missing fragment.",
+      remediation: "Correct its path.",
+      failures: [],
+    },
+  ]);
 });
 
 test.each(["pending-transaction", "blocked"] as const)(

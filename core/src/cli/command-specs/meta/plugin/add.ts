@@ -45,7 +45,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   flags: {
     trust: Flags.boolean({
       description:
-        "Trust the plugin for this session (required for non-interactive installs; persistent trust is not supported).",
+        "Trust the plugin and save that trust by package name (required for non-interactive installs).",
       default: false,
     }),
     yes: yesFlag("Alias of --trust."),
@@ -62,5 +62,5 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
       nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
     });
   }),
-  render: (result) => renderPluginAddResult(result as PluginAddResult),
+  render: (result) => renderPluginAddResult(result),
 };

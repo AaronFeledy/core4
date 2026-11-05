@@ -17,9 +17,6 @@ const sanitizeAppName = (appName: string): string => {
   return cleaned;
 };
 
-export const pluginCommandCachePath = (cacheRoot: string): string =>
-  `${trimTrailingSlashes(cacheRoot)}/plugin-command-cache.bin`;
-
 // Short, stable fingerprint of an absolute app root path. Two apps that
 // share `name:` but live in different directories must not overwrite each
 // other's app-scoped caches; 12 hex chars (48 bits) is enough to avoid

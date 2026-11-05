@@ -13,6 +13,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 
+import { landoServiceContainerName } from "@lando/sdk/schema";
 import {
   type AppsListEntry,
   appsFromContainerList,
@@ -96,7 +97,7 @@ const stateEnvelope = (id: string, name: string, root: string, services: string[
 
 const labeled = (app: string, service: string, extra: Record<string, string> = {}) => ({
   Id: `${app}-${service}`,
-  Names: [`/lando-${app}-${service}`],
+  Names: [`/${landoServiceContainerName(app, service)}`],
   Labels: {
     "dev.lando.app": app,
     "dev.lando.service": service,

@@ -2,6 +2,7 @@ import {
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
+  HealthcheckTargetUnsupportedError,
   PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
@@ -110,6 +111,14 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
       return new ProviderInternalError(baseFields(error, redactor));
     case "ArtifactBuildError":
       return new ArtifactBuildError(baseFields(error, redactor));
+    case "HealthcheckTargetUnsupportedError":
+      return new HealthcheckTargetUnsupportedError({
+        message: redactor.redactString(error.message),
+        service: redactor.redactString(error.service),
+        target: error.target,
+        ...(error.role === undefined ? {} : { role: error.role }),
+        remediation: redactor.redactString(error.remediation),
+      });
     case "ServiceExecError":
       return new ServiceExecError({
         ...baseFields(error, redactor),
@@ -139,6 +148,9 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
                 lines: error.logTail.lines.map(redactor.redactString),
               },
             }),
+        ...(error.listener === undefined
+          ? {}
+          : { listener: { ...error.listener, service: redactor.redactString(error.listener.service) } }),
       });
     case "VolumeOperationError":
       return new VolumeOperationError({

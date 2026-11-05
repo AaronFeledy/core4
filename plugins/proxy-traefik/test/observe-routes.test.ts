@@ -5,7 +5,14 @@ import { HttpClientError, TransportError } from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
-import { acquisition, app, liveGraph, makeObserveFixture, route } from "./observe-routes-fixture.ts";
+import {
+  acquisition,
+  app,
+  demoRouterHttp,
+  liveGraph,
+  makeObserveFixture,
+  route,
+} from "./observe-routes-fixture.ts";
 
 test("observes an owned live graph with one GET, independent of requested subset indices", async () => {
   const fixture = makeObserveFixture();
@@ -37,7 +44,7 @@ test.each(
     { routers: {} },
     { routers: [], services: {} },
     { routers: { bad: null }, services: {} },
-    { routers: { "route-demo-7-http@file": {} }, services: {} },
+    { routers: { [demoRouterHttp]: {} }, services: {} },
   ].map((payload) => ({ payload })),
 )("does not call an invalid or absent graph known-empty (%j)", async ({ payload }) => {
   const fixture = makeObserveFixture(payload);

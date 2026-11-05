@@ -8,6 +8,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
+import { APP_LABEL, APP_ROOT_LABEL } from "../src/labels.ts";
+import { containerOwnershipLabels } from "../src/native-ownership.ts";
 import { inspect } from "../src/podman/inspect.ts";
 
 const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "inspect-state", runtime: 4 as const };
@@ -64,7 +66,7 @@ test("projects mounts and connections from one container inspect request", async
       },
     ),
   );
-  expect(requests).toEqual(["/containers/lando-inspect-state-web/json"]);
+  expect(requests).toEqual(["/containers/lando-inspect-state--web/json"]);
   expect(result.mounts).toEqual({
     status: "present",
     mounts: [{ type: "volume", source: "db", target: "/data", readOnly: false }],
@@ -134,5 +136,49 @@ test.each(["created", "exited", "dead", "stopped"])(
     );
     // Then
     expect(result).toMatchObject({ status: "stopped", state: "stopped" });
+  },
+);
+
+test.each([true, false])(
+  "does not claim a foreign-root container as owned (coherent=%s)",
+  async (coherent) => {
+    // Given: the planned service name is held by another Lando app's container.
+    const foreignRoot = "/home/me/other";
+    const labels = {
+      ...containerOwnershipLabels(plan, service.name),
+      [APP_ROOT_LABEL]: foreignRoot,
+      [APP_LABEL]: coherent ? "other-app" : "",
+    };
+    // When
+    const result = await Effect.runPromise(
+      inspect(
+        plan,
+        { app: plan.id, service: service.name },
+        {
+          api: {
+            request: () =>
+              Effect.succeed({
+                status: 200,
+                body: JSON.stringify({
+                  Id: "foreign-container",
+                  State: { Running: true, Status: "running" },
+                  Config: { Labels: labels },
+                  NetworkSettings: { Ports: {} },
+                }),
+              }),
+          },
+          ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
+        },
+      ),
+    );
+    // Then: no container identity or running claim for this plan.
+    expect(result).toMatchObject({
+      status: "unknown",
+      state: "unknown",
+      publications: { status: "unknown" },
+      mounts: { status: "unknown" },
+    });
+    expect(result.containerId).toBeUndefined();
+    expect(result.labels?.[APP_ROOT_LABEL]).toBe(foreignRoot);
   },
 );

@@ -7,10 +7,10 @@ import { Clock, DateTime, Effect, type Exit, Ref, Stream } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { DownloadOfflineError } from "@lando/sdk/errors";
 import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "@lando/sdk/events";
 import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import type { DownloaderShape, LandoEvent } from "@lando/sdk/services";
 import { collectVerifiedStream, persistVerifiedStream } from "@lando/sdk/verified-stream";
 
@@ -72,7 +72,10 @@ export const makeDownloaderService = (
   capabilities: CAPABILITIES,
   download: Effect.fn("Downloader.download")(function* (request: DownloadRequest) {
     const origin = urlOrigin(request.url);
-    const tokenRedact = createRedactor("secrets", { values: request.redactionTokens ?? [] }).redactString;
+    const tokenRedactor = createStandaloneRedactor("secrets", {
+      authoritativeTokens: request.redactionTokens,
+    });
+    const tokenRedact = tokenRedactor.redactString;
     const redact = (text: string): string => tokenRedact(events.redactText(text));
     const callerId = request.callerId;
     const policy = requestPolicyFor(request);
@@ -128,15 +131,28 @@ export const makeDownloaderService = (
       );
 
     const fetchBody = Effect.fnUntraced(function* () {
-      const response = yield* http.get(request.url).pipe(
-        Effect.provideService(RequestPolicy, policy),
-        Effect.mapError((error: HttpClientError.HttpClientError) => mapHttpClientError(error, origin)),
-      );
+      const response = yield* http
+        .get(
+          request.url,
+          request.headers === undefined
+            ? undefined
+            : {
+                headers: Object.fromEntries(request.headers.map(({ name, value }) => [name, value])),
+              },
+        )
+        .pipe(
+          Effect.provideService(RequestPolicy, policy),
+          Effect.mapError((error: HttpClientError.HttpClientError) =>
+            mapHttpClientError(error, origin, tokenRedactor),
+          ),
+        );
       const httpError = statusError(response.status, origin);
       if (httpError !== undefined) return yield* Effect.fail(httpError);
       return tapProgress(
         response.stream.pipe(
-          Stream.mapError((error: HttpClientError.HttpClientError) => mapHttpClientError(error, origin)),
+          Stream.mapError((error: HttpClientError.HttpClientError) =>
+            mapHttpClientError(error, origin, tokenRedactor),
+          ),
         ),
       );
     });

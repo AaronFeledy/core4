@@ -44,7 +44,7 @@ test.each([
   ).toEqual([{ label: "home", value: text }]);
   for (const ctx of [
     undefined,
-    { mode: "plain", format: "text", isTTY: false, columns: undefined } as const,
+    { mode: "plain", format: "text", isTTY: false, columns: undefined, noColor: false } as const,
     decorated(200),
   ]) {
     const rendered = stripAnsi(renderInfoAppResult(info, ctx));

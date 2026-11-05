@@ -195,12 +195,17 @@ test("runtime JSON Schema agrees with the strict Landofile decoder", async () =>
 
 const INVALID_INPUT_FIXTURES = new Map([
   [
+    "node/fixtures/node-init-invalid",
+    "Deliberate init: sometimes; only booleans or ASCII case-insensitive true/false/on/off/yes/no/1/0 strings are accepted.",
+  ],
+  [
     "router-and-scanner/fixtures/router-and-scanner-invalid",
     "Retries intentionally exceed the allowed range.",
   ],
   ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
   ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
   ["networks/fixtures/networks-pinned-address", "Deliberately pins a network address Lando rejects."],
+  ["nginx/fixtures/nginx-upload-dirs-inject", "Deliberate config-injection attempt in an upload directory."],
   ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
   ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
   [
@@ -210,6 +215,7 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["convert-from-lando-3/fixtures/pantheon-app", "Legacy Pantheon recipe source requires translation."],
   ["convert-from-lando-3/fixtures/lando3-blocked", "Legacy source deliberately blocked by translation."],
   ["convert-from-lando-3/fixtures/lando3-layers", "Legacy layered source requires translation."],
+  ["convert-from-lando-3/fixtures/lando3-ports-mounts", "Legacy Lando 3 source requires translation."],
   ["config-lint/fixtures/config-lint-invalid", "Deliberate unknown keys and invalid ports."],
   ["config-lint/fixtures/wrong-type", "Deliberate wrong boolean type for fragment and effective parity."],
   [

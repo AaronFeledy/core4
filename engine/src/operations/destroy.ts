@@ -23,7 +23,7 @@ import {
   type StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
@@ -36,7 +36,6 @@ import {
 import { executeTeardown } from "./destroy-execute.ts";
 import { planUserTeardown } from "./destroy-plan.ts";
 import { resolveMissingDestroyRoot } from "./destroy-resolution.ts";
-import { LandofileEventsOutcomeSchema } from "./landofile-events.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -50,15 +49,6 @@ type DestroyAppServices =
   | PrivateFileAccessService
   | StateStore
   | RuntimeProviderRegistry;
-
-export const DestroyAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  outcome: Schema.optionalKey(Schema.Literals(["destroyed", "unchanged"])),
-  servicesDestroyed: Schema.Array(Schema.String),
-  volumesRemoved: Schema.Boolean,
-  snapshotsRemoved: Schema.Number,
-  landofileEvents: Schema.optionalKey(LandofileEventsOutcomeSchema),
-});
 
 const runTeardown = Effect.fnUntraced(function* <E, R>(
   resolution: TeardownResolution,

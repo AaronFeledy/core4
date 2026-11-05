@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Schema } from "effect";
+import { type Context, Effect, Layer, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType, type ServiceTypeInput } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { planApp } from "../../src/planner/assemble.ts";
 import { resolveHostFacts } from "../../src/planner/service-types.ts";
+import { planApp } from "../plan-app.ts";
 
 const missingPlugin = (id: string) =>
   new PluginLoadError({
@@ -61,14 +61,8 @@ describe("service type resolve input", () => {
       compileTestLandofile(landofile).pipe(
         Effect.flatMap((compiled) =>
           planApp(
-            pluginRegistry,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            compiled,
-            capabilities,
+            { landofile: compiled, providerCapabilities: capabilities },
+            Layer.succeed(PluginRegistry, pluginRegistry),
           ),
         ),
       ),

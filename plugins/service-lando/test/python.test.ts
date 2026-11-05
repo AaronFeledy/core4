@@ -21,6 +21,19 @@ const metadata = {
 };
 
 const APP_ROOT = "/srv/apps/myapp";
+test.each([
+  ["flask", "FLASK_RUN_HOST"],
+  ["fastapi", "UVICORN_HOST"],
+])("%s listener host defaults remain overridable", async (framework, host) => {
+  // Given / When
+  const plan = await composePythonPlan(python312ServiceType, {
+    type: "python:3.12",
+    framework,
+    environment: { [host]: "127.0.0.2" },
+  });
+  // Then
+  expect(plan.environment[host]).toBe("127.0.0.2");
+});
 const featureOverrides = new Map([[PYTHON_FEATURE_ID, pythonServiceFeature]]);
 
 const decodeService = (raw: unknown): ServiceConfig => {
@@ -83,7 +96,7 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.type).toBe("python:3.12");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "python:3.12-slim" });
     expect(plan.primary).toBe(true);
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(String(plan.workingDirectory)).toBe("/app");
 
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
@@ -131,7 +144,7 @@ describe("python:3.12 ServiceType", () => {
       { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "django",
       port: 8000,
@@ -141,12 +154,13 @@ describe("python:3.12 ServiceType", () => {
 
   test("framework=fastapi sets port 8000 while keeping the service alive", async () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "fastapi" });
+    expect(plan.environment.UVICORN_HOST).toBe("0.0.0.0");
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "fastapi",
       port: 8000,
@@ -160,12 +174,13 @@ describe("python:3.12 ServiceType", () => {
       { _tag: "internal", port: 5000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "flask",
       port: 5000,
     });
     expect(plan.environment.FLASK_APP).toBe("app");
+    expect(plan.environment.FLASK_RUN_HOST).toBe("0.0.0.0");
   });
 
   test("derives appName from appRoot basename when no explicit appName is provided", async () => {

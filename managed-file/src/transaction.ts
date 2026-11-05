@@ -15,13 +15,7 @@ import {
   verifyBackup,
   verifyState,
 } from "./transaction-fs.ts";
-import {
-  type Entry,
-  type Journal,
-  type Stage,
-  journalDirectory,
-  openJournal,
-} from "./transaction-journal.ts";
+import { type Entry, type Journal, type Stage, openJournal } from "./transaction-journal.ts";
 import { TransactionRequest, planTransaction, verifyTransactionConditions } from "./transaction-plan.ts";
 import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
@@ -88,10 +82,11 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       Effect.mapError(() => transactionError("path", "prepare")),
     );
     const root = yield* transactionIO("prepare", () => canonicalRoot(request.appRoot));
-    const dir = journalDirectory(root, options.journalRoot());
-    const store = yield* openJournal(root, dir, { privateFileAccess: options.privateFileAccess });
+    const store = yield* openJournal(root, options.journalRoot(), {
+      privateFileAccess: options.privateFileAccess,
+    });
     yield* Effect.acquireRelease(
-      acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
+      acquireAdvisoryLockAt(join(store.directory, "transaction.lock"), "transaction", {
         expireLiveOwner: false,
         privateFileAccess: options.privateFileAccess,
       }).pipe(Effect.mapError(() => transactionError("lock", "prepare"))),
@@ -234,7 +229,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
   });
   const readJournal = Effect.fn("ManagedFileTransactions.readJournal")(function* (appRoot: string) {
     const root = yield* transactionIO("inspect", () => canonicalRoot(appRoot));
-    const store = yield* openJournal(root, journalDirectory(root, options.journalRoot()), {
+    const store = yield* openJournal(root, options.journalRoot(), {
       privateFileAccess: options.privateFileAccess,
     });
     return yield* store.read;

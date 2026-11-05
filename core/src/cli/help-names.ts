@@ -25,7 +25,7 @@ const stripNamespacePrefix = (canonicalId: string): string | undefined => {
   const separator = canonicalId.indexOf(":");
   if (separator === -1) return undefined;
   const stripped = canonicalId.slice(separator + 1);
-  return stripped.length === 0 ? undefined : stripped;
+  return stripped.length === 0 || stripped.includes(":") ? undefined : stripped;
 };
 
 export const typeableName = (input: TypeableNameInput): TypeableName => {

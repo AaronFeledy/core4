@@ -1,0 +1,145 @@
+---
+id: sources-gc
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, cli, cache]
+---
+
+# Clean up the remote source cache
+
+`lando sources:gc` reports what sits in the source cache and, with `--prune`, removes the entries nothing uses any more. Run it from any directory when the cache has grown or after you delete apps that pulled remote includes, recipes, or plugins.
+
+```sh
+lando sources:gc
+```
+
+Every remote tree Lando fetches lands in one source store under your user cache root at `sources/`: git includes and git recipes by commit under `git/<commit>/`, npm packages and tarball recipes by the SHA-256 of their download under `archive/<sha256>/`. The store never cleans itself. Entries stay until you run this command with `--prune`.
+
+## Report what the cache holds
+
+Without flags the command only reads and removes nothing. The text output is a one-line summary: how many entries the cache holds and their total size, how many are eligible and how much space they take, plus a note when reachability is incomplete and a `--prune` hint when something is eligible. Per-entry rows are in [the JSON report](#read-the-json-report).
+
+```sh
+lando sources:gc
+```
+
+On a machine that has never fetched a remote source, you get:
+
+```text
+No source-cache entries found.
+```
+
+With one cached tarball recipe, fetched a minute ago, the report says the entry is too recent to remove:
+
+```text
+1 source-cache entry (262 B); 0 eligible (0 B).
+```
+
+An entry is eligible when it has been unused for longer than the threshold and nothing protects it. The threshold is `--older-than=<days>`, default 30, measured from the entry's last use (every include load, recipe init, or plugin install that opens the entry counts as a use). An entry whose `entry.json` is missing or damaged is `valid: false` in the JSON report and is eligible at any age; a lease or a lockfile pin still protects it. `--older-than=0` makes every unused and unprotected entry eligible, which is the way to see the full removable set:
+
+```sh
+lando sources:gc --older-than=0
+```
+
+```text
+1 source-cache entry (262 B); 1 eligible (262 B). Run lando sources:gc --prune to remove eligible entries.
+```
+
+Pass a non-negative whole number. `--older-than=abc` and `--older-than=-1` both fail with `MalformedCliFlagValueError` before the cache is touched.
+
+## Remove eligible entries with --prune
+
+Add `--prune` to delete what the report called eligible. Pair it with the same `--older-than` you used to inspect, or the threshold falls back to 30 days.
+
+```sh
+lando sources:gc --prune --older-than=0
+```
+
+```text
+Removed 1 source-cache entry (262 B).
+```
+
+The command does not prompt. `--yes` is accepted so scripts can pass it to every destructive command uniformly, but it changes nothing here. Before each removal Lando rechecks the entry under the store lock, so an entry that another Lando process started using between the report and the removal is reported `busy` instead of deleted. Removal is atomic: the entry is renamed aside under the lock and deleted afterwards, so a concurrent reader sees either a whole entry or none.
+
+A removed entry is not lost data. The next `lando start` on an app whose lockfile pins it fetches exactly the pinned commit or package version again, as long as the network is reachable. Only the download is repeated.
+
+## What is never removed
+
+Two kinds of entries survive every prune, whatever their age:
+
+- **Pinned entries.** Each app whose `.lando.lock.yml` resolved a remote include registers that lockfile with the store. Every git commit the lockfile pins, and every npm package version it pins, is `protected` for as long as the lockfile exists and can be read. Deleting an app directory (or its lockfile) is what releases its entries.
+- **Entries in use.** A running Lando process holds a lease on the entries its session opened. Those entries are reported `busy` and skipped. Rerun after that process finishes.
+
+Lockfiles that have been deleted stop protecting anything. On `--prune`, the store forgets a registration whose lockfile is gone.
+
+## Fix an incomplete reachability report
+
+When the text report ends with `Reachability is incomplete (unreadable/corrupt lockfiles: ...)`, one of the registered lockfiles exists but could not be read or decoded, for example after a merge conflict left markers in `.lando.lock.yml`. Lando can't tell which entries that lockfile pins, so it withholds every git entry and every npm package from pruning rather than guess. Only archives that no npm package record points at (tarball recipes) stay eligible.
+
+`lando app:includes:update` can't repair a lockfile it can't decode; it fails with `LandofileParseError` instead of dropping your pins. For a `corrupt` root, restore `.lando.lock.yml` from version control or remove it, then run `lando app:includes:update` from that app directory with network access. For an `unreadable` root, fix the file's permissions. Then run `lando sources:gc` again; the report should return to `complete`. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include) for lockfile recovery details.
+
+## Read the JSON report
+
+Use `--format=json` to script against the result. On an empty cache the whole envelope is:
+
+```sh
+lando sources:gc --format=json
+```
+
+```json
+{"apiVersion":"v4","command":"meta:sources:gc","ok":true,"result":{"prune":false,"olderThanDays":30,"cutoff":"2026-10-04T05:37:29.835Z","reachability":"complete","roots":[],"entries":[],"leftovers":[],"totals":{"entries":0,"bytes":0,"eligible":0,"eligibleBytes":0,"removed":0,"removedBytes":0,"busy":0,"withheld":0,"failed":0}},"warnings":[],"deprecations":[]}
+```
+
+The fields under `result` that matter when you script:
+
+| Field | Meaning |
+| --- | --- |
+| `prune` | `false` for a report-only run, `true` when `--prune` was given. |
+| `olderThanDays`, `cutoff` | The threshold you asked for and the ISO timestamp it resolves to. Entries last used before `cutoff` are old enough. |
+| `reachability` | `complete`, or `incomplete` when a registered lockfile could not be read. |
+| `roots` | One row per registered lockfile: its path and `status` (`ok`, `missing`, `unreadable`, or `corrupt`) plus a `detail` message for the two failure states. This is where to find the file to repair. |
+| `entries[]` | One row per `git` or `archive` entry with `id` (commit or digest), `bytes`, `lastUsedAt`, the `valid`, `protected`, `leased`, and `eligible` booleans, an `outcome`, and a `reason`. npm packages also list the `name`, `version`, and registry they were recorded under in `npm`. |
+| `entries[].outcome` | `kept` (nothing happened, see `reason`: `recent`, `referenced`, or `eligible`), `removed`, `busy` (leased by a live process, or used again between the report and the prune recheck), `withheld` (reachability incomplete), or `failed` (the filesystem operation errored; `reason` carries the message). |
+| `leftovers[]` | Housekeeping rows for things that are not entries: lease files, index records (`npm-index`, `ref`, `root`) that point at nothing, and staging or aside directories abandoned by a Lando process that died. They carry the same `outcome` values. |
+| `totals` | Counts and byte sums: `entries`, `bytes`, `eligible`, `eligibleBytes`, `removed`, `removedBytes`, `busy`, `withheld`, and `failed`. |
+
+The same recently fetched tarball recipe from the text report looks like this under `result.entries` (whitespace added for reading):
+
+```json
+[
+  {
+    "kind": "archive",
+    "id": "f1bb8e531d8bf337cacfc931214bd8641d451a6349c7577b0d8737e7a80bd827",
+    "bytes": 262,
+    "lastUsedAt": "2026-11-03T05:38:01.692Z",
+    "valid": true,
+    "protected": false,
+    "leased": false,
+    "eligible": false,
+    "outcome": "kept",
+    "reason": "recent"
+  }
+]
+```
+
+When any entry or leftover ends in `failed`, the command exits nonzero with a `DataTransferError` that names each failed item, and with `--prune` it also reports how many entries were removed before the failure. Fix the reported filesystem problem (permissions are the usual cause) and rerun.
+
+<Guide>
+  <Scenario id="report-only-empty-cache" render>
+    <Step name="report">
+      <Run command="lando sources:gc --format=json" />
+      <Verify command="lando sources:gc --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando sources:gc --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"meta:sources:gc\"" } }} />
+      <Verify command="lando sources:gc --format=json" expect={{ stdout: { regex: "\"prune\":\\s*false" } }} />
+      <Verify command="lando sources:gc --format=json" expect={{ stdout: { regex: "\"olderThanDays\":\\s*30" } }} />
+      <Verify command="lando sources:gc --format=json" expect={{ stdout: { regex: "\"reachability\":\\s*\"complete\"" } }} />
+      <Verify command="lando sources:gc --format=json" expect={{ stdout: { regex: "\"failed\":\\s*0" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Related
+
+- [Work offline](../config/offline-dev.mdx) explains which cached sources keep working without network access.
+- [Refresh a stale app cache](./cache-refresh.mdx) covers the per-app plan cache, which is a different cache and is not touched by `sources:gc`.

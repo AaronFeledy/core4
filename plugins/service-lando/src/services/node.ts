@@ -13,11 +13,18 @@ import {
   ServiceConfigIssue,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  applicationAuthority,
+  assertListenerConfig,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const SUPPORTED_NODE_MAJORS = [
@@ -53,7 +60,14 @@ const DEFAULT_COMMAND = [
   "-e",
   'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
 ] as const;
-const DEFAULT_PORT = 3000;
+export const DEFAULT_PORT = 3000;
+export const NODE_LISTENER = {
+  port: DEFAULT_PORT,
+  daemon: "Node.js",
+  when: "All Node.js services; application-owned listener",
+  variables: ["PORT"],
+} as const satisfies ListenerContract;
+export const APP_MOUNT_TARGET = "/app";
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
@@ -293,11 +307,12 @@ const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { version } = ctx.config as NodeFeatureConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, NODE_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
+  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port));
   applyAuthoredProcessFields(ctx, ["user"]);
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
@@ -317,9 +332,13 @@ export const nodeServiceFeature: ServiceFeatureDefinition = {
   id: NODE_FEATURE_ID,
   schema: NodeFeatureConfigSchema as Schema.Codec<unknown>,
   priority: NODE_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(NODE_FEATURE_ID, (ctx) => {
+    assertListenerConfig(ctx.normalizedConfig, NODE_LISTENER);
+    return { handledServiceFields: [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, { port: plannedPort(ctx.normalizedConfig, NODE_LISTENER), protocol: "http" }),
     ),
   apply: serviceFeatureApply(NODE_FEATURE_ID, "service-lando.node failed to apply", applyNodeFeature),
 };
@@ -349,7 +368,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
           {
             id: "lando.app-mount",
-            config: { target: "/app" },
+            config: { target: APP_MOUNT_TARGET },
           },
         ],
       };
@@ -390,7 +409,7 @@ export const nodeServiceType: ServiceType = {
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
         metadata: {
           node: {

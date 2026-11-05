@@ -55,7 +55,6 @@ const paths = PathsService.of({
   systemPluginsDir: "",
   pluginStateDir: () => "",
   appPluginsDir: () => "",
-  pluginAuthFile: "",
   binDir: "",
   installRecordFile: "",
   keysDir: "",
@@ -77,9 +76,7 @@ const paths = PathsService.of({
   toolDownloadsDir: () => "",
   logsDir: "",
   scratchDir: "",
-  scratchRegistryFile: "",
-  scratchRegistryLockFile: "",
-  tunnelRegistryFile: "",
+  transferStagingDir: "",
   tunnelRunDir: "",
   appCacheDir: () => "",
   appPlanCacheFile: () => "",
@@ -194,6 +191,7 @@ describe("provider assembly", () => {
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("unused"),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     });
@@ -261,18 +259,20 @@ describe("provider assembly", () => {
       ctx,
       service,
       noPlanError: (_app, op) => notImplementedError("lando", op),
-      before: Effect.sync(() => {
-        calls.push("first");
-      }),
+      before: () =>
+        Effect.sync(() => {
+          calls.push("first");
+        }),
     });
     const second = bindResolvedProviderOps(state, {
       readAppEnvironment: () => Effect.succeed([]),
       ctx,
       service,
       noPlanError: (_app, op) => notImplementedError("lando", op),
-      before: Effect.sync(() => {
-        calls.push("second");
-      }),
+      before: () =>
+        Effect.sync(() => {
+          calls.push("second");
+        }),
     });
     await Effect.runPromise(
       Effect.all(

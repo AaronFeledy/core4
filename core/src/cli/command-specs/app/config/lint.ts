@@ -27,5 +27,5 @@ export const appConfigLintSpec: LandoCommandSpec<
   },
   run: () => appConfigLint(),
   completion: (result) => ({ ok: true, exitCode: result.valid ? 0 : 1 }),
-  render: (result) => renderConfigLintResult(result as ConfigLintResult, "text"),
+  render: (result) => renderConfigLintResult(result, "text"),
 };

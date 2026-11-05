@@ -1,4 +1,4 @@
-import { parseToolingArgv, resolveServiceRef } from "@lando/landofile/tooling-input";
+import { lowerToolingInput, resolveServiceRef } from "@lando/landofile/tooling-input";
 import {
   type NormalizedToolingStep,
   type NormalizedToolingTask,
@@ -8,11 +8,17 @@ import { Effect, Option, type Scope } from "effect";
 
 import {
   ToolingCompileError,
-  ToolingDisabledError,
+  type ToolingDisabledError,
   type ToolingExecError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  HostTerminal,
+  ToolingInputRevision,
+  ToolingInvocationInput,
+  ToolingTaskShape,
+} from "@lando/sdk/schema";
 import {
   type ProviderError,
   type ProviderSelectionError,
@@ -23,10 +29,13 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { planRedactionValues } from "@lando/redaction/plan-values";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
+import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
+import { admitToolingInput } from "./tooling-input-admission.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 
 const POSITIONAL_PARAMETER = /\$(?:@|[1-9]|\{(?:@|[1-9]))/u;
@@ -43,19 +52,6 @@ export interface ToolingSource {
   readonly path: string;
   readonly task: string;
 }
-
-export const validateToolingArguments = (
-  name: string,
-  task: { readonly acceptsArguments: boolean },
-  args: ReadonlyArray<string>,
-): ToolingCompileError | undefined =>
-  !task.acceptsArguments && args.length > 0
-    ? new ToolingCompileError({
-        message: `Tooling command ${name} does not accept positional arguments.`,
-        tool: name,
-        remediation: `Run \`lando ${name}\` without arguments.`,
-      })
-    : undefined;
 
 interface InvocationOptions {
   readonly args?: ReadonlyArray<string>;
@@ -104,9 +100,12 @@ const stepInvocation = (
 export interface CompiledTooling {
   readonly normalized: NormalizedToolingTask;
   readonly invocations: ReadonlyArray<ToolingInvocation>;
+  readonly redactionTokens: readonly string[];
 }
 
-export interface CompileToolingInput extends InvocationOptions {
+export interface CompileToolingInput extends Omit<InvocationOptions, "args"> {
+  readonly expectedInputRevision?: ToolingInputRevision;
+  readonly input?: ToolingInvocationInput;
   /** Display name used in errors, e.g. `app:build`. */
   readonly name: string;
   /** Effective-tooling key used for normalization and bracket event names. */
@@ -126,16 +125,7 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
   const normalized = yield* Effect.fromResult(
     normalizeToolingTask(input.lookupKey, input.task, input.source),
   );
-  if (normalized.disabled) {
-    return yield* Effect.fail(
-      new ToolingDisabledError({
-        message: `Tooling command ${input.name} is disabled.`,
-        tool: input.lookupKey,
-        source: input.source,
-        remediation: `Enable tooling task ${input.lookupKey} in ${input.source.path} before running it.`,
-      }),
-    );
-  }
+  const admitted = yield* admitToolingInput(normalized, input);
   if (normalized.steps.length === 0) {
     return yield* Effect.fail(
       new ToolingCompileError({
@@ -144,11 +134,13 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
       }),
     );
   }
-  if (!normalized.hasInput) {
-    const argumentFailure = validateToolingArguments(input.name, normalized, input.args ?? []);
-    if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
-  }
-  const values = yield* Effect.fromResult(parseToolingArgv(normalized, input.args ?? []));
+  const { values, invocation } = admitted;
+  const argv =
+    normalized.input.flags.length + normalized.input.args.length > 0
+      ? yield* Effect.fromResult(lowerToolingInput(normalized, normalized.input, values))
+      : invocation._tag === "RawArgv"
+        ? invocation.argv
+        : (invocation.passthroughArgv ?? []);
   const invocations = yield* Effect.forEach(
     normalized.steps,
     (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
@@ -159,12 +151,17 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
           { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
           {
             ...input,
-            args: index === normalized.steps.length - 1 ? values.argv : [],
+            args: index === normalized.steps.length - 1 ? argv : [],
           },
         );
       }),
   );
-  return { normalized, invocations };
+  for (const invocation of invocations) {
+    if (invocation.service === ":host") {
+      yield* validateHostShellSteps(input.name, invocation.hostSteps ?? [], admitted.redactionTokens);
+    }
+  }
+  return { normalized, invocations, redactionTokens: admitted.redactionTokens };
 });
 
 export type ToolingExecutionError =
@@ -179,6 +176,7 @@ export interface ExecuteToolingInput {
   readonly invocations: ReadonlyArray<ToolingInvocation>;
   /** Whether any normalized step targets a container, so the provider is selected once. */
   readonly requiresProvider: boolean;
+  /** Explicit substring tokens (tooling inputs, caller overrides). Plan authorization is applied here. */
   readonly redactionTokens?: ReadonlyArray<string>;
 }
 
@@ -229,16 +227,22 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
               );
             }
             const hostRun = runHostToolingWith(shell.value, invocation, input.plan, provider);
-            return yield* input.redactionTokens === undefined
-              ? hostRun
-              : withShellRedactionTokens(input.redactionTokens, hostRun);
+            const planValues = planRedactionValues(input.plan);
+            return yield* withShellRedactionTokens(
+              {
+                substring: input.redactionTokens ?? [],
+                wholeToken: planValues.wholeTokenValues,
+                publicValues: planValues.publicValues,
+              },
+              hostRun,
+            );
           })
         : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
     const result = yield* withToolingOutput(run);
     combined = {
       ...result,
-      stdout: combined.stdout + result.stdout,
-      stderr: combined.stderr + result.stderr,
+      stdout: combined.stdout + (result.stdout ?? ""),
+      stderr: combined.stderr + (result.stderr ?? ""),
     };
     if (result.exitCode !== 0) break;
   }

@@ -80,6 +80,7 @@ const silentEvents = Layer.succeed(
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
     waitFor: () => Effect.die("live snapshot test does not wait for events"),
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.die("live snapshot test does not wait for events"),
     query: () => Effect.succeed([]),
   }),

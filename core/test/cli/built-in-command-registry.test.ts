@@ -59,11 +59,7 @@ describe("built-in command registry contract", () => {
       }
     }
 
-    expect(registry.deferredBuiltInCommandIds).toEqual([
-      "meta:events:follow",
-      "meta:plugin:login",
-      "meta:plugin:logout",
-    ]);
+    expect(registry.deferredBuiltInCommandIds).toEqual(["meta:events:follow"]);
     expect(entries.filter((entry) => entry.status.kind === "deferred").map((entry) => entry.spec.id)).toEqual(
       [...registry.deferredBuiltInCommandIds],
     );
@@ -166,7 +162,9 @@ describe("built-in command registry contract", () => {
     // When: the status gates and catalog execution call sites are located.
     const deferredGate = body.indexOf('if (builtInCommand?.status.kind === "deferred")');
     const exemptAdapter = body.indexOf("runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal)");
-    const catalogExecution = body.indexOf("runBuiltInCommand(builtInCommand, argv.slice(1), signal)");
+    const catalogExecution = body.indexOf(
+      "runBuiltInCommand(builtInCommand, argv.slice(1), signal, hostProxy)",
+    );
 
     // Then: deferred entries fail before explicit exemptions and implemented entries run directly.
     expect(functionStart).toBeGreaterThanOrEqual(0);

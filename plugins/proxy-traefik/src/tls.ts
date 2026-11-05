@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import type { AppId, RoutePlan } from "@lando/sdk/schema";
+import { type AppRouteOwner, type RoutePlan, certificateNameForHostname } from "@lando/sdk/schema";
 
 import {
   TRAEFIK_CONTAINER_CERTIFICATE_DIR,
@@ -15,8 +15,23 @@ import {
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { type TraefikTlsFiles, renderTraefikDefaultTlsConfig } from "./routing.ts";
 
-export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> =>
-  [...new Set(routes.filter((route) => route.scheme !== "http").map((route) => route.hostname))].sort();
+export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> => {
+  // HTTPS leaf SANs use certificate-coverable names: leftmost partial wildcards
+  // map to *.<rest>; deep wildcards (HTTP-only after plan validation) are skipped.
+  const byLower = new Map<string, string>();
+  for (const route of routes) {
+    if (route.scheme === "http") continue;
+    const name = certificateNameForHostname(route.hostname);
+    if (name === undefined) continue;
+    const key = name.toLowerCase();
+    if (!byLower.has(key)) byLower.set(key, name);
+  }
+  return [...byLower.values()].sort(
+    (left, right) =>
+      Number(left.startsWith("*.")) - Number(right.startsWith("*.")) ||
+      left.localeCompare(right, "en", { sensitivity: "base" }),
+  );
+};
 
 export const normalizeDefaultDomain = (defaultDomain: string): string =>
   defaultDomain.trim().toLowerCase().replace(/\.+$/, "");
@@ -31,17 +46,21 @@ const copyPrivateKey = (dependencies: TraefikProxyDependencies, source: string, 
     .readText(source)
     .pipe(Effect.flatMap((content) => dependencies.fileSystem.writeSecretAtomic(destination, content)));
 
-export const removeAppCertificates = (dependencies: TraefikProxyDependencies, app: AppId) => {
-  const files = appCertificateFiles(dependencies.paths, app);
-  return Effect.all([dependencies.fileSystem.remove(files.cert), dependencies.fileSystem.remove(files.key)], {
-    discard: true,
-  });
+export const removeAppCertificates = (dependencies: TraefikProxyDependencies, owner: AppRouteOwner) => {
+  const files = appCertificateFiles(dependencies.paths, owner);
+  return Effect.all(
+    [
+      Effect.uninterruptible(dependencies.fileSystem.remove(files.cert)),
+      Effect.uninterruptible(dependencies.fileSystem.remove(files.key)),
+    ],
+    { discard: true },
+  );
 };
 
 export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function* (
   dependencies: TraefikProxyDependencies,
   input: {
-    readonly app: AppId;
+    readonly owner: AppRouteOwner;
     readonly defaultDomain: string;
     readonly hostnames: ReadonlyArray<string>;
     readonly refreshAppCertificate: boolean;
@@ -49,7 +68,7 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
   },
 ) {
   const defaultFiles = defaultCertificateFiles(dependencies.paths, input.defaultDomain);
-  const appFiles = appCertificateFiles(dependencies.paths, input.app);
+  const appFiles = appCertificateFiles(dependencies.paths, input.owner);
   yield* dependencies.fileSystem.mkdir(certificateDir(dependencies.paths));
 
   const hasDefaultCertificate =
@@ -91,10 +110,9 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
     yield* copyPrivateKey(dependencies, issued.keyPath, appFiles.key);
   }
 
-  const encodedApp = encodeURIComponent(String(input.app));
   return {
-    certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.crt`,
-    keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.key`,
+    certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${input.owner.ownerKey}.crt`,
+    keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${input.owner.ownerKey}.key`,
   } satisfies TraefikTlsFiles;
 });
 

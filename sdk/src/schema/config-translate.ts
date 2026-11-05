@@ -1,4 +1,11 @@
 import { Schema, SchemaTransformation } from "effect";
+import { ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "./config-translate-diagnostic.ts";
+export {
+  ConfigTranslateDiagnostic,
+  ConfigTranslateDiagnosticKind,
+  ConfigTranslateSourceId,
+  ConfigTranslateSpan,
+} from "./config-translate-diagnostic.ts";
 import { LandofileAuthoringFragmentWire, LandofileAuthoringShapeWire } from "./landofile-authoring.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { PortablePath, ServiceName } from "./primitives.ts";
@@ -21,12 +28,6 @@ const authoringFragment = (description: string): AuthoringFragmentSchema =>
 const authoringContext: AuthoringContextSchema = LandofileAuthoringShapeWire.annotate({
   description: "Complete validated authoring wire context.",
 });
-export const ConfigTranslateSourceId = Schema.String.pipe(
-  Schema.check(Schema.isMinLength(1)),
-  Schema.brand("ConfigTranslateSourceId"),
-).annotate(
-  metadata("ConfigTranslateSourceId", "Core-assigned document or synthetic recipe source identity."),
-);
 export const ConfigTranslateConfidence = Schema.Literals(["exact", "likely", "possible"]).annotate(
   metadata("ConfigTranslateConfidence", "Translator detection confidence."),
 );
@@ -141,34 +142,6 @@ export const ConfigTranslateMatch = Schema.Struct({
 }).annotate(metadata("ConfigTranslateMatch", "Explicit translator detection match."));
 
 // ==== Provenance, diagnostics, and output ownership
-export const ConfigTranslateDiagnosticKind = Schema.Literals([
-  "generated",
-  "dropped",
-  "rewritten",
-  "unsupported",
-  "non-portable",
-  "needs-review",
-]).annotate(metadata("ConfigTranslateDiagnosticKind", "Translation diagnostic classification."));
-const Position = Schema.Struct({
-  line: Schema.Int.annotate({ description: "Source line number." }),
-  column: Schema.Int.annotate({ description: "Source column number." }),
-}).annotate(metadata("ConfigTranslatePosition", "Source position for diagnostic ordering."));
-export const ConfigTranslateSpan = Schema.Struct({
-  start: Position.annotate({ description: "Start of the source span." }),
-  end: Schema.optionalKey(Position.annotate({ description: "Optional end of the source span." })),
-}).annotate(metadata("ConfigTranslateSpan", "Diagnostic source span."));
-export const ConfigTranslateDiagnostic = Schema.Struct({
-  kind: ConfigTranslateDiagnosticKind.annotate({ description: "Diagnostic classification." }),
-  sourceId: ConfigTranslateSourceId.annotate({
-    description: "Input source responsible for the diagnostic.",
-  }),
-  keyPath: Schema.Array(Schema.Union([Schema.String, Schema.Int])).annotate({
-    description: "Source object keys and array indices.",
-  }),
-  span: Schema.optionalKey(ConfigTranslateSpan.annotate({ description: "Optional source location." })),
-  message: Schema.String.annotate({ description: "Human-readable diagnostic message." }),
-  remediation: Schema.optionalKey(Schema.String.annotate({ description: "Suggested corrective action." })),
-}).annotate(metadata("ConfigTranslateDiagnostic", "Source-attributed translation diagnostic."));
 export const ConfigTranslateOutput = Schema.Struct({
   targetLayer: LandofileLayer.annotate({ description: "Unique allowlisted destination layer." }),
   fragment: authoringFragment("Authoring wire fragment for this output only."),
@@ -233,7 +206,6 @@ export const ConfigTranslateEncodeResult = Schema.Struct({
 }).annotate(metadata("ConfigTranslateEncodeResult", "Encoded text and target-specific diagnostics."));
 
 // ==== Schema-inferred data types
-export type ConfigTranslateSourceId = typeof ConfigTranslateSourceId.Type;
 export type ConfigTranslateConfidence = typeof ConfigTranslateConfidence.Type;
 export type ConfigTranslateMode = typeof ConfigTranslateMode.Type;
 export type ConfigTranslateDocumentBytes = typeof ConfigTranslateDocumentBytes.Type;
@@ -246,9 +218,6 @@ export type ConfigTranslateRecipeRequestInput = typeof ConfigTranslateRecipeRequ
 export type ConfigTranslateInput = typeof ConfigTranslateInput.Type;
 export type ConfigTranslateDetectInput = typeof ConfigTranslateDetectInput.Type;
 export type ConfigTranslateMatch = typeof ConfigTranslateMatch.Type;
-export type ConfigTranslateDiagnosticKind = typeof ConfigTranslateDiagnosticKind.Type;
-export type ConfigTranslateSpan = typeof ConfigTranslateSpan.Type;
-export type ConfigTranslateDiagnostic = typeof ConfigTranslateDiagnostic.Type;
 export type ConfigTranslateOutput = typeof ConfigTranslateOutput.Type;
 export type ConfigTranslateDeletion = typeof ConfigTranslateDeletion.Type;
 export type ConfigTranslateExpectation = typeof ConfigTranslateExpectation.Type;

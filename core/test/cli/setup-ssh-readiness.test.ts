@@ -67,6 +67,7 @@ test.each([
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("unused subscription"),
       waitFor: () => Effect.die("unused event wait"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("unused event wait"),
       query: () => Effect.succeed([]),
     });

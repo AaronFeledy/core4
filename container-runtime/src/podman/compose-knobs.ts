@@ -42,7 +42,6 @@ const PodmanComposeKnobs = Schema.Struct(
     "dns_search",
     "dns_opt",
     "extra_hosts",
-    "init",
     "stop_signal",
     "stop_grace_period",
     "security_opt",
@@ -142,7 +141,6 @@ const PODMAN_COMPOSE_KNOB_REGISTRY = {
   extra_hosts: hostConfigKnob(["libpod", "docker"], "ExtraHosts", ({ extra_hosts }, _fail, service) =>
     extraHostEntries(realizeHostAliases(service.hostAliases, extra_hosts)),
   ),
-  init: hostConfigKnob(["libpod", "docker"], "Init", ({ init }, fail) => knobBoolean("init", init, fail)),
   stop_signal: topLevelKnob(["libpod", "docker"], "StopSignal", ({ stop_signal }) => stop_signal),
   stop_grace_period: topLevelKnob(["libpod", "docker"], "StopTimeout", ({ stop_grace_period }, fail) =>
     nonNegativeInteger("stop_grace_period", stop_grace_period, fail),

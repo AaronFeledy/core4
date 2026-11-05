@@ -17,6 +17,7 @@ export const source = {
         type: "php:{{ recipe.php }}",
         primary: true,
         framework: "wordpress",
+        uploadDirs: ["wp-content/uploads"],
         port: 80,
         dependsOn: ["database"],
         routes: defaultRoutes,

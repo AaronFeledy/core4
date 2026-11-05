@@ -60,6 +60,8 @@ test.each([false, true])(
           }),
         api: {
           request: (request) => {
+            if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             if (request.path !== "/volumes/create") return Effect.succeed({ status: 200, body: "{}" });
             return Schema.decodeUnknownEffect(Request)(request.body).pipe(
               Effect.orDie,
@@ -107,6 +109,8 @@ test.each([false, true])(
           api: {
             request: (request) =>
               Effect.sync(() => {
+                if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                  return { status: 200, body: "[]" };
                 if (request.path === "/volumes/create") {
                   const body = Schema.decodeUnknownSync(Request)(request.body);
                   events.push(`create:${body.Name}`);
@@ -121,6 +125,8 @@ test.each([false, true])(
                   return running
                     ? { status: 200, body: '{"Id":"web","State":{"Running":true}}' }
                     : { status: 404, body: "{}" };
+                if (request.method === "GET" && request.path.startsWith("/networks/"))
+                  return { status: 404, body: "" };
                 return { status: 201, body: "{}" };
               }),
           },
@@ -169,6 +175,8 @@ test.each(["fails", "interrupts"] as const)(
         api: {
           request: (request) =>
             Effect.sync(() => {
+              if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                return { status: 200, body: "[]" };
               if (request.path === "/volumes/create") {
                 const volume = Schema.decodeUnknownSync(Request)(request.body);
                 volumes.set(volume.Name, volume);
@@ -184,7 +192,12 @@ test.each(["fails", "interrupts"] as const)(
                     labels: Schema.Record(Schema.String, Schema.String),
                   }),
                 )(request.body);
-                networks.set(body.name, { Id: body.name, Name: body.name, Labels: body.labels });
+                networks.set(body.name, {
+                  Id: body.name,
+                  Name: body.name,
+                  Driver: body.driver,
+                  Labels: body.labels,
+                });
                 return { status: 201, body: "{}" };
               }
               if (request.path === "/networks/create") {

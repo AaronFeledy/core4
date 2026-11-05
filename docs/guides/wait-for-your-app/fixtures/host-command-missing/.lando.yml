@@ -1,0 +1,7 @@
+name: wait-host-command-missing
+services:
+  database:
+    type: mongodb
+    readiness:
+      target: host
+      intervalSeconds: 1

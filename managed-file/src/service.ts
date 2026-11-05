@@ -39,6 +39,7 @@ import {
   type ManagedFileApplyOptions,
   type ManagedFileSelector,
   ManagedFileService,
+  PathsService,
 } from "@lando/sdk/services";
 
 import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
@@ -1213,9 +1214,12 @@ const makeManagedFileEvents = (
  * redactor so event payloads are never retained raw.
  */
 const dependenciesForPrivateFileAccess = Effect.fnUntraced(function* (privateFileAccess: PrivateFileAccess) {
+  const paths = yield* Effect.serviceOption(PathsService);
+  const ledgerRoot =
+    paths._tag === "Some" ? paths.value.roots.userDataRoot : resolveLandoRoots().userDataRoot;
   const backend = yield* makeDiskBackend({
     defaultBase: () => process.cwd(),
-    ledgerRoot: () => resolveLandoRoots().userDataRoot,
+    ledgerRoot: () => ledgerRoot,
     privateFileAccess,
   });
   const eventService = yield* Effect.serviceOption(EventService);

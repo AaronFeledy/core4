@@ -4,6 +4,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { Effect, Option } from "effect";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import type { DetachedHostProxyWorkerOptions } from "./detached-worker.ts";
+import { verifyHostProxyRunDirectory } from "./run-directory.ts";
 import type { HostProxyRunLandoSession } from "./transport-session.ts";
 import { configureWorker, probeWorker, terminateControlRecord } from "./worker-control.ts";
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
@@ -43,11 +44,12 @@ export const reuseHostProxyWorker = Effect.fnUntraced(function* (
     options.privateFileAccess,
   );
   if (!privateRecord || !(yield* Effect.promise(() => Bun.file(record.shimPath).exists()))) return undefined;
-  if (record.transport === "unix-socket") {
+  if (record.transport === "unix-socket" && record.url === undefined) {
     const privateSocket = yield* Effect.tryPromise(async () => {
       if (record.socketPath === undefined) return false;
+      await verifyHostProxyRunDirectory(dirname(record.socketPath));
       const metadata = await lstat(record.socketPath);
-      return metadata.isSocket() && (metadata.mode & 0o077) === 0 && metadata.uid === process.getuid?.();
+      return metadata.isSocket() && metadata.uid === process.getuid?.();
     }).pipe(Effect.catch(() => Effect.succeed(false)));
     if (!privateSocket) return undefined;
   }

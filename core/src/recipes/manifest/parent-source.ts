@@ -1,4 +1,5 @@
-import { gitCloneUrl, splitSourceRef } from "@lando/landofile/git-ref";
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import { gitCloneUrl, splitSourceRef } from "@lando/source-acquisition/locator";
 import { Effect } from "effect";
 
 import {
@@ -9,7 +10,8 @@ import {
   causeMessage,
 } from "@lando/sdk/errors";
 
-import { type GitRecipeCloner, resolveGitRecipeSource } from "../git-source";
+import type { SourceSession } from "@lando/source-acquisition";
+import { resolveGitRecipeSource } from "../git-source";
 import { resolveNpmRecipeSource } from "../npm-source";
 import { resolveRegistryRecipeSource } from "../registry-source";
 import type { RecipeTransportEvidence } from "../resolved-source-types";
@@ -19,8 +21,9 @@ import { parseRecipeYaml } from "./parser";
 
 export interface RemoteParentContext {
   readonly onWarn?: (message: string) => void | Promise<void>;
-  readonly userDataRoot?: string;
-  readonly gitRecipeCloner?: GitRecipeCloner;
+  readonly sources: SourceSession;
+  readonly signal?: AbortSignal;
+  readonly registryUrl?: string;
 }
 
 export interface RawRemoteParent {
@@ -114,14 +117,6 @@ const parseRegistryId = (ref: string): string => {
   return id;
 };
 
-const gitOptions = (url: string, path: string | undefined, ctx: RemoteParentContext) => ({
-  url,
-  ...(path === undefined ? {} : { path }),
-  ...(ctx.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
-  ...(ctx.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: ctx.gitRecipeCloner }),
-  ...(ctx.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
-});
-
 const resolveRemote = async (ref: string, ctx: RemoteParentContext): Promise<ResolvedRecipe> => {
   const scheme = detectRemoteScheme(ref);
   if (scheme === undefined) throw notFound(ref);
@@ -129,30 +124,40 @@ const resolveRemote = async (ref: string, ctx: RemoteParentContext): Promise<Res
     case "github": {
       const parsed = parseGithubRef(ref);
       return resolveGitRecipeSource({
-        ...gitOptions(parsed.url, parsed.path, ctx),
+        url: parsed.url,
+        sources: ctx.sources,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+        ...(parsed.path === undefined ? {} : { path: parsed.path }),
         ...(parsed.ref === undefined ? {} : { ref: parsed.ref }),
+        ...(ctx.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
       });
     }
     case "git": {
       const parsed = splitSourceRef(ref);
       return resolveGitRecipeSource({
-        ...gitOptions(gitCloneUrl(parsed.value), undefined, ctx),
+        url: gitCloneUrl(parsed.value),
+        sources: ctx.sources,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
         ...(parsed.ref === undefined ? {} : { ref: parsed.ref }),
+        ...(ctx.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
       });
     }
     case "npm": {
       const parsed = parseNpmRef(ref);
       return resolveNpmRecipeSource({
         package: parsed.package,
+        sources: ctx.sources,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
         ...(parsed.path === undefined ? {} : { path: parsed.path }),
-        ...(ctx.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
       });
     }
     case "registry":
       return resolveRegistryRecipeSource({
         id: parseRegistryId(ref),
-        ...(ctx.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
-        ...(ctx.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: ctx.gitRecipeCloner }),
+        sources: ctx.sources,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+        ...(ctx.registryUrl === undefined ? {} : { registryUrl: ctx.registryUrl }),
+        ...(ctx.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
       });
     default: {
       const _exhaustive: never = scheme;
@@ -178,8 +183,13 @@ export const readRemoteParent = Effect.fn("RecipeManifest.readRemoteParent")(fun
   ctx: RemoteParentContext,
   chain: ReadonlyArray<string>,
 ): Effect.fn.Return<RawRemoteParent, RemoteParentError> {
-  const resolved = yield* Effect.tryPromise({
-    try: () => resolveRemote(ref, ctx),
+  // Join the aborted acquisition so its staging cleanup finishes before the session lease closes.
+  const resolved = yield* tryPromiseSettled({
+    try: (signal) =>
+      resolveRemote(ref, {
+        ...ctx,
+        signal: ctx.signal === undefined ? signal : AbortSignal.any([ctx.signal, signal]),
+      }),
     catch: (cause) => mapRemoteError(cause, ref, chain),
   });
   const transport = recipeTransportEvidence(resolved);

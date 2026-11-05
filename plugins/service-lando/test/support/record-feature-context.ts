@@ -1,3 +1,4 @@
+import { landoServiceStoreName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 export const recordFeatureContext = (
@@ -15,6 +16,7 @@ export const recordFeatureContext = (
     primary: true,
     appRoot: "/srv/apps/myapp",
     ...input,
+    serviceStoreName: (role) => landoServiceStoreName("myapp", "web", role),
     addEnv: record("addEnv"),
     addMount: record("addMount"),
     setAppMount: record("setAppMount"),
@@ -25,9 +27,11 @@ export const recordFeatureContext = (
     addHostAlias: record("addHostAlias"),
     setHealthcheck: record("setHealthcheck"),
     setReadiness: record("setReadiness"),
+    setListenerAuthority: record("setListenerAuthority"),
     setCerts: record("setCerts"),
     setEntrypoint: record("setEntrypoint"),
     setCommand: record("setCommand"),
+    setInit: record("setInit"),
     setArtifact: record("setArtifact"),
     setUser: record("setUser"),
     setWorkingDirectory: record("setWorkingDirectory"),

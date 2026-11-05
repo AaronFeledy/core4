@@ -165,6 +165,3 @@ export const appFeatureCapabilityError = (
     providerId: String(providerId),
     remediation: `Choose a provider that supports ${String(capability)} or remove the app feature requiring it.`,
   });
-
-export const bindRealization = (providerCapabilities: ProviderCapabilities) =>
-  providerCapabilities.bindMountPerformance === "slow" ? "accelerated" : "passthrough";

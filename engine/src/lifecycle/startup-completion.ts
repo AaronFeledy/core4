@@ -1,7 +1,9 @@
+import type { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, RouterConfig, ServicePlan } from "@lando/sdk/schema";
 import type { BuildOrchestrator, RouterServiceShape } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { Effect } from "effect";
+import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { startFileSyncSessions } from "../operations/start-file-sync.ts";
 import { withRoutesStartProgress } from "../operations/start-progress-phases.ts";
@@ -38,6 +40,7 @@ type Scratch = Readiness & {
 export type GlobalGroups<E> = {
   readonly policy: "global-groups";
   readonly operation: "start" | "rebuild";
+  readonly beforeRoutes?: Effect.Effect<void, GlobalAppError>;
   readonly provider: Readiness["provider"];
   readonly router: RouterServiceShape;
   readonly outcome: {
@@ -56,6 +59,7 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
     }),
     request.provider,
   );
+  yield* verifyGlobalConsumerAdmission;
   const routes = applyAppRoutes(request.router, request.plan, request.landofileRouter);
   yield* request.plan.routes.length === 0
     ? routes
@@ -64,6 +68,7 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
 });
 const selectedRestart = Effect.fn("StartupCompletion.selectedRestart")(function* (request: SelectedRestart) {
   yield* startFileSyncSessions(request.selectedPlan, request.events);
+  yield* verifyGlobalConsumerAdmission;
   return yield* waitForServiceReadiness(request);
 });
 const selectedRebuild = Effect.fn("StartupCompletion.selectedRebuild")(function* (request: SelectedRebuild) {
@@ -74,6 +79,7 @@ const selectedRebuild = Effect.fn("StartupCompletion.selectedRebuild")(function*
     }),
     request.provider,
   );
+  yield* verifyGlobalConsumerAdmission;
   return yield* waitForServiceReadiness(request);
 });
 const scratch = Effect.fn("StartupCompletion.scratch")(function* (request: Scratch) {

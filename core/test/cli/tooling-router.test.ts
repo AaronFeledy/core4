@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { serialize } from "node:v8";
-import { Effect } from "effect";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Context, Effect, Result, Schema } from "effect";
 
 import {
   APP_COMMAND_MAGIC,
@@ -15,6 +16,7 @@ import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-wr
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   type ToolingRoute,
   resolveAppCommandHelpAliases,
@@ -133,7 +135,7 @@ const assertDynamicToolingRoute = (
   name: string,
   extra: { readonly input?: CommandIndexEntry["input"] } = {},
 ): void => {
-  expect(route).toEqual({
+  expect(route).toMatchObject({
     _tag: "tooling",
     commandId: `app:${name}`,
     name,
@@ -142,26 +144,21 @@ const assertDynamicToolingRoute = (
   });
 };
 
-const declaredInput: NonNullable<CommandIndexEntry["input"]> = {
-  flags: [
-    {
-      name: "name",
-      alias: "n",
-      boolean: false,
-      required: false,
-      default: "world",
-      description: "Who to greet",
-    },
-  ],
-  args: [{ name: "target", order: 0, required: true, choices: ["dev", "prod"], description: "Environment" }],
-};
+const declaredInput = Result.getOrThrowWith(
+  normalizeToolingInput("greet", {
+    flags: { name: { alias: "n", default: "world", description: "Who to greet" } },
+    args: { target: { order: 0, required: true, choices: ["dev", "prod"], description: "Environment" } },
+  }),
+  (error) => error,
+);
 
 const declaredInputRoute = (
   overrides: Partial<Extract<ToolingRoute, { readonly _tag: "tooling" }>> = {},
-): ToolingRoute => ({
+): Extract<ToolingRoute, { readonly _tag: "tooling" }> => ({
   _tag: "tooling",
   commandId: "app:greet",
   name: "greet",
+  summary: "Greet a target",
   hidden: false,
   input: declaredInput,
   ...overrides,
@@ -218,6 +215,8 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
       _tag: "bun-script",
       commandId: "app:quality",
       name: "quality",
+      hidden: false,
+      summary: "Run quality checks",
       appRoot: root,
     });
     expect(argv.slice(1)).toEqual(["--fix"]);
@@ -257,6 +256,8 @@ test("Given a schema-version-2 cache blob, when resolving a listed task, then it
       _tag: "cache-miss",
       commandId: "app:quality",
       name: "quality",
+      reason: "invalid-cache",
+      sourcePath: join(root, ".lando.yml"),
       remediation: expect.stringContaining("lando app:cache:refresh"),
     });
   });
@@ -275,7 +276,7 @@ test("Given a fresh cache that does not list a token, when resolving it, then it
       _tag: "unknown-tooling",
       commandId: "app:disabled-now",
       name: "disabled-now",
-      remediation: expect.stringContaining("lando app:cache:refresh"),
+      remediation: expect.stringContaining("lando help"),
     });
   });
 });
@@ -349,7 +350,7 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
     expect(route).toMatchObject({
       _tag: "unknown-tooling",
       commandId: "app:unknown",
-      remediation: expect.stringContaining("lando app:cache:refresh"),
+      remediation: expect.stringContaining("lando help"),
     });
   });
 });
@@ -529,7 +530,9 @@ test("Given a cached task the index hides, when resolving it, then the route rep
       _tag: "tooling",
       commandId: "app:legacy",
       name: "legacy",
+      summary: "Retired task",
       hidden: true,
+      sourcePath: join(root, ".lando.yml"),
       input: declaredInput,
     });
   });
@@ -577,7 +580,7 @@ test("Given a declared-input task, when help follows the argument terminator, th
 
 test("Given a task with no declared input, when argv asks for help, then the option passes through to the command", () => {
   // Given — raw argv passthrough is what lets `lando composer --help` show the tool's own help
-  const route = declaredInputRoute({ input: undefined });
+  const { input: _input, ...route } = declaredInputRoute();
 
   // When
   const requested = toolingHelpRequested(route, ["--help"]);
@@ -586,7 +589,7 @@ test("Given a task with no declared input, when argv asks for help, then the opt
   expect(requested).toBe(false);
 });
 
-test("Given a hidden declared-input task, when argv asks for help, then the task keeps its own refusal", () => {
+test("Given a hidden declared-input task, when argv asks for help, then it routes to pre-execution refusal", () => {
   // Given — a disabled task is indexed hidden and must still fail with its tagged error
   const route = declaredInputRoute({ hidden: true });
 
@@ -594,16 +597,22 @@ test("Given a hidden declared-input task, when argv asks for help, then the task
   const requested = toolingHelpRequested(route, ["--help"]);
 
   // Then
-  expect(requested).toBe(false);
+  expect(requested).toBe(true);
 });
 
 test("Given a task that declares its own help flag, when argv asks for help, then the declared flag wins", () => {
   // Given
   const byName = declaredInputRoute({
-    input: { flags: [{ name: "help", boolean: true, required: false }], args: [] },
+    input: Result.getOrThrowWith(
+      normalizeToolingInput("greet", { flags: { help: { boolean: true } } }),
+      (error) => error,
+    ),
   });
   const byAlias = declaredInputRoute({
-    input: { flags: [{ name: "hint", alias: "h", boolean: true, required: false }], args: [] },
+    input: Result.getOrThrowWith(
+      normalizeToolingInput("greet", { flags: { hint: { alias: "h", boolean: true } } }),
+      (error) => error,
+    ),
   });
 
   // When
@@ -617,7 +626,14 @@ test("Given a route that is not a normalized tooling task, when argv asks for he
   // Given
   const routes: ReadonlyArray<ToolingRoute> = [
     { _tag: "not-tooling" },
-    { _tag: "bun-script", commandId: "app:quality", name: "quality", appRoot: "/tmp" },
+    {
+      _tag: "bun-script",
+      commandId: "app:quality",
+      name: "quality",
+      summary: "",
+      hidden: false,
+      appRoot: "/tmp",
+    },
     { _tag: "unknown-tooling", commandId: "app:nope", name: "nope", remediation: "refresh" },
   ];
 
@@ -626,4 +642,69 @@ test("Given a route that is not a normalized tooling task, when argv asks for he
 
   // Then
   expect(requests).toEqual([false, false, false]);
+});
+
+const countingCatalog = () => {
+  const state = { acquired: 0 };
+  const id = "fx:inspect";
+  const commands = [
+    {
+      id,
+      pluginName: "@example/fx",
+      source: "explicit" as const,
+      descriptor: { id, summary: "Inspect fixture.", topLevelAlias: "inspect" },
+      load: async () => ({
+        id,
+        namespace: "fx",
+        bootstrap: "plugins" as const,
+        resultSchema: Schema.String,
+        run: () => Effect.succeed(id),
+      }),
+    },
+  ];
+  const catalog = createPluginCommandCatalog(undefined, () =>
+    Effect.sync(() => {
+      state.acquired += 1;
+      return {
+        plugins: [],
+        globalPlugins: [],
+        commands,
+        certificateAuthorities: [],
+        hostContext: Context.empty(),
+      };
+    }),
+  );
+  return { state, catalog };
+};
+
+test("a fresh-cache built-in alias routes without acquiring plugin metadata", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given a fresh app command index and an invocation catalog
+    await writeFreshCache(root, cacheRoot, []);
+    const { state, catalog } = countingCatalog();
+    // When the built-in alias is routed
+    const route = await Effect.runPromise(resolveToolingRoute("start", { cwd: root, cacheRoot, catalog }));
+    // Then it resolves to the built-in and plugin metadata stays unacquired
+    expect(route).toMatchObject({ _tag: "built-in", commandId: "app:start" });
+    expect(state.acquired).toBe(0);
+  });
+});
+
+test("plugin alias routing reuses the invocation catalog", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given a fresh app command index and an invocation catalog that owns a plugin alias
+    await writeFreshCache(root, cacheRoot, []);
+    const { state, catalog } = countingCatalog();
+    // When the alias is routed twice
+    const routes = [
+      await Effect.runPromise(resolveToolingRoute("inspect", { cwd: root, cacheRoot, catalog })),
+      await Effect.runPromise(resolveToolingRoute("inspect", { cwd: root, cacheRoot, catalog })),
+    ];
+    // Then both resolve through the supplied catalog's single acquisition
+    expect(routes).toEqual([
+      { _tag: "plugin", commandId: "fx:inspect", token: "inspect" },
+      { _tag: "plugin", commandId: "fx:inspect", token: "inspect" },
+    ]);
+    expect(state.acquired).toBe(1);
+  });
 });

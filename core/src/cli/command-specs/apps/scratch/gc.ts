@@ -24,5 +24,5 @@ export const appsScratchGcSpec: LandoCommandSpec<ScratchGcReport> = {
     }),
   },
   run: (input) => scratchGc({ prune: pruneFromInput(input) }),
-  render: (result) => renderScratchGcReport(result as ScratchGcReport),
+  render: (result) => renderScratchGcReport(result),
 };

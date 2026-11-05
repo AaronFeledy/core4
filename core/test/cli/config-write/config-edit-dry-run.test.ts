@@ -16,7 +16,7 @@ import { globalConfigEdit } from "../../../src/cli/commands/meta/global-config";
 import { flagDefinitionsForCommand } from "../../../src/cli/compiled-argv";
 import { compiledCommandInputFromArgv } from "../../../src/cli/compiled-input";
 import { validateCommandCliFlags } from "../../../src/cli/flag-value-validation";
-import { testStateStoreLayer } from "../../_support/landofile-layer";
+import { globalConfigLayer } from "../../_support/global-config-layer";
 
 describe("global config edit dry-run persistence", () => {
   let dir = "";
@@ -43,7 +43,7 @@ describe("global config edit dry-run persistence", () => {
           editorRunner: async () => ({ kind: "edited", content: edited }),
         },
         filePath,
-      ).pipe(Effect.provide(testStateStoreLayer)),
+      ).pipe(Effect.provide(globalConfigLayer(dir))),
     );
 
     // Then
@@ -62,7 +62,7 @@ describe("global config edit dry-run persistence", () => {
       globalConfigEdit(
         { dryRun: true, editorRunner: async () => ({ kind: "edited", content: edited }) },
         filePath,
-      ).pipe(Effect.provide(testStateStoreLayer)),
+      ).pipe(Effect.provide(globalConfigLayer(dir))),
     );
 
     // Then
@@ -85,7 +85,7 @@ describe("global config edit dry-run persistence", () => {
           editorRunner: async () => ({ kind: "edited", content: "name: global\nruntime: invalid\n" }),
         },
         filePath,
-      ).pipe(Effect.result, Effect.provide(testStateStoreLayer)),
+      ).pipe(Effect.result, Effect.provide(globalConfigLayer(dir))),
     );
 
     // Then

@@ -49,14 +49,19 @@ describe("removeObservedContainer", () => {
   test("stops then force-removes the observed container id", async () => {
     const { api, calls } = recordingApi([
       { status: 204, body: "" },
+      { status: 200, body: '{"State":{"Status":"exited","ExitCode":143}}' },
       { status: 204, body: "" },
     ]);
 
     const removed = await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }));
 
-    expect(removed).toBe(true);
+    expect(removed).toMatchObject({
+      kind: "removed",
+      shutdownObservations: [{ containerId: "abc123", status: "exited", exitCode: 143 }],
+    });
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "POST /containers/abc123/stop",
+      "GET /containers/abc123/json",
       "DELETE /containers/abc123?force=true&v=true",
     ]);
   });
@@ -64,16 +69,21 @@ describe("removeObservedContainer", () => {
   test("treats an already stopped container as removable", async () => {
     const { api } = recordingApi([
       { status: 304, body: "" },
+      { status: 200, body: "{}" },
       { status: 200, body: "" },
     ]);
 
-    expect(await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }))).toBe(true);
+    expect(await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }))).toMatchObject({
+      kind: "removed",
+    });
   });
 
   test("reports a container that is already gone as not removed", async () => {
     const { api, calls } = recordingApi([{ status: 404, body: "" }]);
 
-    expect(await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }))).toBe(false);
+    expect(await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }))).toMatchObject({
+      kind: "absent",
+    });
     expect(calls).toHaveLength(1);
   });
 
@@ -81,13 +91,14 @@ describe("removeObservedContainer", () => {
     // Given
     const { api, calls } = recordingApi([
       { status: 204, body: "" },
+      { status: 200, body: "{}" },
       { status: 404, body: "" },
     ]);
     // When
     const removed = await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }));
     // Then
-    expect(removed).toBe(false);
-    expect(calls[1]).toEqual({ method: "DELETE", path: "/containers/abc123?force=true&v=true" });
+    expect(removed).toMatchObject({ kind: "absent" });
+    expect(calls[2]).toEqual({ method: "DELETE", path: "/containers/abc123?force=true&v=true" });
   });
 
   test("never calls the engine for an observation with no container id", async () => {
@@ -97,7 +108,7 @@ describe("removeObservedContainer", () => {
       removeObservedContainer(observed({ withoutContainer: true }), { api, ctx }),
     );
 
-    expect(removed).toBe(false);
+    expect(removed).toMatchObject({ kind: "absent" });
     expect(calls).toEqual([]);
   });
 
@@ -115,6 +126,7 @@ describe("removeObservedContainer", () => {
   test("fails when the engine rejects the removal", async () => {
     const { api } = recordingApi([
       { status: 204, body: "" },
+      { status: 200, body: "{}" },
       { status: 500, body: "boom" },
     ]);
 

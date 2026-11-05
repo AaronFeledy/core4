@@ -22,6 +22,7 @@ for (const mode of ["sidecar", "host"] as const) {
         },
         baseKind: "lando",
         appRoot: "/apps/ssh-test",
+        appSlug: "ssh-test",
         normalizedConfig: {},
         features: [{ id: definition.id, definition, config: { mode } }],
       }),

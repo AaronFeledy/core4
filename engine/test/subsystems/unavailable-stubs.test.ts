@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { CaError, HealthcheckError, ProxyApplyError } from "@lando/sdk/errors";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { CertificateAuthority, HealthcheckRunner, RouterService } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import * as Certs from "../../src/subsystems/certs/api.ts";
@@ -10,10 +10,9 @@ import { nonePlan } from "./healthcheck/support.ts";
 
 test.each(["first-app", "second-app"])("unavailable route application retains app id %s", async (id) => {
   const result = await Effect.runPromise(
-    Effect.flatMap(RouterService, (router) => router.applyRoutes([], AppId.make(id))).pipe(
-      Effect.provide(Router.layerUnavailable),
-      Effect.result,
-    ),
+    Effect.flatMap(RouterService, (router) =>
+      router.applyRoutes([], { id: AppId.make(id), ownerKey: appIdentityKey("owner", `/tmp/${id}`) }),
+    ).pipe(Effect.provide(Router.layerUnavailable), Effect.result),
   );
   expect(result).toEqual(
     Result.fail(

@@ -186,6 +186,7 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
     AGENT_SOCKET_CONTAINER_DIR.gpg,
     "/run/lando/gpg-agent-keys",
     "/run/lando/host-proxy.sock",
+    "/run/lando/host-proxy/credentials",
     "/usr/local/bin/lando",
     "/usr/local/bin/xdg-open",
     "/usr/local/bin/open",
@@ -193,10 +194,13 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
   const selected: ServicePlan = {
     ...service,
     environment: {
-      LANDO_HOST_PROXY_SESSION: "session",
       SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       LANDO_GPG_AGENT_SOCKET: "/run/lando/gpg-agent/S.gpg-agent",
       LANDO_GPG_KEYRING: "/run/lando/gpg-agent-keys",
+    },
+    extensions: {
+      ...service.extensions,
+      "@lando/core/host-proxy-transport": { sessionDigest: "0123456789abcdef" },
     },
     mounts: targets.map((target) => ({
       type: "volume" as const,
@@ -209,7 +213,7 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
     {
       ...selected,
       mounts: selected.mounts.map((mount) =>
-        mount.target.startsWith("/usr/local") || mount.target === "/run/lando/host-proxy.sock"
+        mount.target.startsWith("/usr/local") || mount.target.startsWith("/run/lando/host-proxy")
           ? {
               type: "bind" as const,
               source: mount.type === "volume" ? mount.store : "internal",

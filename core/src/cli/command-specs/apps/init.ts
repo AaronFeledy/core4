@@ -94,7 +94,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
   };
 };
 
-export const initSpec: LandoCommandSpec<never> = {
+export const initSpec: LandoCommandSpec<typeof InitAppResultSchema.Type> = {
   resultSchema: InitAppResultSchema,
   id: "apps:init",
   helpGroup: "common",
@@ -115,7 +115,8 @@ export const initSpec: LandoCommandSpec<never> = {
     }),
     id: Flags.string({ description: "Recipe id for --source=registry." }),
     "registry-url": Flags.string({
-      description: "Override the recipe registry base URL (for --source=registry).",
+      description:
+        "Override the registry base URL for --source=registry or --source=npm, including npm recipe parents.",
     }),
     package: Flags.string({
       description: "npm package spec <name>[@version] (for --source=npm).",

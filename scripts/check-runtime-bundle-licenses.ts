@@ -37,10 +37,19 @@ export const checkRuntimeBundleLicenses = async (options: {
   const fetchImpl = options.fetchImpl ?? fetch;
   const retryOptions = options.sleep === undefined ? {} : { sleep: options.sleep };
   const texts = new Map<string, Set<string>>();
+  const sourceSizes = new Map<string, Set<number>>();
   const links = new Set<string>();
   for (const group of Object.values(sources.bundles)) {
     for (const component of group.components) {
       links.add(component.license.source);
+      if ("archive" in component && component.archive === "deb") {
+        const hashes = texts.get(component.source.url) ?? new Set<string>();
+        hashes.add(component.source.sha256);
+        texts.set(component.source.url, hashes);
+        const sizes = sourceSizes.get(component.source.url) ?? new Set<number>();
+        sizes.add(component.source.sizeBytes);
+        sourceSizes.set(component.source.url, sizes);
+      }
       for (const text of component.license.texts) {
         const hashes = texts.get(text.url) ?? new Set<string>();
         hashes.add(text.sha256);
@@ -64,6 +73,10 @@ export const checkRuntimeBundleLicenses = async (options: {
           fetchImpl(target, { redirect: "follow", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
       });
       const actual = createHash("sha256").update(bytes).digest("hex");
+      for (const expected of sourceSizes.get(url) ?? []) {
+        if (bytes.length !== expected)
+          violations.push({ url, message: `size mismatch: expected ${expected}, got ${bytes.length}` });
+      }
       for (const expected of hashes) {
         if (actual !== expected)
           violations.push({ url, message: `sha256 mismatch: expected ${expected}, got ${actual}` });
@@ -74,6 +87,7 @@ export const checkRuntimeBundleLicenses = async (options: {
     }
   }
   for (const url of links) {
+    if (texts.has(url)) continue;
     try {
       await fetchOverHttps(url, {
         ...retryOptions,

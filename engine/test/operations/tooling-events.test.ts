@@ -38,6 +38,7 @@ import {
   disabledToolingSources,
 } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
@@ -132,6 +133,7 @@ const harness = (input: {
           Layer.succeed(RedactionService, redaction),
         );
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     resolverLayer,
     eventRuntime,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
@@ -266,7 +268,12 @@ test.each(["command", "task"] as const)(
     const result =
       kind === "command"
         ? await Effect.runPromise(
-            runEventToolingCommand(persisted, "off", tooling.off ?? {}, []).pipe(
+            runEventToolingCommand({
+              plan: persisted,
+              name: "off",
+              task: tooling.off ?? {},
+              input: { _tag: "RawArgv", argv: [] },
+            }).pipe(
               Effect.provide(testEnvironmentResolverLayerFor(h.redaction)),
               Effect.result,
               Effect.provideService(

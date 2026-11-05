@@ -47,6 +47,7 @@ const events = EventService.of({
   subscribe: () => Stream.empty,
   subscribeQueue: unused,
   waitFor: () => unused,
+  subscribeWithHistory: () => Effect.never,
   waitForAny: () => unused,
   query: () => Effect.succeed([]),
 });

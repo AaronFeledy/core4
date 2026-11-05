@@ -88,16 +88,15 @@ const makeLifecycleModule = (
   Renderable: typeof LifecycleTestRenderable = LifecycleTestRenderable,
 ) =>
   ({
+    RGBA: openTui.RGBA,
     createCliRenderer: async () => renderer,
     BoxRenderable: Renderable,
     TextRenderable: Renderable,
     InputRenderable: Renderable,
     TextareaRenderable: Renderable,
     SelectRenderable: Renderable,
-    TabSelectRenderable: Renderable,
     InputRenderableEvents: { ENTER: "enter", INPUT: "input", CHANGE: "change" },
     SelectRenderableEvents: { ITEM_SELECTED: "selected", SELECTION_CHANGED: "selectionChanged" },
-    TabSelectRenderableEvents: { ITEM_SELECTED: "selected" },
   }) satisfies OpenTuiModuleLike;
 
 export const makeDestroyFailureFixture = (cancel: boolean) => {

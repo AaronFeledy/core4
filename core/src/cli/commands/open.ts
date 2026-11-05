@@ -6,7 +6,6 @@ import type {
   EventError,
   LandofileLoadExpressionError,
   ProxyError,
-  ShellExecError,
 } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
@@ -18,12 +17,12 @@ import {
   type RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import type { ShellRunner } from "@lando/sdk/services";
+import type { ProcessRunner } from "@lando/sdk/services";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { observedAppPlan } from "@lando/engine/providers/app-placement";
-import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
+import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/services/host-opener";
 import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
@@ -96,7 +95,7 @@ export type OpenAppError =
   | ComposeKeyRejectedError
   | OpenTargetUnresolvedError
   | HostProxyOpenUrlSchemeError
-  | ShellExecError
+  | HostProxyOpenerError
   | ProxyError
   | EventError
   | LandofileLoadExpressionError;
@@ -111,7 +110,7 @@ export const openForPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
   options: OpenAppOptions,
   connections: readonly StartedService[],
-): Effect.fn.Return<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> {
+): Effect.fn.Return<OpenAppResult, OpenAppError, ProcessRunner | EventService | RedactionService> {
   const targets = resolveOpenTargets(plan, options, connections);
   if (targets.length === 0) {
     const knownServices = Object.values(plan.services).map((service) => String(service.name));
@@ -203,7 +202,7 @@ type OpenAppServices =
   | AppPlanner
   | LandofileService
   | RuntimeProviderRegistry
-  | ShellRunner
+  | ProcessRunner
   | EventService
   | RedactionService
   | RouterService;

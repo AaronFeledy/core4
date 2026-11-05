@@ -58,7 +58,7 @@ const treeComplete = (parentId: string, summary: string): LandoEvent =>
 
 const makeCollection = (): TaskTreeCollection =>
   new TaskTreeCollection(
-    { terminalColumns: 80 },
+    { color: true, terminalColumns: 80 },
     { render: () => {}, requestLive: () => {}, dropLive: () => {} },
   );
 

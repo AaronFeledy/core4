@@ -57,12 +57,14 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `bootstrap-layers` | Service registry, bootstrap ranks, plugin contributions | One generated Layer per bootstrap level | Derived drift, boundary, and perf gates |
 | `schema-snapshot` | Public schema, command-result, and bundled-manifest registries | Schema artifacts, references, fixtures, package mirrors | Derived regeneration and schema compatibility |
 | `setup-plugin-flags` | Ship list and setup contributions | Setup flag metadata | Derived drift and command tests |
-| `mcp-allowlist` | Command registry metadata | MCP command allowlist | Derived drift and registry tests |
+| `mcp-allowlist` | Built-in command registry metadata and bundled command descriptors | MCP command allowlist | Derived drift and registry tests |
 | `host-proxy-allowlist` | Command registry metadata | Host-proxy command allowlist | Derived drift and contract tests |
 | `command-registry-manifest` | Built-in command registry and topics | Embedded manifest and command-id list | Derived drift and registry completeness |
 | `compiled-decoders` | The fixed hot-path schema AST list in `core/src/cli/compiled-decoder-targets.ts` and the pinned Effect version | Gitignored generated decoder module plus declaration under `core/src/cli/generated/` (§12.5.1) | Derived regeneration, compiled-decoder parity, perf gates |
-| `command-reference` | Command registry and manifest | CLI command reference | Derived regeneration and docs build |
+| `bundled-command-descriptors` | Ship list, bundled plugin manifests, and their command modules | Cold-safe bundled command descriptor table | Derived drift and descriptor parity tests |
+| `command-reference` | Command registry, manifest, and bundled command descriptors | CLI command reference for built-in and bundled plugin commands | Derived regeneration and docs build |
 | `compose-key-matrix` | Compose dispositions | Compose compatibility reference | Derived regeneration and docs build |
+| `config-lint-rule-reference` | `CONFIG_LINT_RULES` descriptors | `docs/reference/config-lint-rules.mdx` | Derived regeneration, reference-rendering tests, and docs build |
 | `opentui-native-stubs` | Native-root catalog, release targets, installed OpenTUI metadata, lockfile | Target mapping and non-target stubs | Derived drift and per-target relocated smoke |
 | `php-base-images` | PHP prerequisites and supported versions | Versioned PHP Dockerfiles | Derived drift and image tests |
 | `ci-workflow` | CI platform and supply-chain configuration | PR CI workflow | Committed-workflow regeneration and diff |
@@ -119,11 +121,11 @@ The pipeline SHOULD produce reproducible binaries from identical source, Bun ver
 
 #### 17.6.1 Update manifest
 
-`UpdateManifestSchema` is published by `@lando/sdk/schema`. Its load-bearing fields are `channel`, `latest`, `released`, `minimum`, per-platform binary URL/checksum/size records, checksum URLs and signature, and release notes. Stable URLs live under `https://update.lando.dev/v4/<channel>.json`; each manifest has a cosign signature. Binaries older than `minimum` MUST refuse auto-update and direct the user to manual installation.
+`UpdateManifestSchema` is published by `@lando/sdk/schema`. Its load-bearing fields are `channel`, `latest`, `released`, `minimum`, per-platform binary URL/checksum/size records, checksum URLs and signature, and release notes. Stable URLs live under `https://update.lando.dev/v4/<channel>.json`; each manifest has a cosign signature. Binaries older than `minimum` MUST refuse auto-update and direct the user to manual installation. The updater records each channel's last accepted `latest` under the user data root and MUST reject a verified manifest whose `latest` is older, so replaying an earlier signed manifest cannot roll a channel back; clearing the user cache root MUST NOT reset that floor (§12.1). The freshness check and the floor advance are one compare-and-advance under the floor record's advisory lock, and every writer, including success and failure bookkeeping, merges so a channel's floor never decreases, even when two updates overlap. An unreadable or unrecognized floor record fails the update rather than reading as empty.
 
 #### 17.6.2 Atomic replace and rollback
 
-The updater MUST resolve the Lando install record and reject foreign ownership. On POSIX it uses a same-filesystem atomic replacement while retaining one backup. On Windows, where the running executable cannot replace itself, it MUST stage a versioned sibling and complete the rename after process exit or reboot; a documented close-process fallback is required. Both paths preserve existing permissions and ACLs.
+The updater MUST resolve the Lando install record and reject foreign ownership. On POSIX it uses a same-filesystem atomic replacement while retaining one backup, and restores inherited stdio file-status flags (§8.11.2) immediately before re-exec so the new process snapshots the shell's original state. The host supplies the re-exec primitive through its process-exit owner; the engine never replaces the process itself. On Windows, where the running executable cannot replace itself, it MUST stage a versioned sibling and complete the rename after process exit or reboot; a documented close-process fallback is required. Both paths preserve existing permissions and ACLs.
 
 Updater operations MUST touch only the recorded executable name (`lando4` or `lando4.exe` under §17.7) and its recorded siblings. They MUST NOT alter a Lando 3 `lando` or `lando.exe`, Lando 3 state, or unrelated PATH entries. Permission failure MUST surface explicit manual elevation instructions; Lando MUST NOT invoke `sudo` or UAC silently.
 

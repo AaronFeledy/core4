@@ -1,23 +1,23 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { gunzipSync, zstdDecompressSync } from "node:zlib";
 
 import { Effect, Schema } from "effect";
 
-import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import manifestData from "../nft-versions.json" with { type: "json" };
+import { type TarEntry, parseArMembers, parseTarEntries } from "./debian-archive.ts";
+import { type NftDecompressionOptions, decompressDebDataTar } from "./debian-decompress.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
+export { type ArMember, type TarEntry, parseArMembers, parseTarEntries } from "./debian-archive.ts";
+export { type NftDecompressionOptions, decompressDebDataTar, decompressXz } from "./debian-decompress.ts";
 
 const PROVIDER_ID = "lando";
 const NFT_LIB_DIRNAME = "nft";
 const VERSION_MARKER = ".nft.version";
 const WRAPPER_MODE = 0o755;
 const BINARY_MODE = 0o755;
-const MAX_DECOMPRESSED_BYTES = 64 * 1024 ** 2;
-const DECOMPRESSION_TIMEOUT_MS = 30_000;
-const MAX_DECOMPRESSION_STDERR_BYTES = 64 * 1024;
 
 const NftPackageSchema = Schema.Struct({
   name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
@@ -26,7 +26,6 @@ const NftPackageSchema = Schema.Struct({
   filename: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._+-]*$/u))),
   sizeBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
-
 const NftManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   toolVersion: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
@@ -35,10 +34,8 @@ const NftManifestSchema = Schema.Struct({
     Schema.Array(NftPackageSchema).pipe(Schema.check(Schema.isMinLength(1))),
   ),
 });
-
 export type NftPackage = Schema.Schema.Type<typeof NftPackageSchema>;
 export type NftManifest = Schema.Schema.Type<typeof NftManifestSchema>;
-
 export const NFT_MANIFEST: NftManifest = Schema.decodeUnknownSync(NftManifestSchema)(manifestData);
 export const NFT_TOOL_VERSION = NFT_MANIFEST.toolVersion;
 
@@ -76,83 +73,6 @@ export LD_LIBRARY_PATH="$HERE/../lib/${NFT_LIB_DIRNAME}\${LD_LIBRARY_PATH:+:\$LD
 exec "$HERE/../lib/${NFT_LIB_DIRNAME}/nft" "$@"
 `;
 
-export interface ArMember {
-  readonly name: string;
-  readonly bytes: Uint8Array;
-}
-
-export const parseArMembers = (archive: Uint8Array): ReadonlyArray<ArMember> => {
-  const header = Buffer.from(archive.subarray(0, 8)).toString("ascii");
-  if (header !== "!<arch>\n") {
-    throw new Error("Not a Debian ar archive.");
-  }
-  const members: ArMember[] = [];
-  let pos = 8;
-  while (pos + 60 <= archive.length) {
-    const name = Buffer.from(archive.subarray(pos, pos + 16))
-      .toString("ascii")
-      .trim()
-      .replace(/\/$/u, "");
-    const sizeText = Buffer.from(archive.subarray(pos + 48, pos + 58))
-      .toString("ascii")
-      .trim();
-    const size = Number.parseInt(sizeText, 10);
-    if (!Number.isFinite(size) || size < 0) break;
-    pos += 60;
-    members.push({ name, bytes: archive.subarray(pos, pos + size) });
-    pos += size;
-    if (size % 2 === 1) pos += 1;
-  }
-  return members;
-};
-
-export interface TarEntry {
-  readonly name: string;
-  readonly kind: "file" | "symlink";
-  readonly bytes?: Uint8Array;
-  readonly linkname?: string;
-}
-
-export const parseTarEntries = (tar: Uint8Array): ReadonlyArray<TarEntry> => {
-  const BLOCK = 512;
-  const entries: TarEntry[] = [];
-  let pos = 0;
-  while (pos + BLOCK <= tar.length) {
-    const header = tar.subarray(pos, pos + BLOCK);
-    if (header[0] === 0) break;
-    let nameEnd = 0;
-    while (nameEnd < 100 && header[nameEnd] !== 0) nameEnd += 1;
-    let name = Buffer.from(header.subarray(0, nameEnd)).toString("utf8");
-    const prefixEnd = 345 + 155;
-    if (header[257] === 117 && header[345] !== 0) {
-      let prefixLen = 0;
-      while (345 + prefixLen < prefixEnd && header[345 + prefixLen] !== 0) prefixLen += 1;
-      if (prefixLen > 0) {
-        name = `${Buffer.from(header.subarray(345, 345 + prefixLen)).toString("utf8")}/${name}`;
-      }
-    }
-    const sizeOctal = Buffer.from(header.subarray(124, 136))
-      .toString("ascii")
-      .replace(/[^0-7]/gu, "");
-    const size = sizeOctal.length > 0 ? Number.parseInt(sizeOctal, 8) : 0;
-    const typeflag = header[156] === undefined ? 0 : header[156];
-    pos += BLOCK;
-    if (typeflag === 48 || typeflag === 0) {
-      entries.push({ name, kind: "file", bytes: tar.subarray(pos, pos + size) });
-    } else if (typeflag === 50) {
-      let linkEnd = 157;
-      while (linkEnd < 257 && header[linkEnd] !== 0) linkEnd += 1;
-      entries.push({
-        name,
-        kind: "symlink",
-        linkname: Buffer.from(header.subarray(157, linkEnd)).toString("utf8"),
-      });
-    }
-    pos += Math.ceil(size / BLOCK) * BLOCK;
-  }
-  return entries;
-};
-
 const runProcess = async (
   command: string,
   args: ReadonlyArray<string>,
@@ -169,224 +89,6 @@ const runProcess = async (
     proc.exited,
   ]);
   return { exitCode, stdout: new Uint8Array(stdout), stderr };
-};
-
-export interface NftDecompressionOptions {
-  readonly maxDecompressedBytes?: number;
-  readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
-}
-
-class NftDecompressionCapError extends Error {}
-class NftDecompressionTimeoutError extends Error {}
-class NftDecompressionCancelledError extends Error {}
-
-const concatChunks = (chunks: ReadonlyArray<Uint8Array>, length: number): Uint8Array => {
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-};
-
-const collectBoundedOutput = async (
-  stream: ReadableStream<Uint8Array>,
-  maxBytes: number,
-  failOnLimit: boolean,
-): Promise<Uint8Array> => {
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  for await (const chunk of stream) {
-    const remaining = maxBytes - length;
-    if (chunk.byteLength > remaining) {
-      if (failOnLimit) {
-        throw new NftDecompressionCapError(
-          `The nft package exceeded the decompressed-size cap of ${maxBytes} bytes.`,
-        );
-      }
-      if (remaining > 0) {
-        chunks.push(chunk.subarray(0, remaining));
-        length += remaining;
-      }
-      continue;
-    }
-    chunks.push(chunk);
-    length += chunk.byteLength;
-  }
-  return concatChunks(chunks, length);
-};
-
-const writeProcessInput = async (sink: Bun.FileSink | null | undefined, bytes: Uint8Array): Promise<void> => {
-  if (sink === null || sink === undefined) return;
-  await sink.write(bytes);
-  await sink.flush();
-  await sink.end();
-};
-
-interface BoundedDecompressProcessInput {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly stdin: Uint8Array;
-  readonly maxDecompressedBytes: number;
-  readonly timeoutMs: number;
-  readonly signal?: AbortSignal;
-}
-
-const runBoundedDecompressProcess = async (
-  input: BoundedDecompressProcessInput,
-): Promise<{ readonly exitCode: number; readonly stdout: Uint8Array; readonly stderr: string }> => {
-  if (input.signal?.aborted === true) {
-    throw new NftDecompressionCancelledError("Nft package decompression was cancelled.");
-  }
-  const proc = Bun.spawn([input.command, ...input.args], {
-    env: process.env,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const stdout = collectBoundedOutput(proc.stdout, input.maxDecompressedBytes, true);
-  const stderr = collectBoundedOutput(proc.stderr, MAX_DECOMPRESSION_STDERR_BYTES, false);
-  const inputWrite = writeProcessInput(proc.stdin, input.stdin).catch(async (cause: unknown) => {
-    // An intentional early failure can close stdin before the buffered write finishes.
-    if (cause instanceof Error && "code" in cause && cause.code === "EPIPE" && (await proc.exited) !== 0)
-      return;
-    throw cause;
-  });
-  void inputWrite.catch(() => undefined);
-  const exit = proc.exited;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(
-      () =>
-        reject(
-          new NftDecompressionTimeoutError(`Nft package decompression timed out after ${input.timeoutMs}ms.`),
-        ),
-      input.timeoutMs,
-    );
-  });
-  let abortListener: (() => void) | undefined;
-  const cancelled = new Promise<never>((_resolve, reject) => {
-    if (input.signal === undefined) return;
-    abortListener = () =>
-      reject(new NftDecompressionCancelledError("Nft package decompression was cancelled."));
-    input.signal.addEventListener("abort", abortListener, { once: true });
-  });
-  try {
-    const [stdoutBytes, stderrBytes, exitCode] = await Promise.race([
-      Promise.all([stdout, stderr, exit, inputWrite]).then(
-        ([stdoutBytes, stderrBytes, exitCode]) => [stdoutBytes, stderrBytes, exitCode] as const,
-      ),
-      timeout,
-      cancelled,
-    ]);
-    return { exitCode, stdout: stdoutBytes, stderr: new TextDecoder().decode(stderrBytes) };
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-    if (abortListener !== undefined) input.signal?.removeEventListener("abort", abortListener);
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
-    await proc.exited;
-    await Promise.allSettled([stdout, stderr]);
-  }
-};
-
-const resolveDecompressionOptions = (
-  options?: NftDecompressionOptions,
-): Required<Pick<NftDecompressionOptions, "maxDecompressedBytes" | "timeoutMs">> &
-  Pick<NftDecompressionOptions, "signal"> => ({
-  maxDecompressedBytes: options?.maxDecompressedBytes ?? MAX_DECOMPRESSED_BYTES,
-  timeoutMs: options?.timeoutMs ?? DECOMPRESSION_TIMEOUT_MS,
-  ...(options?.signal === undefined ? {} : { signal: options.signal }),
-});
-
-export const decompressXz = async (
-  bytes: Uint8Array,
-  options?: NftDecompressionOptions,
-): Promise<Uint8Array> => {
-  const resolved = resolveDecompressionOptions(options);
-  try {
-    const python = await runBoundedDecompressProcess({
-      command: "python3",
-      args: [
-        "-c",
-        `import lzma,sys
-remaining = int(sys.argv[1])
-with lzma.LZMAFile(sys.stdin.buffer) as source:
-    while True:
-        chunk = source.read(min(65536, remaining + 1))
-        if len(chunk) > remaining:
-            sys.exit(3)
-        if not chunk:
-            break
-        sys.stdout.buffer.write(chunk)
-        remaining -= len(chunk)`,
-        String(resolved.maxDecompressedBytes),
-      ],
-      stdin: bytes,
-      ...resolved,
-    });
-    if (python.exitCode === 3) {
-      throw new NftDecompressionCapError(
-        `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
-      );
-    }
-    if (python.exitCode === 0 && python.stdout.length > 0) return python.stdout;
-  } catch (cause) {
-    if (
-      cause instanceof NftDecompressionCapError ||
-      cause instanceof NftDecompressionTimeoutError ||
-      cause instanceof NftDecompressionCancelledError
-    ) {
-      throw cause;
-    }
-  }
-  const xz = await runBoundedDecompressProcess({ command: "xz", args: ["-dc"], stdin: bytes, ...resolved });
-  if (xz.exitCode !== 0) {
-    throw new Error(xz.stderr.trim() || "Failed to decompress xz payload.");
-  }
-  return xz.stdout;
-};
-
-export const decompressDebDataTar = async (
-  memberName: string,
-  bytes: Uint8Array,
-  options?: NftDecompressionOptions,
-): Promise<Uint8Array> => {
-  const resolved = resolveDecompressionOptions(options);
-  if (memberName.endsWith(".tar.gz") || memberName.endsWith(".tgz")) {
-    try {
-      return new Uint8Array(
-        gunzipSync(Buffer.from(bytes), { maxOutputLength: resolved.maxDecompressedBytes }),
-      );
-    } catch (cause) {
-      if (isErrnoCode(cause, "ERR_BUFFER_TOO_LARGE")) {
-        throw new NftDecompressionCapError(
-          `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
-        );
-      }
-      throw cause;
-    }
-  }
-  if (memberName.endsWith(".tar.zst") || memberName.endsWith(".tar.zstd")) {
-    try {
-      return new Uint8Array(
-        zstdDecompressSync(Buffer.from(bytes), { maxOutputLength: resolved.maxDecompressedBytes }),
-      );
-    } catch (cause) {
-      if (isErrnoCode(cause, "ERR_BUFFER_TOO_LARGE")) {
-        throw new NftDecompressionCapError(
-          `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
-        );
-      }
-      throw cause;
-    }
-  }
-  if (memberName.endsWith(".tar.xz")) {
-    return decompressXz(bytes, resolved);
-  }
-  if (memberName.endsWith(".tar")) return bytes;
-  throw new Error(`Unsupported deb data archive "${memberName}".`);
 };
 
 const BUNDLED_LIB_PREFIXES = [
@@ -421,43 +123,26 @@ const HOST_SONAME_PREFIXES = [
   "linux-vdso.so",
 ] as const;
 
-const isHostProvidedSoname = (name: string): boolean =>
-  HOST_SONAME_PREFIXES.some((prefix) => name.startsWith(prefix));
-
-const sonamePresent = (files: ReadonlyArray<string>, needed: string): boolean =>
-  files.some((name) => name === needed || name.startsWith(`${needed}.`));
-
-const readCString = (bytes: Uint8Array, offset: number): string => {
-  let end = offset;
-  while (end < bytes.length && bytes[end] !== 0) end += 1;
-  return new TextDecoder("utf-8").decode(bytes.subarray(offset, end));
-};
-
 export const readElfNeeded = (bytes: Uint8Array): ReadonlyArray<string> => {
   if (
-    bytes.length < 16 ||
+    bytes.length < 64 ||
     bytes[0] !== 0x7f ||
     bytes[1] !== 0x45 ||
     bytes[2] !== 0x4c ||
     bytes[3] !== 0x46 ||
     bytes[5] !== 1
-  ) {
+  )
     return [];
-  }
   const is64 = bytes[4] === 2;
   if (!is64 && bytes[4] !== 1) return [];
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const u16 = (off: number): number => view.getUint16(off, true);
   const u32 = (off: number): number => view.getUint32(off, true);
-  const uN = (off: number): number => {
-    if (!is64) return u32(off);
-    return u32(off) + u32(off + 4) * 0x1_0000_0000;
-  };
+  const uN = (off: number): number => (is64 ? u32(off) + u32(off + 4) * 0x1_0000_0000 : u32(off));
   const phoff = is64 ? uN(32) : u32(28);
   const phentsize = is64 ? u16(54) : u16(42);
   const phnum = is64 ? u16(56) : u16(44);
-  if (phoff <= 0 || phentsize <= 0 || phnum <= 0) return [];
-
+  if (phoff <= 0 || phentsize < (is64 ? 56 : 32) || phnum <= 0) return [];
   const loads: Array<{ readonly vaddr: number; readonly offset: number; readonly filesz: number }> = [];
   let dynOff = -1;
   let dynFilesz = 0;
@@ -475,16 +160,6 @@ export const readElfNeeded = (bytes: Uint8Array): ReadonlyArray<string> => {
     }
   }
   if (dynOff < 0 || dynFilesz <= 0) return [];
-
-  const vaddrToOffset = (vaddr: number): number | undefined => {
-    for (const seg of loads) {
-      if (vaddr >= seg.vaddr && vaddr < seg.vaddr + seg.filesz) {
-        return seg.offset + (vaddr - seg.vaddr);
-      }
-    }
-    return undefined;
-  };
-
   const entSize = is64 ? 16 : 8;
   let strtabVaddr = -1;
   const neededStrOffs: number[] = [];
@@ -497,45 +172,34 @@ export const readElfNeeded = (bytes: Uint8Array): ReadonlyArray<string> => {
     if (tag === 5) strtabVaddr = val;
   }
   if (strtabVaddr < 0) return [];
-  const strtabOff = vaddrToOffset(strtabVaddr);
-  if (strtabOff === undefined) return [];
-
+  const seg = loads.find((seg) => strtabVaddr >= seg.vaddr && strtabVaddr < seg.vaddr + seg.filesz);
+  if (seg === undefined) return [];
+  const strtabOff = seg.offset + strtabVaddr - seg.vaddr;
   const names: string[] = [];
   for (const rel of neededStrOffs) {
-    const name = readCString(bytes, strtabOff + rel);
+    let end = strtabOff + rel;
+    while (end < bytes.length && bytes[end] !== 0) end += 1;
+    const name = new TextDecoder().decode(bytes.subarray(strtabOff + rel, end));
     if (name.length > 0) names.push(name);
   }
   return names;
 };
 
 export const bundledLoaderDepsSatisfied = async (libDir: string): Promise<boolean> => {
-  let files: string[];
   try {
-    files = await readdir(libDir);
-  } catch {
-    return false;
-  }
-  const checkBytes = (bytes: Uint8Array): boolean => {
-    for (const needed of readElfNeeded(bytes)) {
-      if (isHostProvidedSoname(needed)) continue;
-      if (!sonamePresent(files, needed)) return false;
+    const files = await readdir(libDir);
+    for (const file of new Set(["nft", ...files])) {
+      const bytes = new Uint8Array(await readFile(join(libDir, file)));
+      for (const needed of readElfNeeded(bytes)) {
+        if (HOST_SONAME_PREFIXES.some((prefix) => needed.startsWith(prefix))) continue;
+        if (!files.some((name) => name === needed || name.startsWith(`${needed}.`))) return false;
+      }
     }
     return true;
-  };
-  try {
-    if (!checkBytes(new Uint8Array(await readFile(join(libDir, "nft"))))) return false;
-  } catch {
-    return false;
+  } catch (cause) {
+    if (cause instanceof Error) return false;
+    throw cause;
   }
-  for (const name of files) {
-    if (name === "nft") continue;
-    try {
-      if (!checkBytes(new Uint8Array(await readFile(join(libDir, name))))) return false;
-    } catch {
-      return false;
-    }
-  }
-  return true;
 };
 
 export const collectNftDebPayload = (
@@ -573,7 +237,7 @@ export const collectNftDebPayload = (
   return nft === undefined ? { libs } : { nft, libs };
 };
 
-const extractNftFromDebArchive = async (
+export const extractNftFromDeb = async (
   deb: Uint8Array,
   options?: NftDecompressionOptions,
 ): Promise<{
@@ -587,16 +251,6 @@ const extractNftFromDebArchive = async (
   }
   const tar = await decompressDebDataTar(data.name, data.bytes, options);
   return collectNftDebPayload(parseTarEntries(tar));
-};
-
-export const extractNftFromDeb = async (
-  deb: Uint8Array,
-  options?: NftDecompressionOptions,
-): Promise<{
-  readonly nft?: Uint8Array;
-  readonly libs: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>;
-}> => {
-  return extractNftFromDebArchive(deb, options);
 };
 
 const nftLooksUsable = async (runtimeBinDir: string): Promise<boolean> => {

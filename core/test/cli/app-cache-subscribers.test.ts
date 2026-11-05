@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { appCommandCachePath, pluginCommandCachePath } from "@lando/engine/cache/paths";
+import { appCommandCachePath } from "@lando/engine/cache/paths";
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -61,7 +61,6 @@ const fixtureFor = async (event: string) => {
   return {
     ...fixture,
     appCache: appCommandCachePath(fixture.cacheRoot, "observer-cache", fixture.root),
-    pluginCache: pluginCommandCachePath(fixture.cacheRoot),
     refresh: withAppDiscovery(
       fixture.root,
       refreshAppCache({ cwd: fixture.root, cacheRoot: fixture.cacheRoot }).pipe(Effect.provide(layer)),
@@ -69,20 +68,18 @@ const fixtureFor = async (event: string) => {
   };
 };
 
-test("explicit full compilation rejects a deferred missing selector before publishing command caches", async () => {
-  // Given: registration accepts a deferred app target, and the command caches already hold previous bytes.
+test("explicit full compilation rejects a deferred missing selector before publishing the app command cache", async () => {
+  // Given: registration accepts a deferred app target, and the app command cache already holds previous bytes.
   const fixture = await fixtureFor("cli-app:missing-run");
   try {
     await mkdir(join(fixture.appCache, ".."), { recursive: true });
     await writeFile(fixture.appCache, "previous-app-cache");
-    await writeFile(fixture.pluginCache, "previous-plugin-cache");
     // When: cache refresh deliberately compiles the full app catalog.
     const error = await Effect.runPromise(Effect.flip(fixture.refresh));
-    // Then: the exact selector is rejected and neither cache is replaced.
+    // Then: the exact selector is rejected and the app command cache is not replaced.
     expect(error).toMatchObject({ _tag: "PluginManifestError", remediation: expect.any(String) });
     expect(error.message).toContain("cli-app:missing-run");
     expect(await Bun.file(fixture.appCache).text()).toBe("previous-app-cache");
-    expect(await Bun.file(fixture.pluginCache).text()).toBe("previous-plugin-cache");
   } finally {
     await fixture.cleanup();
   }
@@ -119,7 +116,7 @@ test.each([
       // Then: validated selectors allow command-cache publication without loading their handlers.
       expect(result.commandsCompiled).toBe(6);
       expect(result.appCommandCachePath).toBe(fixture.appCache);
-      expect(result.pluginCommandCachePath).toBe(fixture.pluginCache);
+      expect(result).not.toHaveProperty("pluginCommandCachePath");
     } finally {
       await fixture.cleanup();
     }
@@ -138,7 +135,6 @@ test("failed script acquisition does not masquerade as an authoritative empty ap
     // Then: acquisition failure is retained rather than reporting a false unknown selector.
     expect(error).toMatchObject({ _tag: "BunShellScriptEmptyError" });
     expect(await Bun.file(fixture.appCache).exists()).toBe(false);
-    expect(await Bun.file(fixture.pluginCache).exists()).toBe(false);
   } finally {
     await fixture.cleanup();
   }

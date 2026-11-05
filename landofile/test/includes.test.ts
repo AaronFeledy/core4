@@ -8,23 +8,22 @@ import { Effect } from "effect";
 
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 
+import type { GitTransport } from "@lando/source-acquisition";
 import { getLandofileIncludeSources, getLocalIncludePaths } from "../src/include-provenance.ts";
-import type {
-  GitIncludeCloner,
-  NpmIncludeExtractor,
-  NpmIncludeFetcher,
-  NpmIncludeRecipeSource,
-  ResolveIncludesError,
-} from "../src/includes.ts";
+import type { ResolveIncludesError } from "../src/includes.ts";
 import {
   authoredRecipe,
   resolveAuthoredIncludes as resolveLandofileIncludesPackage,
 } from "./include-pipeline.ts";
+import { makeNpmPackageTarball, makeTestNpmRegistry } from "./support.ts";
 import { loadTestLandofileLayers as loadLandofileLayers } from "./support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>
-  resolveLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
+  resolveLandofileIncludesPackage({
+    ...options,
+    stateStore: options.stateStore ?? makeTestLandofileStateStore(options.cacheRoot),
+  });
 
 const resolveEffect = (
   landofile: LandofileShape,
@@ -411,15 +410,15 @@ describe("resolveLandofileIncludes", () => {
   });
 
   test("creates a git include lock entry with commit SHA and fragment checksum", async () => {
-    const cloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
+    const cloner: GitTransport = {
+      fetch: async ({ dest: stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(
           join(stagingDir, "postgres.yml"),
           "services:\n  database:\n    type: postgres\n",
           "utf8",
         );
-        return { commitSha: "a".repeat(40) };
+        return { commit: "a".repeat(40) };
       },
     };
 
@@ -432,7 +431,7 @@ describe("resolveLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        deps: { gitCloner: cloner },
+        deps: { git: cloner },
       }),
     );
 
@@ -450,11 +449,11 @@ describe("resolveLandofileIncludes", () => {
     const path = join(appRoot, ".lando.lock.yml");
     const locked = lockfile("github:acme/fragments/postgres.yml", "a".repeat(40), checksum);
     await writeFile(path, locked, "utf8");
-    const cloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
+    const cloner: GitTransport = {
+      fetch: async ({ dest: stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "a".repeat(40) };
+        return { commit: "a".repeat(40) };
       },
     };
 
@@ -464,7 +463,7 @@ describe("resolveLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        deps: { gitCloner: cloner },
+        deps: { git: cloner },
       }),
     );
 
@@ -478,15 +477,15 @@ describe("resolveLandofileIncludes", () => {
       lockfile("github:acme/fragments/postgres.yml", "a".repeat(40), "0".repeat(64)),
       "utf8",
     );
-    const cloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
+    const cloner: GitTransport = {
+      fetch: async ({ dest: stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(
           join(stagingDir, "postgres.yml"),
           "services:\n  database:\n    type: postgres\n",
           "utf8",
         );
-        return { commitSha: "a".repeat(40) };
+        return { commit: "a".repeat(40) };
       },
     };
 
@@ -497,7 +496,7 @@ describe("resolveLandofileIncludes", () => {
           appRoot,
           cacheRoot,
           ports: makeTestLandofilePorts(cacheRoot),
-          deps: { gitCloner: cloner },
+          deps: { git: cloner },
         }),
       ),
     );
@@ -507,12 +506,12 @@ describe("resolveLandofileIncludes", () => {
   });
 
   test("records distinct lock entries for two fragments from one git repo", async () => {
-    const cloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
+    const cloner: GitTransport = {
+      fetch: async ({ dest: stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "db.yml"), "services:\n  db:\n    type: postgres\n", "utf8");
         await writeFile(join(stagingDir, "cache.yml"), "services:\n  cache:\n    type: redis\n", "utf8");
-        return { commitSha: "a".repeat(40) };
+        return { commit: "a".repeat(40) };
       },
     };
     const landofile: LandofileShape = {
@@ -528,7 +527,7 @@ describe("resolveLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        deps: { gitCloner: cloner },
+        deps: { git: cloner },
       }),
     );
     expect(serviceType(result, "db")).toBe("postgres");
@@ -544,7 +543,7 @@ describe("resolveLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        deps: { gitCloner: cloner },
+        deps: { git: cloner },
       }),
     );
     expect(serviceType(second, "db")).toBe("postgres");
@@ -552,36 +551,23 @@ describe("resolveLandofileIncludes", () => {
   });
 
   test("creates an npm include lock entry with resolved version and checksum", async () => {
-    const bytes = new Uint8Array([1, 2, 3]);
-    const npmRecipeSource: NpmIncludeRecipeSource = {
-      resolve: async () => ({
-        packageName: "@acme/fragments",
-        version: "1.2.3",
-        dist: {
-          tarball: "https://registry.example/pkg.tgz",
-          shasum: createHash("sha1").update(bytes).digest("hex"),
-        },
-      }),
-    };
-    const fetcher: NpmIncludeFetcher = { fetch: async () => bytes };
-    const extractor: NpmIncludeExtractor = {
-      extract: async (_bytes, destDir) => {
-        await mkdir(join(destDir, "package", "fragments"), { recursive: true });
-        await writeFile(
-          join(destDir, "package", "fragments", "web.yml"),
-          "services:\n  web:\n    type: node\n",
-          "utf8",
-        );
-      },
-    };
+    const tarball = makeNpmPackageTarball({
+      "fragments/web.yml": "services:\n  web:\n    type: node\n",
+    });
+    const npmRegistry = makeTestNpmRegistry({
+      name: "@acme/fragments",
+      version: "1.2.3",
+      tarball,
+      tags: { latest: "1.2.3" },
+    });
 
     const result = await Effect.runPromise(
       resolveLandofileIncludes({
         landofile: { includes: [{ source: "npm:@acme/fragments/fragments/web.yml@latest" }] },
         appRoot,
         cacheRoot,
-        ports: makeTestLandofilePorts(cacheRoot),
-        deps: { npmRecipeSource, npmFetcher: fetcher, npmExtractor: extractor },
+        ports: makeTestLandofilePorts(cacheRoot, cacheRoot, { npmRegistry }),
+        deps: { npmRegistry },
       }),
     );
 
@@ -658,11 +644,11 @@ describe("resolveLandofileIncludes", () => {
   test("rejects a git fragment path that escapes the cloned repo via a symlink", async () => {
     const secretDir = await mkdtemp(join(tmpdir(), "lando-includes-secret-"));
     await writeFile(join(secretDir, "secret.yml"), "services:\n  leak:\n    type: node\n", "utf8");
-    const cloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
+    const cloner: GitTransport = {
+      fetch: async ({ dest: stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await symlink(join(secretDir, "secret.yml"), join(stagingDir, "postgres.yml"));
-        return { commitSha: "a".repeat(40) };
+        return { commit: "a".repeat(40) };
       },
     };
 
@@ -674,7 +660,7 @@ describe("resolveLandofileIncludes", () => {
             appRoot,
             cacheRoot,
             ports: makeTestLandofilePorts(cacheRoot),
-            deps: { gitCloner: cloner },
+            deps: { git: cloner },
           }),
         ),
       );

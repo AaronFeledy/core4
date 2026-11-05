@@ -65,7 +65,9 @@ describe("bundled plugin descriptor tables", () => {
       const actual = BUNDLED_PLUGIN_MODULES[index];
       if (expected === lando3.plugin) {
         // Only loader closure identity differs from the package factory's output.
-        const composed = lando3.makeLando3Plugin(loadLando3TranslatorPorts);
+        const composed = lando3.makeLando3Plugin(() =>
+          loadLando3TranslatorPorts(serviceLando.serviceTypeFacts),
+        );
         expect({ ...actual, configTranslators: undefined }).toEqual({
           ...composed,
           configTranslators: undefined,

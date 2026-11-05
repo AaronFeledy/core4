@@ -78,6 +78,7 @@ describe("lemp decomposition", () => {
       webroot: ".",
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
+    expect(fragment.services?.web).not.toHaveProperty("uploadDirs");
     expect(fragment.services?.appserver).toMatchObject({ primary: true, via: "fpm", webroot: "." });
     expect(fragment.services?.appserver).not.toHaveProperty("routes");
   });

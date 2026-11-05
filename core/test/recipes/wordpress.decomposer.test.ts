@@ -61,6 +61,7 @@ describe("wordpress decomposition", () => {
             type: "php:{{ recipe.php }}",
             primary: true,
             framework: "wordpress",
+            uploadDirs: ["wp-content/uploads"],
             port: 80,
             dependsOn: options.redis ? [{ service: "database" }, { service: "cache" }] : ["database"],
             routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],

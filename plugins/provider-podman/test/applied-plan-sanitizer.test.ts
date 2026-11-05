@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { networkOwnershipLabels } from "@lando/container-runtime/native-ownership";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as AppPlanSanitizerLayer from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
 import { hostProxyRunLandoFeature } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -142,6 +143,9 @@ const overlaidPlan = (): AppPlan => {
           socketPath: "/tmp/host-proxy.sock",
           url: "http://127.0.0.1:9",
         }).apply({
+          addExtension: (name, value) => {
+            extensions[name] = value;
+          },
           addEnv: (name, value) => {
             environment[name] = value;
           },
@@ -169,13 +173,25 @@ const makePodmanApi = (): PodmanApiClient => {
   const running = new Set<string>();
   const request = (input: EngineHttpRequest) =>
     Effect.sync(() => {
+      if (input.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
       if (input.method === "GET" && input.path.includes("/images/") && input.path.endsWith("/json")) {
         return {
           status: 200,
           body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
         };
       }
-      if (input.method === "GET" && input.path.startsWith("/networks/")) return { status: 200, body: "{}" };
+      if (input.method === "GET" && input.path.startsWith("/networks/")) {
+        const name = decodeURIComponent(input.path.slice("/networks/".length));
+        return {
+          status: 200,
+          body: JSON.stringify({
+            Id: `owned-${name}`,
+            Name: name,
+            Driver: "bridge",
+            Labels: networkOwnershipLabels(basePlan),
+          }),
+        };
+      }
       const container = input.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start)?$/u)?.[1];
       if (input.method === "GET" && input.path.endsWith("/json") && container !== undefined) {
         return containers.has(decodeURIComponent(container))
@@ -235,7 +251,10 @@ test("an overlaid plan applied through provider-podman is persisted without the 
   // Then
   const persisted = await Effect.runPromise(loadAppliedPlan(state, appId));
   expect(overlaid.services[serviceName]?.environment.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
-  expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBe("proxy-token");
+  expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+  expect(overlaid.services[serviceName]?.mounts).toContainEqual(
+    expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+  );
   expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect(persisted).toEqual(basePlan);
 });

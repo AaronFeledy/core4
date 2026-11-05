@@ -22,6 +22,7 @@ import {
   ServiceName,
   type ServicePlan,
   appIdentityKey,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import {
@@ -252,9 +253,14 @@ const makeFakeApi = () => {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
+              Driver: Schema.String,
               Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+          )(
+            payload === undefined
+              ? request.body
+              : { Name: payload.name, Driver: payload.driver, Labels: payload.labels },
+          );
           networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
@@ -719,9 +725,14 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
+              Driver: Schema.String,
               Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+          )(
+            payload === undefined
+              ? request.body
+              : { Name: payload.name, Driver: payload.driver, Labels: payload.labels },
+          );
           networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
@@ -831,6 +842,18 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
             }),
           };
+        }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          const containers = Array.from(existing).map((name) => ({
+            Id: containerIds.get(name) ?? `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: {
+              "dev.lando.app": appId,
+              "dev.lando.service": name.includes("--db") || name.endsWith("-db") ? "db" : "web",
+            },
+          }));
+          return { status: 200, body: JSON.stringify(containers) };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -1076,7 +1099,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     await Effect.runPromise(
       fake.api.request({
         method: "POST",
-        path: `/containers/create?name=lando-${plan.slug}-${serviceName}`,
+        path: `/containers/create?name=${landoServiceContainerName(plan.slug, serviceName)}`,
         body: {
           Labels: {
             "dev.lando.app": plan.id,
@@ -1091,7 +1114,7 @@ describe("provider-podman RuntimeProvider contract", () => {
         Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
       ),
     );
-    const containerName = `lando-${plan.slug}-${serviceName}`;
+    const containerName = landoServiceContainerName(plan.slug, serviceName);
 
     const chunks = await Effect.runPromise(
       Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
@@ -1164,7 +1187,7 @@ describe("provider-podman RuntimeProvider contract", () => {
   });
 
   test("retains containers and network when a service start fails", async () => {
-    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-persisted-podman-web"]) });
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-persisted-podman--web"]) });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
@@ -1176,8 +1199,8 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.has("lando-persisted-podman-db")).toBe(true);
-    expect(fake.existing.has("lando-persisted-podman-web")).toBe(true);
+    expect(fake.existing.has("lando-persisted-podman--db")).toBe(true);
+    expect(fake.existing.has("lando-persisted-podman--web")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
       false,
     );

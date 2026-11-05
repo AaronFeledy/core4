@@ -9,6 +9,7 @@ import {
   DownloadSizeMismatchError,
   type DownloadSourceForbiddenError,
 } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { VerifiedStreamError } from "@lando/sdk/verified-stream";
 import type * as HttpClientError from "effect/http/HttpClientError";
 
@@ -34,6 +35,7 @@ export const statusError = (status: number, origin: string): DownloadFetchError 
 export const mapHttpClientError = (
   error: HttpClientError.HttpClientError,
   origin: string,
+  redactor: Redactor,
 ): DownloadFetchError => {
   const reason = error.reason;
   const cause = "cause" in reason ? reason.cause : undefined;
@@ -52,15 +54,16 @@ export const mapHttpClientError = (
     }
   }
   return new DownloadFetchError({
-    message,
+    message: redactor.redactString(message),
     urlOrigin: origin,
     ...(status === undefined ? {} : { status }),
-    remediation:
+    remediation: redactor.redactString(
       remediation ??
-      (status !== undefined
-        ? `Inspect HTTP status ${status} from ${origin}, fix the origin response or request, then retry the download.`
-        : `Inspect the transport failure for ${origin} (DNS, TLS, proxy, or connectivity), then retry the download.`),
-    ...(cause === undefined ? {} : { cause }),
+        (status !== undefined
+          ? `Inspect HTTP status ${status} from ${origin}, fix the origin response or request, then retry the download.`
+          : `Inspect the transport failure for ${origin} (DNS, TLS, proxy, or connectivity), then retry the download.`),
+    ),
+    ...(cause === undefined ? {} : { cause: redactor.redactValue(cause) }),
   });
 };
 

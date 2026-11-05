@@ -54,22 +54,20 @@ func runProxyCall(ctx context.Context, call proxyCall, streams helperIO) int {
 		fmt.Fprintf(streams.stderr, "Missing LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL for host-proxy %s.\n", call.operation)
 		return 127
 	}
-	for _, name := range []string{"LANDO_HOST_PROXY_SESSION", "LANDO_HOST_PROXY_APP", "LANDO_HOST_PROXY_TOKEN"} {
-		if env[name] == "" {
-			fmt.Fprintf(streams.stderr, "Missing %s for host-proxy %s.\n", name, call.operation)
-			return 127
-		}
-	}
 	code, err := proxyExchange(ctx, call, streams)
 	if err != nil {
 		fmt.Fprintln(streams.stderr, err)
-		return 127
+		return code
 	}
 	return code
 }
 
 func proxyExchange(ctx context.Context, call proxyCall, streams helperIO) (int, error) {
 	env := streams.env
+	credentials, err := readProxyCredentials(env)
+	if err != nil {
+		return 127, err
+	}
 	transport := &http.Transport{Proxy: nil}
 	defer transport.CloseIdleConnections()
 	target := "http://localhost/" + call.operation
@@ -97,15 +95,20 @@ func proxyExchange(ctx context.Context, call proxyCall, streams helperIO) (int, 
 	if caller == "" {
 		caller = "unknown"
 	}
-	req.Header.Set("authorization", "Bearer "+env["LANDO_HOST_PROXY_TOKEN"])
+	req.Header.Set("authorization", "Bearer "+credentials.Token)
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-lando-host-proxy-app", env["LANDO_HOST_PROXY_APP"])
-	req.Header.Set("x-lando-host-proxy-session", env["LANDO_HOST_PROXY_SESSION"])
+	req.Header.Set("x-lando-host-proxy-app", credentials.App)
+	req.Header.Set("x-lando-host-proxy-session", credentials.Session)
 	req.Header.Set("x-lando-host-proxy-caller", caller)
 	req.Header.Set("x-lando-host-proxy-depth", parseDepth(env["LANDO_HOST_PROXY_DEPTH"]))
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := client.Do(req)
 	if err != nil {
+		failure := proxyConnectFailure(err)
+		var connection *proxyConnectionError
+		if errors.As(failure, &connection) {
+			return proxyUnreachableExitCode, failure
+		}
 		return 127, err
 	}
 	defer res.Body.Close()

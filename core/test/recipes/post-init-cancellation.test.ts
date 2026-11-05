@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import { ProcessRunner } from "@lando/sdk/services";
+import { ProcessRunner, StateStore } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Exit, Stream } from "effect";
 import { initApp } from "../../src/cli/commands/init";
 import { RecipeInitPostInitError } from "../../src/recipes/init-pipeline";
@@ -35,11 +36,9 @@ test("initApp cancellation kills and reaps its post-init child", async () => {
     },
   });
   const action = spyOn(postInitRuntime, "runPostInit").mockImplementation(async (bound) => {
-    if (bound.spawner === undefined) throw new Error("Missing bound spawner");
     try {
-      await bound.spawner.spawn({
-        cmd: [
-          process.execPath,
+      await bound.runBun({
+        argv: [
           "-e",
           `process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 5000); await fetch(${JSON.stringify(server.url.href)}, {method:"POST",body:String(process.pid)});`,
         ],
@@ -63,7 +62,12 @@ test("initApp cancellation kills and reaps its post-init child", async () => {
     signal: controller.signal,
     privateFileAccess: ownerOnlyFileAccess,
   };
-  const completion = initApp(options).then(
+  const completion = Effect.runPromise(
+    initApp(options).pipe(
+      Effect.provide(BunProcessRunner.layer),
+      Effect.provideService(StateStore, makeTestStateStore().service),
+    ),
+  ).then(
     () => "success",
     () => "failure",
   );
@@ -115,11 +119,9 @@ test("cancellation through post-init kills and reaps the live runner child", asy
       privateFileAccess: ownerOnlyFileAccess,
       journalRoot: () => process.cwd(),
       runPostInit: async (bound) => {
-        if (bound.spawner === undefined) throw new Error("Missing real process adapter");
         try {
-          await bound.spawner.spawn({
-            cmd: [
-              process.execPath,
+          await bound.runBun({
+            argv: [
               "-e",
               `process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 5000); await fetch(${JSON.stringify(server.url.href)}, {method:"POST",body:String(process.pid)});`,
             ],

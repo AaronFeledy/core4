@@ -18,6 +18,8 @@ import { Schema } from "effect";
 import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
 
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
+import { HelpCatalogResult } from "../core/src/cli/compiled-help.ts";
+import { HelpTargetResult } from "../core/src/cli/help-target.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import {
   IncludeEntry,
@@ -98,6 +100,11 @@ const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifa
     } catch (cause) {
       throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });
     }
+  });
+  artifacts.push({
+    commandId: "cli:help",
+    artifactPath: `dist/command-schemas/${commandSchemaArtifactFilename("cli:help")}`,
+    schema: stable(getJsonSchemaWithDeprecations(Schema.Union([HelpCatalogResult, HelpTargetResult]))),
   });
   const commandIdByPath = new Map<string, string>();
   for (const artifact of artifacts) {

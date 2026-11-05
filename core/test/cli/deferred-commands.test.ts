@@ -111,7 +111,7 @@ const expectDeferredRemediation = (stderr: string, entry: FixtureEntry): void =>
 describe("deferred command remediation contract", () => {
   test("fixture covers every required command surface", () => {
     const ids = fixture.commands.map((entry) => entry.id);
-    expect(ids).toEqual(["meta:events:follow", "meta:plugin:login", "meta:plugin:logout"]);
+    expect(ids).toEqual(["meta:events:follow"]);
   });
 
   test("meta:global:rebuild is implemented, not deferred", () => {
@@ -178,7 +178,7 @@ describe("deferred command remediation contract", () => {
         .replace(/\s+/g, " ");
 
     const crossEntrypointProbes: ReadonlyArray<FixtureEntry> = [
-      fixture.commands.find((entry) => entry.id === "meta:plugin:login") as FixtureEntry,
+      fixture.commands.find((entry) => entry.id === "meta:events:follow") as FixtureEntry,
     ];
 
     for (const entry of crossEntrypointProbes) {

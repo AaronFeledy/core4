@@ -1,0 +1,13 @@
+name: lando-php-build-fail
+services:
+  # Service where build_as_root fails - composer should still be installed
+  failroot:
+    type: php:8.4
+    composer_version: 2
+    build_as_root:
+      - exit 1
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/php": ../..

@@ -22,8 +22,8 @@ describe("tooling live status", () => {
 
   test("formats a dim footer with the tool name and quiet duration", () => {
     // Given / When
-    const [underSecond] = formatToolingStatusLines("composer", 400);
-    const [overSecond] = formatToolingStatusLines("composer", 12400);
+    const [underSecond] = formatToolingStatusLines("composer", 400, true);
+    const [overSecond] = formatToolingStatusLines("composer", 12400, true);
 
     // Then
     expect(strip(underSecond ?? "")).toBe("╰─ executing composer  400ms");
@@ -34,7 +34,7 @@ describe("tooling live status", () => {
     // Given
     const footers: Array<ReadonlyArray<string>> = [];
     let cleared = 0;
-    const painter = createToolingStatusPainter(() => 0);
+    const painter = createToolingStatusPainter(true, () => 0);
     const handle = {
       setFooter: (lines: ReadonlyArray<string>) => {
         footers.push(lines);

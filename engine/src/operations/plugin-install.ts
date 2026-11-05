@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "../cache/command-index-writer";
+import { invalidateAppToolingCaches } from "../cache/command-index-writer";
 import {
   type InstalledPluginRegistryEntry,
   readInstalledPluginRegistry,
@@ -230,7 +230,7 @@ export const finalizePluginInstall = Effect.fn("AppOperation.finalizePluginInsta
     );
   }).pipe(
     Effect.andThen(
-      invalidatePluginCommandCache({
+      invalidateAppToolingCaches({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       }),
     ),

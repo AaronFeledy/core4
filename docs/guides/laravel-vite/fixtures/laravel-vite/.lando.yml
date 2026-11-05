@@ -1,0 +1,43 @@
+name: laravel-vite
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    framework: laravel
+    webroot: public
+    composer: "2"
+    allowOverride: true
+    port: 80
+    dependsOn:
+      - database
+      - cache
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: mariadb:11.4
+  cache:
+    type: redis
+  node:
+    type: node:22
+    primary: false
+    port: 5173
+    routes:
+      - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+tooling:
+  artisan:
+    cmds:
+      - "php artisan"
+    description: "Run a Laravel Artisan command inside the appserver service."
+    service: appserver
+  composer:
+    cmds:
+      - composer
+    description: "Run Composer inside the appserver service."
+    service: appserver
+  npm:
+    cmds:
+      - npm
+    description: "Run npm inside the node service."
+    service: node

@@ -1,5 +1,5 @@
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
@@ -8,8 +8,13 @@ import type { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { routeObjectName, routeOwner } from "./route-owner-fixture.ts";
 
-export const app = AppId.make("demo");
+export const app = routeOwner("demo");
+export const demoNs7 = routeObjectName(app, 7);
+export const demoRouterHttp = `${demoNs7}-http@file`;
+export const demoRouterHttps = `${demoNs7}-https@file`;
+export const demoService = `${demoNs7}@file`;
 export const route: RoutePlan = {
   hostname: "demo.example.test",
   scheme: "both",
@@ -27,17 +32,17 @@ export const acquisition: AcquisitionState = {
 };
 export const liveGraph = () => ({
   routers: {
-    "route-demo-7-http@file": {
+    [demoRouterHttp]: {
       rule: 'Host("demo.example.test") && PathPrefix("/api")',
-      service: "route-demo-7",
+      service: demoNs7,
       entryPoints: ["web"],
       using: ["web"],
       priority: 200000,
       status: "enabled",
     },
-    "route-demo-7-https@file": {
+    [demoRouterHttps]: {
       rule: 'Host("demo.example.test") && PathPrefix("/api")',
-      service: "route-demo-7",
+      service: demoNs7,
       entryPoints: ["websecure"],
       using: ["websecure"],
       priority: 200000,
@@ -46,14 +51,14 @@ export const liveGraph = () => ({
     },
   },
   services: {
-    "route-demo-7@file": {
+    [demoService]: {
       loadBalancer: {
         servers: [{ url: "http://web.demo.internal:8080" }],
         passHostHeader: true,
         responseForwarding: { flushInterval: "100ms" },
       },
       status: "enabled",
-      usedBy: ["route-demo-7-http@file", "route-demo-7-https@file"],
+      usedBy: [demoRouterHttp, demoRouterHttps],
       serverStatus: { "http://web.demo.internal:8080": "UP" },
     },
   },

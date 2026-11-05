@@ -10,13 +10,12 @@ import { keepVolumesFromInput } from "../../src/cli/command-specs/apps/scratch/d
 import { pruneFromInput } from "../../src/cli/command-specs/apps/scratch/gc.ts";
 import { globalConfigFormatFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalDestroyOptionsFromInput } from "../../src/cli/command-specs/meta/global/destroy.ts";
-import { globalInstallOptionsFromInput } from "../../src/cli/command-specs/meta/global/install.ts";
+import { globalPolicyOptionsFromInput } from "../../src/cli/command-specs/meta/global/policy-input.ts";
 import { globalStartOptionsFromInput } from "../../src/cli/command-specs/meta/global/start.ts";
 import {
   globalStatusFormatFromInput,
   globalStatusOptionsFromInput,
 } from "../../src/cli/command-specs/meta/global/status.ts";
-import { globalUninstallOptionsFromInput } from "../../src/cli/command-specs/meta/global/uninstall.ts";
 import { shellenvShellFromInput } from "../../src/cli/command-specs/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "../../src/cli/command-specs/meta/uninstall.ts";
 import {
@@ -243,17 +242,25 @@ describe("native argv parser seam", () => {
         purge: true,
       },
     );
-    expect(globalInstallOptionsFromInput(compiledInput("meta:global:install", ["proxy"]))).toEqual({
-      plugin: "proxy",
+    expect(globalPolicyOptionsFromInput(compiledInput("meta:global:enable", ["proxy", "mail"]))).toEqual({
+      selectors: ["proxy", "mail"],
+      all: false,
+      dryRun: false,
     });
-    const yesInstall = compiledInput("meta:global:install", ["--yes"]);
-    expect(yesInstall.flags.yes).toBe(true);
-    expect(globalInstallOptionsFromInput(yesInstall)).toEqual({});
+    expect(globalPolicyOptionsFromInput(compiledInput("meta:global:disable", ["--all"]))).toEqual({
+      selectors: [],
+      all: true,
+      dryRun: false,
+    });
     expect(
-      globalUninstallOptionsFromInput(compiledInput("meta:global:uninstall", ["proxy", "--purge"])),
+      globalPolicyOptionsFromInput(
+        compiledInput("meta:global:disable", ["mail", "--allow-disruption", "--dry-run"]),
+      ),
     ).toEqual({
-      plugin: "proxy",
-      purge: true,
+      selectors: ["mail"],
+      all: false,
+      dryRun: true,
+      allowDisruption: true,
     });
   });
 

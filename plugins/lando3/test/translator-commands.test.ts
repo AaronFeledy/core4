@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { lando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet } from "./fixtures/fake-decomposers.ts";
+import { testTranslator as lando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const shapes = [
   { type: "compose", path: "services" },

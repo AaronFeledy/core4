@@ -134,6 +134,28 @@ test.each([
   if (Result.isFailure(result)) expect(result.failure._tag).toBe("LandofileValidationError");
 });
 
+test("a contributed probe still realizes a listener the author's endpoints replaced", () => {
+  // Given an author hid every endpoint, an `endpoints:` override replaces exposure.
+  const hidden = { ...service, endpoints: [] };
+  // When a type-contributed probe targets its own listener port.
+  const strict = serviceListenerTarget(
+    { slug: "demo", networking: { perAppBridge: { name: "private" } } },
+    hidden,
+    target,
+  );
+  const contributed = serviceListenerTarget(
+    { slug: "demo", networking: { perAppBridge: { name: "private" } } },
+    hidden,
+    target,
+    { requireDeclared: false },
+  );
+  // Then authoring stays strict while the service's own listener stays dialable.
+  expect(Result.isFailure(strict)).toBe(true);
+  expect(Result.isSuccess(contributed)).toBe(true);
+  if (Result.isSuccess(contributed))
+    expect(contributed.success).toEqual({ host: "db", network: "private", port: 27017, transport: "tcp" });
+});
+
 test("retains managed listener DNS beside an unrelated Compose host alias", () => {
   const result = serviceListenerTarget(
     { slug: "demo", networking: { perAppBridge: { name: "private" } } },

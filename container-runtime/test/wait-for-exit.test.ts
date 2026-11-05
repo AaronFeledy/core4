@@ -104,7 +104,7 @@ describe.each(dialects)("%s waitForExit", (_name, dialect, body) => {
 
     // Then
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
-      { method: "POST", path: dialect.request("lando-wait-for-exit-app-web").path },
+      { method: "POST", path: dialect.request("lando-wait-for-exit-app--web").path },
     ]);
   });
 

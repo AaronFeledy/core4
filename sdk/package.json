@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./abortable-promise": "./src/abortable-promise.ts",
     "./app": "./src/app/index.ts",
     "./command-result": "./src/command-result/index.ts",
     "./database-creds": "./src/database-creds/index.ts",

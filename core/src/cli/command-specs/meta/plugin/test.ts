@@ -23,5 +23,5 @@ export const pluginTestSpec: LandoCommandSpec<PluginTestResult> = {
   strict: false,
   run: (input) => pluginTest({ argv: extractArgv(input) }),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderPluginTestResult(result as PluginTestResult),
+  render: (result) => renderPluginTestResult(result),
 };

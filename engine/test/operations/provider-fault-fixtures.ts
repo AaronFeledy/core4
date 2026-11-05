@@ -12,6 +12,12 @@ const fields = {
 // A Record, rather than an array, makes adding a ProviderError tag fail typecheck
 // until its in-process lifecycle coverage is supplied, including nested unions.
 export const providerFaults = {
+  HealthcheckTargetUnsupportedError: new Errors.HealthcheckTargetUnsupportedError({
+    message: fields.message,
+    remediation: fields.remediation,
+    service: "web",
+    target: "host",
+  }),
   PlanReplanRequiredError: new Errors.PlanReplanRequiredError({ ...fields, app: "test-start" }),
   EnvironmentValueResolutionError: new Errors.EnvironmentValueResolutionError({
     ...fields,

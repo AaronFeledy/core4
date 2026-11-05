@@ -229,6 +229,9 @@ describe("init recipe output through the command renderer", () => {
       makeInitOutput("text").pipe(Effect.provide(Layer.merge(redaction, Layer.succeed(Renderer, renderer)))),
     );
     await runPostInit({
+      runBun: async () => {
+        throw new TypeError("Unexpected Bun action");
+      },
       actions: [
         { type: "message", text: "first" },
         { type: "message", text: "second" },
@@ -257,11 +260,9 @@ describe("init recipe output through the command renderer", () => {
           warned = true;
         },
       },
-      spawner: {
-        spawn: async () => {
-          expect(warned).toBe(true);
-          return { exitCode: 0, stdout: "", stderr: "" };
-        },
+      runBun: async () => {
+        expect(warned).toBe(true);
+        return { exitCode: 0, stdout: "", stderr: "" };
       },
     });
     expect(warned).toBe(true);

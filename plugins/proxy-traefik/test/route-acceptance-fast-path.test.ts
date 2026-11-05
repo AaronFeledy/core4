@@ -76,8 +76,8 @@ test.each(["linux", "darwin", "wsl"] as const)(
     fixture.files.set(
       routeFile(paths, app),
       renderTraefikDynamicConfig([route], app, {
-        certFile: "/etc/traefik/dynamic/certs/demo%2Fapp.crt",
-        keyFile: "/etc/traefik/dynamic/certs/demo%2Fapp.key",
+        certFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.crt`,
+        keyFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.key`,
       }),
     );
     let restarts = 0;

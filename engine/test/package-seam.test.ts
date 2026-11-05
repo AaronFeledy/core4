@@ -170,6 +170,7 @@ describe("Engine package seam", () => {
       ["@lando/paths", "workspace:*"],
       ["@lando/redaction", "workspace:*"],
       ["@lando/sdk", "workspace:*"],
+      ["@lando/source-acquisition", "workspace:*"],
       ["@lando/state-store", "workspace:*"],
       ["@lando/telemetry", "workspace:*"],
     ]);

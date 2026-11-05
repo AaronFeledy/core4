@@ -43,6 +43,7 @@ test.each([204, 403, 409])(
             request: (request) =>
               Effect.sync((): EngineHttpResponse => {
                 calls.push(request);
+                if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
                 if (request.path === "/networks/create") {
                   const body = Schema.decodeUnknownSync(NetworkBody)(request.body);
                   networks.set(body.Name, { ...body, Id: `id-${body.Name}` });

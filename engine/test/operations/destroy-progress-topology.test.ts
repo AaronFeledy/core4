@@ -19,6 +19,7 @@ import { emptySnapshots } from "./data-mover-support.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import {
   acceleratedPlan,
   recoveryHarness,
@@ -429,7 +430,15 @@ describe("destroy progress topology", () => {
   });
   test("destroys a previously ordinary app when the current plan proposes acceleration", async () => {
     const calls: string[] = [];
-    const planned = { ...plan, fileSync: [{ engineId: "mutagen", session: syncSession.spec }] };
+    const planned = withAcceleratedBind(plan, syncSession.service, {
+      type: "bind",
+      source: plan.root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "app-mount",
+      excludes: [],
+    });
     const harness = makeHarness({
       appliedFileSyncState: "ordinary",
       destroyEffect: Effect.sync(() => {

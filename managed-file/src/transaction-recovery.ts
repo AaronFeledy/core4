@@ -7,7 +7,7 @@ import { finishLinkedCreate, publishCreate } from "./transaction-create-link.ts"
 import { ensureDirectoryPolicy } from "./transaction-create-path.ts";
 import { type ManagedFileTransactionError, transactionError, transactionIO } from "./transaction-error.ts";
 import { canonicalRoot, finishAppliedMode, mutateEntry, removeRecordedStage } from "./transaction-fs.ts";
-import { type Journal, journalDirectory, openJournal } from "./transaction-journal.ts";
+import { type Journal, openJournal } from "./transaction-journal.ts";
 import { preflight } from "./transaction-preflight.ts";
 
 export type RecoveryAction = "recovered" | "cleaned";
@@ -42,12 +42,11 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
 
   const locate = Effect.fnUntraced(function* (appRoot: string, createDirectory: boolean) {
     const root = yield* transactionIO("recover", () => canonicalRoot(appRoot));
-    const dir = journalDirectory(root, options.journalRoot());
-    const store = yield* openJournal(root, dir, {
+    const store = yield* openJournal(root, options.journalRoot(), {
       createDirectory,
       privateFileAccess: options.privateFileAccess,
     });
-    return { root, dir, store };
+    return { root, dir: store.directory, store };
   });
 
   /** Read-only dry run. Acquires no lock and creates, mutates, or removes nothing. */

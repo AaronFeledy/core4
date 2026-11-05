@@ -92,6 +92,22 @@ lando restart
 lando rebuild
 ```
 
+## Read what stop reports
+
+`lando stop` sends each container its stop signal, waits out the container's stop grace period, and then kills whatever is still running. Before it removes a container, Lando asks the runtime how that container ended and repeats the answer beside the service name in the `stopped:` or `destroyed:` line, for example `app (exit 143)`. Catalog services such as `node` and `postgres` run under a small init process by default that forwards the stop signal to your command, so a server that handles SIGTERM gets the chance to finish in-flight work; see [Stop cleanly](../services/node.mdx#stop-cleanly) for how commands, wrappers, and `init: false` affect that.
+
+| Reported | What the runtime said |
+| --- | --- |
+| `exit 0` | The process exited with status 0. |
+| `exit 143` | Conventionally 128 + 15 for SIGTERM, but an application can also return 143 itself. The code alone does not prove how it ended. |
+| `exit 137` | Conventionally 128 + 9 for SIGKILL, but an application can also return 137 itself. The code alone cannot distinguish an expired grace period, an OOM kill, an external signal, or an application-selected status. |
+| `exit 137, OOMKilled` | The runtime explicitly reported an out-of-memory kill. Lando also prints a warning on stderr. |
+| `container absent`, `state unavailable`, `not exited`, `inspect failed` | No terminal state was available: the container was already gone, its state could not be read, it was not in an exited state, or inspection failed. Only `inspect failed` prints a warning. Removal still proceeds. |
+
+These are facts the runtime reported, not a verdict. Exit `0` does not prove your application flushed its data, and exit `137` alone does not mean Lando forced the stop. A provider that does not observe shutdown lists bare service names instead; the result is the same `stopped` or `destroyed` outcome either way. If you need proof that your own shutdown handler ran, have the handler record its completion somewhere you can check, such as a log line or a file in a named volume.
+
+`lando stop --format=json` and `lando destroy -y --format=json` carry the same facts under `result.shutdownObservations`. Each entry names the `appId`, `providerId`, and `service`, the exact `containerId` when it was known, and a `status`: `exited` with an optional integer `exitCode`, or `unknown` with a `reason` of `container-absent`, `state-unavailable`, `not-exited`, or `inspect-failed`. A missing `exitCode` means the runtime did not report one; it is never read as `0`. `oomKilled` appears only when the runtime reported it. The field is omitted entirely when the provider supplied no observations.
+
 ## Keep data across stop, restart, and destroy
 
 Database data stores, persistent homes, `node_modules` and `vendor` shadows, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.

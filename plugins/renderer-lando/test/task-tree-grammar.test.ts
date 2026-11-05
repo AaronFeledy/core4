@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { csi } from "@lando/renderer/palette";
 import { TaskDetailRing } from "../src/task-detail-ring.ts";
-import { csi } from "../src/task-tree-frame.ts";
 import {
   SPINNER_FRAMES,
   type TaskState,
@@ -307,7 +307,7 @@ describe("quiet task-tree grammar", () => {
       }),
     );
     expect(frame).toContain("│ ! provider · 2 warnings  12ms");
-    expect(styleFrame(frame).join("\n")).toContain(`${csi.amber} ! provider · 2 warnings`);
+    expect(styleFrame(frame, true).join("\n")).toContain(`${csi.amber} ! provider · 2 warnings`);
   });
 
   test("paints an info completion as a dim neutral row with a done footer", () => {
@@ -319,7 +319,7 @@ describe("quiet task-tree grammar", () => {
 
     // When
     const frame = paint(state);
-    const styled = styleFrame(frame);
+    const styled = styleFrame(frame, true);
 
     // Then
     expect(frame).toEqual(["╭─ Checks", "│ • HTTP 500  12ms", "╰─ done"]);
@@ -378,6 +378,7 @@ describe("quiet task-tree grammar", () => {
           ],
         }),
       ),
+      true,
     );
     const joined = styled.join("\n");
 
@@ -438,6 +439,7 @@ describe("quiet task-tree grammar", () => {
           ],
         }),
       ),
+      true,
     );
 
     expect(styled.find((line) => line.includes("appserver ready"))).toBe(
@@ -477,28 +479,31 @@ describe("quiet task-tree grammar", () => {
   });
 
   test("carries semantic row color onto wrapped continuation lines", () => {
-    const styled = styleFrame([
-      "╭─ Building",
-      "│ ✓ appserver ready after a long operational label  13ms",
-      "│ that continues without the success glyph",
-      "│ ✗ migration failed with a long reason  13ms",
-      "│ that continues without the failure glyph",
-      "│ ✓ cache ready  cached  40ms",
-      "│ after a cache wrap",
-      "│ – proxy ready  skipped  40ms",
-      "│ after a skip wrap",
-      "│ ◌ pending worker with a long label",
-      "│ after a pending wrap",
-      `│ ${SPINNER_FRAMES[0]} running task with a long label`,
-      "│ after a running wrap",
-      "│   ↳ see lando logs node --build",
-      "│   that continues as a dim detail",
-      "│ ✓ mixed wrap keeps the name green",
-      "│ name continuation  1.5s",
-      "│ ✓ duration wraps alone",
-      "│  13ms",
-      "╰─ 1 ok · 1 failed",
-    ]);
+    const styled = styleFrame(
+      [
+        "╭─ Building",
+        "│ ✓ appserver ready after a long operational label  13ms",
+        "│ that continues without the success glyph",
+        "│ ✗ migration failed with a long reason  13ms",
+        "│ that continues without the failure glyph",
+        "│ ✓ cache ready  cached  40ms",
+        "│ after a cache wrap",
+        "│ – proxy ready  skipped  40ms",
+        "│ after a skip wrap",
+        "│ ◌ pending worker with a long label",
+        "│ after a pending wrap",
+        `│ ${SPINNER_FRAMES[0]} running task with a long label`,
+        "│ after a running wrap",
+        "│   ↳ see lando logs node --build",
+        "│   that continues as a dim detail",
+        "│ ✓ mixed wrap keeps the name green",
+        "│ name continuation  1.5s",
+        "│ ✓ duration wraps alone",
+        "│  13ms",
+        "╰─ 1 ok · 1 failed",
+      ],
+      true,
+    );
 
     expect(styled[1]).toBe(
       `${body(csi.green, csi.reset, " ✓ appserver ready after a long operational label")}${dimDuration("  13ms")}`,
@@ -529,6 +534,7 @@ describe("quiet task-tree grammar", () => {
           ],
         }),
       ),
+      true,
     );
 
     expect(styled.find((line) => line.includes("◌"))).toBe(body(csi.amber, csi.reset, " ◌ wait  13ms"));
@@ -537,16 +543,19 @@ describe("quiet task-tree grammar", () => {
   });
 
   test("dims a wrapped duration-only continuation only for a settled row", () => {
-    const styled = styleFrame([
-      "╭─ Building",
-      "│ ✓ duration wraps alone",
-      "│  13ms",
-      "│ ◌ wait",
-      "│  13ms",
-      "│ · wait",
-      "│  13ms",
-      "╰─ 1/3 running",
-    ]);
+    const styled = styleFrame(
+      [
+        "╭─ Building",
+        "│ ✓ duration wraps alone",
+        "│  13ms",
+        "│ ◌ wait",
+        "│  13ms",
+        "│ · wait",
+        "│  13ms",
+        "╰─ 1/3 running",
+      ],
+      true,
+    );
 
     expect(styled[2]).toBe(body(csi.dim, `${csi.dimReset}${csi.reset}`, "  13ms"));
     expect(styled[4]).toBe(body(csi.amber, csi.reset, "  13ms"));
@@ -564,6 +573,7 @@ describe("quiet task-tree grammar", () => {
           spinningTaskIds: ["web"],
         }),
       ),
+      true,
     );
 
     expect(styled.find((line) => line.includes(glyph))).toBe(spinnerBody(glyph, "appserver"));
@@ -577,6 +587,7 @@ describe("quiet task-tree grammar", () => {
           tasks: [makeTask({ id: "web", label: "appserver", status: "running" })],
         }),
       ),
+      true,
     );
     const line = styled.find((row) => row.includes("·"));
 
@@ -585,22 +596,20 @@ describe("quiet task-tree grammar", () => {
   });
 
   test("keeps a spinning-row wrap continuation cyan", () => {
-    const styled = styleFrame([
-      `│ ${SPINNER_FRAMES[0]} running task with a long label`,
-      "│ after a running wrap",
-    ]);
+    const styled = styleFrame(
+      [`│ ${SPINNER_FRAMES[0]} running task with a long label`, "│ after a running wrap"],
+      true,
+    );
 
     expect(styled[1]).toBe(body(csi.cyan, csi.reset, " after a running wrap"));
     expect(contentAfterRail(styled[1])).not.toContain(csi.pink);
   });
 
   test("keeps settled and pending content on semantic colors instead of pink", () => {
-    const styled = styleFrame([
-      "│ ✓ appserver ready",
-      "│ – proxy ready  skipped",
-      "│ ✗ migration failed",
-      "│ ◌ worker",
-    ]);
+    const styled = styleFrame(
+      ["│ ✓ appserver ready", "│ – proxy ready  skipped", "│ ✗ migration failed", "│ ◌ worker"],
+      true,
+    );
     const success = styled.find((line) => line.includes("appserver ready"));
     const skipped = styled.find((line) => line.includes("skipped"));
     const failed = styled.find((line) => line.includes("migration failed"));

@@ -4,6 +4,7 @@ import type { Lando3Path } from "../src/contract.ts";
 import type { ServiceLoweringContext } from "../src/lowering-contract.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: {},
   serviceName: "app",
   keyPath: ["services", "app"],
   fallbackSourceId: "canonical",

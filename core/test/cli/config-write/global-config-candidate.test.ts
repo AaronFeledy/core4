@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installEngineComposition } from "@lando/engine/composition";
-import { StateStore } from "@lando/sdk/services";
-import { makeStateStore } from "@lando/state-store/service";
+import type { SourceTransports } from "@lando/source-acquisition";
 import { Effect } from "effect";
 import { compileGlobalConfigDocument } from "../../../src/cli/commands/meta/global-config-document.ts";
 import {
@@ -12,17 +11,15 @@ import {
   globalConfigSet,
   globalConfigUnset,
 } from "../../../src/cli/commands/meta/global-config.ts";
+import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 const previous = globalThis.__landoEngineCompositionInputs;
 let root = "";
 let app = "";
 const original = "name: global\nruntime: 4\n";
 const remote = "includes:\n  - source: github:acme/shared\n    path: fragment.yml\n";
-const store = makeStateStore({
-  privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
-});
-const run = <A, E>(effect: Effect.Effect<A, E, StateStore>) =>
-  Effect.runPromise(effect.pipe(Effect.provideService(StateStore, store)));
+const run = <A, E>(effect: Effect.Effect<A, E, GlobalConfigTestServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(globalConfigLayer(root))));
 
 beforeEach(async () => {
   if (previous === undefined) throw new Error("Test preload must install engine composition");
@@ -30,21 +27,24 @@ beforeEach(async () => {
   app = join(root, "app");
   await mkdir(app);
   await writeFile(join(app, ".lando.yml"), original);
+  const sources: SourceTransports = {
+    git: {
+      fetch: async ({ dest }) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(join(dest, "fragment.yml"), "services:\n  web:\n    image: alpine\n");
+        return { commit: "a".repeat(40) };
+      },
+    },
+  };
   installEngineComposition({
     ...previous,
+    landofileSourcePorts: () => ({ sources }),
     landofileRuntimeInputs: {
       ...previous.landofileRuntimeInputs,
       ports: {
         ...previous.landofileRuntimeInputs.ports,
         resolveUserCacheRoot: () => join(root, "cache"),
-        git: {
-          clone: async ({ dest }) => {
-            await mkdir(dest, { recursive: true });
-            await writeFile(join(dest, "fragment.yml"), "services:\n  web:\n    image: alpine\n");
-            return { commitSha: "a".repeat(40) };
-          },
-        },
-        publication: { publish: rename },
+        sources,
       },
     },
   });

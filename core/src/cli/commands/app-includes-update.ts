@@ -17,6 +17,7 @@ import type {
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLockMismatchError,
   ManagedFileTransactionError,
 } from "@lando/sdk/errors";
@@ -77,6 +78,7 @@ export type AppIncludesUpdateError =
   | LandofileTimeoutError
   | NotImplementedError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
@@ -95,19 +97,25 @@ export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function*
   const includes = [];
   const composeIncludes: string[] = [];
   const inputs = yield* scopedLandofileRuntimeInputs;
-  const { prepared } = yield* prepareLandofileRootLayers(appRoot, inputs).pipe(
-    Effect.flatMap(validatePreparedAuthoringLayers),
-  );
-  const loadScope = yield* buildLandofileLoadScope(
-    prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
-  );
+  const root = yield* prepareLandofileRootLayers(appRoot, inputs);
+  const { prepared, runtime } = root;
+  const loadScope = {
+    ...(yield* buildLandofileLoadScope(
+      prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+      runtime.compilationContext?.env,
+      runtime.pendingSites,
+    )),
+    recorder: runtime.recorder,
+  };
   for (const { landofile: overlay } of prepared) {
     const landofile = includeAcquisitionView(overlay);
     includes.push(...(landofile.includes ?? []));
     composeIncludes.push(...(landofile.include ?? []));
   }
   return yield* updateLandofileIncludes({
+    validate: validatePreparedAuthoringLayers(root, "all").pipe(Effect.asVoid),
     loadScope,
+    layers: prepared,
     landofile: { includes, include: composeIncludes },
     appRoot,
     ...(options.check === true ? { check: true } : {}),

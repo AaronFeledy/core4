@@ -9,6 +9,7 @@ import { providerImages } from "@lando/container-runtime/provider-images";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
+import { withFifoChild } from "../cli/stdio-file-status-support.ts";
 import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
@@ -140,6 +141,13 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       ok: true,
       result: { core: expect.any(String) },
     });
+
+    // A shell sibling sharing the binary's stdout/stderr pipe must not inherit O_NONBLOCK (#1466).
+    for (const argv of [["--version"], ["meta:version", "--format=json"]]) {
+      await withFifoChild([relocatedBinary, ...argv], { cwd: appRoot, env }, async (child) => {
+        expect(await child.exited).toBe(0);
+      });
+    }
 
     const tsAppRoot = resolve(relocatedRoot, "ts-app");
     await mkdir(tsAppRoot);

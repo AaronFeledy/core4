@@ -7,14 +7,21 @@ import {
   addEnvRecord,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  applicationAuthority,
+  assertListenerConfig,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
-export interface LanguageFrameworkPreset {
-  readonly port: number;
+export interface LanguageFrameworkPreset extends ListenerContract {
+  readonly variables: readonly [string, ...string[]];
   readonly env?: ReadonlyMap<string, string>;
   readonly webroot?: string;
 }
@@ -49,7 +56,8 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly resolveFallback: (version: V) => string;
 }
 
-const DEFAULT_KEEP_ALIVE = ["sh", "-c", "tail -f /dev/null"] as const;
+export const APP_MOUNT_TARGET = "/app";
+const DEFAULT_KEEP_ALIVE = ["tail", "-f", "/dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
   const validateFramework = (raw: string | undefined): F => {
@@ -79,17 +87,18 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     const service = ctx.normalizedConfig;
     const { framework, version, port, webroot } = spec.configFor(ctx);
     ctx.setArtifact({ kind: "ref", ref: service.image ?? spec.artifactFor(version) });
-    const env = { ...spec.baseEnv };
+    const env = { ...spec.baseEnv, ...spec.presets[framework].hostDefaults };
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
+    for (const variable of spec.presets[framework].variables) env[variable] = String(port);
     addEnvRecord(ctx, env);
+    ctx.setListenerAuthority(applicationAuthority(spec.presets[framework], port));
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
-    applyAuthoredProcessFields(ctx, ["user"]);
-    applyAuthoredProcessFields(ctx, ["entrypoint"]);
+    applyAuthoredProcessFields(ctx, ["user", "entrypoint"]);
     ctx.addExtension(spec.extensionKey, {
       framework,
       version,
       port,
-      ...(webroot === undefined ? {} : { webroot }),
+      ...(service.appMount === false || webroot === undefined ? {} : { webroot }),
     });
   };
 
@@ -97,6 +106,18 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     id: spec.featureId,
     schema: spec.featureSchema,
     priority: spec.priority,
+    validateEffective: serviceFeatureValidateEffective(spec.featureId, (ctx) => {
+      const { framework, port, webroot } = spec.configFor(ctx);
+      assertListenerConfig(ctx.normalizedConfig, { ...spec.presets[framework], port });
+      return {
+        handledServiceFields:
+          spec.includeWebrootInFeatureConfig &&
+          ctx.normalizedConfig.appMount !== false &&
+          webroot !== undefined
+            ? ["webroot"]
+            : [],
+      };
+    }),
     declareEndpoints: (ctx) =>
       Effect.sync(() => {
         const { port } = spec.configFor(ctx);
@@ -118,7 +139,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const resolvedVersion = validateVersion(input.service.type, version);
         const framework = validateFramework(input.service.framework);
         const preset = spec.presets[framework];
-        const endpointPort = input.service.port ?? preset.port;
+        const endpointPort = plannedPort(input.service, preset);
         const webroot =
           spec.includeWebrootInFeatureConfig && input.service.appMount !== false
             ? {
@@ -146,7 +167,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
             {
               id: "lando.app-mount",
               config: {
-                target: "/app",
+                target: APP_MOUNT_TARGET,
                 excludes: spec.mountExcludes,
               },
             },

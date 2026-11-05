@@ -30,5 +30,5 @@ export const appsScratchDestroySpec: LandoCommandSpec<ScratchHandle> = {
     "keep-volumes": Flags.boolean({ description: "Keep scratch volumes for inspection.", default: false }),
   },
   run: (input) => scratchDestroy(scratchIdFromInput(input), { keepVolumes: keepVolumesFromInput(input) }),
-  render: (result) => renderScratchDestroyResult(result as ScratchHandle),
+  render: (result) => renderScratchDestroyResult(result),
 };

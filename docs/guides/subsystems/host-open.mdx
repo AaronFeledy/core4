@@ -26,6 +26,8 @@ Both commands take exactly one URL or path. Flags, including macOS `open -a`, `-
 
 Lando mounts the same static client read-only as `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open`. The two opener names intentionally shadow image-provided openers when `/usr/local/bin` precedes `/usr/bin` on `PATH`. They do not install a browser inside the container. A client without host-proxy connection settings fails with an error rather than trying a container opener.
 
+Any user in a host-proxy-enabled service can use `lando`, `xdg-open`, and `open`: the socket and credentials are reachable on the host only through an owner-only run directory. If the proxy is unreachable, the client reports the connection problem and tells you to run `lando start` for the app on the host, then retry.
+
 ## Reveal an app file on the host
 
 From the app mount inside your service:
@@ -47,7 +49,14 @@ An argument beginning with a URI scheme, such as `https:`, `mailto:`, or `vscode
 
 The host proxy accepts `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`.
 
-`file:` URLs are always forbidden, including mixed-case spellings. Reveal an app file by path instead. Other schemes fail with `scheme-not-allowed`. There is no global `hostProxy.allowedSchemes` config key yet; embedding hosts can extend schemes through the host-proxy opener implementation, but cannot enable `file:` through its allowlist.
+To allow another scheme, set the additional schemes from your host terminal:
+
+```sh
+lando config set hostProxy.allowedSchemes '["figma","slack"]' --type=json
+lando config get hostProxy.allowedSchemes --format=json
+```
+
+The lookup should include `figma` and `slack`. This list extends the defaults, and scheme comparisons ignore case. Set every additional scheme you want to keep because setting the array replaces the previous array. The change applies to the next call without restarting the app. `file:` URLs are always forbidden, including mixed-case spellings and config entries. Reveal an app file by path instead. Other schemes fail with `scheme-not-allowed` and a command to allow the scheme. See [global config](../config/global-config.mdx#allow-additional-host-url-schemes) for configuration precedence.
 
 ## Verify the host callback
 
@@ -56,4 +65,32 @@ lando exec web -- lando open --print
 lando exec web -- xdg-open https://example.com/x
 ```
 
-The first command prints the app URL through the existing `runLando` channel without opening a browser. The second launches the exact URL on your host. On Linux, the host needs a working `xdg-open` and desktop session. Stopping or destroying the app closes its host-proxy session.
+The first command prints the app URL without opening a browser. Container `lando` commands stream the same human output as the command on the host; use `--format=json` when a program needs machine output. Ctrl-C or disconnecting the client cancels the host command. The second command launches the exact URL on your host. On Linux, the host needs a working `xdg-open` and desktop session. Stopping or destroying the app closes its host-proxy session.
+
+Each call runs a fresh Lando process that reads current global config and installed plugins. The worker keeps the host environment from the start that launched it; in-memory config or plugins supplied by an embedding host are not reproduced in children. An invalid global config fails the call with remediation rather than keeping an older config active.
+
+Running `lando start` on a running app keeps its host-proxy session, socket, and credentials, even after you edit the Landofile or global config. Lando replaces the session only when the worker is unhealthy or its Lando roots, provider, or Lando install changed; it then recreates the affected containers so they get the new session.
+
+## Troubleshoot the host-proxy session
+
+Starting an app with host-proxy-enabled services needs a host-proxy transport session. If that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. `lando doctor` checks the RPC transport separately from [host DNS resolution](./host-dns.mdx): its `host-proxy` section reports `host-proxy-transport`, `host-proxy-state`, and `host-proxy-allowlist` checks.
+
+Run doctor on the host to inspect those checks. A stale generated allowlist produces a `host-proxy-allowlist` warning even without an active session; a current allowlist produces no finding. Transport checks apply when a worker is expected:
+
+<Guide>
+  <Scenario id="inspect-host-proxy-allowlist" render>
+    <Step name="inspect">
+      <Run command="lando doctor --format=json" />
+      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "apiVersion.:.v4.*provider.*checks" } }} />
+      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "^(?!.*host-proxy-allowlist)" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+If the detached worker cannot start, the error names its log at `<userCacheRoot>/logs/host-proxy-worker-<appId>.log`. An observed worker exit includes its exit code and a redacted stderr tail. Payload delivery failures, readiness timeouts, closed stdout, and invalid readiness frames also name the log; a worker still alive after the bounded wait has no reported exit code. Logs are owner-only (`0600` on POSIX, a private ACL on Windows), and Lando creates the logs directory with mode `0700`. Worker outer-failure output is redacted before it reaches the log, and tails are redacted before entering errors.
+
+That log also records one bounded diagnostic line per call, including rejections and cancellation, without command arguments, environment values, URLs, or paths. Log growth is bounded.
+
+Lando delivers host-proxy credentials as a read-only file at `/run/lando/host-proxy/credentials`, not environment variables, so `printenv` shows no host-proxy token. Processes in the service can read this file; they already hold the app's host-proxy capability. Upgrading to this build replaces older host-proxy sessions on the next `lando start`, recreating host-proxy service containers once.
+
+Any command that runs in or reads from a service container masks host-proxy credentials as `[redacted]`, including commands run after `start` exits. This also covers containers created before an upgrade or a Landofile edit. If Lando cannot read the current credentials, the command fails before emitting app output.

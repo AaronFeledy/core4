@@ -17,10 +17,10 @@ export class HostProxyOpenPathError extends Schema.TaggedError<HostProxyOpenPath
 ) {}
 
 export type HostProxyOpenError = HostProxyOpenUrlSchemeError | HostProxyOpenPathError | HostProxyOpenerError;
-export type HostProxyOpenExecutor = (
+export type HostProxyOpenExecutor<R = never> = (
   request: HostProxyOpenRequest,
   mount: HostProxyMountInfo,
-) => Effect.Effect<void, HostProxyOpenError>;
+) => Effect.Effect<void, HostProxyOpenError, R>;
 
 export const DEFAULT_OPEN_SCHEMES = [
   "http",
@@ -55,7 +55,7 @@ const contained = (root: string, target: string): boolean => {
   );
 };
 
-export const openHostProxyTarget = Effect.fn("HostProxyService.openTarget")(function* (
+export const openHostProxyTarget = Effect.fn("HostProxy.openTarget")(function* (
   request: HostProxyOpenRequest,
   mount: HostProxyMountInfo,
   allowedSchemes: readonly string[] = [],
@@ -71,13 +71,18 @@ export const openHostProxyTarget = Effect.fn("HostProxyService.openTarget")(func
           }),
       });
       const scheme = url.protocol.slice(0, -1).toLowerCase();
-      if (scheme === "file" || ![...DEFAULT_OPEN_SCHEMES, ...allowedSchemes].includes(scheme)) {
+      if (
+        scheme === "file" ||
+        ![...DEFAULT_OPEN_SCHEMES, ...allowedSchemes].some((allowed) => allowed.toLowerCase() === scheme)
+      ) {
         return yield* Effect.fail(
           new HostProxyOpenUrlSchemeError({
             message: "The requested URL scheme is not allowed.",
             scheme,
             remediation:
-              "Use an allowed browser, mail, telephone, or editor scheme. Open app files by path, not file: URLs.",
+              scheme === "file"
+                ? "Reveal app files by path, not file: URLs."
+                : `Allow this scheme with: lando config set hostProxy.allowedSchemes '["${scheme}"]' --type=json`,
           }),
         );
       }

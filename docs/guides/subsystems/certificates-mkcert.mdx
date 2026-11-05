@@ -49,7 +49,46 @@ services:
 
 The object form requires both `cert` and `key`. Custom paths must stay inside the app root and be readable.
 
-With `certs: true`, Lando issues a leaf that covers the service name, its internal alias, `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`. Each `hostnames:` entry must be a plain DNS name: letters, digits, and hyphens in each label, no scheme, port, path, or wildcard. `lando app:config:lint` and `lando start` both reject anything else at `services.<name>.hostnames[<index>]`.
+With `certs: true`, Lando issues a leaf that covers the service name, its internal alias (`<service>.<app>.internal`), `hostnames:` entries, certificate-mapped route hostnames, `localhost`, and `127.0.0.1`. HTTP-only routes contribute a name when it is certificate-coverable; deep wildcards do not. Each `hostnames:` entry must be a plain DNS name: letters, digits, and hyphens in each label, no scheme, port, path, or wildcard. `lando app:config:lint` and `lando start` both reject anything else at `services.<name>.hostnames[<index>]`.
+
+### Map route hostnames to certificate names
+
+HTTPS and `both` routes must be certificate-coverable. Lando maps each route hostname to a certificate name before it asks mkcert to issue:
+
+| Route hostname | Certificate name on the leaf |
+| --- | --- |
+| `app.lndo.site` | `app.lndo.site` |
+| `*.app.lndo.site` | `*.app.lndo.site` |
+| `*-app.lndo.site` | `*.lndo.site` |
+| `api*.app.lndo.site` | `*.app.lndo.site` |
+| `wild.*.app.lndo.site` | none (not certificate-coverable) |
+
+A partial leftmost wildcard expands to `*.` plus the rest of the hostname after that label. That SAN is broader than the route: the certificate for `*-app.lndo.site` is `*.lndo.site`, so a client that trusts the leaf will also accept `other.lndo.site` even though the route only matches names ending in `-app.lndo.site`. Prefer an exact hostname or a full leftmost `*.rest` when you want the SAN and the route to line up. Deep wildcards (a `*` outside the leftmost label) cannot be covered; write those routes with `scheme: http`, or move the wildcard left. Lint and start report `landofile.route` for an HTTPS or `both` route that cannot map. See [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx).
+
+The proxy issues one app certificate whose SANs are the mapped HTTPS route hostnames for that app. Service leaves from `certs: true` use the same mapping for their route-derived names.
+
+Check the route names before starting the app:
+
+<Guide>
+  <Scenario id="certificate-coverable-routes" render>
+    <Step name="configure">
+      <UseFixture name="certificate-routes" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-deep-https-wildcard" render={false} reason="Validate HTTPS certificate coverage before asking the CA to issue">
+    <Step name="configure">
+      <UseFixture name="invalid-certificate-route" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "landofile.route" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 After starting the app, the service receives these certificate-path environment
 variables (`<service>` is its service name):

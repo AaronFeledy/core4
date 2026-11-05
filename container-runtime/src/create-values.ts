@@ -1,11 +1,11 @@
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, ServiceName, type ServicePlan, probeTargetError } from "@lando/sdk/schema";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const normalizeCommand = (
   command: ReadonlyArray<string> | string | undefined,
 ): Array<string> | undefined => {
   if (command === undefined) return undefined;
-  if (typeof command === "string") return ["sh", "-lc", command];
+  if (typeof command === "string") return ["sh", "-c", command];
   return [...command];
 };
 
@@ -23,6 +23,8 @@ export const containerHealthcheck = (
   service?: Pick<ServicePlan, "name" | "endpoints">,
 ) => {
   if (healthcheck === undefined) return undefined;
+  const invalid = probeTargetError(healthcheck, service?.name ?? ServiceName.make("unknown"), "healthcheck");
+  if (invalid !== undefined) throw invalid;
   switch (healthcheck.kind) {
     case "none":
       return { Test: ["NONE"] };

@@ -13,6 +13,7 @@ export type FullTailSession<TRenderer extends LiveRegionRendererLike = LiveRegio
   readonly module: OpenTuiLiveRegionModuleLike<TRenderer>;
   readonly renderer: TRenderer;
   readonly resizeListener: () => void;
+  readonly noColor: boolean;
   footer: LiveRegionRenderableLike | undefined;
 };
 
@@ -35,7 +36,7 @@ export const acquireFullTail = async <TRenderer extends LiveRegionRendererLike>(
     renderer.on("resize", resizeListener);
     renderer.externalOutputMode = "passthrough";
     renderer.screenMode = "alternate-screen";
-    return { footer: undefined, module, renderer, resizeListener };
+    return { footer: undefined, module, renderer, resizeListener, noColor: options.noColor === true };
   } catch (cause) {
     try {
       renderer.off("resize", resizeListener);
@@ -66,6 +67,7 @@ export const paintFullTailFooter = <TRenderer extends LiveRegionRendererLike>(
     height: Math.max(1, visibleLines.length),
     id: "lando-live-region-footer",
     width,
+    ...(session.noColor ? { backgroundColor: session.module.RGBA.defaultBackground() } : {}),
   });
   for (const [index, line] of visibleLines.entries()) {
     footer.add?.(
@@ -74,6 +76,9 @@ export const paintFullTailFooter = <TRenderer extends LiveRegionRendererLike>(
         height: 1,
         id: `lando-live-region-line-${index}`,
         width,
+        ...(session.noColor
+          ? { fg: session.module.RGBA.defaultForeground(), bg: session.module.RGBA.defaultBackground() }
+          : {}),
       }),
     );
   }

@@ -1,5 +1,6 @@
 import { fstatSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
+import { hostDisablesColor, isDumbTerminal } from "./color.ts";
 import { guardedWrite, isOutputBlocked, isOutputBroken } from "./native-stdio.ts";
 import { outputStreams } from "./output-streams.ts";
 
@@ -28,6 +29,7 @@ interface RendererInputStream {
 }
 
 export interface StdioRendererIOOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly platform?: NodeJS.Platform;
   /** Text-only native TTY translation. Machine writers disable this. */
   readonly terminalNewlines?: boolean;
@@ -88,6 +90,9 @@ export const createStdioRendererIO = (
   options: StdioRendererIOOptions = {},
 ): RendererIO => {
   const platform = options.platform ?? process.platform;
+  // Snapshot the color inputs so reconstruction keeps the facts resolved at construction.
+  const sourceEnv = options.env ?? process.env;
+  const env = Object.freeze({ NO_COLOR: sourceEnv.NO_COLOR, TERM: sourceEnv.TERM });
   const terminalNewlines = options.terminalNewlines !== false && platform === "win32";
   const stdoutNewlines = terminalNewlineNormalizer(terminalNewlines && stdout.isTTY === true);
   const stderrNewlines = terminalNewlineNormalizer(terminalNewlines && stderr.isTTY === true);
@@ -122,7 +127,8 @@ export const createStdioRendererIO = (
       guardedWrite("stdout", stdout, typeof chunk === "string" ? stdoutNewlines(chunk) : chunk),
     writeStderr: (chunk) =>
       guardedWrite("stderr", stderr, typeof chunk === "string" ? stderrNewlines(chunk) : chunk),
-    ...(stdoutFeedsProcess(stdout) ? {} : { externalOutputStream: narrationTerminal }),
+    ...(stdoutFeedsProcess(stdout) || isDumbTerminal(env) ? {} : { externalOutputStream: narrationTerminal }),
+    noColor: hostDisablesColor(env),
     isTTY: stderr.isTTY === true,
     stdoutIsTTY: stdout.isTTY === true,
     get stdoutColumns() {
@@ -149,7 +155,7 @@ export const createStdioRendererIO = (
     },
   };
   const translated = (translate: boolean) =>
-    createStdioRendererIO(stdout, stderr, stdin, { platform, terminalNewlines: translate });
+    createStdioRendererIO(stdout, stderr, stdin, { platform, env, terminalNewlines: translate });
   stdioFactories.set(io, translated);
   narrationFactories.set(narrationIO(io), (translate) => narrationIO(translated(translate)));
   outputStreams.set(io.writeStdout, {

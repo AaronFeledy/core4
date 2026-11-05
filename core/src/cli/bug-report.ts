@@ -29,6 +29,8 @@ export interface BugReportEnvelope {
   readonly logsDir: string;
   readonly cacheDir: string;
   readonly issues?: ReadonlyArray<ValidationIssue>;
+  /** Structured members of an aggregate error, redacted; the text renderer uses the `failures` extra instead. */
+  readonly failures?: ReadonlyArray<unknown>;
   readonly extra: ReadonlyArray<readonly [string, string]>;
   readonly additionalErrors?: ReadonlyArray<{
     readonly role: FailureRole;
@@ -116,6 +118,7 @@ export const buildBugReport = (input: {
     diagnosticFields(error),
   ).map(([key, value]) => [key, redactor.redactString(value)] as const);
   const issues = diagnostics.flatMap((item) => item.issues ?? []);
+  const failures = Array.isArray(error.failures) ? redactor.redactValue(error.failures) : undefined;
   return {
     code: redactor.redactString(error._tag),
     commandId: ctx.commandId,
@@ -128,6 +131,7 @@ export const buildBugReport = (input: {
     ...(issues.length === 0
       ? {}
       : { issues: Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(redactor.redactValue(issues)) }),
+    ...(Array.isArray(failures) && failures.length > 0 ? { failures } : {}),
     extra,
     ...(input.additionalErrors === undefined || input.additionalErrors.length === 0
       ? {}

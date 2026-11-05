@@ -168,7 +168,7 @@ const execShellOk = async (
   const result = await Effect.runPromise(
     provider.exec(
       { app: plan.id, service: serviceName, plan },
-      { command: ["sh", "-lc", command], stdin: "ignore" },
+      { command: ["sh", "-c", command], stdin: "ignore" },
     ),
   );
   expect(result.exitCode, result.stderr).toBe(0);
@@ -186,7 +186,7 @@ const fileLogs = (
     { follow: options.follow ?? false, sources: [selected], source: selected.id, ...options },
   );
 
-const containerName = "lando-livefilelogsapp-node";
+const containerName = "lando-livefilelogsapp--node";
 
 const realContainerHelper = (target: { readonly os: "linux"; readonly arch: "x64" | "arm64" }) =>
   Effect.tryPromise({

@@ -67,6 +67,77 @@ from that file's directory. See
     </Step>
   </Scenario>
 
+## Include a fragment only when a condition holds
+
+In your app's `.lando.yml`, use the object form of an include and add `when:`:
+
+```yaml
+includes:
+  - source: ./cache.yml
+    when: "{{ boolean(default(env.ENABLE_CACHE, '0')) }}"
+```
+
+Save the optional service in `cache.yml`:
+
+```yaml
+services:
+  optional-cache:
+    type: compose
+    image: redis:7
+```
+
+Set `ENABLE_CACHE` to `1` in your shell to include the service, or to `0` to skip it,
+then run this from the app directory:
+
+```sh
+lando app:config --format=json
+```
+
+Check whether `optional-cache` appears under `result.landofile.services`.
+`default()` supplies `0` when the variable is unset; without a default, an unset
+variable is a load failure, not an implicit false value.
+
+`when` accepts a boolean or a whole-value `{{ ... }}` expression using only
+`recipe.<option>` and `env.NAME`. The expression must return a boolean; use
+`boolean()` to convert environment text. `when: false` skips the entry before
+Lando reads or fetches its fragment, creates a cache entry, or stages a lock pin.
+The same rule applies to `landofile`, `compose`, and `tooling` entries. Disabled
+tooling entries also skip their other expressions, including `vars`.
+
+A condition that cannot resolve, uses another scope, or returns a non-boolean
+value is a load failure at `includes[<index>].when`. Lint reports it as
+`landofile.load` in the file and layer that declared it. Fix the expression or
+provide the missing value before loading the app again.
+
+For a choice already recorded by a recipe, use a condition such as
+`when: "{{ recipe.cache == 'redis' }}"`. The scenario below starts with that recipe
+option set to `none`, then changes it to `redis` and inspects the result again.
+
+  <Scenario id="conditional-fragment" render>
+    <Step name="skip-the-cache-fragment">
+      <UseFixture name="conditional-fragment" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"optional-cache\"" } } }} />
+    </Step>
+    <Step name="enable-the-cache-fragment">
+      <Run command="lando app:config set recipe.options.cache redis --format=json" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"optional-cache\"\\s*:" } }} />
+    </Step>
+    <Step name="cleanup-conditional-fragment"><Cleanup /></Step>
+  </Scenario>
+
+Ordinary loads leave existing pins for skipped entries untouched. To keep the
+lockfile independent of your environment, `lando app:includes:update` and
+`lando app:includes:verify` ignore `when` and walk every authored entry, including
+nested entries inside disabled fragments. They pin and check remote requests;
+local fragments still are not locked.
+
+Each remote fragment has one pin per source identity. You cannot use mutually
+exclusive conditions to select different versions of the same fragment: those
+selectors conflict. Choose one version instead of making the lockfile depend on
+which condition happened to be true.
+
 ## Opt into a user profile
 
 Put reusable YAML fragments in the `includes` directory below your Lando user
@@ -101,9 +172,10 @@ the merged config and in the plan, the same as one written in `.lando.yml`. A ba
 `env` store; an `op://Vault/Item/field` reference resolves through the bundled
 1Password store. Lando reads the store only when it creates the container or
 runs a tooling command that needs the value; `lando app:config` shows the
-reference as a typed descriptor and never reads a store. Don't interpolate
-secrets into build arguments or scripts. See
-[secret stores](../config/secret-stores.mdx).
+reference as a typed descriptor and never reads a store. A reference you write
+in `build.args` or a build script fails loading with `LandofileValidationError`;
+[secret stores](../config/secret-stores.mdx#where-references-resolve) lists the
+sites that accept one.
 
 No profile is loaded automatically. Opting in trusts its build and tooling
 commands, not just its environment values. Profiles must use `.yml` or `.yaml`;
@@ -171,26 +243,37 @@ includes:
 `github:acme/lando-shared/fragments/php.yml@v1.2.0` is the same include as
 one string. Git sources can also be `https://`, `git+https://`, `ssh://`,
 `git+ssh://`, or `git@host:owner/repo.git` URLs with the fragment in `path:`;
-put `@ref` after the URL. For an npm include, `version:` is a version or
-range, such as `version: ^1.2.0` on `source: npm:@acme/lando-fragments`.
-Leave `version:` off and the include pins whatever the default branch or
-latest release is when Lando first resolves it; `lando app:includes:update`
-moves it forward.
+put `@ref` after the URL. For an npm include, `version:` is an exact
+published version or a dist-tag, such as `version: 1.2.0` or `version: next`
+on `source: npm:@acme/lando-fragments`; a semver range such as `^1.2.0` is
+rejected. Leave `version:` off and the include pins whatever the default
+branch or latest release is when Lando first resolves it;
+`lando app:includes:update` moves it forward.
 
 The first load resolves the include and adds an entry to `.lando.lock.yml`:
 the `source` (repository or package plus fragment path), the `version` you
 asked for (omitted when you didn't pin one), the `resolved` commit SHA or
 package version, and the fragment's SHA-256 `checksum`. Lando checks an npm
-package against the registry's integrity hash or shasum before unpacking it,
-and refuses a package the registry publishes neither for. Commit the
+package before unpacking it against the first hash in the registry's
+`dist.integrity` when that hash uses an algorithm Lando supports; when the
+value is missing, malformed, or uses an unsupported algorithm, it checks the
+older sha1 `shasum` instead. A package the registry publishes neither usable
+value for is refused, and so is a tarball that doesn't match. Commit the
 lockfile.
 
-After that, loads use the lockfile instead of the network. Lando reads the
-pinned revision from the include cache under your user cache root and checks
-its checksum before parsing it, so `lando start`, `lando app:config`, and
-tooling keep working offline. On a machine without the cache, Lando fetches
-exactly the pinned commit or package version. A branch that moves upstream
-doesn't change your app until you run `lando app:includes:update`.
+After that, loads use the lockfile instead of the network. Lando keeps every
+remote tree it fetches, for includes, recipes, and plugins alike, in one
+source store under your user cache root at `sources/`: a git include lives at
+`sources/git/<commit>/` and an npm include at `sources/archive/<sha256>/`
+(the digest of the package tarball). Each entry is immutable once written and
+is never modified in place. A pinned load opens the entry for the pinned
+commit or package version, checks the fragment's checksum, and parses it, so
+`lando start`, `lando app:config`, and tooling keep working offline. On a
+machine without that entry, Lando fetches exactly the pinned commit or package
+version. A branch that moves upstream doesn't change your app until you run
+`lando app:includes:update`.
+Entries your lockfile pins survive [`lando sources:gc`](../cli/sources-gc.mdx);
+only unpinned, unused entries are removed.
 
 Change `version:` and the next load fetches the new version and replaces that
 include's lockfile entry. Review and commit the lockfile change with the
@@ -199,15 +282,17 @@ committed lockfile doesn't pin what the Landofile asks for.
 
 `lando app:config set`, `unset`, and `edit` never write the lockfile, with or
 without `--dry-run`. They may fetch a new or re-versioned include into the
-include cache to validate the candidate, but the pin arrives with the next
+source store to validate the candidate, but the pin arrives with the next
 ordinary load, after the whole effective config loads successfully. See
 [Set, unset, and edit from the CLI](./your-landofile.mdx#set-unset-and-edit-from-the-cli).
 
 A cached fragment whose bytes no longer match its checksum fails closed with
-`LandofileLockMismatchError`. If `.lando.lock.yml` can't be decoded, for
-example after a merge conflict, Lando fails with `LandofileParseError`
-instead of dropping your pins. Restore the file from version control or
-remove it, then run `lando app:includes:update`.
+`LandofileLockMismatchError`. Run `lando app:includes:update` with network
+access: it fetches the source again and, when the fetched tree differs from
+the stored one, replaces that store entry. If `.lando.lock.yml` can't be
+decoded, for example after a merge conflict, Lando fails with
+`LandofileParseError` instead of dropping your pins. Restore the file from
+version control or remove it, then run `lando app:includes:update`.
 
 A remote fragment can include files beside it with relative paths:
 
@@ -229,6 +314,21 @@ names `php.yml` rather than your root Landofile. `lando app:config:lint`
 reports the same thing as a `landofile.load` violation at that path with
 `source.file` set to the declaring file.
 
+Lando reports independent load failures together, including failures in different
+layers and nested fragments. One failure keeps its original error, such as
+`LandofileIncludeError`. Two or more produce `LandofileLoadError`, whose `failures`
+list retains each error's tag, location, and remediation. Failed entries are
+skipped while other entries load; effective configuration checks wait until all
+load failures are fixed. A failed load never publishes new lockfile pins.
+
+If `lando start` finds several load failures, its text output starts with a
+problem count, then lists each failure with its path, such as `includes[0]`,
+its declaring file and layer when known, and its own `↳` remediation. Nested
+validation issues appear under their failure. Fix the listed problems, then
+run `lando start` again from the app directory. For automation, run
+`lando start --format=json` and read `error.failures`; the members retain their
+structured paths, locations, and remediation rather than a formatted text list.
+
 ## Refresh and check the lockfile
 
 ```sh
@@ -242,8 +342,8 @@ lando app:includes:update
 # known sources
 lando app:includes:update SOURCE...
 
-# Rebuild entries from the lockfile and the include cache only; a missing
-# lock entry or cached copy fails closed and tells you to rerun
+# Rebuild entries from the lockfile and the source store only; a missing
+# lock entry or store entry fails closed and tells you to rerun
 # app:includes:update with network access
 lando app:includes:update --no-network
 
@@ -252,16 +352,28 @@ lando app:includes:update --no-network
 lando app:includes:update --check
 
 # Check that the lockfile pins every remote include at its requested
-# version and that the pinned content matches; reads the include cache, so
+# version and that the pinned content matches; reads the source store, so
 # it runs offline once includes are cached
 lando app:includes:verify
 ```
 
-`app:includes:verify` reports `{ ok, entries, mismatches }` in text and JSON
+`app:includes:verify` reports `{ ok, entries, mismatches, failures }` in text and JSON
 output. An entry is `ok` when the lockfile pins it at the requested version
 and the content matches, `mismatch` when the version or content differs,
 `missing` when the lockfile has no entry for it, and `stale` when a lockfile
 entry matches no include. Non-`ok` results set exit code 1.
+The same report retains load failures alongside lock mismatches. If a fragment
+could not be traversed, its unreachable descendants are not called stale.
+
+An entry disabled by `when` in your current environment has a human note and
+`condition: "disabled"` in JSON. This is advisory: verify still checks that
+include and its nested entries, and a missing pin still makes verification fail.
+Run `lando app:includes:update` to pin it so every environment resolves the same
+revision, then rerun `lando app:includes:verify`. Verify does not write pins.
+If the same source is reachable more than once, it is marked disabled only when
+every occurrence is disabled. A condition that cannot resolve is not labeled
+disabled; evaluating this note does not add a load failure.
+
 `app:includes:update` reports
 `{ lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources }`
 in text and JSON output. Each of `entries` carries the `source`, pinned
@@ -272,8 +384,9 @@ drift exists, whether the lockfile was written, whether `--check` or
 
 ## Parser limits
 
-The published Landofile parser rejects oversized input with
-`LandofileParseError` before include or lockfile state is processed.
+An oversized source records `LandofileParseError` without parsing that source.
+Lando still inspects the other layers and their includes, and a failed load never
+publishes pins.
 Inputs are capped at 1 MiB of UTF-8. Deep block indentation and inline-array
 nesting fail closed with `LandofileParseError` instead of recursing
 indefinitely, at 64 nested levels. Nested YAML aliases fail with

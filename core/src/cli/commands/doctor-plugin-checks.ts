@@ -6,30 +6,18 @@
  * hanging or throwing contribution degrades to one attributed self check and
  * cannot take the doctor run down.
  */
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import type {
-  LandoPluginModule,
-  PluginDoctorCheckContribution,
-  PluginDoctorCheckInput,
-} from "@lando/sdk/plugins";
+import type { PluginDoctorCheckContribution, PluginDoctorCheckInput } from "@lando/sdk/plugins";
 import {
   PluginDoctorReport,
   type ProviderCapabilities as ProviderCapabilitiesShape,
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract";
 import { providerKindFor } from "./doctor-contract";
-import {
-  type DoctorSelfCheck,
-  type DoctorSelfSolution,
-  describeDoctorFailure,
-  doctorSelfCheck,
-  isolateDoctorSection,
-  redactDoctorMessage,
-} from "./doctor-self";
+import { type DoctorSelfCheck, type DoctorSelfSolution, isolateDoctorSection } from "./doctor-self";
 
 export type PluginDoctorInput = PluginDoctorCheckInput;
 
@@ -79,40 +67,33 @@ export const probeBudgetMs = (sectionBudgetMs: number): number =>
 const PLUGIN_CHECK_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
   description:
-    "A plugin-contributed doctor check did not complete. Remove or update the owning plugin (`lando plugin remove <name>`) if it keeps failing; the rest of this report is unaffected.",
+    "A plugin-contributed doctor check did not complete. Remove or update the owning plugin (`lando plugin:remove <name>`) if it keeps failing; the rest of this report is unaffected.",
 };
 
 const PLUGIN_INDEX_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
   description:
-    "Plugin doctor contributions could not be indexed, so no plugin checks ran. Inspect installed plugins with `lando plugin list` and remove the conflicting one.",
+    "Plugin doctor contributions could not be indexed, so no plugin checks ran. Use the reported plugin identity to repair its doctor contributions or remove it with `lando plugin:remove <name>` and reinstall it with `lando plugin:add <spec>`.",
 };
 
 export const pluginDoctorReports = Effect.fnUntraced(function* (
-  modules: ReadonlyArray<LandoPluginModule>,
+  index: Effect.Effect<ReadonlyMap<string, PluginDoctorCheckContribution>, unknown>,
   input: PluginDoctorInput,
   redactor: Redactor,
   budgetMs: number,
 ): Effect.fn.Return<PluginDoctorRunOutcome, never> {
-  const index = makePluginCapabilityIndex(modules);
-  if (Result.isFailure(index)) {
-    const described = describeDoctorFailure(index.failure);
-    return {
-      reports: [],
-      selfChecks: [
-        doctorSelfCheck({
-          section: "plugin-doctor-checks",
-          reason: "failure",
-          message: redactDoctorMessage(described.message, redactor.redactString),
-          ...(described.tag === undefined ? {} : { tag: described.tag }),
-          solutions: [PLUGIN_INDEX_REMEDIATION],
-        }),
-      ],
-    };
-  }
+  const indexed = yield* isolateDoctorSection({
+    section: "plugin-doctor-checks",
+    effect: index,
+    fallback: new Map<string, PluginDoctorCheckContribution>(),
+    budgetMs,
+    redact: redactor.redactString,
+    solutions: [PLUGIN_INDEX_REMEDIATION],
+  });
+  if (indexed.self !== undefined) return { reports: [], selfChecks: [indexed.self] };
 
   const isolated = yield* Effect.forEach(
-    index.success.doctorChecks.entries(),
+    indexed.value.entries(),
     ([id, check]) =>
       isolateDoctorSection({
         section: `plugin-check:${id}`,
@@ -139,7 +120,7 @@ export const pluginDoctorReports = Effect.fnUntraced(function* (
                 () =>
                   new PluginDoctorReportInvalidError({
                     message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,
-                    remediation: `Update the owning plugin so its doctor check returns at most ${MAX_REPORTS_PER_CHECK} PluginDoctorReport entries with a valid shape, or remove the plugin with \`lando plugin remove <name>\`.`,
+                    remediation: `Update the owning plugin so its doctor check returns at most ${MAX_REPORTS_PER_CHECK} PluginDoctorReport entries with a valid shape, or remove the plugin with \`lando plugin:remove <name>\`.`,
                   }),
               ),
             ),

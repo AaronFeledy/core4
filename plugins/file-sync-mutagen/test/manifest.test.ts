@@ -8,7 +8,7 @@ describe("@lando/file-sync-mutagen manifest", () => {
     expect(String(manifest.name)).toBe(String(PLUGIN_NAME));
     expect(manifest.api).toBe(4);
     expect(manifest.enabled).toBe(true);
-    expect(manifest.contributes?.fileSyncEngines).toEqual([ENGINE_ID]);
+    expect(manifest.contributes?.fileSyncEngines?.map(({ id }) => id)).toEqual([ENGINE_ID]);
   });
 
   test("exports a bundled engine layer", () => {

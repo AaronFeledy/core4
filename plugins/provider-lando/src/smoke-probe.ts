@@ -76,7 +76,7 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
         yield* acquireSmokeContainer(deps, {
           operation: "run",
           name,
-          body: { Image: image, Cmd: ["sh", "-c", "exit 0"] },
+          body: { Image: image, Cmd: ["sh", "-c", "exit 0"], HostConfig: { Init: true } },
         });
         yield* startSmokeContainer(deps, "run", name);
         const response = yield* smokeApiRequest(deps, "run", {

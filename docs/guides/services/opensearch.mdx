@@ -45,6 +45,57 @@ A healthy single-node OpenSearch reports `green` or `yellow`.
 
 OpenSearch 2 is API-compatible with Elasticsearch 7, so most Elasticsearch 7 clients and queries work against it unchanged. Local dev disables the demo security plugin. Production must configure TLS and auth.
 
+## Change the HTTP port
+
+Set `port:` to move the HTTP API, healthcheck, and endpoint together. Lando sets `http.port` from that value:
+
+```yaml
+services:
+  search:
+    type: opensearch
+    port: 9201
+```
+
+The transport listener stays on `9300` by default. Move it with a scalar `transport.port` under `environment:` when HTTP needs that number:
+
+```yaml
+services:
+  search:
+    type: opensearch
+    port: 9300
+    environment:
+      transport.port: "9301"
+```
+
+HTTP cannot equal the effective transport port. Planning fails when they collide.
+Use one integer from `1` to `65535` for `transport.port`; ranges and malformed
+values fail planning at `services.<name>.environment["transport.port"]`.
+An authored `http.port` must match `port:`, or planning fails at that environment
+key. Lando never appends flags to an authored `command:` or `entrypoint:`.
+
+Validate with `lando app:cache:refresh --format=json` before start.
+
+  <Scenario id="transport-moved" render={false} reason="Plan HTTP beside a moved transport listener">
+    <Step name="plan-transport">
+      <UseFixture name="opensearch-transport-moved" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*9300" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "transport\\.port" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="reject-http-transport-collision" render={false} reason="Reject HTTP on the effective transport port before provider action">
+    <Step name="reject-collision">
+      <UseFixture name="opensearch-http-transport-collision" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "transport listener" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"search\",\\s*\"port\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
 ## Pin a version
 
 Set `image:` when `opensearch:2` isn't the version you want:

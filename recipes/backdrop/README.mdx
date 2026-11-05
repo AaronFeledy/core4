@@ -74,6 +74,7 @@ For day-to-day tooling and database hosts, see [Run the Backdrop recipe](/guides
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"[.]\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"files\"" } }} />
     </Step>
   </Scenario>
 </Guide>

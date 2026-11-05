@@ -72,7 +72,7 @@ lando share:list
 lando share:stop <session>
 ```
 
-`lando share list` and `lando share stop <session>` are the same commands. `--session` is the flag form of the session id. `--force` asks the provider to force-stop when it supports that.
+`lando share list` and `lando share stop <session>` are the same commands. `--session` is the flag form of the session id. `--force` asks the provider to force-stop when it supports that. With `--format=json`, a successful stop returns a [`ShareStopAppResult`](../../reference/schemas/share-stop-app-result.mdx): the session id and the provider when known. Successful command completion acknowledges the stop; the result has no separate status field.
 
 `--detach` records a tunnel as a detached session. `--provider` selects a TunnelService plugin id. `--yes` answers confirmation prompts.
 

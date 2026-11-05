@@ -35,6 +35,8 @@ export interface PreCommandFailureInput {
   readonly failureExitCode?: number;
   readonly deprecationWarnings?: boolean;
   readonly io?: RendererIO;
+  /** A dash argument reserved stdout for the payload, so a machine failure goes to stderr. */
+  readonly payloadStdout?: boolean;
   readonly setExitCode?: (code: number) => void;
 }
 
@@ -48,6 +50,7 @@ export const renderPreCommandFailure = async (input: PreCommandFailureInput): Pr
     resultSchema: input.resultSchema ?? EmptyPreCommandResultSchema,
     ...(input.deprecationWarnings === undefined ? {} : { deprecationWarnings: input.deprecationWarnings }),
     ...(input.io === undefined ? {} : { io: input.io }),
+    ...(input.payloadStdout === true ? { payloadStdout: true } : {}),
     ...(input.setExitCode === undefined ? {} : { setExitCode: input.setExitCode }),
     failureExitCode: () => exitCode,
     formatError: (failure, redactor) =>

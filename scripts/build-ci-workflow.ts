@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -101,6 +102,9 @@ ${setupBunSteps}
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
+
+      - name: Host Bun Shell dialect conformance
+        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
 
       - name: Lint
         run: bun run lint
@@ -266,6 +270,16 @@ ${renderSmokeCommands(platform)}
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${platform.binaryName}
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -358,7 +372,17 @@ ${setupBunSteps}
 ${timingNoticeStep("perf-budget-linux-x64", 10)}
 `;
 
-export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+/** Managed podman CLI calls join the service's private runtime dir, recorded in its launch state. */
+export const landoManagedPodmanRuntimeDirCommands = `          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi`;
+
+export const landoManagedPodmanTeardownCommands = `${landoManagedPodmanRuntimeDirCommands}
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true`;
@@ -457,6 +481,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 
       - name: Pre-pull container images
         run: |
+${landoManagedPodmanRuntimeDirCommands}
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
@@ -500,6 +525,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -550,7 +577,7 @@ const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRun
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
-const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
+export const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 40
     steps:
@@ -732,7 +759,7 @@ const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
 
-const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
+export const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
 ${landoRuntimeBundleSetupSteps}`;
 
@@ -1044,6 +1071,8 @@ const main = async (): Promise<void> => {
   const workflow = renderCiWorkflow();
 
   await Bun.write(OUTPUT, workflow);
+  // Biome 1 cannot check YAML; include the generator so this remains a real check.
+  await formatGeneratedPaths([OUTPUT, import.meta.path]);
   console.log(`[build-ci-workflow] wrote ${OUTPUT}`);
 };
 

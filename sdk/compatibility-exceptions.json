@@ -1,5 +1,565 @@
 [
   {
+    "surface": "command:cli:help",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed #2053 pre-release machine-help addition: built-in and plugin descriptor arms accept optional ordered input flags and args, including declared defaults, choices, spellings and positional stdio. Required descriptor fields and the tooling input/revision arm are unchanged, and catalog producers still omit inputs. Built-in and fixture-plugin CLI regressions cover the new target payload; the schema snapshot test verifies publication of both catalog and target shapes. The conservative classifier cannot descend through this anyOf change."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows config diagnostic rule strings to the 28 registered ConfigLintRuleId literals, preserving every existing producer id and publishing each rule's description. Unknown ids are rejected at decode; reasons remain open strings. Focused SDK and lint tests cover the contract."
+  },
+  {
+    "surface": "command:app:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "unsupported-construct",
+    "path": "$.failures.items.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally restricts additional validation diagnostic rule ids to ConfigLintRuleId. Plugins must use a registered id or omit rule; all existing producer ids remain unchanged."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "unsupported-construct",
+    "path": "$.failures.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally restricts validation diagnostic rule ids to ConfigLintRuleId. Plugins must use a registered id or omit rule; all existing producer ids remain unchanged."
+  },
+  {
+    "surface": "command:app:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.appConfig.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows doctor config lint rule ids to the shared ConfigLintRuleId registry, retaining all 28 producer ids and their existing severities. Focused doctor rendering and schema tests cover the narrowed contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.globalConfig.error.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows global config diagnostic rule ids to ConfigLintRuleId. Registered host-shell and unsupported-expression ids are preserved; plugins must use a registered id or omit rule."
+  },
+  {
+    "surface": "command:meta:global:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:meta:global:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows additional validation diagnostic rule ids to ConfigLintRuleId. Unknown rule ids are rejected at decode and the diagnostic projection retains the structured failure without invalid issues."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows validation diagnostic rule ids to ConfigLintRuleId. Unknown rule ids are rejected at decode and the bug-report regression proves the structured failure survives without invalid issues."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 replaces arbitrary lint rule strings with the 28 annotated ConfigLintRuleId literals from one authored registry. All existing producer ids remain unchanged and focused schema and lint tests cover acceptance and rejection."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.rule.anyOf",
+    "justification": "Pre-release #1648 replaces arbitrary lint rule strings with the 28 annotated ConfigLintRuleId literals from one authored registry. The SDK regression rejects unknown ids and checks that published per-rule descriptions match registry summaries."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:DestroyOutcome",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows nested shutdown inspection diagnostic rule ids to ConfigLintRuleId. The destroyed and no-op branches remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:FileSyncQuiesceResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:ObservedServiceRemoval",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows nested shutdown inspection diagnostic rule ids to ConfigLintRuleId. The removed and absent branches remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:ServiceShutdownObservation",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids in the inspect-failed branch's TaggedErrorJson ValidationIssue values to ConfigLintRuleId. Shutdown observations and their discriminators remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:StopAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:app:share",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 aligns tunnel route targets with RouteHostname, including leftmost wildcard patterns and 253-character hostnames selected by defaultTunnelTarget. Session and provider identifiers retain filename-safe TunnelIdentifier validation. SDK and share-target regressions cover this intentional grammar change."
+  },
+  {
+    "surface": "command:app:share:list",
+    "changeKind": "unsupported-construct",
+    "path": "$.items.target.anyOf",
+    "justification": "Pre-release #1583 propagates the reviewed TunnelTarget route grammar into share-list results. Route ids accept RouteHostname or TunnelIdentifier; hostname accepts RouteHostname, while session ids remain filename-safe."
+  },
+  {
+    "surface": "schema:CertificatePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.cn.allOf",
+    "justification": "Pre-release #1583 intentionally narrows certificate common names to CertificateName: ASCII host-alias DNS names, optional whole leftmost wildcard label, or unbracketed IP literals without zones. Mandatory service identities fail with a tagged validation error before CA issuance.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
+  },
+  {
+    "surface": "schema:CertificatePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.sans.items.allOf",
+    "justification": "Pre-release #1583 intentionally validates every certificate SAN with CertificateName. Partial leftmost route wildcards map to the covering *.rest SAN; deeper wildcard routes require HTTP and contribute no certificate identity. Service-certs and proxy issuance regressions verify the CA receives valid mapped names.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
+  },
+  {
+    "surface": "schema:HostAliasPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-release #1583 intentionally replaces unrestricted host alias strings with HostAliasName: underscore-capable DNS-shaped labels bounded to 63 characters each and 253 total, without wildcard, scheme, port, path, whitespace, trailing dot, or boundary hyphen. Authored extra_hosts and feature-contributed aliases fail with structured field paths.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.authorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates RouteHostname into proxy authority results. Published authorities preserve the route pattern, including partial leftmost wildcards, while rejecting malformed host strings."
+  },
+  {
+    "surface": "schema:ProxyAuthority",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-release #1583 intentionally constrains proxy authority hostnames to the same RouteHostname grammar as planned routes. Scheme, port, path, whitespace, and malformed labels belong outside this field; valid wildcard route patterns remain representable."
+  },
+  {
+    "surface": "schema:ProxyStatus",
+    "changeKind": "unsupported-keyword",
+    "path": "$.authorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates the reviewed ProxyAuthority RouteHostname contract into proxy status observations, preserving authored route patterns and rejecting malformed authority hostnames."
+  },
+  {
+    "surface": "schema:RouteEvidence",
+    "changeKind": "unsupported-keyword",
+    "path": "$.configuredAuthorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates RouteHostname into configured authorities retained as route evidence. These values describe planned route patterns, so their grammar now matches RoutePlan rather than unrestricted strings."
+  },
+  {
+    "surface": "schema:RouteEvidence",
+    "changeKind": "unsupported-construct",
+    "path": "$.observation.anyOf",
+    "justification": "Pre-release #1583 propagates the reviewed ProxyAuthority hostname grammar into observed route evidence. Observation variants and lifecycle meaning remain unchanged; their authority hostname fields now use RouteHostname."
+  },
+  {
+    "surface": "schema:TunnelSession",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 propagates the shared RouteHostname target grammar into tunnel sessions. Wildcard and maximum-length route hostnames selected by the planner decode correctly; session ids continue to reject wildcard characters and remain filename-safe.",
+    "persistedState": {
+      "store": "tunnel-registry",
+      "version": 2
+    }
+  },
+  {
+    "surface": "schema:TunnelSessionFilter",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 lets tunnel session filters address the same RouteHostname patterns accepted by TunnelTarget, including wildcard and long hostnames. Provider and session identifiers retain TunnelIdentifier."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 aligns tunnel start targets with routes copied by defaultTunnelTarget: hostname uses RouteHostname and routeId accepts RouteHostname or TunnelIdentifier. Non-route targets and filename-safe session identifiers retain their contracts."
+  },
+  {
+    "surface": "schema:TunnelTarget",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1583 replaces the private tunnel hostname grammar with RouteHostname and lets routeId carry RouteHostname or TunnelIdentifier. This accepts valid wildcard and 253-character routes while rejecting malformed hostnames; session and provider ids remain separately constrained for filenames.",
+    "persistedState": {
+      "store": "tunnel-registry",
+      "version": 2
+    }
+  },
+  {
+    "surface": "schema:ServiceFeatureValidationResult",
+    "changeKind": "enum-widened",
+    "path": "$.handledServiceFields.items",
+    "justification": "Pre-release uploadDirs introduces a server-neutral service field claim for generated nginx FastCGI and PHP Apache configurations. Plugins returning the new claim require a matching core that enforces it; no compatibility alias for the unreleased nginx-only field is retained."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.init.anyOf",
+    "justification": "Intentional pre-release #1199 init input narrowing: booleans and ASCII case-insensitive true/false, on/off, yes/no, and quoted 1/0 remain accepted and normalize to a boolean. Arbitrary strings, surrounding whitespace, trailing line breaks, numeric 1/0, and null are rejected. The published pattern now matches runtime acceptance; focused schema parity and round-trip regressions cover valid spellings and rejected input. This is not a backward-compatibility claim for formerly unconstrained strings."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.init.anyOf",
+    "justification": "Intentional pre-release #1199 authoring-schema correction: init accepts booleans or the same ASCII case-insensitive boolean spellings as ServiceConfig, not arbitrary strings. The flag-free JSON Schema pattern and runtime matcher share one definition and reject whitespace, trailing line breaks, numeric 1/0, and null. Published-versus-runtime acceptance regressions cover the narrowing; no legacy string-acceptance shim is retained."
+  },
+  {
+    "surface": "command:meta:global:list",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.state",
+    "justification": "Pre-release global policy distinguishes unverified capability or dependency evidence from known unsupported intent. Agents must handle enabled, disabled, blocked, and unverified catalog states; policy choices remain separate from observed runtime status."
+  },
+  {
+    "surface": "command:meta:global:uninstall",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release #1257 replaces global:uninstall with explicit global:disable policy and ownership-verified cleanup. Disable preserves named volumes; deliberate deletion remains global:destroy --yes --purge. No unreleased command alias is retained."
+  },
+  {
+    "surface": "command:meta:global:install",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release #1257 separates durable global:enable intent from global:reconcile configuration repair and global:start runtime changes. The previous install command mixed those meanings; the new commands expose policy impact previews and preserve explicit choices during repair."
+  },
+  {
+    "surface": "command:meta:plugin:login",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Remove the unshipped deferred login command when adopting the user's npm registry configuration. Lando no longer owns a second registry credential store; installation and publication use npm user config tokens. No alias or compatibility stub remains."
+  },
+  {
+    "surface": "command:meta:plugin:logout",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Remove the unshipped deferred logout command together with login and the plugin-auth.json path. Registry credentials remain owned by the user's npm tooling, so Lando must not offer a second credential-management path."
+  },
+  {
+    "surface": "schema:LogSourceStrategy",
+    "changeKind": "enum-widened",
+    "path": "$",
+    "justification": "Reviewed pre-release console-source contract: console joins redirect and follow as a native-pipe alias strategy. Consumers must distinguish the pathless branch rather than assume every runtime source names a file. Existing file strategies and file-only Landofile authoring remain unchanged; strict schema, provider selection, and CLI regressions cover the new variant. No unreleased exhaustive-match compatibility shim is retained."
+  },
+  {
+    "surface": "schema:LogSource",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release discriminated union: the original file-source shape retains redirect/follow, absolute path, required and timestamp defaults. The new console arm requires a native stream and forbids path, required and timestamps, including without excess-property checking. Strict round trips and source-selection regressions cover both branches; authored LogSourceInput remains file-only."
+  },
+  {
+    "surface": "schema:ServiceInfoLogSource",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed additive native-console info projection: file rows retain their existing path, strategy and availability contract. Console rows carry strategy console, stream, id and available/unavailable state without a fabricated path or redirected-file state. Schema and human/machine info tests cover the distinction."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.logSources.items.anyOf",
+    "justification": "Reviewed propagation of ServiceInfoLogSource's pathless native-console branch. Existing file log-source rows and every unrelated ServiceInfo field retain their contract; info projects the selected daemon pipe and actual provider availability instead of inventing file paths. Strict schema and CLI info tests cover both forms."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.logSources.items.anyOf",
+    "justification": "Reviewed app-info result propagation of the pathless console-alias branch. Existing file-source results remain valid; console aliases report their native stream and availability without file-only fields. Command result/schema and CLI info regressions cover this intentional pre-release output evolution."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.logSources.items.anyOf",
+    "justification": "Reviewed global-info result propagation of the shared ServiceInfoLogSource console-alias branch. Existing file rows remain valid and the global command uses the same provider-neutral projection as app info; native aliases report their pipe without fabricated paths. Shared schema and info projection regressions cover the output evolution."
+  },
+  {
+    "surface": "schema:HealthcheckPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.intervalSeconds.minimum",
+    "justification": "Reviewed pre-release readiness contract: intervals must be finite and nonnegative. Negative schedules are intentionally rejected before execution; zero remains valid for immediate bounded attempts. Shared timing and independent-readiness regressions cover the boundary."
+  },
+  {
+    "surface": "schema:HealthcheckPlan",
+    "changeKind": "type-changed",
+    "path": "$.retries",
+    "justification": "Reviewed pre-release readiness contract: retries is a nonnegative integer rather than an arbitrary number. Fractional and negative budgets are intentionally rejected. Zero retains the existing minimum-one-attempt behavior, covered by shared probe tests."
+  },
+  {
+    "surface": "schema:HealthcheckPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.startPeriodSeconds.minimum",
+    "justification": "Reviewed pre-release readiness contract: the optional grace period must be finite and nonnegative. Existing valid grace periods and immediate probing remain unchanged; malformed negative budgets are rejected before execution."
+  },
+  {
+    "surface": "schema:HealthcheckPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.timeoutSeconds.exclusiveMinimum",
+    "justification": "Reviewed pre-release readiness contract: each attempt requires a finite positive timeout instead of an arbitrary number. Zero and negative deadlines are intentionally rejected before provider mutation; timeout/cancellation regressions verify bounded execution."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.health.check.intervalSeconds.minimum",
+    "justification": "Reviewed inspection evolution: safe policy metadata reuses the canonical nonnegative probe interval. This describes configured policy, not a measured duration. Owner tests verify projection, schema encoding, and no additional provider calls."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "type-changed",
+    "path": "$.health.check.retries",
+    "justification": "Reviewed inspection evolution: configured retry budgets use the canonical nonnegative integer contract. Invalid fractional budgets are no longer valid metadata; zero still permits one attempt. Projection and schema round-trip tests cover valid output."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.health.check.startPeriodSeconds.minimum",
+    "justification": "Reviewed inspection evolution: configured grace-period metadata reuses the canonical nonnegative timing constraint. The optional field is retained, and info does not execute probes or invent timing observations."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.health.check.timeoutSeconds.exclusiveMinimum",
+    "justification": "Reviewed inspection evolution: configured per-attempt deadlines use the canonical positive timeout contract. Malformed zero/negative deadlines are rejected before execution, while projection and schema tests verify valid metadata."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.health.check.commandConfigured",
+    "justification": "Approved pre-release inspection contract adds required command-presence metadata whenever check policy is supplied. Raw command text is deliberately omitted for library privacy. Tests prove presence reflects enabled policy and no command canary escapes."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.health.check.configPath",
+    "justification": "Approved pre-release inspection contract requires the authoring configuration pointer on projected policy. The pointer identifies where policy is configured, never a private filesystem path or command. Native fallback and separate readiness pointers are regression tested."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.health.check.target",
+    "justification": "Approved pre-release inspection contract requires explicit service-versus-host execution location on policy metadata, distinct from listener identity. Projection tests cover both targets without rerunning probes or inferring readiness from native health."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.health.check.userSource",
+    "justification": "Approved pre-release inspection contract requires identity provenance instead of guessing an image user. Probe overrides, planned service identities, unknown image defaults, and the current CLI identity remain distinct and are covered by projection tests."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "enum-widened",
+    "path": "$.health.state",
+    "justification": "Approved pre-release native-health observation contract adds not-monitored for explicit native disabling. Unknown remains absence of evidence, not a guessed failure; healthy is provider-observed and never readiness proof. Schema, projection, neutral/warning rendering, and managed-provider acceptance cover the distinction."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.items.health.check.intervalSeconds.minimum",
+    "justification": "Reviewed propagation of canonical nonnegative probe timing into safe configured-policy output. Info performs the same single observation pass and never runs probes; owner schema and CLI tests cover this planned metadata."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "type-changed",
+    "path": "$.services.items.health.check.retries",
+    "justification": "Reviewed propagation of canonical nonnegative integer retry budgets into safe info output. Fractional budgets are intentionally invalid before execution; zero retains one-attempt semantics. This is configured metadata, not a claim that readiness was observed."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.items.health.check.startPeriodSeconds.minimum",
+    "justification": "Reviewed propagation of the canonical nonnegative optional grace period into info policy metadata. Existing valid schedules remain valid and info adds no probe execution or per-service IO."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.items.health.check.timeoutSeconds.exclusiveMinimum",
+    "justification": "Reviewed propagation of canonical positive per-attempt deadlines into info metadata. Malformed deadlines are intentionally rejected; schema round-trips and projection tests establish the resulting output contract."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.health.state",
+    "justification": "Approved pre-release info output adds not-monitored for explicit native disabling. Missing evidence remains unknown and native health never implies lifecycle readiness. Human and machine output tests cover neutral disabled/unknown states and actual unhealthy warnings."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.items.health.check.intervalSeconds.minimum",
+    "justification": "Reviewed propagation of the shared nonnegative probe interval into global service policy inspection. Global and user info reuse the same projection and do not execute readiness probes."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "type-changed",
+    "path": "$.services.items.health.check.retries",
+    "justification": "Reviewed propagation of canonical nonnegative integer retry budgets into global info metadata. Invalid fractional budgets are deliberately rejected; global observation uses the same tested safe projection as user apps."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.items.health.check.startPeriodSeconds.minimum",
+    "justification": "Reviewed propagation of the canonical nonnegative optional grace period into global policy inspection. No active probe, durable readiness claim, or additional provider observation is introduced."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.items.health.check.timeoutSeconds.exclusiveMinimum",
+    "justification": "Reviewed propagation of canonical positive deadlines into global info metadata. The field describes configured policy, while observed native health and unobserved lifecycle readiness remain separate."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.health.state",
+    "justification": "Approved pre-release global info output distinguishes explicitly unmonitored native health from missing evidence, using not-monitored. It shares the user-app projection and never treats native healthy as lifecycle readiness proof."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.tooling.additionalProperties",
+    "justification": "Approved unreleased agent-first input redesign adds sensitive:true to shared authored flags and arguments. Effective sensitivity also retains secret-name classification; sensitive defaults and choices are refused without retaining their values. The canonical binder and declaration revision replace argv round trips, with focused conformance and privacy regressions. No legacy input execution path is retained."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.tooling.additionalProperties",
+    "justification": "Approved unreleased agent-first input redesign propagates optional sensitive:true through loaded Landofile tooling declarations. Shared normalization enforces explicit-or-name sensitivity and refuses sensitive literal defaults and choices. Ordered canonical input revisions and focused logical-value regressions govern admission without compatibility shims."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.tooling.additionalProperties",
+    "justification": "Approved unreleased agent-first input redesign propagates shared authored sensitive:true flag and argument declarations through service-scoped Landofiles. The optional field widens authoring; canonical normalization deliberately rejects sensitive defaults and choices and contradictory positional policy. Focused privacy and cross-surface conformance tests cover the resulting admission contract."
+  },
+  {
+    "surface": "schema:ToolingTaskInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved unreleased agent-first input redesign shares authored flag and argument schemas with scripts and adds sensitive:true. Existing task shorthands remain; the object member carries the shared input fields. Canonical declarations, ordered semantic revisions, lossless named maps, explicit boolean false, and sensitivity validation are exercised by focused SDK, Landofile, engine, and port regressions. No parallel legacy execution path ships."
+  },
+  {
+    "surface": "schema:HealthcheckInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed #1473 pre-release shared probe input: target/user metadata is available to explicit readiness; native health rejects host or explicit-user overrides rather than changing monitoring. Disabled metadata survives role validation. Timings now require nonnegative interval/grace, positive timeout and integer retry budgets; malformed values are intentionally rejected. Valid false/string/argv/Compose forms and precedence remain, with independent health/readiness overrides covered by owner regressions."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "Reviewed #1473 shared probe input propagation: execution metadata belongs to explicit readiness, while the native health role rejects host/user overrides. Canonical timing constraints intentionally reject malformed budgets; valid shorthand/Compose composition and independent disabling are covered by codec and planner regressions."
+  },
+  {
     "surface": "command:apps:init",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
@@ -60,6 +620,108 @@
     "justification": "Reviewed additive recipe-source contract: embedded migration destination snapshots inherit the shared scalar-enum widening. Existing string enums decode unchanged, and source option tests exercise typed false defaults."
   },
   {
+    "surface": "schema:AppMountInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed #1811 additive authoring change: the existing object arm accepts optional boolean accelerate; false/string forms and required target stay unchanged. Strict round-trip and planner regressions cover opt-out without authoring an engine id."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "unsupported-construct",
+    "path": "$.fileSyncEngines.items.anyOf",
+    "justification": "Intentional pre-release #1811 breaking change: file-sync contribution ids become descriptors with required capabilities and required supports.platform containing at least one host family. Acceleration universally requires the provider-owned prepared-volume lifecycle; defaultFor is independent preference metadata. Bare ids are rejected and passthrough is reserved policy. Eligibility is verified before runtime mutation; no compatibility adapter is shipped."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.contributes.fileSyncEngines.items.anyOf",
+    "justification": "Intentional pre-release #1811 breaking change propagated from PluginContribution: file-sync descriptors require capabilities and nonempty supports.platform, reserve passthrough, and independently declare defaultFor/module. Acceleration universally requires provider-owned prepared-volume targets. Bundled manifests and installed-module validation tests use this eligibility contract rather than preserving unreleased descriptor or shadows-mode shapes. Historical session arrays without an exclusion mode and their exact pattern lists and journal digests remain unchanged."
+  },
+  {
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "property-required",
     "path": "$.error.remediation",
@@ -99,13 +761,17 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization."
+    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:CurrentExecutableAppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "Reviewed additive startup-probe contract: both ServicePlan union arms accept optional readiness, and HealthcheckPlan accepts an optional logical listener target. Existing required fields, credential exclusivity, value-model eligibility, and declaration identity remain unchanged. Untargeted probes and services without a separate readiness probe retain their accepted wire shapes; targeted defaults are validated before provider mutation. Focused tests cover strict serialization, both probe surfaces, declared topology, and authored overrides."
+    "justification": "Reviewed additive startup-probe contract: both ServicePlan union arms accept optional readiness, and HealthcheckPlan accepts an optional logical listener target. Existing required fields, credential exclusivity, value-model eligibility, and declaration identity remain unchanged. Untargeted probes and services without a separate readiness probe retain their accepted wire shapes; targeted defaults are validated before provider mutation. Focused tests cover strict serialization, both probe surfaces, declared topology, and authored overrides. ServicePlan values gain optional structured listenerAuthority; optional listener diagnosis evidence is available on failures without changing previously required fields."
   },
   {
     "surface": "schema:ServiceConfig",
@@ -351,13 +1017,21 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.routes.items.hostname.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.routes.items.pathPrefix.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:DatasetContext",
@@ -501,13 +1175,21 @@
     "surface": "schema:RoutePlan",
     "changeKind": "unsupported-keyword",
     "path": "$.hostname.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:RoutePlan",
     "changeKind": "unsupported-keyword",
     "path": "$.pathPrefix.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceInfo",
@@ -1089,7 +1771,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "US-615 route shorthand and filters"
+    "justification": "US-615 route shorthand and filters",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
@@ -1257,7 +1943,11 @@
     "surface": "schema:RoutePlan",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "US-615 route shorthand and filters"
+    "justification": "US-615 route shorthand and filters",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceConfig",
@@ -2385,7 +3075,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block; every previously accepted service remains valid."
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
@@ -2595,7 +3289,11 @@
     "surface": "schema:ServicePlan",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form."
+    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceConfig",
@@ -3501,7 +4199,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-construct",
     "path": "$.networking.perAppBridge.anyOf",
-    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:DatasetContext",
@@ -3579,13 +4281,21 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-keyword",
     "path": "$.environment.additionalProperties",
-    "justification": "Pre-release environment values now include explicit SecretRef and BoundText descriptors; literal strings remain literal data."
+    "justification": "Pre-release environment values now include explicit SecretRef and BoundText descriptors; literal strings remain literal data.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServicePlan",
     "changeKind": "property-removed",
     "path": "$.environmentSecrets",
-    "justification": "Remove the unshipped parallel secret map; each environment entry now owns its complete literal or deferred value."
+    "justification": "Remove the unshipped parallel secret map; each environment entry now owns its complete literal or deferred value.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceConfig",
@@ -4149,7 +4859,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.events.additionalProperties",
-    "justification": "Reviewed pre-release plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+    "justification": "Reviewed pre-release plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:DatasetContext",
@@ -4437,13 +5151,13 @@
     "surface": "schema:EndpointPlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+    "justification": "Approved plan extensions add optional primary:true and opaque appProtocol to network endpoints and sparse plan-only scan path/okCodes metadata to endpoint variants. No existing field becomes required; historical ownership-bearing applied plans remain decodable without migration. Scan defaults do not add authoring syntax or readiness semantics."
   },
   {
     "surface": "schema:InternalEndpoint",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved internal network endpoint extension adds optional primary:true and opaque appProtocol. The Unix-socket variant is unchanged, neither field becomes required, and existing applied endpoints remain decodable."
+    "justification": "Approved internal endpoint extensions add optional primary:true and opaque appProtocol to network listeners and optional sparse plan-only scan path/okCodes metadata to endpoint variants. No field becomes required; historical applied endpoints remain decodable. Authoring and readiness semantics remain separate."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -4593,7 +5307,11 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.endpoints.items.anyOf",
-    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:TomcatServiceConfig",
@@ -4845,7 +5563,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "property-removed",
     "path": "$.networks",
-    "justification": "Pre-release E6 removes the duplicate networks array in favor of AppPlan.networking. Persisted plans decode historical excess properties without requiring a migration."
+    "justification": "Pre-release E6 removes the duplicate networks array in favor of AppPlan.networking. Persisted plans decode historical excess properties without requiring a migration.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:CurrentExecutableAppPlan",
@@ -5050,5 +5772,113 @@
     "changeKind": "enum-narrowed",
     "path": "$.composeKnobs.supported.items",
     "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
+  },
+  {
+    "surface": "schema:EndpointInvariantIssue",
+    "changeKind": "enum-widened",
+    "path": "$.kind",
+    "justification": "Approved pre-release effective service contracts add scan-conflict for contradictory defined path or status defaults on one logical endpoint. Omitted defaults inherit and equivalent status sets remain valid; consumers must handle the additional diagnostic kind."
+  },
+  {
+    "surface": "command:app:share:stop",
+    "changeKind": "property-removed",
+    "path": "$.status",
+    "justification": "Pre-release stop acknowledgement drops the constant status; successful completion plus sessionId and optional provider already acknowledge the completed stop."
+  },
+  {
+    "surface": "command:app:cache:refresh",
+    "changeKind": "property-removed",
+    "path": "$.pluginCommandCachePath",
+    "justification": "Reviewed pre-release removal: the plugin-command cache was written but never read by any consumer and is deleted. Plugin command metadata now comes from manifest command descriptors on demand, so app:cache:refresh no longer writes or reports that cache. Plugin-set changes still invalidate app tooling caches; refresh and plugin add/link/unlink/remove/trust regressions cover that."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "unsupported-construct",
+    "path": "$.commands.items.anyOf",
+    "justification": "Reviewed pre-release contract change: contributes.commands entries become CommandContribution descriptors (canonical id, nonblank bounded summary, optional hidden, aliases, topLevelAlias, mcpAllowed, deprecated) instead of bare ids or { id, deprecated }. Help, routing, aliases, and MCP eligibility read these descriptors without importing plugin code. Every in-repo manifest and fixture is converted; no string-form shim is retained for this unreleased surface."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.contributes.commands.items.anyOf",
+    "justification": "Reviewed pre-release contract change propagated from PluginContribution: manifest command contributions are CommandContribution descriptors, and a manifest that repeats a command id is rejected. Bundled manifests keep plugin.yaml, package.json landoPlugin, and src/index.ts identical under descriptor parity tests; no string-form shim is retained for this unreleased surface."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.includes.items.anyOf",
+    "justification": "Reviewed additive pre-release change: object-form includes of every kind (landofile, compose, tooling) gain an optional `when` (boolean or whole-value recipe/env expression that must yield a boolean; false skips the entry before acquisition). Existing string and object entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.includes.items.anyOf",
+    "justification": "Reviewed additive pre-release change: object-form includes of every kind (landofile, compose, tooling) gain an optional `when` (boolean or whole-value recipe/env expression that must yield a boolean; false skips the entry before acquisition). Existing string and object entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.includes.items.anyOf",
+    "justification": "Reviewed additive pre-release change: object-form includes of every kind (landofile, compose, tooling) gain an optional `when` (boolean or whole-value recipe/env expression that must yield a boolean; false skips the entry before acquisition). Existing string and object entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
   }
 ]

@@ -38,6 +38,7 @@ import * as CommandRegistryLayer from "../../src/services/command-registry.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { emptyConfigServiceLayer } from "../_support/agent-env-test-config.ts";
 
 const capabilities: ProviderCapabilities = {
@@ -47,6 +48,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -177,6 +179,7 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
 
     let invocation: ToolingInvocation | undefined;
     const toolingLayer = Layer.mergeAll(
+      BunProcessRunner.layer,
       registryLayer,
       testEnvironmentResolverLayer,
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(changed) })),
@@ -396,6 +399,7 @@ test("fails runTooling reserved when a stale plan predates authored run", async 
         planPhp(phpLandofile("reserved-tooling-authored-run"), plannerLayer),
       );
       const toolingLayer = Layer.mergeAll(
+        BunProcessRunner.layer,
         testEnvironmentResolverLayer,
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),

@@ -33,7 +33,9 @@ const sectionLines = (help: string, heading: string, nextHeadings: readonly stri
     .filter((index) => index > start)
     .toSorted((left, right) => left - right)[0];
   expect(end).toBeGreaterThan(start);
-  return lines.slice(start + 1, end).filter((line) => line.trim() !== "");
+  const section = lines.slice(start + 1, end);
+  const blank = section.findIndex((line) => line.trim() === "");
+  return blank === -1 ? section : section.slice(0, blank);
 };
 
 const primaryOf = (line: string): string => {
@@ -100,7 +102,7 @@ describe("COMMON help rows", () => {
     // Then
     expect(rows.map(primaryOf)).toEqual([...EXPECTED_COMMON_PRIMARIES]);
     expect(rows[0]).toContain("Start the current Lando app.");
-    expect(rows.some((row) => row.includes("meta:plugin:login"))).toBe(false);
+    expect(rows.some((row) => row.includes("meta:events:follow"))).toBe(false);
   });
 
   test("Given the CLI, when --help is requested, then COMMON lists the everyday commands", async () => {

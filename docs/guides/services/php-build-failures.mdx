@@ -9,7 +9,7 @@ tags: [beta, docs, php, service, build]
 
 A failed PHP build stops startup and reports the command that failed. Read that command's output, fix the script or its dependencies, then rerun `lando start`.
 
-`build.app` defines shell commands for the app phase of a service build. Each entry executes as `sh -lc "<command>"`, in order, after Lando's own PHP prerequisite steps. A `composer install`
+`build.app` defines shell commands for the app phase of a service build. Each entry executes as `sh -c "<command>"`, in order, after Lando's own PHP prerequisite steps. A `composer install`
 that fails on a bad `composer.json`, a missing PHP extension a package
 requires, or a stray `exit 1` all fail a build step the same way: the step
 exits non-zero, and Lando stops instead of starting a half-built app.

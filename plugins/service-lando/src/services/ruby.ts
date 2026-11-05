@@ -16,9 +16,13 @@ export type SupportedRubyFramework = (typeof SUPPORTED_RUBY_FRAMEWORKS)[number];
 export const RUBY_FEATURE_ID = "service-lando.ruby" as const;
 export const RUBY_FEATURE_PRIORITY = 600;
 
-const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset> = {
+export const FRAMEWORK_PRESETS: Readonly<Record<SupportedRubyFramework, LanguageFrameworkPreset>> = {
   rails: {
     port: 3000,
+    daemon: "Rails",
+    variables: ["PORT"],
+    hostDefaults: { BINDING: "0.0.0.0" },
+    when: "framework: rails",
     webroot: "public",
     env: new Map([
       ["RAILS_ENV", "development"],
@@ -27,10 +31,14 @@ const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset>
   },
   none: {
     port: 3000,
+    daemon: "Ruby",
+    variables: ["PORT"],
+    when: "framework omitted or none",
     webroot: ".",
     env: new Map(),
   },
 };
+export const RUBY_LISTENERS = FRAMEWORK_PRESETS;
 
 const RubyFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_RUBY_FRAMEWORKS]),

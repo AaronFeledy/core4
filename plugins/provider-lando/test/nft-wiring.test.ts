@@ -67,6 +67,7 @@ describe("ensureRuntime nft helper", () => {
     const podmanBin = join(runtimeBinDir, "podman");
     const pidPath = join(root, "podman.pid");
     const spec = buildPodmanServiceArgs({
+      privateRuntimeDir: "/private/test-runtime",
       podmanBin,
       storageDir: join(root, "storage"),
       runRoot: join(root, "run"),
@@ -90,6 +91,7 @@ describe("ensureRuntime nft helper", () => {
       await writeFile(`${pidPath}.launch.json`, JSON.stringify({ pid: 4321, env: spec.env }));
       await Effect.runPromise(
         ensureRuntime({
+          privateRuntimeDir: "/private/test-runtime",
           platform: "linux",
           podmanApi: { info: Effect.succeed({}), ping: Effect.succeed(undefined) },
           serviceRunner: {

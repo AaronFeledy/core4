@@ -3,6 +3,7 @@ import {
   HOST_PROXY_SESSION_LABEL,
   SSH_AGENT_OVERLAY_LABEL,
   containerIntegrationLabels,
+  hostProxySessionDigest,
 } from "@lando/container-runtime/labels";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
@@ -54,7 +55,7 @@ export const projectServiceMounts = (
 ): readonly ServiceInfoMount[] | undefined => {
   const observation = runtime?.mounts;
   const hostProxyActive =
-    service.environment.LANDO_HOST_PROXY_SESSION !== undefined ||
+    hostProxySessionDigest(service.extensions) !== undefined ||
     runtime?.labels?.[HOST_PROXY_SESSION_LABEL] !== undefined;
   const integrationLabels = containerIntegrationLabels(service.environment);
   const sshAgentActive =
@@ -72,7 +73,10 @@ export const projectServiceMounts = (
   const internalTargets = new Set(
     service.mounts.filter((mount) => !userMounts.includes(mount)).map((mount) => String(mount.target)),
   );
-  if (sshAgentActive) internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
+  if (sshAgentActive) {
+    internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
+    internalTargets.add("/etc/ssh/ssh_known_hosts");
+  }
   if (gpgAgentActive) {
     internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     internalTargets.add("/run/lando/gpg-agent-keys");

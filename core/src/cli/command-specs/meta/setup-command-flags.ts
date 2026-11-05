@@ -41,14 +41,8 @@ export const SETUP_BUILTIN_FLAGS = {
     default: false,
   }),
   "skip-file-sync": Flags.boolean({
-    description: "Skip Mutagen binary download during setup on a slow-mount host.",
+    description: "Skip file-sync engine installation during setup on a slow-mount host.",
     default: false,
-  }),
-  "host-proxy": Flags.string({
-    description:
-      "Reserved for host DNS integration, which Lando does not provide; `auto` and `none` currently behave the same.",
-    options: ["auto", "none"],
-    default: "auto",
   }),
 } as const;
 

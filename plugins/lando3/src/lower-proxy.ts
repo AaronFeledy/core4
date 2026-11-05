@@ -1,7 +1,8 @@
 import { isLegacyTagged, parseRouteHostname } from "@lando/sdk/landofile";
 import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
 import { Result } from "effect";
-import { CATALOG, resolveCatalogType } from "./catalog.ts";
+import { resolveCatalogType } from "./catalog.ts";
+import type { Lando3TranslatorPorts } from "./contract.ts";
 import type { Lando3Path } from "./contract.ts";
 import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
@@ -192,7 +193,10 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
 
 const LANDO3_DEFAULT_ROUTE_PORT = 80;
 
-const servedPorts = (service: V4Wire): ReadonlySet<number> => {
+const servedPorts = (
+  service: V4Wire,
+  serviceFacts: Lando3TranslatorPorts["serviceFacts"],
+): ReadonlySet<number> => {
   const ports = new Set<number>();
   for (const endpoint of Array.isArray(service.endpoints) ? service.endpoints : []) {
     if (
@@ -202,12 +206,17 @@ const servedPorts = (service: V4Wire): ReadonlySet<number> => {
     )
       ports.add(endpoint.port);
   }
-  const resolution = typeof service.type === "string" ? resolveCatalogType(service.type) : undefined;
+  const resolution =
+    typeof service.type === "string" ? resolveCatalogType(service.type, serviceFacts) : undefined;
   if (resolution?._tag === "resolved" && resolution.id !== "compose" && resolution.id !== "lando") {
     // Only an HTTP port counts. A database containerPort is TCP, so a route to it
     // still needs an HTTP endpoint; inventing port 80 would hide that.
-    const httpPort = CATALOG[resolution.id]?.httpPort;
-    if (httpPort !== undefined) ports.add(typeof service.port === "number" ? service.port : httpPort);
+    const facts = serviceFacts[resolution.id];
+    const httpPort = facts?.httpPort;
+    if (httpPort !== undefined)
+      ports.add(
+        typeof service.port === "number" && facts?.listener?.port === httpPort ? service.port : httpPort,
+      );
   }
   return ports;
 };
@@ -222,13 +231,16 @@ export const declareRouteEndpoints = (
   fragment: V4Wire,
   services: Map<string, V4Wire>,
   report: Report,
-  external: ReadonlyMap<string, V4Wire> = new Map(),
+  options: {
+    readonly external: ReadonlyMap<string, V4Wire>;
+    readonly serviceFacts: Lando3TranslatorPorts["serviceFacts"];
+  },
 ): void => {
   const proxy = hasPlainObjectPrototype(fragment.proxy) ? fragment.proxy : {};
   for (const [name, routes] of Object.entries(proxy)) {
     if (!Array.isArray(routes)) continue;
     const authored = services.get(name);
-    const recipe = external.get(name);
+    const recipe = options.external.get(name);
     // Endpoint objects have no merge identity, so a new array on an authored
     // override replaces the recipe service's endpoints. Append to an array
     // that already wins, otherwise to the recipe service itself.
@@ -239,7 +251,7 @@ export const declareRouteEndpoints = (
           ? recipe
           : authored;
     if (service === undefined) continue;
-    const served = servedPorts(service);
+    const served = servedPorts(service, options.serviceFacts);
     const catalogServed = served.size > 0;
     const added: number[] = [];
     for (const route of routes) {

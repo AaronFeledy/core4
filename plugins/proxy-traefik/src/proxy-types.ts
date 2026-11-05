@@ -33,6 +33,7 @@ export interface ProxyFileSystem {
 export interface ProxyPaths {
   readonly platform: "darwin" | "linux" | "win32" | "wsl";
   readonly globalAppRoot: string;
+  readonly userDataRoot?: string;
 }
 
 export interface ProxyGlobalApp {
@@ -52,6 +53,8 @@ export interface ProxyGlobalApp {
 
 export interface SocketProxyDependencies {
   readonly user: string;
+  readonly userDataRoot: string;
+  readonly realpath?: (path: string) => Effect.Effect<string, unknown>;
   readonly hasHostSystemd: () => boolean;
   readonly exists: (path: string) => Effect.Effect<boolean>;
   readonly readText: (path: string) => Effect.Effect<string, unknown>;
@@ -59,6 +62,11 @@ export interface SocketProxyDependencies {
   readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly interaction?: Pick<Context.Service.Shape<typeof InteractionService>, "confirm" | "isInteractive">;
   readonly autoApprove?: boolean;
+  /** setup intent: ensure (default, start path) never replaces foreign; configure may. */
+  readonly intent?: "configure" | "ensure";
+  /** Ports this data root already owns (provider proof), for missing-root hop free checks. */
+  readonly ownedRouterPorts?: ReadonlySet<number>;
+  readonly probeBind?: (host: string, port: number) => Effect.Effect<BindOutcome>;
   readonly serviceType?: SocketProxyServiceType;
   readonly probeForward?: (
     host: string,
@@ -92,6 +100,8 @@ export type TraefikLogObservation = {
 };
 
 export interface TraefikProxyDependencies {
+  /** Fresh ownership-verified service observation; absent evidence never proves running ingress. */
+  readonly readTraefikState?: () => Effect.Effect<"running" | "stopped" | "unknown", unknown>;
   readonly readTraefikPublications?: () => Effect.Effect<PublicationObservation, unknown>;
   readonly httpClient?: HttpClient.HttpClient;
   readonly readTraefikLogs?: () => Effect.Effect<TraefikLogObservation, unknown>;

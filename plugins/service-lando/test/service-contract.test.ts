@@ -88,7 +88,10 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: meilisearchServiceType, landofileService: { type: "meilisearch" } },
   { serviceType: meilisearch1ServiceType, landofileService: { type: "meilisearch:1" } },
   { serviceType: memcachedServiceType, landofileService: { type: "memcached" } },
-  { serviceType: minioServiceType, landofileService: { type: "minio", database: "uploads" } },
+  {
+    serviceType: minioServiceType,
+    landofileService: { type: "minio", image: "example.test/minio:fixture", database: "uploads" },
+  },
   { serviceType: mongodbServiceType, landofileService: { type: "mongodb" } },
   { serviceType: mssqlServiceType, landofileService: { type: "mssql" } },
   { serviceType: mssql2019ServiceType, landofileService: { type: "mssql:2019" } },

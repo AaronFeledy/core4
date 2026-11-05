@@ -4,7 +4,8 @@ import { Effect, Predicate, Result } from "effect";
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { assertConfigReadable } from "@lando/engine/config-write/readiness";
 import { emitConfigYaml, writeValidationErrorFromIssues } from "@lando/engine/config-write/write-core";
-import { globalLandofileOverrides } from "@lando/engine/operations/global-plan";
+import { readGlobalResolution, resolveEffectiveGlobalServices } from "@lando/engine/global-app/resolution";
+import { hostProviderId } from "@lando/engine/providers/host-provider";
 import { loadLandofileLayers, validateLandofileReplacement } from "@lando/engine/services/landofile-live";
 import { parseLandofile } from "@lando/landofile/parser";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
@@ -49,18 +50,42 @@ export const parseGlobalTree = Effect.fnUntraced(function* (filePath: string, co
 
 export const compileGlobalConfigDocument = Effect.fnUntraced(function* (filePath: string, edited?: string) {
   const root = dirname(filePath);
-  const overrides = yield* globalLandofileOverrides;
-  if (edited !== undefined) {
-    return yield* validateLandofileReplacement(
-      { appRoot: root, targetFile: filePath, content: edited },
-      overrides,
-    );
-  }
-  yield* loadLandofileLayers(root, filePath, overrides).pipe(
-    Effect.catchTag("LandofileValidationError", (error) =>
-      Effect.fail(writeValidationErrorFromIssues({ file: error.file, issues: error.issues })),
-    ),
+  const resolution = yield* readGlobalResolution();
+  const overrides = {
+    name: "global",
+    provider: yield* hostProviderId,
+    excludedServices: resolution.directlyExcludedIds,
+  };
+  const compiled =
+    edited !== undefined
+      ? yield* validateLandofileReplacement(
+          { appRoot: root, targetFile: filePath, content: edited },
+          overrides,
+        )
+      : yield* loadLandofileLayers(root, filePath, overrides).pipe(
+          Effect.catchTag("LandofileValidationError", (error) =>
+            Effect.fail(writeValidationErrorFromIssues({ file: error.file, issues: error.issues })),
+          ),
+        );
+  const effective = resolveEffectiveGlobalServices(
+    resolution,
+    compiled.document.services ?? {},
+    compiled.pendingSites,
   );
+  if (effective.errors.length > 0)
+    return yield* Effect.fail(
+      writeValidationErrorFromIssues({
+        file: filePath,
+        issues: effective.errors.map((issue) =>
+          validationIssue(
+            ["services", issue.id, "dependsOn"],
+            `${issue.cause.message} ${issue.cause.remediation}`,
+          ),
+        ),
+        remediation: [...new Set(effective.errors.map((issue) => issue.cause.remediation))].join(" "),
+      }),
+    );
+  return compiled;
 });
 
 export const requireMutableGlobalLandofile = Effect.fnUntraced(function* (

@@ -7,7 +7,11 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
-import { ComposeServiceKnobFields, ComposeTmpfsServiceField } from "./compose-service-knobs.ts";
+import {
+  ComposeInitServiceField,
+  ComposeServiceKnobFields,
+  ComposeTmpfsServiceField,
+} from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -15,6 +19,8 @@ import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
 import { EnvironmentValue } from "./environment-value.ts";
 import { LandofileEvents } from "./landofile-events.ts";
+import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+export { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -38,7 +44,9 @@ import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
+export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -538,6 +546,29 @@ export const PhpComposerConfig = Schema.Struct({
 export type PhpComposerConfig = typeof PhpComposerConfig.Type;
 
 /**
+ * One `uploadDirs` entry: a webroot-relative directory that must not execute as
+ * PHP. Only allowlisted characters enter server regexes; `*` stays within one
+ * segment. Reject configuration injection and paths a server would normalize
+ * away before making an execution decision.
+ */
+export const UPLOAD_DIR_PATTERN =
+  /^(?!\/)(?!\*$)(?!.*\/\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)(?!(?:^|.*\/)\.(?:\/|$))[A-Za-z0-9._/*-]+$/u;
+
+export const isUploadDir = (value: string): boolean => UPLOAD_DIR_PATTERN.test(value);
+
+export const UploadDir = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(UPLOAD_DIR_PATTERN, {
+      message:
+        "uploadDirs entries must be non-empty webroot-relative directory paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or server metacharacters.",
+    }),
+  ),
+).annotate({
+  description: "Webroot-relative directory that holds user uploads and must never execute PHP.",
+});
+export type UploadDir = typeof UploadDir.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -551,6 +582,9 @@ const AppMountEntry = Schema.String.check(
 
 const AppMountObject = Schema.Struct({
   target: Schema.String.annotate({ description: "Container destination for application source." }),
+  accelerate: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Allow automatic file-sync acceleration; false keeps an ordinary provider bind.",
+  }),
   readOnly: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Mount application source read-only.",
   }),
@@ -642,6 +676,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     port: Schema.optionalKey(PortNumber).annotate({
       description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
+    consolePort: Schema.optionalKey(PortNumber).annotate({
+      description:
+        "MinIO console TCP port number (integer 1-65535); defaults to 9001, independently of the API port.",
+    }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
@@ -653,6 +691,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
+    }),
+    uploadDirs: Schema.optionalKey(Schema.Array(UploadDir)).annotate({
+      description:
+        "Webroot-relative directories that hold user uploads. Lando never runs PHP from them. Each path may use a single-segment '*' and cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include server metacharacters.",
     }),
     allowOverride: Schema.optionalKey(Schema.Boolean).annotate({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
@@ -685,6 +727,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     labels: Schema.optionalKey(ComposeLabelsInput),
 
     ...ComposeServiceKnobFields,
+    init: ComposeInitServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),
@@ -740,9 +783,16 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckInput),
+    readiness: Schema.optionalKey(HealthcheckInput).annotate({
+      description:
+        "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
+    }),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
-    hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
+    hostnames: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Extra provider-network aliases for this service. Other services use these names to reach this one.",
+    }),
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
@@ -863,41 +913,6 @@ export const ToolingVar = Schema.Union([
 ]);
 export type ToolingVar = typeof ToolingVar.Type;
 
-export const ToolingFlagShape = Schema.Struct({
-  alias: Schema.optionalKey(Schema.String).annotate({
-    description: "Optional single-token alias for this flag.",
-  }),
-  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-    description: "Allowed values for this flag.",
-  }),
-  boolean: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "Whether this flag is a boolean switch instead of a value-taking option.",
-  }),
-  required: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "Whether this flag must be supplied.",
-  }),
-  description: Schema.optionalKey(Schema.String),
-  default: Schema.optionalKey(ToolingVarLiteral),
-  deprecated: Schema.optionalKey(DeprecationNotice),
-});
-export type ToolingFlagShape = typeof ToolingFlagShape.Type;
-
-export const ToolingArgShape = Schema.Struct({
-  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-    description: "Allowed values for this argument.",
-  }),
-  order: Schema.optionalKey(
-    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  ).annotate({
-    description: "Positional order of this argument within the task.",
-  }),
-  description: Schema.optionalKey(Schema.String),
-  required: Schema.optionalKey(Schema.Boolean),
-  default: Schema.optionalKey(ToolingVarLiteral),
-  deprecated: Schema.optionalKey(DeprecationNotice),
-});
-export type ToolingArgShape = typeof ToolingArgShape.Type;
-
 export const ToolingStepShape = Schema.Struct({
   cmd: Schema.String.annotate({ description: "Shell command executed for this step." }),
   service: Schema.optionalKey(Schema.String).annotate({
@@ -939,7 +954,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
  * `silent:`, `output:`, `failFast:`, `aliases:`,
- * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
+ * `topLevelAlias:`, `namespace:`, `internal:`,
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({
@@ -964,9 +979,7 @@ export const ToolingTaskShape = Schema.Struct({
   ).annotate({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
-  arguments: Schema.optionalKey(Schema.Literal(false)).annotate({
-    description: "Set to false to reject caller-supplied positional arguments for this task.",
-  }),
+  ...ToolingAuthoredInputFields,
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",
   }),
@@ -977,12 +990,6 @@ export const ToolingTaskShape = Schema.Struct({
     description: "Task-local variables, overriding include and app-wide tooling variables.",
   }),
   deprecated: Schema.optionalKey(DeprecationNotice),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)).annotate({
-    description: "Named command-line flags accepted by the task.",
-  }),
-  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)).annotate({
-    description: "Positional arguments accepted by the task.",
-  }),
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
@@ -1055,14 +1062,14 @@ export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;
  * script body.
  *
  * Accepted fields (matching `ToolingTaskShape`):
- * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
- *   Defaults to `:host` when omitted.
+ * - `service:` — literal service target, defaulting to `:host` when omitted.
  * - `desc:` / `description:` / `summary:` — short help text. `desc` is
  *   accepted as an alias for `description` by script-backed tooling.
+ * - `flags:` / `args:` / `disabled:` — shared tooling input declarations and visibility.
  *
  * Unsupported fields (`aliases`, `topLevelAlias`, `bootstrap`,
- * `flags`, `args`, `passThrough`, `sources`, `generates`, `status`,
- * `preconditions`, `run`, `platforms`, `internal`, `disabled`,
+ * `passThrough`, `sources`, `generates`, `status`,
+ * `preconditions`, `run`, `platforms`, `internal`,
  * `engine`) are detected pre-decode (including nested YAML list/object
  * forms like `sources:\n  - …`) and rejected with a tagged
  * `NotImplementedError` carrying `commandId: "landofile.parse"`, the
@@ -1075,82 +1082,10 @@ export const BunShellScriptFrontMatter = Schema.Struct({
   desc: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
+  ...ToolingAuthoredInputFields,
+  disabled: Schema.optionalKey(Schema.Boolean),
 });
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
-
-/**
- * ToolingIncludeShape — one entry of the `toolingIncludes:` shorthand map.
- * The map key is the include namespace; the entry names a local tooling
- * fragment carrying only `tooling:` and `toolingIncludes:`.
- *
- * Deliberately omitted: `dir:` (set it on individual tasks instead) and
- * `checksum:` (tooling fragments are local-file only, so there is no remote
- * source to pin).
- */
-export const ToolingIncludeShape = Schema.Struct({
-  file: Schema.String.annotate({
-    description:
-      "Path to the tooling fragment, resolved relative to the file that declares the include and contained under the app root.",
-  }),
-  optional: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "When true, a missing fragment file is skipped instead of failing the load.",
-  }),
-  flatten: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "When true, included task names register unprefixed instead of under the include namespace.",
-  }),
-  internal: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "When true, every task contributed by this include is registered hidden.",
-  }),
-  aliases: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-    description: "Additional namespaces the included tasks also register under.",
-  }),
-  excludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-    description: "Fragment task names dropped before flattening or namespace registration.",
-  }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotate({
-    description: "Literal vars applied to every included task unless the task defines its own value.",
-  }),
-});
-export type ToolingIncludeShape = typeof ToolingIncludeShape.Type;
-
-export const IncludeEntry = Schema.Union([
-  Schema.String,
-  Schema.Struct({
-    source: Schema.String,
-    kind: Schema.optionalKey(Schema.Literals(["landofile", "compose", "tooling"])).annotate({
-      description:
-        'The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path; "tooling" is a tooling fragment carrying only tooling: and toolingIncludes:. This is not source transport.',
-    }),
-    path: Schema.optionalKey(Schema.String),
-    version: Schema.optionalKey(Schema.String),
-    namespace: Schema.optionalKey(Schema.String).annotate({
-      description:
-        'kind: "tooling" only — the sub-namespace included tasks register under. Required unless flatten is true.',
-    }),
-    flatten: Schema.optionalKey(Schema.Boolean).annotate({
-      description:
-        'kind: "tooling" only — when true, included task names register unprefixed instead of under the include namespace.',
-    }),
-    internal: Schema.optionalKey(Schema.Boolean).annotate({
-      description: 'kind: "tooling" only — when true, every task contributed by this include is hidden.',
-    }),
-    optional: Schema.optionalKey(Schema.Boolean).annotate({
-      description: 'kind: "tooling" only — when true, a missing fragment file is skipped instead of failing.',
-    }),
-    aliases: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-      description: 'kind: "tooling" only — additional namespaces the included tasks also register under.',
-    }),
-    excludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-      description:
-        'kind: "tooling" only — fragment task names dropped before flattening or namespace registration.',
-    }),
-    vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotate({
-      description:
-        'kind: "tooling" only — literal vars applied to every included task unless the task defines its own value.',
-    }),
-  }),
-]);
-export type IncludeEntry = typeof IncludeEntry.Type;
 
 export const ComposeSecretConfig = Schema.Struct({
   file: Schema.optionalKey(Schema.String),

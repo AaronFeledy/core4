@@ -59,11 +59,20 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: ["@lando/sdk", "@lando/paths"],
     devDependencies: [],
   },
-  "@lando/container-runtime": { dependencies: ["@lando/sdk", "@lando/redaction"], devDependencies: [] },
+  "@lando/container-runtime": {
+    dependencies: ["@lando/sdk", "@lando/redaction"],
+    devDependencies: [],
+    // Historical applied-state bytes exercise the real disk store at their owning package.
+    testTargets: ["@lando/sdk", "@lando/redaction", "@lando/state-store"],
+  },
   "@lando/redaction": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/http-client": { dependencies: ["@lando/redaction", "@lando/sdk"], devDependencies: [] },
   "@lando/managed-file": {
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/redaction"],
+    devDependencies: [],
+  },
+  "@lando/source-acquisition": {
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
     devDependencies: [],
   },
   "@lando/data-mover": {
@@ -98,7 +107,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: ["@lando/renderer"],
   },
   "@lando/landofile": {
-    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/source-acquisition"],
     devDependencies: [],
   },
   "@lando/engine": {
@@ -108,6 +117,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/state-store",
       "@lando/container-runtime",
       "@lando/landofile",
+      "@lando/source-acquisition",
       "@lando/redaction",
       "@lando/http-client",
       "@lando/telemetry",
@@ -126,6 +136,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/http-client",
       "@lando/telemetry",
       "@lando/managed-file",
+      "@lando/source-acquisition",
       "@lando/renderer",
       "@lando/service-lando",
       "@lando/provider-docker",
@@ -139,7 +150,11 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/github-actions": { dependencies: ["@lando/sdk"], devDependencies: [] },
+  "@lando/github-actions": {
+    dependencies: ["@lando/sdk"],
+    // The verified-source cache test proves quarantine against the real TestStateStore backend.
+    devDependencies: ["@lando/state-store"],
+  },
   "@lando/sql": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
     // Recovery retention tests compose the real snapshot store without a live container runtime.

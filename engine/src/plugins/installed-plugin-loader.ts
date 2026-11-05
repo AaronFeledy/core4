@@ -19,7 +19,7 @@ export interface ExternalPluginModule {
   readonly [key: string]: unknown;
 }
 
-const loadExternalPluginEntry = async (
+export const loadInstalledPluginEntry = async (
   packageRoot: string,
   manifest: PluginManifest,
 ): Promise<ExternalPluginModule | undefined> => {
@@ -46,6 +46,7 @@ const normalizeExternalContributionModules = async (
   const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
   const certificateAuthorities = manifest.contributes?.certificateAuthorities;
+  const fileSyncEngines = manifest.contributes?.fileSyncEngines;
   const routerServices = manifest.contributes?.routerServices;
   const secretStores = manifest.contributes?.secretStores;
   const remoteSources = manifest.contributes?.remoteSources;
@@ -59,6 +60,7 @@ const normalizeExternalContributionModules = async (
     httpClients === undefined &&
     interactionServices === undefined &&
     certificateAuthorities === undefined &&
+    fileSyncEngines === undefined &&
     routerServices === undefined &&
     secretStores === undefined &&
     remoteSources === undefined &&
@@ -163,6 +165,19 @@ const normalizeExternalContributionModules = async (
             module: await normalizeManifestModulePath(contribution.module, "certificateAuthorities"),
           })),
         );
+  const normalizedFileSyncEngines =
+    fileSyncEngines === undefined
+      ? undefined
+      : await Promise.all(
+          fileSyncEngines.map(async (contribution) =>
+            contribution.module === undefined
+              ? contribution
+              : {
+                  ...contribution,
+                  module: await normalizeManifestModulePath(contribution.module, "fileSyncEngines"),
+                },
+          ),
+        );
   const normalizedRouterServices =
     routerServices === undefined
       ? undefined
@@ -232,6 +247,7 @@ const normalizeExternalContributionModules = async (
     ...(normalizedSubscribers === undefined ? {} : { subscribers: normalizedSubscribers }),
     contributes: {
       ...manifest.contributes,
+      ...(normalizedFileSyncEngines === undefined ? {} : { fileSyncEngines: normalizedFileSyncEngines }),
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
       ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
       ...(normalizedHttpClients === undefined ? {} : { httpClients: normalizedHttpClients }),
@@ -281,6 +297,6 @@ export const loadInstalledPlugin = async (
 ): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
   const packageRoot = packageRootPath(packageRootInput);
   const manifest = await loadInstalledPluginManifest(packageRoot);
-  const module = await loadExternalPluginEntry(packageRoot, manifest);
+  const module = await loadInstalledPluginEntry(packageRoot, manifest);
   return { manifest, ...(module === undefined ? {} : { module }) };
 };

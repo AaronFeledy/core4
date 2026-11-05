@@ -14,7 +14,7 @@ Preview a conversion without changing files. From the app directory, run:
 lando app:config:translate
 ```
 
-Run that from an app directory. Lando detects the source files, picks a translator, and prints the canonical v4 Landofile it would produce. Nothing is written. No `.lando.yml.canonical` appears next to your file.
+Lando detects the source files, picks a translator, and prints the canonical v4 Landofile it would produce. Nothing is written. No `.lando.yml.canonical` appears next to your file.
 
 The bundled `lando4` translator ships with Lando, so a v4 Landofile round-trips out of the box. Other translators come from plugins.
 
@@ -26,6 +26,8 @@ lando app:config:translate --format=json
 ```
 
 The default output is the translated YAML. When a single layer is produced, you get the bare Landofile. When several layers are produced, each block is labeled with a `# <path>` comment for the file it belongs to.
+
+If the translator reports diagnostics, YAML comments after the converted Landofile summarize the counts and explain the changes in impact order. You can still parse the preview as YAML. Read the blocking and review diagnostics before deciding to write.
 
 `--format=json` prints the structured preview: `inputPath`, `translator`, `target`, `files`, `content`, `targets` (one `layer`, `path`, `content` per declared layer), `diagnostics`, and `deletions`.
 
@@ -39,24 +41,36 @@ lando app:config:translate --write
 
 `--write` replaces the declared v4 Landofile layer files through the managed-file transaction. Before any file changes, Lando keeps an immutable backup beside each replaced file, named `<file>.bak.<sha256>` after the digest of the bytes it replaces. There is no plain `.lando.yml.bak`.
 
-The write summary lists each written path, each removed source, and each backup path as a `# backup:` line. Preview and `--write` emit the same diagnostics, so what you saw in the preview is what lands on disk.
+The human write summary lists each written path and removed source. It ends with counts of written files, removed files, and backups, each backup location, counts of `needs-review` and `dropped` diagnostics, and a reminder to lint. These status lines are YAML comments, not part of the saved Landofile. The saved files contain the converted configuration, without the diagnostic comments.
+
+From the app directory, check the written configuration before starting the app:
+
+```sh
+lando app:config:lint
+```
+
+Resolve any lint errors and review the translation diagnostics before running `lando start`. A successful write confirms the files were saved, not that the app behaves the same as before.
 
 Only the `lando4` target may write. Any other `--to` target is preview-only, and pairing it with `--write` fails with `Target <id> is preview-only.`
 
 ## Read the diagnostics
 
-Diagnostics are ordered (translator frontend first, then encoder), redacted, and identical between preview and `--write`. In YAML output they appear as comment lines with a glyph:
+Human diagnostics start with an ASCII summary counting each kind present. Blocking diagnostics come first, followed by changes that need review, omitted values, equivalent rewrites, and generated values. Each diagnostic shows its glyph, bracketed kind, message, and `source:path` location. Use the kind to distinguish the two meanings of `~`:
 
 | Glyph | Kind | Effect |
 | --- | --- | --- |
-| `+` | generated | Informational |
-| `-` | dropped | Informational |
-| `~` | rewritten | Informational |
-| `~` | non-portable | Blocks `--write` |
 | `!` | unsupported | Blocks encoding and `--write` |
-| `?` | needs-review | Informational |
+| `~` | non-portable | Blocks `--write` |
+| `?` | needs-review | Converted, but needs your review |
+| `-` | dropped | Omitted from the converted configuration |
+| `~` | rewritten | Equivalent behavior with a different spelling |
+| `+` | generated | Added by the translator |
 
-An `unsupported` diagnostic empties the preview content and refuses to write. A `non-portable` diagnostic still previews but refuses to write. The failure reads `Cannot write translation: <kind>: <message>` and tells you to resolve the diagnostics first.
+Blocking, review, and dropped diagnostics include the translator's remediation when available. Sibling fields share one line listing their leaf keys only when their kind, source, parent path, message, and remediation are identical. The summary counts diagnostics before grouping, not displayed lines.
+
+Diagnostics are redacted on both human and machine surfaces. JSON preserves the individual diagnostic entries and their original order; human grouping does not change the structured result.
+
+An `unsupported` diagnostic empties the preview content and refuses to write. A `non-portable` diagnostic still previews but refuses to write. A refused human write shows the same grouped diagnostics with remediation before the tagged `ConfigTranslateError`. No files are changed. Resolve the blockers, preview again, and retry `--write`. JSON failures keep the structured error rather than the human diagnostic comments.
 
 ## Translate one layer
 

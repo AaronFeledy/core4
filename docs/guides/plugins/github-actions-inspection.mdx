@@ -43,7 +43,15 @@ Link the plugin directory, replacing `/path/to/core4` with your clone:
 lando meta:plugin:link /path/to/core4/plugins/github-actions/dist
 ```
 
-Check that the command is now registered:
+Check that the plugin's commands are now registered:
+
+```sh
+lando help github-actions
+```
+
+The `GITHUB-ACTIONS` topic lists `github-actions:list` under the plugin's
+description. The same command appears in `lando help --all` with every other
+built-in and plugin command. For the command's own flags, ask it directly:
 
 ```sh
 lando github-actions:list --help

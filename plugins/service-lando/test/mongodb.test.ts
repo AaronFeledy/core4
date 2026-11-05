@@ -72,6 +72,48 @@ describe("mongodb ServiceType", () => {
     expect(plan.entrypoint).toEqual(["custom-start"]);
     expect(plan.command).toBeUndefined();
   });
+
+  test("sets launcher listener authority when an authored command replaces the Lando port launcher", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      port: 47017,
+      command: ["mongod", "--auth"],
+    });
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "MongoDB",
+      setting: "--port 47017",
+      port: 47017,
+    });
+  });
+
+  test("sets launcher listener authority when an authored entrypoint replaces the Lando port launcher", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      port: 47017,
+      entrypoint: ["custom-start"],
+    });
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "MongoDB",
+      setting: "--port 47017",
+      port: 47017,
+    });
+  });
+
+  test("omits listener authority when Lando owns the mongod launcher", async () => {
+    const plan = await planMongodb({ type: "mongodb", port: 47017 });
+    expect(plan.listenerAuthority).toBeUndefined();
+  });
+
+  test("omits listener authority when neither port nor config needs a Lando launcher", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      command: ["mongod", "--auth"],
+    });
+    expect(plan.listenerAuthority).toBeUndefined();
+  });
+
   test("plans a default MongoDB service with persistent data volume and credentials", async () => {
     const plan = await planMongodb({ type: "mongodb" });
 
@@ -84,7 +126,7 @@ describe("mongodb ServiceType", () => {
     });
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-mongodb-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--mongodb-data");
     expect(String(volumes[0]?.target)).toBe("/data/db");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
@@ -112,7 +154,9 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.environment.MONGO_INITDB_DATABASE).toBe("otherapp");
-    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe("otherapp-mongodb-data");
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
+      "lando-otherapp--db--mongodb-data",
+    );
   });
 
   test("respects user, database, image, port, and runtime overrides", async () => {

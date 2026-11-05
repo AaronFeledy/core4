@@ -1,5 +1,6 @@
 import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
+import type { ServiceShutdownObservation } from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
@@ -18,6 +19,7 @@ import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { confirmDestroyWithoutLandofileEvents } from "./landofile-events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 import { ownedCleanupChanged, prepareOwnedResourceCleanupFrom } from "./owned-resource-teardown.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 
 const unchanged = (app: string): DestroyAppResult => ({
   app,
@@ -90,10 +92,15 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         );
         yield* tree.completeTask("snapshots");
       }
-      if (fileSync !== undefined)
-        yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
+      const quiesced =
+        fileSync === undefined
+          ? undefined
+          : yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       if (fileSync?.applicable === true) yield* tree.completeTask("file-sync");
       const services = new Set<string>();
+      const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [
+        quiesced?.shutdownObservations,
+      ];
       let volumesRemoved = false;
       let changed = snapshotsRemoved > 0;
       if (hasProvider) {
@@ -101,6 +108,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         const remove = Effect.gen(function* () {
           if (target !== undefined && provider !== undefined) {
             const outcome = yield* destroyPlannedProvider({ ...plan, target }, provider);
+            observationSources.push(outcome.shutdownObservations);
             switch (outcome.kind) {
               case "destroyed":
                 for (const service of Object.values(target.plan.services).reverse())
@@ -126,6 +134,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
               },
               ownedCleanup: cleanup,
             });
+            observationSources.push(removed.shutdownObservations);
             for (const service of removed.services) services.add(service);
             volumesRemoved ||= removed.volumesRemoved;
             changed ||= removed.services.length > 0 || removed.volumesRemoved || removed.ownedChanged;
@@ -157,18 +166,22 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
               purgeCaches: plan.options.purgeCaches === true,
             },
           });
+          observationSources.push(removed.shutdownObservations);
           for (const service of removed.services) services.add(service);
           volumesRemoved ||= removed.volumesRemoved;
           changed ||= removed.ownedChanged || removed.services.length > 0 || removed.volumesRemoved;
         }
       }
-      return {
-        app: plan.name,
-        outcome: changed ? ("destroyed" as const) : ("unchanged" as const),
-        servicesDestroyed: [...services],
-        volumesRemoved,
-        snapshotsRemoved,
-      };
+      return withShutdownObservations(
+        {
+          app: plan.name,
+          outcome: changed ? ("destroyed" as const) : ("unchanged" as const),
+          servicesDestroyed: [...services],
+          volumesRemoved,
+          snapshotsRemoved,
+        },
+        ...observationSources,
+      );
     }),
   });
   for (const app of plan.refs) {

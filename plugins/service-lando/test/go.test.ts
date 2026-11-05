@@ -130,6 +130,7 @@ describe("go:1.22 ServiceType", () => {
       featureOverrides,
     });
 
+    expect(plan.environment.PORT).toBe("8080");
     expect(plan.environment.LANDO_APP_NAME).toBe("anotherapp");
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });
@@ -177,7 +178,7 @@ describe("go:1.22 ServiceType", () => {
   test("default command keeps the container alive so `lando go ...` tooling can exec into it", async () => {
     const plan = await composeGoPlan(go122ServiceType, { type: "go:1.22" });
 
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
   });
 
   test("rejects framework values outside the supported set with remediation", async () => {

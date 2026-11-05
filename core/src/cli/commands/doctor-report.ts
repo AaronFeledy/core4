@@ -13,7 +13,6 @@ import {
   type ConfigService,
   DeprecationService,
   FileSystem,
-  HostProxyService,
   type PathsService,
   type PluginRegistry,
   RouterService,
@@ -30,10 +29,12 @@ import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { debuggerHostDoctor } from "./doctor-debugger";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
+import { listenerDoctorChecks } from "./doctor-listeners";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
@@ -190,6 +191,9 @@ const EMPTY_CHECKS = { checks: [] } as const;
 export interface CollectDoctorReportInput<R> {
   readonly options: DoctorOptions;
   readonly provider: Effect.Effect<DoctorResult, never, R>;
+  readonly listeners?: (
+    input: Parameters<typeof listenerDoctorChecks>[0],
+  ) => Effect.Effect<DoctorResult, never, R>;
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
   readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
   readonly appConfig?: Effect.Effect<
@@ -272,6 +276,30 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   });
   // Provider-section self checks are lifted here so the report has one home for them.
   selfChecks.push(...(provider.selfChecks ?? []));
+  skipped.push(...(provider.skipped ?? []));
+  let appListeners: DoctorResult | undefined;
+  if (options.app === true && !skipped.some((entry) => entry.section === "app-listeners")) {
+    yield* tree.startTask("app-listeners");
+    // The listener collector owns its isolation; another deadline could race its non-fatal skip.
+    appListeners =
+      input.listeners === undefined
+        ? {
+            checks: [],
+            skipped: [
+              {
+                section: "app-listeners",
+                status: "skipped",
+                reason: "Runtime listener inspection was not provided.",
+              },
+            ],
+          }
+        : yield* input.listeners({ budgetMs, redact });
+    skipped.push(...(appListeners.skipped ?? []));
+    if (appListeners.checks.length === 0 && (appListeners.skipped?.length ?? 0) > 0)
+      yield* tree.infoTask("app-listeners", "app-listeners · skipped");
+    else
+      yield* settleDoctorSection(tree, "app-listeners", checksOutcome("app-listeners", appListeners.checks));
+  }
   const certs = yield* section(
     "certificate-authority",
     input.certs ?? certsDoctorStatus(redact),
@@ -365,10 +393,20 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
+  const debuggerHost = yield* isolateDoctorSection({
+    section: "debugger-host",
+    effect: debuggerHostDoctor(redact, budgetMs, options.platform),
+    fallback: { checks: [] },
+    budgetMs,
+    redact,
+  });
+  if (debuggerHost.self !== undefined) selfChecks.push(debuggerHost.self);
+  skipped.push(...(debuggerHost.value.skipped ?? []));
   const report: DoctorReport = {
     version: CORE_VERSION,
     ...(skipped.length === 0 ? {} : { skipped }),
     provider: { checks: provider.checks },
+    ...(appListeners === undefined ? {} : { appListeners: { checks: appListeners.checks } }),
     subsystems: {
       checks: [
         ...subsystems.checks,
@@ -378,6 +416,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         ...orphanedSnapshots.value,
         ...legacyCatalogs.value,
         ...filesystemWatch.value,
+        ...debuggerHost.value.checks,
       ],
     },
     globalApp,
@@ -410,14 +449,14 @@ export const doctorReport = Effect.fn("Doctor.report")(
     Effect.gen(function* () {
       const router = yield* Effect.serviceOption(RouterService);
       const ssh = yield* Effect.serviceOption(SshService);
-      const hostProxy = yield* Effect.serviceOption(HostProxyService);
       const resolver = yield* Effect.serviceOption(HostDnsResolver);
-      const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh) || Option.isSome(hostProxy);
+      const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh);
       return yield* collectDoctorReport<
         ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
       >({
         options,
         provider: doctor(options),
+        listeners: listenerDoctorChecks,
         deprecations: doctorDeprecations(),
         appConfig: appConfigForReport(),
         ...(hasRuntimeSubsystems || Option.isSome(resolver)

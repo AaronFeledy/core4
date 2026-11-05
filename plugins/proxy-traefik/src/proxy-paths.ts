@@ -1,6 +1,6 @@
 import { posix, win32 } from "node:path";
 
-import type { AppId } from "@lando/sdk/schema";
+import type { AppRouteOwner } from "@lando/sdk/schema";
 
 import type { ProxyPaths } from "./proxy-types.ts";
 
@@ -13,18 +13,9 @@ export const joinFor = (paths: ProxyPaths) => (paths.platform === "win32" ? win3
 export const dynamicConfigDir = (paths: ProxyPaths): string =>
   joinFor(paths)(paths.globalAppRoot, "proxy-traefik", "dynamic");
 
-export const diagnosticDir = (paths: ProxyPaths): string =>
-  joinFor(paths)(paths.globalAppRoot, "proxy-traefik", "diagnostic");
-
-export const diagnosticConfigFile = (paths: ProxyPaths): string =>
-  joinFor(paths)(diagnosticDir(paths), "nginx.conf");
-
 // Lives beside the watched directory, never inside it: the watched directory is exactly what is broken when this record is written.
 export const watcherDiagnosticFile = (paths: ProxyPaths): string =>
   joinFor(paths)(paths.globalAppRoot, "proxy-traefik", "watcher-diagnostic.json");
-
-export const diagnosticHtmlFile = (paths: ProxyPaths): string =>
-  joinFor(paths)(diagnosticDir(paths), "404.html");
 
 export const fallbackConfigFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), "fallback.yml");
@@ -32,11 +23,8 @@ export const fallbackConfigFile = (paths: ProxyPaths): string =>
 export const dashboardConfigFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), "dashboard.yml");
 
-export const routeFile = (paths: ProxyPaths, app: AppId): string =>
-  joinFor(paths)(
-    dynamicConfigDir(paths),
-    `${ROUTE_FILE_PREFIX}${encodeURIComponent(String(app))}${ROUTE_FILE_SUFFIX}`,
-  );
+export const routeFile = (paths: ProxyPaths, owner: AppRouteOwner): string =>
+  joinFor(paths)(dynamicConfigDir(paths), `${ROUTE_FILE_PREFIX}${owner.ownerKey}${ROUTE_FILE_SUFFIX}`);
 
 export const routingStateFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), ".lando-routing-state");
@@ -71,10 +59,9 @@ export const defaultCertificateFiles = (paths: ProxyPaths, defaultDomain: string
 export const defaultIssuerFile = (paths: ProxyPaths, defaultDomain: string): string =>
   joinFor(paths)(certificateDir(paths), `default-${encodeURIComponent(defaultDomain)}.ca.crt`);
 
-export const appCertificateFiles = (paths: ProxyPaths, app: AppId) => {
-  const encodedApp = encodeURIComponent(String(app));
+export const appCertificateFiles = (paths: ProxyPaths, owner: AppRouteOwner) => {
   return {
-    cert: joinFor(paths)(certificateDir(paths), `${encodedApp}.crt`),
-    key: joinFor(paths)(certificateDir(paths), `${encodedApp}.key`),
+    cert: joinFor(paths)(certificateDir(paths), `${owner.ownerKey}.crt`),
+    key: joinFor(paths)(certificateDir(paths), `${owner.ownerKey}.key`),
   };
 };

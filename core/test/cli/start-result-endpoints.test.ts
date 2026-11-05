@@ -23,6 +23,7 @@ const expectQuiet = (text: string, width: number): void => {
 };
 
 const decorated = (columns = 80): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns,
@@ -238,6 +239,7 @@ describe("renderStartAppResult endpoint hyperlinks", () => {
       "ready: my-app - web (running) Host: http://my-app.lndo.site, https://my-app.lndo.site, http://localhost:3000, tcp://localhost:5432";
     const plain = renderStartAppResult(counterpartResult);
     const nonTty = renderStartAppResult(counterpartResult, {
+      noColor: false,
       mode: "lando",
       format: "text",
       columns: 80,

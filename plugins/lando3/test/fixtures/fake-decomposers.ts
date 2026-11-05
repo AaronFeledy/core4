@@ -1,4 +1,8 @@
-import { ConfigTranslateDocumentSetInput, ConfigTranslateSourceId } from "@lando/sdk/schema";
+import {
+  type ConfigTranslateDocument,
+  ConfigTranslateDocumentSetInput,
+  ConfigTranslateSourceId,
+} from "@lando/sdk/schema";
 import type {
   RecipeDecomposeInput,
   RecipeDecomposeResult,
@@ -15,7 +19,11 @@ export const document = (path: string, text: string) => ({
   contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update(text).digest("hex")}`,
   bytes: Buffer.from(text).toString("base64"),
 });
-export const documentSet = (documents: ReadonlyArray<ReturnType<typeof document>>) =>
+export const documentSet = (
+  documents: ReadonlyArray<
+    Omit<ReturnType<typeof document>, "layerId"> & Pick<ConfigTranslateDocument, "layerId">
+  >,
+) =>
   Schema.decodeUnknownSync(ConfigTranslateDocumentSetInput)({
     _tag: "landofile-document-set",
     documents,

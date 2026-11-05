@@ -105,6 +105,21 @@ Chrome and Edge trust the Windows store immediately. Firefox uses its own store,
 
 You do not need a Windows Lando install for this CA step. Native Windows binaries are a separate install path.
 
+## Debug PHP from a Windows IDE
+
+When PhpStorm or VS Code runs on Windows and the app runs in this distro, Xdebug must reach the Windows listener, not only the WSL VM. After setup, from the app directory:
+
+```sh
+lando config set debugger.host windows
+lando doctor
+lando start
+lando xdebug status
+```
+
+`windows` works on WSL 2 NAT networking. Other modes need an explicit IPv4 or IPv6 address instead. Allow inbound TCP 9003 on Windows with an elevated PowerShell rule, then follow [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx#reach-a-windows-ide-from-wsl).
+
+Doctor's `debugger-host` check reports configuration and Windows host discovery, not IDE reachability. Leaving `debugger.host` unset keeps the provider's host gateway even if doctor discovers a Windows address. To test the listener from the PHP service, start your IDE's debug listener and run explicit `lando xdebug status`. A reachable TCP listener does not prove a DBGp debug session; verify a breakpoint too. A failed connection prints its reason and conditional guidance without failing the status command.
+
 ## Verify
 
 ```sh

@@ -157,12 +157,15 @@ const fixtureFiles = ["docs/guides/**/fixtures/**", "recipes/*/.scaffold/**"]
 const fixtureRoots = [...new Set(fixtureFiles.map(dirname))];
 const outcomes: { fixture: string; leaves?: number; reason?: string }[] = [];
 const acquisitionExclusions = new Map([
+  ["docs/guides/config-lint/fixtures/two-broken-includes", "LandofileLoadError"],
   ["docs/guides/compose-service-block/fixtures/compose-service-block-rejected", "ComposeKeyRejectedError"],
   ["docs/guides/networks/fixtures/networks-pinned-address", "ComposeKeyRejectedError"],
   ["docs/guides/includes-and-lockfile/fixtures/user-profile-demo", "LandofileIncludeError"],
   ["docs/guides/migrating-recipes/fixtures/programmatic-app", "LandofileFormConflictError"],
   ["docs/guides/timezone/fixtures/timezone-rejected-interpolation", "LandofileValidationError"],
   ["docs/guides/expressions/fixtures/expressions-unescaped-shell", "LandofileValidationError"],
+  ["docs/guides/secret-stores/fixtures/secret-stores-build-args", "LandofileValidationError"],
+  ["docs/guides/secret-stores/fixtures/secret-stores-command-misuse", "LandofileValidationError"],
   ["docs/guides/your-landofile/fixtures/flow-mapping-rejected", "LandofileParseError"],
   ["docs/guides/your-landofile/fixtures/dual-form-conflict", "LandofileFormConflictError"],
 ]);

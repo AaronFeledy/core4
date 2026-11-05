@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
@@ -7,8 +7,8 @@ import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect"
 import { ShellExecError } from "@lando/sdk/errors";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
-import * as BunShellRunner from "../../src/services/shell-runner";
 import { withShellRedactionTokens } from "../../src/services/shell-runner";
+import * as BunShellRunner from "../shell-runner.ts";
 
 import { testRedactionLayer } from "../redaction.ts";
 
@@ -27,6 +27,7 @@ const captureEventsLayer = (events: LandoEvent[]) =>
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     } satisfies Context.Service.Shape<typeof EventService>),
@@ -45,6 +46,55 @@ const replInput = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<Shel
   })();
 
 describe("BunShellRunner.layer", () => {
+  test.each(["exec", "run"] as const)("%s derives PWD from supplied cwd", async (method) => {
+    // Given
+    const cwd = await mkdtemp(join(tmpdir(), "lando-shell-pwd-"));
+    try {
+      // When
+      const result = await Effect.runPromise(
+        Effect.flatMap(ShellRunner, (shell) => shell[method]('pwd; printf "%s\\n" "$PWD"', { cwd })).pipe(
+          Effect.provide(shellRunnerLayer),
+        ),
+      );
+      // Then
+      const canonical = await realpath(cwd);
+      expect(result).toEqual({ exitCode: 0, stdout: `${canonical}\n${canonical}\n`, stderr: "" });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test.each([undefined, "caller-pwd", ""])("interactive honors cwd and PWD override %j", async (pwd) => {
+    // Given
+    const cwd = await mkdtemp(join(tmpdir(), "lando-shell-interactive-pwd-"));
+    let stdout = "";
+    try {
+      // When
+      const result = await Effect.runPromise(
+        Effect.flatMap(ShellRunner, (shell) =>
+          shell.interactive({
+            cwd,
+            ...(pwd === undefined ? {} : { env: { PWD: pwd } }),
+            resolveSecret: () => Effect.die("secret not expected"),
+            io: {
+              input: replInput({ _tag: "line", line: 'pwd; printf "%s\\n" "$PWD"' }, { _tag: "eof" }),
+              writeStdout: (chunk) => {
+                stdout += chunk;
+              },
+              writeStderr: () => {},
+            },
+          }),
+        ).pipe(Effect.provide(shellRunnerLayer)),
+      );
+      // Then
+      expect(result.exitCode).toBe(0);
+      const canonical = await realpath(cwd);
+      expect(stdout).toBe(`${canonical}\n${pwd ?? canonical}\n`);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("runs a command with env and captures stdout", async () => {
     const result = await execShell("echo $FOO", { env: { FOO: "bar" } });
 
@@ -99,6 +149,69 @@ describe("BunShellRunner.layer", () => {
         expect(failure.value).toBeInstanceOf(ShellExecError);
         expect(failure.value.command).toBe("echo &&");
       }
+    }
+  });
+
+  test("refuses text Bun Shell would misread before anything starts", async () => {
+    // Given a command whose first part would run before Bun Shell reached the bad redirection
+    const root = await mkdtemp(join(tmpdir(), "lando-shell-dialect-"));
+    const events: LandoEvent[] = [];
+    try {
+      // When
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(ShellRunner, (shell) => shell.exec("touch ran; echo done >&2", { cwd: root })).pipe(
+          Effect.provide(Layer.mergeAll(shellRunnerLayer, redactionLayer, captureEventsLayer(events))),
+        ),
+      );
+      // Then nothing ran, no exec event was published, and the error carries the fix
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.findErrorOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value.message).toBe(
+            "Column 22: Bun Shell needs an explicit source descriptor in >&2.",
+          );
+          expect(failure.value.remediation).toBe("Write 1>&2.");
+          expect(failure.value.exitCode).toBeUndefined();
+        }
+      }
+      expect(await Bun.file(join(root, "ran")).exists()).toBe(false);
+      expect(events.filter((event) => event._tag === "pre-shell-exec")).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("runScript scans .sh files with script positionals and leaves other files to Bun", async () => {
+    // Given a Bun Shell script, a script that uses $#, and a TypeScript file with a ${...} template
+    const root = await mkdtemp(join(tmpdir(), "lando-shell-script-dialect-"));
+    try {
+      await writeFile(join(root, "ok.sh"), 'echo "first=$1"\n');
+      await writeFile(join(root, "bad.sh"), "touch ran\necho $#\n");
+      await writeFile(join(root, "template.ts"), "const name = 'x'; console.log(`hi ${name}`);\n");
+      const run = (file: string, argv: string[] = []) =>
+        Effect.runPromiseExit(
+          Effect.flatMap(ShellRunner, (shell) =>
+            shell.runScript(file, { cwd: root, argv, capture: true }),
+          ).pipe(Effect.provide(shellRunnerLayer)),
+        );
+      // When
+      const ok = await run(join(root, "ok.sh"), ["one"]);
+      const bad = await run("bad.sh");
+      const template = await run(join(root, "template.ts"));
+      // Then
+      expect(Exit.isSuccess(ok) && ok.value.stdout).toBe("first=one\n");
+      expect(Exit.isFailure(bad)).toBe(true);
+      if (Exit.isFailure(bad)) {
+        const failure = Cause.findErrorOption(bad.cause);
+        if (failure._tag === "Some")
+          expect(failure.value.message).toBe(`${join(root, "bad.sh")}:2:6: Bun Shell does not expand $#.`);
+      }
+      expect(await Bun.file(join(root, "ran")).exists()).toBe(false);
+      expect(Exit.isSuccess(template) && template.value.stdout).toBe("hi x\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -177,7 +290,7 @@ describe("BunShellRunner.layer", () => {
     // When
     const result = await Effect.runPromise(
       withShellRedactionTokens(
-        [secret],
+        { substring: [secret] },
         Effect.flatMap(ShellRunner, (shellRunner) =>
           shellRunner.exec(`test -z "$EVENT_TASK_TOKEN" && printf '${secret}' && printf '${secret}' 1>&2`),
         ),
