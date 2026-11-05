@@ -3,7 +3,7 @@ import { X509Certificate, createPublicKey } from "node:crypto";
 import { Effect, Schema } from "effect";
 
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { AppId } from "@lando/sdk/schema";
+import { type AppId, certificateNameForHostname } from "@lando/sdk/schema";
 
 const AckSchema = Schema.Struct({ digest: Schema.String });
 type Ack = typeof AckSchema.Type;
@@ -48,18 +48,22 @@ export const certificatePairIsCurrent = (
     const validTo = Date.parse(certificate.validTo);
     if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom || now >= validTo)
       return false;
-    // checkHost never matches a literal "*" label, so a wildcard route is
-    // covered only by the same wildcard DNS entry in the certificate.
+    // Route hostnames map through certificateNameForHostname first. A leftmost
+    // partial wildcard becomes *.<rest>; checkHost never matches a literal "*"
+    // label, so wildcard SANs require an exact DNS entry on the certificate.
     const dnsNames = new Set(
       (certificate.subjectAltName ?? "")
         .split(", ")
         .filter((entry) => entry.startsWith("DNS:"))
         .map((entry) => entry.slice("DNS:".length).toLowerCase()),
     );
-    const covers = (hostname: string) =>
-      hostname.startsWith("*.")
-        ? dnsNames.has(hostname.toLowerCase())
-        : certificate.checkHost(hostname) !== undefined;
+    const covers = (hostname: string) => {
+      const name = certificateNameForHostname(hostname);
+      if (name === undefined) return false;
+      return name.startsWith("*.")
+        ? dnsNames.has(name.toLowerCase())
+        : certificate.checkHost(name) !== undefined;
+    };
     if (!hostnames.every(covers)) return false;
     const certificateKey = certificate.publicKey.export({ type: "spki", format: "der" });
     const privateKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "der" });

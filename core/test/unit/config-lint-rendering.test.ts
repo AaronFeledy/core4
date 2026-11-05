@@ -139,7 +139,6 @@ describe("config lint multiline suggestions", () => {
     const [finding] = renderConfigLintViolations([
       excessKey({
         path: ["x\nforged"],
-        rule: "lint\nforged",
         message: "bad\nforged",
         suggestion: "safe\n  value",
         source: { file: "/app/evil\nforged.yml", layer: "canonical", path: ["x\nforged"] },

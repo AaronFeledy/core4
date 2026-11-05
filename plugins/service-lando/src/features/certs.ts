@@ -4,7 +4,7 @@
  */
 import { Effect, Schema } from "effect";
 
-import { PortablePath } from "@lando/sdk/schema";
+import { CertificateName, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 const LANDO_CERTS_FEATURE_ID = "lando.certs" as const;
@@ -17,8 +17,8 @@ const leafFileName = (serviceName: string): string => encodeURIComponent(service
 const LandoCertsFeatureConfigSchema = Schema.Struct({
   certPath: Schema.optionalKey(Schema.String),
   keyPath: Schema.optionalKey(Schema.String),
-  cn: Schema.optionalKey(Schema.String),
-  sans: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+  cn: Schema.optionalKey(CertificateName),
+  sans: Schema.Array(CertificateName).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   caId: Schema.optionalKey(Schema.String),
 }).pipe(
   Schema.check(

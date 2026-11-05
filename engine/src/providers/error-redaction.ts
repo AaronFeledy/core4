@@ -116,6 +116,7 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
         message: redactor.redactString(error.message),
         service: redactor.redactString(error.service),
         target: error.target,
+        ...(error.role === undefined ? {} : { role: error.role }),
         remediation: redactor.redactString(error.remediation),
       });
     case "ServiceExecError":

@@ -90,7 +90,7 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
   });
 };
 
-test("lint declares service and app listeners without apply, certificates, provider or cache", async () => {
+test("lint plans declared listeners without certificates, provider or cache", async () => {
   // Given
   const calls: string[] = [];
   const root = await mkdtemp(join(tmpdir(), "lando-declarations-"));
@@ -137,7 +137,7 @@ test("lint declares service and app listeners without apply, certificates, provi
     );
     // Then
     expect(result.valid).toBe(true);
-    expect(calls).toEqual(["service-declaration", "app-declaration"]);
+    expect(calls).toEqual(["service-declaration", "app-declaration", "service-apply", "app-apply"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

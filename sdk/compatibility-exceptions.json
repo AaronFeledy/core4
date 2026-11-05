@@ -1,5 +1,223 @@
 [
   {
+    "surface": "command:app:config:lint",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows config diagnostic rule strings to the 28 registered ConfigLintRuleId literals, preserving every existing producer id and publishing each rule's description. Unknown ids are rejected at decode; reasons remain open strings. Focused SDK and lint tests cover the contract."
+  },
+  {
+    "surface": "command:app:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "unsupported-construct",
+    "path": "$.failures.items.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally restricts additional validation diagnostic rule ids to ConfigLintRuleId. Plugins must use a registered id or omit rule; all existing producer ids remain unchanged."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "unsupported-construct",
+    "path": "$.failures.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally restricts validation diagnostic rule ids to ConfigLintRuleId. Plugins must use a registered id or omit rule; all existing producer ids remain unchanged."
+  },
+  {
+    "surface": "command:app:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.appConfig.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows doctor config lint rule ids to the shared ConfigLintRuleId registry, retaining all 28 producer ids and their existing severities. Focused doctor rendering and schema tests cover the narrowed contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.globalConfig.error.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows global config diagnostic rule ids to ConfigLintRuleId. Registered host-shell and unsupported-expression ids are preserved; plugins must use a registered id or omit rule."
+  },
+  {
+    "surface": "command:meta:global:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:meta:global:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows additional validation diagnostic rule ids to ConfigLintRuleId. Unknown rule ids are rejected at decode and the diagnostic projection retains the structured failure without invalid issues."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.rule.anyOf",
+    "justification": "Pre-release #1648 intentionally narrows validation diagnostic rule ids to ConfigLintRuleId. Unknown rule ids are rejected at decode and the bug-report regression proves the structured failure survives without invalid issues."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "Pre-release #1648 replaces arbitrary lint rule strings with the 28 annotated ConfigLintRuleId literals from one authored registry. All existing producer ids remain unchanged and focused schema and lint tests cover acceptance and rejection."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.rule.anyOf",
+    "justification": "Pre-release #1648 replaces arbitrary lint rule strings with the 28 annotated ConfigLintRuleId literals from one authored registry. The SDK regression rejects unknown ids and checks that published per-rule descriptions match registry summaries."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:DestroyOutcome",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows nested shutdown inspection diagnostic rule ids to ConfigLintRuleId. The destroyed and no-op branches remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:FileSyncQuiesceResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "schema:ObservedServiceRemoval",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows nested shutdown inspection diagnostic rule ids to ConfigLintRuleId. The removed and absent branches remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:ServiceShutdownObservation",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids in the inspect-failed branch's TaggedErrorJson ValidationIssue values to ConfigLintRuleId. Shutdown observations and their discriminators remain unchanged; the conservative union gate flags the nested diagnostic narrowing."
+  },
+  {
+    "surface": "schema:StopAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Pre-release #1648 narrows rule ids inside shutdown inspection diagnostic ValidationIssue values to the shared ConfigLintRuleId registry. The shutdown variants and observation semantics are unchanged; only their nested diagnostic contract tightens."
+  },
+  {
+    "surface": "command:app:share",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 aligns tunnel route targets with RouteHostname, including leftmost wildcard patterns and 253-character hostnames selected by defaultTunnelTarget. Session and provider identifiers retain filename-safe TunnelIdentifier validation. SDK and share-target regressions cover this intentional grammar change."
+  },
+  {
+    "surface": "command:app:share:list",
+    "changeKind": "unsupported-construct",
+    "path": "$.items.target.anyOf",
+    "justification": "Pre-release #1583 propagates the reviewed TunnelTarget route grammar into share-list results. Route ids accept RouteHostname or TunnelIdentifier; hostname accepts RouteHostname, while session ids remain filename-safe."
+  },
+  {
+    "surface": "schema:CertificatePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.cn.allOf",
+    "justification": "Pre-release #1583 intentionally narrows certificate common names to CertificateName: ASCII host-alias DNS names, optional whole leftmost wildcard label, or unbracketed IP literals without zones. Mandatory service identities fail with a tagged validation error before CA issuance.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
+  },
+  {
+    "surface": "schema:CertificatePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.sans.items.allOf",
+    "justification": "Pre-release #1583 intentionally validates every certificate SAN with CertificateName. Partial leftmost route wildcards map to the covering *.rest SAN; deeper wildcard routes require HTTP and contribute no certificate identity. Service-certs and proxy issuance regressions verify the CA receives valid mapped names.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
+  },
+  {
+    "surface": "schema:HostAliasPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-release #1583 intentionally replaces unrestricted host alias strings with HostAliasName: underscore-capable DNS-shaped labels bounded to 63 characters each and 253 total, without wildcard, scheme, port, path, whitespace, trailing dot, or boundary hyphen. Authored extra_hosts and feature-contributed aliases fail with structured field paths.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.authorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates RouteHostname into proxy authority results. Published authorities preserve the route pattern, including partial leftmost wildcards, while rejecting malformed host strings."
+  },
+  {
+    "surface": "schema:ProxyAuthority",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-release #1583 intentionally constrains proxy authority hostnames to the same RouteHostname grammar as planned routes. Scheme, port, path, whitespace, and malformed labels belong outside this field; valid wildcard route patterns remain representable."
+  },
+  {
+    "surface": "schema:ProxyStatus",
+    "changeKind": "unsupported-keyword",
+    "path": "$.authorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates the reviewed ProxyAuthority RouteHostname contract into proxy status observations, preserving authored route patterns and rejecting malformed authority hostnames."
+  },
+  {
+    "surface": "schema:RouteEvidence",
+    "changeKind": "unsupported-keyword",
+    "path": "$.configuredAuthorities.items.hostname.pattern",
+    "justification": "Pre-release #1583 propagates RouteHostname into configured authorities retained as route evidence. These values describe planned route patterns, so their grammar now matches RoutePlan rather than unrestricted strings."
+  },
+  {
+    "surface": "schema:RouteEvidence",
+    "changeKind": "unsupported-construct",
+    "path": "$.observation.anyOf",
+    "justification": "Pre-release #1583 propagates the reviewed ProxyAuthority hostname grammar into observed route evidence. Observation variants and lifecycle meaning remain unchanged; their authority hostname fields now use RouteHostname."
+  },
+  {
+    "surface": "schema:TunnelSession",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 propagates the shared RouteHostname target grammar into tunnel sessions. Wildcard and maximum-length route hostnames selected by the planner decode correctly; session ids continue to reject wildcard characters and remain filename-safe.",
+    "persistedState": {
+      "store": "tunnel-registry",
+      "version": 2
+    }
+  },
+  {
+    "surface": "schema:TunnelSessionFilter",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 lets tunnel session filters address the same RouteHostname patterns accepted by TunnelTarget, including wildcard and long hostnames. Provider and session identifiers retain TunnelIdentifier."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.target.anyOf",
+    "justification": "Pre-release #1583 aligns tunnel start targets with routes copied by defaultTunnelTarget: hostname uses RouteHostname and routeId accepts RouteHostname or TunnelIdentifier. Non-route targets and filename-safe session identifiers retain their contracts."
+  },
+  {
+    "surface": "schema:TunnelTarget",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release #1583 replaces the private tunnel hostname grammar with RouteHostname and lets routeId carry RouteHostname or TunnelIdentifier. This accepts valid wildcard and 253-character routes while rejecting malformed hostnames; session and provider ids remain separately constrained for filenames.",
+    "persistedState": {
+      "store": "tunnel-registry",
+      "version": 2
+    }
+  },
+  {
     "surface": "schema:ServiceFeatureValidationResult",
     "changeKind": "enum-widened",
     "path": "$.handledServiceFields.items",
@@ -537,7 +755,11 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown."
+    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:CurrentExecutableAppPlan",
@@ -789,13 +1011,21 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.routes.items.hostname.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.routes.items.pathPrefix.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:DatasetContext",
@@ -939,13 +1169,21 @@
     "surface": "schema:RoutePlan",
     "changeKind": "unsupported-keyword",
     "path": "$.hostname.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:RoutePlan",
     "changeKind": "unsupported-keyword",
     "path": "$.pathPrefix.pattern",
-    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceInfo",
@@ -1527,7 +1765,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "US-615 route shorthand and filters"
+    "justification": "US-615 route shorthand and filters",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
@@ -1695,7 +1937,11 @@
     "surface": "schema:RoutePlan",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "US-615 route shorthand and filters"
+    "justification": "US-615 route shorthand and filters",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceConfig",
@@ -2823,7 +3069,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown."
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
@@ -3033,7 +3283,11 @@
     "surface": "schema:ServicePlan",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form."
+    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceConfig",
@@ -3939,7 +4193,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-construct",
     "path": "$.networking.perAppBridge.anyOf",
-    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:DatasetContext",
@@ -4017,13 +4275,21 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-keyword",
     "path": "$.environment.additionalProperties",
-    "justification": "Pre-release environment values now include explicit SecretRef and BoundText descriptors; literal strings remain literal data."
+    "justification": "Pre-release environment values now include explicit SecretRef and BoundText descriptors; literal strings remain literal data.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServicePlan",
     "changeKind": "property-removed",
     "path": "$.environmentSecrets",
-    "justification": "Remove the unshipped parallel secret map; each environment entry now owns its complete literal or deferred value."
+    "justification": "Remove the unshipped parallel secret map; each environment entry now owns its complete literal or deferred value.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:ServiceConfig",
@@ -4587,7 +4853,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.events.additionalProperties",
-    "justification": "Reviewed pre-release plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+    "justification": "Reviewed pre-release plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:DatasetContext",
@@ -5031,7 +5301,11 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.endpoints.items.anyOf",
-    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:TomcatServiceConfig",
@@ -5283,7 +5557,11 @@
     "surface": "schema:AppPlan",
     "changeKind": "property-removed",
     "path": "$.networks",
-    "justification": "Pre-release E6 removes the duplicate networks array in favor of AppPlan.networking. Persisted plans decode historical excess properties without requiring a migration."
+    "justification": "Pre-release E6 removes the duplicate networks array in favor of AppPlan.networking. Persisted plans decode historical excess properties without requiring a migration.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 4
+    }
   },
   {
     "surface": "schema:CurrentExecutableAppPlan",

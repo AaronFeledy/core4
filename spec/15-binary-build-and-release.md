@@ -64,6 +64,7 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `bundled-command-descriptors` | Ship list, bundled plugin manifests, and their command modules | Cold-safe bundled command descriptor table | Derived drift and descriptor parity tests |
 | `command-reference` | Command registry, manifest, and bundled command descriptors | CLI command reference for built-in and bundled plugin commands | Derived regeneration and docs build |
 | `compose-key-matrix` | Compose dispositions | Compose compatibility reference | Derived regeneration and docs build |
+| `config-lint-rule-reference` | `CONFIG_LINT_RULES` descriptors | `docs/reference/config-lint-rules.mdx` | Derived regeneration, reference-rendering tests, and docs build |
 | `opentui-native-stubs` | Native-root catalog, release targets, installed OpenTUI metadata, lockfile | Target mapping and non-target stubs | Derived drift and per-target relocated smoke |
 | `php-base-images` | PHP prerequisites and supported versions | Versioned PHP Dockerfiles | Derived drift and image tests |
 | `ci-workflow` | CI platform and supply-chain configuration | PR CI workflow | Committed-workflow regeneration and diff |

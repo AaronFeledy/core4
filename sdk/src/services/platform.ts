@@ -22,6 +22,7 @@ import type {
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppPlan,
+  CertificateSpec,
   EndpointRef,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -41,10 +42,7 @@ export interface CaSetupOptions {
   readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
 }
 
-export interface CertificateSpec {
-  readonly cn: string;
-  readonly sans: ReadonlyArray<string>;
-}
+export type { CertificateSpec } from "../schema/index.ts";
 
 export interface CertificateResult {
   readonly certPath: string;

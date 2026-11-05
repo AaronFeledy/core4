@@ -255,8 +255,14 @@ const knownEventSetFrom = Effect.fnUntraced(function* (
   };
 });
 
-export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
-  const result = yield* resolveLandofileForPlanning(input);
+export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
+  input: KnownEventSetInput,
+  resolution?: ResolvedLandofile,
+) {
+  const result =
+    resolution === undefined
+      ? yield* resolveLandofileForPlanning(input)
+      : { _tag: "Resolved" as const, resolution };
   for (const [name, service] of Object.entries(result.resolution.landofile.services ?? {})) {
     for (const role of ["healthcheck", "readiness"] as const) {
       const probe = service[role];
