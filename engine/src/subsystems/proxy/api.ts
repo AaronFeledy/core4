@@ -32,11 +32,11 @@ export const layerUnavailable = Layer.succeed(
     // router left behind stays reported until a selected router revalidates it.
     revalidateStartup: Effect.void,
     applyRoutes: unavailableOperation(
-      (_routes, _appId) =>
+      (_routes, owner) =>
         new ProxyApplyError({
           message: ROUTER_UNAVAILABLE_MESSAGE,
           proxyId: UNAVAILABLE_ID,
-          app: String(_appId),
+          app: String(owner.id),
           remediation: "Install and select a RouterService plugin, then retry route application.",
         }),
     ),

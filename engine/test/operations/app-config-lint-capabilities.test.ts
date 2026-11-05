@@ -26,7 +26,7 @@ const lint = (root: string, capabilities: ProviderCapabilities | undefined) =>
   );
 
 test.each([
-  ["node", undefined, true],
+  ["node", undefined, false],
   ["node", false, true],
   ["node", true, false],
   ["compose", undefined, true],
@@ -46,7 +46,7 @@ test.each([
     expect(result.valid).toBe(valid);
     const findings = result.violations.filter((issue) => issue.path.join(".") === "services.web.init");
     expect(findings.map((issue) => issue.severity)).toEqual(
-      init === undefined ? ["warning"] : valid ? [] : ["error"],
+      init === undefined ? (type === "node" ? ["warning", "error"] : ["warning"]) : valid ? [] : ["error"],
     );
   } finally {
     await rm(root, { recursive: true, force: true });

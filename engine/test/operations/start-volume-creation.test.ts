@@ -200,3 +200,43 @@ test("a retry can claim seed initialization after apply creates a volume then fa
   expect((await Effect.runPromise(initialization.read))?.state._tag).toBe("fresh");
   expect(await Effect.runPromise(initialization.begin("db-seed"))).toBe(true);
 });
+
+test("start makes the provider ready before it locates plan volumes", async () => {
+  // Given a powered-off runtime: locating a volume only works after ensureReady.
+  const plannedApp: AppPlan = {
+    ...plan,
+    identity: { appRoot: plan.root, ownerKey: "owner" },
+    stores: [{ name: "data", scope: "app", kind: "data" }],
+  };
+  const calls: string[] = [];
+  const harness = makeHarness({
+    plannedApp,
+    providerOverrides: {
+      ...TestRuntimeProvider,
+      ensureReady: Effect.sync(() => {
+        calls.push("ensureReady");
+      }),
+    },
+    locateVolume: () =>
+      Effect.sync(() => {
+        calls.push("locateVolume");
+        return { coordinationKey: "daemon/data", nativeName: "data" };
+      }),
+  });
+
+  // When
+  await Effect.runPromise(
+    startApp(
+      {},
+      {
+        plan: plannedApp,
+        root: plannedApp.root,
+        app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
+      },
+    ).pipe(Effect.provide(harness.layer)),
+  );
+
+  // Then
+  expect(calls[0]).toBe("ensureReady");
+  expect(calls).toContain("locateVolume");
+});

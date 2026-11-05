@@ -6,6 +6,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lan
 import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
+import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { applyAppRoutes } from "../../src/lifecycle/routes.ts";
 import { collectObservedConnections, observeService } from "../../src/operations/connection-collector.ts";
 import { web } from "../operations/start-progress-topology-support.ts";
@@ -45,13 +46,13 @@ describe("applyAppRoutes", () => {
     async (fails) => {
       // Given
       const plan: AppPlan = { ...cachedPlan, routes: [], router: { enabled: true } };
-      const calls: AppPlan["id"][] = [];
+      const calls: ReturnType<typeof routeOwnerFromPlan>[] = [];
       const proxy: RouterServiceShape = {
         ...makeTestRouterService(),
         setup: () => expect.unreachable("route-free app must not run setup"),
         applyRoutes: () => expect.unreachable("route-free app must not publish routes"),
-        removeRoutes: (app) =>
-          Effect.sync(() => void calls.push(app)).pipe(
+        removeRoutes: (owner) =>
+          Effect.sync(() => void calls.push(owner)).pipe(
             Effect.andThen(
               fails
                 ? Effect.fail(
@@ -71,7 +72,7 @@ describe("applyAppRoutes", () => {
       const result = await Effect.runPromise(applyAppRoutes(proxy, plan));
 
       // Then
-      expect(calls).toEqual([plan.id]);
+      expect(calls).toEqual([routeOwnerFromPlan(plan)]);
       expect(result).toEqual({ app: plan.id, appliedRoutes: [], authorities: [] });
     },
   );
@@ -113,9 +114,9 @@ describe("applyAppRoutes", () => {
         ...base,
         setup: (config) =>
           Effect.sync(() => void calls.push("setup")).pipe(Effect.andThen(base.setup(config))),
-        applyRoutes: (routes, app) =>
+        applyRoutes: (routes, owner) =>
           Effect.sync(() => void calls.push("applyRoutes")).pipe(
-            Effect.andThen(base.applyRoutes(routes, app)),
+            Effect.andThen(base.applyRoutes(routes, owner)),
           ),
       };
 

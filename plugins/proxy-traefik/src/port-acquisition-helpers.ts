@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, absurd } from "effect";
 
 import { RouterPortPinMismatch } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
@@ -17,9 +17,7 @@ import {
   DESIRED_HTTP_PORT,
   LOOPBACK_HOST,
   classifyAcquisition,
-  isOurLoopbackForwarder,
   probeBind,
-  probeTcpOpen,
   uniquePorts,
 } from "./port-acquisition.ts";
 import { identifyAnyPortHolder, systemdUnitForPid } from "./preferred-host-ports-linux.ts";
@@ -38,8 +36,6 @@ export type ProbedAcquisition = {
   readonly https: ClassifyAcquisitionInput["https"];
   readonly httpBinds: Readonly<Record<number, BindOutcome>>;
   readonly httpsBinds: Readonly<Record<number, BindOutcome>>;
-  readonly httpHolders?: Readonly<Record<number, string>>;
-  readonly httpsHolders?: Readonly<Record<number, string>>;
 };
 
 export type PersistedPair = {
@@ -248,20 +244,6 @@ export const probeCurrent = Effect.fn("TraefikRouter.probeCurrent")(function* (
   const httpsBind = httpsBinds[preferredHttps] ?? { kind: "other-error" as const };
   const httpHolder = yield* holderFieldsFor(preferredHttp, httpBind);
   const httpsHolder = yield* holderFieldsFor(preferredHttps, httpsBind);
-  const httpHolders: Record<number, string> = {};
-  const httpsHolders: Record<number, string> = {};
-  for (const port of DEFAULT_BACKEND_HTTP_TRY_LIST) {
-    const bind = httpBinds[port];
-    if (bind === undefined) continue;
-    const fields = yield* holderFieldsFor(port, bind);
-    if (fields !== undefined) httpHolders[port] = fields.holder;
-  }
-  for (const port of DEFAULT_BACKEND_HTTPS_TRY_LIST) {
-    const bind = httpsBinds[port];
-    if (bind === undefined) continue;
-    const fields = yield* holderFieldsFor(port, bind);
-    if (fields !== undefined) httpsHolders[port] = fields.holder;
-  }
   return {
     http: {
       bind: httpBind,
@@ -275,30 +257,31 @@ export const probeCurrent = Effect.fn("TraefikRouter.probeCurrent")(function* (
     },
     httpBinds,
     httpsBinds,
-    ...(Object.keys(httpHolders).length > 0 ? { httpHolders } : {}),
-    ...(Object.keys(httpsHolders).length > 0 ? { httpsHolders } : {}),
   };
 });
 
-const stillOwnPort = (input: {
-  readonly bind: BindOutcome | undefined;
-  readonly holder: string | undefined;
-  readonly helperTcpOpen: boolean;
-}): boolean => {
-  if (input.bind?.kind !== "EADDRINUSE") return false;
-  if (input.holder !== undefined && isOurLoopbackForwarder(input.holder)) return true;
-  return input.helperTcpOpen;
+const bindReusable = (bind: BindOutcome | undefined, owned: ReadonlySet<number>, port: number): boolean => {
+  if (bind === undefined) return false;
+  switch (bind.kind) {
+    case "success":
+      return true;
+    case "EADDRINUSE":
+      return owned.has(port);
+    case "EACCES":
+    case "other-error":
+      return false;
+    default:
+      return absurd<never>(bind);
+  }
 };
 
-const overrideOwned = (scheme: ClassifyAcquisitionInput["http"], bind: BindOutcome | undefined): boolean =>
-  stillOwnPort({
-    bind,
-    holder: scheme.holder,
-    helperTcpOpen:
-      scheme.forward.kind === "success" && scheme.holder !== undefined
-        ? isOurLoopbackForwarder(scheme.holder)
-        : false,
-  });
+const publicPortStillOwned = (
+  bind: BindOutcome | undefined,
+  owned: ReadonlySet<number>,
+  port: number,
+): boolean => {
+  return bind?.kind === "EADDRINUSE" && owned.has(port);
+};
 
 export const stillOwnPersisted = Effect.fn("TraefikRouter.stillOwnPersisted")(function* (
   dependencies: TraefikProxyDependencies,
@@ -306,13 +289,6 @@ export const stillOwnPersisted = Effect.fn("TraefikRouter.stillOwnPersisted")(fu
   probed: ProbedAcquisition,
   bindAddress: string,
 ) {
-  const override = dependencies.socketProxy?.classifyOverride;
-  if (override !== undefined) {
-    return (
-      overrideOwned(override.http, probed.httpBinds[previous.httpPort]) &&
-      overrideOwned(override.https, probed.httpsBinds[previous.httpsPort])
-    );
-  }
   if (dependencies.paths.platform === "win32" && dependencies.globalApp.ownedPublishPorts !== undefined) {
     const owned = new Set(
       yield* dependencies.globalApp.ownedPublishPorts(ServiceName.make("traefik"), [
@@ -322,35 +298,53 @@ export const stillOwnPersisted = Effect.fn("TraefikRouter.stillOwnPersisted")(fu
     );
     return owned.has(previous.httpPort) && owned.has(previous.httpsPort);
   }
+  const override = dependencies.socketProxy?.classifyOverride;
+  const hopPorts = [previous.bindHttpPort, previous.bindHttpsPort].filter(
+    (port): port is number => port !== undefined,
+  );
+  if (override !== undefined) {
+    const publicOccupied = [previous.httpPort, previous.httpsPort].filter((port) => {
+      const bind = probed.httpBinds[port] ?? probed.httpsBinds[port];
+      return bind?.kind === "EADDRINUSE";
+    });
+    const hopOccupied = hopPorts.filter((port) => {
+      const bind = probed.httpBinds[port] ?? probed.httpsBinds[port];
+      return bind?.kind === "EADDRINUSE";
+    });
+    const owned = yield* ownedRouterPorts(dependencies, [...publicOccupied, ...hopOccupied]);
+    if (
+      !publicPortStillOwned(probed.httpBinds[previous.httpPort], owned, previous.httpPort) ||
+      !publicPortStillOwned(probed.httpsBinds[previous.httpsPort], owned, previous.httpsPort)
+    ) {
+      return false;
+    }
+    for (const hop of hopPorts) {
+      const hopBind = probed.httpBinds[hop] ?? probed.httpsBinds[hop];
+      if (!bindReusable(hopBind, owned, hop)) return false;
+    }
+    return true;
+  }
   const probe = dependencies.probeBind ?? probeBind;
   const httpBind = yield* probe(bindAddress, previous.httpPort);
   const httpsBind = yield* probe(bindAddress, previous.httpsPort);
-  const httpFields = yield* holderFieldsFor(previous.httpPort, httpBind);
-  const httpsFields = yield* holderFieldsFor(previous.httpsPort, httpsBind);
-  const httpHolder = httpFields?.holder;
-  const httpsHolder = httpsFields?.holder;
-  const helperOpen = previous.helperInstalled || previous.socketsActive;
-  const publicOwned =
-    stillOwnPort({
-      bind: httpBind,
-      holder: httpHolder,
-      helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpPort)),
-    }) &&
-    stillOwnPort({
-      bind: httpsBind,
-      holder: httpsHolder,
-      helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpsPort)),
-    });
-  if (!publicOwned) return false;
-  for (const hop of [previous.bindHttpPort, previous.bindHttpsPort]) {
-    if (hop === undefined) continue;
-    const hopBind = yield* probe(bindAddress, hop);
-    const hopFields = yield* holderFieldsFor(hop, hopBind);
-    const hopHolder = hopFields?.holder;
-    if (hopBind.kind === "success") continue;
-    if (!stillOwnPort({ bind: hopBind, holder: hopHolder, helperTcpOpen: false })) {
-      return false;
-    }
+  const hopBinds: Array<{ readonly port: number; readonly bind: BindOutcome }> = [];
+  for (const hop of hopPorts) {
+    hopBinds.push({ port: hop, bind: yield* probe(bindAddress, hop) });
+  }
+  const occupied = [
+    ...(httpBind.kind === "EADDRINUSE" ? [previous.httpPort] : []),
+    ...(httpsBind.kind === "EADDRINUSE" ? [previous.httpsPort] : []),
+    ...hopBinds.filter((entry) => entry.bind.kind === "EADDRINUSE").map((entry) => entry.port),
+  ];
+  const owned = yield* ownedRouterPorts(dependencies, occupied);
+  if (
+    !publicPortStillOwned(httpBind, owned, previous.httpPort) ||
+    !publicPortStillOwned(httpsBind, owned, previous.httpsPort)
+  ) {
+    return false;
+  }
+  for (const { port, bind } of hopBinds) {
+    if (!bindReusable(bind, owned, port)) return false;
   }
   return true;
 });

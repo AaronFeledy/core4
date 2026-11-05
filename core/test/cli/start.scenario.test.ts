@@ -536,11 +536,11 @@ const makeStartLayer = (
       Effect.sync(() => void buildOrder.push("proxy-setup")).pipe(
         Effect.andThen(options.proxySetupEffect ?? Effect.void),
       ),
-    applyRoutes: (routes: AppPlan["routes"], app: AppPlan["id"]) =>
+    applyRoutes: (routes, owner) =>
       Effect.sync(() => void buildOrder.push("proxy-apply")).pipe(
         Effect.andThen(options.proxyApplyEffect ?? Effect.void),
         Effect.as({
-          app,
+          app: owner.id,
           appliedRoutes: routes,
           authorities: routes.flatMap((route) =>
             (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({

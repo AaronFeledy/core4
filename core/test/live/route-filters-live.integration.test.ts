@@ -13,6 +13,7 @@ import {
   type RoutePlan,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
@@ -122,7 +123,10 @@ const nginxService: ServicePlan = {
 const traefikStartScript = [
   `mkdir -p ${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
   `cat > ${TRAEFIK_DYNAMIC_CONFIG_DIR}/route-filters.yml <<'LANDO_TRAEFIK_ROUTES'`,
-  renderTraefikDynamicConfig(routes, AppId.make(SLUG)).trimEnd(),
+  renderTraefikDynamicConfig(routes, {
+    id: AppId.make(SLUG),
+    ownerKey: appIdentityKey("owner", SLUG),
+  }).trimEnd(),
   "LANDO_TRAEFIK_ROUTES",
   [
     "exec traefik",

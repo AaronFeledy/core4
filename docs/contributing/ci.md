@@ -399,17 +399,21 @@ driver = "overlay"
 mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
 EOF
 export CONTAINERS_STORAGE_CONF="$PWD/dist/cache/runtime-bundle/storage.conf"
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-mkdir -p "$XDG_RUNTIME_DIR"
 LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
-LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+LANDO_USER_DATA_ROOT="${LANDO_USER_DATA_ROOT:-$HOME/.local/share/lando}"
+export XDG_RUNTIME_DIR="$(jq -r .env.XDG_RUNTIME_DIR "$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json")"
+LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
 "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
 bun test core/test/live
 bun test plugins/provider-lando/test --filter=integration
 bun test plugins/provider-docker/test --filter=integration
 bun test plugins/service-lando/test --filter=integration
 ```
+
+Setup needs `/run/user/$(id -u)` (owned by you, mode 0700) or an `XDG_RUNTIME_DIR` with the same properties as the base for the runtime's private directory; it does not use that base directly.
+
+Any manual `podman` command against the managed runtime must join the service's private runtime directory. The service records it in `$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json` under `.env.XDG_RUNTIME_DIR`; read it with `jq` and export it as `XDG_RUNTIME_DIR` before the command, as above and as the generated workflows do through `landoManagedPodmanRuntimeDirCommands` in `scripts/build-ci-workflow.ts`. A different `XDG_RUNTIME_DIR` makes Podman start a second rootless user namespace and pause process against the same `--root` storage, which corrupts the running service's view of its containers.
 
 ### Run the database journey spot checks
 
@@ -668,7 +672,7 @@ The scenario installs the current compiled payload outside the checkout through 
 
 Distribution signatures use an explicitly labeled test-only verifier fixture. This checks installer publication and ownership with real SHA256, not release-signature validity. Signature trust remains covered independently by installer tests.
 
-Do not run this purge scenario on a workstation or shared runtime. Isolated Lando roots do not contain host-global socket-proxy/cgroups integration or all provider cleanup. The script requires `LANDO_LIFECYCLE_FRESH_RUNNER=1` and rejects existing host integration and Lando resources before installation. Inspect the command and prerequisites with `bun run scripts/install-lifecycle-journey.ts --help`.
+Do not run this purge scenario on a workstation or shared runtime. Isolated Lando roots keep their managed runtime, private runtime directory, and pause process apart, but the socket-proxy helper under `/etc` and cgroups delegation are host-global, and the scenario checks that no other Lando owns them. The script requires `LANDO_LIFECYCLE_FRESH_RUNNER=1` and rejects existing host integration and Lando resources before installation. Inspect the command and prerequisites with `bun run scripts/install-lifecycle-journey.ts --help`.
 
 ## Alpha platform scope
 

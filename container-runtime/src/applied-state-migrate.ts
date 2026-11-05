@@ -9,9 +9,10 @@ import {
 } from "@lando/sdk/schema";
 import { Option, Predicate, Schema } from "effect";
 import { migrateAppliedInit } from "./applied-init-migrate.ts";
+import { migrateAppliedNames } from "./applied-names-migrate.ts";
 
-/** Durable applied-plan frame version with canonical mounts and native init intent. */
-export const APPLIED_STATE_VERSION = 3;
+/** Durable applied-plan frame version with canonical mounts, init intent, and names. */
+export const APPLIED_STATE_VERSION = 4;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -255,8 +256,10 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
  * null when the shape cannot be converted (bucket treats null as absent).
  */
 export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
-  if (fromVersion !== 1 && fromVersion !== 2) return null;
-  const transformed = migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
+  if (fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3) return null;
+  const initialized =
+    fromVersion === 3 ? raw : migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
+  const transformed = migrateAppliedNames(initialized);
   if (transformed === null) return null;
   return Option.getOrNull(Schema.decodeUnknownOption(AppPlan)(transformed));
 };
@@ -268,7 +271,7 @@ export const migrateAppliedPlansRecord = (
   raw: unknown,
   fromVersion: number,
 ): Readonly<Record<string, AppPlanShape>> | null => {
-  if (fromVersion !== 1 && fromVersion !== 2) return null;
+  if (fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3) return null;
   if (!Predicate.isObject(raw) || Array.isArray(raw)) return null;
   const next: Record<string, AppPlanShape> = {};
   for (const [id, plan] of Object.entries(raw)) {

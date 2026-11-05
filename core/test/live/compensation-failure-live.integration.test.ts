@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -15,6 +15,7 @@ import {
   InfoAppResult,
   type ServiceConnection,
   StartAppResult,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
@@ -121,14 +122,17 @@ test.skipIf(!liveEnabled)(
   async () => {
     // Given: a working routed nginx app. The #1462 fault blocks certificate refresh
     // and would also block the old destructive rollback; no global file is modified.
-    const appRoot = await mkdtemp(join(tmpdir(), "lando-convergence-live-"));
+    const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-convergence-live-")));
     const name = `convergence-${crypto.randomUUID().slice(0, 8)}`;
     const marker = `recovered-route-${crypto.randomUUID()}`;
     // This short lowercase/hyphen name is already a normalized planner slug.
     const container = serviceContainerName({ slug: name }, "web");
     const initialHostname = `${name}.lndo.site`;
     const newHostname = `second-${name}.lndo.site`;
-    const certificate = appCertificateFiles(makeLandoPaths(), AppId.make(name)).cert;
+    const certificate = appCertificateFiles(makeLandoPaths(), {
+      id: AppId.make(name),
+      ownerKey: appIdentityKey("owner", appRoot),
+    }).cert;
     const pinned = join(certificate, "pinned");
     const landofile = (hostnames: readonly string[]) =>
       `name: ${name}\nprovider: lando\nservices:\n  web:\n    type: nginx\n    webroot: .\n    routes:\n${hostnames.map((hostname) => `      - hostname: ${hostname}\n        scheme: both\n`).join("")}`;

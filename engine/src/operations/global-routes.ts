@@ -6,6 +6,7 @@ import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@l
 
 import { routerEnabled } from "../config/router-config.ts";
 import { withGlobalRoutePublication } from "../global-app/activation-scope.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 
 /**
  * Replace the global route file only after all selected groups succeed, retaining active owned siblings.
@@ -26,7 +27,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       if (plan.routes.length === 0 || !routerEnabled(plan)) {
         yield* beforeRoutes ?? Effect.void;
         // Best-effort: a route-free or router-disabled plan must not leave previously published hostnames live.
-        yield* router.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
+        yield* router.removeRoutes(routeOwnerFromPlan(plan)).pipe(Effect.catch(() => Effect.void));
         return;
       }
       const { started } = outcome;
@@ -48,7 +49,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       );
       const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));
       yield* beforeRoutes ?? Effect.void;
-      yield* router.applyRoutes(routes, plan.id);
+      yield* router.applyRoutes(routes, routeOwnerFromPlan(plan));
     }),
   );
 });

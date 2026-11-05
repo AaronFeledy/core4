@@ -613,7 +613,7 @@ test.each(["supported-disable", "direct-policy-write"] as const)(
               router.applyRoutes(routes, app).pipe(
                 Effect.tap(() =>
                   Effect.sync(() => {
-                    if (app === f.plan.id) published++;
+                    if (app.id === f.plan.id) published++;
                   }),
                 ),
               ),

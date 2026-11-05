@@ -10,6 +10,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import { withGlobalActivationScope } from "../../src/global-app/activation-scope.ts";
 import * as GlobalAppLayer from "../../src/global-app/service.ts";
+import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
 import { publishGlobalRoutes } from "../../src/operations/global-routes.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
@@ -78,7 +79,9 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
 
     // Then: planning and publication use the new domain without regenerating global YAML.
     expect(changed.plan.routes.map((route) => route.hostname)).toEqual(["mailpit.custom.test"]);
-    expect(router.routesByApp.get(changed.plan.id)).toEqual(changed.plan.routes);
+    expect(await Effect.runPromise(router.readRoutes(routeOwnerFromPlan(changed.plan)))).toEqual(
+      changed.plan.routes,
+    );
     expect(urls).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });

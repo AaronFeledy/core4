@@ -91,7 +91,7 @@ A binary Lando 4 did not install is never removed, even if it sits in Lando 4's 
 
 Unlike the default keep-data uninstall, `--purge` also stops and removes containers carrying Lando ownership labels, including `com.lando.app` on Lando 3 leftovers. Do not use purge while you need those containers. Review the purge plan and back up the data first.
 
-Add `--purge` to also remove Lando 4's data, cache, and config roots, and to strip the `# >>> LANDO4 shellenv >>>` block from the profiles Lando 4 wrote to. That deletes Lando 4 app state, so check the dry run first. A Lando 3 `# >>> LANDO shellenv >>>` block is a foreign PATH entry and survives, as does every line you added yourself.
+Add `--purge` to also remove Lando 4's data, cache, and config roots, and to strip the `# >>> LANDO4 shellenv >>>` block this install wrote to your profile. A `LANDO4` block that names a different data root belongs to another Lando 4 install and stays. That deletes Lando 4 app state, so check the dry run first. A Lando 3 `# >>> LANDO shellenv >>>` block is a foreign PATH entry and survives, as does every line you added yourself.
 
 Uninstall is safe to run twice. The second run finds nothing left and removes nothing.
 
@@ -175,7 +175,7 @@ Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Bundled recipe 
 | `lando shellenv` | Nothing. It prints a profile snippet | Your profiles and `PATH` until you paste it |
 | `lando update` | The recorded Lando 4 binary, the install record, and a backup beside it | Any executable the record doesn't match |
 | `lando uninstall --yes` | Entries in the install record | Unrecorded executables, `~/.lando`, and Lando 3 containers and volumes |
-| `lando uninstall --purge --yes` | The above, labeled Lando containers including Lando 3 leftovers, Lando 4's data, cache, and config roots, and the `LANDO4` shellenv block | The Lando 3 `LANDO` shellenv block and every line you wrote |
+| `lando uninstall --purge --yes` | The above, labeled Lando containers including Lando 3 leftovers, Lando 4's data, cache, and config roots, and this install's `LANDO4` shellenv block | The Lando 3 `LANDO` shellenv block, `LANDO4` blocks for other data roots, and every line you wrote |
 | `lando doctor` | Nothing. The shadow check never runs or opens another executable | Everything |
 | `lando app:config:translate --from lando3 --write` | Landofile layers in that app, each replaced file kept as `<file>.bak.<sha256>` | Lando 3 containers, volumes, and `~/.lando` |
 

@@ -4,8 +4,9 @@ import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { selectPreparedProvider } from "../providers/prepared.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
@@ -48,12 +49,11 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         const placement = yield* ensureAppPlacementState(target.app, target.plan.provider);
         const context =
           yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
-        const registry = yield* RuntimeProviderRegistry;
         const stateStore = yield* StateStore;
         const plan = target.plan;
-        yield* rotateChangedFileSync(target);
-        const provider = yield* registry.select(plan);
-        return yield* withPlanVolumeCoordination({
+        const provider = yield* selectPreparedProvider(plan);
+        yield* rotateChangedFileSync(target, provider);
+        return yield* withLaunchVolumeCoordination({
           plan,
           provider,
           stateStore,
@@ -70,6 +70,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
                     yield* publishHomeTransitionNotices(placement.plan, plan);
                     return yield* startAppForTargetUnlocked(options, target, managed, {
                       ...execution,
+                      provider,
                       preparedOverlays,
                       ...(preparedTargets === undefined ? {} : { preparedTargets }),
                     });

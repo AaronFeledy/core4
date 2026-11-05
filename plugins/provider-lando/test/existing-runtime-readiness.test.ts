@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -191,6 +192,7 @@ test.each([false, undefined])("starting init:%s does not prepare a sibling's nat
   const runRoot = join(root, "run");
   const pidPath = join(runRoot, "podman.pid");
   const spec = buildPodmanServiceArgs({
+    privateRuntimeDir: await Effect.runPromise(resolveManagedRuntimeDir(root)),
     podmanBin: join(runtimeBinDir, "podman"),
     storageDir: join(root, "storage"),
     configDir: join(root, "config"),

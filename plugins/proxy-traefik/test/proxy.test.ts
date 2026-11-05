@@ -4,7 +4,7 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
@@ -12,8 +12,9 @@ import { renderTraefikDiagnosticHtml } from "../src/diagnostics.ts";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { routeFileBasename, routeMetadataLine, routeOwner } from "./route-owner-fixture.ts";
 
-const app = AppId.make("demo");
+const app = routeOwner("demo");
 const routes = [
   {
     hostname: "api.demo.lndo.site",
@@ -107,6 +108,7 @@ const makeHarness = (
   const runtime = makeApplyRuntime(files);
   const stateStore = durableReloadState ? makeMemoryPluginStateStore() : undefined;
   const socketProxy = {
+    userDataRoot: "/lando",
     user: "test",
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),
@@ -265,7 +267,7 @@ describe("Traefik RouterService", () => {
           },
         },
       ],
-      AppId.make("shop"),
+      routeOwner("shop"),
     );
 
     expect(rendered).toContain("http://host.lando.internal:32768");
@@ -273,7 +275,7 @@ describe("Traefik RouterService", () => {
   });
 
   test("namespaces routers and services by app", () => {
-    const otherApp = AppId.make("other");
+    const otherApp = routeOwner("other");
     const objectNames = (content: string) =>
       content.split("\n").flatMap((line) => line.match(/^ {4}([^ ]+):$/)?.[1] ?? []);
 
@@ -350,7 +352,7 @@ describe("Traefik RouterService", () => {
       { scheme: "http", hostname: "web.demo.lndo.site", port: 8080 },
     ]);
     expect(second.appliedRoutes).toHaveLength(1);
-    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).not.toContain(
+    expect(harness.files.get(`/lando/global/proxy-traefik/dynamic/${routeFileBasename(app)}`)).not.toContain(
       "api.demo.lndo.site",
     );
     expect(harness.files.get("/lando/global/proxy-traefik/dynamic/fallback.yml")).toContain("priority: 1");
@@ -435,13 +437,19 @@ describe("Traefik RouterService", () => {
   });
 
   test("an atomic replacement failure leaves the prior route file untouched", async () => {
-    const harness = makeHarness("routes-demo.yml");
-    harness.files.set("/lando/global/proxy-traefik/dynamic/routes-demo.yml", "previous");
+    const harness = makeHarness(routeFileBasename(app));
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    const path = `/lando/global/proxy-traefik/dynamic/${routeFileBasename(app)}`;
+    const previous = `${routeMetadataLine(app)}\nprevious`;
+    harness.files.set(path, previous);
 
-    const exit = await Effect.runPromiseExit(harness.service.applyRoutes(routes, app));
+    const result = await Effect.runPromise(harness.service.applyRoutes(routes, app).pipe(Effect.result));
 
-    expect(exit._tag).toBe("Failure");
-    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe("previous");
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ProxyApplyError", cause: { message: "injected atomic replacement failure" } },
+    });
+    expect(harness.files.get(path)).toBe(previous);
   });
 
   test("an atomic fallback replacement failure leaves the prior config untouched", async () => {
@@ -490,9 +498,9 @@ describe("Traefik RouterService", () => {
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     const httpRoutes = routes.slice(1);
     await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
-    const routePath = [...harness.files.keys()].find((path) => path.endsWith("routes-demo.yml"));
+    const routePath = [...harness.files.keys()].find((path) => path.endsWith(routeFileBasename(app)));
     if (routePath === undefined) throw new Error("route fixture missing");
-    harness.files.set(routePath, "stale route bytes");
+    harness.files.set(routePath, `${routeMetadataLine(app)}\nstale route bytes`);
 
     await Effect.runPromise(harness.makePersistedService().applyRoutes(httpRoutes, app));
 
@@ -559,7 +567,7 @@ describe("Traefik RouterService", () => {
     await Effect.runPromise(harness.service.removeRoutes(app));
     await Effect.runPromise(harness.service.removeRoutes(app));
 
-    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe(false);
+    expect(harness.files.has(`/lando/global/proxy-traefik/dynamic/${routeFileBasename(app)}`)).toBe(false);
     expect(harness.files.has("/lando/global/proxy-traefik/dynamic/fallback.yml")).toBe(true);
     expect([...harness.files.keys()].some((path) => path.includes("/diagnostic/"))).toBe(false);
   });

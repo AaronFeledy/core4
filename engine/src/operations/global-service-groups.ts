@@ -1,9 +1,10 @@
 import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import { type ApplyOptions, EnvironmentValueResolver, type RuntimeProviderShape } from "@lando/sdk/services";
+import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import {
   type PreparedDebuggerOverlay,
   prepareDebuggerOverlay,
@@ -47,7 +48,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
 >(
   plan: AppPlan,
   apply: {
-    readonly provider: RuntimeProviderShape;
+    readonly provider: PreparedRuntimeProvider;
     readonly services: ReadonlyArray<ServicePlan>;
     readonly options: Pick<ApplyOptions, "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;

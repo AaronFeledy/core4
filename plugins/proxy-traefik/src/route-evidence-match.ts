@@ -1,10 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 
-import type { AppId, RoutePlan } from "@lando/sdk/schema";
+import type { AppRouteOwner, RoutePlan } from "@lando/sdk/schema";
 import { Option, Schema } from "effect";
 
 import { routeBackendUrl, routeMiddlewareConfig } from "./route-provider-config.ts";
-import { routeRule } from "./routing.ts";
+import { routeNamespace, routeRule } from "./routing.ts";
 
 // Traefik v3.3 pkg/api/handler.go and pkg/config/runtime/runtime_http.go.
 // Decode only the HTTP graph. Never retain or report raw configuration/errors.
@@ -62,11 +62,11 @@ const reference = (name: string): string => (name.endsWith("@file") ? name : `${
 
 export const matchesLiveRoute = (
   snapshot: RouteSnapshot,
-  app: AppId,
+  owner: AppRouteOwner,
   requested: { readonly route: RoutePlan; readonly scheme: "http" | "https" },
 ): boolean | undefined => {
   const { route, scheme } = requested;
-  const namespace = `route-${encodeURIComponent(String(app))}-`;
+  const namespace = routeNamespace(owner);
   const matches = Object.entries(snapshot.routers).map(([name, rawRouter]) => {
     if (!name.startsWith(namespace) || !name.endsWith(`-${scheme}@file`)) return false;
     const index = name.slice(namespace.length, -`-${scheme}@file`.length);
@@ -90,7 +90,7 @@ export const matchesLiveRoute = (
       Schema.decodeUnknownOption(Service)(snapshot.services?.[`${serviceName}@file`]),
     );
     if (service === undefined) return undefined;
-    const backend = routeBackendUrl(route, app);
+    const backend = routeBackendUrl(route, owner.id);
     if (
       service.status !== "enabled" ||
       (service.error?.length ?? 0) !== 0 ||

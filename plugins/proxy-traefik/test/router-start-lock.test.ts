@@ -3,9 +3,10 @@ import { Deferred, Effect, Fiber, Semaphore } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, ServiceName, type StartedService } from "@lando/sdk/schema";
+import { AbsolutePath, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { defaultDomainFile, routeFile } from "../src/proxy-paths.ts";
@@ -13,7 +14,7 @@ import { makeTraefikRouterService } from "../src/proxy.ts";
 import { routeReloadLockKey } from "../src/route-reload-state.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 
-const app = AppId.make("race");
+const app = routeOwner("race");
 const paths = { platform: "win32", globalAppRoot: "/lando/global" } as const;
 const config = { defaultDomain: "lndo.site" };
 const route = [
@@ -145,6 +146,7 @@ const makeHarness = () => {
       }),
   };
   const socketProxy = {
+    userDataRoot: "/lando",
     user: "test",
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),

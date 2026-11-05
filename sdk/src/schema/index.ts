@@ -1,4 +1,5 @@
 export * from "./agent-forwarding.ts";
+export * from "./host-maintenance.ts";
 export * from "./tooling-input.ts";
 export * from "./app-plan.ts";
 export * from "./physical-names.ts";
@@ -74,6 +75,7 @@ export { parseShortVolume } from "./compose-volumes.ts";
 export type { ComposeVolumeEntry } from "./compose-volumes.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
+export * from "./config-lint-rules.ts";
 export * from "./host-events.ts";
 export * from "./editor.ts";
 export * from "./validation-issue.ts";
@@ -134,7 +136,14 @@ export * from "./container-helper.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";
-export { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+export {
+  CertificateName,
+  certificateNameForHostname,
+  DomainName,
+  HostAliasName,
+  RouteHostname,
+  RoutePathPrefix,
+} from "./hostname.ts";
 export * from "./networking.ts";
 export * from "./route-filter.ts";
 export * from "./notify-config.ts";

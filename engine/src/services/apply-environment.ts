@@ -1,10 +1,11 @@
 import type { AppPlan } from "@lando/sdk/schema";
-import { type ApplyOptions, EnvironmentValueResolver, type RuntimeProviderShape } from "@lando/sdk/services";
+import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect } from "effect";
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 
 export const applyWithResolvedEnvironment = Effect.fn("AppOperation.applyEnvironment")(
   <E = never, R = never>(
-    provider: RuntimeProviderShape,
+    provider: PreparedRuntimeProvider,
     plan: AppPlan,
     options: ApplyOptions,
     beforeApply?: Effect.Effect<void, E, R>,

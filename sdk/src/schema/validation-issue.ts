@@ -7,6 +7,7 @@ import {
   directiveValue,
   isExpressionSlot,
 } from "./authoring-issue-metadata.ts";
+import { ConfigLintRuleId } from "./config-lint-rules.ts";
 import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { validationExpectation } from "./validation-expectation.ts";
@@ -56,9 +57,9 @@ export const ValidationIssueSource = Schema.Union([
 export type ValidationIssueSource = typeof ValidationIssueSource.Type;
 
 export const ValidationIssue = Schema.Struct({
-  rule: Schema.optionalKey(Schema.String).annotate({
+  rule: Schema.optionalKey(ConfigLintRuleId).annotate({
     description:
-      "Stable diagnostic rule identifier, using the same identifiers as config lint when available.",
+      "Registered diagnostic rule identifier. Plugins must use a registered identifier or omit rule.",
   }),
   path: ValidationIssuePath,
   message: Schema.String.annotate({ description: "Human-readable description of the problem." }),

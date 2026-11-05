@@ -17,6 +17,7 @@ test/scenarios/generated/guides/**
 /docs/reference/recipe-post-init.mdx
 /docs/reference/service-types.mdx
 /docs/reference/service-listeners.mdx
+/docs/reference/config-lint-rules.mdx
 /mcp/src/generated/
 /container-runtime/src/generated/provider-images.ts
 /engine/src/deprecation/generated/
