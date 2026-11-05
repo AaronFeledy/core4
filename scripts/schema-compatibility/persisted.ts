@@ -1,7 +1,7 @@
 import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import { TUNNEL_REGISTRY_VERSION } from "../../engine/src/tunnel/registry-migrate.ts";
 
-import type { JsonSchema, JsonValue, PersistedStoreId } from "./model.ts";
+import type { JsonSchema, JsonValue, PersistedStoreId, PublishedPersistedStoreId } from "./model.ts";
 import { isJsonObject } from "./model.ts";
 import { persistedShallowKeys, persistedShapeKeys, publishedShapeKey } from "./persisted-shapes.ts";
 
@@ -36,7 +36,7 @@ const PERSISTED_COMPONENT_SCHEMA_IDS = {
     "ProviderExtensionConfig",
   ],
   "tunnel-registry": ["TunnelTarget", "RouteHostname", "AppId", "ServiceName", "PortNumber"],
-} as const satisfies Record<PersistedStoreId, ReadonlyArray<string>>;
+} as const satisfies Record<PublishedPersistedStoreId, ReadonlyArray<string>>;
 
 const DEF_SUFFIX = /_\d+$/;
 
@@ -120,14 +120,14 @@ export const buildPersistedSurfaceStores = (
   return storesBySurface;
 };
 
-export const readPersistedStoreVersions = (): Readonly<Record<PersistedStoreId, number>> => ({
+export const readPersistedStoreVersions = (): Readonly<Record<PublishedPersistedStoreId, number>> => ({
   "applied-state": APPLIED_STATE_VERSION,
   "tunnel-registry": TUNNEL_REGISTRY_VERSION,
 });
 
 export const persistedMigrationRemediation = (
   stores: ReadonlySet<PersistedStoreId>,
-  storeVersions: Readonly<Record<PersistedStoreId, number>>,
+  storeVersions: Readonly<Partial<Record<PersistedStoreId, number>>>,
 ): string => {
   const ordered = [...stores].sort();
   const examples = ordered.map((store) => `{"store":"${store}","version":${storeVersions[store]}}`).join(",");

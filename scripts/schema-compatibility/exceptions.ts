@@ -1,17 +1,17 @@
 import { SchemaCompatibilityInputError, parseJson } from "../schema-compatibility-artifacts.ts";
 import type { CompatibilityException, JsonValue, PersistedStateRef } from "./model.ts";
-import { isJsonObject } from "./model.ts";
+import { isJsonObject, isPersistedStoreId } from "./model.ts";
 
 const parsePersistedState = (value: JsonValue, source: string): PersistedStateRef => {
   if (
     !isJsonObject(value) ||
-    (value.store !== "applied-state" && value.store !== "tunnel-registry") ||
+    !isPersistedStoreId(value.store) ||
     typeof value.version !== "number" ||
     !Number.isInteger(value.version) ||
     value.version < 1
   ) {
     throw new SchemaCompatibilityInputError(
-      `${source} has invalid persistedState; expected { store: "applied-state"|"tunnel-registry", version: positive integer }.`,
+      `${source} has invalid persistedState; expected { store: registered persisted store id, version: positive integer }.`,
     );
   }
   return { store: value.store, version: value.version };

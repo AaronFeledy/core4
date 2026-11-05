@@ -3,7 +3,7 @@ import { persistedMigrationRemediation } from "./persisted.ts";
 
 export interface AcceptCompatibilityOptions {
   readonly persistedStoresBySurface?: ReadonlyMap<string, ReadonlySet<PersistedStoreId>>;
-  readonly storeVersions?: Readonly<Record<PersistedStoreId, number>>;
+  readonly storeVersions?: Readonly<Partial<Record<PersistedStoreId, number>>>;
   readonly baseStoreVersions?: Readonly<Partial<Record<PersistedStoreId, number>>>;
 }
 
@@ -45,7 +45,7 @@ export const acceptCompatibilityExceptions = (
     }
     for (const ref of refs) {
       const currentVersion = storeVersions[ref.store];
-      if (ref.version !== currentVersion) {
+      if (currentVersion === undefined || ref.version !== currentVersion) {
         return {
           ...entry,
           message: `${entry.message} Exception persistedState.version ${ref.version} does not match current ${ref.store} version ${currentVersion}. ${remediation}`,

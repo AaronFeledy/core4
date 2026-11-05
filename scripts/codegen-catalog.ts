@@ -203,6 +203,13 @@ export const CODEGEN_CATALOG = [
     ],
   },
   {
+    id: "persisted-schema-snapshot",
+    ownership: "derived",
+    script: "build-persisted-schema-snapshot.ts",
+    workspace: "repo",
+    dependsOn: ["core-service-env-catalog"],
+  },
+  {
     id: "command-reference",
     ownership: "derived",
     script: "build-command-reference.ts",
