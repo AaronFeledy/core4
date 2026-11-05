@@ -1,17 +1,29 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { type Context, DateTime, Duration, Effect, Schema, Stream } from "effect";
+import { type Context, DateTime, Duration, Effect, Stream } from "effect";
 
 import { sameRealpath } from "@lando/paths";
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
-import { FileSyncSessionSpec, type FileSyncSessionStatus } from "@lando/sdk/schema";
+import type { FileSyncSessionSpec, FileSyncSessionStatus } from "@lando/sdk/schema";
 import type { ProcessResult, ProcessRunner, StateBucket } from "@lando/sdk/services";
 
 import type { MutagenClient, MutagenSessionRecord } from "./mutagen-client.ts";
 import { mutagenHostInstallPath, readInstalledMutagenStatus } from "./provision.ts";
+import {
+  type AppDrain,
+  type DrainOperation,
+  EMPTY_LEDGER,
+  type LedgerWrite,
+  type ReceiptOperation,
+  type SessionLedger,
+  type SessionReceipt,
+  ledgerTransitionIssue,
+  openLedger,
+  sameAppRef,
+} from "./session-ledger.ts";
 
 const ENGINE_ID = "mutagen" as const;
 const LIST_TEMPLATE = "{{ json . }}";
@@ -24,9 +36,6 @@ const REMEDIATION =
 type TaggedSyncError<E> = Extract<E, FileSyncStartError | FileSyncDriftError | FileSyncStopError>;
 
 type Runner = Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
-
-const sameAppRef = (left: FileSyncSessionSpec["app"], right: FileSyncSessionSpec["app"]): boolean =>
-  left.kind === right.kind && left.id === right.id && sameRealpath(left.root, right.root);
 
 const sameOwnedSessionSpec = (owned: FileSyncSessionSpec, planned: FileSyncSessionSpec): boolean => {
   const { app: ownedApp, source: ownedSource, ...ownedRest } = owned;
@@ -84,51 +93,6 @@ interface OwnedSession {
     };
   };
 }
-
-const SessionReceipt = Schema.Struct({
-  phase: Schema.Literals(["preparing", "committed", "disposing", "disposed"]),
-  identifier: Schema.optionalKey(Schema.String),
-  name: Schema.String,
-  spec: FileSyncSessionSpec,
-  target: Schema.Struct({
-    containerId: Schema.String,
-    path: Schema.String,
-    permissions: Schema.optionalKey(
-      Schema.Struct({
-        owner: Schema.String,
-        group: Schema.String,
-        defaultFileMode: Schema.String,
-        defaultDirectoryMode: Schema.String,
-      }),
-    ),
-  }),
-  dataDir: Schema.String,
-  dockerHost: Schema.String,
-});
-type SessionReceipt = Schema.Schema.Type<typeof SessionReceipt>;
-const AppDrain = Schema.Struct({
-  app: FileSyncSessionSpec.fields.app,
-  phase: Schema.Literals(["invalidated", "preparing", "drained", "disposing", "completed"]),
-  identifiers: Schema.Array(Schema.String),
-});
-type AppDrain = Schema.Schema.Type<typeof AppDrain>;
-const SessionLedger = Schema.Struct({
-  sessions: Schema.Array(SessionReceipt),
-  appDrains: Schema.optionalKey(Schema.Array(AppDrain)),
-});
-type SessionLedger = Schema.Schema.Type<typeof SessionLedger>;
-const EMPTY_LEDGER: SessionLedger = { sessions: [] };
-const openLedger = (stateStore: PluginStateStore) =>
-  stateStore.open({
-    namespace: "sessions",
-    key: "mutagen.json",
-    schema: SessionLedger,
-    version: 1,
-    codec: "json",
-    mode: 0o600,
-    lock: "advisory",
-    onCorrupt: "fail",
-  });
 
 /** Read-only ownership check for lifecycle guards, usable when Mutagen itself is unavailable. */
 export const hasDurableMutagenOwnership = (
@@ -575,16 +539,42 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       );
   };
 
+  const writeCheckedLedger = Effect.fnUntraced(function* (
+    bucket: StateBucket<SessionLedger>,
+    current: SessionLedger,
+    write: LedgerWrite,
+  ) {
+    const issue = ledgerTransitionIssue(current, write);
+    if (issue !== undefined) {
+      return yield* Effect.fail(startError(issue));
+    }
+    yield* bucket.set(write.next);
+    return write.next;
+  });
+
   const writeLedger = (
     bucket: StateBucket<SessionLedger>,
     current: SessionLedger,
-    receipt: SessionReceipt | undefined,
-    name: string,
-  ) =>
-    bucket.set({
-      ...current,
-      sessions: [...current.sessions.filter((entry) => entry.name !== name), ...(receipt ? [receipt] : [])],
+    change: {
+      readonly receipt?: SessionReceipt;
+      readonly name: string;
+      readonly operation: ReceiptOperation;
+    },
+  ) => {
+    const receipt = change.receipt;
+    return writeCheckedLedger(bucket, current, {
+      receipts: [change.operation],
+      next: {
+        ...current,
+        sessions:
+          receipt === undefined
+            ? current.sessions.filter((entry) => entry.name !== change.name)
+            : current.sessions.some((entry) => entry.name === change.name)
+              ? current.sessions.map((entry) => (entry.name === change.name ? receipt : entry))
+              : [...current.sessions, receipt],
+      },
     });
+  };
 
   let verified = false;
   const installed = Effect.suspend(() =>
@@ -806,7 +796,10 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
     }
     const reconciled: SessionLedger = { ...current, sessions };
     yield* validateInventory(reconciled, observed);
-    yield* bucket.set(reconciled);
+    yield* writeCheckedLedger(bucket, current, {
+      next: reconciled,
+      receipts: ["commit-create", "forget-uncreated"],
+    });
     return reconciled;
   });
 
@@ -922,15 +915,21 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
   const writeAppDrain = (
     bucket: StateBucket<SessionLedger>,
     current: SessionLedger,
-    drain: AppDrain | undefined,
-    app: FileSyncSessionSpec["app"],
+    change: {
+      readonly drain?: AppDrain;
+      readonly app: FileSyncSessionSpec["app"];
+      readonly operation: DrainOperation;
+    },
   ) =>
-    bucket.set({
-      ...current,
-      appDrains: [
-        ...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)),
-        ...(drain === undefined ? [] : [drain]),
-      ],
+    writeCheckedLedger(bucket, current, {
+      drains: [change.operation],
+      next: {
+        ...current,
+        appDrains: [
+          ...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, change.app)),
+          ...(change.drain === undefined ? [] : [change.drain]),
+        ],
+      },
     });
 
   const validateAppSet = Effect.fnUntraced(function* (
@@ -989,12 +988,11 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               receiptOwned(entry).pipe(Effect.flatMap(inspectOwned)),
             );
           }
-          yield* writeAppDrain(
-            bucket,
-            current,
-            { app, phase: "invalidated", identifiers: identifiers as string[] },
+          yield* writeAppDrain(bucket, current, {
+            drain: { app, phase: "invalidated", identifiers: identifiers as string[] },
             app,
-          );
+            operation: "invalidate-drain",
+          });
         }),
       ),
     );
@@ -1024,7 +1022,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               return yield* Effect.fail(startError("App Mutagen session set changed during drain."));
             }
             const preparing: AppDrain = { app, phase: "preparing", identifiers };
-            yield* writeAppDrain(bucket, current, preparing, app);
+            yield* writeAppDrain(bucket, current, { drain: preparing, app, operation: "begin-drain" });
             return { owned, identifiers, preparing };
           }),
         );
@@ -1080,7 +1078,11 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               )
             )
               return yield* Effect.fail(startError("App Mutagen session set changed during drain."));
-            yield* writeAppDrain(bucket, current, { ...preparing, phase: "drained" }, app);
+            yield* writeAppDrain(bucket, current, {
+              drain: { ...preparing, phase: "drained" },
+              app,
+              operation: "finish-drain",
+            });
           }),
         );
       }),
@@ -1150,8 +1152,9 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             }
           }
           yield* validateInventory(current, listed);
-          const disposing: AppDrain = { app, phase: "disposing", identifiers };
-          yield* writeAppDrain(bucket, current, disposing, app);
+          const disposing: AppDrain =
+            previous.phase === "disposing" ? previous : { app, phase: "disposing", identifiers };
+          yield* writeAppDrain(bucket, current, { drain: disposing, app, operation: "begin-disposal" });
           current = {
             ...current,
             appDrains: [
@@ -1162,7 +1165,11 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           for (const entry of receipts) {
             if (entry.phase === "disposed") continue;
             const marked = { ...entry, phase: "disposing" as const };
-            yield* writeLedger(bucket, current, marked, entry.name);
+            yield* writeLedger(bucket, current, {
+              receipt: marked,
+              name: entry.name,
+              operation: "begin-disposal",
+            });
             current = {
               ...current,
               sessions: current.sessions.map((item) => (item.name === entry.name ? marked : item)),
@@ -1188,7 +1195,11 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               return yield* Effect.fail(startError("Mutagen session remained after termination."));
             }
             const tombstone = { ...entry, phase: "disposed" as const };
-            yield* writeLedger(bucket, current, tombstone, entry.name);
+            yield* writeLedger(bucket, current, {
+              receipt: tombstone,
+              name: entry.name,
+              operation: "record-disposed",
+            });
             current = {
               ...current,
               sessions: current.sessions.map((item) => (item.name === entry.name ? tombstone : item)),
@@ -1228,13 +1239,17 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }
           yield* validateInventory(current, listed);
           const other = current.sessions.filter((entry) => !sameAppRef(entry.spec.app, app));
-          yield* bucket.set({
-            ...current,
-            sessions: other,
-            appDrains: [
-              ...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)),
-              { ...drain, phase: "completed" },
-            ],
+          yield* writeCheckedLedger(bucket, current, {
+            receipts: ["complete-disposal"],
+            drains: ["complete-disposal"],
+            next: {
+              ...current,
+              sessions: other,
+              appDrains: [
+                ...(current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, app)),
+                { ...drain, phase: "completed" },
+              ],
+            },
           });
         }),
       ),
@@ -1348,7 +1363,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               );
             }
             if (completed) {
-              yield* writeAppDrain(bucket, current, undefined, spec.app);
+              yield* writeAppDrain(bucket, current, { app: spec.app, operation: "clear-completion" });
               current = {
                 ...current,
                 appDrains: (current.appDrains ?? []).filter((entry) => !sameAppRef(entry.app, spec.app)),
@@ -1362,7 +1377,11 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               dataDir: options.dataDir,
               dockerHost: options.dockerHost,
             };
-            yield* writeLedger(bucket, current, preparing, name);
+            current = yield* writeLedger(bucket, current, {
+              receipt: preparing,
+              name,
+              operation: "prepare-create",
+            });
             const args = [
               "sync",
               "create",
@@ -1402,7 +1421,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             const owned = { identifier, name, spec, target };
             yield* inspectOwned(owned);
             const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
-            yield* writeLedger(bucket, current, committed, name);
+            yield* writeLedger(bucket, current, { receipt: committed, name, operation: "commit-create" });
             return owned;
           }),
         );
@@ -1498,7 +1517,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           app,
           withLedger((bucket) =>
             Effect.gen(function* () {
-              const current = yield* readKnownLedger(bucket);
+              let current = yield* readKnownLedger(bucket);
               const receipts = current.sessions.filter((entry) => entry.name === name);
               if (receipts.length === 0) {
                 const observed = yield* inspectAll;
@@ -1527,7 +1546,11 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               } else if (matching.length !== 0 || receipt.phase !== "disposing") {
                 return yield* Effect.fail(startError("Mutagen session ownership could not be verified."));
               }
-              yield* writeLedger(bucket, current, { ...receipt, phase: "disposing" }, name);
+              current = yield* writeLedger(bucket, current, {
+                receipt: { ...receipt, phase: "disposing" },
+                name,
+                operation: "begin-terminate",
+              });
               if (matching.length === 1) {
                 yield* run(["sync", "terminate", owned.identifier]);
               }
@@ -1535,7 +1558,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               if (after.some((item) => item.identifier === owned.identifier)) {
                 return yield* Effect.fail(startError("Mutagen session remained after termination."));
               }
-              yield* writeLedger(bucket, current, undefined, name);
+              yield* writeLedger(bucket, current, { name, operation: "finish-terminate" });
             }),
           ),
         );
