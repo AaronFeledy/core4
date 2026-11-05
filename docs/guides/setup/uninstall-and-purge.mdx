@@ -60,6 +60,36 @@ lando uninstall --yes --purge
 
 A binary outside Lando's managed bin directory is never removed automatically. The plan prints exact manual removal steps for it instead.
 
+## Socket proxy helper ownership
+
+On Linux and WSL, `lando setup` can install a systemd socket proxy so Traefik can serve ports 80 and 443. The proxy plugin owns that helper's uninstall step, `socket-proxy-helper`. Uninstall removes the helper (its units under `/etc/systemd/system/` and the polkit rule) only when this install's data root installed it. The units carry the owner root's path, and Lando compares it to the data root you are uninstalling.
+
+`--keep-data` keeps this install's helper in place, because it serves the apps keep-data leaves running. `--purge` removes it before deleting the data root. If that removal fails, purge keeps the data root and writes the resumable report so you can fix the cause and rerun.
+
+Removal runs under `flock` from util-linux. Without it, the step reports `Install flock (util-linux), then rerun lando uninstall. No helper artifacts were changed.`
+
+Helpers this install did not install are never removed:
+
+- A helper installed by another Lando install that still exists is `user-owned`. The plan names that install's data root and leaves the helper running.
+- Files at those paths with no Lando marker are also `user-owned`; Lando never touches them.
+- A helper whose owner cannot be verified (the owner root is gone, the units carry Lando's marker but no owner stamp, or the files disagree with each other) is a `manual` step. The plan prints the exact commands:
+
+```sh
+sudo systemctl disable --now lando-proxy-http.socket lando-proxy-https.socket lando-proxy-http.service lando-proxy-https.service
+sudo rm -f /etc/systemd/system/lando-proxy-http.socket /etc/systemd/system/lando-proxy-http.service /etc/systemd/system/lando-proxy-https.socket /etc/systemd/system/lando-proxy-https.service /etc/polkit-1/rules.d/10-lando-proxy.rules
+sudo systemctl daemon-reload
+```
+
+Review who owns those units before you run them. If you would rather hand the helper to this install than remove it, run `lando setup` instead; see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx).
+
+## Shell profile entries
+
+`lando setup` can write a `# >>> LANDO4 shellenv >>>` block to your POSIX shell profile. Each block exports the `LANDO_USER_DATA_ROOT` it was written for. `--purge` strips only the block written for the data root you are uninstalling. Blocks for other installs stay, and the plan names their data roots as `user-owned`. A block whose data root is missing or unreadable is a `manual` step: remove it by hand if it belongs to this install. `--keep-data` leaves every block in place.
+
+## Private runtime directory
+
+On Linux, the managed `lando` runtime keeps its rootless Podman state (the pause process, user namespace handles, and temporary files) in a private directory under `/run/user/<uid>/`, named `lando-<id>` where the id is derived from this data root's runtime path. It lives outside the data root, so removing the data root alone would leave it behind. `--purge` stops this root's Podman pause process and removes that private directory after the runtime directory is gone. It never touches another data root's private runtime directory or pause process. `--keep-data` leaves both in place so retained apps keep working.
+
 ## Resume a failed uninstall
 
 A failed confirmed uninstall writes a resumable report of completed, failed, skipped, and manual steps. The report lands at `<userDataRoot>/uninstall/report.json`, or under a private tmpdir if purge already removed the data root. After you fix the failure, rerun the same `--keep-data` or `--purge` command to resume.

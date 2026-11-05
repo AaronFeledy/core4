@@ -14,6 +14,7 @@ const paths = (dir: string) => {
   const runtime = join(dir, "runtime");
   const runRoot = join(runtime, "run");
   return {
+    privateRuntimeDir: "/private/test-runtime",
     podmanBin: join(runtime, "bin", "podman"),
     storageDir: join(runtime, "storage"),
     runRoot,

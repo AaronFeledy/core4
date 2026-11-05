@@ -1,4 +1,5 @@
 export * from "./agent-forwarding.ts";
+export * from "./host-maintenance.ts";
 export * from "./tooling-input.ts";
 export * from "./app-plan.ts";
 export * from "./physical-names.ts";

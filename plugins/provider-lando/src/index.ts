@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
@@ -130,6 +131,7 @@ import {
 } from "./windows-sync-targets.ts";
 
 import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
 import {
   inspectAppliedPlan,
@@ -151,6 +153,10 @@ import {
   managedRuntimePodmanArgv0,
   terminateOwnedRuntimeService,
 } from "./managed-runtime-service.ts";
+import {
+  makeManagedRuntimeSocketPathCheck,
+  validateManagedSocketPathLength,
+} from "./managed-runtime-socket-path.ts";
 import { makePluginArtifactDownload, makePluginRuntimeState } from "./plugin-runtime.ts";
 import {
   type PodmanServiceRunner,
@@ -969,6 +975,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         message: "Managed Windows Podman stdin execution requires ProcessRunner.",
         remediation: "Retry with the standard Lando runtime layer that provides ProcessRunner.",
       });
+    const privateRuntimeDir =
+      shouldManageRuntime && family === "linux" && options.runtimeRunDir !== undefined
+        ? yield* resolveManagedRuntimeDir(dirname(options.runtimeRunDir))
+        : undefined;
     const managedRuntimeStatusDeps =
       shouldManageRuntime &&
       managedSocketPath !== undefined &&
@@ -985,6 +995,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               runRoot: options.runtimeRunDir,
               configDir: options.runtimeConfigDir,
               socketPath: managedSocketPath,
+              privateRuntimeDir,
             }),
             pidPath: options.providerPidPath,
           }
@@ -1530,29 +1541,42 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             }
           : {}),
         ...resolvedOps,
-        planSetup: () =>
-          shouldManageRuntime && family === "linux"
-            ? inspectUidmapSetupPlan({
-                platform,
-                host: options.linuxHostRelease ?? readLinuxHostRelease(),
-                probes: rootlessProbes,
-                user: process.env.USER,
-                hasSystemd: hasHostSystemd(),
-              })
-            : shouldManageRuntime &&
-                family === "win32" &&
-                process.platform === "win32" &&
-                Bun.which("ssh.exe") === null
-              ? Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: "lando",
-                    operation: "plan-setup",
-                    message: "Windows OpenSSH Client is required for Lando container-to-host commands.",
-                    remediation:
-                      "Install Windows OpenSSH Client in Settings > System > Optional features, then rerun `lando setup`.",
-                  }),
-                )
-              : Effect.succeed({ providerId, changes: [] }),
+        planSetup: Effect.fn("RuntimeProvider.planSetup")(function* () {
+          if (shouldManageRuntime && family === "linux") {
+            if (managedSocketPath !== undefined) {
+              const overLimit = validateManagedSocketPathLength(managedSocketPath, {
+                operation: "plan-setup",
+              });
+              if (overLimit !== undefined) {
+                return yield* Effect.fail(overLimit);
+              }
+            }
+            return yield* inspectUidmapSetupPlan({
+              platform,
+              host: options.linuxHostRelease ?? readLinuxHostRelease(),
+              probes: rootlessProbes,
+              user: process.env.USER,
+              hasSystemd: hasHostSystemd(),
+            });
+          }
+          if (
+            shouldManageRuntime &&
+            family === "win32" &&
+            process.platform === "win32" &&
+            Bun.which("ssh.exe") === null
+          ) {
+            return yield* Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "plan-setup",
+                message: "Windows OpenSSH Client is required for Lando container-to-host commands.",
+                remediation:
+                  "Install Windows OpenSSH Client in Settings > System > Optional features, then rerun `lando setup`.",
+              }),
+            );
+          }
+          return { providerId, changes: [] };
+        }),
         setup: Effect.fn("RuntimeProvider.setup")(function* (plan: ProviderSetupPlan, setupOptions) {
           const smokeEnabled = Reflect.get(setupOptions.setupFlags ?? {}, "smoke") === true;
           const result = yield* setupProviderLando({
@@ -1911,7 +1935,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  doctorChecks: [makeWslMountPropagationCheck()],
+  doctorChecks: [makeWslMountPropagationCheck(), makeManagedRuntimeSocketPathCheck()],
   hostMaintainers: [
     {
       id: "lando-runtime-service",

@@ -3,6 +3,7 @@ import {
   type OccupancyHolderKind,
   classifyOccupancyHolder,
 } from "./preferred-host-ports-holders.ts";
+import { LANDO_SOCKET_PROXY_HOLDER_LABEL, isLandoSocketProxyUnit } from "./socket-proxy-helper.ts";
 
 const SKIP_SYSTEMD_UNITS = new Set([
   "containerd",
@@ -40,6 +41,7 @@ export type OccupiedPortWarningInput = {
   readonly kind: OccupancyHolderKind;
   readonly identity?: OccupancyHolderIdentity;
   readonly systemdUnit?: string;
+  readonly socketProxyMarked?: boolean;
 };
 
 export const systemdServiceFromCgroup = (cgroup: string): string | undefined => {
@@ -72,6 +74,9 @@ const processLabel = (identity: OccupancyHolderIdentity | undefined): string | u
 };
 
 const occupantPhrase = (input: OccupiedPortWarningInput): string => {
+  if (input.socketProxyMarked === true && isLandoSocketProxyUnit(input.systemdUnit)) {
+    return ` by ${LANDO_SOCKET_PROXY_HOLDER_LABEL}`;
+  }
   if (input.kind !== "unknown") return ` by ${HOLDER_LABEL[input.kind]}`;
   const process = processLabel(input.identity);
   if (process !== undefined) return ` by ${process}`;
@@ -88,6 +93,7 @@ export const formatOccupiedPortWarning = (input: OccupiedPortWarningInput): stri
   `${formatOccupiedPortHop(input)} ${ALTERNATE_URL_HELP}`;
 
 export type OccupiedPortProbe = {
+  readonly socketProxyMarked?: boolean;
   readonly holder?: string;
   readonly holderPid?: number;
   readonly holderCmdline?: string;
@@ -110,6 +116,7 @@ const portWarningInput = (
     ...(probe.holderPid === undefined ? {} : { pid: probe.holderPid }),
   },
   ...(probe.holderSystemdUnit === undefined ? {} : { systemdUnit: probe.holderSystemdUnit }),
+  ...(probe.socketProxyMarked === undefined ? {} : { socketProxyMarked: probe.socketProxyMarked }),
 });
 
 export const warningFromHolder = (preferred: number, chosen: number, probe: OccupiedPortProbe): string =>

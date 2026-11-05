@@ -78,6 +78,7 @@ export class RouterService extends Context.Service<
     readonly setup: (
       config: ProxyConfig,
       options?: {
+        readonly intent?: "configure" | "ensure";
         readonly autoApprove?: boolean;
         /** Rescan host ports instead of reusing the persisted pair; set only by explicit `lando setup`. */
         readonly reacquirePorts?: boolean;

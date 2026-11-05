@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import type { ProcWalk } from "../src/leftover-proxy-ports-linux.ts";
 import {
+  classifyRootlessportOrigin,
   commForSocketInode,
   commLooksLikeRootlessport,
+  holderForSocketInode,
+  normalizeProcExe,
   parseListenInodeForLoopbackPort,
+  runtimeBinDirOfExe,
 } from "../src/leftover-proxy-ports-linux.ts";
 
 const TCP_HEADER =
@@ -46,6 +50,39 @@ describe("commLooksLikeRootlessport", () => {
   });
 });
 
+describe("runtimeBinDirOfExe / classifyRootlessportOrigin", () => {
+  test("extracts runtime/bin from a rootlessport exe path", () => {
+    expect(runtimeBinDirOfExe("/home/a/.local/share/lando-b/runtime/bin/rootlessport")).toBe(
+      "/home/a/.local/share/lando-b/runtime/bin",
+    );
+    expect(runtimeBinDirOfExe("/other/runtime/bin/rootlessport (deleted)")).toBe("/other/runtime/bin");
+    expect(runtimeBinDirOfExe("/usr/bin/rootlessport")).toBeUndefined();
+  });
+
+  test("strips the kernel deleted suffix from exe", () => {
+    expect(normalizeProcExe("/x/runtime/bin/rootlessport (deleted)")).toBe("/x/runtime/bin/rootlessport");
+  });
+
+  test("classifies exe under this runtimeBinDir as this-runtime", () => {
+    const thisBin = "/data/this/runtime/bin";
+    expect(classifyRootlessportOrigin(`${thisBin}/rootlessport`, thisBin)).toBe("this-runtime");
+  });
+
+  test("classifies exe under a different runtime/bin as other-data-root", () => {
+    const thisBin = "/data/this/runtime/bin";
+    const other = "/data/other/runtime/bin/rootlessport";
+    expect(classifyRootlessportOrigin(other, thisBin)).toBe("other-data-root");
+  });
+
+  test("classifies missing exe or non-runtime paths as unknown", () => {
+    expect(classifyRootlessportOrigin(undefined, "/data/this/runtime/bin")).toBe("unknown");
+    expect(classifyRootlessportOrigin("/usr/bin/rootlessport", "/data/this/runtime/bin")).toBe("unknown");
+    expect(classifyRootlessportOrigin("/data/other/runtime/bin/rootlessport", undefined)).toBe(
+      "other-data-root",
+    );
+  });
+});
+
 const walkFrom = (files: Readonly<Record<string, string | ReadonlyArray<string>>>): ProcWalk => ({
   names: async (path) => {
     const value = files[path];
@@ -61,8 +98,8 @@ const walkFrom = (files: Readonly<Record<string, string | ReadonlyArray<string>>
   },
 });
 
-describe("commForSocketInode", () => {
-  test("walks fds only for rootlessport-shaped comms", async () => {
+describe("holderForSocketInode / commForSocketInode", () => {
+  test("walks fds only for rootlessport-shaped comms and captures exe", async () => {
     // Given: hundreds of foreign pids plus one leftover holder
     const files: Record<string, string | ReadonlyArray<string>> = {
       "/proc": ["1", "self", "2"],
@@ -71,6 +108,7 @@ describe("commForSocketInode", () => {
       "/proc/2/fd": ["0", "3"],
       "/proc/2/fd/0": "pipe:[1]",
       "/proc/2/fd/3": "socket:[424242]",
+      "/proc/2/exe": "/data/this/runtime/bin/rootlessport",
     };
     let fdWalks = 0;
     const walk = walkFrom(files);
@@ -83,11 +121,16 @@ describe("commForSocketInode", () => {
     };
 
     // When
+    const holder = await holderForSocketInode("424242", counted);
     const comm = await commForSocketInode("424242", counted);
 
-    // Then: holder identified without opening systemd fds
+    expect(holder).toEqual({
+      comm: "rootlessport",
+      pid: 2,
+      exe: "/data/this/runtime/bin/rootlessport",
+    });
     expect(comm).toBe("rootlessport");
-    expect(fdWalks).toBe(1);
+    expect(fdWalks).toBe(2);
   });
 
   test("identifies an early leftover before later pids exhaust the budget", async () => {
@@ -101,14 +144,17 @@ describe("commForSocketInode", () => {
         now = 2;
         return "nginx";
       },
-      link: async () => "socket:[424242]",
+      link: async (path) => {
+        if (path === "/proc/2/exe") return "/data/this/runtime/bin/rootlessport";
+        return "socket:[424242]";
+      },
     };
 
     // When
-    const comm = await commForSocketInode("424242", walk, 1);
+    const holder = await holderForSocketInode("424242", walk, 1);
 
-    // Then: the already-seen holder is reported
-    expect(comm).toBe("rootlessport");
+    expect(holder?.comm).toBe("rootlessport");
+    expect(holder?.exe).toBe("/data/this/runtime/bin/rootlessport");
   });
 
   test("returns undefined once the comm-scan budget elapses", async () => {
@@ -128,9 +174,8 @@ describe("commForSocketInode", () => {
     };
 
     // When
-    const comm = await commForSocketInode("424242", walk, 1);
+    const holder = await holderForSocketInode("424242", walk, 1);
 
-    // Then: no leftover comm after the budget
-    expect(comm).toBeUndefined();
+    expect(holder).toBeUndefined();
   });
 });

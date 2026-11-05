@@ -28,8 +28,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _cleanupDiscoveredApps?: unknown;
     readonly _cgroupsDelegatePath?: unknown;
     readonly _shellProfilePath?: unknown;
-    readonly _socketProxyUnitPaths?: unknown;
-    readonly _socketProxyPolkitPath?: unknown;
     readonly _elevate?: unknown;
     readonly _readText?: unknown;
     readonly _writeText?: unknown;
@@ -82,13 +80,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
       ? { cgroupsDelegatePath: extra._cgroupsDelegatePath }
       : {}),
     ...(typeof extra._shellProfilePath === "string" ? { shellProfilePath: extra._shellProfilePath } : {}),
-    ...(Array.isArray(extra._socketProxyUnitPaths) &&
-    extra._socketProxyUnitPaths.every((path) => typeof path === "string")
-      ? { socketProxyUnitPaths: extra._socketProxyUnitPaths }
-      : {}),
-    ...(typeof extra._socketProxyPolkitPath === "string"
-      ? { socketProxyPolkitPath: extra._socketProxyPolkitPath }
-      : {}),
     ...(typeof extra._elevate === "function"
       ? { elevate: extra._elevate as NonNullable<UninstallOptions["elevate"]> }
       : {}),
