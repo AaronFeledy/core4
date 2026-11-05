@@ -226,7 +226,7 @@ Enable, disable, and reconcile accept `--dry-run`. A preview returns `dryRun: tr
 
 A dry-run nested in the activation's Effect context MUST report intersecting in-process reservations. A separate process observes available policy and runtime impact without acquiring a mutation lease or inspecting another process's private reservations. Its preview MUST NOT imply admission to mutate during that activation; a real mutation acquires its own lease and repeats admission against current state.
 
-Policy and service configuration are independent: `meta:global:config` view, validation, and writes MUST use the same eligibility resolver as startup. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --purge` under §20.9, never to contribution disablement.
+Policy and service configuration are independent: `meta:global:config` view, validation, and writes MUST use the same eligibility resolver as startup. `describe` is schema-only (§8.2.1) and does not consult eligibility. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --purge` under §20.9, never to contribution disablement.
 
 #### 20.7.1 Top-level alias reservation
 
