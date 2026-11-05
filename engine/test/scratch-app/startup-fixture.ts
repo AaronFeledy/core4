@@ -28,7 +28,7 @@ import { plan, web } from "../operations/start-progress-topology-support.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 export const withStartupFixture = async (
-  overrides: Partial<Pick<RuntimeProviderShape, "inspect" | "exec" | "apply">>,
+  overrides: Partial<Pick<RuntimeProviderShape, "inspect" | "exec" | "apply" | "ensureReady">>,
   use: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
   registration: Effect.Effect<void, ScratchAppError> = Effect.void,
 ) => {

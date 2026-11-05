@@ -19,6 +19,7 @@ import {
   type MachineSshBridgeProcess,
   defaultHost,
 } from "./machine-ssh-host.ts";
+import { withoutPodmanRedirectsDefined } from "./managed-invocation.ts";
 
 export type { MachineSshBridgeHost, MachineSshBridgeProcess } from "./machine-ssh-host.ts";
 
@@ -161,12 +162,70 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
     target: () => BridgeTarget,
   ) {
     const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    // Drop CONTAINER_HOST and other redirects so machine inspect/ssh never bind a hostile daemon.
+    const sanitizedEnv = withoutPodmanRedirectsDefined(process.env);
     const host: MachineSshBridgeHost = options.host ?? {
-      ...defaultHost,
+      which: defaultHost.which,
       run: async (command, args) => {
         if (Option.isNone(processRunner))
           throw new BridgeCommandError("ProcessRunner is unavailable for the Podman machine SSH bridge.");
-        return Effect.runPromise(processRunner.value.run({ cmd: command, args, timeoutMs: 15_000 }));
+        return Effect.runPromise(
+          processRunner.value.run({
+            cmd: command,
+            args,
+            timeoutMs: 15_000,
+            env: sanitizedEnv,
+            replaceEnv: true,
+          }),
+        );
+      },
+      start: (command, args) => {
+        const child = Bun.spawn([command, ...args], {
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+          windowsHide: true,
+          env: sanitizedEnv,
+        });
+        let stderr = "";
+        let closePromise: Promise<void> | undefined;
+        const drain = (async () => {
+          for await (const chunk of child.stderr)
+            stderr = (stderr + new TextDecoder().decode(chunk)).slice(-4096);
+        })();
+        return {
+          exited: child.exited,
+          waitReady: async () => {
+            const reader = child.stdout.getReader();
+            const timeout = setTimeout(() => child.kill(), 15_000);
+            try {
+              let output = "";
+              while (output.length < 1024) {
+                const next = await reader.read();
+                if (next.done)
+                  throw new BridgeCommandError(`SSH reverse forwarding exited before readiness: ${stderr}`);
+                output += new TextDecoder().decode(next.value);
+                if (output.includes("LANDO_BRIDGE_READY\n")) return;
+              }
+              throw new BridgeCommandError("SSH reverse forwarding did not report readiness.");
+            } finally {
+              clearTimeout(timeout);
+              reader.releaseLock();
+            }
+          },
+          close: () => {
+            closePromise ??= (async () => {
+              child.stdin.end();
+              const timeout = setTimeout(() => child.kill(), 3_000);
+              try {
+                await Promise.all([child.exited, drain]);
+              } finally {
+                clearTimeout(timeout);
+              }
+            })();
+            return closePromise;
+          },
+        };
       },
     };
     return yield* Effect.acquireRelease(

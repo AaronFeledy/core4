@@ -42,6 +42,7 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -175,23 +176,23 @@ export const preflightStartAppDrain = Effect.fnUntraced(function* (
 export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
-  managed?: StartManagedScope,
+  managed: StartManagedScope | undefined,
   execution: {
+    readonly provider: PreparedRuntimeProvider;
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
     readonly preparedOverlays?: PreparedStartOverlays;
-  } = {},
+  },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
   const bundle = yield* fileSyncBundle(target.plan);
   const resolvedOptions = options ?? {};
-  const registry = yield* RuntimeProviderRegistry;
   const events = yield* EventService;
   const builds = yield* BuildOrchestrator;
   const proxy = yield* RouterService;
 
-  const candidateProvider = yield* registry.select(target.plan);
-  const inspectAppliedFileSync = candidateProvider.inspectAppliedFileSync;
+  const provider = execution.provider;
+  const inspectAppliedFileSync = provider.inspectAppliedFileSync;
   const inspectPrior =
     inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
   const pending = yield* readPendingAcceleratedStart(target.app, target.plan);
@@ -201,12 +202,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   if (pending === null && bundle.kind === "accelerated") {
     yield* acquirePlannedFileSyncEngine(resolvedPlan);
   }
-  const selectedProvider =
-    resolvedPlan === target.plan ? candidateProvider : yield* registry.select(resolvedPlan);
   if (
     bundle.kind === "accelerated" &&
-    selectedProvider.prepareFileSyncTargets !== undefined &&
-    selectedProvider.inspectAppliedFileSync === undefined
+    provider.prepareFileSyncTargets !== undefined &&
+    provider.inspectAppliedFileSync === undefined
   ) {
     return yield* Effect.fail(
       new FileSyncStartError({
@@ -217,7 +216,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       }),
     );
   }
-  if (bundle.kind === "accelerated" && selectedProvider.prepareFileSyncTargets === undefined)
+  if (bundle.kind === "accelerated" && provider.prepareFileSyncTargets === undefined)
     return yield* Effect.fail(
       new FileSyncStartError({
         engineId: bundle.id,
@@ -227,9 +226,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
     );
   const plan = resolvedPlan;
   const preparedOverlays =
-    execution.preparedOverlays ?? (yield* prepareStartOverlays({ ...target, plan }, selectedProvider));
+    execution.preparedOverlays ?? (yield* prepareStartOverlays({ ...target, plan }, provider));
   const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";
-  const provider = selectedProvider;
   if (bundle.kind === "accelerated" && inspectPrior !== undefined) {
     const prior = yield* inspectPrior();
     if (prior.status === "accelerated" && prior.engineId !== bundle.id) {

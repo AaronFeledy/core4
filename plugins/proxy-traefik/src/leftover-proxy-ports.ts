@@ -1,18 +1,28 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 
-import { globalAppRootPath } from "@lando/paths";
+import { globalAppRootPath, runtimeLayoutPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import type { HostPlatform, RouterPortPair } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
 
 import { type TraefikPublishState, resolveTraefikPublishPorts } from "./global-services/traefik.ts";
-import { commLooksLikeRootlessport, identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
+import {
+  classifyRootlessportOrigin,
+  commLooksLikeRootlessport,
+  identifyLoopbackHolder,
+  runtimeBinDirOfExe,
+} from "./leftover-proxy-ports-linux.ts";
 import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 
-export type LoopbackPortKind = "leftover-rootlessport" | "healthy-proxy" | "foreign" | "unknown";
+export type LoopbackPortKind =
+  | "leftover-rootlessport"
+  | "other-data-root-forwarder"
+  | "healthy-proxy"
+  | "foreign"
+  | "unknown";
 export type LoopbackPortRole = "http" | "https";
 
 export interface LoopbackPortSnapshot {
@@ -20,6 +30,9 @@ export interface LoopbackPortSnapshot {
   readonly host: "127.0.0.1";
   readonly listening: boolean;
   readonly comm?: string;
+  readonly pid?: number;
+  readonly exe?: string;
+  readonly ownerRuntimeBinDir?: string;
   readonly kind?: LoopbackPortKind;
 }
 
@@ -28,6 +41,7 @@ export interface LoopbackPortReaders {
     port: number,
     platform: HostPlatform,
     role?: LoopbackPortRole,
+    runtimeBinDir?: string,
   ) => Promise<LoopbackPortSnapshot>;
 }
 
@@ -44,16 +58,28 @@ const LAST_FALLBACK: LeftoverProxyPortPair = {
 const isLeftoverRootlessportHolder = (snapshot: LoopbackPortSnapshot): boolean =>
   snapshot.listening && snapshot.kind === "leftover-rootlessport";
 
+const isOtherDataRootForwarder = (snapshot: LoopbackPortSnapshot): boolean =>
+  snapshot.listening && snapshot.kind === "other-data-root-forwarder";
+
 const idleSnapshot = (port: number): LoopbackPortSnapshot => ({
   port,
   host: LOOPBACK_HOST,
   listening: false,
 });
 
+const rootlessportKind = (
+  runtimeBinDir: string | undefined,
+  exe: string | undefined,
+): Extract<LoopbackPortKind, "leftover-rootlessport" | "other-data-root-forwarder"> => {
+  const origin = classifyRootlessportOrigin(exe, runtimeBinDir);
+  return origin === "other-data-root" ? "other-data-root-forwarder" : "leftover-rootlessport";
+};
+
 const readPort = async (
   port: number,
   platform: HostPlatform,
   role: LoopbackPortRole = "http",
+  runtimeBinDir?: string,
 ): Promise<LoopbackPortSnapshot> => {
   if (platform !== "linux" && platform !== "wsl") return idleSnapshot(port);
 
@@ -69,16 +95,39 @@ const readPort = async (
       return absurd<never>(tcp);
   }
 
-  if (await probeHttp({ host: LOOPBACK_HOST, port, role, timeoutMs: HTTP_PROBE_MS })) {
+  const holder = await identifyLoopbackHolder(port);
+  const otherRoot =
+    holder !== undefined &&
+    commLooksLikeRootlessport(holder.comm) &&
+    classifyRootlessportOrigin(holder.exe, runtimeBinDir) === "other-data-root";
+  if (!otherRoot && (await probeHttp({ host: LOOPBACK_HOST, port, role, timeoutMs: HTTP_PROBE_MS }))) {
     return { port, host: LOOPBACK_HOST, listening: true, kind: "healthy-proxy" };
   }
 
-  const comm = await identifyLoopbackHolderComm(port);
-  if (comm !== undefined && commLooksLikeRootlessport(comm)) {
-    return { port, host: LOOPBACK_HOST, listening: true, comm, kind: "leftover-rootlessport" };
+  if (holder !== undefined && commLooksLikeRootlessport(holder.comm)) {
+    const kind = rootlessportKind(runtimeBinDir, holder.exe);
+    const ownerRuntimeBinDir = holder.exe === undefined ? undefined : runtimeBinDirOfExe(holder.exe);
+    return {
+      port,
+      host: LOOPBACK_HOST,
+      listening: true,
+      comm: holder.comm,
+      pid: holder.pid,
+      kind,
+      ...(holder.exe === undefined ? {} : { exe: holder.exe }),
+      ...(ownerRuntimeBinDir === undefined ? {} : { ownerRuntimeBinDir }),
+    };
   }
-  if (comm !== undefined) {
-    return { port, host: LOOPBACK_HOST, listening: true, comm, kind: "foreign" };
+  if (holder !== undefined) {
+    return {
+      port,
+      host: LOOPBACK_HOST,
+      listening: true,
+      comm: holder.comm,
+      pid: holder.pid,
+      kind: "foreign",
+      ...(holder.exe === undefined ? {} : { exe: holder.exe }),
+    };
   }
   return { port, host: LOOPBACK_HOST, listening: true, kind: "unknown" };
 };
@@ -109,6 +158,15 @@ const pairFromPublish = (state: TraefikPublishState | undefined): LeftoverProxyP
   return { httpPort: ports.http, httpsPort: ports.https };
 };
 
+const resolveRuntimeBinDir = (input: {
+  readonly userDataRoot: string | undefined;
+  readonly platform: HostPlatform;
+}): Effect.Effect<string | undefined> => {
+  if (input.userDataRoot === undefined) return Effect.succeed(undefined);
+  const bin = runtimeLayoutPaths(input.userDataRoot, input.platform).runtimeBinDir;
+  return Effect.tryPromise(() => realpath(bin)).pipe(Effect.catch(() => Effect.succeed(bin)));
+};
+
 const resolveProbedPair = (
   input: { readonly userDataRoot: string | undefined; readonly platform: HostPlatform },
   override: LeftoverProxyPortPair | undefined,
@@ -118,6 +176,7 @@ const resolveProbedPair = (
   const paths: ProxyPaths = {
     platform: input.platform,
     globalAppRoot: globalAppRootPath(input.userDataRoot, input.platform),
+    userDataRoot: input.userDataRoot,
   };
   return Effect.tryPromise(() => readFile(acquisitionStateFile(paths), "utf8")).pipe(
     Effect.flatMap((text) =>
@@ -131,6 +190,72 @@ const resolveProbedPair = (
   );
 };
 
+const leftoverReport = (leftover: ReadonlyArray<LoopbackPortSnapshot>): PluginDoctorReport => {
+  const first = leftover[0];
+  return {
+    name: "proxy-loopback-ports",
+    status: "warn",
+    severity: "warn",
+    runtimeStatus: "leftover-rootlessport",
+    runtime: { running: false },
+    context: {
+      host: LOOPBACK_HOST,
+      ports: leftover.map((item) => String(item.port)).join(","),
+      holder: first?.comm ?? "rootlessport",
+    },
+    solutions: [
+      {
+        kind: "manual",
+        description: "Stop the global app so leftover proxy loopback ports can be released.",
+        command: "lando global:stop",
+      },
+      {
+        kind: "manual",
+        description:
+          "If global:stop does not release the port, terminate the leftover rootlessport process manually before retrying.",
+      },
+      {
+        kind: "manual",
+        description: "If the managed runtime is broken after reaping, restore it and retry start.",
+        command: "lando setup",
+      },
+    ],
+  } satisfies PluginDoctorReport;
+};
+
+const otherDataRootReport = (holders: ReadonlyArray<LoopbackPortSnapshot>): PluginDoctorReport => {
+  const first = holders[0];
+  const ownerBin = first?.ownerRuntimeBinDir;
+  return {
+    name: "proxy-loopback-ports",
+    status: "warn",
+    severity: "warn",
+    runtimeStatus: "other-data-root-forwarder",
+    runtime: { running: true },
+    context: {
+      host: LOOPBACK_HOST,
+      ports: holders.map((item) => String(item.port)).join(","),
+      holder: first?.comm ?? "rootlessport",
+      ...(ownerBin === undefined ? {} : { ownerRuntimeBinDir: ownerBin }),
+      ...(first?.pid === undefined ? {} : { pid: String(first.pid) }),
+    },
+    solutions: [
+      {
+        kind: "manual",
+        description:
+          "Another Lando data root's live rootlessport forwarder holds these loopback ports. Do not terminate that process from this data root.",
+      },
+      {
+        kind: "manual",
+        description:
+          ownerBin === undefined
+            ? "Stop the other Lando install that owns the forwarder, or point this Lando at that data root (LANDO_USER_DATA_ROOT), or choose free router ports for this root."
+            : `Stop the Lando install whose runtime bin is ${ownerBin}, or point this Lando at that data root (LANDO_USER_DATA_ROOT), or choose free router ports for this root.`,
+      },
+    ],
+  } satisfies PluginDoctorReport;
+};
+
 export const makeLeftoverProxyPortsCheck = (
   readers: LoopbackPortReaders = systemReaders,
   ports?: LeftoverProxyPortPair,
@@ -138,6 +263,7 @@ export const makeLeftoverProxyPortsCheck = (
   id: "proxy-loopback-ports",
   run: Effect.fnUntraced(function* (input) {
     const pair = yield* resolveProbedPair(input, ports);
+    const runtimeBinDir = yield* resolveRuntimeBinDir(input);
     const probed: ReadonlyArray<{ readonly port: number; readonly role: LoopbackPortRole }> = [
       { port: pair.httpPort, role: "http" },
       { port: pair.httpsPort, role: "https" },
@@ -145,45 +271,18 @@ export const makeLeftoverProxyPortsCheck = (
     const snapshots = yield* Effect.forEach(
       probed,
       ({ port, role }) =>
-        Effect.promise(() => readers.readPort(port, input.platform, role).catch(() => idleSnapshot(port))),
+        Effect.promise(() =>
+          readers.readPort(port, input.platform, role, runtimeBinDir).catch(() => idleSnapshot(port)),
+        ),
       { concurrency: "unbounded" },
     );
 
     const leftover = snapshots.filter(isLeftoverRootlessportHolder);
-    const first = leftover[0];
-    if (first === undefined) return [];
-
-    const report = {
-      name: "proxy-loopback-ports",
-      status: "warn",
-      severity: "warn",
-      runtimeStatus: "leftover-rootlessport",
-      runtime: { running: false },
-      context: {
-        host: LOOPBACK_HOST,
-        ports: leftover.map((item) => String(item.port)).join(","),
-        holder: first.comm ?? "rootlessport",
-      },
-      solutions: [
-        {
-          kind: "manual",
-          description: "Stop the global app so leftover proxy loopback ports can be released.",
-          command: "lando global:stop",
-        },
-        {
-          kind: "manual",
-          description:
-            "If global:stop does not release the port, terminate the leftover rootlessport process manually before retrying.",
-        },
-        {
-          kind: "manual",
-          description: "If the managed runtime is broken after reaping, restore it and retry start.",
-          command: "lando setup",
-        },
-      ],
-    } satisfies PluginDoctorReport;
-
-    return [report];
+    const otherRoot = snapshots.filter(isOtherDataRootForwarder);
+    const reports: PluginDoctorReport[] = [];
+    if (leftover[0] !== undefined) reports.push(leftoverReport(leftover));
+    if (otherRoot[0] !== undefined) reports.push(otherDataRootReport(otherRoot));
+    return reports;
   }),
 });
 
