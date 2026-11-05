@@ -1044,7 +1044,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1077,7 +1079,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1105,7 +1109,9 @@ describe("applied-state teardown", () => {
           id: oldPlan.id,
           root: oldPlan.root,
         }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
