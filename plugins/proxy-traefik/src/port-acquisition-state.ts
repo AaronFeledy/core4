@@ -1,7 +1,6 @@
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
-import { PortNumber } from "@lando/sdk/schema";
 
 import { foreignSocketProxyNotice } from "./socket-proxy-helper.ts";
 
@@ -17,21 +16,26 @@ import {
   resolveTryLists,
   stillOwnPersisted,
 } from "./port-acquisition-helpers.ts";
+import { displayAcquisitionNotices, noticesForPersistence } from "./port-acquisition-notices.ts";
 import {
   ownedRouterPorts,
   reclaimRouterPorts,
   usableHelperHopTargets,
 } from "./port-acquisition-ownership.ts";
 import {
-  ACQUISITION_MODES,
+  type AcquisitionState,
+  readAcquisitionState,
+  writeAcquisitionState,
+} from "./port-acquisition-record.ts";
+import {
   type AcquisitionDecision,
   DESIRED_HTTPS_PORT,
   DESIRED_HTTP_PORT,
   chooseHelperBindPorts,
   isOurSocketHelperHolder,
 } from "./port-acquisition.ts";
-import { acquisitionStateFile, routingStateFile } from "./proxy-paths.ts";
-import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./proxy-types.ts";
+import { routingStateFile } from "./proxy-paths.ts";
+import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import {
   classifySocketProxy,
   isSocketProxyInstalled,
@@ -40,74 +44,7 @@ import {
 } from "./socket-proxy-install.ts";
 import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
-const AcquisitionFingerprintSchema = Schema.Struct({
-  http: Schema.Array(PortNumber),
-  https: Schema.Array(PortNumber),
-  bindAddress: Schema.String,
-});
-
-export const AcquisitionState = Schema.Struct({
-  mode: Schema.Literals([...ACQUISITION_MODES]),
-  httpPort: PortNumber,
-  httpsPort: PortNumber,
-  notices: Schema.Array(Schema.String),
-  fingerprint: AcquisitionFingerprintSchema,
-  appliedFingerprint: Schema.optionalKey(AcquisitionFingerprintSchema),
-  helperInstalled: Schema.optionalKey(Schema.Boolean),
-  socketsActive: Schema.optionalKey(Schema.Boolean),
-  bindHttpPort: Schema.optionalKey(PortNumber),
-  bindHttpsPort: Schema.optionalKey(PortNumber),
-});
-export type AcquisitionState = typeof AcquisitionState.Type;
-
-export const writeAcquisitionState = (
-  fileSystem: ProxyFileSystem,
-  paths: ProxyPaths,
-  state: AcquisitionState,
-): Effect.Effect<void, unknown> =>
-  fileSystem.writeAtomic(acquisitionStateFile(paths), `${JSON.stringify(state)}\n`);
-
-export const readAcquisitionState = (
-  fileSystem: ProxyFileSystem,
-  paths: ProxyPaths,
-): Effect.Effect<AcquisitionState | undefined> =>
-  fileSystem.readText(acquisitionStateFile(paths)).pipe(
-    Effect.flatMap((text) =>
-      Effect.try({
-        try: () => Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(text)),
-        catch: (error) => error,
-      }),
-    ),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
-
-/** Strip setup/removal recipes before writing acquisition state (never replay sudo recipes on start). */
-const noticesForPersistence = (notices: readonly string[]): readonly string[] =>
-  notices.filter((notice) => !notice.includes("sudo systemctl") && !notice.includes("sudo rm"));
-
-/**
- * Start/ensure: append at most one foreign-helper clause to the existing fallback notice.
- * Configure keeps full explanation/commands as separate notices for the setup surface.
- */
-const displayAcquisitionNotices = (
-  hopNotices: readonly string[],
-  helperNotices: readonly string[],
-  intent: "configure" | "ensure" | undefined,
-): readonly string[] => {
-  if (helperNotices.length === 0) return hopNotices;
-  if (intent === "configure") {
-    return [...helperNotices, ...hopNotices];
-  }
-  const clause = helperNotices[0]?.trim();
-  if (clause === undefined || clause.length === 0) return hopNotices;
-  if (hopNotices.length === 0) return [clause];
-  const out = [...hopNotices];
-  const last = out.length - 1;
-  const base = out[last] ?? "";
-  // One clause only; do not introduce a second notice or removal recipe.
-  out[last] = base.includes(clause) ? base : `${base} ${clause}`;
-  return out;
-};
+export { AcquisitionState, readAcquisitionState, writeAcquisitionState } from "./port-acquisition-record.ts";
 
 const isOurPreferredHolder = (probe: {
   readonly holder?: string;
@@ -141,12 +78,9 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
     previous === undefined
       ? undefined
       : {
-          httpPort: previous.httpPort,
-          httpsPort: previous.httpsPort,
+          ...previous,
           helperInstalled: previous.helperInstalled === true,
-          socketsActive: previous.socketsActive === true,
-          ...(previous.bindHttpPort === undefined ? {} : { bindHttpPort: previous.bindHttpPort }),
-          ...(previous.bindHttpsPort === undefined ? {} : { bindHttpsPort: previous.bindHttpsPort }),
+          socketsActive: previous.mode === "socket-helper",
         };
   if (routingExists && pin !== undefined && previousPair !== undefined && pinDiffers(previousPair, pin)) {
     return yield* Effect.fail(pinMismatch(previousPair, pin));
@@ -159,8 +93,8 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
   if (canUseHelper && helperInstalled && helperOwnsPreferred(probed)) {
     const targets = yield* usableHelperHopTargets(dependencies, probed, lists.bindAddress);
     if (targets !== undefined) {
-      const decision: AcquisitionDecision = {
-        mode: "socket-helper",
+      const decision = {
+        mode: "socket-helper" as const,
         httpPort: DESIRED_HTTP_PORT,
         httpsPort: DESIRED_HTTPS_PORT,
         notices: [],
@@ -252,10 +186,11 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
         const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
         yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
           ...decision,
+          mode: "socket-helper",
           ...applied,
           notices: [...noticesForPersistence(decision.notices)],
-          helperInstalled: resolved.helperInstalled,
-          socketsActive: resolved.socketsActive,
+          helperInstalled: true,
+          socketsActive: true,
           bindHttpPort: hops.success.bindHttpPort,
           bindHttpsPort: hops.success.bindHttpsPort,
         });
@@ -292,12 +227,17 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
       previous.helperInstalled !== helperInstalled ||
       JSON.stringify(previous.notices) !== JSON.stringify(persistedNotices)
     ) {
-      yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-        ...previous,
+      const refreshed = {
         fingerprint: lists.fingerprint,
-        notices: [...persistedNotices],
-        helperInstalled,
-      });
+        notices: persistedNotices,
+      };
+      yield* writeAcquisitionState(
+        dependencies.fileSystem,
+        dependencies.paths,
+        previous.mode === "socket-helper"
+          ? { ...previous, ...refreshed }
+          : { ...previous, ...refreshed, helperInstalled },
+      );
     }
     return {
       mode: previous.mode,
