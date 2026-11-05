@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { TestClock } from "effect/testing";
 
 import { makeLandoPaths } from "@lando/paths";
+import { ScratchAppError } from "@lando/sdk/errors";
 import { StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 
@@ -60,13 +61,56 @@ const entry = (id: string): ScratchRegistryEntry => ({
 const registryFile = (): string => join(makeLandoPaths().scratchDir, "registry.bin");
 
 describe("scratch registry", () => {
+  test("rejects restarting an entry pending cleanup without changing the registry", async () => {
+    await withTempRoots(async () => {
+      const registry = testRegistry();
+      const original = entry("scratch-cleanup-000001");
+      await Effect.runPromise(registry.upsert("acquire", original));
+      const pending = { ...original, status: "destroyed-pending-cleanup" as const };
+      await Effect.runPromise(registry.upsert("mark-pending-cleanup", original));
+
+      const result = await Effect.runPromise(registry.upsert("mark-running", original).pipe(Effect.result));
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("Expected a rejected transition");
+      expect(result.failure).toBeInstanceOf(ScratchAppError);
+      expect(result.failure.operation).toBe("registry.write");
+      expect(result.failure.message).toContain("cannot mark-running while destroyed-pending-cleanup");
+      expect(result.failure.remediation).toContain("lando apps:scratch:gc");
+      await expect(Effect.runPromise(registry.list())).resolves.toEqual([pending]);
+    });
+  });
+
+  test("migrates v1 stopping entries without losing other entries or quarantining the registry", async () => {
+    await withTempRoots(async () => {
+      const stopping = { ...entry("scratch-stopping-000001"), status: "stopping" };
+      const running = entry("scratch-running-000002");
+      const acquiring = { ...entry("scratch-acquiring-000003"), status: "acquiring" as const };
+      await mkdir(makeLandoPaths().scratchDir, { recursive: true });
+      await writeFile(registryFile(), JSON.stringify({ version: 1, data: [stopping, running, acquiring] }));
+
+      const registry = testRegistry();
+      const migrated = await Effect.runPromise(registry.list());
+
+      const pending = { ...stopping, status: "destroyed-pending-cleanup" as const };
+      expect(migrated).toEqual([pending, running, acquiring]);
+      expect(await readdir(makeLandoPaths().scratchDir)).toEqual(["registry.bin"]);
+      await Effect.runPromise(registry.upsert("mark-pending-cleanup", pending));
+      expect(JSON.parse(await readFile(registryFile(), "utf8"))).toEqual({
+        version: 2,
+        data: [acquiring, running, pending],
+      });
+    });
+  });
+
   test("detach stamps the advanced execution clock while preserving creation time", async () => {
     await withTempRoots(async () => {
       // Given an attached entry and an execution clock independent of host time.
       const store = testStore();
       const registry = makeScratchRegistry(store);
       const original = { ...entry("scratch-clock-000001"), detached: false, ownerPid: process.pid };
-      await Effect.runPromise(registry.upsert(original));
+      await Effect.runPromise(registry.upsert("acquire", original));
+      await Effect.runPromise(registry.upsert("mark-running", original));
       await Effect.runPromise(
         Effect.gen(function* () {
           yield* TestClock.setTime(0);
@@ -92,8 +136,10 @@ describe("scratch registry", () => {
       const first = entry("scratch-one-000001");
       const second = entry("scratch-two-000002");
 
-      await Effect.runPromise(registry.upsert(second));
-      await Effect.runPromise(registry.upsert(first));
+      await Effect.runPromise(registry.upsert("acquire", second));
+      await Effect.runPromise(registry.upsert("mark-running", second));
+      await Effect.runPromise(registry.upsert("acquire", first));
+      await Effect.runPromise(registry.upsert("mark-running", first));
 
       await expect(Effect.runPromise(registry.list())).resolves.toEqual([first, second]);
       await expect(Effect.runPromise(registry.get(first.id))).resolves.toEqual(first);
@@ -127,7 +173,8 @@ describe("scratch registry", () => {
       await writeFile(marker, "durable-instance");
       await mkdir(join(cacheRoot, "logs"), { recursive: true });
       await writeFile(join(cacheRoot, "logs", "noise.log"), "disposable");
-      await Effect.runPromise(registry.upsert(registered));
+      await Effect.runPromise(registry.upsert("acquire", registered));
+      await Effect.runPromise(registry.upsert("mark-running", registered));
 
       // When the disposable user cache root is removed entirely.
       await rm(cacheRoot, { recursive: true, force: true });

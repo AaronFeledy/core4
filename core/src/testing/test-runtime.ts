@@ -74,6 +74,7 @@ import {
   ScratchRegistry,
   type ScratchRegistryEntry,
   type ScratchRegistryEnvelope,
+  planScratchRegistryWrite,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 
@@ -808,12 +809,18 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchRegistryService = ScratchRegistry.of({
     read: () =>
       Effect.succeed({
-        version: 1,
+        version: 2,
         entries: registryEntriesFrom(scratchRegistryEntries),
       } satisfies ScratchRegistryEnvelope),
-    upsert: (entry) =>
+    upsert: (operation, entry) =>
       Effect.sync(() => {
-        scratchRegistryEntries.set(entry.id, entry);
+        const plan = planScratchRegistryWrite(
+          operation,
+          entry.id,
+          scratchRegistryEntries.get(entry.id),
+          entry,
+        );
+        if (plan._tag === "Store") scratchRegistryEntries.set(entry.id, plan.entry);
       }),
     remove: (id) =>
       Effect.sync(() => {

@@ -44,6 +44,12 @@ import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const testRegistry = () => makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
 
+/** Seeds pass through acquisition, as a real scratch start does, before their recorded status. */
+const seedRegistry = (entry: ScratchRegistryEntry) => {
+  const registry = testRegistry();
+  return registry.upsert("acquire", entry).pipe(Effect.andThen(registry.upsert("mark-running", entry)));
+};
+
 const providerId = ProviderId.make("lando");
 
 const landofileRuntimeInputs = {
@@ -258,8 +264,8 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       const unsafeLabel = "../scratch-unsafe";
       await mkdir(join(scratchBase, directoryOrphan, "root"), { recursive: true });
       await mkdir(join(scratchBase, deadOwner, "root"), { recursive: true });
-      await Effect.runPromise(testRegistry().upsert(registryEntry(dataRoot, deadOwner)));
-      await Effect.runPromise(testRegistry().upsert(registryEntry(dataRoot, registryStaleWithLabel)));
+      await Effect.runPromise(seedRegistry(registryEntry(dataRoot, deadOwner)));
+      await Effect.runPromise(seedRegistry(registryEntry(dataRoot, registryStaleWithLabel)));
 
       const pruned: string[] = [];
       const layer = makeLayer([labelOrphan, registryStaleWithLabel, unsafeLabel], pruned);
@@ -301,7 +307,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
     await withTempRoots(async (dataRoot) => {
       const id = "scratch-prune-fail-000006";
       await mkdir(join(dataRoot, "scratch", id, "root"), { recursive: true });
-      await Effect.runPromise(testRegistry().upsert(registryEntry(dataRoot, id)));
+      await Effect.runPromise(seedRegistry(registryEntry(dataRoot, id)));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned, () =>
         Effect.fail(
@@ -331,7 +337,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       const id = "scratch-registered-000004";
       const root = join(dataRoot, "scratch", id, "root");
       await mkdir(root, { recursive: true });
-      await Effect.runPromise(testRegistry().upsert({ ...registryEntry(dataRoot, id), detached: true }));
+      await Effect.runPromise(seedRegistry({ ...registryEntry(dataRoot, id), detached: true }));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned);
 
@@ -372,7 +378,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       await expect(Effect.runPromise(testRegistry().get(id))).resolves.toBeUndefined();
 
       await mkdir(root, { recursive: true });
-      await Effect.runPromise(testRegistry().upsert({ ...registryEntry(dataRoot, id), detached: true }));
+      await Effect.runPromise(seedRegistry({ ...registryEntry(dataRoot, id), detached: true }));
       const destroyed = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(
           Effect.provide(layer),
