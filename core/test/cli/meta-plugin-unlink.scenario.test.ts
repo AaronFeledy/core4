@@ -5,7 +5,6 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { pluginCommandCachePath } from "@lando/engine/cache/paths";
 import { ConfigService } from "@lando/sdk/services";
 import { pluginLink } from "../../src/cli/commands/plugin-link.ts";
 import {
@@ -92,9 +91,9 @@ describe("meta:plugin:unlink command", () => {
     const registryEntry = join(pluginsRoot, "@acme/lando-plugin-unlink");
     expect((await lstat(registryEntry)).isSymbolicLink()).toBe(true);
 
-    const cachePath = pluginCommandCachePath(cacheRoot);
-    await mkdir(cacheRoot, { recursive: true });
-    await writeFile(cachePath, "stale cache");
+    const toolingCacheDir = join(cacheRoot, "apps", "tooling-unlinkfixture");
+    await mkdir(toolingCacheDir, { recursive: true });
+    await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
     const result = await runPluginUnlink({ name: "@acme/lando-plugin-unlink", cacheRoot });
 
@@ -109,7 +108,7 @@ describe("meta:plugin:unlink command", () => {
     expect(registry["@acme/lando-plugin-unlink"]).toBeUndefined();
     const linkedState = await readJson<Record<string, unknown>>(join(pluginsRoot, ".lando-linked.json"));
     expect(linkedState["@acme/lando-plugin-unlink"]).toBeUndefined();
-    expect(await exists(cachePath)).toBe(false);
+    expect(await exists(toolingCacheDir)).toBe(false);
     expect(await readFile(sourceSentinel, "utf8")).toBe("unchanged");
     expect(await readFile(join(pluginRoot, "package.json"), "utf8")).toContain("@acme/lando-plugin-unlink");
   });
@@ -190,7 +189,6 @@ describe("meta:plugin:unlink command", () => {
       expect(cause).toContain("PluginUnlinkNotLinkedError");
     }
     expect(await exists(pluginsRoot)).toBe(false);
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
   test("refuses a name that escapes the plugins root without mutating the filesystem", async () => {
@@ -202,7 +200,6 @@ describe("meta:plugin:unlink command", () => {
       expect(cause).toContain("outside");
     }
     expect(await exists(join(userDataRoot, "escape"))).toBe(false);
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
   test("refuses to remove a real installed directory that is not a linked symlink", async () => {

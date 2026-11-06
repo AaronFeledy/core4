@@ -2,4 +2,9 @@ name: minio-demo
 services:
   object-store:
     type: minio
+    image: registry.example.com/team/minio:approved
+    appMount: false
     database: uploads
+    routes:
+      - hostname: console.minio-demo.lndo.site
+        endpoint: console

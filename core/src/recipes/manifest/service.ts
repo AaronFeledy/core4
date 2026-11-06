@@ -1,12 +1,6 @@
-import { Effect, Layer } from "effect";
-
-import {
-  NotImplementedError,
-  type RecipeExtendsError,
-  type RecipeManifestParseError,
-  RecipeManifestValidationError,
-  type RecipeSourceError,
-} from "@lando/sdk/errors";
+import { dirname, isAbsolute } from "node:path";
+import { decodeOrFail } from "@lando/landofile/decode";
+import { NotImplementedError, RecipeManifestValidationError } from "@lando/sdk/errors";
 import {
   RecipeManifest,
   type ValidationIssue,
@@ -14,11 +8,12 @@ import {
   validationIssue,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
-import { RecipeManifestService } from "@lando/sdk/services";
-
-import { dirname, isAbsolute } from "node:path";
-import { decodeOrFail } from "@lando/landofile/decode";
+import { RecipeManifestService, StateStore } from "@lando/sdk/services";
+import type { SourceSession } from "@lando/source-acquisition";
+import { Effect, Layer, Option } from "effect";
 import { resolveRecipeSource } from "../resolved-source";
+import { retainedRecipeSourceStore } from "../runtime-sources";
+import { mapSourceAcquisitionError } from "../source-session";
 import { postInitSemanticIssues } from "./action-semantics.ts";
 
 export { RecipeManifestService } from "@lando/sdk/services";
@@ -177,30 +172,38 @@ const validateRecipeManifestObject = (
     Effect.flatMap((manifest) => validateSemantics(source, manifest)),
   );
 
-const parseRecipe = Effect.fn("RecipeManifestService.parse")(
-  (
-    source: string,
-    content: string,
-  ): Effect.Effect<
-    typeof RecipeManifest.Type,
-    | RecipeExtendsError
-    | RecipeManifestParseError
-    | RecipeManifestValidationError
-    | RecipeSourceError
-    | NotImplementedError
-  > =>
+const parseWithSources = Effect.fn("RecipeManifestService.parseWithSources")(function* (
+  source: string,
+  content: string,
+  sources: SourceSession | undefined,
+) {
+  const resolution = yield* resolveRecipeSource(
+    {
+      id: source,
+      source,
+      manifestYaml: content,
+      root: isAbsolute(source) ? dirname(source) : undefined,
+    },
+    sources === undefined ? {} : { sources },
+  );
+  const { compileResolvedRecipeSource } = yield* Effect.promise(() => import("../compiled-source"));
+  const manifest = yield* compileResolvedRecipeSource(resolution);
+  return yield* validateSemantics(source, manifest);
+});
+
+const parseRecipe = Effect.fn("RecipeManifestService.parse")(function* (source: string, content: string) {
+  const state = yield* Effect.serviceOption(StateStore);
+  if (Option.isNone(state)) {
+    return yield* parseWithSources(source, content, undefined);
+  }
+  return yield* Effect.scoped(
     Effect.gen(function* () {
-      const resolution = yield* resolveRecipeSource({
-        id: source,
-        source,
-        manifestYaml: content,
-        root: isAbsolute(source) ? dirname(source) : undefined,
-      });
-      const { compileResolvedRecipeSource } = yield* Effect.promise(() => import("../compiled-source"));
-      const manifest = yield* compileResolvedRecipeSource(resolution);
-      return yield* validateSemantics(source, manifest);
+      const store = (yield* retainedRecipeSourceStore()).store;
+      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      return yield* parseWithSources(source, content, sources);
     }),
-);
+  ).pipe(Effect.provideService(StateStore, state.value));
+});
 
 const recipeManifestService = RecipeManifestService.of({
   parse: parseRecipe,

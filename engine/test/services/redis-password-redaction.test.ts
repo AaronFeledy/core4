@@ -1,12 +1,17 @@
 import { expect, test } from "bun:test";
 import type { EnvironmentValue } from "@lando/sdk/schema";
-import { collectLandofileRedactionTokens } from "../../src/services/app-plan-redaction.ts";
+import { collectAuthoredRedactionTokens } from "../../src/services/app-plan-redaction.ts";
+
+const tokensOf = (input: Parameters<typeof collectAuthoredRedactionTokens>[0]) => [
+  ...collectAuthoredRedactionTokens(input).substring,
+  ...collectAuthoredRedactionTokens(input).wholeToken,
+];
 
 test("collects an authored Redis password before service resolution", () => {
   // Given
   const password = "authored-redis-secret";
   // When
-  const tokens = collectLandofileRedactionTokens({ services: { cache: { password } } });
+  const tokens = tokensOf({ services: { cache: { password } } });
   // Then
   expect(tokens).toContain(password);
 });
@@ -16,7 +21,7 @@ test("collects an authored Redis password without dropping environment secrets",
   const password = "authored-redis-secret";
   const envPassword = "env-password-secret";
   // When
-  const tokens = collectLandofileRedactionTokens({
+  const tokens = tokensOf({
     services: { cache: { password, environment: { password: envPassword } } },
   });
   // Then
@@ -31,7 +36,7 @@ test.each([
   // Given
   const envPassword = "literal-environment-secret";
   // When
-  const tokens = collectLandofileRedactionTokens({
+  const tokens = tokensOf({
     services: { cache: { password, environment: { PASSWORD: envPassword } } },
   });
   // Then

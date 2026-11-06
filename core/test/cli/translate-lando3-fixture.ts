@@ -45,6 +45,7 @@ export const withFixture = async (
   const loader = configTranslators.get("lando4");
   if (loader === undefined) throw new Error("missing lando4 encoder");
   const legacyLoader = makeConfigTranslators({
+    serviceFacts: serviceTypeFacts(),
     decomposers: new Map([["lamp", lampDecomposer]]),
     redactor: createRedactor("secrets"),
   }).get("lando3");
@@ -72,3 +73,4 @@ export const withFixture = async (
   }
 };
 export const failure = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.result(effect));
+import { serviceTypeFacts } from "@lando/service-lando";

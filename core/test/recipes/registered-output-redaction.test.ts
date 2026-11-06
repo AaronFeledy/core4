@@ -22,6 +22,9 @@ test("post-init output masks a value registered after module loading", async () 
     await writeFile(join(root, "package.json"), "{}");
     try {
       await runPostInit({
+        runBun: async () => {
+          throw new TypeError("Unexpected Bun action");
+        },
         actions: [{ type: "command", cmd: "app:config:translate", args: [] }],
         destination: root,
         recipeId: "fixture",
@@ -66,7 +69,10 @@ test("OOM diagnostics mask registered correlation values", async () => {
 test("bundled Lando 3 translator ports observe later secret registration", async () => {
   // Given
   const service = makeRedactionService();
-  const ports = await loadLando3TranslatorPorts(await Effect.runPromise(service.forProfile("secrets")));
+  const ports = await loadLando3TranslatorPorts(
+    serviceTypeFacts,
+    await Effect.runPromise(service.forProfile("secrets")),
+  );
   const secret = "lando3-registered-canary";
   await Effect.runPromise(service.registerValues([secret]));
   // When
@@ -74,3 +80,4 @@ test("bundled Lando 3 translator ports observe later secret registration", async
   // Then
   expect(output).toBe("translation failed with [redacted]");
 });
+import { serviceTypeFacts } from "@lando/service-lando";

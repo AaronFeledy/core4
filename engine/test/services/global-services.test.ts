@@ -12,6 +12,8 @@ import {
   type ServiceConfig,
 } from "@lando/sdk/schema";
 
+import { emptyGlobalPolicy, prepareGlobalPolicy } from "../../src/global-app/enablement.ts";
+
 import {
   materializeGlobalServices,
   resolveGlobalServiceContributions,
@@ -25,6 +27,7 @@ const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCa
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -155,6 +158,76 @@ describe("global service contribution resolution", () => {
 });
 
 describe("global service materialization", () => {
+  test("recorded intent overrides both enabled defaults without loading disabled modules", async () => {
+    const loaded: string[] = [];
+    const services = await Effect.runPromise(
+      materializeGlobalServices({
+        manifests: [
+          manifest("@lando/mail", [
+            { id: "mailpit", enabledByDefault: true },
+            { id: "mailhog", enabledByDefault: false },
+          ]),
+        ],
+        providerCapabilities: capabilities(),
+        providerId: "lando",
+        policy: {
+          revision: 1,
+          plugins: {
+            "@lando/mail": {
+              contributions: {
+                mailpit: { defaultEnabled: true, enabled: false },
+                mailhog: { defaultEnabled: false, enabled: true },
+              },
+            },
+          },
+        },
+        loadServiceConfig: (entry) => {
+          loaded.push(entry.contribution.id);
+          return Effect.succeed({ api: 4, type: "lando" });
+        },
+      }),
+    );
+    expect(loaded).toEqual(["mailhog"]);
+    expect(Object.keys(services)).toEqual(["mailhog"]);
+  });
+
+  test("rejects enabled contribution conflicts before loading modules, and allows disabling either side", async () => {
+    const manifests = [
+      manifest("@lando/mail", [{ id: "mailpit", conflicts: ["mailhog"] }, { id: "mailhog" }]),
+    ];
+    let loads = 0;
+    const input = {
+      manifests,
+      providerCapabilities: capabilities(),
+      providerId: "lando",
+      loadServiceConfig: () => {
+        loads++;
+        return Effect.succeed({ api: 4 as const, type: "lando" });
+      },
+    };
+    const result = await Effect.runPromise(Effect.result(materializeGlobalServices(input)));
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(GlobalAppError);
+    expect(loads).toBe(0);
+    for (const id of ["mailpit", "mailhog"]) {
+      const prepared = await Effect.runPromise(
+        prepareGlobalPolicy(
+          emptyGlobalPolicy(),
+          [
+            { plugin: "@lando/mail", contribution: { id: "mailpit" } },
+            { plugin: "@lando/mail", contribution: { id: "mailhog" } },
+          ],
+          { selectors: [id], enabled: false },
+        ),
+      );
+      expect(
+        Object.keys(
+          await Effect.runPromise(materializeGlobalServices({ ...input, policy: prepared.policy })),
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
   test("accepts service log source contributions only when the provider advertises serviceLogSources", () => {
     const contribution = {
       contribution: {
@@ -181,6 +254,10 @@ describe("global service materialization", () => {
     expect(rejected.accepted).toEqual([]);
     expect(rejected.rejected).toHaveLength(1);
     expect(rejected.rejected[0]?.missing).toEqual(["serviceLogSources"]);
+    expect(rejected.rejected[0]?.remediation).toContain("lando setup --provider=");
+    expect(rejected.rejected[0]?.remediation).toContain("lando global:disable log-source-reader");
+    expect(rejected.rejected[0]?.remediation).not.toContain("in your Landofile");
+    expect(rejected.rejected[0]?.remediation).not.toContain("--keep-global");
   });
 
   test("drops capability-rejected and disabled contributions and returns an id-sorted service map", async () => {

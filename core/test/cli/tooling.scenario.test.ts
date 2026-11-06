@@ -30,6 +30,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 
 import {
   deriveAppPlanCacheKey,
@@ -44,6 +45,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 import { currentTestPlan, environmentResolverLayer } from "../_support/value-contracts.ts";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -56,6 +58,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -224,6 +227,10 @@ const makeLayer = (options: {
     }),
   );
   return Layer.mergeAll(
+    BunProcessRunner.layer,
+    BunShellRunner.layer(() => {
+      throw new TypeError("Interactive host tooling is unavailable in tests.");
+    }),
     PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
@@ -299,6 +306,7 @@ const recordingEventLayer = (events: LandoEvent[]) =>
           ),
         subscribeQueue: Effect.succeed(queue),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       };
@@ -618,7 +626,7 @@ describe("runTooling — CLI rendering", () => {
     const layer = makeLayer({ landofile, plan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "composer", args: ["install"] }).pipe(runtimeFor(layer)),
+      runTooling({ name: "composer", input: { _tag: "RawArgv", argv: ["install"] } }).pipe(runtimeFor(layer)),
     );
 
     expect(result.tool).toBe("composer");
@@ -723,7 +731,11 @@ describe("runTooling — CLI rendering", () => {
     };
     const layer = makeLayer({ landofile, plan, provider });
 
-    await Effect.runPromise(runTooling({ name: "phpunit", args: ["--testdox"] }).pipe(runtimeFor(layer)));
+    await Effect.runPromise(
+      runTooling({ name: "phpunit", input: { _tag: "RawArgv", argv: ["--testdox"] } }).pipe(
+        runtimeFor(layer),
+      ),
+    );
 
     expect(calls[0]?.command).toEqual(["phpunit", "--colors=always", "--testdox"]);
   });
@@ -746,7 +758,7 @@ describe("runTooling — CLI rendering", () => {
     const layer = makeLayer({ landofile, plan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "test", args: ["--testdox"] }).pipe(runtimeFor(layer)),
+      runTooling({ name: "test", input: { _tag: "RawArgv", argv: ["--testdox"] } }).pipe(runtimeFor(layer)),
     );
 
     expect(calls.map((call) => call.command)).toEqual([
@@ -1192,7 +1204,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(flat).toContain("are not supported");
       expect(flat).not.toContain("Alpha");
       expect(flat).not.toContain("Beta");
-      expect(flat).toContain("Remove the `service:` field");
+      expect(flat).toContain("Remove the service field");
       expect(calls).toHaveLength(0);
     });
   });

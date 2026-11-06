@@ -261,6 +261,7 @@ describe("remote sync command skeleton", () => {
         transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
         transferStream: () =>
           Stream.die("external transfer stream is not used by the orchestration skeleton"),
+        read: () => Stream.die("external read is not used by the orchestration skeleton"),
         snapshot: (store) =>
           Effect.sync(() => {
             snapshots.push(store.store);
@@ -869,6 +870,7 @@ describe("remote sync command skeleton", () => {
         transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
         transferStream: () =>
           Stream.die("external transfer stream is not used by the orchestration skeleton"),
+        read: () => Stream.die("external read is not used by the orchestration skeleton"),
         snapshot: () =>
           Effect.sync(() => {
             snapshotCalls += 1;

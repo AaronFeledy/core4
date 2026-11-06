@@ -4,11 +4,11 @@ import { Cause, Context, DateTime, Effect, Exit, Result, Schema } from "effect";
 
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { PluginDescriptorMismatchError, ToolingCommandLookupError } from "@lando/sdk/errors";
+import { PluginDescriptorMismatchError, PluginLoadError, ToolingCommandLookupError } from "@lando/sdk/errors";
 import type { ExecutableCommandLoader, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ToolingTaskShape } from "@lando/sdk/schema";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
-import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
+import { loadPluginSpec, resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 
 const builtInEntry = builtInCommandEntries.find((entry) => entry.spec.id === "app:start");
 if (builtInEntry === undefined) throw new Error("Missing built-in app:start command entry.");
@@ -52,11 +52,78 @@ const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.
     plugins: [],
     globalPlugins: [],
     certificateAuthorities: [],
-    commands: [{ id, pluginName: "example-plugin", source: "system", load }],
+    commands: [
+      {
+        id,
+        descriptor: { id, summary: "Import a database dump." },
+        pluginName: "example-plugin",
+        source: "system",
+        load,
+      },
+    ],
     hostContext: Context.empty(),
   });
 
 describe("resolveEventCommandTarget", () => {
+  test.each([
+    { args: { file: { type: "string", stdio: "stderr" } } },
+    { args: { file: { type: "string", stdio: "stdin", multiple: true } } },
+    { args: { file: { type: "option", stdio: "stdin", valueType: "integer" } } },
+    { args: { file: { type: "number", stdio: "stdin" } } },
+    { args: { file: { type: "string", stdio: "stdout", default: "-" } } },
+    { args: { first: { type: "string", stdio: "stdout" }, second: { type: "string", stdio: "stdout" } } },
+    { flags: { file: { type: "string", stdio: "stdin" } } },
+    { stdio: () => ({ stdout: true }) },
+  ])("rejects an invalid stdio declaration %j", async (declaration) => {
+    const spec = Object.assign(makePluginSpec("db:inspect"), declaration);
+    const exit = await Effect.runPromiseExit(loadPluginSpec(spec.id, "fixture", async () => spec));
+    const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+    expect(error).toBeInstanceOf(PluginLoadError);
+    if (error instanceof PluginLoadError) expect(error.remediation).toContain("positional arg");
+  });
+
+  test.each(["destroy", "remove", "uninstall", "prune", "gc", "reset", "restore", "rebuild", "poweroff"])(
+    "rejects destructive plugin %s without confirmation",
+    async (verb) => {
+      // Given
+      const spec = makePluginSpec(`db:${verb}`);
+      // When
+      const result = await Effect.runPromise(
+        Effect.result(loadPluginSpec(spec.id, "fixture", async () => spec)),
+      );
+      // Then
+      expect(Result.isFailure(result) ? result.failure : undefined).toBeInstanceOf(
+        PluginDescriptorMismatchError,
+      );
+    },
+  );
+
+  test("rejects a matching but noncanonical id at load time", async () => {
+    // Given
+    const spec = makePluginSpec("DB:inspect", "DB");
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(loadPluginSpec(spec.id, "fixture", async () => spec)),
+    );
+    // Then
+    expect(Result.isFailure(result) ? result.failure : undefined).toBeInstanceOf(
+      PluginDescriptorMismatchError,
+    );
+  });
+
+  test.each([null, "parser", false, undefined])("rejects nonfunction flag parse %j", async (parse) => {
+    // Given
+    const spec = Object.assign(makePluginSpec(), { flags: { value: { type: "string", parse } } });
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(loadPluginSpec(spec.id, "fixture", async () => spec)),
+    );
+    // Then
+    expect(Result.isFailure(result) ? result.failure : undefined).toBeInstanceOf(
+      PluginDescriptorMismatchError,
+    );
+  });
+
   for (const [name, yes] of [
     ["string type", { type: "string" }],
     ["automatic confirmation", { type: "boolean", default: true }],
@@ -96,7 +163,7 @@ describe("resolveEventCommandTarget", () => {
       source: { path: plan.metadata.source, task: "invalid" },
     });
   });
-  test("orders native arguments by declared order after schema decode", async () => {
+  test("orders tooling arguments in the shared declaration after schema decode", async () => {
     // Given
     const task = Schema.decodeUnknownSync(ToolingTaskShape)({
       cmd: ["echo"],
@@ -108,7 +175,10 @@ describe("resolveEventCommandTarget", () => {
       resolveEventCommandTarget("app:ordered", Context.empty(), [], plan),
     );
     // Then
-    expect(Object.keys(target.spec.args ?? {})).toEqual(["first", "second"]);
+    expect(target.kind).toBe("tooling");
+    if (target.kind !== "tooling") throw new Error("Expected a tooling target");
+    expect(target.toolingInput.args.map((arg) => arg.name)).toEqual(["first", "second"]);
+    expect(target.spec.args).toBeUndefined();
   });
   test("resolves a built-in target without weakening its command spec", async () => {
     // Given

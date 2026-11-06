@@ -68,7 +68,7 @@ describe("postgres ServiceType", () => {
     });
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-postgresql-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--postgresql-data");
     expect(String(volumes[0]?.target)).toBe("/var/lib/postgresql/data");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([

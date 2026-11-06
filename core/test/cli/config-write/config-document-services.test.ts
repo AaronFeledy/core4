@@ -5,12 +5,13 @@ import { GlobalAppError, NotImplementedError } from "@lando/sdk/errors";
 import { GlobalAppService, LandofileService } from "@lando/sdk/services";
 import { Effect, Layer, Result } from "effect";
 import { runAppConfig, runGlobalConfig } from "../../../src/cli/config-command-runtime.ts";
-import { layerTransactionGuard, testStateStoreLayer } from "../../_support/landofile-layer.ts";
+import { globalConfigLayer } from "../../_support/global-config-layer.ts";
+import { layerTransactionGuard } from "../../_support/landofile-layer.ts";
 
 const dependencies = Layer.mergeAll(
   ConfigLayer.layer,
   FileSystemLayer.layer,
-  testStateStoreLayer,
+  globalConfigLayer("/tmp/lando-config-document-services"),
   layerTransactionGuard,
 );
 

@@ -23,6 +23,7 @@ const captureEventsLayer = (events: LandoEvent[]) =>
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     } satisfies Context.Service.Shape<typeof EventService>),
@@ -122,6 +123,59 @@ describe("BunProcessRunner.layer", () => {
         await server.stop(true);
       }
     }, 4000);
+  }
+  for (const mode of ["interrupt", "timeout"] as const) {
+    test(`settles a captured run on ${mode} while a descendant still holds its pipes`, async () => {
+      const ready = Promise.withResolvers<number>();
+      const controller = new AbortController();
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: async (request) => {
+          ready.resolve(Number(await request.text()));
+          return new Response("ready");
+        },
+      });
+      // The descendant inherits stdout/stderr and outlives the killed child, like git's remote helpers.
+      const descendant = `setTimeout(() => {}, 10000); await fetch(${JSON.stringify(server.url.href)}, {method:"POST",body:String(process.pid)});`;
+      const program = Effect.flatMap(ProcessRunner, (runner) =>
+        runner.run({
+          cmd: process.execPath,
+          args: [
+            "-e",
+            `Bun.spawn([process.execPath, "-e", ${JSON.stringify(descendant)}], { detached: true, stdout: "inherit", stderr: "inherit" }); await new Promise(() => {});`,
+          ],
+          capture: true,
+          ...(mode === "timeout" ? { timeoutMs: 300 } : {}),
+        }),
+      ).pipe(Effect.provide(BunProcessRunner.layer));
+      const completion = Effect.runPromiseExit(program, { signal: controller.signal });
+      let descendantPid: number | undefined;
+      try {
+        descendantPid = await Effect.runPromise(
+          Effect.promise(() => ready.promise).pipe(Effect.timeout("2 seconds")),
+        );
+        if (mode === "interrupt") controller.abort();
+        const exit = await Effect.runPromise(
+          Effect.promise(() => completion).pipe(Effect.timeout("2 seconds")),
+        );
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit) && mode === "timeout") {
+          const error = Cause.findErrorOption(exit.cause);
+          expect(error._tag === "Some" && error.value instanceof ProcessTimeoutError).toBe(true);
+        }
+      } finally {
+        controller.abort();
+        if (descendantPid !== undefined) {
+          try {
+            process.kill(descendantPid, "SIGKILL");
+          } catch (cause) {
+            expect(cause).toMatchObject({ code: "ESRCH" });
+          }
+        }
+        await server.stop(true);
+      }
+    }, 6000);
   }
   test("observes a late sink failure after exit without waiting for a stuck sink", async () => {
     const lateFailure = new Promise<number>((_, reject) => {

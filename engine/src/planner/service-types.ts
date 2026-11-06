@@ -8,7 +8,6 @@ import {
   type PluginLoadError,
   type PluginManifestError,
   ServiceTypeCollisionError,
-  ServiceTypeError,
 } from "@lando/sdk/errors";
 import type { LogSource, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
 import type {
@@ -27,6 +26,7 @@ import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
 import type { ApplicationConfig, PreparedServiceComposition } from "../services/feature-preparation.ts";
 import type { ServiceHomeIntent } from "./home.ts";
 import type { ServiceConfigSource } from "./service-config-files.ts";
+export { servicePlanError, serviceTypeCollision } from "./service-errors.ts";
 
 export type ContributionRef = string | { readonly id: string };
 
@@ -166,56 +166,6 @@ export const unsupportedServiceType = (
       validationIssue(
         ["services", serviceName, "type"],
         `Unsupported service type ${serviceType} for service ${serviceName}.${remediation}`,
-      ),
-    ],
-  });
-};
-
-export const serviceTypeCollision = (
-  appRoot: string,
-  serviceName: string,
-  error: ServiceTypeCollisionError,
-): LandofileValidationError =>
-  new LandofileValidationError({
-    message: error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
-    remediation: error.remediation ?? "Remove or rename the conflicting service type registration.",
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["services", serviceName, "type"],
-        error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
-      ),
-    ],
-  });
-
-export const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) => {
-  if (cause instanceof LandofileValidationError) return cause;
-  return new LandofileValidationError({
-    message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-    remediation: `Correct the configuration of service ${serviceName}.`,
-    file: `${appRoot}/.lando.yml`,
-    issues:
-      cause instanceof ServiceTypeError && cause.issues !== undefined && cause.issues.length > 0
-        ? cause.issues.map((issue) => ({ ...issue, path: ["services", serviceName, ...issue.path] }))
-        : [
-            validationIssue(
-              ["services", serviceName],
-              cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-            ),
-          ],
-  });
-};
-
-export const appFeatureError = (appRoot: string, cause: unknown) => {
-  if (cause instanceof LandofileValidationError) return cause;
-  return new LandofileValidationError({
-    message: cause instanceof Error ? cause.message : "Invalid app-feature composition.",
-    remediation: "Correct the app-feature configuration or remove the failing feature.",
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["appFeatures"],
-        cause instanceof Error ? cause.message : "Invalid app-feature composition.",
       ),
     ],
   });

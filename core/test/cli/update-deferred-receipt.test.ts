@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
 import { makeUpdateHandoff } from "@lando/engine/operations/update";
+import { updateHandoffDir } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -15,17 +16,18 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const isolatedStore = (live: StateStoreShape, cache: AbsolutePath): StateStoreShape => ({
+const isolatedStore = (live: StateStoreShape, dataRoot: AbsolutePath): StateStoreShape => ({
   ...live,
-  open: (spec) => live.open({ ...spec, root: { path: cache } }),
+  open: (spec) => live.open({ ...spec, root: { path: dataRoot } }),
 });
 
 test("detached helper persists an abort which the next real invocation surfaces once", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-deferred-receipt-"));
   roots.push(root);
-  const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+  const cache = join(root, "cache");
+  const data = Schema.decodeUnknownSync(AbsolutePath)(join(root, "data"));
   const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
-  const isolated = isolatedStore(live, cache);
+  const isolated = isolatedStore(live, data);
   const handoff = makeUpdateHandoff(isolated);
   const token = await Effect.runPromise(
     handoff.saveDeferred({
@@ -66,7 +68,7 @@ test("detached helper persists an abort which the next real invocation surfaces 
     ...process.env,
     LANDO_UPDATE_HANDOFF_TOKEN: token,
     LANDO_USER_CACHE_ROOT: cache,
-    LANDO_USER_DATA_ROOT: join(root, "data"),
+    LANDO_USER_DATA_ROOT: data,
     LANDO_USER_CONF_ROOT: join(root, "conf"),
   };
   const cli = resolve("core/bin/lando.ts");
@@ -88,7 +90,7 @@ test("detached helper persists an abort which the next real invocation surfaces 
     ]);
     return { stdout, stderr, exit };
   };
-  const receiptPath = join(cache, "update-handoff", `${token}.json`);
+  const receiptPath = join(updateHandoffDir(data), `${token}.json`);
   const before = await Bun.file(receiptPath).text();
   const dryRun = await invoke(["update", "--only=plugins", "--dry-run", "--format=json"]);
   expect(dryRun.exit).toBe(0);
@@ -108,9 +110,10 @@ test("the next CLI run surfaces the helper's canonical ownership refusal", async
   // Given a deferred request with no ownership record and an unrelated executable.
   const root = await mkdtemp(join(tmpdir(), "lando-deferred-ownership-"));
   roots.push(root);
-  const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+  const cache = join(root, "cache");
+  const data = Schema.decodeUnknownSync(AbsolutePath)(join(root, "data"));
   const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
-  const handoff = makeUpdateHandoff(isolatedStore(live, cache));
+  const handoff = makeUpdateHandoff(isolatedStore(live, data));
   const token = await Effect.runPromise(handoff.saveDeferred({ updatedCore: false, updatedPlugins: [] }));
   const executablePath = join(root, "lando.exe");
   const installRecordFile = join(root, "record.json");
@@ -142,7 +145,7 @@ test("the next CLI run surfaces the helper's canonical ownership refusal", async
   const env = {
     ...process.env,
     LANDO_USER_CACHE_ROOT: cache,
-    LANDO_USER_DATA_ROOT: join(root, "data"),
+    LANDO_USER_DATA_ROOT: data,
     LANDO_USER_CONF_ROOT: join(root, "conf"),
   };
   const cli = resolve("core/bin/lando.ts");
@@ -186,9 +189,10 @@ test.each(["json", "yaml", "ndjson"])(
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "lando-deferred-format-"));
     roots.push(root);
-    const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+    const cache = join(root, "cache");
+    const data = Schema.decodeUnknownSync(AbsolutePath)(join(root, "data"));
     const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
-    const handoff = makeUpdateHandoff(isolatedStore(live, cache));
+    const handoff = makeUpdateHandoff(isolatedStore(live, data));
     const token = await Effect.runPromise(
       handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
     );
@@ -206,7 +210,7 @@ test.each(["json", "yaml", "ndjson"])(
           env: {
             ...process.env,
             LANDO_USER_CACHE_ROOT: cache,
-            LANDO_USER_DATA_ROOT: join(root, "data"),
+            LANDO_USER_DATA_ROOT: data,
             LANDO_USER_CONF_ROOT: join(root, "conf"),
           },
           stdout: "pipe",
@@ -220,7 +224,7 @@ test.each(["json", "yaml", "ndjson"])(
       ]);
       return { stdout, stderr, exit };
     };
-    const receiptPath = join(cache, "update-handoff", `${token}.json`);
+    const receiptPath = join(updateHandoffDir(data), `${token}.json`);
     if (format === "ndjson") {
       const before = await Bun.file(receiptPath).text();
       const rejected = await invoke("ndjson");
@@ -258,9 +262,10 @@ test.each(["missing", "malformed", "invalid-schema"])(
   async (failure) => {
     const root = await mkdtemp(join(tmpdir(), "lando-deferred-early-failure-"));
     roots.push(root);
-    const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+    const cache = join(root, "cache");
+    const data = Schema.decodeUnknownSync(AbsolutePath)(join(root, "data"));
     const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
-    const handoff = makeUpdateHandoff(isolatedStore(live, cache));
+    const handoff = makeUpdateHandoff(isolatedStore(live, data));
     const token = await Effect.runPromise(
       handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
     );
@@ -274,7 +279,7 @@ test.each(["missing", "malformed", "invalid-schema"])(
         env: {
           ...process.env,
           LANDO_USER_CACHE_ROOT: cache,
-          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_DATA_ROOT: data,
           LANDO_USER_CONF_ROOT: join(root, "conf"),
         },
         stdout: "ignore",
@@ -293,3 +298,61 @@ test.each(["missing", "malformed", "invalid-schema"])(
     expect(await Bun.file(binary).text()).toBe("old");
   },
 );
+
+test("deferred receipts survive user cache deletion and are consumed exactly once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-deferred-cache-clear-"));
+  roots.push(root);
+  const cache = join(root, "cache");
+  const data = Schema.decodeUnknownSync(AbsolutePath)(join(root, "data"));
+  await Bun.write(join(cache, "disposable"), "scratch");
+  const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
+  const handoff = makeUpdateHandoff(isolatedStore(live, data));
+  const token = await Effect.runPromise(
+    handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["kept-plugin"] }),
+  );
+  await Effect.runPromise(
+    handoff.finishDeferred(token, {
+      tag: "UpdatePermissionError",
+      message: "Replacement aborted",
+      remediation: "Retry update",
+    }),
+  );
+  const receiptPath = join(updateHandoffDir(data), `${token}.json`);
+  await rm(cache, { recursive: true, force: true });
+
+  const env = {
+    ...process.env,
+    LANDO_USER_CACHE_ROOT: cache,
+    LANDO_USER_DATA_ROOT: data,
+    LANDO_USER_CONF_ROOT: join(root, "conf"),
+  };
+  const cli = resolve("core/bin/lando.ts");
+  const invoke = async () => {
+    const child = Bun.spawn([process.execPath, cli, "meta:version", "--format=json"], {
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exit] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { stdout, stderr, exit };
+  };
+  const first = await invoke();
+  expect(first.exit).toBe(1);
+  expect(first.stderr).toBe("");
+  expect(JSON.parse(first.stdout)).toMatchObject({
+    result: {
+      updatedCore: false,
+      hasFailures: true,
+      updatedPlugins: ["kept-plugin"],
+      coreFailure: { tag: "UpdatePermissionError" },
+    },
+  });
+  expect(await Bun.file(receiptPath).exists()).toBe(false);
+  const second = await invoke();
+  expect(second.exit).toBe(0);
+  expect(second.stdout).not.toContain("kept-plugin");
+});

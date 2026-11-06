@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, Layer, Option, Queue, Schema, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Option, Schema } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -12,6 +12,7 @@ import {
   type RunWithRendererHandlingOptions,
   runWithRendererHandling,
 } from "../../src/cli/renderer-boundary.ts";
+import { makeTestEventService } from "../../src/testing/test-runtime-events";
 
 class CommandLifecycleTestError extends Schema.TaggedError<CommandLifecycleTestError>()(
   "CommandLifecycleTestError",
@@ -58,23 +59,19 @@ type RecordingHarness = {
 const makeRecordingHarness = (ordering?: Array<string>, failPublish = false): RecordingHarness => {
   const events: Array<LandoEvent> = [];
   const exitCodes: Array<number> = [];
+  const delivery = makeTestEventService(events);
   const service: EventServiceShape = EventService.of({
+    ...delivery,
     publish: (event) =>
       failPublish
         ? Effect.die("event subscriber failed")
-        : Effect.sync(() => {
-            events.push(event);
-            ordering?.push(event._tag);
-          }),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Effect.gen(function* () {
-      const queue = yield* Queue.unbounded<LandoEvent>();
-      yield* Effect.addFinalizer(() => Queue.shutdown(queue));
-      return queue;
-    }),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
+        : delivery.publish(event).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                ordering?.push(event._tag);
+              }),
+            ),
+          ),
   });
   return {
     events,
@@ -398,11 +395,14 @@ describe("generic CLI command lifecycle", () => {
   test("publishes the run event before a live stream terminal result", async () => {
     // Given
     const ordering: Array<string> = [];
+    const framedEvents: string[] = [];
     const harness = makeRecordingHarness(ordering);
     const io = {
       writeStdout: (chunk: string | Uint8Array) => {
         const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-        ordering.push(text.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
+        const frame = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(text));
+        if (frame._tag === "event") framedEvents.push(frame.event);
+        else ordering.push(frame._tag === "result" ? "result-frame" : "stream-frame");
       },
       writeStderr: () => undefined,
     };
@@ -425,5 +425,23 @@ describe("generic CLI command lifecycle", () => {
 
     // Then
     expect(ordering).toEqual(["cli-app:start-init", "stream-frame", "cli-app:start-run", "result-frame"]);
+    expect(framedEvents).toEqual(["cli-app:start-init", "cli-app:start-run"]);
   });
 });
+
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  test(`lifecycle reads ${signal} interruption status after command aborts`, async () => {
+    const harness = makeRecordingHarness();
+    const controller = new AbortController();
+    await runWithRendererHandling(
+      Effect.sync(() => controller.abort(signal)).pipe(Effect.andThen(Effect.never)),
+      { ...optionsFor(harness), signal: controller.signal },
+    );
+    const expectedCode = signal === "SIGINT" ? 130 : 143;
+    expect(harness.exitCodes).toEqual([expectedCode]);
+    expect(harness.events.at(-1)).toMatchObject({
+      _tag: "cli-app:start-error",
+      exitCode: expectedCode,
+      failureTag: "Interrupted",
+    });
+  });

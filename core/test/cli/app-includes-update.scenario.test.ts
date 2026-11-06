@@ -8,7 +8,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@lando/core/cli/operations";
 import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 import { LandofileFormConflictError } from "@lando/core/errors";
-import type { GitIncludeCloner } from "@lando/landofile/includes";
+import type { GitTransport } from "@lando/source-acquisition";
 import { appIncludesUpdateSpec } from "../../src/cli/command-specs/app/includes/update.ts";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
@@ -307,17 +307,17 @@ describe("lando app:includes:update (source dispatch)", () => {
         ].join("\n"),
       );
       const cloneUrls: string[] = [];
-      const gitCloner: GitIncludeCloner = {
-        clone: async ({ url, stagingDir }) => {
+      const git: GitTransport = {
+        fetch: async ({ url, dest }) => {
           cloneUrls.push(url);
-          await mkdir(stagingDir, { recursive: true });
-          await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: (url.includes("/base.git") ? "a" : "b").repeat(40) };
+          await mkdir(dest, { recursive: true });
+          await writeFile(join(dest, "fragment.yml"), "services: {}\n", "utf8");
+          return { commit: (url.includes("/base.git") ? "a" : "b").repeat(40) };
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
         const report = await Effect.runPromise(
-          appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+          appIncludesUpdate({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
         );
 
         expect(report.entries.map((entry) => entry.source).sort()).toEqual([
@@ -339,18 +339,18 @@ describe("lando app:includes:update (source dispatch)", () => {
         "name: compose-app\ninclude:\n  - github:acme/compose/fragment.yml\n",
       );
       const cloneUrls: string[] = [];
-      const gitCloner: GitIncludeCloner = {
-        clone: async ({ url, stagingDir }) => {
+      const git: GitTransport = {
+        fetch: async ({ url, dest }) => {
           cloneUrls.push(url);
-          await mkdir(stagingDir, { recursive: true });
-          await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: "c".repeat(40) };
+          await mkdir(dest, { recursive: true });
+          await writeFile(join(dest, "fragment.yml"), "services: {}\n", "utf8");
+          return { commit: "c".repeat(40) };
         },
       };
 
       await withUserCacheRoot(join(dir, ".cache"), async () => {
         const report = await Effect.runPromise(
-          appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+          appIncludesUpdate({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
         );
 
         expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/compose/fragment.yml"]);
@@ -371,18 +371,18 @@ describe("lando app:includes:update (source dispatch)", () => {
         "includes:\n  - source: github:acme/shared@v2\n    path: fragment.yml\n",
       );
       const refs: Array<string | undefined> = [];
-      const gitCloner: GitIncludeCloner = {
-        clone: async ({ dest, ref }) => {
+      const git: GitTransport = {
+        fetch: async ({ dest, ref }) => {
           refs.push(ref);
           await writeFile(join(dest, "fragment.yml"), "services: {}\n");
-          return { commitSha: "a".repeat(40) };
+          return { commit: "a".repeat(40) };
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
         // When
         const error = await Effect.runPromise(
           Effect.flip(
-            appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+            appIncludesUpdate({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
           ),
         );
         // Then

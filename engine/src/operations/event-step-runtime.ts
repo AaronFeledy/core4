@@ -1,4 +1,5 @@
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+// allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
+import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
@@ -69,6 +70,7 @@ interface EventRuntimeOptions {
   readonly privateFileAccess: PrivateFileAccess;
   readonly environmentResolver: Option.Option<Context.Service.Shape<typeof EnvironmentValueResolver>>;
   readonly hostRunner?: Context.Service.Shape<typeof ShellRunner>;
+  readonly processRunner?: ProcessRunner["Service"];
   readonly redactor: Redactor;
   /** `env` maps hold env-style names; `input` holds command flags and args, named like config fields. */
   readonly redactorFor: (sources: EventRedactionSources) => Effect.Effect<EventRedactionScope>;
@@ -104,6 +106,42 @@ const failureExitCode = (error: unknown): number => {
   return 1;
 };
 
+const wrappedRemediation = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("remediation" in error)) return undefined;
+  const value = error.remediation;
+  return typeof value === "string" && /\S/u.test(value) ? value : undefined;
+};
+
+const leafTargetsHost = (
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  result?: ToolingEngineResult,
+): boolean => {
+  if (leaf.kind === "cmd" && leaf.service === ":host") return true;
+  if (result !== undefined && String(result.service) === ":host") return true;
+  return false;
+};
+
+const lifecycleRemediation = (
+  options: EventRuntimeOptions,
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  error?: unknown,
+  result?: ToolingEngineResult,
+): string => {
+  if (error instanceof ToolingDisabledError) {
+    return options.redactor.redactString(error.remediation);
+  }
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  let remediation = `Fix ${label}, then rerun the lifecycle command.`;
+  if (leafTargetsHost(leaf, result)) {
+    remediation += " The step runs in Bun Shell.";
+  }
+  const wrapped = error === undefined ? undefined : wrappedRemediation(error);
+  if (wrapped !== undefined) {
+    remediation += ` ${options.redactor.redactString(wrapped)}`;
+  }
+  return remediation;
+};
+
 const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
@@ -118,10 +156,7 @@ const stepFailure = (
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation:
-      error instanceof ToolingDisabledError
-        ? options.redactor.redactString(error.remediation)
-        : `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, error),
   });
 };
 
@@ -143,7 +178,7 @@ const nonzeroFailure = (
       options.redactor.redactString(output.stdout),
       options.redactor.redactString(output.stderr),
     ),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, undefined, result),
   });
 };
 
@@ -253,12 +288,28 @@ const runTask = Effect.fnUntraced(function* (
   const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
   const variableRedaction = yield* options.redactorFor({ env: [leaf.vars] });
   if (task === undefined) {
+    if (options.hostRunner === undefined)
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "ShellRunner is unavailable for script-backed event execution.",
+          tool: leaf.task,
+          remediation: "Provide the selected ShellRunner in the event runtime.",
+        }),
+      );
     const script = yield* runBunShellTooling(
       { name: leaf.task, cwd: String(options.plan.root) },
       String(options.plan.root),
-    ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
+    ).pipe(
+      Effect.provideService(PrivateFileAccessService, options.privateFileAccess),
+      Effect.provideService(ShellRunner, options.hostRunner),
+    );
     if (script !== undefined) {
-      return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
+      return {
+        leaf,
+        result: { ...script, stdout: script.stdout ?? "", stderr: script.stderr ?? "" },
+        startedAt,
+        redactor: variableRedaction.redactor,
+      };
     }
     return yield* Effect.fail(
       stepFailure(
@@ -373,7 +424,18 @@ export const makeEventStepRunners = (
     );
   return {
     runCmd: (leaf) => checked(leaf, runCmd(options, leaf)),
-    runTask: (leaf, context) => checked(leaf, runTask(options, leaf, context)),
+    runTask: (leaf, context) =>
+      checked(
+        leaf,
+        options.processRunner === undefined
+          ? Effect.fail(
+              new ToolingCompileError({
+                message: "Process runner is unavailable for event task execution.",
+                tool: options.event,
+              }),
+            )
+          : runTask(options, leaf, context).pipe(Effect.provideService(ProcessRunner, options.processRunner)),
+      ),
     runCommand: (leaf) =>
       checked(
         leaf,

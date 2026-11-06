@@ -176,7 +176,8 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
   });
 });
 
-const defaultAgentRelayRuntime = async (input: AgentRelayWorkerInput) => {
+export const defaultAgentRelayRuntime = async (input: AgentRelayWorkerInput) => {
+  await import("../../runtime/bundled-plugins");
   const { makeLandoRuntime } = await import("../../runtime/layer");
   return makeLandoRuntime(
     cliRuntimeOptions({

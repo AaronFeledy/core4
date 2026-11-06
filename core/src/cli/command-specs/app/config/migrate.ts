@@ -1,5 +1,5 @@
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import {
   type AppConfigMigrateOptions,
   type AppConfigMigrateResult,
@@ -52,6 +52,5 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
       privateFileAccess,
     });
   }),
-  render: (result) =>
-    renderAppConfigMigrateResult(Schema.decodeUnknownSync(AppConfigMigrateResultSchema)(result)),
+  render: renderAppConfigMigrateResult,
 };

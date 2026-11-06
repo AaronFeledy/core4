@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { access } from "node:fs/promises";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { AppId, AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
 import { ScratchAppService } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
-import { runDestroy, withDestroyFixture } from "./destroy-fixture.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { runDestroy, seedScratchPlan, withDestroyFixture } from "./destroy-fixture.ts";
 
 const bracket = [
   "pre-scratch-destroy",
@@ -132,13 +132,23 @@ test("pending-cleanup write failure preserves the original provider failure", as
   });
 });
 
+test("a failed post-scratch-destroy event cannot bring back the removed entry", async () => {
+  // Given a destroy whose resources and registry entry are removed before the closing event fails.
+  await withDestroyFixture({ postScratchDestroyFail: true }, async (f) => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (s) => s.destroy(f.id)).pipe(Effect.result, Effect.provide(f.layer)),
+    );
+    // Then the failure surfaces but no pending-cleanup entry is written for resources that are gone.
+    expect(result._tag).toBe("Failure");
+    expect(f.calls).not.toContain("registry:upsert");
+    expect(f.entries.size).toBe(0);
+  });
+});
+
 test("a mismatched cached plan cannot delete another app's snapshots", async () => {
   // Given a scratch cache containing a different app id under the same owner.
   await withDestroyFixture({ cwd: true }, async (f) => {
-    await writeFile(
-      join(f.instanceRoot, "plan.bin"),
-      JSON.stringify(Schema.encodeSync(AppPlan)({ ...f.plan, id: AppId.make("user-app") })),
-    );
+    await seedScratchPlan(f.instanceRoot, { ...f.plan, id: AppId.make("user-app") });
     // When destroy reads that cache.
     await expect(runDestroy(f)).rejects.toThrow();
     // Then validation fails before events or destructive work.
@@ -151,16 +161,25 @@ test("a mismatched cached plan cannot delete another app's snapshots", async () 
 test("explicit scratch destroy carries a historical cached plan without retired networks on both bracket events", async () => {
   // Given a registered scratch whose cached wire plan still has the retired field.
   await withDestroyFixture({}, async (f) => {
-    await writeFile(
-      join(f.instanceRoot, "plan.bin"),
-      JSON.stringify({
-        ...Schema.encodeSync(AppPlan)(f.plan),
-        networks: [{ name: `lando-${f.plan.slug}`, shared: false, driver: "bridge" }],
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const bucket = yield* makeStateStore({ privateFileAccess: ownerOnlyFileAccess }).open({
+          root: { path: AbsolutePath.make(f.instanceRoot) },
+          key: "plan.bin",
+          schema: Schema.Unknown,
+          version: 1,
+          codec: "binary",
+          mode: 0o600,
+        });
+        yield* bucket.set({
+          ...Schema.encodeSync(AppPlan)(f.plan),
+          networks: [{ name: `lando-${f.plan.slug}`, shared: false, driver: "bridge" }],
+        });
       }),
     );
     // When explicit destroy completes.
     await runDestroy(f);
-    // Then both boundary payloads carry that plan.
+    // Then both boundary payloads carry that plan without retired network fields.
     for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"]) {
       expect(f.events.find((event) => event._tag === _tag)).toMatchObject({ plan: f.plan });
       expect(f.events.find((event) => event._tag === _tag)).not.toHaveProperty("plan.networks");

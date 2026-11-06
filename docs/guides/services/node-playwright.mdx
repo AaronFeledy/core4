@@ -112,7 +112,7 @@ lando playwright test
 
 Check that the version is `1.64.1`, curl returns the demo HTML containing `hello lando`, and the test runner reports one passing Chromium test. That confirms the browser reached `web` over the app network. To check access from your host as well, run `lando info` and open the app URL it prints.
 
-If curl cannot connect, the app may still be starting. Run `lando logs -s web`, fix any server error, and repeat the curl check before running the tests. `lando start` waits for containers to run; without a healthcheck, it doesn't wait for this Node server to answer HTTP requests.
+If curl cannot connect, the app may still be starting. Run `lando logs -s web`, fix any server error, and repeat the curl check before running the tests. Without effective readiness, `lando start` waits for containers to run but not for this Node server to answer HTTP. Add `readiness:` to wait for the server without enabling native ongoing monitoring; see [Make start wait for your app](./wait-for-your-app.mdx).
 
 Install dependencies in `e2e`, not `web`: each service has its own `node_modules` volume. Keep the generated `package-lock.json` with your project and use `lando exec e2e -- npm ci` for later installs from that lockfile. The matching image already contains the required browser builds, so this path doesn't need `playwright install` or `install-deps`.
 

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { decodeImageInspectDigest, parseImageReference } from "@lando/container-runtime/dialect";
 import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
 import {
   buildVolumePruneRequest,
@@ -225,8 +226,7 @@ const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonReco
     typeof body.Image === "string" &&
     body.Image.length > 0 &&
     resolvedId.replace(/^sha256:/u, "") === body.Image.replace(/^sha256:/u, "") &&
-    Array.isArray(repoDigests) &&
-    repoDigests.includes(image)
+    decodeImageInspectDigest({ RepoDigests: repoDigests }, image) === parseImageReference(image).tag
   );
 });
 

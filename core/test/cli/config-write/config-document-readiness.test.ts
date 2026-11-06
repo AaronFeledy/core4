@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditorRunner } from "@lando/engine/config-write/editor";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
-import { ManagedFileTransactionGuard, type StateStore } from "@lando/sdk/services";
+import { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { appConfigEdit } from "../../../src/cli/commands/app-config.ts";
 import { globalConfigEdit } from "../../../src/cli/commands/meta/global-config.ts";
-import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
+import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 const roots: string[] = [];
 const root = async () => {
@@ -31,7 +31,7 @@ interface EditAdapter {
   ) => Effect.Effect<
     EditObservation,
     Effect.Error<ReturnType<typeof appConfigEdit | typeof globalConfigEdit>>,
-    StateStore
+    GlobalConfigTestServices
   >;
 }
 const adapters: readonly EditAdapter[] = [
@@ -85,7 +85,7 @@ for (const adapter of adapters) {
             ),
           ).pipe(
             Effect.provideService(ManagedFileTransactionGuard, guard),
-            Effect.provide(testStateStoreLayer),
+            Effect.provide(globalConfigLayer(cwd)),
           ),
         );
         // Then the guard's typed failure prevents persistence at either boundary.
@@ -106,7 +106,7 @@ for (const adapter of adapters) {
     const result = await Effect.runPromise(
       adapter
         .edit(cwd, async () => ({ kind: "edited", content: edited }), false)
-        .pipe(Effect.provide(testStateStoreLayer)),
+        .pipe(Effect.provide(globalConfigLayer(cwd))),
     );
     // Then the malformed original never blocks the repair.
     expect(result.changed).toBe(true);
@@ -121,7 +121,7 @@ test("saving the unchanged global seed creates an absent document", async () => 
   // When the editor accepts its seed unchanged.
   const result = await Effect.runPromise(
     globalConfigEdit({ editorRunner: async ({ content }) => ({ kind: "edited", content }) }, file).pipe(
-      Effect.provide(testStateStoreLayer),
+      Effect.provide(globalConfigLayer(cwd)),
     ),
   );
   // Then seed equality does not hide a real creation.

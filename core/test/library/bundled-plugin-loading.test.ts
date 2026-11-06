@@ -190,8 +190,8 @@ describe("@lando/core bundled plugin loading", () => {
     expect(result.stdout).toBe(fullExpected);
   });
 
-  test("the root composition is empty while the compiled CLI static composition remains full", async () => {
-    // Given: isolated root-library and source-runtime composition entry points.
+  test("the root and CLI runtime modules stay plugin-free while CLI registration installs the full bundle", async () => {
+    // Given: isolated root-library, CLI-runtime, and CLI bundled-registration entry points.
     const emptyExpected = `${JSON.stringify({ pluginNames: [], templateNames: [] })}\n`;
     const fullExpected = `${JSON.stringify({
       pluginNames: fullBundledPluginNames,
@@ -199,15 +199,19 @@ describe("@lando/core bundled plugin loading", () => {
     })}\n`;
 
     // When: preload-free Bun processes import each composition independently.
-    const [rootResult, compiledRuntimeResult] = await Promise.all([
+    const [rootResult, compiledRuntimeResult, registrationResult] = await Promise.all([
       runProbe(compositionProbe(["@lando/core"])),
       runProbe(compositionProbe(["./core/src/cli/compiled-runtime.ts"])),
+      runProbe(compositionProbe(["./core/src/runtime/bundled-plugins.ts"])),
     ]);
 
-    // Then: library root mode stays plugin-free and the CLI's static runtime keeps the complete bundle.
+    // Then: help and listing paths that import the CLI runtime load no bundled plugin modules;
+    // command dispatch and detached workers import the registration module before building a runtime.
     expectProbeSucceeded(rootResult);
     expectProbeSucceeded(compiledRuntimeResult);
+    expectProbeSucceeded(registrationResult);
     expect(rootResult.stdout).toBe(emptyExpected);
-    expect(compiledRuntimeResult.stdout).toBe(fullExpected);
+    expect(compiledRuntimeResult.stdout).toBe(emptyExpected);
+    expect(registrationResult.stdout).toBe(fullExpected);
   });
 });

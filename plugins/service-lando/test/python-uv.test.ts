@@ -57,7 +57,7 @@ test.each(["django", "fastapi", "flask", "none"])(
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ phase: "build", user: "root" });
     expect(steps[0]?.command).toEqual(["python", "-m", "pip", "install", "--no-cache-dir", "uv==0.12.24"]);
-    expect(service.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(service.command).toEqual(["tail", "-f", "/dev/null"]);
   },
 );
 
@@ -81,7 +81,7 @@ test("keeps uv installation root-only while preserving authored process and buil
   const steps = buildStepsFor(service);
   expect(steps.find((step) => step.id === "service-lando.python:uv")?.user).toBe("root");
   expect(steps).toContainEqual(
-    expect.objectContaining({ command: ["sh", "-lc", authoredStep], user: "1000:1000" }),
+    expect.objectContaining({ command: ["sh", "-c", authoredStep], user: "1000:1000" }),
   );
 });
 

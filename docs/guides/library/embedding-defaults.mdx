@@ -25,7 +25,9 @@ collects telemetry, and loads code.
 
 Choose overrides when constructing the runtime. For example, set the renderer
 to `plain` or opt into telemetry with `true`. To load bundled plugins, import
-`@lando/core/bundled-plugins` before construction; this enables bundled-only loading.
+`@lando/core/bundled-plugins` before construction and pass
+`plugins: { policy: "bundled-only" }`. The import only makes the bundled
+modules available; without that policy, the runtime loads none of them.
 
 Host plugin layers are built once and override matching generated runtime services.
 You can also supply resolved plugin manifests to register contributions without

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { ServiceName } from "@lando/sdk/schema";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
@@ -15,6 +15,7 @@ import { restartApp } from "../../src/operations/restart.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { stopApp } from "../../src/operations/stop.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { acceleratedPlan, app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { makeHarness } from "./start-progress-topology-support.ts";
 
@@ -108,23 +109,15 @@ test.each(["preparing", "sessions-ready"] as const)(
 test("pre-apply resume creates only the genuinely missing session in a partial set", async () => {
   const existing = await Effect.runPromise(recoveryHarness());
   const engine = await Effect.runPromise(FileSyncEngine.pipe(Effect.provide(existing.layer)));
-  const first = acceleratedPlan.fileSync[0];
-  if (first === undefined || first.session.target._tag !== "volume")
-    throw new TypeError("Expected volume session");
-  const planned = {
-    ...acceleratedPlan,
-    fileSync: [
-      first,
-      {
-        ...first,
-        session: {
-          ...first.session,
-          mountKey: "second",
-          target: { ...first.session.target, name: "second-volume" },
-        },
-      },
-    ],
-  };
+  const planned = withAcceleratedBind(acceleratedPlan, ServiceName.make("web"), {
+    type: "bind",
+    source: acceleratedPlan.root,
+    target: PortablePath.make("/second"),
+    readOnly: false,
+    realization: "accelerated",
+    mountKey: "second",
+    excludes: [],
+  });
   const harness = makeHarness({ plannedApp: planned, fileSync: engine });
   await Effect.runPromise(beginOrResumeAcceleratedStart(planned, app).pipe(Effect.provide(harness.layer)));
   await Effect.runPromise(startApp({}, { ...target, plan: planned }).pipe(Effect.provide(harness.layer)));

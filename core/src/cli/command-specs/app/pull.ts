@@ -21,6 +21,5 @@ export const pullSpec: LandoCommandSpec<SyncResultType> = {
   args: { env: remoteEnvArg },
   resultSchema: SyncResult,
   run: (input) => appPull(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
-  render: (result, input, ctx) =>
-    renderSyncResult(result as SyncResultType, remoteFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderSyncResult(result, remoteFormatFromInput(input), ctx),
 };

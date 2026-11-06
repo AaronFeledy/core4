@@ -1,0 +1,23 @@
+name: wait-execution-metadata
+services:
+  identity:
+    type: "node:22"
+    primary: true
+    healthcheck:
+      target: service
+      command: curl -fsS http://localhost:3000/health
+    readiness:
+      target: service
+      user: "1000:1000"
+      test: [CMD, curl, -fsS, http://localhost:3000/ready]
+      interval: 2s
+      timeout: 3s
+      retries: 4
+  file:
+    type: "node:22"
+    healthcheck: false
+    readiness:
+      target: host
+      command: [test, -f, .ready]
+      intervalSeconds: 1
+      retries: 10

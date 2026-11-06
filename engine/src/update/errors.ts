@@ -1,7 +1,17 @@
 /** Update operation error contracts. */
 import { Schema } from "effect";
 
-import type { LandoCommandError } from "@lando/sdk/errors";
+import type {
+  BunSelfReentryError,
+  FileIoError,
+  InteractionRequiredError,
+  LandoCommandError,
+  NotImplementedError,
+  PluginManifestError,
+  PluginPackageOperationError,
+  ProcessExecError,
+  ProcessTimeoutError,
+} from "@lando/sdk/errors";
 import { UpdateChannel as UpdateChannelSchema } from "@lando/sdk/schema";
 import type { InstallOwnershipError } from "../install/owned-executable.ts";
 
@@ -107,6 +117,14 @@ export class UpdatePermissionError extends Schema.TaggedError<UpdatePermissionEr
 ) {}
 
 export type UpdateError =
+  | BunSelfReentryError
+  | FileIoError
+  | InteractionRequiredError
+  | NotImplementedError
+  | PluginManifestError
+  | PluginPackageOperationError
+  | ProcessExecError
+  | ProcessTimeoutError
   | InstallOwnershipError
   | LandoCommandError
   | UpdateNetworkError

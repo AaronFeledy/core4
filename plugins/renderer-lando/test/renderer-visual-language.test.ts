@@ -184,7 +184,7 @@ const successEvents = (): ReadonlyArray<LandoEvent> => [
 ];
 
 const drivePainter = (events: ReadonlyArray<LandoEvent>, columns: number): ReadonlyArray<string> => {
-  const vm = new TaskTreeViewModel({ terminalColumns: columns });
+  const vm = new TaskTreeViewModel({ color: true, terminalColumns: columns });
   for (const event of events) vm.apply(event);
   expect(vm.frameLines().map(stripAnsi)).toEqual([...vm.snapshot().frameLines]);
   return vm.snapshot().frameLines;
@@ -352,7 +352,7 @@ describe("lando renderer visual language", () => {
       "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
     );
     const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 38 });
-    const line = renderLandoLine(event, true, io.terminalColumns);
+    const line = renderLandoLine(event, true, io.terminalColumns, true);
     expect(line).not.toBeNull();
     const lines = stripAnsi(line ?? "").split("\n");
     expect(lines[0]).toContain("INFO");
@@ -367,7 +367,7 @@ describe("lando renderer visual language", () => {
     const body =
       "Port 80 is in use; using 8000.\nPort 443 is in use; using 4443.\n\nRun lando info to see the alternate URL.";
     for (const columns of [3, 8, 12, 38, 80]) {
-      const output = renderLandoLine(messageWarn(body), true, columns);
+      const output = renderLandoLine(messageWarn(body), true, columns, true);
       const lines = stripAnsi(output ?? "").split("\n");
       expect(lines.every((line) => Bun.stringWidth(line) < columns)).toBe(true);
       if (columns >= 12) {
@@ -376,7 +376,7 @@ describe("lando renderer visual language", () => {
       }
     }
 
-    const unicode = renderLandoLine(messageWarn("占用端口 🐉 測試 443 → 4443"), true, 12);
+    const unicode = renderLandoLine(messageWarn("占用端口 🐉 測試 443 → 4443"), true, 12, true);
     const unicodeLines = stripAnsi(unicode ?? "").split("\n");
     expect(unicodeLines.every((line) => Bun.stringWidth(line) < 12)).toBe(true);
     expect(unicodeLines.join("\n")).toContain("占用端口");

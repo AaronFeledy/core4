@@ -152,7 +152,7 @@ TestRuntimeProvider implements the data-plane methods in memory so contract test
 
 runServiceCompositionContract replays service type resolution and requires stable base and normalizedConfig output.
 
-runServiceFeatureContract validates service feature requires entries, deterministic drafts and endpoint declarations, and storage, mount, and extension intents without realization decisions. Endpoint declarations run through `declareEndpoints` with immutable facts, not application mutators.
+runServiceFeatureContract validates service feature requires entries, deterministic drafts and endpoint declarations, and storage, mount, and extension intents without realization decisions. Endpoint declarations run through `declareEndpoints` with immutable facts, not application mutators. Features may validate their final inherited configuration through `validateEffective` before declaration. Test field claims, typed issues, and both omitted and explicit empty endpoint lists; an endpoint override must not turn invalid feature input into a successful plan.
 
 runAppFeatureContract validates app feature global service requirements, deterministic endpoint declarations limited to selected services, and proves activatedBy misses are no-op paths when expectNoActivation is set.
 

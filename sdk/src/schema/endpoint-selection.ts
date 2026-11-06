@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { type EndpointPlan, EndpointRef } from "./endpoint.ts";
+import { type EndpointPlan, EndpointRef, type EndpointScan } from "./endpoint.ts";
 
 // ============================================================================
 // Pure logical listener grouping, invariants, and HTTP route selection.
@@ -15,7 +15,12 @@ export const LogicalEndpoint = EndpointRef.pipe(
 export type LogicalEndpoint = typeof LogicalEndpoint.Type;
 
 export const EndpointInvariantIssue = Schema.Struct({
-  kind: Schema.Literals(["alias-collision", "protocol-conflict", "multiple-primary"]).annotate({
+  kind: Schema.Literals([
+    "alias-collision",
+    "protocol-conflict",
+    "multiple-primary",
+    "scan-conflict",
+  ]).annotate({
     description: "Logical listener invariant violated by the declarations.",
   }),
   identities: Schema.Array(Schema.String).annotate({
@@ -85,6 +90,24 @@ export const endpointInvariantIssues = (
   const groups = groupLogicalEndpoints(endpoints);
   const issues: EndpointInvariantIssue[] = [];
   const aliases = new Map<string, Set<string>>();
+  const scans = new Map<string, EndpointScan>();
+  const scanConflicts = new Set<string>();
+  for (const endpoint of endpoints) {
+    if (endpoint.scan === undefined) continue;
+    const identity = logicalEndpointIdentity(endpoint);
+    const previous = scans.get(identity);
+    const { path, okCodes } = endpoint.scan;
+    if (
+      (previous?.path !== undefined && path !== undefined && previous.path !== path) ||
+      (previous?.okCodes !== undefined &&
+        okCodes !== undefined &&
+        (previous.okCodes.some((code) => !okCodes.includes(code)) ||
+          okCodes.some((code) => !previous.okCodes?.includes(code))))
+    )
+      scanConflicts.add(identity);
+    scans.set(identity, { ...previous, ...endpoint.scan });
+  }
+  for (const identity of scanConflicts) issues.push({ kind: "scan-conflict", identities: [identity] });
   for (const group of groups) {
     const identity = logicalEndpointIdentity(group);
     if (group.protocols.length > 1) issues.push({ kind: "protocol-conflict", identities: [identity] });

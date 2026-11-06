@@ -7,7 +7,7 @@ import type {
   LegacyHostProxyWorkerRecord,
 } from "@lando/engine/subsystems/host-proxy/worker-records";
 import { probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
-import type { DoctorCheck, DoctorSolution } from "./doctor";
+import type { DoctorCheck, DoctorResult, DoctorSolution } from "./doctor";
 import type { HostProxyTransportDoctorOptions } from "./doctor-host-proxy";
 import { probeHostProxyContainer } from "./doctor-host-proxy-container-probe";
 import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
@@ -71,7 +71,11 @@ const baseCheck = (
 
 export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
   options: DiagnoseWorkerOptions,
-): Effect.fn.Return<DoctorCheck, never, HostProxyDoctorFileSystem> {
+): Effect.fn.Return<
+  DoctorCheck | NonNullable<DoctorResult["skipped"]>[number],
+  never,
+  HostProxyDoctorFileSystem
+> {
   const fileSystem = yield* HostProxyDoctorFileSystem;
   const { doctor, record } = options;
   const currentRecord = options.current ? options.record : undefined;
@@ -86,19 +90,14 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
     transport: record.transport,
     endpoint: endpoint ?? "missing",
   };
+  const skipped = (reason: string): NonNullable<DoctorResult["skipped"]>[number] => ({
+    section: `host-proxy-transport:${record.appId}`,
+    status: "skipped",
+    reason,
+  });
 
   if (currentRecord?.providerId !== undefined && currentRecord.providerId !== doctor.provider.id) {
-    return baseCheck(
-      doctor,
-      {
-        ...context,
-        reachability: "not-probed",
-        reason: "provider-mismatch",
-        workerProviderId: currentRecord.providerId,
-      },
-      "pass",
-      [],
-    );
+    return skipped("provider-mismatch");
   }
 
   // A Windows bridge advertises a guest Unix socket but controls the worker
@@ -118,7 +117,10 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
     const socketMetadata =
       record.socketPath === undefined ? undefined : yield* fileSystem.socketMetadata(record.socketPath);
     const reachable =
-      controlProbe === "live" && socketMetadata?.type === "socket" && socketMetadata.mode === 0o600;
+      controlProbe === "live" &&
+      socketMetadata?.type === "socket" &&
+      socketMetadata.owned &&
+      socketMetadata.privateDirectory;
     return baseCheck(
       doctor,
       {
@@ -127,10 +129,21 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
         socketType: socketMetadata?.type ?? "missing",
         socketMode:
           socketMetadata === undefined ? "missing" : socketMetadata.mode.toString(8).padStart(4, "0"),
+        socketOwned: String(socketMetadata?.owned ?? false),
+        privateRunDirectory: String(socketMetadata?.privateDirectory ?? false),
         ...(!reachable && controlProbe !== "live" ? { failure: "control-probe-failed" } : {}),
       },
       reachable ? "pass" : "warn",
-      reachable ? [] : [HOST_PROXY_REMEDIATION],
+      reachable
+        ? []
+        : [
+            {
+              kind: "manual",
+              description:
+                "The host proxy requires a socket owned by you inside a non-symlink, owner-only (0700) run directory. Restore directory ownership and private access, then run `lando start` for this app on the host.",
+              command: "lando start",
+            },
+          ],
     );
   }
 
@@ -146,19 +159,7 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
     containerTarget === undefined ||
     rawProbeServices === undefined
   ) {
-    return baseCheck(
-      doctor,
-      {
-        ...context,
-        reachability: "not-probed",
-        ...(!bridgedGuestSocket && doctor.provider.tcpHostGateway !== undefined
-          ? { containerGateway: doctor.provider.tcpHostGateway }
-          : {}),
-        reason: "pre-upgrade-record",
-      },
-      "pass",
-      [],
-    );
+    return skipped("pre-upgrade-record");
   }
 
   const controlProbe = yield* probeWorker(record);
@@ -209,17 +210,7 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
     case "reachable":
       return baseCheck(doctor, { ...context, reachability: "reachable", ...gatewayContext }, "pass", []);
     case "cap-exhausted":
-      return baseCheck(
-        doctor,
-        {
-          ...context,
-          reachability: "not-probed",
-          ...gatewayContext,
-          reason: "probe-service-cap-exhausted",
-        },
-        "pass",
-        [],
-      );
+      return skipped("probe-service-cap-exhausted");
     case "failed":
       return baseCheck(
         doctor,
@@ -233,17 +224,7 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
         [HOST_PROXY_REMEDIATION],
       );
     case "inconclusive":
-      return baseCheck(
-        doctor,
-        {
-          ...context,
-          reachability: "not-probed",
-          ...gatewayContext,
-          reason: "probe-services-inconclusive",
-        },
-        "pass",
-        [],
-      );
+      return skipped("probe-services-inconclusive");
     default: {
       const exhaustive: never = containerProbe;
       return exhaustive;

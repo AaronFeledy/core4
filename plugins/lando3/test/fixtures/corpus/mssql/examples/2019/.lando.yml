@@ -1,0 +1,9 @@
+name: lando-mssql-2019
+services:
+  defaults:
+    type: mssql:2019-latest
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/mssql": ./../../

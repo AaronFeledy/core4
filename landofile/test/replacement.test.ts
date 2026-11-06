@@ -25,6 +25,20 @@ const replace = (content: string) =>
     },
   );
 
+test("preserves the decoder kind through replacement validation", async () => {
+  const result = await Effect.runPromiseExit(
+    replace("services:\n  web:\n    image: nginx\n    primary: maybe\n"),
+  );
+  expect(Exit.isFailure(result)).toBe(true);
+  if (Exit.isFailure(result)) {
+    const error = Cause.findErrorOption(result.cause);
+    expect(error._tag === "Some" ? error.value : undefined).toMatchObject({
+      _tag: "LandofileWriteValidationError",
+      issues: [expect.objectContaining({ path: ["services", "web", "primary"], kind: "type" })],
+    });
+  }
+});
+
 test("does not acquire removed dependencies or parse old target bytes", async () => {
   await writeFile(join(root, ".lando.yml"), "name: old\nincludes: [missing.yml]\n");
   await Effect.runPromise(replace("name: repaired\n"));
@@ -75,4 +89,28 @@ test("evaluates untouched TypeScript once and performs one normal effective fina
     evaluate.mockRestore();
     finalize.mockRestore();
   }
+});
+
+test("validates a new dist candidate below existing authored overrides without writing it", async () => {
+  await writeFile(join(root, ".lando.yml"), "services:\n  web:\n    type: false\n");
+  const result = await Effect.runPromiseExit(
+    validateLandofileReplacement(
+      {
+        appRoot: root,
+        targetFile: join(root, ".lando.dist.yml"),
+        content: "name: global\nruntime: 4\nservices:\n  web:\n    type: compose\n    image: alpine:3.21\n",
+      },
+      {
+        ports: makeTestLandofilePorts(root),
+        stateStore: makeTestLandofileStateStore(),
+        templates: { modules: [] },
+      },
+    ),
+  );
+  expect(Exit.isFailure(result)).toBe(true);
+  if (Exit.isFailure(result)) {
+    const error = Cause.findErrorOption(result.cause);
+    expect(error._tag === "Some" ? error.value._tag : undefined).toBe("LandofileWriteValidationError");
+  }
+  expect(await Bun.file(join(root, ".lando.dist.yml")).exists()).toBe(false);
 });

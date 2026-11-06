@@ -3,10 +3,12 @@ import { activeLogLevel } from "@lando/engine/runtime/cli-options";
 import { type RendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { layerPlainService } from "@lando/renderer/runtime";
-import { encodeCommandResult, failureOutcomeFromCause, normalizeDefect } from "@lando/sdk/command-result";
+import { encodeCommandResult } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Schema } from "effect";
 import { formatBugReport } from "./bug-report";
+import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
+import { machineOutputOnStderr } from "./command-payload-stdout";
 import { DEFAULT_RESULT_FORMAT, isEnvelopeResultFormat } from "./format-flags";
 import type { RunWithRendererHandlingOptions } from "./renderer-boundary";
 
@@ -30,9 +32,15 @@ export const renderTerminalFailure = async <A, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
   redactor: Redactor,
 ): Promise<void> => {
-  const io = options.io ?? createStdioRendererIO();
-  const outcome = failureOutcomeFromCause(cause, normalizeDefect);
+  const outcome = commandFailureOutcome(cause, options.signal);
   const format = options.resultFormat ?? DEFAULT_RESULT_FORMAT;
+  const realIO =
+    options.io ??
+    createStdioRendererIO(undefined, undefined, undefined, {
+      terminalNewlines: !isEnvelopeResultFormat(format),
+    });
+  const io =
+    options.payloadStdout === true && isEnvelopeResultFormat(format) ? machineOutputOnStderr(realIO) : realIO;
   await Effect.runPromise(
     Effect.gen(function* () {
       yield* recordCliDefect(cause, redactor, io);
@@ -58,6 +66,7 @@ export const renderTerminalFailure = async <A, R, RE>(
     }).pipe(Effect.provide(layerPlainService(io))),
   );
   const setExitCode = options.setExitCode;
-  if (setExitCode == null) process.exitCode = 1;
-  else setExitCode(1);
+  const exitCode = Cause.hasInterruptsOnly(cause) ? commandInterruptionExitCode(options.signal) : 1;
+  if (setExitCode == null) process.exitCode = exitCode;
+  else setExitCode(exitCode);
 };

@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import { HealthcheckTargetUnsupportedError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  ContainerUser,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -58,6 +60,42 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+test.each([{ executionTarget: "host" as const }, { user: ContainerUser.make("1001") }])(
+  "rejects lifecycle-only execution on native health rather than silently disabling it",
+  (execution) => {
+    // Given
+    const lifecycle = { ...service, healthcheck: { ...cheap, ...execution } };
+    // When
+    const create = () => containerCreateBodyFragment(plan, lifecycle);
+    const compose = () =>
+      renderCompose(
+        { ...plan, services: { [service.name]: lifecycle } },
+        { providerId: "test", remediation: "retry", env: {} },
+      );
+    // Then
+    expect(create).toThrow(HealthcheckTargetUnsupportedError);
+    expect(compose).toThrow(HealthcheckTargetUnsupportedError);
+  },
+);
+
+test.each([{ executionTarget: "host" as const }, { user: ContainerUser.make("1001") }])(
+  "keeps native health independent of lifecycle-only readiness",
+  (execution) => {
+    // Given
+    const lifecycle = { ...service, readiness: { ...cheap, command: ["private-ready"], ...execution } };
+    // When
+    const body = containerCreateBodyFragment(plan, lifecycle);
+    const compose = renderCompose(
+      { ...plan, services: { [service.name]: lifecycle } },
+      { providerId: "test", remediation: "retry", env: {} },
+    );
+    // Then
+    expect(body.Healthcheck).toEqual(containerCreateBodyFragment(plan, service).Healthcheck);
+    expect(compose).not.toContain("private-ready");
+    expect(compose).toContain('- "bash"');
+  },
+);
+
 test("executes targeted argv with declared host and port while preserving literal arguments", async () => {
   const probe = {
     ...cheap,
@@ -103,9 +141,9 @@ test.each([0, 1])("gates dependents on strong readiness with exit=%s, not cheap 
             started.push(value.name);
             return { changed: true };
           }),
-        execHealthcheck: (_value, command) =>
+        execHealthcheck: (value, probe) =>
           Effect.sync(() => {
-            observed.push([...command]);
+            observed.push([...(compileServiceProbe(probe, plan, value) ?? [])]);
             return { exitCode };
           }),
         waitForExit: () => Effect.succeed({ exitCode: 0 }),

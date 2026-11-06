@@ -8,6 +8,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
 export const COMPOSE_FEATURE_PRIORITY = 600;
+export const APP_MOUNT_TARGET = "/app";
 
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -66,6 +67,6 @@ export const composeServiceType: ServiceType = {
     Effect.succeed({
       base: "l337",
       normalizedConfig: { ...input.service, type: "compose" },
-      features: [{ id: COMPOSE_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
+      features: [{ id: COMPOSE_FEATURE_ID }, { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } }],
     }),
 };

@@ -16,9 +16,11 @@ export const PLUGIN_NAME = "@lando/renderer-lando" as const;
  */
 export const renderer: RendererContribution = landoRendererContribution;
 
-export const loadInteractivePromptDriver = async (): Promise<InteractivePromptDriver> => {
+export const loadInteractivePromptDriver = async (options?: {
+  readonly noColor?: boolean;
+}): Promise<InteractivePromptDriver> => {
   const mod = await import("./opentui/prompt-driver.ts");
-  return mod.createOpenTuiPromptDriver();
+  return mod.createOpenTuiPromptDriver(options ?? {});
 };
 
 export const manifest = Schema.decodeSync(PluginManifest)({

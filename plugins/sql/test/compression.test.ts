@@ -110,7 +110,7 @@ describe("dump compression helpers", () => {
         [1, highLevel].map(async (level) => {
           const destination = join(dir, `level-${level}`);
           const result = await Effect.runPromise(
-            writeDumpTransform(source, destination, compression, "compress", undefined, level),
+            writeDumpTransform(source, destination, compression, "compress", level),
           );
           return { level, destination, ...result };
         }),

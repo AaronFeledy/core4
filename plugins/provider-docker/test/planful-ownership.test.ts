@@ -39,7 +39,7 @@ for (const labels of replacements) {
               Effect.sync((): EngineHttpResponse => {
                 calls.push(request);
                 if (request.method !== "GET") return { status: 204, body: "" };
-                return request.path === "/containers/lando-owned-web/json"
+                return request.path === "/containers/lando-owned--web/json"
                   ? { status: 200, body: JSON.stringify(observed) }
                   : { status: 404, body: "" };
               }),

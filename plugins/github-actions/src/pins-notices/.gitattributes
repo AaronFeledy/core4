@@ -1,0 +1,2 @@
+# Preserve reviewed upstream legal bytes, including line endings and whitespace.
+*-LICENSE -text -whitespace

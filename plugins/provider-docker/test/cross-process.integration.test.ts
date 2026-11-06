@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
@@ -31,7 +32,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("crossprocessapp");
 const appRoot = AbsolutePath.make("/tmp/docker-crossprocess-app");
 const webName = ServiceName.make("web");
-const containerName = "lando-crossprocessapp-web";
+const containerName = "lando-crossprocessapp--web";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
@@ -87,7 +88,12 @@ const makeFakeApi = () => {
   const labels = new Map<string, Readonly<Record<string, string>>>();
   const networks = new Map<
     string,
-    { readonly Id: string; readonly Name: string; readonly Labels: Readonly<Record<string, string>> }
+    {
+      readonly Id: string;
+      readonly Name: string;
+      readonly Driver: string;
+      readonly Labels: Readonly<Record<string, string>>;
+    }
   >();
   const resolveContainer = (ref: string) =>
     [...existing].find((name) => name === ref || `id-${name}` === ref) ?? ref;
@@ -98,10 +104,16 @@ const makeFakeApi = () => {
       const created = Schema.decodeUnknownSync(
         Schema.Struct({
           Name: Schema.String,
+          Driver: Schema.String,
           Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
         }),
       )(body);
-      const network = { Id: `id-${created.Name}`, Name: created.Name, Labels: created.Labels ?? {} };
+      const network = {
+        Id: `id-${created.Name}`,
+        Name: created.Name,
+        Driver: created.Driver,
+        Labels: created.Labels ?? {},
+      };
       networks.set(created.Name, network);
       return { status: 201, body: JSON.stringify({ Id: network.Id }) };
     }
@@ -183,6 +195,19 @@ const makeFakeApi = () => {
       running.delete(name);
       return { status: deleted ? 204 : 404, body: "" };
     }
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      return {
+        status: 200,
+        body: JSON.stringify(
+          Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: labels.get(name) ?? { "dev.lando.app": "crossprocessapp" },
+          })),
+        ),
+      };
+    }
     return { status: 500, body: `unexpected ${method} ${path}` };
   };
 
@@ -239,7 +264,7 @@ const isUnavailableExec = (error: unknown): boolean => {
 };
 
 describe("provider-docker cross-process state", () => {
-  test("apply with appliedPlanState writes a version-2 envelope", async () => {
+  test("apply with appliedPlanState writes the current applied-state envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
       await applyPlan(stateDir, fake.api);
@@ -247,7 +272,7 @@ describe("provider-docker cross-process state", () => {
       const path = appliedPlanPath(stateDir, plan.id);
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
-      expect(raw.version).toBe(2);
+      expect(raw.version).toBe(APPLIED_STATE_VERSION);
       expect(raw.data).toBeDefined();
     });
   });

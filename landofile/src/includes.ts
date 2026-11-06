@@ -1,13 +1,10 @@
 export type {
-  GitIncludeCloner,
-  NpmIncludeRecipeSource,
-  NpmIncludeFetcher,
-  NpmIncludeExtractor,
   LandofileIncludeDeps,
   LandofileRelaxedRead,
   ResolveLandofileIncludesOptions,
   ResolveIncludesError,
 } from "./include-context.ts";
+export type { GitTransport, ArchiveTransport, NpmRegistryTransport } from "@lando/source-acquisition";
 export { hasResolvableIncludes } from "./include-source.ts";
 export { resolveLandofileIncludes, resolveLandofileIncludeLayers } from "./include-resolve.ts";
 export {

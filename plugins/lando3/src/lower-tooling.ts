@@ -173,7 +173,7 @@ const lowerTask = (
     serviceFlag = { source: flag, target: flag === "host" ? "host-service" : flag };
     task.service = `:${serviceFlag.target}`;
     report(
-      flag === "host" ? "needs-review" : "rewritten",
+      "needs-review",
       [...path, "service"],
       flag === "host"
         ? 'The host option became the host-service flag, because service: ":host" runs on the host in Lando 4. Lando 4 also forwards the flag to the command as --host-service=<value>.'
@@ -212,7 +212,7 @@ const lowerTask = (
   else {
     task.cmds = commands.map((step) => (step.service === undefined ? step.cmd : { ...step }));
     report(
-      "rewritten",
+      "needs-review",
       [...path, "cmd"],
       "The command list became ordered cmds steps. Lando 4 passes caller arguments to the last step only; Lando 3 appended them to every command.",
       "Review which step should receive caller arguments.",

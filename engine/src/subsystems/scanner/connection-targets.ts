@@ -1,7 +1,10 @@
-import type { ServiceConnection, ServiceName } from "@lando/sdk/schema";
+import type { ServiceConnection, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import { activeHostHttpUrls } from "../../operations/service-connections.ts";
 
-export type ScanSourceEndpoint = ServiceConnection & { readonly service: ServiceName };
+export type ScanSourceEndpoint = ServiceConnection & {
+  readonly service: ServiceName;
+  readonly servicePlan?: ServicePlan | undefined;
+};
 
 export const appendScanPath = (base: string, path: string): string => {
   const origin = base.endsWith("/") ? base : `${base}/`;
@@ -22,6 +25,7 @@ export const scanTargets = (connections: readonly ScanSourceEndpoint[], path: st
     activeHostHttpUrls([connection]).map((base) => ({
       service: connection.service,
       url: appendScanPath(base, path),
+      endpoint: connection.endpoint,
     })),
   );
   return [...new Map(targets.map((target) => [`${target.service}/${target.url}`, target])).values()];

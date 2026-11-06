@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
+import { AppPlacementError, DebuggerHostUnavailableError, GlobalAppError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
 import { type ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
@@ -9,6 +9,7 @@ import {
   ensureGlobalServicesRunning,
 } from "../operations/ensure-global-services.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { prepareProvider } from "../providers/prepared.ts";
 import { globalCreateProviderId, globalObserveProviderId } from "./placement.ts";
 
 export const layer = Layer.effect(
@@ -39,7 +40,8 @@ export const layer = Layer.effect(
         ),
       ),
       ensureProviderReady: createProvider.pipe(
-        Effect.flatMap((provider) => provider.ensureReady ?? Effect.void),
+        Effect.flatMap(prepareProvider),
+        Effect.asVoid,
         Effect.mapError((cause) =>
           cause instanceof AppPlacementError
             ? cause
@@ -152,7 +154,7 @@ export const layer = Layer.effect(
           Effect.provide(context),
           Effect.map((result) => result.servicesStarted),
           Effect.mapError((cause) =>
-            cause instanceof AppPlacementError
+            cause instanceof AppPlacementError || cause instanceof DebuggerHostUnavailableError
               ? cause
               : new GlobalAppError({
                   message: "Unable to ensure global services are running.",

@@ -5,7 +5,7 @@ import { override, reset } from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
 
 test.each([
-  ["value: [\"echo # hi\", 'it''s # literal'] # tail", { value: ["echo # hi", "it''s # literal"] }],
+  ["value: [\"echo # hi\", 'it''s # literal'] # tail", { value: ["echo # hi", "it's # literal"] }],
   [
     'value:\n  - "echo # hi" # tail\n  - item: "more # text" # tail',
     { value: ["echo # hi", { item: "more # text" }] },

@@ -1,15 +1,16 @@
 /** `lando remote`, `pull`, and `push` result rendering. */
 import type {
+  AppRemoteEntry,
+  AppRemoteMutationResult,
   RemoteEnvironment as RemoteEnvironmentType,
   RemoteTestResult,
   SyncResult as SyncResultType,
 } from "@lando/sdk/schema";
 
-import type { RemoteEntry, RemoteMutationResult } from "@lando/engine/operations/remote";
 import type { RenderContext } from "../renderer-boundary";
 
 export const renderRemoteListResult = (
-  result: ReadonlyArray<RemoteEntry>,
+  result: ReadonlyArray<AppRemoteEntry>,
   _format: "text" | "json" = "text",
   _ctx?: RenderContext,
 ): string => {
@@ -18,7 +19,7 @@ export const renderRemoteListResult = (
 };
 
 export const renderRemoteMutationResult = (
-  result: RemoteMutationResult,
+  result: AppRemoteMutationResult,
   action: "added" | "removed",
   _format: "text" | "json" = "text",
   _ctx?: RenderContext,

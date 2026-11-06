@@ -73,6 +73,14 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
       remediation: `Remove ${path} and use the Lando service key as the container identity.`,
     };
   }
+  if (path === "hostname" || path === "domainname") {
+    return {
+      disposition: "rejected",
+      rationale:
+        "Lando sets each container's hostname to its container name, which resolves only to that container.",
+      remediation: `Remove ${path}. Lando sets each container's hostname to its container name, lando-<app>--<service>. Reach the service by its service key or a hostnames: alias.`,
+    };
+  }
   if (path === "network_mode" || path === "links") {
     return {
       disposition: "rejected",
@@ -132,6 +140,7 @@ const normalizedServicePaths = [
   ["healthcheck.test"],
   ["healthcheck.timeout"],
   ["image", ["artifact"]],
+  ["init", ["init"]],
   ["configs", ["mounts"]],
   ["configs.mode"],
   ["configs.source"],
@@ -213,7 +222,6 @@ const preservedServicePaths = [
   "gpus.x-*",
   "group_add",
   "healthcheck.start_interval",
-  "init",
   "labels",
   "labels.*",
   "logging",

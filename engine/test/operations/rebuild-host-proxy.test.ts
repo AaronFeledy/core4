@@ -2,10 +2,11 @@ import { expect, spyOn, test } from "bun:test";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
-import { makeLandoPaths } from "@lando/paths";
+import { sha256Hex } from "@lando/sdk/digest";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Exit, Schema } from "effect";
+import { Effect, Exit, Layer, Schema } from "effect";
 import * as composition from "../../src/composition.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { startDetachedHostProxyWorker } from "../../src/subsystems/host-proxy/detached-worker.ts";
@@ -14,7 +15,13 @@ import { readWorkerRecord, workerStatePath } from "../../src/subsystems/host-pro
 import * as worker from "../../src/subsystems/host-proxy/worker.ts";
 import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
-const ensureWorker = startDetachedHostProxyWorker;
+const originalEnsureWorker = startDetachedHostProxyWorker;
+const ensureWorker = (options: Parameters<typeof startDetachedHostProxyWorker>[0]) =>
+  originalEnsureWorker(options).pipe(
+    Effect.provide(
+      WorkerConfig.layerWith({ env: {}, sources: { user: false, env: false } }).pipe(Layer.orDie),
+    ),
+  );
 
 test("selected rebuild overlays the running host-proxy session and requests adoption with the full plan", async () => {
   // Given an eligible selected service and a separate unselected service.
@@ -70,9 +77,18 @@ test("selected rebuild overlays the running host-proxy session and requests adop
     expect(Object.keys(applied[0]?.services ?? {})).toEqual([web.name]);
     expect(applied[0]?.services[web.name]?.environment).toMatchObject({
       LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
-      LANDO_HOST_PROXY_SESSION: "running-session",
-      LANDO_HOST_PROXY_TOKEN: "running-bearer",
     });
+    expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+    expect(applied[0]?.services[web.name]?.extensions["@lando/core/host-proxy-transport"]).toEqual({
+      sessionDigest: sha256Hex("running-session").slice(0, 16),
+    });
+    expect(applied[0]?.services[web.name]?.mounts).toContainEqual(
+      expect.objectContaining({
+        source: "/running/credentials",
+        target: "/run/lando/host-proxy/credentials",
+        readOnly: true,
+      }),
+    );
     expect(applied[0]?.services[web.name]?.mounts).toContainEqual(
       expect.objectContaining({
         type: "bind",
@@ -111,7 +127,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       ...(state.startsWith("failed") ? { applyEffect: Effect.die(new Error("apply failed")) } : {}),
     });
     const app = { kind: "user" as const, id: selected.id, root: selected.root };
-    const paths = makeLandoPaths({ userDataRoot: harness.userDataRoot });
+    const paths = await Effect.runPromise(PathsService.pipe(Effect.provide(harness.layer)));
     const shim = join(harness.userDataRoot, "shim");
     await writeFile(shim, "shim");
     const access = await Effect.runPromise(
@@ -166,7 +182,8 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
             pid,
             sessionId,
             transport: "unix-socket",
-            protocolVersion: 2,
+            bridge: "none",
+            protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
             configDigest,
           }),
         );
@@ -240,9 +257,12 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
         ).pipe(Effect.provide(harness.layer)),
       );
       expect(Exit.isFailure(exit)).toBe(state.startsWith("failed"));
-      expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_TOKEN).toBe(
-        state === "configure-rejected" ? "bearer-2" : (before?.token ?? "bearer-1"),
-      );
+      expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(applied[0]?.services[web.name]?.extensions["@lando/core/host-proxy-transport"]).toEqual({
+        sessionDigest: sha256Hex(
+          state === "configure-rejected" ? "session-2" : (before?.sessionId ?? "session-1"),
+        ).slice(0, 16),
+      });
       expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_SOCKET).toBe(
         "/run/lando/host-proxy.sock",
       );
@@ -270,6 +290,27 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
         );
         expect(spawns).toBe(1);
       }
+      if (state === "existing") {
+        const owningOptions = {
+          app,
+          plan: selected,
+          paths: { ...paths.roots, platform: paths.platform },
+          shimArtifactPath: shim,
+          shimDigest: stubContainerHelper(shim).digest,
+          shimTarget: { os: "linux" as const, arch: "x64" as const },
+          privateFileAccess: access,
+          spawnWorker,
+        };
+        const owning = await Effect.runPromise(ensureWorker(owningOptions));
+        expect(owning.reused).toBe(false);
+        expect(owning.sessionId).not.toBe(before?.sessionId);
+        expect(spawns).toBe(2);
+        expect(shutdowns).toBe(1);
+        const repeated = await Effect.runPromise(ensureWorker(owningOptions));
+        expect(repeated.reused).toBe(true);
+        expect(repeated.sessionId).toBe(owning.sessionId);
+        expect(spawns).toBe(2);
+      }
       expect(JSON.stringify(harness.events)).not.toContain("bearer-1");
       expect(JSON.stringify(harness.events)).not.toContain("control-1");
     } finally {
@@ -281,4 +322,6 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
     }
   },
 );
+import * as WorkerConfig from "../../src/services/config.ts";
+import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "../../src/subsystems/host-proxy/worker-records.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";

@@ -30,7 +30,7 @@ if ($actualRule.IdentityReference.Value -ne $sid.Value -or $actualRule.AccessCon
 `.trim();
 
 export const OWNER_ONLY_FILE_ACL_BODY = `
-$acl = New-Object Security.AccessControl.FileSecurity
+$acl = if ((Get-Item -LiteralPath $path -Force).PSIsContainer) { New-Object Security.AccessControl.DirectorySecurity } else { New-Object Security.AccessControl.FileSecurity }
 $acl.SetAccessRuleProtection($true, $false)
 $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, [Security.AccessControl.FileSystemRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow)
 $acl.SetAccessRule($rule)

@@ -23,6 +23,7 @@ export interface DoctorReport {
   readonly globalConfig?: typeof GlobalConfigDoctorSchema.Type;
   readonly skipped?: ReadonlyArray<typeof SkippedDoctorSectionSchema.Type>;
   readonly provider: DoctorResult;
+  readonly appListeners?: DoctorResult;
   readonly subsystems: SubsystemDoctorResult;
   readonly globalApp: GlobalAppDoctorResult;
   readonly mcp: McpDoctorResult;
@@ -159,6 +160,7 @@ export const DoctorReportSchema = Schema.Struct({
   globalConfig: Schema.optionalKey(GlobalConfigDoctorSchema),
   skipped: Schema.optionalKey(Schema.Array(SkippedDoctorSectionSchema)),
   provider: DoctorResultSchema,
+  appListeners: Schema.optionalKey(DoctorResultSchema),
   subsystems: SubsystemDoctorResultSchema,
   globalApp: GlobalAppDoctorResultSchema,
   mcp: McpDoctorResultSchema,

@@ -1,0 +1,16 @@
+name: acquia-downstreamer-2
+recipe: acquia
+config:
+  php: 8.2
+services:
+  database:
+    # Explicitly use the Lando Acquia plugin's 'acquia-mysql' service type for MySQL 8.0.
+    type: acquia-mysql:8.0
+
+# Plugin loading configuration for testing:
+# Ensures Lando uses the local development version of the @lando/acquia plugin.
+# Also, forces the use of the @lando/mysql plugin version bundled with the local @lando/acquia plugin
+# (resolved from node_modules) to ensure consistent MySQL service behavior for this test.
+plugins:
+  "@lando/acquia": ../.. # Path to the local acquia plugin
+  "@lando/mysql": ../../node_modules/@lando/mysql # Path to the acquia plugin's bundled mysql plugin

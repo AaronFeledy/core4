@@ -45,6 +45,5 @@ export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
     }),
   },
   run: (input) => globalStatus(globalStatusOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderGlobalStatusResult(result as GlobalStatusResult, globalStatusFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderGlobalStatusResult(result, globalStatusFormatFromInput(input), ctx),
 };

@@ -6,6 +6,7 @@ import { Effect, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
+import { TRAEFIK_DIAGNOSTICS_COMMAND } from "../src/global-services/diagnostics.ts";
 import { PLUGIN_NAME, globalServices, manifest, routerServices } from "../src/index.ts";
 
 describe("@lando/proxy-traefik plugin exports", () => {
@@ -66,18 +67,11 @@ describe("@lando/proxy-traefik plugin exports", () => {
         type: "compose",
         image: "nginx:1.26-alpine",
         appMount: false,
-        command: ["nginx", "-c", "/etc/lando/diagnostics/nginx.conf", "-g", "daemon off;"],
+        command: TRAEFIK_DIAGNOSTICS_COMMAND,
         hostnames: ["traefik-diagnostics.global.internal"],
         endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }],
       });
-      expect(diagnostics.mounts).toEqual([
-        {
-          type: "bind",
-          source: "./proxy-traefik/diagnostic",
-          target: "/etc/lando/diagnostics",
-          readOnly: true,
-        },
-      ]);
+      expect(diagnostics.mounts).toEqual([]);
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previous;

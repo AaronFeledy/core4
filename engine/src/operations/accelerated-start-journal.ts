@@ -2,15 +2,19 @@ import { randomUUID } from "node:crypto";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
+import { illegalTransitionMessage } from "@lando/sdk/transitions";
 import { Effect } from "effect";
 import {
   type PendingStart,
+  type PendingStartStep,
   digest,
   journalRecovery,
   pendingStartBucketSpec,
+  pendingStartTransitions,
   sameStartIdentity,
 } from "./accelerated-start-record.ts";
 import { appRootIdentityKey, canonicalAppRoot } from "./app-root-identity.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 
 const journalError = (message: string, cause?: unknown, journalPath = "accelerated-starts") =>
   new FileSyncStartError({
@@ -47,17 +51,17 @@ export const readJournal = Effect.fnUntraced(function* (app: AppRef) {
 });
 
 const plannedStartRecord = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
-  const first = plan.fileSync[0];
-  if (first === undefined)
+  const bundle = yield* fileSyncBundle(plan, app.kind);
+  if (bundle.kind === "ordinary")
     return yield* Effect.fail(journalError("An accelerated-start journal requires planned sessions."));
   const appRoot = yield* journalRoot(String(app.root));
   const planRoot = yield* journalRoot(String(plan.root));
-  const roots = yield* Effect.forEach(plan.fileSync, ({ session }) => journalRoot(String(session.app.root)));
+  const roots = yield* Effect.forEach(bundle.sessions, (session) => journalRoot(String(session.app.root)));
   if (
     app.id !== plan.id ||
     appRoot !== planRoot ||
-    plan.fileSync.some(
-      ({ session }, i) => session.app.kind !== app.kind || session.app.id !== app.id || roots[i] !== appRoot,
+    bundle.sessions.some(
+      (session, i) => session.app.kind !== app.kind || session.app.id !== app.id || roots[i] !== appRoot,
     )
   )
     return yield* Effect.fail(
@@ -68,16 +72,16 @@ const plannedStartRecord = Effect.fnUntraced(function* (plan: AppPlan, app: AppR
     appId: String(plan.id),
     appRoot,
     providerId: String(plan.provider),
-    engineId: first.engineId,
+    engineId: bundle.id,
     mountPlanDigest: digest(plan.fileSync),
     phase: "preparing",
-    targets: plan.fileSync.map(({ session }) => ({
+    targets: bundle.sessions.map((session) => ({
       service: String(session.service),
       mountKey: session.mountKey,
       volumeName: session.target._tag === "volume" ? session.target.name : "",
       helperSpecDigest: digest([plan.id, plan.provider, session.service, session.mountKey, session.target]),
     })),
-    sessions: plan.fileSync.map(({ session }) => ({
+    sessions: bundle.sessions.map((session) => ({
       name: `${session.service}/${session.mountKey}`,
       specDigest: digest(session),
     })),
@@ -128,27 +132,42 @@ export const beginOrResumeAcceleratedStart = Effect.fnUntraced(function* (plan: 
     );
   if (!result.matches) return yield* Effect.fail(identityError(result.record, bucket.path));
   const record = result.record;
-  const order = { preparing: 0, "sessions-ready": 1, "apply-intent": 2, completed: 3 } as const;
-  const advance = (next: PendingStart["phase"]) =>
+  type AdvanceOutcome = { readonly _tag: "OwnerChanged" } | ReturnType<typeof pendingStartTransitions.step>;
+  const advance = (step: PendingStartStep) =>
     bucket
-      .modify((current) => {
+      .modify<AdvanceOutcome>((current) => {
         if (current === null || current.attemptId !== record.attemptId || !sameStartIdentity(current, record))
-          return [false, current ?? record] as const;
-        return [true, order[current.phase] >= order[next] ? current : { ...current, phase: next }] as const;
+          return [{ _tag: "OwnerChanged" }, current ?? record] as const;
+        const verdict = pendingStartTransitions.step(step, current.phase);
+        return [verdict, verdict._tag === "Advance" ? { ...current, phase: verdict.to } : current] as const;
       })
       .pipe(
         Effect.mapError((cause) =>
           journalError("Unable to advance accelerated-start intent.", cause, bucket.path),
         ),
-        Effect.flatMap((ok) =>
-          ok ? Effect.void : Effect.fail(journalError("Accelerated-start journal ownership changed.")),
-        ),
+        Effect.flatMap((verdict) => {
+          switch (verdict._tag) {
+            case "Advance":
+            case "Settled":
+              return Effect.void;
+            case "OwnerChanged":
+              return Effect.fail(journalError("Accelerated-start journal ownership changed."));
+            case "Illegal":
+              return Effect.fail(
+                journalError(
+                  illegalTransitionMessage(`Accelerated-start attempt ${record.attemptId}`, step, verdict),
+                  undefined,
+                  bucket.path,
+                ),
+              );
+          }
+        }),
       );
   return {
     attemptId: record.attemptId,
     ...(result.resumed ? { resumedFrom: record.phase } : {}),
     record,
     advance,
-    complete: advance("completed"),
+    complete: advance("complete"),
   };
 });

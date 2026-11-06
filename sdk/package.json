@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./abortable-promise": "./src/abortable-promise.ts",
     "./app": "./src/app/index.ts",
     "./command-result": "./src/command-result/index.ts",
     "./database-creds": "./src/database-creds/index.ts",
@@ -49,6 +50,7 @@
     "./log-follow": "./src/log-follow/index.ts",
     "./network-trust": "./src/network-trust/index.ts",
     "./probe": "./src/probe/index.ts",
+    "./transitions": "./src/transitions/index.ts",
     "./recipes": "./src/recipes/index.ts",
     "./task-progress": "./src/task-progress/index.ts",
     "./renderer": "./src/renderer/index.ts",

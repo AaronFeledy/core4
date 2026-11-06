@@ -101,6 +101,7 @@ describe("Compose process argv", () => {
               defaultFeatures: [],
             },
             baseKind: "l337",
+            appSlug: "compose-command",
             appRoot: "/srv/compose-command",
             normalizedConfig: { type: "compose", image: "alpine:3", [field]: command },
             features: [{ id: composeServiceFeature.id, definition: composeServiceFeature }],

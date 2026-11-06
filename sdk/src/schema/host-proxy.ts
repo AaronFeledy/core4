@@ -45,7 +45,7 @@ export type HostProxyRunLandoRequest = typeof HostProxyRunLandoRequest.Type;
 /**
  * Canonical host-proxy request union.
  *
- * Exactly four members: `runLando`, `openUrl`, `openPath`, `runBun`.
+ * Exactly three members: `runLando`, `openUrl`, `openPath`.
  * Container-initiated `notify`/`clipboardCopy` are unsupported and deliberately
  * absent — there is no deprecation shim.
  */
@@ -58,17 +58,11 @@ export const HostProxyRequest = Schema.Union([
   Schema.TaggedStruct("openPath", {
     path: AbsolutePath,
   }),
-  Schema.TaggedStruct("runBun", {
-    argv: Schema.Array(Schema.String),
-    cwd: AbsolutePath,
-    tty: Schema.Boolean,
-    env: Schema.optionalKey(HostProxyEnv),
-  }),
 ]);
 export type HostProxyRequest = typeof HostProxyRequest.Type;
 
 /** Closed set of HostProxyRequest `_tag` values (schema-surface test seam). */
-export const HOST_PROXY_REQUEST_TAGS = ["runLando", "openUrl", "openPath", "runBun"] as const;
+export const HOST_PROXY_REQUEST_TAGS = ["runLando", "openUrl", "openPath"] as const;
 export type HostProxyRequestTag = (typeof HOST_PROXY_REQUEST_TAGS)[number];
 
 /** Canonical host-proxy response union. */

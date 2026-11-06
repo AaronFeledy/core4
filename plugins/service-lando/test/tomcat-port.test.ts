@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { AbsolutePath, AppId, type AppPlan, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   tomcat9ServiceType,
@@ -106,11 +107,7 @@ describe("Tomcat authored HTTP port", () => {
         name: "web",
         primary: true,
       });
-      expect(result.plan.healthcheck?.command).toEqual([
-        "bash",
-        "-c",
-        `exec 3<>/dev/tcp/127.0.0.1/${selectedPort}`,
-      ]);
+      expect(result.plan.healthcheck).toEqual(tcpProbe(selectedPort, 20));
     },
   );
 
@@ -150,5 +147,51 @@ describe("Tomcat authored HTTP port", () => {
     expect(listenerStep(plan)).toBeDefined();
     expect(plan.command).toEqual(command);
     expect(plan.entrypoint).toEqual(entrypoint);
+  });
+  test("rejects catalog primary port colliding with the shutdown listener", async () => {
+    await expect(planTomcat({ type: "tomcat", port: 8005 })).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["port"],
+          message: expect.stringContaining("shutdown listener"),
+          suggestion: "Set port: to another TCP port number.",
+        },
+      ],
+    });
+  });
+
+  test.each([
+    { type: "tomcat", image: "acme/tomcat:custom", port: 8005 },
+    { type: "tomcat", build: { context: "." }, port: 8005 },
+  ])("allows reclaiming 8005 when image config is author-owned: %j", async (definition) => {
+    const plan = await planTomcat(definition);
+    expect(listenerStep(plan)).toBeUndefined();
+    expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: 8005, primary: true }));
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "image",
+      daemon: "Tomcat",
+      setting: '<Connector port="8005">',
+      file: "server.xml",
+      port: 8005,
+    });
+  });
+
+  test("keeps shutdown reserved when the catalog image is explicitly authored", async () => {
+    await expect(
+      planTomcat({ type: "tomcat:11", image: TOMCAT_CATALOG["11"].image, port: 8005 }, tomcat11ServiceType),
+    ).rejects.toMatchObject({
+      issues: [{ path: ["port"], message: expect.stringContaining("shutdown listener") }],
+    });
+  });
+
+  test("hints custom images about the HTTP connector", async () => {
+    const plan = await planTomcat({ type: "tomcat", image: "acme/tomcat:custom", port: 9090 });
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "image",
+      daemon: "Tomcat",
+      setting: '<Connector port="9090">',
+      file: "server.xml",
+      port: 9090,
+    });
   });
 });

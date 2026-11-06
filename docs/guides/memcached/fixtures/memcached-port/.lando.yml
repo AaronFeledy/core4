@@ -1,0 +1,5 @@
+name: memcached-port
+services:
+  cache:
+    type: memcached
+    port: 11212

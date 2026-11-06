@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { AbsolutePath, AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
-import { DateTime, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
+import { UninstallResourceCleanupError } from "../../src/install/uninstall-cleanup-error.ts";
 import { makeListDiscoveredApps } from "../../src/install/uninstall-discovery.ts";
-import type { RuntimeExec } from "../../src/install/uninstall-runtime.ts";
+import type { RuntimeExec, UninstallRuntimeSeams } from "../../src/install/uninstall-runtime.ts";
 
 const absentRuntime: RuntimeExec = async () => {
   throw Object.assign(new Error("not installed"), { code: "ENOENT" });
@@ -17,12 +18,28 @@ const perAppLayouts = [
   { path: "providers/provider-lando/apps/app.json", field: "plan" },
 ] as const;
 
+const PRIVATE_RUNTIME = "/tmp/lando-discovery-private-runtime";
+
+const testSeams = (hostPath = "/usr/bin"): UninstallRuntimeSeams => ({
+  hostEnv: {
+    HOME: "/home/fixture",
+    PATH: hostPath,
+    CONTAINER_HOST: "unix:///hostile.sock",
+  },
+  prepareRuntimeDir: () => Effect.succeed(PRIVATE_RUNTIME),
+});
+
 const fixture = () => {
-  const root = mkdtempSync(join(tmpdir(), "lando-uninstall-discovery-"));
-  const data = join(root, "data");
-  const cache = join(root, "cache");
+  const root = mkdtempSync(join(tmpdir(), "lando uninstall discovery "));
+  const data = join(root, "data root");
+  const cache = join(root, "cache root");
+  const conf = join(root, "conf root");
+  const system = join(root, "system root");
   return {
     data,
+    cache,
+    conf,
+    system,
     plan: (id: string) =>
       Schema.encodeSync(AppPlan)({
         id: AppId.make(id),
@@ -46,10 +63,237 @@ const fixture = () => {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, contents);
     },
-    discover: (exec: RuntimeExec = absentRuntime) => makeListDiscoveredApps(exec, "linux")(data, cache),
+    ensureRuntimeTree: () => {
+      mkdirSync(join(data, "runtime"), { recursive: true });
+    },
+    discover: (
+      exec: RuntimeExec = absentRuntime,
+      platform: NodeJS.Platform = "linux",
+      seams: UninstallRuntimeSeams = testSeams(),
+    ) => makeListDiscoveredApps(exec, platform, seams)(data, cache),
     [Symbol.dispose]: () => rmSync(root, { recursive: true, force: true }),
   };
 };
+
+for (const platform of ["linux", "darwin", "win32"] as const) {
+  test(`probes the managed runtime with exact argv and env on ${platform}`, async () => {
+    using f = fixture();
+    f.ensureRuntimeTree();
+    const calls: Array<{
+      file: string;
+      args: readonly string[];
+      options: Parameters<RuntimeExec>[2];
+    }> = [];
+    const exec: RuntimeExec = async (file, args, options) => {
+      calls.push({ file, args, options });
+      if (file === "docker" || file === "podman") return absentRuntime(file, args, options);
+      return { stdout: args.includes("--version") ? "podman version" : "managed-app\nmanaged-app\n" };
+    };
+
+    const apps = await f.discover(exec, platform);
+
+    const runtime = join(f.data, "runtime");
+    const config = join(runtime, "config");
+    const bin = join(runtime, "bin");
+    const managedCmd = join(bin, platform === "win32" ? "podman.exe" : "podman");
+    const connection = platform !== "linux";
+    const prefix = connection
+      ? ["--connection", "lando-root"]
+      : [
+          "--root",
+          join(runtime, "storage"),
+          "--runroot",
+          join(runtime, "run"),
+          "--config",
+          config,
+          "--storage-opt",
+          `overlay.mount_program=${bin}/fuse-overlayfs`,
+        ];
+    const managedPath = `${bin}${delimiter}/usr/bin`;
+    // Connection: redirect denial only (host allowlist keys that survive withoutPodmanRedirects).
+    // Linux: allowlisted host + overlay including prepared XDG_RUNTIME_DIR.
+    const managedEnv = connection
+      ? {
+          HOME: "/home/fixture",
+          PATH: "/usr/bin",
+        }
+      : {
+          HOME: "/home/fixture",
+          CONTAINERS_CONF: join(config, "containers.conf"),
+          CONTAINERS_REGISTRIES_CONF: join(config, "registries.conf"),
+          XDG_CONFIG_HOME: config,
+          DISABLE_HC_SYSTEMD: "true",
+          LANDO_MANAGED_CONFIG_REVISION: "2-native-init",
+          PATH: managedPath,
+          XDG_RUNTIME_DIR: PRIVATE_RUNTIME,
+        };
+    expect(calls).toEqual([
+      { file: "docker", args: ["--version"], options: { timeout: 2_000 } },
+      { file: "podman", args: ["--version"], options: { timeout: 2_000 } },
+      {
+        file: managedCmd,
+        args: [...prefix, "--version"],
+        options: { timeout: 2_000, env: managedEnv },
+      },
+      {
+        file: managedCmd,
+        args: [...prefix, "ps", "--filter", "label=dev.lando.app", "--format", '{{.Label "dev.lando.app"}}'],
+        options: { timeout: 5_000, env: managedEnv },
+      },
+      {
+        file: managedCmd,
+        args: [...prefix, "ps", "--filter", "label=com.lando.app", "--format", '{{.Label "com.lando.app"}}'],
+        options: { timeout: 5_000, env: managedEnv },
+      },
+    ]);
+    expect(apps).toEqual([
+      {
+        appId: "managed-app",
+        appName: "managed-app",
+        providerId: "lando",
+        appRoot: "(unknown)",
+        services: [],
+      },
+    ]);
+    for (const call of calls.filter((c) => c.file === managedCmd)) {
+      expect(call.options.env?.CONTAINER_HOST).toBeUndefined();
+    }
+  });
+}
+
+for (const failingRuntime of ["docker", "podman", "managed"] as const) {
+  test(`fails closed on ${failingRuntime} version failure before any ps`, async () => {
+    using f = fixture();
+    const failure =
+      failingRuntime === "docker"
+        ? Object.assign(new Error("executable is busy"), { code: "ETXTBSY" })
+        : Object.assign(new Error("probe timed out"), {
+            code: null,
+            killed: true,
+            signal: "SIGTERM",
+          });
+    const calls: Array<{ file: string; args: readonly string[] }> = [];
+    const exec: RuntimeExec = async (file, args) => {
+      calls.push({ file, args });
+      if (file === failingRuntime || (failingRuntime === "managed" && file !== "docker" && file !== "podman"))
+        throw failure;
+      return { stdout: "runtime available" };
+    };
+
+    const error = await f.discover(exec).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(UninstallResourceCleanupError);
+    if (!(error instanceof UninstallResourceCleanupError)) throw error;
+    expect(error.cause).toBe(failure);
+    expect(calls.map(({ file }) => file)).toEqual(
+      failingRuntime === "docker"
+        ? ["docker"]
+        : failingRuntime === "podman"
+          ? ["docker", "podman"]
+          : ["docker", "podman", join(f.data, "runtime", "bin", "podman")],
+    );
+    expect(calls.every(({ args }) => args.includes("--version") && !args.includes("ps"))).toBe(true);
+  });
+}
+
+test("fails closed when managed Podman is missing but its storage exists", async () => {
+  using f = fixture();
+  mkdirSync(join(f.data, "runtime"), { recursive: true });
+  const missing = Object.assign(new Error("managed Podman missing"), { code: "ENOENT" });
+  const calls: string[] = [];
+  const exec: RuntimeExec = async (file, args) => {
+    calls.push(`${file} ${args.at(-1)}`);
+    throw missing;
+  };
+
+  const error = await f.discover(exec).catch((cause: unknown) => cause);
+
+  expect(error).toBeInstanceOf(UninstallResourceCleanupError);
+  if (!(error instanceof UninstallResourceCleanupError)) throw error;
+  expect(error.cause).toBe(missing);
+  expect(calls).toEqual([
+    "docker --version",
+    "podman --version",
+    `${join(f.data, "runtime", "bin", "podman")} --version`,
+  ]);
+});
+
+test("concurrent discovery keeps each executor and managed root isolated", async () => {
+  using firstFixture = fixture();
+  using secondFixture = fixture();
+  const gatedExec = (appId: string) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const calls: Array<{
+      file: string;
+      args: readonly string[];
+      options: Parameters<RuntimeExec>[2];
+    }> = [];
+    const exec: RuntimeExec = async (file, args, options) => {
+      calls.push({ file, args, options });
+      if (file === "docker") await gate;
+      if (file === "docker" || file === "podman") return absentRuntime(file, args, options);
+      return { stdout: args.includes("--version") ? "podman version" : `${appId}\n${appId}\n` };
+    };
+    return { exec, calls, release };
+  };
+  const first = gatedExec("first-app");
+  const second = gatedExec("second-app");
+  firstFixture.ensureRuntimeTree();
+  secondFixture.ensureRuntimeTree();
+  const firstResult = firstFixture.discover(first.exec);
+  const secondResult = secondFixture.discover(second.exec);
+
+  try {
+    expect(first.calls.map(({ file }) => file)).toEqual(["docker"]);
+    expect(second.calls.map(({ file }) => file)).toEqual(["docker"]);
+
+    second.release();
+    expect(await secondResult).toEqual([
+      {
+        appId: "second-app",
+        appName: "second-app",
+        providerId: "lando",
+        appRoot: "(unknown)",
+        services: [],
+      },
+    ]);
+    expect(first.calls.map(({ file }) => file)).toEqual(["docker"]);
+
+    first.release();
+    expect(await firstResult).toEqual([
+      {
+        appId: "first-app",
+        appName: "first-app",
+        providerId: "lando",
+        appRoot: "(unknown)",
+        services: [],
+      },
+    ]);
+    for (const [fixture, recorder] of [
+      [firstFixture, first],
+      [secondFixture, second],
+    ] as const) {
+      const managed = recorder.calls.filter(({ file }) => file !== "docker" && file !== "podman");
+      expect(managed.map(({ file }) => file)).toEqual([
+        join(fixture.data, "runtime", "bin", "podman"),
+        join(fixture.data, "runtime", "bin", "podman"),
+        join(fixture.data, "runtime", "bin", "podman"),
+      ]);
+      expect(managed.map(({ options }) => options.env?.XDG_CONFIG_HOME)).toEqual([
+        join(fixture.data, "runtime", "config"),
+        join(fixture.data, "runtime", "config"),
+        join(fixture.data, "runtime", "config"),
+      ]);
+    }
+  } finally {
+    first.release();
+    second.release();
+    await Promise.allSettled([firstResult, secondResult]);
+  }
+});
 
 test("returns no apps when runtimes and recorded plans are absent", async () => {
   // Given

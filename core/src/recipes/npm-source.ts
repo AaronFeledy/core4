@@ -1,70 +1,29 @@
 /**
  * `npm` recipe source resolver.
  *
- * Resolves an npm package's metadata through the registry, downloads the
- * published tarball, verifies its npm integrity (`dist.integrity` SRI or the
- * legacy `dist.shasum`), and reuses the shared `tarball` extractor to unpack it
- * under `<userDataRoot>/recipe-cache/tarball/<sha256>/`. npm tarballs nest every
- * file under a `package/` prefix, so the resolved recipe root is that `package/`
- * directory (plus an optional `--path` subpath).
+ * Resolves and materializes through SourceSession.acquireNpm (shared archive
+ * entry + npm index). npm tarballs nest under package/; the recipe root is that
+ * package/ directory plus an optional --path subpath.
  *
- * Version policy: an `@version` suffix is honored as an exact published version
- * or a dist-tag; with no suffix the registry's `latest` dist-tag is used.
+ * Integrity: missing integrity/shasum fails (store policy).
  */
-import { checkNpmPackageDistIntegrity } from "@lando/landofile/npm-integrity";
+import { join } from "node:path";
 
-import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
+import { type SourceSession, displaySource } from "@lando/source-acquisition";
+import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
+
 import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 
-import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import type { ResolvedRecipe } from "./source";
-import {
-  type TarballRecipeExtractor,
-  type TarballRecipeFetcher,
-  defaultTarballRecipeFetcher,
-  resolveTarballRecipeSource,
-} from "./tarball-source";
-
-export interface NpmPackageDist {
-  readonly tarball: string;
-  readonly integrity?: string;
-  readonly shasum?: string;
-}
-
-export interface NpmPackumentVersion {
-  readonly dist: NpmPackageDist;
-  readonly name?: string;
-  readonly version?: string;
-  readonly landoPlugin?: {
-    readonly name?: string;
-    readonly version?: string;
-    readonly requires?: Readonly<Record<string, string>>;
-  };
-}
-
-export interface NpmPackument {
-  readonly "dist-tags"?: Readonly<Record<string, string>>;
-  readonly versions?: Readonly<Record<string, NpmPackumentVersion>>;
-}
-
-export interface NpmRegistryClient {
-  // Returns the packument, or `undefined` when the package does not exist (404).
-  readonly fetchPackument: (packageName: string) => Promise<NpmPackument | undefined>;
-}
-
-export interface ParsedNpmPackageSpec {
-  readonly name: string;
-  readonly version?: string;
-}
+import { mapSourceAcquisitionError, runSourceSession } from "./source-session";
+import { resolveRecipeManifest } from "./source-support";
 
 export interface ResolveNpmRecipeSourceOptions {
   readonly package: string;
   readonly path?: string;
-  readonly registryUrl?: string;
-  readonly userDataRoot?: string;
-  readonly registryClient?: NpmRegistryClient;
-  readonly fetcher?: TarballRecipeFetcher;
-  readonly extractor?: TarballRecipeExtractor;
+  readonly sources: SourceSession;
+  /** Aborts in-flight acquisition when the caller is cancelled. */
+  readonly signal?: AbortSignal;
 }
 
 export interface ResolvedNpmRecipe extends ResolvedRecipe {
@@ -73,8 +32,6 @@ export interface ResolvedNpmRecipe extends ResolvedRecipe {
   readonly tarballUrl: string;
   readonly sha256: string;
 }
-
-export const DEFAULT_NPM_REGISTRY_URL = "https://registry.npmjs.org";
 
 const sourceError = (input: {
   readonly message: string;
@@ -86,49 +43,17 @@ const sourceError = (input: {
     | "version-not-found"
     | "integrity-mismatch"
     | "download-failed"
-    | "subpath-invalid";
+    | "subpath-invalid"
+    | "subpath-missing"
+    | "cache";
   readonly remediation: string;
-}): RecipeSourceError => new RecipeSourceError(input);
-
-const isSemverRangeSpecifier = (version: string): boolean => {
-  const trimmed = version.trim();
-  if (trimmed === "") return false;
-  if (/^(?:\^|~|>=|<=|>|<|=)/u.test(trimmed)) return true;
-  if (trimmed.includes("||")) return true;
-  if (/\s-\s/u.test(trimmed)) return true;
-  if (/^(?:x|\*)$/iu.test(trimmed)) return true;
-  if (/^\d+(?:\.\d+)?\s*\.\s*(?:x|\*)$/iu.test(trimmed)) return true;
-  return false;
-};
-
-/**
- * Splits an npm package spec into name + optional `@version`. The version
- * separator is the last `@` that is not the scope marker at index 0, so both
- * `@scope/pkg@1.2.3` and `pkg@1.2.3` parse correctly.
- */
-export const parseNpmPackageSpec = (spec: string): ParsedNpmPackageSpec => {
-  const trimmed = spec.trim();
-  const at = trimmed.lastIndexOf("@");
-  const name = at > 0 ? trimmed.slice(0, at) : trimmed;
-  const version = at > 0 ? trimmed.slice(at + 1) : undefined;
-  if (name === "" || name === "@" || (name.startsWith("@") && !name.includes("/"))) {
-    throw sourceError({
-      message: `Invalid npm package spec "${spec}".`,
-      source: spec,
-      kind: "missing-package",
-      remediation: "Pass --package=<name>[@version], e.g. --package=@lando/recipe-drupal@1.0.0.",
-    });
-  }
-  if (version !== undefined && version !== "" && isSemverRangeSpecifier(version)) {
-    throw sourceError({
-      message: `npm package spec "${spec}" uses a semver range in the version suffix; semver ranges are not supported.`,
-      source: spec,
-      kind: "version-not-found",
-      remediation: "Pass an exact published version or a dist-tag such as latest or next.",
-    });
-  }
-  return version === undefined || version === "" ? { name } : { name, version };
-};
+}): RecipeSourceError =>
+  new RecipeSourceError({
+    ...input,
+    message: displaySource(input.message),
+    source: displaySource(input.source),
+    remediation: displaySource(input.remediation),
+  });
 
 const normalizeNpmSubpath = (subpath: string | undefined, source: string): string | undefined => {
   if (subpath === undefined || subpath.trim() === "" || subpath === ".") return undefined;
@@ -145,154 +70,65 @@ const normalizeNpmSubpath = (subpath: string | undefined, source: string): strin
   return segments.length === 0 ? undefined : segments.join("/");
 };
 
-const encodePackageName = (name: string): string =>
-  name.startsWith("@") ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
-
-export const defaultNpmRegistryClient = (
-  registryUrl: string,
-  fetchJson: typeof httpJsonFetch = httpJsonFetch,
-): NpmRegistryClient => ({
-  fetchPackument: async (packageName) => {
-    const base = registryUrl.replace(/\/+$/u, "");
-    const response = await fetchJson(`${base}/${encodePackageName(packageName)}`, {
-      headers: [{ name: "accept", value: "application/json" }],
-      redirect: "follow",
-    });
-    if (response.status === 404) return undefined;
-    if (response.status < 200 || response.status >= 300) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return JSON.parse(new TextDecoder().decode(response.bytes)) as NpmPackument;
-  },
-});
-
-export const resolveNpmPackageVersion = (
-  packument: NpmPackument,
-  requested: string | undefined,
-  spec: string,
-): string => {
-  const distTags = packument["dist-tags"] ?? {};
-  const versions = packument.versions ?? {};
-  if (requested === undefined || requested === "") {
-    const latest = distTags.latest;
-    if (latest !== undefined && versions[latest] !== undefined) return latest;
-    throw sourceError({
-      message: `npm package "${spec}" has no resolvable "latest" dist-tag.`,
-      source: spec,
-      kind: "version-not-found",
-      remediation: "Pass an explicit --package=<name>@<version> that the registry publishes.",
-    });
-  }
-  const tagged = distTags[requested];
-  if (tagged !== undefined && versions[tagged] !== undefined) return tagged;
-  if (versions[requested] !== undefined) return requested;
-  throw sourceError({
-    message: `npm package "${spec}" has no version or dist-tag matching "${requested}".`,
-    source: spec,
-    kind: "version-not-found",
-    remediation: "Pass an exact published version or a valid dist-tag (e.g. latest, next).",
-  });
-};
-
-export const makeNpmRecipeSourcePort = (
-  registryClient: NpmRegistryClient = defaultNpmRegistryClient(DEFAULT_NPM_REGISTRY_URL),
-  registryUrl: string = DEFAULT_NPM_REGISTRY_URL,
-): NpmRecipeSourcePort => ({
-  resolve: async (packageSpec) => {
-    const { name, version } = parseNpmPackageSpec(packageSpec);
-    let packument: NpmPackument | undefined;
-    try {
-      packument = await registryClient.fetchPackument(name);
-    } catch (cause) {
-      throw sourceError({
-        message: `Could not fetch npm metadata for "${name}" from ${registryUrl}: ${causeMessage(cause)}`,
-        source: packageSpec,
-        kind: "registry-failed",
-        remediation: "Check the registry URL and network access, then retry lando init.",
-      });
-    }
-    if (packument === undefined) {
-      throw sourceError({
-        message: `npm package "${name}" was not found in the registry ${registryUrl}.`,
-        source: packageSpec,
-        kind: "package-not-found",
-        remediation: "Check the package name (and scope) and retry lando init.",
-      });
-    }
-    const resolvedVersion = resolveNpmPackageVersion(packument, version, packageSpec);
-    const dist = packument.versions?.[resolvedVersion]?.dist;
-    if (dist === undefined || typeof dist.tarball !== "string" || dist.tarball.trim() === "") {
-      throw sourceError({
-        message: `npm package "${name}@${resolvedVersion}" has no published tarball URL.`,
-        source: packageSpec,
-        kind: "version-not-found",
-        remediation: "Pick a published version of this package, then retry lando init.",
-      });
-    }
-    return { packageName: name, version: resolvedVersion, dist };
-  },
-});
-
-export const verifyNpmPackageDistIntegrity = (
-  bytes: Uint8Array,
-  dist: NpmPackageDist,
-  source: string,
-): void => {
-  const integrity = checkNpmPackageDistIntegrity(bytes, dist);
-  switch (integrity.status) {
-    case "verified":
-    case "unverifiable":
-      return;
-    case "mismatch":
-      throw sourceError({
-        message: `npm tarball ${source} ${integrity.description}`,
-        source,
-        kind: "integrity-mismatch",
-        remediation: integrity.remediation,
-      });
-  }
-};
-
 export const resolveNpmRecipeSource = async (
   options: ResolveNpmRecipeSourceOptions,
 ): Promise<ResolvedNpmRecipe> => {
   const safeSubpath = normalizeNpmSubpath(options.path, options.package);
-  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-  const client = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
-  const resolvedPackage = await makeNpmRecipeSourcePort(client, registryUrl).resolve(options.package);
-  const { packageName, version, dist } = resolvedPackage;
-
-  let archiveBytes: Uint8Array;
+  let name: string;
+  let selector: string | undefined;
   try {
-    archiveBytes = await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(dist.tarball);
+    const parsed = parseNpmPackageSpec(options.package);
+    name = parsed.name;
+    selector = parsed.version;
   } catch (cause) {
-    throw sourceError({
-      message: `Could not download npm tarball ${dist.tarball}: ${causeMessage(cause)}`,
-      source: dist.tarball,
-      kind: "download-failed",
-      remediation: "Check that the registry tarball URL is reachable and retry lando init.",
-    });
+    throw mapSourceAcquisitionError(cause, "npm");
   }
 
-  verifyNpmPackageDistIntegrity(archiveBytes, dist, dist.tarball);
+  const snapshot = await runSourceSession(
+    options.sources.acquireNpm({
+      name,
+      ...(selector === undefined ? {} : { selector }),
+    }),
+    "npm",
+    options.signal,
+  );
 
-  // npm tarballs nest content under `package/`; delegate to the shared tarball
-  // resolver (pre-downloaded bytes) so the extractor / cache / subpath logic is
-  // reused verbatim.
-  const tarballPath = safeSubpath === undefined ? "package" : `package/${safeSubpath}`;
-  const resolved = await resolveTarballRecipeSource({
-    url: dist.tarball,
-    path: tarballPath,
-    fetcher: { fetch: async () => archiveBytes },
-    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
-    ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
+  const packageName = snapshot.pin.name;
+  const version = snapshot.pin.version;
+  const tarballUrl = snapshot.pin.dist.tarball;
+  const sha256 = snapshot.key.kind === "archive" ? snapshot.key.sha256 : "";
+
+  const publishedDir = join(snapshot.root, "package");
+
+  const { recipeRoot, manifestPath, manifestYaml } = await resolveRecipeManifest({
+    publishedDir,
+    safeSubpath,
+    sourceKind: "tarball",
+    source: options.package,
+    fail: (input) => {
+      throw sourceError(input);
+    },
+  }).catch((cause) => {
+    if (cause instanceof RecipeSourceError) throw cause;
+    throw sourceError({
+      message: `Could not resolve npm recipe manifest for ${options.package}: ${causeMessage(cause)}`,
+      source: options.package,
+      kind: "package-not-found",
+      remediation: "Ensure the package publishes recipe.yml under package/ (or the given --path).",
+    });
   });
 
   return {
-    ...resolved,
     id: `${packageName}@${version}`,
+    source: manifestPath,
+    manifestYaml,
+    root: recipeRoot,
+    // Jail is the full archive tree so package/.. cannot escape the snapshot.
+    acquisitionRoot: snapshot.root,
     packageName,
     version,
-    tarballUrl: dist.tarball,
+    tarballUrl,
+    sha256,
+    ...(sha256 === "" ? {} : { transport: { kind: "archive" as const, digest: sha256 } }),
   };
 };

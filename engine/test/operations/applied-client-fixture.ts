@@ -32,6 +32,7 @@ import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as Resolver from "../../src/services/environment-value-resolver.ts";
 import * as Events from "../../src/services/event-service.ts";
+import * as Process from "../../src/services/process-runner.ts";
 import * as Secrets from "../../src/services/secret-store.ts";
 import * as Tooling from "../../src/services/tooling-engine.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
@@ -199,6 +200,7 @@ export const appliedClientFixture = (
     ),
   );
   const layer = Layer.mergeAll(
+    Process.layer,
     resolver,
     plugin,
     Tooling.layer.pipe(Layer.provide(resolver)),
@@ -251,7 +253,12 @@ export const appliedClientFixture = (
         Effect.gen(function* () {
           const task = generated.psql;
           if (task === undefined) return yield* Effect.die("missing fixture task");
-          return yield* runEventToolingCommand(plan, "psql", task, []);
+          return yield* runEventToolingCommand({
+            plan,
+            name: "psql",
+            task,
+            input: { _tag: "RawArgv", argv: [] },
+          });
         }).pipe(Effect.provide(layer), Effect.result),
       ),
   };

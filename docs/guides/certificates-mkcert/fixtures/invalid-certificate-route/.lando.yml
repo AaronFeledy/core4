@@ -1,0 +1,6 @@
+name: invalid-certificate-route
+services:
+  web:
+    type: nginx
+    routes:
+      - "wild.*.certificate-routes.lndo.site"

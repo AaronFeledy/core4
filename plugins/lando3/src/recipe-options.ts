@@ -125,7 +125,13 @@ export const BUNDLED_RECIPE_OPTION_MAPS: ReadonlyMap<string, RecipeOptionMap> = 
   ],
 ]);
 
-export const HOSTER_RECIPE_IDS: ReadonlySet<string> = new Set(["pantheon", "platformsh", "lagoon", "acquia"]);
+export const HOSTER_RECIPE_IDS: ReadonlySet<string> = new Set([
+  "pantheon",
+  "platformsh",
+  "upsun",
+  "lagoon",
+  "acquia",
+]);
 /** Lando 3 id -> v4 id plus pinned options the id itself implies. */
 export const LEGACY_RECIPE_ALIASES: ReadonlyMap<
   string,

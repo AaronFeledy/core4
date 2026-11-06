@@ -6,7 +6,14 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
-import { AbsolutePath, AppId, type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type LandofileShape,
+  ProviderId,
+  ServiceName,
+} from "@lando/core/schema";
 import {
   PrivilegeService,
   RouterService,
@@ -19,34 +26,76 @@ import { TestRouterService } from "@lando/sdk/test";
 
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
-const testProviderLayers = [
-  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
-  // Acquiring a scratch app reaches the proxy subsystem, which asks
-  // PrivilegeService to run `systemctl start` on the host socket units. Left
-  // live that spawns `sudo`, so on a host with an askpass helper the file's
-  // runtime depends on a human typing a password and the run mutates host
-  // state. These tests prove scratch acquisition, captured cwd, and tooling
-  // targeting -- never elevation -- so the neutral fake reports success.
-  Layer.succeed(
-    PrivilegeService,
-    PrivilegeService.of({
-      elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    }),
-  ),
-  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+const testProviderLayers = () => {
+  const plans = new Map<AbsolutePath, AppPlan>();
+  const provider = RuntimeProvider.of({
+    ...TestRuntimeProvider,
+    appliedPlans: Effect.sync(() => [...plans.values()]),
+    apply: (plan, options) =>
+      TestRuntimeProvider.apply(plan, options).pipe(
+        Effect.tap(() => Effect.sync(() => void plans.set(plan.root, options?.recordedPlan ?? plan))),
+      ),
+    inspect: (target) =>
+      TestRuntimeProvider.inspect(target).pipe(
+        Effect.map((observed) => {
+          const plan = [...plans.values()].find((plan) => plan.id === target.app);
+          return {
+            ...observed,
+            providerId: ProviderId.make(TestRuntimeProvider.id),
+            ...(plan === undefined ? {} : { appRoot: plan.root }),
+            containerId: `${target.app}-${target.service}`,
+            health: "healthy" as const,
+          };
+        }),
+      ),
+    list: () =>
+      Effect.sync(() =>
+        [...plans.values()].flatMap((plan) =>
+          Object.values(plan.services).map((service) => ({
+            app: plan.id,
+            appRoot: plan.root,
+            providerId: plan.provider,
+            service: service.name,
+            containerId: `${plan.id}-${service.name}`,
+            status: "running" as const,
+            health: "healthy" as const,
+            publications: { status: "unknown" as const },
+          })),
+        ),
+      ),
+  });
+  return [
+    Layer.succeed(RuntimeProvider, provider),
+    // Stub elevation so scratch identity, cwd, and tooling tests cannot change host services.
+    Layer.succeed(
+      PrivilegeService,
+      PrivilegeService.of({
+        elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      }),
+    ),
+    Layer.succeed(RouterService, RouterService.of({ ...TestRouterService, id: "traefik" })),
 
-  Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-  ),
-];
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        resolveAppliedPlan: (root) => Effect.sync(() => plans.get(root)),
+        resolveTeardownEvidence: (root) =>
+          Effect.sync(() => {
+            const plan = plans.get(root);
+            return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
+          }),
+        appliedPlansFor: (root) =>
+          Effect.sync(() => {
+            const plan = plans.get(root);
+            return plan === undefined ? [] : [plan];
+          }),
+        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+  ];
+};
 
 const landofileYaml = (name = "embedded-app", tooling = false): string =>
   `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n    home: false\n${
@@ -56,7 +105,7 @@ const landofileYaml = (name = "embedded-app", tooling = false): string =>
 const appLayer = () =>
   makeLandoRuntime({
     bootstrap: "app",
-    plugins: { policy: "bundled-only", layers: testProviderLayers },
+    plugins: { policy: "bundled-only", layers: testProviderLayers() },
   });
 
 const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -73,7 +122,11 @@ const withTempUserCache = async <T>(run: (dir: string) => Promise<T>): Promise<T
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-runtime-cache-")));
   try {
     return await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () =>
-      withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir)),
+      withEnvVar("LANDO_USER_CACHE_ROOT", dir, () =>
+        withEnvVar("LANDO_USER_DATA_ROOT", join(dir, "data"), () =>
+          withEnvVar("LANDO_USER_CONF_ROOT", join(dir, "conf"), () => run(dir)),
+        ),
+      ),
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -253,21 +306,7 @@ describe("resolveApp", () => {
             openLandoRuntime({
               plugins: {
                 policy: "bundled-only",
-                layers: [
-                  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
-                  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
-                  Layer.succeed(
-                    RuntimeProviderRegistry,
-                    RuntimeProviderRegistry.of({
-                      resolveAppliedPlan: () => Effect.succeed(undefined),
-                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                      appliedPlansFor: () => Effect.succeed([]),
-                      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-                      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                      select: () => Effect.succeed(TestRuntimeProvider),
-                    }),
-                  ),
-                ],
+                layers: testProviderLayers(),
               },
             }).pipe(
               Effect.flatMap((runtime) =>
@@ -288,7 +327,7 @@ describe("resolveApp", () => {
       await withTwoTempApps(async (left, right) => {
         const id = await Effect.runPromise(
           Effect.scoped(
-            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
+            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers() } }).pipe(
               Effect.flatMap((runtime) =>
                 Effect.sync(() => process.chdir(right)).pipe(
                   Effect.flatMap(() => runtime.app()),
@@ -310,7 +349,7 @@ describe("resolveApp", () => {
       const layer = makeLandoRuntime({
         bootstrap: "app",
         cwd: left,
-        plugins: { policy: "bundled-only", layers: testProviderLayers },
+        plugins: { policy: "bundled-only", layers: testProviderLayers() },
       });
       const id = await Effect.runPromise(
         Effect.sync(() => process.chdir(right)).pipe(
@@ -336,7 +375,7 @@ describe("resolveApp", () => {
           Effect.scoped(
             openLandoRuntime({
               scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
-              plugins: { policy: "bundled-only", layers: testProviderLayers },
+              plugins: { policy: "bundled-only", layers: testProviderLayers() },
             }).pipe(
               Effect.flatMap((runtime) => runtime.app()),
               Effect.map((app) => app.id),
@@ -360,7 +399,7 @@ describe("resolveApp", () => {
             openLandoRuntime({
               cwd: right,
               scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
-              plugins: { policy: "bundled-only", layers: testProviderLayers },
+              plugins: { policy: "bundled-only", layers: testProviderLayers() },
             }).pipe(
               Effect.flatMap((runtime) => runtime.app()),
               Effect.map((app) => app.id),
@@ -390,7 +429,7 @@ describe("resolveApp", () => {
               Effect.scoped(
                 openLandoRuntime({
                   scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
-                  plugins: { policy: "bundled-only", layers: testProviderLayers },
+                  plugins: { policy: "bundled-only", layers: testProviderLayers() },
                 }).pipe(
                   Effect.flatMap((runtime) =>
                     runtime
@@ -422,7 +461,7 @@ describe("resolveApp", () => {
       await withTempApp(async () => {
         const result = await Effect.runPromise(
           Effect.scoped(
-            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
+            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers() } }).pipe(
               Effect.flatMap((runtime) =>
                 Effect.gen(function* () {
                   yield* runtime.run(CacheService.pipe(Effect.flatMap((cache) => cache.write("k", "v"))));

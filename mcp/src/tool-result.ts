@@ -5,14 +5,19 @@ import { Effect, Schema } from "effect";
 import * as McpSchema from "effect/ai/McpSchema";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import type { McpDispatchError, McpDispatchResult } from "./dispatch";
+import { compactOutputSchema } from "./output-schema";
 
 export const toolOutputSchema = (resultSchema: Schema.Codec<unknown, unknown>) =>
   Schema.decodeUnknownSync(McpSchema.ToolOutputJson)(
-    getJsonSchemaWithDeprecations(
-      Schema.Struct({
-        ...CommandResultEnvelope.fields,
-        result: Schema.optionalKey(resultSchema),
-      }),
+    compactOutputSchema(
+      Schema.decodeUnknownSync(Schema.JsonObject)(
+        getJsonSchemaWithDeprecations(
+          Schema.Struct({
+            ...CommandResultEnvelope.fields,
+            result: Schema.optionalKey(resultSchema),
+          }),
+        ),
+      ),
     ),
   );
 

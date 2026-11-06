@@ -83,6 +83,7 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     request: (request: EngineHttpRequest) => {
       requests.push(`${request.method} ${request.path}`);
       const responseFor = (): EngineHttpResponse => {
+        if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
         if (request.path === "/networks/create" || request.path === "/libpod/networks/create")

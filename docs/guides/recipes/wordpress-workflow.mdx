@@ -69,6 +69,8 @@ Open the HTTPS URL. A fresh install serves the site title you passed to `core in
 
 ## See what the recipe writes
 
+The appserver sets `uploadDirs: [wp-content/uploads]` to keep PHP out of uploaded files.
+
 | Piece | What you get |
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, `memory_limit = 512M`, Apache on port `80`, depends on `database` (and `cache` with Redis) |

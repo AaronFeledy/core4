@@ -1,35 +1,49 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Effect } from "effect";
 import { TestClock } from "effect/testing";
 
-import { LOCK_STALE_THRESHOLD_MS } from "@lando/state-store/lock";
-import {
-  type ScratchRegistryEntry,
-  acquireScratchRegistryLock,
-  makeScratchRegistry,
-  scratchRegistryPaths,
-} from "../../src/scratch-app/registry.ts";
+import { makeLandoPaths } from "@lando/paths";
+import { ScratchAppError } from "@lando/sdk/errors";
+import { StateStore } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
+
+import { type ScratchRegistryEntry, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { detachScratchApp } from "../../src/scratch-app/service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
-const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
-  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-cache-")));
-  const previous = process.env.LANDO_USER_CACHE_ROOT;
+const testStore = () => makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+const testRegistry = () => makeScratchRegistry(testStore());
+
+const withTempRoots = async <T>(
+  run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
+): Promise<T> => {
+  const base = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-")));
+  const dataRoot = join(base, "data");
+  const cacheRoot = join(base, "cache");
+  await mkdir(dataRoot, { recursive: true });
+  await mkdir(cacheRoot, { recursive: true });
+  const previousData = process.env.LANDO_USER_DATA_ROOT;
+  const previousCache = process.env.LANDO_USER_CACHE_ROOT;
   try {
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
-    return await run(cacheRoot);
+    return await run({ dataRoot, cacheRoot });
   } finally {
-    if (previous === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
-      delete process.env.LANDO_USER_CACHE_ROOT;
+    if (previousData === undefined) {
+      Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
     } else {
-      process.env.LANDO_USER_CACHE_ROOT = previous;
+      process.env.LANDO_USER_DATA_ROOT = previousData;
     }
-    await rm(cacheRoot, { recursive: true, force: true });
+    if (previousCache === undefined) {
+      Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+    } else {
+      process.env.LANDO_USER_CACHE_ROOT = previousCache;
+    }
+    await rm(base, { recursive: true, force: true });
   }
 };
 
@@ -38,26 +52,72 @@ const entry = (id: string): ScratchRegistryEntry => ({
   source: { kind: "fork" },
   isolate: "full",
   detached: true,
-  rootPath: join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id, "root"),
+  rootPath: join(makeLandoPaths().scratchDir, id, "root"),
   status: "running",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
 
+const registryFile = (): string => join(makeLandoPaths().scratchDir, "registry.bin");
+
 describe("scratch registry", () => {
+  test("rejects restarting an entry pending cleanup without changing the registry", async () => {
+    await withTempRoots(async () => {
+      const registry = testRegistry();
+      const original = entry("scratch-cleanup-000001");
+      await Effect.runPromise(registry.upsert("acquire", original));
+      const pending = { ...original, status: "destroyed-pending-cleanup" as const };
+      await Effect.runPromise(registry.upsert("mark-pending-cleanup", original));
+
+      const result = await Effect.runPromise(registry.upsert("mark-running", original).pipe(Effect.result));
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("Expected a rejected transition");
+      expect(result.failure).toBeInstanceOf(ScratchAppError);
+      expect(result.failure.operation).toBe("registry.write");
+      expect(result.failure.message).toContain("cannot mark-running while destroyed-pending-cleanup");
+      expect(result.failure.remediation).toContain("lando apps:scratch:gc");
+      await expect(Effect.runPromise(registry.list())).resolves.toEqual([pending]);
+    });
+  });
+
+  test("migrates v1 stopping entries without losing other entries or quarantining the registry", async () => {
+    await withTempRoots(async () => {
+      const stopping = { ...entry("scratch-stopping-000001"), status: "stopping" };
+      const running = entry("scratch-running-000002");
+      const acquiring = { ...entry("scratch-acquiring-000003"), status: "acquiring" as const };
+      await mkdir(makeLandoPaths().scratchDir, { recursive: true });
+      await writeFile(registryFile(), JSON.stringify({ version: 1, data: [stopping, running, acquiring] }));
+
+      const registry = testRegistry();
+      const migrated = await Effect.runPromise(registry.list());
+
+      const pending = { ...stopping, status: "destroyed-pending-cleanup" as const };
+      expect(migrated).toEqual([pending, running, acquiring]);
+      expect(await readdir(makeLandoPaths().scratchDir)).toEqual(["registry.bin"]);
+      await Effect.runPromise(registry.upsert("mark-pending-cleanup", pending));
+      expect(JSON.parse(await readFile(registryFile(), "utf8"))).toEqual({
+        version: 2,
+        data: [acquiring, running, pending],
+      });
+    });
+  });
+
   test("detach stamps the advanced execution clock while preserving creation time", async () => {
-    await withTempCache(async () => {
+    await withTempRoots(async () => {
       // Given an attached entry and an execution clock independent of host time.
-      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+      const store = testStore();
+      const registry = makeScratchRegistry(store);
       const original = { ...entry("scratch-clock-000001"), detached: false, ownerPid: process.pid };
-      await Effect.runPromise(registry.upsert(original));
+      await Effect.runPromise(registry.upsert("acquire", original));
+      await Effect.runPromise(registry.upsert("mark-running", original));
       await Effect.runPromise(
         Effect.gen(function* () {
           yield* TestClock.setTime(0);
           yield* TestClock.adjust("1234 millis");
 
           // When lifecycle ownership is detached after virtual time advances.
-          yield* detachScratchApp(original.id, ownerOnlyFileAccess);
+          yield* detachScratchApp(original.id);
 
           // Then only the update timestamp follows the execution clock.
           const detached = yield* registry.get(original.id);
@@ -65,189 +125,64 @@ describe("scratch registry", () => {
           expect(detached?.createdAt).toBe(original.createdAt);
           expect(detached?.detached).toBe(true);
           expect(detached?.ownerPid).toBeUndefined();
-        }).pipe(Effect.provide(TestClock.layer())),
+        }).pipe(Effect.provide(TestClock.layer()), Effect.provideService(StateStore, store)),
       );
     });
   });
 
   test("upsert, list, and get roundtrip through registry.bin", async () => {
-    await withTempCache(async () => {
-      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+    await withTempRoots(async () => {
+      const registry = testRegistry();
       const first = entry("scratch-one-000001");
       const second = entry("scratch-two-000002");
 
-      await Effect.runPromise(registry.upsert(second));
-      await Effect.runPromise(registry.upsert(first));
+      await Effect.runPromise(registry.upsert("acquire", second));
+      await Effect.runPromise(registry.upsert("mark-running", second));
+      await Effect.runPromise(registry.upsert("acquire", first));
+      await Effect.runPromise(registry.upsert("mark-running", first));
 
       await expect(Effect.runPromise(registry.list())).resolves.toEqual([first, second]);
       await expect(Effect.runPromise(registry.get(first.id))).resolves.toEqual(first);
       await expect(Effect.runPromise(registry.get("scratch-missing-ffffff"))).resolves.toBeUndefined();
-      expect(await readFile(scratchRegistryPaths().registry, "utf8")).toContain(first.id);
+      expect(await readFile(registryFile(), "utf8")).toContain(first.id);
     });
   });
 
   test("corrupt registry files are quarantined and rebuilt empty", async () => {
-    await withTempCache(async () => {
-      const paths = scratchRegistryPaths();
-      await mkdir(paths.base, { recursive: true });
-      await writeFile(paths.registry, "not-json");
+    await withTempRoots(async () => {
+      const base = makeLandoPaths().scratchDir;
+      await mkdir(base, { recursive: true });
+      await writeFile(registryFile(), "not-json");
 
-      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([]);
+      await expect(Effect.runPromise(testRegistry().list())).resolves.toEqual([]);
 
-      const files = await readdir(paths.base);
+      const files = await readdir(base);
       expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(true);
     });
   });
 
-  test("legacy migration uses the same registry path as the StateStore bucket under a symlinked cache root", async () => {
-    const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-real-")));
-    const linkRoot = join(tmpdir(), `lando-scratch-registry-link-${Date.now()}`);
-    await symlink(cacheRoot, linkRoot);
+  test("registry entry and instance contents survive removal of a distinct user cache root", async () => {
+    await withTempRoots(async ({ dataRoot, cacheRoot }) => {
+      // Given a registered scratch with instance files under user data and noise under cache.
+      const registry = testRegistry();
+      const id = "scratch-keep-000001";
+      const registered = entry(id);
+      const instanceRoot = registered.rootPath;
+      const marker = join(instanceRoot, "keep.txt");
+      await mkdir(instanceRoot, { recursive: true });
+      await writeFile(marker, "durable-instance");
+      await mkdir(join(cacheRoot, "logs"), { recursive: true });
+      await writeFile(join(cacheRoot, "logs", "noise.log"), "disposable");
+      await Effect.runPromise(registry.upsert("acquire", registered));
+      await Effect.runPromise(registry.upsert("mark-running", registered));
 
-    const previous = process.env.LANDO_USER_CACHE_ROOT;
-    try {
-      process.env.LANDO_USER_CACHE_ROOT = linkRoot;
-      const paths = scratchRegistryPaths();
-      const first = entry("scratch-one-000001");
-      await mkdir(join(cacheRoot, "scratch"), { recursive: true });
-      await writeFile(
-        join(cacheRoot, "scratch", "registry.bin"),
-        `${JSON.stringify({ version: 1, entries: [first] })}\n`,
-      );
-
-      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
-        first,
-      ]);
-
-      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
-      expect(raw).toEqual({ version: 1, data: [first] });
-    } finally {
-      if (previous === undefined) {
-        // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
-        delete process.env.LANDO_USER_CACHE_ROOT;
-      } else {
-        process.env.LANDO_USER_CACHE_ROOT = previous;
-      }
-      await rm(linkRoot, { force: true });
+      // When the disposable user cache root is removed entirely.
       await rm(cacheRoot, { recursive: true, force: true });
-    }
-  });
 
-  test("legacy registry envelopes are migrated into the StateStore frame", async () => {
-    await withTempCache(async () => {
-      const paths = scratchRegistryPaths();
-      const first = entry("scratch-one-000001");
-      const second = { ...entry("scratch-two-000002"), source: { kind: "recipe" as const, ref: "empty" } };
-      const legacyFirst = { ...first, isolate: "none" };
-      const legacySecond = { ...second, isolate: "none" };
-      await mkdir(paths.base, { recursive: true });
-      await writeFile(
-        paths.registry,
-        `${JSON.stringify({ version: 1, entries: [legacyFirst, legacySecond] })}\n`,
-      );
-
-      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
-        { ...first, isolate: "cwd" },
-        { ...second, isolate: "baked" },
-      ]);
-
-      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
-      expect(raw).toEqual({
-        version: 1,
-        data: [
-          { ...first, isolate: "cwd" },
-          { ...second, isolate: "baked" },
-        ],
-      });
-      const files = await readdir(paths.base);
-      expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(false);
-    });
-  });
-
-  test("StateStore-framed legacy none isolation is normalized before bucket open", async () => {
-    await withTempCache(async () => {
-      const paths = scratchRegistryPaths();
-      const fork = entry("scratch-fork-000001");
-      const recipe = { ...entry("scratch-recipe-000002"), source: { kind: "recipe" as const, ref: "empty" } };
-      await mkdir(paths.base, { recursive: true });
-      await writeFile(
-        paths.registry,
-        `${JSON.stringify({
-          version: 1,
-          data: [
-            { ...fork, isolate: "none" },
-            { ...recipe, isolate: "none" },
-          ],
-        })}\n`,
-      );
-
-      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
-        { ...fork, isolate: "cwd" },
-        { ...recipe, isolate: "baked" },
-      ]);
-
-      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
-      expect(raw).toEqual({
-        version: 1,
-        data: [
-          { ...fork, isolate: "cwd" },
-          { ...recipe, isolate: "baked" },
-        ],
-      });
-    });
-  });
-
-  test("StateStore-framed current isolation is not rewritten by legacy migration", async () => {
-    await withTempCache(async () => {
-      const paths = scratchRegistryPaths();
-      const first = entry("scratch-one-000001");
-      await mkdir(paths.base, { recursive: true });
-      const currentFrame = `${JSON.stringify({ version: 1, data: [first] }, null, 2)}\n`;
-      await writeFile(paths.registry, currentFrame);
-
-      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
-        first,
-      ]);
-
-      expect(await readFile(paths.registry, "utf8")).toBe(currentFrame);
-    });
-  });
-
-  test("lock release removes only the matching token", async () => {
-    await withTempCache(async () => {
-      const paths = scratchRegistryPaths();
-      const lock = await Effect.runPromise(acquireScratchRegistryLock(ownerOnlyFileAccess, paths));
-      await writeFile(
-        paths.lock,
-        JSON.stringify({ pid: process.pid, token: "other", createdAt: Date.now() }),
-      );
-
-      await Effect.runPromise(lock.release);
-
-      const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
-      expect(current.token).toBe("other");
-    });
-  });
-
-  test("stale legacy locks are taken over", async () => {
-    await withTempCache(async () => {
-      const paths = scratchRegistryPaths();
-      await mkdir(paths.base, { recursive: true });
-      await writeFile(
-        paths.lock,
-        JSON.stringify({
-          pid: process.pid,
-          token: "stale",
-          createdAt: Date.now() - LOCK_STALE_THRESHOLD_MS - 1_000,
-        }),
-      );
-
-      const lock = await Effect.runPromise(acquireScratchRegistryLock(ownerOnlyFileAccess, paths));
-
-      const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
-      expect(current.token).toBe(lock.token);
-      await Effect.runPromise(lock.release);
-      expect(await Bun.file(paths.lock).exists()).toBe(false);
+      // Then the registry entry and instance tree remain under user data.
+      await expect(Effect.runPromise(registry.list())).resolves.toEqual([registered]);
+      expect(await readFile(marker, "utf8")).toBe("durable-instance");
+      expect(await Bun.file(join(dataRoot, "scratch", "registry.bin")).exists()).toBe(true);
     });
   });
 });

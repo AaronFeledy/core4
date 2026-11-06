@@ -13,6 +13,7 @@ import type { ConfigError } from "@lando/sdk/errors";
 import { Context, Effect, Layer, Option, type Scope } from "effect";
 
 import { recordConfigWarning } from "@lando/engine/config/config-warnings";
+import { hostEventsShellConfigError } from "@lando/engine/config/global-config";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as LandoConfigService from "@lando/engine/services/config";
@@ -22,17 +23,18 @@ import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { HostDnsResolver } from "./doctor-host-dns";
-import { buildHostProxyCheck } from "./doctor-host-proxy-check";
+import { buildHostDnsCheck } from "./doctor-host-dns-check";
+import { listenerDoctorChecks } from "./doctor-listeners";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import { subsystemDoctor } from "./doctor-subsystems";
+import { type SubsystemDoctorResult, subsystemDoctor } from "./doctor-subsystems";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
   description:
-    "Lando could not start its provider runtime, so provider diagnostics were skipped. Validate config.yml with `lando config validate`; repair it with `lando config edit`, or check `lando plugin list` for conflicting plugins.",
+    "Lando could not start its provider runtime, so provider diagnostics were skipped. Validate config.yml with `lando config validate`; repair it with `lando config edit`, or remove a conflicting plugin with `lando plugin:remove <name>` and reinstall it with `lando plugin:add <spec>`.",
   command: "lando config validate",
 };
 
@@ -91,7 +93,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
         "certificate-authority",
         "global-app",
         "mcp",
-        ...(options.app ? ["app-config", "app-version-constraints"] : []),
+        ...(options.app ? ["app-config", "app-version-constraints", "app-listeners"] : []),
         ...(options.deprecations ? ["deprecations"] : []),
       ].map((section) => ({
         section,
@@ -146,7 +148,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
           "certificate-authority",
           "missing-app-roots",
           "orphaned-volume-snapshots",
-          ...(options.app ? ["app-config"] : []),
+          ...(options.app ? ["app-config", "app-listeners"] : []),
           ...(options.deprecations ? ["deprecations"] : []),
         ].map((section) => ({
           section,
@@ -164,19 +166,31 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
         : certsDoctorStatus(redactor.redactString).pipe(Effect.provide(context)),
     provider:
       context === undefined ? Effect.succeed({ checks: [] }) : doctor(options).pipe(Effect.provide(context)),
+    ...(context === undefined
+      ? {}
+      : {
+          listeners: (input: Parameters<typeof listenerDoctorChecks>[0]) =>
+            listenerDoctorChecks(input).pipe(Effect.provide(context)),
+        }),
     deprecations:
       context === undefined
         ? Effect.succeed({ entries: [] })
         : doctorDeprecations().pipe(Effect.provide(context)),
     subsystems: (subsystemOptions) =>
       (context === undefined
-        ? buildHostProxyCheck(undefined, options.fix === true).pipe(
-            Effect.map((check) => ({ checks: [check] })),
+        ? buildHostDnsCheck(options.fix === true).pipe(
+            Effect.map((check): SubsystemDoctorResult => ({ checks: [check] })),
           )
         : subsystemDoctor(subsystemOptions).pipe(Effect.provide(context))
       ).pipe(Effect.provide(dnsLayer)),
     ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
     ...(skipped === undefined ? {} : { skipped }),
   }).pipe(Effect.provide(reportContext), Effect.provide(config.value));
-  return { ...report, globalConfig: { status: "pass" } };
+  // A bad host step stops every app's start but not doctor's other checks, so it fails this row only.
+  const hostEventsError = hostEventsShellConfigError(snapshot.config.hostEvents, snapshot.paths.configFile);
+  return {
+    ...report,
+    globalConfig:
+      hostEventsError === undefined ? { status: "pass" } : { status: "fail", error: hostEventsError },
+  };
 }, Effect.scoped);

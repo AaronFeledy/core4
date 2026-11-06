@@ -6,7 +6,7 @@ services:
     command:
       - node
       - server.mjs
-    healthcheck:
+    readiness:
       kind: command
       command:
         - curl
@@ -22,7 +22,7 @@ services:
     command:
       - node
       - server.mjs
-    healthcheck:
+    readiness:
       test:
         - CMD
         - curl

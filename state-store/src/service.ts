@@ -17,6 +17,7 @@ import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
 import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
 import { type PrivateFileAccess, PrivateFileAccessService } from "./private-file-access.ts";
+import { validateCacheSpec } from "./spec.ts";
 
 const ioError = (operation: string, path: string, cause: unknown): StateStoreError =>
   new StateStoreError({
@@ -82,6 +83,7 @@ export const makeStateStore = (options: {
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
         resolveStatePath(spec.root, spec.namespace, spec.key, "open", roots).pipe(
+          Effect.tap(() => validateCacheSpec(spec)),
           Effect.map((resolved) =>
             buildStateBucket(spec, resolved.file, makeDiskBucketBackend(options.privateFileAccess)),
           ),

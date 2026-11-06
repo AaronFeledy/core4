@@ -21,6 +21,7 @@ import {
   discoverHostSshAgent,
   hostSshAgentSourceLabel,
 } from "../subsystems/ssh-agent/host-agent-discovery.ts";
+import { hostKnownHostsFile } from "../subsystems/ssh-agent/host-known-hosts.ts";
 import {
   sshAgentEligibleServices,
   stripSshAgentOverlay,
@@ -175,7 +176,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
     appName: plan.name,
     provider: plan.provider,
     intent,
-    platform: options.platform ?? paths.platform,
+    platform: paths.platform,
   });
   if (upstream._tag === "volume") {
     return {
@@ -210,7 +211,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
               delivery,
               kind: "ssh",
               socketName: SSH_AGENT_SOCKET_NAME,
-              paths: { ...paths.roots, platform: options.platform ?? paths.platform },
+              paths: { ...paths.roots, platform: paths.platform },
               privateFileAccess,
             }),
           (session) => tree.completeTask("session").pipe(Effect.as(session)),
@@ -273,7 +274,18 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
     }),
   );
   const session = yield* acquire;
+  if (session === undefined) return yield* options.use(stripSshAgentOverlay(plan));
+  const knownHostsFile = yield* hostKnownHostsFile(options.home ?? homedir());
   return yield* options.use(
-    session === undefined ? stripSshAgentOverlay(plan) : yield* withSshAgentOverlay(plan, session),
+    yield* withSshAgentOverlay(
+      plan,
+      session,
+      knownHostsFile === undefined
+        ? {}
+        : {
+            knownHostsFile: knownHostsFile.path,
+            knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+          },
+    ),
   );
 });

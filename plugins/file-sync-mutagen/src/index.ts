@@ -414,7 +414,16 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   requires: { "@lando/core": "^4.0.0" },
   description: "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers.",
   enabled: true,
-  contributes: { fileSyncEngines: [ENGINE_ID] },
+  contributes: {
+    fileSyncEngines: [
+      {
+        id: ENGINE_ID,
+        supports: { platform: ["win32"] },
+        capabilities: mutagenCapabilities,
+        defaultFor: { platform: ["win32"], bindMountPerformance: ["slow"] },
+      },
+    ],
+  },
   entry: "./src/index.ts",
 });
 

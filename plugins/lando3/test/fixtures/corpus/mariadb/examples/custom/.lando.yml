@@ -1,0 +1,32 @@
+name: lando-mariadb-custom
+services:
+  custom:
+    type: mariadb:10.3
+    portforward: true
+    creds:
+      user: pirog
+      password: password
+      database: stuff
+    config:
+      database: config/my.cnf
+  customnopwd:
+    type: mariadb:10.3
+    portforward: true
+    creds:
+      user: pirog
+      password:
+      database: stuff
+  customimage:
+    type: mariadb:custom
+    portforward: true
+    overrides:
+      image: bitnamilegacy/mariadb:10.6.5
+tooling:
+  mysql:
+    service: custom
+    cmd: mysql -uroot
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/mariadb": ../..

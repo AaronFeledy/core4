@@ -24,5 +24,5 @@ export const appConfigExplainSpec: LandoCommandSpec<AppConfigExplainResult> = {
     }),
   },
   run: () => appConfigExplain(),
-  render: (result) => renderAppConfigExplainResult(result as AppConfigExplainResult),
+  render: (result) => renderAppConfigExplainResult(result),
 };

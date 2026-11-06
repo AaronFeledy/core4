@@ -1,4 +1,5 @@
 import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
+import { reraiseSignal } from "./process-lifecycle.ts";
 
 export const runWithProcessSignalReraise = async <T>(
   run: (state: {
@@ -24,7 +25,7 @@ export const runWithProcessSignalReraise = async <T>(
     for (const { signal, handler } of handlers) (process as NodeJS.EventEmitter).off(signal, handler);
     if (received !== undefined) {
       if (process.platform === "win32") process.exitCode = received === "SIGTERM" ? 143 : 130;
-      else process.kill(process.pid, received);
+      else reraiseSignal(received);
     }
   }
 };

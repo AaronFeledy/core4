@@ -80,6 +80,7 @@ provider: test
   <Scenario id="reader-path" render>
     <Step name="snippet">
       <Inline lang="ts" code="export const answer = 42;" justification="demonstrates the embedding API" />
+      <Run command="lando version" />
     </Step>
   </Scenario>
 </Guide>
@@ -383,6 +384,7 @@ axes:
   test("flattens <Inline> into a fenced code block in the declared language", () => {
     const [output] = stripRecipeReadme("recipes/inline-recipe/README.mdx", INLINE_MDX);
     expect(output?.markdown).toContain("```ts\nexport const answer = 42;\n```");
+    expect(output?.markdown).toContain("```bash\nlando version\n```");
     expect(output?.markdown).not.toContain("<Inline");
     expect(output?.markdown).not.toContain("justification");
   });

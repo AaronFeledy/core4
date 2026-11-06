@@ -37,7 +37,9 @@ describe("native CLI dispatch unification", () => {
     // Then no source-only OCLIF dispatch path remains.
     expect(source).not.toContain('import { execute } from "@oclif/core"');
     expect(runCliSource).not.toMatch(/\bexecute\s*\(/);
-    expect(runCliSource).toMatch(/\brunCompiledCli\s*\(\s*options\.argv\s*,\s*options\.signal\s*\)/);
+    expect(runCliSource).toMatch(
+      /\brunCompiledCli\s*\(\s*options\.argv\s*,\s*options\.signal\s*,\s*options\.hostProxy\s*\)/,
+    );
   });
 
   test("implemented built-ins execute their resolved catalog entry without topic switch tables", async () => {
@@ -49,7 +51,7 @@ describe("native CLI dispatch unification", () => {
 
     // Then implemented commands use one generic catalog-entry executor.
     expect(source).toContain('import { runBuiltInCommand } from "./run-built-in-command"');
-    expect(executableSource).toContain("runBuiltInCommand(builtInCommand, argv.slice(1), signal)");
+    expect(executableSource).toContain("runBuiltInCommand(builtInCommand, argv.slice(1), signal, hostProxy)");
     expect(source).not.toContain('from "./dispatch-app"');
     expect(source).not.toContain('from "./dispatch-apps"');
     expect(source).not.toContain('from "./dispatch-meta"');

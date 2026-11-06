@@ -1,10 +1,15 @@
-import { type Context, DateTime, Effect, Option, Schema } from "effect";
+import { type Context, Effect, Option, Schema } from "effect";
 
 import type { CacheError, LandoCommandError } from "@lando/sdk/errors";
-import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
+import {
+  ConfigService,
+  type EventService,
+  RuntimeProviderRegistry,
+  ScratchAppService,
+} from "@lando/sdk/services";
 
+import { type GlobalStopServices, globalStop } from "@lando/engine/operations/global-stop";
 import { taggedErrorRemediation } from "@lando/engine/providers/managed";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
@@ -52,7 +57,12 @@ export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
-export type PoweroffServices = ConfigService | EventService | RuntimeProviderRegistry | ScratchAppService;
+export type PoweroffServices =
+  | ConfigService
+  | EventService
+  | RuntimeProviderRegistry
+  | ScratchAppService
+  | GlobalStopServices;
 export type PoweroffError = CacheError | LandoCommandError | PoweroffStopError;
 
 const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
@@ -63,39 +73,21 @@ const stopDiscoveredApp = Effect.fnUntraced(function* (entry: AppsListEntry) {
     yield* scratches.destroy(entry.appId, { keepVolumes: false, reason: "poweroff" });
     return;
   }
+  if (entry.appId === GLOBAL_APP_ID) {
+    yield* globalStop({
+      target: { root: AbsolutePath.make(entry.appRoot), providerId: ProviderId.make(entry.providerId) },
+      triggeredBy: "apps:poweroff",
+    });
+    return;
+  }
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(ProviderId.make(entry.providerId));
-  const globalApp =
-    entry.appId === GLOBAL_APP_ID
-      ? { kind: "global" as const, id: AppId.make(entry.appId), root: AbsolutePath.make(entry.appRoot) }
-      : undefined;
-  if (globalApp !== undefined) {
-    const events = yield* EventService;
-    yield* events.publish(
-      PreGlobalStopEvent.make({
-        scope: "global",
-        app: globalApp,
-        triggeredBy: "apps:poweroff",
-        timestamp: yield* DateTime.now,
-      }),
-    );
-  }
   const outcome = yield* provider.destroy(
     { app: AppId.make(entry.appId) },
     { volumes: false, removeState: false },
   );
   switch (outcome.kind) {
     case "destroyed":
-      if (globalApp !== undefined) {
-        const events = yield* EventService;
-        yield* events.publish(
-          PostGlobalStopEvent.make({
-            scope: "global",
-            app: globalApp,
-            timestamp: yield* DateTime.now,
-          }),
-        );
-      }
       return;
     case "no-op":
       return yield* Effect.fail(

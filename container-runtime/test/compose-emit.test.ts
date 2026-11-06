@@ -58,6 +58,21 @@ test("emits member-only authored networks, bridge aliases, external names and ow
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 
+test.each([true, false, undefined])("emits canonical native init %s as equivalent YAML", (init) => {
+  // Given
+  const services = Object.fromEntries(
+    Object.entries(networkPlan.services).map(([name, service]) => [
+      name,
+      { ...service, ...(init === undefined ? {} : { init }) },
+    ]),
+  );
+  // When
+  const document: unknown = Bun.YAML.parse(renderCompose({ ...networkPlan, services }, ctx));
+  // Then
+  if (init === undefined) expect(document).not.toHaveProperty("services.web.init");
+  else expect(document).toHaveProperty("services.web.init", init);
+});
+
 test.each(["macvlan", undefined])("emits the canonical bridge driver %s with a bridge default", (driver) => {
   // Given a plan whose bridge driver exists only on NetworkingPlan.
   const plan: AppPlan = {

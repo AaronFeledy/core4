@@ -1,4 +1,4 @@
-import { AppPlan, landoNetworkingPlan } from "@lando/sdk/schema";
+import { AppPlan, landoNetworkingPlan, landoServiceContainerName } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
@@ -61,13 +61,14 @@ export const networkApi = (
   const requests: EngineHttpRequest[] = [];
   const containers = new Map<string, unknown>();
   const owned = {
+    Id: "owned-authored-network",
     Name: "lando-networks_private",
     Driver: "macvlan",
     Labels: networkOwnershipLabels(networkPlan),
   };
   if (options.existing) {
     for (const service of Object.values(networkPlan.services))
-      containers.set(`lando-networks-${service.name}`, {
+      containers.set(landoServiceContainerName("networks", service.name), {
         Id: `id-${service.name}`,
         Config: { Labels: commonContainerLabels(networkPlan, service) },
         State: { Running: true },
@@ -78,12 +79,26 @@ export const networkApi = (
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const name = decodeURIComponent(request.path.slice("/networks/".length));
           return (
             options.inspect?.(name) ?? {
               status: 200,
-              body: JSON.stringify(name === owned.Name ? owned : { Name: name }),
+              body: JSON.stringify(
+                name === owned.Name
+                  ? owned
+                  : name === "lando-networks"
+                    ? {
+                        Id: "owned-app-bridge",
+                        Name: name,
+                        Driver: "bridge",
+                        Labels: networkOwnershipLabels(networkPlan),
+                      }
+                    : { Name: name },
+              ),
             }
           );
         }

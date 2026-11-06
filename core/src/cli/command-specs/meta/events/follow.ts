@@ -4,7 +4,7 @@ import { Effect } from "effect";
 
 import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
 
-export const metaEventsFollowSpec: LandoCommandSpec<never> = {
+export const metaEventsFollowSpec: LandoCommandSpec<object> = {
   resultSchema: EmptyResultSchema,
   id: "meta:events:follow",
   summary: "Follow the lifecycle event trace stream for diagnostics and e2e tests.",

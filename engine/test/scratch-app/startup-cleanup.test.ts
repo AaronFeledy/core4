@@ -202,7 +202,7 @@ test("scratch converted to detached during its scope stays registered", async ()
           const entry = yield* registry.get(handle.id);
           if (entry === undefined)
             return yield* Effect.die("Scratch acquisition did not register its instance");
-          yield* registry.upsert({ ...entry, detached: true });
+          yield* registry.upsert("detach", { ...entry, detached: true });
           return handle;
         }).pipe(Effect.scoped, Effect.provide(f.layer)),
       );

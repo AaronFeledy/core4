@@ -82,6 +82,7 @@ const makeDiskHarness = async (userDataRoot: string, text: string) => {
     JSON.stringify(matchingRecord({ failureClass: "permission", detail: "Previous file watcher failure" })),
   );
   const service = makeTraefikRouterService({
+    readTraefikState: () => Effect.succeed("running"),
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     paths,

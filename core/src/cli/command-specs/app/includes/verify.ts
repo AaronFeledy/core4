@@ -29,5 +29,5 @@ export const appIncludesVerifySpec: LandoCommandSpec<
   },
   run: () => appIncludesVerify(),
   completion: (result) => ({ ok: true, exitCode: result.ok ? 0 : 1 }),
-  render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport, "text"),
+  render: (result) => renderIncludesVerifyResult(result, "text"),
 };

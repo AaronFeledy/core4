@@ -9,11 +9,12 @@ import { makeLandoPaths } from "@lando/paths";
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath, ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner, CacheService, FileSystem, PathsService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import * as AppCacheService from "../../src/cache/service.ts";
 import { canShadowHostPath } from "../../src/planner/shadow-host-checks.ts";
+import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -152,6 +153,10 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
         Layer.provide(
           Layer.mergeAll(
             PluginRegistryLayer.layer,
+            FileSyncResolver.layerWithEngine(
+              { ...TestFileSyncEngine, id: "mutagen" },
+              { platform: ["linux", "darwin", "win32"] },
+            ),
             BunFileSystem.layer,
             Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", home: appRoot, env: {} })),
           ),
@@ -164,6 +169,7 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
           service.plan(literalTestLandofile(landofile, appRoot), {
             ...TestRuntimeProvider.capabilities,
             bindMountPerformance: "slow",
+            fileSyncTargets: "prepared-volume",
           }),
         ).pipe(Effect.provide(planner)),
       );

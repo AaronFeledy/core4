@@ -45,7 +45,7 @@ tooling:
 
 Use the object form when you need `service:`, flags, args, or other task settings. An empty shorthand string is rejected; use `false` to turn a task off. The object form still accepts `cmd: ""`, but that is not a disabling shorthand.
 
-MySQL and Postgres already wait on their own probe. To wait on your app, set `healthcheck:` on the service. See [Make start wait for your app](../services/wait-for-your-app.mdx).
+MySQL and Postgres already wait on their own probe. To wait on your app, set `readiness:` on the service; `healthcheck:` configures ongoing native health independently. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults, fallback, and disabling either policy.
 
 ## Add a hostname
 
@@ -126,7 +126,7 @@ layer, then run the command again to check the remaining configuration.
 
 Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
-These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Only literal `healthcheck: false` discards an inherited probe before later layers; disabled object spellings still participate in ordinary map merging.
+These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Literal `false` under `healthcheck` or `readiness` discards that policy's inherited probe before later layers; disabled object spellings still participate in ordinary map merging. Disabling native health does not disable explicit or contributed readiness, while disabled readiness blocks fallback to native health.
 
 The same rule applies to tooling: `tooling.check: echo local` or `tooling.check: false` replaces an inherited task wholesale, including its `service`, `cmds`, and flags. Lando interprets those shorthands only after composing the layers. The bare string `disabled` is rejected; use `false` to disable a task.
 
@@ -269,6 +269,15 @@ lando app:config unset services.web.port
 lando app:config edit
 ```
 
+To see what a key accepts before you set it, describe it. `describe` reads the Landofile schema, not your app, so it works from any directory:
+
+```sh
+lando app:config describe services.web.port
+lando app:config describe services.web
+```
+
+The first line says what the key takes, for example `` `services.web.port` takes an integer from 1 to 65535. ``, followed by its description and any default. Describing a mapping such as `services.web` also lists its keys. When `set` rejects a value, its remediation names the same accepted type.
+
 Before saving, Lando validates the candidate file on its own and the effective stack with the candidate in place of `.lando.yml`. A problem the file already had elsewhere doesn't stop you from repairing one key; a write is rejected if it introduces a problem or leaves the written key, or anything under it, invalid. Lando still has to read every layer, so an unreadable file or malformed YAML in another layer stops the command. `edit` opens the file in `$VISUAL` or `$EDITOR`, or the one you pass with `--editor`; it can repair malformed YAML and saves your buffer byte for byte, template directives included.
 
 ### Preview with `--dry-run`
@@ -291,7 +300,7 @@ Lando validates a no-op the same way and writes nothing. A `set` whose value alr
 
 ### Include pins arrive with the next load
 
-Validating a candidate resolves the includes it names: Lando reads the pins already in `.lando.lock.yml`, checks cached fragments against their checksums, and may fetch a new remote fragment into the include cache under your user cache root so it can check the effective config. It never writes the lockfile, with or without `--dry-run`, and a rejected candidate leaves it alone too. An accepted write changes only `.lando.yml`. The next ordinary load, for example `lando app:config` or `lando start`, publishes the pin for a new or re-versioned include once the whole effective config has loaded successfully; `lando app:includes:update` does the same on request. A floating ref such as a branch isn't frozen by a preview: the load that pins it resolves the ref again. See [Pin a remote include](./includes-and-lockfile.mdx#pin-a-remote-include).
+Validating a candidate resolves the includes it names: Lando reads the pins already in `.lando.lock.yml`, checks cached fragments against their checksums, and may fetch a new remote fragment into the source store under your user cache root so it can check the effective config. It never writes the lockfile, with or without `--dry-run`, and a rejected candidate leaves it alone too. An accepted write changes only `.lando.yml`. The next ordinary load, for example `lando app:config` or `lando start`, publishes the pin for a new or re-versioned include once the whole effective config has loaded successfully; `lando app:includes:update` does the same on request. A floating ref such as a branch isn't frozen by a preview: the load that pins it resolves the ref again. See [Pin a remote include](./includes-and-lockfile.mdx#pin-a-remote-include).
 
 ### An unfinished write blocks the read
 

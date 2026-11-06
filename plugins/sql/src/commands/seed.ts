@@ -5,7 +5,6 @@ import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "
 
 export const spec = {
   id: "db:seed",
-  summary: "Seed a fresh database from a dump, snapshot, or running app.",
   namespace: "db",
   bootstrap: "app",
   flags: {
@@ -16,7 +15,7 @@ export const spec = {
     "from-service": { type: "string", description: "Database service in the source app." },
   },
   args: {
-    file: { type: "string", required: false, description: "Dump file to seed from." },
+    file: { type: "string", required: false, description: "Dump file to seed from.", stdio: "stdin" },
   },
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,

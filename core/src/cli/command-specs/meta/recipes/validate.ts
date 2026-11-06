@@ -40,5 +40,5 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
     }
     return recipesValidate(path, { cwd: process.cwd() });
   },
-  render: (result) => renderRecipesValidateResult(result as RecipesValidateResult),
+  render: (result) => renderRecipesValidateResult(result),
 };

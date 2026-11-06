@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import { McpTransportError, SqlConfirmRequiredError } from "@lando/sdk/errors";
 
@@ -298,4 +298,37 @@ test("projects only plain descriptor-safe progress data", () => {
   expect(exoticFailure).toThrow(McpTransportError);
   expect(toJsonCalls).toBe(0);
   expect(ignoredGetterCalls).toBe(0);
+});
+
+test("keeps DateTime result values so their schema can encode them", async () => {
+  // Given: a successful result whose schema carries a DateTimeUtc, like a database snapshot listing.
+  const createdAt = DateTime.makeUnsafe("2026-10-31T07:40:30.583Z");
+  const resultSchema = Schema.Struct({
+    snapshots: Schema.Array(Schema.Struct({ createdAt: Schema.DateTimeUtcFromString })),
+  });
+  // When: the outcome passes through inspection and then envelope encoding.
+  const outcome = await Effect.runPromise(
+    inspectMcpCommandOutcome({ _tag: "success", value: { snapshots: [{ createdAt }] } }),
+  );
+  const envelope = await Effect.runPromise(
+    buildCommandResultEnvelope({
+      command: "db:snapshots",
+      resultSchema,
+      outcome,
+      redactor: identityRedactor,
+    }),
+  );
+  // Then: the timestamp survives inspection and encodes as ISO text.
+  expect(envelope).toMatchObject({
+    ok: true,
+    result: { snapshots: [{ createdAt: "2026-10-31T07:40:30.583Z" }] },
+  });
+});
+
+test("rejects objects that only imitate a DateTime", () => {
+  const forged = Object.assign(Object.create({ toString: () => "DateTime" }), { epochMillis: 0 });
+  const result = Effect.runSync(
+    Effect.result(inspectMcpCommandOutcome({ _tag: "success", value: { forged } })),
+  );
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
 });

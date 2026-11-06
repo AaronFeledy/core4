@@ -133,6 +133,17 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
     loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLayer.layer)),
   );
   if (Result.isFailure(resolved)) {
+    if (resolved.failure._tag === "LandofileLoadError") {
+      const { failures } = resolved.failure;
+      return failedLoadResult(
+        {
+          declared: "(Landofile load failures)",
+          loadFailure: redact(resolved.failure.message),
+          includeResolution: failures.map((error) => redact(error.message)).join("\n"),
+        },
+        failures.map((error) => ({ kind: "manual" as const, description: redact(error.remediation) })),
+      );
+    }
     if (resolved.failure._tag === "LandofileParseError") {
       return failedLoadResult(
         {

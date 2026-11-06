@@ -40,13 +40,21 @@ const metadata = {
   runtime: 4 as const,
 };
 
-export type ErrorPageServer = "static" | "nginx" | "nginx-fpm" | "apache";
+export type ErrorPageServer =
+  | "static"
+  | "nginx"
+  | "nginx-fpm"
+  | "nginx-fpm-upload-dirs"
+  | "apache"
+  | "apache-upload-dirs";
 
 const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   static: 31088,
   "nginx-fpm": 31089,
   apache: 31090,
   nginx: 31091,
+  "nginx-fpm-upload-dirs": 31092,
+  "apache-upload-dirs": 31093,
 };
 
 interface ServiceSpec {
@@ -90,12 +98,45 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
           config: { type: "nginx", backend: "appserver", ports },
         },
       ];
+    case "nginx-fpm-upload-dirs":
+      return [
+        {
+          name: "appserver",
+          serviceType: php83ServiceType,
+          config: { type: "php:8.3", via: "fpm", xdebug: false },
+        },
+        {
+          name: "edge",
+          serviceType: nginxServiceType,
+          config: {
+            type: "nginx",
+            backend: "appserver",
+            uploadDirs: ["sites/*/files", "uploads*"],
+            ports,
+          },
+        },
+      ];
     case "apache":
       return [
         {
           name: "appserver",
           serviceType: php83ServiceType,
           config: { type: "php:8.3", via: "apache", xdebug: false, allowOverride: true, ports },
+        },
+      ];
+    case "apache-upload-dirs":
+      return [
+        {
+          name: "appserver",
+          serviceType: php83ServiceType,
+          config: {
+            type: "php:8.3",
+            via: "apache",
+            xdebug: false,
+            allowOverride: true,
+            uploadDirs: ["sites/*/files", "uploads*"],
+            ports,
+          },
         },
       ];
     default: {

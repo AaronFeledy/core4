@@ -34,7 +34,9 @@ lando init --recipe node-api --name=my-node-api --yes \
 | `framework` | `express`, `fastify`, `hono` | `express` |
 | `database` | `postgres`, `none` | `postgres` |
 
-The scaffold writes only `.lando.yml`. It declares an `api` service on `node:<node>` listening on port 3000 with your framework choice exposed as the `API_FRAMEWORK` environment variable, plus a `database` service when you keep Postgres. Choose `database=none` to omit the `database` service.
+The scaffold writes only `.lando.yml`. It declares an `api` service on `node:<node>` with an HTTP endpoint on port 3000 and your framework choice exposed as the `API_FRAMEWORK` environment variable, plus a `database` service when you keep Postgres. Choose `database=none` to omit the `database` service.
+
+Lando derives `PORT` from `port:` (default `3000`). Read `process.env.PORT` in your API and bind `0.0.0.0` so the proxy can reach it. An unequal or malformed authored `environment.PORT` fails planning; change `port:` instead. The default Node process stays idle: install dependencies and supply `command:` or run tooling to start your API.
 
 Two tooling commands ship with the Landofile, both running inside the `api` service:
 

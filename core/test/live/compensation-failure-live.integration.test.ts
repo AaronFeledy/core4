@@ -1,17 +1,22 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
-import { AppInfoResultSchema } from "@lando/engine/operations/info";
-import { StartAppResultSchema } from "@lando/engine/operations/start";
 import { makeLandoPaths } from "@lando/paths";
 import { appCertificateFiles } from "@lando/proxy-traefik";
 import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
-import { AppId, CommandResultEnvelope, type ServiceConnection } from "@lando/sdk/schema";
+import {
+  AppId,
+  CommandResultEnvelope,
+  InfoAppResult,
+  type ServiceConnection,
+  StartAppResult,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
 import { liveEnabled, managedProviderSocketPath } from "./scanner-live-fixture";
@@ -97,7 +102,7 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
             expect(info.exitCode, info.stdout + info.stderr).toBe(0);
             const envelope = decodeInfoCliEnvelope(info.stdout);
             expect(envelope.ok).toBe(true);
-            const result = Schema.decodeUnknownSync(AppInfoResultSchema)(envelope.result);
+            const result = Schema.decodeUnknownSync(InfoAppResult)(envelope.result);
             connections = result.services.find((service) => service.service === "web")?.connections ?? [];
             return connections.some(
               (connection) => isHttpsRoute(connection, hostname) && connection.state === "active",
@@ -117,14 +122,17 @@ test.skipIf(!liveEnabled)(
   async () => {
     // Given: a working routed nginx app. The #1462 fault blocks certificate refresh
     // and would also block the old destructive rollback; no global file is modified.
-    const appRoot = await mkdtemp(join(tmpdir(), "lando-convergence-live-"));
+    const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-convergence-live-")));
     const name = `convergence-${crypto.randomUUID().slice(0, 8)}`;
     const marker = `recovered-route-${crypto.randomUUID()}`;
     // This short lowercase/hyphen name is already a normalized planner slug.
     const container = serviceContainerName({ slug: name }, "web");
     const initialHostname = `${name}.lndo.site`;
     const newHostname = `second-${name}.lndo.site`;
-    const certificate = appCertificateFiles(makeLandoPaths(), AppId.make(name)).cert;
+    const certificate = appCertificateFiles(makeLandoPaths(), {
+      id: AppId.make(name),
+      ownerKey: appIdentityKey("owner", appRoot),
+    }).cert;
     const pinned = join(certificate, "pinned");
     const landofile = (hostnames: readonly string[]) =>
       `name: ${name}\nprovider: lando\nservices:\n  web:\n    type: nginx\n    webroot: .\n    routes:\n${hostnames.map((hostname) => `      - hostname: ${hostname}\n        scheme: both\n`).join("")}`;
@@ -145,9 +153,7 @@ test.skipIf(!liveEnabled)(
       expect(started.exitCode, started.stdout + started.stderr).toBe(0);
       const initial = await inspectWeb(container);
       expect(initial.State.Running).toBe(true);
-      const initialResult = Schema.decodeUnknownSync(StartAppResultSchema)(
-        terminalEnvelope(started.stdout).result,
-      );
+      const initialResult = Schema.decodeUnknownSync(StartAppResult)(terminalEnvelope(started.stdout).result);
       expect(
         initialResult.servicesStarted
           .find((service) => service.name === "web")
@@ -217,7 +223,7 @@ test.skipIf(!liveEnabled)(
       expect(recovered.exitCode, recovered.stdout + recovered.stderr).toBe(0);
       const envelope = terminalEnvelope(recovered.stdout);
       expect(envelope.ok).toBe(true);
-      const result = Schema.decodeUnknownSync(StartAppResultSchema)(envelope.result);
+      const result = Schema.decodeUnknownSync(StartAppResult)(envelope.result);
       expect(
         result.servicesStarted
           .find((service) => service.name === "web")

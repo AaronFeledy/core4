@@ -8,8 +8,6 @@
   "files": {
     "maxSize": 4194304,
     "ignore": [
-      "dist",
-      "**/dist",
       "node_modules",
       "**/node_modules",
       ".local",
@@ -18,6 +16,7 @@
       "**/*.tsbuildinfo",
       "bun.lock",
       "vendor/compose/compose-spec.json",
+      "plugins/github-actions/test/fixtures/actions-language",
       "docs/test/fixtures/transcripts/corrupt/invalid-json.json",
       "landofile/test/fixtures/sample.jsonc",
       "landofile/test/fixtures/bad.jsonc"
@@ -60,6 +59,10 @@
     "enabled": true
   },
   "overrides": [
+    {
+      "include": ["container-runtime/test/fixtures/applied-state-v3/**/*.json"],
+      "formatter": { "enabled": false }
+    },
     {
       "include": ["**/tsconfig*.json"],
       "json": {

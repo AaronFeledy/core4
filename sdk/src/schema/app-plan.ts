@@ -5,7 +5,9 @@ import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { FileSyncPolicy } from "./file-sync-policy.ts";
 import { EventsPlan } from "./landofile-events.ts";
+import { ListenerAuthority } from "./listener.ts";
 import { LogSource } from "./log-source.ts";
 import { DataStorePlan, MountPlan } from "./mounts.ts";
 import {
@@ -31,6 +33,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
@@ -82,6 +85,10 @@ const ServicePlanFields = {
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
+  init: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Native container init for direct-child signal forwarding and orphan reaping; absence retains provider defaults.",
+  }),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
   home: Schema.optionalKey(ServiceHomePlan).annotate({
@@ -99,6 +106,13 @@ const ServicePlanFields = {
   readiness: Schema.optionalKey(HealthcheckPlan).annotate({
     description:
       "Startup probe; defaults to healthcheck when absent. Ongoing native health uses healthcheck only.",
+  }),
+  readinessSource: Schema.optionalKey(Schema.Literals(["authored", "contributed"])).annotate({
+    description:
+      "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
+  }),
+  listenerAuthority: Schema.optionalKey(ListenerAuthority).annotate({
+    description: "Structured ownership and configuration advice for the planned listener.",
   }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
@@ -352,6 +366,9 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
  * canonicalizes an app root before hashing it, and every other producer of an
  * ownership key — including volume labels written by a provider — derives it
  * from this function so one root always yields one key.
+ * Scratch routes are the exception: they reserve `scratch:<unique scratch id>`
+ * as the owner input because cwd forks share a source root and their configured
+ * instance path need not be canonical or survive until orphan cleanup.
  */
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);
@@ -408,6 +425,10 @@ export const AppPlan = Schema.Struct({
   fileSync: Schema.Array(FileSyncPlan).annotate({
     description: "File-sync sessions selected during planning.",
   }),
+  fileSyncPolicy: Schema.optionalKey(FileSyncPolicy).annotate({
+    description:
+      "Recorded selection and per-service project-file policy; absent historical reasons are unknown.",
+  }),
   /**
    * Effective Landofile `events:` and `config.yml hostEvents` steps compiled
    * by the planner. Omitted on hand-built plans. Provider applied state never
@@ -417,6 +438,10 @@ export const AppPlan = Schema.Struct({
   events: Schema.optionalKey(EventsPlan).annotate({
     description:
       "Effective event steps resolved from current project and host configuration, never applied state.",
+  }),
+  committedLiteralDigests: Schema.optionalKey(Schema.Array(patternString(SHA256_HEX_PATTERN))).annotate({
+    description:
+      "Value-free SHA-256 digests of sensitive values written as literals in committed YAML Landofile layers; such values are masked only as whole tokens wherever they appear.",
   }),
   metadata: PlanMetadata.annotate({ description: "Plan provenance and resolution timestamp." }),
   extensions: ProviderExtensionConfig.annotate({ description: "Provider-specific extension intent." }),

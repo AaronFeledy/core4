@@ -16,7 +16,12 @@ import {
 } from "../detached-worker/process.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
-import { type HostProxyWorkerSpawner, defaultSpawnWorker, hostProxyWorkerArgv } from "./worker-process.ts";
+import {
+  type HostProxyWorkerSpawner,
+  defaultSpawnWorker,
+  hostProxyExecutableIdentity,
+  hostProxyWorkerArgv,
+} from "./worker-process.ts";
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 import { registerHostProxyCredentials, reuseHostProxyWorker } from "./worker-reuse.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
@@ -80,6 +85,9 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
           ...(options.shimDigest === undefined ? {} : { shimDigest: options.shimDigest }),
           providerId: options.plan.provider,
           workerEntry: hostProxyWorkerEntry(),
+          executableIdentity: yield* Effect.tryPromise(() =>
+            hostProxyExecutableIdentity(hostProxyWorkerEntry()),
+          ),
         }),
       );
       const reused = yield* reuseHostProxyWorker(options, configDigest);
@@ -124,7 +132,7 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                 yield* registerHostProxyCredentials(ready);
                 const transport: HostProxyTransportKind =
                   ready.transport ??
-                  (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
+                  (options.hostGatewayName === undefined ? "unix-socket" : "tcp-host-gateway");
                 const probeServices = hostProxyEligibleServices(options.plan).map((service) =>
                   String(service.name),
                 );

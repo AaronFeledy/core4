@@ -59,6 +59,7 @@ export const result = (...services: ReadonlyArray<InfoAppService>): InfoAppResul
 });
 
 export const decorated = (columns: number): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns,

@@ -20,6 +20,7 @@ describe("tooling task shorthands", () => {
         expect(validationIssuesFromSchemaIssue(result.failure.issue)).toEqual([
           {
             path: ["tooling", "retired"],
+            kind: "value",
             message: "`disabled` is not a command; use false to disable a task",
           },
         ]);

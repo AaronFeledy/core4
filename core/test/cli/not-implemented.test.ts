@@ -77,13 +77,13 @@ describe("deferred OCLIF commands", () => {
   });
 
   test("return structured remediation when invoked with universal format flags", async () => {
-    const result = await runCli(["meta:plugin:login", "--format", "json"]);
+    const result = await runCli(["meta:events:follow", "--format", "json"]);
     const envelope = parseErrorEnvelope(result.stdout);
     const output = `${result.stdout}\n${result.stderr}`;
 
     expect(result.exitCode).not.toBe(0);
     expect(envelope?.error?._tag ?? output).toContain("NotImplementedError");
-    expect(envelope?.command ?? output).toContain("meta:plugin:login");
+    expect(envelope?.command ?? output).toContain("meta:events:follow");
     expect(output).not.toContain("Nonexistent flag");
   }, 60_000);
 });

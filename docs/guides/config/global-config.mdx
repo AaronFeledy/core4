@@ -89,9 +89,140 @@ Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a
 
 `defaultProviderId` is the provider `lando setup` persisted. `LANDO_PROVIDER` overrides it per command and never writes it. See [What persists](../setup/provider-selection.mdx#what-persists).
 
+## Find where Lando keeps files
+
+Lando writes to three directories, called roots. Print the ones in effect on your machine:
+
+```sh
+lando config get userConfRoot
+lando config get userDataRoot
+lando config get userCacheRoot
+```
+
+  <Scenario id="find-roots" render>
+    <Step name="print-roots">
+      <Run command="lando config get userCacheRoot --format=json" />
+      <Verify command="lando config get userCacheRoot --format=json" expect={{ stdout: { regex: "\"key\":\\s*\"userCacheRoot\"" } }} />
+      <Verify command="lando config get userDataRoot --format=json" expect={{ stdout: { regex: "\"key\":\\s*\"userDataRoot\"" } }} />
+    </Step>
+  </Scenario>
+
+| Root | Linux | macOS | Windows | What lives there |
+| --- | --- | --- | --- | --- |
+| `userConfRoot` | `~/.config/lando` | `~/Library/Application Support/Lando` | `%APPDATA%\Lando` | Files you edit: `config.yml`, `config.d/`, `global.config.yml`, plugin trust, and shared includes |
+| `userDataRoot` | `~/.local/share/lando` | `~/Library/Application Support/Lando` | `%LOCALAPPDATA%\Lando\Data` | What Lando can't rebuild: the managed runtime and its storage, plugins, the global app, scratch apps, snapshots, file-sync history, shell history, and update records |
+| `userCacheRoot` | `~/.cache/lando` | `~/Library/Caches/Lando` | `%LOCALAPPDATA%\Lando\Cache` | What Lando can rebuild or do without: app plan and command caches, fetched includes, verified downloads, logs, and temporary transfer files |
+
+On Linux, the defaults follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_CACHE_HOME` when you set them. On macOS, config and data share one directory. To move a root, set `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, or `LANDO_USER_CACHE_ROOT`; the data and cache roots also accept a `config.yml` key of the same name.
+
+### Clear the cache
+
+You can delete the user cache root whenever no Lando command is running, even while apps are up. Nothing in it is the only copy of anything, so the next command rebuilds what it needs. That command takes longer, and it needs network access if your Landofile pulls a remote include. You lose old logs.
+
+Deleting it while a command runs can fail that command, for example a `lando db:export` halfway through its transfer. Run the command again.
+
+Don't delete the user data root by hand. It holds the runtime your apps run on, your scratch apps, and file-sync history, so removing it can destroy app data and leave containers Lando can no longer manage. To remove Lando and everything it stores, use [`lando uninstall --purge`](../setup/uninstall-and-purge.mdx).
+
+## Allow additional host URL schemes
+
+Use `hostProxy.allowedSchemes` to allow URL schemes beyond the host proxy's built-in list. From your host terminal, set the full list of additional schemes and check the effective value:
+
+```sh
+lando config set hostProxy.allowedSchemes '["figma","slack"]'
+lando config get hostProxy.allowedSchemes --format=json
+```
+
+The equivalent `config.yml` entry is:
+
+```yaml
+hostProxy:
+  allowedSchemes:
+    - figma
+    - slack
+```
+
+The lookup should contain `figma` and `slack` unless a higher-precedence layer replaces the array. Arrays replace across layers; include every additional scheme you want to keep. Use scheme names without a trailing colon. Scheme comparisons ignore case. `file` is always rejected, regardless of case; reveal files by path instead. Each host-proxy call reads current disk config in a fresh Lando process, so changes take effect on the next call without restarting the app. The worker's host environment remains the one captured when it started.
+
+## Choose a host-wide file-sync policy
+
+`defaultFileSyncEngine` controls acceleration on providers with slow bind mounts. Leave it unset for automatic selection. Lando considers only engines that support your platform, the provider's sync-target capabilities, exclusion patterns, and `two-way-safe` synchronization. It chooses a unique matching default, then a sole eligible engine. With no eligible engine, apps use ordinary binds with reason `no-compatible-engine`; macOS and Docker Desktop do not need an opt-out workaround. Ambiguous choices fail with remediation rather than depending on plugin load order.
+
+To deliberately keep every app mount ordinary, set the reserved policy `passthrough` and verify the effective value:
+
+```sh
+lando config set defaultFileSyncEngine passthrough
+lando config get defaultFileSyncEngine --format=json
+```
+
+The equivalent `config.yml` entry is:
+
+```yaml
+defaultFileSyncEngine: passthrough
+```
+
+You can name an installed engine instead, but its id never bypasses support checks. An unknown or unsupported explicit choice fails when host policy is evaluated, including on native providers. A valid choice does not force native binds to accelerate. `passthrough` is a no-session policy, not an engine. For one service only, use `appMount.accelerate: false` in its Landofile.
+
+After changing the setting, run these commands from an app directory to inspect the desired policy without starting services:
+
+```sh
+lando app:cache:refresh
+lando info --format=json
+```
+
+Read `result.fileSync.planned` and, when available, `result.fileSync.applied`. `pendingChange` is true when both realizations are known and their snapshots differ. If desired planning fails, available applied state is still shown, `planned` is absent, and `pendingChange` is false. Run `lando app:cache:refresh` to inspect that planning failure. The engine appears once at app level; each service reports its mode and reason, exclusion mechanism, and host-backed includes. These are plan facts, not daemon health. Historical reasons can be `unknown`.
+
+Changes take effect on the next `lando start`. Existing accelerated apps must first drain through their recorded engine, preserving container-side edits. Missing tools or failed setup, availability, or target preparation after acceleration is planned fail with remediation; they never silently downgrade the app. See [Switch between accelerated and ordinary mounts](../setup/file-sync-mutagen.mdx#switch-between-accelerated-and-ordinary-mounts) before changing an app that already uses sync.
+
+To return to automatic selection, run `lando config unset defaultFileSyncEngine`, then `lando config get defaultFileSyncEngine --format=json`. If a drop-in or `LANDO_CONFIG__DEFAULT_FILE_SYNC_ENGINE` still supplies a value, clear it in that higher-precedence layer too.
+
+  <Scenario id="file-sync-host-policy" render>
+    <Step name="set-ordinary-policy">
+      <UseFixture name="file-sync-policy" />
+      <Run command="lando config set defaultFileSyncEngine passthrough" />
+      <Verify command="lando config get defaultFileSyncEngine --format=json" expect={{ stdout: { regex: "\"value\":\\s*\"passthrough\"" } }} />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"fileSync\":\\s*\\{\\s*\"planned\":\\s*\\{\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"global-passthrough\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"engineId\")(?![\\s\\S]*\"applied\")[\\s\\S]*\"pendingChange\":\\s*false" } }} />
+    </Step>
+    <Step name="restore-automatic-policy">
+      <Run command="lando config unset defaultFileSyncEngine" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"fileSync\":\\s*\\{\\s*\"planned\":\\s*\\{\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"native-provider\"" } }} />
+    </Step>
+  </Scenario>
+
+## Describe a key before you set it
+
+`lando config describe <key>` tells you what a key takes without reading or changing `config.yml`. It prints the accepted type and limits, the key's purpose, and, when the schema declares one, the default Lando uses while the key is absent:
+
+```sh
+lando config describe router.httpPort
+lando config describe telemetry
+```
+
+Leave out the key to list every top-level key, or name a mapping such as `router` to list its keys. `--format=json` adds `schema`, the JSON Schema for that key, so a script or agent can check a value before writing it. A key Lando doesn't know fails with `ConfigKeyNotFoundError`, which lists the valid keys at that level and suggests the closest one. `lando app:config describe` and `lando global:config describe` answer the same question for Landofile keys.
+
+  <Scenario id="describe-key" render>
+    <Step name="describe-port">
+      <Run command="lando config describe router.httpPort --format=json" />
+      <Verify command="lando config describe router.httpPort --format=json" expect={{ stdout: { regex: "\"summary\":\\s*\"an integer from 1 to 65535\"" } }} />
+    </Step>
+  </Scenario>
+
 ## Get, set, unset, validate, or edit a key
 
-Lando picks the value type from the config schema: text first, then number, boolean, null, or JSON. Use `--type` to force a type, for example `--type=json` to write a JSON array into a field that also accepts text.
+`set` works out the value type for you. It tries your value as text first, then as a number, boolean, null, or JSON, and keeps the first one the config schema accepts. Pass `--type` only when a field accepts more than one type and you want the later one, for example `--type=number` to store `8080` as a number in a field that also accepts text.
+
+When no reading of the value fits, the error reports the one that got past the type check, so `lando config set router.httpPort 99999999` fails with `Expected a value between 1 and 65535`, and its remediation names what the key takes: an integer from 1 to 65535. Each issue in `--format=json` carries `kind`: `type` when the value is the wrong kind of value, `value` when the kind fits but a limit or allowed value rejects it, and `unexpected` or `missing` for a key that shouldn't or must be there.
+
+  <Scenario id="reject-out-of-range-port" render={false} reason="Inferred set failures report only the interpretation that passed the type check">
+    <Step name="set-port">
+      <Run command="lando config set router.httpPort 99999999 --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "^(?![\\s\\S]*as text:)[\\s\\S]*takes an integer from 1 to 65535" }} />
+    </Step>
+  </Scenario>
 
 `set` and `unset` keep comments and formatting outside the value or entry you change. If Lando can't edit safely, it refuses without changing the file. Use `lando config edit` or edit by hand instead. The same rule applies to `lando app:config` and `lando global:config`; use their `edit` verb when an edit is refused.
 
@@ -240,7 +371,7 @@ An invalid `renderer` or `logLevel` in `config.yml`, a drop-in, or `LANDO_CONFIG
 
 `lando doctor` still runs with a broken config and exits `1`. Its first section, `global-config`, reports the `ConfigError` and its fix. Sections that need the config (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when you pass `--app` or `--deprecations`) show as `SKIPPED` instead of failing one by one. Checks that don't depend on config, such as `filesystem-watch`, still run. `lando uninstall` and `lando version` also run without a valid config.
 
-If config passes but the provider runtime cannot load, doctor reports a `provider-bootstrap` self check and exits `1`. Only runtime-dependent sections show as `SKIPPED`, with reasons pointing to that failure; doctor does not suggest `--fix` for subsystems it could not inspect. Host-only checks still run, including host DNS (`host-proxy`), network trust, and requested app version constraints. The DNS probe uses the configured `proxy.defaultDomain` without requiring a host-proxy service. It still needs valid global config. See [Read the report](../subsystems/doctor-walkthrough.mdx#read-the-report) for the section list.
+If config passes but the provider runtime cannot load, doctor reports a `provider-bootstrap` self check and exits `1`. Only runtime-dependent sections show as `SKIPPED`, with reasons pointing to that failure; doctor does not suggest `--fix` for subsystems it could not inspect. Host-only checks still run, including host DNS (`host-dns`), network trust, and requested app version constraints. The DNS probe uses the configured `proxy.defaultDomain` independently of the host-proxy worker. It still needs valid global config. See [Read the report](../subsystems/doctor-walkthrough.mdx#read-the-report) for the section list.
 
   <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError with env provenance from an invalid env override">
     <Step name="build-with-bad-override">
@@ -309,7 +440,7 @@ hostEvents:
       service: ":host"
 ```
 
-Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
+Run `lando config validate`, then `lando config --format=json` to check the result. `lando config edit` validates the same rules before saving. Validation reports a step that uses `${NAME}`, which Lando never expands here; write `$NAME` for the step's shell or `{{ env.NAME }}` for your host's value. See [Run tasks at app lifecycle events](../landofile/events.mdx) for step forms, ordering, and skip rules.
 
   <Scenario id="host-events-hand-edit" render={false} reason="Reject config set/unset of hostEvents">
     <Step name="reject-set">
@@ -324,12 +455,12 @@ Run `lando config validate`, then `lando config --format=json` to check the resu
 
 ## Configure the shared global app
 
-`lando global:config` reads and writes the shared global app, the always-on app that runs host-wide services such as the proxy, Mailpit, and the SSH agent. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `appEnv` or `router`, and `lando global:config` owns the global app's services.
+`lando global:config` reads and writes the shared global app, which runs host-wide services such as the proxy, Mailpit, and the SSH agent when needed. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `appEnv` or `router`, and `lando global:config` owns the global app's services.
 
-Install the global app first, then override a bundled service, check the effective result, and apply it:
+Generate the global configuration first, then override a bundled service, check the effective result, and apply it:
 
 ```sh
-lando global:install
+lando global:reconcile
 lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
 lando global:config --format=json
 lando global:start
@@ -350,7 +481,7 @@ lando global:start
 
 ## Read the effective global config
 
-`lando global:config --format=json` prints the effective global Landofile, not the raw files. `result.landofile` is every present layer merged in order, and `result.paths` names the files behind it. The envelope also reports `app` (always `global`), `source` (the fixed literal `global`), and `materialized` (whether the generated file exists yet). Until `lando global:install` generates `.lando.dist.yml`, the view reports `materialized: false` with an empty Landofile, even if your `.lando.yml` already has overrides. Run `lando global:install` to see the merged result.
+`lando global:config --format=json` prints the effective global Landofile, not the raw files. `result.landofile` is every present layer merged in order with ineligible contributions excluded, and `result.paths` names the files behind it. The envelope also reports `app` (always `global`), `source` (the fixed literal `global`), and `materialized` (whether the generated file exists yet). Until `.lando.dist.yml` has been generated, the view reports `materialized: false` with an empty Landofile, even if your `.lando.yml` already has overrides. Run `lando global:reconcile` to generate configuration from your saved choices without starting services.
 
 Lando loads the global root exactly like an app root: the same six layers from `<userDataRoot>/global/`, each in YAML or TypeScript form. A later layer wins:
 
@@ -369,9 +500,50 @@ Every layer resolves its `includes:` before precedence applies, with `<userDataR
 
 The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and runs on the host provider, whatever the layers say. A `name:` or `provider:` key in these layers does not rename or move it. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
 
+Contribution enablement is separate from service configuration. Use
+`lando global:disable mailpit` to disable Mailpit, and
+`lando global:enable mailpit` to re-enable it. Lando saves policy by plugin owner in
+`<userConfRoot>/global.config.yml`; `lando global:list --format=json` reports your
+choice and its source. Lando uses an individual contribution choice first, then a
+package choice, then the contribution's first recorded default. A package action
+clears that package's individual choices and applies to its future contributions
+too. `lando global:reconcile` preserves choices and retries pending work; it never
+starts a container.
+
+Disabling a dependency can affect running user or scratch apps. Disable and
+reconcile protect those consumers before saving policy; unavailable inspection
+also causes refusal. Inspect `--dry-run --format=json` before proceeding. The
+explicit `--allow-disruption` acknowledgement applies only to its invocation and
+leaves the affected apps running. It doesn't relax resource ownership checks,
+named-volume retention, or protection for an in-flight global or app activation.
+Finish that active operation before retrying a refused policy command. See [Disable a shared service](../global/uninstall-and-purge.mdx#disable-a-shared-service)
+for the consumer details and recovery steps.
+
+Global mutations first lock the saved policy, then the actual global app root.
+Embedded hosts that share `<userConfRoot>/global.config.yml` serialize changes
+even when their runtime or data roots differ. Hosts sharing a runtime root also
+serialize changes to that root.
+
+Nested in-process command or SDK calls can reuse ownership for the same policy
+file and global root. Finish the current operation before switching either
+target. A child CLI process needs its own locks; recognized parent ownership
+causes refusal rather than lending the parent's locks. Run that mutation
+separately after the parent finishes. A child can then acquire fresh locks normally.
+
+A disabled, blocked, or unverified contribution is omitted from the effective
+Landofile, including any overrides for its id in the six layers or their includes.
+View, validation, and config writes use the same eligibility rules. Those overrides
+stay on disk and take effect again when the contribution becomes eligible. Editing
+an override does not enable a service. Policies retained for removed plugins do
+not hide authored services that reuse those ids. `global:list` explains eligibility
+with `state`, `reasons`, and `capabilitySource`, without starting a provider runtime.
+Startup uses the same rules with the provider's actual capabilities. See
+[Disable a shared service](../global/uninstall-and-purge.mdx#disable-a-shared-service)
+for the stop, data-retention, and recovery behavior.
+
 ### Write the canonical layer as TypeScript
 
-If `<userDataRoot>/global/.lando.ts` exists, it is the canonical layer. `lando global:config --format=json` and `lando global:config validate` load it. `set`, `unset`, and `edit` refuse with `NotImplementedError`; edit the TypeScript file directly. `lando global:install` still generates `.lando.dist.yml` but does not create a competing `.lando.yml`.
+If `<userDataRoot>/global/.lando.ts` exists, it is the canonical layer. `lando global:config --format=json` and `lando global:config validate` load it. `set`, `unset`, and `edit` refuse with `NotImplementedError`; edit the TypeScript file directly. `lando global:reconcile` still generates `.lando.dist.yml` but does not create a competing `.lando.yml`.
 
 ## Change the global app
 

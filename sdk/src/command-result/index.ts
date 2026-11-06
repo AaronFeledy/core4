@@ -27,6 +27,7 @@ import { JsonProjectionError } from "../errors/command.ts";
 import { emitYamlDocument } from "../yaml/document.ts";
 import { encodeStreamFrame } from "./frames.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
+import { encodeRedactedJson } from "./redacted-json.ts";
 
 export {
   identityRedactor,
@@ -153,9 +154,6 @@ const fallbackEnvelope = (command: string, trace?: CommandTrace): unknown => ({
   ...(trace === undefined ? {} : { trace }),
 });
 
-const encodeJsonLine = (value: unknown, redactor: Redactor): string =>
-  redactor.redactString(JSON.stringify(value));
-
 /**
  * Serialize one envelope in the requested format. YAML is emitted from the
  * already-redacted JSON document, so both formats carry the identical model and
@@ -166,7 +164,7 @@ const encodeEnvelopeLine = (
   redactor: Redactor,
   format: CommandResultEnvelopeFormat | undefined,
 ): string => {
-  const json = encodeJsonLine(value, redactor);
+  const json = encodeRedactedJson(value, redactor);
   if (format !== "yaml") return json;
   const yaml = emitYamlDocument(JSON.parse(json) as unknown);
   return yaml.endsWith("\n") ? yaml.slice(0, -1) : yaml;
@@ -176,7 +174,12 @@ export const encodeCommandResult = (
   options: EncodeCommandResultOptions,
 ): Effect.Effect<string, JsonProjectionError> =>
   encodeCommandEnvelope(options).pipe(
-    Effect.map((envelope) => encodeEnvelopeLine(envelope, options.redactor, options.format)),
+    Effect.flatMap((envelope) =>
+      Effect.try({
+        try: () => encodeEnvelopeLine(envelope, options.redactor, options.format),
+        catch: (error) => error,
+      }),
+    ),
     Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.fail(error)

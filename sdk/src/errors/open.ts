@@ -26,9 +26,8 @@ export class OpenTargetUnresolvedError extends Schema.TaggedError<OpenTargetUnre
 ) {}
 
 /**
- * Raised when a target URL uses a scheme other than `http` or `https`. Because
- * targets come from the resolved plan this is a structural invariant, but it is
- * still asserted before the opener runs.
+ * Raised when a target URL violates the opener's scheme policy. Host-proxy
+ * calls accept defaults plus configured schemes, but never file URLs.
  */
 export class HostProxyOpenUrlSchemeError extends Schema.TaggedError<HostProxyOpenUrlSchemeError>()(
   "HostProxyOpenUrlSchemeError",
@@ -36,7 +35,9 @@ export class HostProxyOpenUrlSchemeError extends Schema.TaggedError<HostProxyOpe
     message: Schema.String,
     detail: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
-      Schema.withConstructorDefault(Effect.succeed("Open only http:// or https:// URLs.")),
+      Schema.withConstructorDefault(
+        Effect.succeed("Use an allowed URL scheme, or reveal app files by path instead of file: URLs."),
+      ),
     ),
     cause: Schema.optional(Schema.Unknown),
     /** The rejected scheme (e.g. `ftp`, `file`). */

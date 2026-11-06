@@ -6,11 +6,11 @@ import { loadLandofileFile } from "@lando/landofile/service";
 import { type LoadScopedLandofile, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, SecretStore, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { resolvePlanEnvironment } from "../environment-values.ts";
+import { planApp } from "../plan-app.ts";
 
 const serviceType: ServiceType = {
   id: "authoring-integrity",
@@ -36,14 +36,8 @@ const plan = Effect.fnUntraced(
   function* (landofile: LoadScopedLandofile) {
     const registry = yield* PluginRegistry;
     return yield* planApp(
-      { ...registry, loadServiceType: () => Effect.succeed(serviceType) },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      landofile,
-      TestRuntimeProvider.capabilities,
+      { landofile, providerCapabilities: TestRuntimeProvider.capabilities },
+      Layer.succeed(PluginRegistry, { ...registry, loadServiceType: () => Effect.succeed(serviceType) }),
     );
   },
   Effect.provide(PluginRegistryLayer.layerWith({ bundled: false }, [])),

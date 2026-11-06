@@ -20,7 +20,7 @@ import {
   AppPlanner,
   DataMover,
   EventService,
-  FileSyncEngine,
+  type FileSyncEngine,
   LandofileService,
   PathsService,
   RouterService,
@@ -123,7 +123,7 @@ export const makeHarness = (
         }),
     ...(options.quiesceEffect === undefined
       ? {}
-      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
+      : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
@@ -168,12 +168,13 @@ export const makeHarness = (
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
     ),
     ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
-    ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
+    ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
   );
   return { layer, events };
 };
@@ -189,3 +190,4 @@ export const runDestroyTarget = (
       app: { kind: "user", id: plan.id, root: plan.root },
     }).pipe(Effect.provide(harness.layer)),
   );
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";

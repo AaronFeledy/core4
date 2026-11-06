@@ -3,11 +3,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileParseError, ManagedFileTransactionError } from "@lando/sdk/errors";
-import { ManagedFileTransactionGuard } from "@lando/sdk/services";
-import { Effect, Result } from "effect";
+import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
+import { Cause, Effect, Layer, Result } from "effect";
 import * as legacyKeys from "../src/legacy-keys.ts";
 import { legacyLoadFailure } from "../src/legacy-load-failure.ts";
-import { loadLandofileLayers } from "../src/service.ts";
+import { composeLandofileRootLayers } from "../src/root-compile.ts";
+import { layer, loadLandofileLayers } from "../src/service.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 let root: string;
 beforeEach(async () => {
@@ -17,6 +19,54 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 const load = () => loadLandofileLayers(root, join(root, ".lando.yml"));
+
+test.each([1, 2])("legacy canonical detection dominates %i missing includes", async (count) => {
+  await writeFile(
+    join(root, ".lando.yml"),
+    `recipe: lamp\nconfig: {}\nincludes: [${Array.from({ length: count }, (_, index) => `./missing-${index}.yml`).join(", ")}]\n`,
+  );
+  const result = await Effect.runPromise(load().pipe(Effect.result));
+  expect(Result.isFailure(result) && result.failure._tag).toBe("Lando3LandofileDetected");
+});
+
+test("composes legacy root layers without classifying their dialect", async () => {
+  await writeFile(join(root, ".lando.yml"), "recipe: lamp\nconfig: {}\n");
+  const composed = await Effect.runPromise(composeLandofileRootLayers(root));
+  expect(composed.merged).toMatchObject({ recipe: "lamp", config: {} });
+});
+
+test.each([
+  ["defect", Cause.die(new TypeError("transaction guard defect"))],
+  ["interruption", Cause.interrupt(42)],
+] as const)("discovery preserves the original %s cause", async (_kind, cause) => {
+  // Given: a prerequisite that terminates without a typed load failure.
+  const serviceLayer = layer({
+    ports: makeTestLandofilePorts(root),
+    templates: { modules: [], context: { env: {}, scope: "test", bootstrapLevel: "minimal" } },
+  }).pipe(
+    Layer.provide(Layer.succeed(StateStore, makeTestLandofileStateStore())),
+    Layer.provide(
+      Layer.succeed(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          assertReadable: () => Effect.void,
+          ensureConsistent: () => Effect.failCause(cause),
+          pending: () => Effect.succeed(null),
+        }),
+      ),
+    ),
+  );
+  // When
+  const exit = await Effect.runPromiseExit(
+    Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(serviceLayer)),
+  );
+  // Then
+  expect(exit._tag).toBe("Failure");
+  if (exit._tag !== "Failure") throw new Error("expected discovery to terminate");
+  expect(exit.cause.reasons.map(({ annotations: _annotations, ...reason }) => reason)).toEqual(
+    cause.reasons.map(({ annotations: _annotations, ...reason }) => reason),
+  );
+});
 
 test("preserves dialect-mix detection for a legacy layer that fails during preparation", async () => {
   // Given

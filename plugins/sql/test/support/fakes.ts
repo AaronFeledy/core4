@@ -5,7 +5,7 @@ import { gzipSync } from "node:zlib";
 
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import { PortNumber } from "@lando/sdk/schema";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Stream } from "effect";
 import { familyFromServiceType } from "../../src/families.ts";
 
 import {
@@ -14,6 +14,7 @@ import {
   SqlRecoveryUnavailableError,
 } from "@lando/sdk/errors";
 import type {
+  DataEndpoint,
   DataTransferResult,
   DataTransferSpec,
   SnapshotFilter,
@@ -48,6 +49,7 @@ const liveHarnesses: SqlTestHarness[] = [];
 
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
+  const reads: DataEndpoint[] = [];
   const snapshots: RecordedSnapshot[] = [];
   const restores: Array<ReturnType<SqlTestHarness["restores"]>[number]> = [];
   const execs: RecordedExec[] = [];
@@ -83,6 +85,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         MYSQL_DATABASE: "sql-app",
         ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
+      extensions: {},
       storage,
     },
   };
@@ -91,6 +94,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
+      extensions: {},
       storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
   }
@@ -197,6 +201,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         }
         return { accelerated: true, sizeBytes: 12 };
       }),
+    read: (from) => {
+      reads.push(from);
+      const payload = options.readPayload ?? new TextEncoder().encode("dump");
+      return Stream.succeed(payload);
+    },
     snapshot: (store, opts) =>
       Effect.sync((): SnapshotHandle => {
         lifecycle.push("snapshot");
@@ -246,6 +255,8 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
             ];
       }),
     pruneSnapshots: () => Effect.succeed([]),
+    stagingDir: join(root, "transfer-staging"),
+    privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
     canonicalizeSourcePath: (path) =>
       Effect.try({
         try: () => AbsolutePath.make(realpathSync(path)),
@@ -270,19 +281,24 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
-        return Effect.succeed({ exitCode: 0, stdout: options.observedVersion ?? "8.0", stderr: "" });
+        return sqlResult({ exitCode: 0, stdout: options.observedVersion ?? "8.0", stderr: "" });
       }
       if (isCount) {
-        return Effect.sync(() => {
-          countAttempts += 1;
-          if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
-            return { exitCode: 1, stdout: "", stderr: "" };
-          }
-          return { exitCode: 0, stdout: options.countStdout ?? "0", stderr: "" };
-        });
+        return Stream.unwrap(
+          Effect.map(
+            Effect.sync(() => {
+              countAttempts += 1;
+              if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
+                return { exitCode: 1, stdout: "", stderr: "" };
+              }
+              return { exitCode: 0, stdout: options.countStdout ?? "0", stderr: "" };
+            }),
+            sqlResult,
+          ),
+        );
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return Effect.succeed({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
+      return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
     resume: Effect.fnUntraced(function* () {
@@ -354,6 +370,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     root,
     deps,
     transfers: () => transfers,
+    reads: () => reads,
     snapshots: () => snapshots,
     restores: () => restores,
     execs: () => execs,
@@ -372,3 +389,14 @@ export const cleanupSqlTestDeps = (): void => {
     harness.dispose();
   }
 };
+
+export const sqlResult = (result: {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}) =>
+  Stream.make(
+    { kind: "stdout" as const, chunk: new TextEncoder().encode(result.stdout) },
+    { kind: "stderr" as const, chunk: new TextEncoder().encode(result.stderr) },
+    { exitCode: result.exitCode },
+  );

@@ -15,10 +15,12 @@ import {
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 
-import { Downloader, FileSyncEngine, type FileSyncError, PathsService } from "@lando/sdk/services";
+import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
 
+import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import {
@@ -28,7 +30,6 @@ import {
   setupFailureRemediation,
   writeSetupReadiness,
 } from "../../commands/setup-readiness";
-import * as SetupFileSyncEngine from "./setup-file-sync-engine";
 import { type FileSyncStatus, inputSkipFileSync } from "./setup-inputs";
 
 interface RuntimeServiceStatusForReadiness {
@@ -80,13 +81,13 @@ export class SetupStepFailedError extends Schema.TaggedError<SetupStepFailedErro
 export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
   join(userDataRoot, "setup", "file-sync-deferred.json");
 
-const recordDeferredFileSyncSetup = (userDataRoot: string): Effect.Effect<void, never> =>
+const recordDeferredFileSyncSetup = (userDataRoot: string, engineId?: string): Effect.Effect<void, never> =>
   Effect.promise(async () => {
     const markerPath = setupDeferredFileSyncPath(userDataRoot);
     await mkdir(join(userDataRoot, "setup"), { recursive: true });
     await writeFile(
       markerPath,
-      `${JSON.stringify({ status: "deferred", engineId: "mutagen", resumeCommand: "lando setup" })}\n`,
+      `${JSON.stringify({ status: "deferred", engineId, resumeCommand: "lando setup" })}\n`,
       "utf-8",
     );
   }).pipe(Effect.catch(() => Effect.void));
@@ -174,93 +175,142 @@ export const makeSetupReadinessRecorder = (
 };
 
 interface FileSyncSetupStepContext {
-  readonly provider: { readonly capabilities: { readonly bindMountPerformance: string } };
+  readonly provider: {
+    readonly capabilities: {
+      readonly bindMountPerformance: "native" | "slow" | "none";
+      readonly fileSyncTargets?: "prepared-volume";
+    };
+  };
   readonly input: unknown;
   readonly userDataRoot: string | undefined;
   readonly network: ResolvedSetupNetworkTrust;
   readonly recorder: SetupReadinessRecorder;
+  readonly defaultEngine?: string | undefined;
 }
 
 export const runFileSyncSetupStep = Effect.fn("SetupCommand.runFileSyncSetupStep")(function* (
   ctx: FileSyncSetupStepContext,
 ): Effect.fn.Return<FileSyncStatus, FileSyncError> {
-  const { provider, input, userDataRoot, network, recorder } = ctx;
+  const { provider, input, userDataRoot, network, recorder, defaultEngine } = ctx;
   let fileSyncStatus: FileSyncStatus = "satisfied";
 
-  if (provider.capabilities.bindMountPerformance === "slow" && inputSkipFileSync(input)) {
-    fileSyncStatus = "deferred";
-    if (userDataRoot !== undefined) yield* recordDeferredFileSyncSetup(userDataRoot);
+  const bindMountPerformance =
+    provider.capabilities.bindMountPerformance === "slow" ? ("slow" as const) : ("native" as const);
+  if (inputSkipFileSync(input) && bindMountPerformance === "slow" && defaultEngine !== "passthrough") {
+    if (userDataRoot !== undefined) yield* recordDeferredFileSyncSetup(userDataRoot, defaultEngine);
     yield* recorder.record({
       id: "file-sync",
       status: "deferred",
-      evidence: "Mutagen binary download skipped on this slow-mount host.",
+      evidence: "File-sync engine installation skipped on this slow-mount host.",
       remediation:
-        "Run `lando setup` without `--skip-file-sync` to install Mutagen binaries; ordinary mounts remain in use until a live session client ships.",
+        "Run `lando setup` without `--skip-file-sync` before starting accelerated mounts, or explicitly disable acceleration for ordinary binds.",
     });
-  } else if (provider.capabilities.bindMountPerformance === "slow") {
-    const recordInstalledFileSync = (evidence: string) =>
-      Effect.sync(() => {
-        fileSyncStatus = "installed";
-      }).pipe(
-        Effect.andThen(
-          recorder.record({
-            id: "file-sync",
-            status: "installed",
-            evidence,
-          }),
-        ),
-      );
-
-    let fileSync = yield* Effect.serviceOption(FileSyncEngine);
-    if (fileSync._tag === "None") {
-      const paths = yield* Effect.serviceOption(PathsService);
-      const downloader = yield* Effect.serviceOption(Downloader);
-      if (paths._tag === "Some" && downloader._tag === "Some") {
-        const dependencies = Layer.merge(
-          Layer.succeed(PathsService, paths.value),
-          Layer.succeed(Downloader, downloader.value),
-        );
-        fileSync = yield* Effect.serviceOption(FileSyncEngine).pipe(
-          Effect.provide(SetupFileSyncEngine.layer.pipe(Layer.provide(dependencies))),
-          Effect.catchCause(() => Effect.succeed(Option.none())),
-        );
-      }
-    }
-    if (fileSync._tag === "Some") {
-      yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
-        Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
-        Effect.tapError((cause) => recorder.recordFailure("file-sync", cause)),
-      );
-      const liveClientAvailable = yield* fileSync.value.isAvailable.pipe(
-        Effect.catch(() => Effect.succeed(false)),
-      );
-      if (liveClientAvailable) {
-        yield* recordInstalledFileSync(
-          "File-sync setup installed Mutagen binaries and the live client is available.",
-        );
-      } else {
-        fileSyncStatus = "unavailable";
-        yield* recorder.record({
-          id: "file-sync",
-          status: "skipped",
-          evidence: "Mutagen binaries are installed, but this build has no live file-sync session client.",
-          remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
+    return "deferred";
+  }
+  const paths = yield* Effect.serviceOption(PathsService);
+  const resolver = yield* Effect.serviceOption(FileSyncResolver);
+  const platform = paths._tag === "Some" ? paths.value.platform : undefined;
+  const selectionPolicy =
+    platform === undefined
+      ? undefined
+      : fileSyncSelectionInput(platform, {
+          capabilities: provider.capabilities,
+          defaultEngine,
         });
-      }
+  const select =
+    resolver._tag === "Some" && selectionPolicy !== undefined
+      ? yield* Effect.cached(Effect.suspend(() => resolver.value.select(selectionPolicy)))
+      : undefined;
+  if (defaultEngine !== undefined && defaultEngine !== "passthrough" && select !== undefined) {
+    const validation = yield* Effect.result(select);
+    if (Result.isFailure(validation)) {
+      yield* recorder.recordFailure("file-sync", validation.failure);
+      return "unavailable";
+    }
+  }
+
+  // Native binds and the reserved passthrough policy never acquire an engine.
+  if (bindMountPerformance === "native" || defaultEngine === "passthrough") {
+    yield* recorder.record({
+      id: "file-sync",
+      status: "satisfied",
+      evidence:
+        defaultEngine === "passthrough"
+          ? "defaultFileSyncEngine is passthrough; ordinary binds are used without a file-sync engine."
+          : "Native bind mounts satisfy file-sync setup.",
+    });
+    return fileSyncStatus;
+  }
+
+  const recordInstalledFileSync = (evidence: string) =>
+    Effect.sync(() => {
+      fileSyncStatus = "installed";
+    }).pipe(
+      Effect.andThen(
+        recorder.record({
+          id: "file-sync",
+          status: "installed",
+          evidence,
+        }),
+      ),
+    );
+
+  let fileSync = Option.none<FileSyncEngineShape>();
+  if (resolver._tag === "Some" && select !== undefined) {
+    const selection = yield* Effect.result(select);
+    if (Result.isFailure(selection)) {
+      fileSyncStatus = "unavailable";
+      yield* recorder.recordFailure("file-sync", selection.failure);
+      return fileSyncStatus;
+    }
+    const selected = selection.success;
+    if (selected === undefined) {
+      fileSyncStatus = "satisfied";
+      yield* recorder.record({
+        id: "file-sync",
+        status: "satisfied",
+        evidence:
+          "No compatible file-sync engine is available; ordinary bind mounts satisfy project-file access.",
+      });
+      return fileSyncStatus;
+    }
+    const acquisition = yield* Effect.result(resolver.value.acquire(selected.id));
+    if (Result.isFailure(acquisition)) {
+      fileSyncStatus = "unavailable";
+      yield* recorder.recordFailure("file-sync", acquisition.failure);
+      return fileSyncStatus;
+    }
+    fileSync = Option.some(acquisition.success);
+  }
+
+  if (fileSync._tag === "Some") {
+    yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
+      Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
+      Effect.tapError((cause) => recorder.recordFailure("file-sync", cause)),
+    );
+    const liveClientAvailable = yield* fileSync.value.isAvailable.pipe(
+      Effect.catch(() => Effect.succeed(false)),
+    );
+    if (liveClientAvailable) {
+      yield* recordInstalledFileSync(
+        `File-sync setup installed ${fileSync.value.id} and the live client is available.`,
+      );
     } else {
       fileSyncStatus = "unavailable";
       yield* recorder.record({
         id: "file-sync",
         status: "skipped",
-        evidence: "No live file-sync engine is available; ordinary mounts remain available.",
+        evidence: `File-sync engine ${fileSync.value.id} is installed, but this build has no live file-sync session client.`,
         remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
       });
     }
   } else {
+    fileSyncStatus = "unavailable";
     yield* recorder.record({
       id: "file-sync",
-      status: "satisfied",
-      evidence: "Native bind mounts satisfy file-sync setup.",
+      status: "skipped",
+      evidence: "No live file-sync engine is available; ordinary mounts remain available.",
+      remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
     });
   }
 

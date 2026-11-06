@@ -41,6 +41,7 @@ const composeBootPlan = (): Promise<ServicePlan> =>
       },
       baseKind: "lando",
       appName: "boot-test",
+      appSlug: "boot-test",
       appRoot: "/srv/apps/boot-test",
       normalizedConfig: { type: "node:22" },
       features: [{ id: "lando.boot", definition: bootFeature() }],

@@ -27,6 +27,7 @@ test("dispatches typed invocation credentials as concrete provider exec environm
       },
       baseKind: "lando",
       appRoot: "/tmp/exec-values",
+      appSlug: "exec-values",
       normalizedConfig: {},
       features: [],
     }),

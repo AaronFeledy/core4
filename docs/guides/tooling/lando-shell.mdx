@@ -28,6 +28,21 @@ Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it start
 
 Use the `--service` flag, not a positional argument. `lando shell appserver` fails with `Unexpected argument: appserver` instead of opening a host shell.
 
+## Keep shell and client history across rebuilds
+
+Bash and interactive clients such as `mysql`, `mariadb`, `psql`, `redis-cli`, `node`, and `python` write their default history files in the service user's home directory. Lando keeps that home on a persistent volume by default when it knows where the home is, so `lando rebuild` keeps those history files.
+
+Run `lando info` to check for the home mount labeled `(home)`. See [Keep a service home across rebuilds](../services/home-and-host.mdx) for the details, including `home: false` to turn off automatic home persistence and `home.path` to name the home directory in a custom image.
+
+To leave that history off disk for one service session, add `--no-history` on `lando shell --service` or `lando ssh`. For that session only, Lando disables history for the login shell, mysql and mariadb clients, psql, redis-cli, the Node REPL, and Python 3.13+. It does not erase history already on disk. Other tools may still write their own history files. Replace `appserver` with your service name:
+
+```sh
+lando shell --service appserver --no-history
+lando ssh --service appserver --no-history
+```
+
+`lando ssh` opens the same kind of interactive service shell; see [Open a shell in a service](../cli/ssh.mdx). Treat history as sensitive: passwords typed on command lines can land in it. `lando destroy --volumes` removes the app's home volumes and the history stored in them.
+
 ## Forward agent-context env
 
 `lando exec` and `lando shell --service` copy host agent-context markers into the target service. Only this allowlist is forwarded:
@@ -52,23 +67,35 @@ Ordinary CLI commands discover current app configuration. An embedded App handle
 
 While a service shell is interactive: stdin is attached, stdout and stderr stream back, terminal resize (`SIGWINCH`) updates the running shell, and Ctrl-C cancels the exec stream.
 
-PTY allocation and host-terminal detection are separate. `lando exec`, `lando ssh`, and service tooling borrow attached stdout facts such as `TERM`, `COLORTERM`, width, and height only when stdout is a real terminal. Redirected output and MCP calls do not gain terminal identity from a stream sink. An explicit PTY request still allocates a provider PTY through a pipe, using provider-safe size defaults without inventing `TERM` or `COLORTERM`.
+PTY allocation and host-terminal detection are separate. `lando exec`, `lando ssh`, and service tooling borrow attached stdout facts such as `TERM`, `COLORTERM`, width, height, and the host color opt-out (`NO_COLOR=1`) only when stdout is a real terminal. Redirected output and MCP calls do not gain terminal identity from a stream sink. An explicit PTY request still allocates a provider PTY through a pipe, using provider-safe size defaults without inventing `TERM` or `COLORTERM`.
 
 ## Use host-mode REPL
 
-Host mode reads one line at a time and evaluates it as a Bun Shell template. Each accepted line composes with pipes, redirection, globs, command substitution, and built-ins (`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank line re-prompts without evaluating anything.
+Host mode reads one line at a time and evaluates it as a Bun Shell template. Bun Shell supports pipes, redirection, globs, command substitution, and shell builtins across Linux, macOS, and Windows. It is not your Bash or zsh session and does not load your login-shell configuration. See the [Bun Shell syntax reference](https://bun.com/docs/runtime/shell) for its supported language. A blank line re-prompts without evaluating anything.
 
-`lando` in a line runs Lando. `bun` uses your host Bun on `PATH`, or Lando's embedded Bun if none is installed. You don't need a separate Bun installation.
+A line that uses a POSIX form Bun Shell can't run, such as `${NAME}` or `>&2`, is not evaluated. Lando prints each problem and its fix and sets the last status to `2`. When the fix is mechanical, the next prompt already holds the corrected line: press Enter to run it, or edit it first. For `echo ${HOME} >&2`, the prompt comes back as `echo $HOME 1>&2`. Nothing runs until you press Enter, and the rejected line isn't saved to your shell history file. [Write host commands in Bun Shell syntax](./bun-shell-scripts.mdx#write-host-commands-in-bun-shell-syntax) lists each form and what to write instead.
+
+Each line starts in the app root with `$PWD` identifying that directory, not the directory you launched Lando from. Lando resolves symbolic links before execution. An explicitly configured `PWD` overrides this default, even when it is empty.
+
+Lines run independently. A `cd` or variable assignment affects only that line; it does not change the next prompt's directory or environment. Put dependent commands on one line or save them in a [project script](./bun-shell-scripts.mdx).
+
+`lando` in a line runs Lando when you call it by name. `bun` uses your host Bun on `PATH`, or the Bun Lando ships if none is installed. You don't need a separate Bun installation. A path-qualified Lando binary in a project script still hits the Bun Shell export limitation described in [Call `lando` from a script](./bun-shell-scripts.mdx#call-lando-from-a-script).
 
 A `${secret:<id>}` or `${secret:<scheme>://path}` reference (for example `${secret:DB_PASSWORD}` from `LANDO_SECRET_DB_PASSWORD`, or `${secret:op://Vault/Item/field}` from 1Password) resolves only when that line runs, through the same routed secret stores as `lando start`. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 
-Host-mode history persists per accepted line to a per-app history file under the user cache root. `--no-history` disables history for the session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
+Host-mode history persists per accepted line to a per-app history file under the user data root, so clearing Lando's cache doesn't erase it. `lando shell --no-history` skips saving shell history for that session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
 
 Every accepted line publishes `pre-shell-exec` before it runs and `post-shell-exec` with its exit code after. Subscribers receive the redacted command text, cwd, and output, not the raw line.
 
 Ctrl+C aborts only the currently running line. The REPL prompt returns. An interrupted line reports exit status 130.
 
 Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line. Typing `exit` does the same. `exit <code>` ends it with that status. On both paths, the REPL restores the terminal before `lando shell` returns.
+
+The JSON result for a completed shell session contains `mode` (`host` or
+`service`), `app`, `shell`, `cwd`, and `exitCode`. Service mode also includes
+`service`; host mode omits it. Selecting JSON does not make the shell
+non-interactive. Use `lando shell --json` to list the result keys without
+opening a session, or `lando exec` to run a command without a terminal.
 
 `lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected invocation never opens the REPL. The command fails fast with tagged `ShellRequiresTtyError` instead of hanging. The error points at the scriptable equivalent:
 

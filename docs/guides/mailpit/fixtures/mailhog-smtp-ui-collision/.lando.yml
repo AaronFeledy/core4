@@ -1,0 +1,5 @@
+name: mailhog-listener-collision
+services:
+  inbox:
+    type: mailhog
+    port: 8025

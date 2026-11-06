@@ -1,4 +1,6 @@
-import type { CompiledCommand, OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
+import type { ToolingInputDeclaration } from "@lando/sdk/schema";
+import { argStdioDescription } from "./arg-stdio";
+import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
@@ -23,8 +25,14 @@ export type CommandHelpSpec = {
   readonly summary: string;
   readonly topLevelAlias?: Parameters<typeof resolveTopLevelAliases>[0]["topLevelAlias"];
   readonly aliases?: Parameters<typeof resolveTopLevelAliases>[0]["aliases"];
-  readonly args?: CompiledCommand["args"];
-  readonly flags?: CompiledCommand["flags"];
+  readonly args?: Readonly<
+    Record<
+      string,
+      OclifArgDefinition &
+        Pick<OclifFlagDefinition, "description" | "options"> & { readonly stdio?: "stdin" | "stdout" }
+    >
+  >;
+  readonly flags?: Readonly<Record<string, OclifFlagDefinition>>;
   readonly examples?: ReadonlyArray<string>;
   readonly usage?: string;
   readonly strict?: boolean;
@@ -41,25 +49,7 @@ export type CommandHelpOptions = {
   readonly aliasPolicy?: HelpAliasPolicy;
 };
 
-export type ToolingHelpInput = {
-  readonly flags: readonly {
-    readonly name: string;
-    readonly alias?: string;
-    readonly boolean: boolean;
-    readonly choices?: readonly string[];
-    readonly default?: string | boolean;
-    readonly required: boolean;
-    readonly description?: string;
-  }[];
-  readonly args: readonly {
-    readonly name: string;
-    readonly order: number;
-    readonly choices?: readonly string[];
-    readonly default?: string;
-    readonly required: boolean;
-    readonly description?: string;
-  }[];
-};
+export type ToolingHelpInput = ToolingInputDeclaration;
 
 export type ToolingHelpEntry = {
   readonly id: string;
@@ -99,7 +89,9 @@ const typeableFor = (
 
 export const helpFlagToken = (name: string, definition: OclifFlagDefinition): string => {
   const short = definition.char === undefined ? "" : `, -${definition.char}`;
-  return `--${definition.name ?? name}${short}`;
+  const value =
+    definition.type === "boolean" ? "" : definition.valueType === "integer" ? " <integer>" : " <value>";
+  return `--${definition.name ?? name}${short}${value}`;
 };
 
 export const helpArgToken = (name: string, definition: OclifArgDefinition, repeatable: boolean): string => {
@@ -109,7 +101,7 @@ export const helpArgToken = (name: string, definition: OclifArgDefinition, repea
 
 export const renderCommandUsage = (
   name: string,
-  command: { readonly args?: CompiledCommand["args"]; readonly strict?: boolean; readonly usage?: string },
+  command: Pick<CommandHelpSpec, "args" | "strict" | "usage">,
 ): string => {
   if (command.usage !== undefined && command.usage.length > 0) return `${name} ${command.usage}`;
   const definitions = Object.entries(command.args ?? {});
@@ -119,7 +111,7 @@ export const renderCommandUsage = (
 };
 
 export const renderCommandHelpFlags = (command: {
-  readonly flags?: CompiledCommand["flags"];
+  readonly flags?: CommandHelpSpec["flags"];
   readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
 }): ReadonlyArray<string> => {
   const entries = Object.entries(formatFlagDefsForCommand(command))
@@ -129,8 +121,8 @@ export const renderCommandHelpFlags = (command: {
   const lines = ["", "FLAGS"];
   for (const [name, definition] of entries) {
     const options = definition.options === undefined ? "" : ` (${definition.options.join(", ")})`;
-    const description = definition.description === undefined ? "" : ` ${definition.description}${options}`;
-    lines.push(`  ${helpFlagToken(name, definition)}${description}`);
+    const description = definition.description === undefined ? "" : ` ${definition.description}`;
+    lines.push(`  ${helpFlagToken(name, definition)}${description}${options}`);
   }
   return lines;
 };
@@ -176,6 +168,15 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
   const flagLines = renderCommandHelpFlags(entry.spec).map((line) =>
     line === "FLAGS" ? style.heading(line) : line,
   );
+  const argRows = Object.entries(entry.spec.args ?? {}).map(([name, arg]) => {
+    const description = argStdioDescription(arg);
+    return `  ${name}${helpItemMeta({
+      ...(description === undefined ? {} : { description }),
+      ...(arg.options === undefined ? {} : { choices: arg.options }),
+      required: arg.required === true,
+      sensitive: false,
+    })}`;
+  });
   return [
     entry.spec.summary,
     "",
@@ -184,6 +185,7 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
     ...aliasLines(names.extras, style),
     ...deferredStatusLines(entry.status, style),
     ...flagLines,
+    ...helpSection("ARGUMENTS", argRows, style),
     ...exampleLines(entry.spec.examples, style),
     "",
     globalFlagsFooter(entry.spec),
@@ -195,6 +197,7 @@ type HelpItemMeta = {
   readonly choices?: readonly string[];
   readonly default?: string | boolean;
   readonly required: boolean;
+  readonly sensitive: boolean;
 };
 
 const helpItemMeta = (item: HelpItemMeta): string => {
@@ -203,10 +206,10 @@ const helpItemMeta = (item: HelpItemMeta): string => {
     item.choices === undefined || item.choices.length === 0 ? "" : ` (${item.choices.join(", ")})`;
   const defaultText = item.default === undefined ? "" : ` [default: ${String(item.default)}]`;
   const requiredText = item.required ? " [required]" : "";
-  return `${description}${choices}${defaultText}${requiredText}`;
+  return `${description}${choices}${defaultText}${requiredText}${item.sensitive ? " [sensitive]" : ""}`;
 };
 
-const toolingSection = (title: string, rows: readonly string[], style: HelpStyle): readonly string[] =>
+const helpSection = (title: string, rows: readonly string[], style: HelpStyle): readonly string[] =>
   rows.length === 0 ? [] : ["", style.heading(title), ...rows];
 
 export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelpOptions): string => {
@@ -214,7 +217,7 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
   const names = typeableFor(entry.id, [], options?.aliasPolicy, true);
   const input = entry.input;
   const usage =
-    input === undefined
+    input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0)
       ? `lando ${names.primary} [args...]`
       : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
           input.args.length === 0
@@ -228,7 +231,7 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
       ? []
       : input.flags.map((flag) => {
           const alias = flag.alias === undefined ? "" : `, -${flag.alias}`;
-          return `  --${flag.name}${alias}${helpItemMeta(flag)}`;
+          return `  --${flag.name}${flag.boolean ? "[=true|false]" : "=<value>"}${alias}${helpItemMeta(flag)}`;
         });
   const argRows = input === undefined ? [] : input.args.map((arg) => `  ${arg.name}${helpItemMeta(arg)}`);
   const lines = [
@@ -237,8 +240,8 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
     style.heading("USAGE"),
     `  ${style.command(usage)}`,
     ...aliasLines(names.extras, style),
-    ...toolingSection("FLAGS", flagRows, style),
-    ...toolingSection("ARGUMENTS", argRows, style),
+    ...helpSection("FLAGS", flagRows, style),
+    ...helpSection("ARGUMENTS", argRows, style),
   ];
   if (entry.service !== undefined) lines.push("", `Runs in service ${entry.service}`);
   return lines.join("\n");

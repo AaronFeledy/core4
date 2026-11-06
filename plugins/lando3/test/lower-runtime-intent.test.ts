@@ -2,13 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
+import { normalizeAssignments } from "../src/environment.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "../src/host-reachability.ts";
 import { lowerScannerAndHome, withHomeIntent } from "../src/lower-runtime-intent.ts";
 import type { LoweringPatch, ServiceLoweringContext } from "../src/lowering-contract.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator, testPorts } from "./fixtures/test-ports.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: testPorts().serviceFacts,
   serviceName: "web",
   keyPath: ["services", "web"],
   fallbackSourceId: "source",
@@ -44,7 +46,7 @@ describe("scanner", () => {
       "dropped services.web.scanner.okCodes.2",
       "dropped services.web.scanner.okCodes.3",
       "dropped services.web.scanner.maxRedirects",
-      "rewritten services.web.scanner",
+      "needs-review services.web.scanner",
     ]);
   });
 
@@ -72,6 +74,7 @@ describe("scanner", () => {
 
   test("keeps false and drops the redundant true", () => {
     expect(lowerScannerAndHome({ scanner: false }, ctx)).toEqual({
+      claims: [["scanner"]],
       patch: { scanner: false },
       diagnostics: [],
     });
@@ -198,12 +201,29 @@ describe("host reachability", () => {
     ]);
   });
 
-  test("drops an authored LANDO_HOST_IP", () => {
+  test("drops an authored LANDO_HOST_IP at its authored key or list index", () => {
+    // Given the variable authored as a map key and as the last of duplicate list assignments
     const diagnostics: LoweringPatch["diagnostics"][number][] = [];
-    expect(withoutHostIpVariable({ LANDO_HOST_IP: "1.2.3.4" }, ctx, ["environment"], diagnostics)).toEqual(
-      {},
+    const map = { LANDO_HOST_IP: "1.2.3.4" };
+    const list = ["LANDO_HOST_IP=1.1.1.1", "KEEP=1", "LANDO_HOST_IP=1.2.3.4"];
+    // When
+    const fromMap = withoutHostIpVariable(
+      normalizeAssignments(map, { ctx, relative: ["environment"] }, "environment").entries,
+      ctx,
+      diagnostics,
     );
-    expect(summary(diagnostics)).toEqual(["rewritten services.web.environment.LANDO_HOST_IP"]);
+    const fromList = withoutHostIpVariable(
+      normalizeAssignments(list, { ctx, relative: ["overrides", "environment"] }, "environment").entries,
+      ctx,
+      diagnostics,
+    );
+    // Then
+    expect(fromMap).toEqual({});
+    expect(fromList).toEqual({ KEEP: "1" });
+    expect(summary(diagnostics)).toEqual([
+      "rewritten services.web.environment.LANDO_HOST_IP",
+      "rewritten services.web.overrides.environment.2",
+    ]);
   });
 });
 

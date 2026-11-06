@@ -15,7 +15,7 @@ export const GLOBAL_COMMAND_VERBS = new Set([
   "uninstall",
 ]);
 
-export const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate"]);
+export const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate", "describe"]);
 
 export const RECIPES_COMMAND_VERBS = new Set(["list", "describe", "validate"]);
 
@@ -34,6 +34,9 @@ export const SHARE_COMMAND_VERBS = new Set(["list", "stop"]);
 export const AGENT_SKILLS_COMMAND_VERBS = new Set(["install", "update", "remove"]);
 
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] === "app:config" && argv[1] === "describe") return ["app:config:describe", ...argv.slice(2)];
+  if ((argv[0] === "global:config" || argv[0] === "meta:global:config") && argv[1] === "describe")
+    return ["meta:global:config:describe", ...argv.slice(2)];
   if (argv[0] === "scratch") {
     const verb = argv[1];
     if (verb !== undefined && SCRATCH_COMMAND_VERBS.has(verb)) {
@@ -83,6 +86,7 @@ export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): Reado
     if (verb === undefined || !GLOBAL_COMMAND_VERBS.has(verb)) return argv;
     if (verb === "config") {
       const configVerb = argv[2];
+      if (configVerb === "describe") return ["meta:global:config:describe", ...argv.slice(3)];
       if (configVerb !== undefined && GLOBAL_CONFIG_VERBS.has(configVerb)) {
         return [`global:config:${configVerb}`, ...argv.slice(3)];
       }
@@ -119,6 +123,7 @@ export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): Reado
     return argv;
   }
   if (argv[1] !== "config") return argv;
+  if (argv[2] === "describe") return ["app:config:describe", ...argv.slice(3)];
   if (argv[2] === "translate") return ["app:config:translate", ...argv.slice(3)];
   if (argv[2] === "lint") return ["app:config:lint", ...argv.slice(3)];
   if (argv[2] === "explain") return ["app:config:explain", ...argv.slice(3)];

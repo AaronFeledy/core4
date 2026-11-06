@@ -54,6 +54,7 @@ import * as RendererRuntime from "@lando/renderer/runtime";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { makeStateStore } from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
@@ -83,20 +84,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -111,6 +99,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -296,8 +285,10 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
+    stateStoreLayer,
     landofileServiceLayer,
     plannerLive,
     registryLive,
@@ -307,9 +298,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     EnvironmentValueResolverLayer.layer.pipe(
       Layer.provide(Layer.mergeAll(EnvSecretStore.layer, redactionLive)),
     ),
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
-    ScratchInitAppPortLayer.layer,
+    ScratchInitAppPortLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer, BunProcessRunner.layer)),
+    ),
     BunDataMover.layer.pipe(
       Layer.provide(registryLive),
       Layer.provide(
@@ -334,7 +327,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
     options.configLayer ?? LandoConfigService.layer,
     EnvSecretStore.layer,
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
@@ -952,7 +945,11 @@ describe("scratch run cleanup and warm repeats", () => {
 
       // Losing the registry entry (a wiped cache) turns the kept scratch into an
       // orphan whose cache dir and provider resources gc --prune then reaps.
-      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).remove(result.scratchId));
+      await Effect.runPromise(
+        makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess })).remove(
+          result.scratchId,
+        ),
+      );
       const gc = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
           Effect.provide(layer),
@@ -1216,10 +1213,20 @@ describe("scratch run rendering", () => {
         .trim()
         .split("\n")
         .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
-      expect(frames).toHaveLength(3);
-      expect(frames[0]).toMatchObject({ _tag: "stdout", chunk: "piped-in\n" });
-      expect(frames[1]).toMatchObject({ _tag: "stderr", chunk: "warn\n" });
-      expect(frames[2]).toMatchObject({ _tag: "result", envelope: { result: { kept: true } } });
+      expect(frames.filter((frame) => frame._tag === "event").map((frame) => frame.event)).toEqual([
+        "task.tree.start",
+        "task.start",
+        "pre-build",
+        "post-build",
+        "task.complete",
+        "task.tree.complete",
+      ]);
+      expect(frames.filter((frame) => frame._tag !== "event")).toMatchObject([
+        { _tag: "stdout", chunk: "piped-in\n" },
+        { _tag: "stderr", chunk: "warn\n" },
+        { _tag: "result", envelope: { result: { kept: true } } },
+      ]);
+      expect(frames.at(-1)?._tag).toBe("result");
       expect(io.stderr()).toBe("");
     });
   });

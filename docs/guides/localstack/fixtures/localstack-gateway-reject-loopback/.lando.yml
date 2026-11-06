@@ -1,0 +1,6 @@
+name: localstack-gateway-reject-loopback
+services:
+  aws:
+    type: localstack
+    environment:
+      GATEWAY_LISTEN: "127.0.0.1:4566"

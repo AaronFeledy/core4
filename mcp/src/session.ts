@@ -2,7 +2,7 @@ import { ConfirmationPrompt } from "@lando/engine/operations/confirmation-prompt
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { CORE_VERSION } from "@lando/engine/version";
 import type { McpCatalog, McpServeOptions } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
+import type { Redactor, TieredRedactionValues } from "@lando/sdk/secrets";
 import { Context, Effect, Fiber, Layer, Option, Schema, Semaphore, Stdio } from "effect";
 import * as McpProtocol from "effect/ai/McpProtocol";
 import * as McpSchema from "effect/ai/McpSchema";
@@ -10,7 +10,7 @@ import * as McpServer from "effect/ai/McpServer";
 import { stringifyBoundedJson } from "./bounded-json";
 import { confirmationPrompt } from "./confirmation";
 import type { McpDispatchDeps, McpNotify } from "./dispatch";
-import { dispatchTool } from "./dispatch";
+import { dispatchTool, registerToolInputRedaction } from "./dispatch";
 import { makeNestedExecute } from "./execute";
 import { type MemoryPressureLevel, attachMemoryPressureListener } from "./memory-pressure";
 import type { McpCommandExecutorShape } from "./port";
@@ -29,7 +29,8 @@ interface McpSession {
   readonly deps: Omit<McpDispatchDeps, "execute" | "notify">;
   readonly executor: McpCommandExecutorShape;
   readonly redactor: Redactor;
-  readonly payloadValues: () => Iterable<string>;
+  readonly bodyRedactor: Redactor;
+  readonly payloadValues: () => TieredRedactionValues;
   readonly handleMemoryPressure: (level: MemoryPressureLevel) => void;
 }
 
@@ -78,6 +79,7 @@ export const serveSession = Effect.fnUntraced(
                   message,
                 });
               });
+              yield* registerToolInputRedaction(entry.spec, input);
               const decodedInput = yield* Effect.try({
                 try: () => SchemaInput(input),
                 catch: () => stdioTransportError("MCP tool arguments must be an object."),
@@ -95,7 +97,12 @@ export const serveSession = Effect.fnUntraced(
               const callContext = Option.isSome(prompt)
                 ? Context.add(runtimeContext, ConfirmationPrompt, prompt.value)
                 : runtimeContext;
-              const output = makeStreamFrameSink(notify, session.redactor, session.payloadValues);
+              const output = makeStreamFrameSink(
+                notify,
+                session.redactor,
+                session.payloadValues,
+                session.bodyRedactor,
+              );
               const nested = makeNestedExecute(callContext, output, session.executor);
               const execute: McpDispatchDeps["execute"] = (entry, runInput) =>
                 semaphore.withPermits(1)(nested(entry, runInput));

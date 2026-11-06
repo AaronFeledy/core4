@@ -4,6 +4,7 @@ import {
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
+  HealthcheckTargetUnsupportedError,
   PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
@@ -41,6 +42,15 @@ const setupFields = {
   remediation: errorFields.remediation,
 };
 const cases = {
+  HealthcheckTargetUnsupportedError: errorCase(
+    HealthcheckTargetUnsupportedError,
+    new HealthcheckTargetUnsupportedError({
+      message: errorFields.message,
+      remediation: errorFields.remediation,
+      service: canary,
+      target: "host",
+    }),
+  ),
   EnvironmentValueResolutionError: errorCase(
     EnvironmentValueResolutionError,
     new EnvironmentValueResolutionError({

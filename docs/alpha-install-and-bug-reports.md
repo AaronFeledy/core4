@@ -120,7 +120,15 @@ sudo systemctl daemon-reload
 lando setup
 ```
 
-**Missing `XDG_RUNTIME_DIR`:** log out and back in. If it is still missing, your session manager needs a distro-specific fix.
+**Missing private runtime directory base:** setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
+
+```bash
+install -d -m 0700 "$HOME/.lando-runtime"
+export XDG_RUNTIME_DIR="$HOME/.lando-runtime"
+lando setup
+```
+
+Lando creates its own `lando-<id>` directory under that base; it never uses the base directly.
 
 ### Use Docker as a Linux fallback
 

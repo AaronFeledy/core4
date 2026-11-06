@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
+import { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -11,9 +12,32 @@ import {
 } from "@lando/sdk/schema";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { bringUp, withServiceStartLogTail } from "../src/podman/bring-up.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
+
+test("log-tail enrichment preserves listener evidence", () => {
+  const listener = {
+    service: "db",
+    port: 6380,
+    transport: "tcp",
+    basis: "probe-target",
+    state: "loopback-only",
+    listening: [{ address: "127.0.0.1", port: 6380 }],
+  } as const;
+  const error = new ServiceStartError({
+    providerId: "lando",
+    operation: "bringUp",
+    service: "web",
+    message: "Failed",
+    remediation: "Fix db.",
+    listener,
+  });
+  expect(
+    withServiceStartLogTail(error, { service: "db", lines: ["failure"], truncated: false }).listener,
+  ).toEqual(listener);
+});
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-order-app");
 const dbName = ServiceName.make("db");
@@ -75,11 +99,75 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
   };
 };
 
+test("failed dependency observes its own TCP namespace alongside its logs", async () => {
+  const original = planWithDependency(dependentNames.web, true);
+  const db = original.services[dbName];
+  if (db === undefined) throw new TypeError("Missing db");
+  const plan = {
+    ...original,
+    services: {
+      ...original.services,
+      [dbName]: {
+        ...db,
+        endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+        listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
+      },
+    },
+  } satisfies AppPlan;
+  const fake = makePodmanApi(1);
+  const observed: string[] = [];
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (request) => {
+      const body = request.body;
+      if (
+        request.path.endsWith("/exec") &&
+        typeof body === "object" &&
+        body !== null &&
+        "Cmd" in body &&
+        Array.isArray(body.Cmd) &&
+        body.Cmd[0] === "cat"
+      ) {
+        observed.push(request.path);
+        return Effect.succeed({ status: 201, body: '{"Id":"listener"}' });
+      }
+      if (request.path === "/exec/listener/json")
+        return Effect.succeed({ status: 200, body: '{"ExitCode":1}' });
+      if (fake.api.request === undefined) throw new TypeError("Missing request");
+      return fake.api.request(request);
+    },
+    stream: (request) => {
+      if (request.path !== "/exec/listener/start") return Stream.empty;
+      const payload = new TextEncoder().encode(
+        "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n0: 00000000:18EB 00000000:0000 0A 0:0 0:0 0 0 0 1\n",
+      );
+      const frame = new Uint8Array(8 + payload.length);
+      frame[0] = 1;
+      new DataView(frame.buffer).setUint32(4, payload.length);
+      frame.set(payload, 8);
+      return Stream.make(frame);
+    },
+  };
+  const error = await Effect.runPromise(Effect.flip(bringUp(plan, { api, ctx })));
+  expect(error).toMatchObject({
+    _tag: "ServiceStartError",
+    service: "web",
+    listener: { service: "db", port: 6380, state: "not-listening" },
+  });
+  expect(observed).toEqual(["/containers/lando-bring-up-order-app--db/exec"]);
+  if (error._tag !== "ServiceStartError") throw error;
+  expect(error.remediation.split("\n").slice(0, 2)).toEqual([
+    "Make db listen on 6380, or set `port: 6379` if that is the port it uses.",
+    "Pass `--port 6380` to Redis in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
+  ]);
+});
+
 const makePodmanApi = (
   healthExitCode: number,
   existing: ReadonlyArray<string> = [],
   failedStarts: ReadonlyArray<string> = [],
   alreadyRunning: ReadonlyArray<string> = [],
+  networkOwner: AppPlan = planWithDependency(dependentNames.web, true),
 ) => {
   const labelFor = (name: string): Readonly<Record<string, string>> =>
     commonContainerLabels(
@@ -116,10 +204,17 @@ const makePodmanApi = (
     request: (request) =>
       Effect.sync(() => {
         record(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)/u);
         const name = resolveName(containerMatch?.[1]);
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 200, body: "{}" };
+          const networkName = decodeURIComponent(request.path.slice("/networks/".length));
+          return {
+            status: 200,
+            body: JSON.stringify(ownedNetworkInspection(networkOwner, networkName)),
+          };
         }
         if (request.method === "GET" && request.path.endsWith("/json") && name !== undefined) {
           return containers.has(name)
@@ -194,9 +289,9 @@ test("starts a service_healthy dependency and probes it before starting the depe
   await Effect.runPromise(bringUp(plan, { api, ctx }));
 
   // Then
-  const dbStart = requests.indexOf("POST /containers/lando-bring-up-order-app-db/start");
-  const dbExec = requests.indexOf("POST /containers/lando-bring-up-order-app-db/exec");
-  const webStart = requests.indexOf("POST /containers/lando-bring-up-order-app-web/start");
+  const dbStart = requests.indexOf("POST /containers/lando-bring-up-order-app--db/start");
+  const dbExec = requests.indexOf("POST /containers/lando-bring-up-order-app--db/exec");
+  const webStart = requests.indexOf("POST /containers/lando-bring-up-order-app--web/start");
   expect(dbStart).toBeGreaterThanOrEqual(0);
   expect(dbExec).toBeGreaterThan(dbStart);
   expect(webStart).toBeGreaterThan(dbExec);
@@ -280,7 +375,7 @@ test("apply retains a supervised worker that exits before the immediate running 
 test("retains a pre-existing stopped container when a required gate fails", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
-  const db = "lando-bring-up-order-app-db";
+  const db = "lando-bring-up-order-app--db";
   const { api, requests, ids } = makePodmanApi(1, [db]);
   const dbId = ids.get(db);
 
@@ -291,6 +386,30 @@ test("retains a pre-existing stopped container when a required gate fails", asyn
   expect(ids.get(db)).toBe(dbId);
   expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+});
+
+test.each([
+  { kind: "user", logs: "lando logs -s db", retry: "lando start" },
+  { kind: "global", logs: "lando global:logs -s db", retry: "lando global:start" },
+  { kind: "scratch", logs: "lando scratch logs bring-up-order-app", retry: "retry the scratch command" },
+] as const)("healthy-gate remediation names the dependency for $kind apps", async ({ kind, logs, retry }) => {
+  // Given: a required healthy gate whose dependency never becomes healthy.
+  const base = planWithDependency(dependentNames.web, true);
+  const plan: AppPlan = {
+    ...base,
+    ...(kind === "global" ? { id: AppId.make("global") } : {}),
+    ...(kind === "scratch" ? { extensions: { "@lando/core/scratch": { id: "bring-up-order-app" } } } : {}),
+  };
+  const { api } = makePodmanApi(1, [], [], [], plan);
+
+  // When
+  const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+
+  // Then: the remediation points at the failing dependency and the app kind's retry.
+  expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
+  expect(error.remediation).toStartWith(`Run \`${logs}\` to diagnose dependency db`);
+  expect(error.remediation).toContain(retry);
+  if (kind !== "user") expect(error.remediation).not.toContain("`lando start`");
 });
 
 test("fails with ServiceStartError naming the unmet gate and retains started containers", async () => {
@@ -304,8 +423,8 @@ test("fails with ServiceStartError naming the unmet gate and retains started con
   // Then
   expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
   expect(error.message).toContain("db:healthy");
-  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-web/start");
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app-db/start");
+  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app--web/start");
+  expect(requests).toContain("POST /containers/lando-bring-up-order-app--db/start");
   expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
 });
@@ -320,7 +439,7 @@ test("succeeds without rolling back when only an optional gate fails", async () 
 
   // Then
   expect(result.changed).toBe(true);
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
+  expect(requests).toContain("POST /containers/lando-bring-up-order-app--cache/start");
   expect(requests.filter((request) => request.endsWith("/stop"))).toHaveLength(0);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
 });
@@ -330,8 +449,8 @@ test("optional start failure retains the failed dependency and preserves unrelat
   const base = planWithDependency(dependentNames.cache, false);
   const apiService = servicePlan(ServiceName.make("api"), false);
   const plan = { ...base, services: { api: apiService, ...base.services } };
-  const apiName = "lando-bring-up-order-app-api";
-  const db = "lando-bring-up-order-app-db";
+  const apiName = "lando-bring-up-order-app--api";
+  const db = "lando-bring-up-order-app--db";
   const { api, requests, ids } = makePodmanApi(0, [], [db]);
 
   // When
@@ -343,7 +462,7 @@ test("optional start failure retains the failed dependency and preserves unrelat
   expect(ids.has(db)).toBe(true);
   expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
+  expect(requests).toContain("POST /containers/lando-bring-up-order-app--cache/start");
   expect(requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
 });
 
@@ -361,7 +480,7 @@ test("interrupts an aborted optional dependency instead of starting its dependen
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   else throw new TypeError("aborted Podman bringUp unexpectedly succeeded");
-  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
+  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app--cache/start");
 });
 
 test("unchanged container ID across failed B then retry", async () => {
@@ -382,8 +501,8 @@ test("unchanged container ID across failed B then retry", async () => {
     metadata,
     extensions: {},
   };
-  const apiName = "lando-bring-up-order-app-api";
-  const webName = "lando-bring-up-order-app-web";
+  const apiName = "lando-bring-up-order-app--api";
+  const webName = "lando-bring-up-order-app--web";
   const fake = makePodmanApi(0, [], [webName]);
   await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.flip));
   const apiIdAfterFail = fake.ids.get(apiName);
@@ -426,8 +545,8 @@ test("corrected config recreates ONLY B", async () => {
     metadata,
     extensions: {},
   };
-  const apiName = "lando-bring-up-order-app-api";
-  const webName = "lando-bring-up-order-app-web";
+  const apiName = "lando-bring-up-order-app--api";
+  const webName = "lando-bring-up-order-app--web";
   const fake = makePodmanApi(0, [], [webName]);
   await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.flip));
   const apiId = fake.ids.get(apiName);
@@ -483,8 +602,8 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
     metadata,
     extensions: {},
   };
-  const dbContainer = "lando-bring-up-order-app-db";
-  const webContainer = "lando-bring-up-order-app-web";
+  const dbContainer = "lando-bring-up-order-app--db";
+  const webContainer = "lando-bring-up-order-app--web";
   const { api, requests, ids } = makePodmanApi(
     0,
     [dbContainer, webContainer],

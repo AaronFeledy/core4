@@ -13,9 +13,11 @@ import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
-import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
+import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
+
+const versionSpec: LandoCommandSpec = typedVersionSpec;
 
 const spec = (
   id: string,
@@ -55,6 +57,7 @@ const recordingEventLayer = (events: LandoEvent[]) => {
       return yield* Queue.unbounded<LandoEvent>();
     }),
     waitFor: () => Effect.never,
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   });

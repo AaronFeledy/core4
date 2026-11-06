@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { ProxyApplyError } from "@lando/sdk/errors";
 import { type AppPlan, FileSyncSessionRef, ServiceName } from "@lando/sdk/schema";
-import { BuildOrchestrator, FileSyncEngine, type RuntimeProviderShape } from "@lando/sdk/services";
+import { BuildOrchestrator, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import { completeStartup } from "../../src/lifecycle/startup-completion.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { acceleratedPlan } from "../operations/accelerated-start-recovery-support.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 
@@ -103,7 +104,11 @@ test.each([...policies, "forced-user-start" as const])(
           return yield* completeStartup({
             ...readiness,
             policy,
-            selectedPlan: { ...selectedPlan, fileSync: acceleratedPlan.fileSync },
+            selectedPlan: {
+              ...selectedPlan,
+              services: acceleratedPlan.services,
+              fileSync: acceleratedPlan.fileSync,
+            },
             events,
           });
         case "selected-rebuild":
@@ -119,7 +124,7 @@ test.each([...policies, "forced-user-start" as const])(
     // When completion runs against the real readiness runner and file-sync owner.
     const rows = await Effect.runPromise(
       completion.pipe(
-        Effect.provideService(FileSyncEngine, {
+        provideFileSyncEngine({
           ...TestFileSyncEngine,
           id: "mutagen",
           isAvailable: Effect.succeed(true),

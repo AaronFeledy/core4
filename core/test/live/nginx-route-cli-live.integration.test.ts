@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { AppInfoResultSchema } from "@lando/engine/operations/info";
-import { StartAppResultSchema } from "@lando/engine/operations/start";
-import { ConfigLintResult } from "@lando/sdk/schema";
+import { ConfigLintResult, InfoAppResult, StartAppResult } from "@lando/sdk/schema";
 import { Option, Schema } from "effect";
 
 import { isScannerLiveEligible, managedProviderSocketPath } from "./scanner-live-fixture.ts";
@@ -19,12 +17,12 @@ const prerequisite = !isScannerLiveEligible()
       : undefined;
 
 const infoEnvelope = Schema.fromJsonString(
-  Schema.Struct({ ok: Schema.Literal(true), result: AppInfoResultSchema }),
+  Schema.Struct({ ok: Schema.Literal(true), result: InfoAppResult }),
 );
 const lintEnvelope = Schema.fromJsonString(
   Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
 );
-const startResult = Schema.Struct({ ok: Schema.Literal(true), result: StartAppResultSchema });
+const startResult = Schema.Struct({ ok: Schema.Literal(true), result: StartAppResult });
 const startEnvelope = Schema.fromJsonString(startResult);
 const startFrame = Schema.fromJsonString(
   Schema.Struct({ _tag: Schema.Literal("result"), envelope: startResult }),

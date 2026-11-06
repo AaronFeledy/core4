@@ -91,6 +91,20 @@ Selection flags are `--root` (captured cwd by default), `--workflow` (repository
 
 Plugin-owned schemas include WorkflowSelection, WorkflowPlan, WorkflowRunResult, RunnerOptions, RunnerRunResult and CompatibilityProfile. Boundary errors are GithubActionsWorkflowError, GithubActionsUnsupportedFeatureError, GithubActionsActionSourceError, GithubActionsProtocolError and GithubActionsRunnerError, with safe source location/remediation and no raw secret-bearing payload. Existing execution/provider/build failures retain their typed causes rather than being universally wrapped. Schema-backed `line`/`column` fields follow SDK Error property conventions.
 
+These are end-state contract names, not a requirement to publish speculative shapes before their consumers exist. Each delivery exposes only schemas and errors exercised by its implemented operations. The early inspection slice uses concrete list options and workflow-inspection reports; planning, process outcomes, runner admission/results and artifacts are modeled with their owning execution implementations. Authored input shapes and admitted request types must be distinguishable, and mutually exclusive alternatives or lifecycle states must be enforced at the public admission boundary rather than only by an optional helper.
+
+#### Early offline inspection (#1856)
+
+Publish `github-actions:list` and `listWorkflows` independently of local execution. Packaging and the necessary bounded parsing subset may land together in one dependency-coherent PR after the reviewed-plan gate. This slice does not claim completion of task 4's expression/alias conformance, task 15's planning/execution, or any execution-foundation prerequisite.
+
+The CLI accepts `--root` (captured invocation cwd by default) and an exact repository-relative `--workflow` path directly under `.github/workflows/`. It requires no Landofile, provider, secret resolution, network access, expression evaluation or workload execution. Missing default workflow directories produce a useful empty inventory; invalid roots and unmatched explicit selectors fail with tagged diagnostics. Individual malformed files remain visible with source-located diagnostics while other files are inspected. A completed report containing negative findings is successful data, not an execution result.
+
+Project literal trigger/job/dependency identities and observable requirements only. Dynamic expressions, matrix expansion and reusable-workflow bodies remain explicitly unresolved or unassessed; absence of a known restriction is never admission. Diagnostics carry fixed codes, known source locations, allowlisted field/rule details and relevant remediation, never raw upstream messages, authored values, scripts or exception causes. Terminal output must safely render source metadata and distinguish discovery, successful inspection, failed files, uninspected files and truncated diagnostics.
+
+Acquisition has one scoped owner: establish the canonical selected root, reject symlinked discovery directories/candidates and nonregular files, bound actual reads and directory enumeration, and close handles on cancellation. The initial profile admits at most 100 workflow candidates, 256 KiB per file and 8 MiB aggregate. Inventory overflow fails explicitly rather than sampling; exhausted aggregate budgets expose incomplete coverage. The pinned JavaScript Actions parser has no native structural limits, so use the same exactly pinned YAML library's unexpanded AST for an iterative depth-64/node-50,000 structural preflight before authoritative Actions parsing. Reject aliases explicitly in this initial profile; full bounded alias semantics remain task 4. Scalar script contents are opaque leaves. Limit diagnostics to 50 per file with visible truncation. These are admitted-input/work bounds, not a hard CPU/memory isolation guarantee.
+
+Keep the package descriptor and command help free of parser/acquisition imports. The supported distribution is a split ESM plugin artifact built by the shared plugin builder: bundle private implementation dependencies, retain SDK/Effect and their subpaths as host-resolved peers, and link the generated distribution package. Test the emitted static import graph as well as source isolation, separately from same-binary startup timing. This read-only slice ships its own guide, real compiled external-plugin verification and focused adversarial tests rather than waiting for task 22's execution guides.
+
 Local workloads are Linux containers on provider/host combinations proved by acceptance. Mapping `ubuntu-*` labels to pinned Linux images does not claim a GitHub-hosted VM or identical preinstalled tools. Windows/macOS job labels, nested virtualization, privileged containers, implicit engine sockets and cloud-only services fail with specific remediation unless a separately proven capability explicitly exists. Nothing implicitly executes a workflow step on the developer host.
 
 #### Actions compatibility contract
@@ -109,6 +123,8 @@ Local workloads are Linux containers on provider/host combinations proved by acc
 Local concurrency groups coordinate only within this plugin's local scope, never with GitHub's global queue. Simulation does not send webhooks, publish statuses or emulate environment approval services. Local OIDC issuance is unsupported; requesting GitHub-issued credentials fails rather than fabricating a token. Local artifact URLs, IDs and cache hits must be labeled local; adapters cannot advertise GitHub URLs or server identities. Unknown official action versions are not silently intercepted. Third-party actions execute as explicitly trusted workload code, not as a sandboxed language; permissions fields do not restrict arbitrary network/filesystem behavior.
 
 The compatibility registry maps every supported field/action kind to its evaluator, conformance fixtures and explicit unsupported cases. Known unsupported intent is rejected before workload side effects. Inputs that can only become known after earlier steps are validated immediately before their own action; do not promise static preflight of arbitrary code. Defaults are finite: four concurrent local jobs, at most 256 expanded matrix jobs, bounded expression/nesting/file-command budgets and inherited execution quotas. Host authors may narrow these limits; widening requires explicit finite configuration and tests.
+
+Local workflow interpretation and official-runner integration remain distinct semantic owners. They share generic resource ownership, exact process transport, cancellation and cleanup, not a common scheduler that reinterprets dispatched remote jobs. Inspection observations do not authorize either execution path.
 
 #### Acquisition, secrets and service-specific behavior
 
@@ -191,6 +207,7 @@ Implement G1 and G2 in separate generic follow-on PRs before plugin runtime cons
 | 1 | Future foundation | 2, 10, 17 | 3-8 |
 | 2 | 1; future environment/build/provider contracts | 10, 12, 18-19 | 4-9, 17 |
 | 3 | None | 4, 7-9, 16-17 | 1 |
+| Early inspection (#1856) | 3 and the bounded parsing subset of 4; may land together | Independent read-only delivery | 1-2, 5-22 |
 | 4 | 3 | 5-8 | 1, 9 |
 | 5 | 4 | 6, 13 | 7-9 |
 | 6 | 5, 7 | 13, 15 | 8-12, 14, 16-18 |
@@ -232,15 +249,16 @@ All `plugins/github-actions/**` files and specifically named execution-extension
 
 - [ ] 3. Establish the optional plugin and compatibility contracts
   - Recommended task executor category: deep-low; follow the existing command-plugin pattern.
-  - Add package/manifest/explicit exports, plugin-owned Schema data/errors, compatibility registry and lazy command loaders under `plugins/github-actions`. Do not bundle or advertise incomplete commands. Existing refs: `plugins/sql/src/index.ts`, `plugins/sql/package.json`, `sdk/src/plugins/command.ts`, `sdk/src/plugins/module.ts`, `scripts/boundary/rules/package-dag-policy.ts`.
-  - Depends: none. Closes GAP-5. Run `bun install` after adding the workspace package. Add exact Actions package pins, not core dependencies; retain declared bootstrap/completion/result-schema metadata.
-  - QA: `bun test plugins/github-actions/test/plugin-descriptor.test.ts plugins/github-actions/test/import-boundary.test.ts`; happy: lazy third-party-shaped plugin registration; failure: forbidden core/engine import, duplicate command or invalid configuration is rejected. Run package-dag boundary and typecheck.
+  - Add package/manifest/explicit exports and consumer-driven Schema data/errors under `plugins/github-actions`. Packaging may land with early inspection (#1856), contributing only the implemented `github-actions:list` and `listWorkflows` surface. Defer unused execution contracts to their real consumers. Tasks 15 and 20 publish the remaining complete lazy command loaders and Effect operations; executable specs retain explicit bootstrap/completion/result-schema metadata. Do not bundle or advertise incomplete commands. Existing refs: `plugins/sql/src/index.ts`, `plugins/sql/package.json`, `sdk/src/plugins/command.ts`, `sdk/src/plugins/module.ts`, `scripts/boundary/rules/package-dag-policy.ts`.
+  - Depends: none. Establishes the packaging portion of GAP-5; machine output and live evidence remain with their downstream tasks. Run `bun install` after adding the workspace package. Add exact Actions package pins, not core dependencies.
+  - QA: `bun test plugins/github-actions/test/plugin-descriptor.test.ts plugins/github-actions/test/import-boundary.test.ts`; happy: real third-party-shaped plugin registration, consumer-driven schema round trips and only implemented command publication; failure: forbidden core/engine imports, malformed manifests and invalid input contracts are rejected. Duplicate-command tests accompany real publication in #1856 and tasks 15/20. Run package-dag boundary and typecheck.
   - Evidence: `task-03-package.txt`. Commit: `Define optional GitHub Actions plugin contracts`.
 
 - [ ] 4. Adapt upstream workflow parsing and pure expressions
   - Recommended task executor category: deep-low; bounded adapter and conformance work against pinned libraries.
   - Add `src/language/` adapters and source-located workflow/action data. Reuse the pinned public parser/evaluator APIs, including YAML/reference semantics; retain source spans and quotas. Do not use Landofile expressions, JavaScript eval or private upstream imports.
   - Depends: 3. Closes GAP-1. Reference upstream languageservices pin and `sdk/AGENTS.md` for Schema/error conventions.
+  - Early inspection (#1856) may deliver its bounded parsing subset together with task 3. Complete pure-expression conformance, bounded alias semantics and the remaining upstream corpus still gate this task's completion; an inspection-only implementation must not close it.
   - QA: `bun test plugins/github-actions/test/workflow-parse.test.ts plugins/github-actions/test/expressions.test.ts`; happy: upstream cross-language corpus, truthiness/coercion/object filters and multiline YAML; failure: duplicate keys, `on` mis-coercion, alias/nesting exhaustion, malformed expressions and unsupported parser-version features produce bounded source diagnostics. Prove Bun ESM compatibility.
   - Evidence: `task-04-language.txt`. Commit: `Parse Actions workflows with pinned upstream semantics`.
 
@@ -314,11 +332,11 @@ All `plugins/github-actions/**` files and specifically named execution-extension
   - QA: `bun test plugins/github-actions/test/local-cache-adapter.test.ts plugins/github-actions/test/local-artifact-adapter.test.ts plugins/github-actions/test/oidc-refusal.test.ts`; happy: cache miss/save/hit and cross-job artifact bytes across authorized sessions; failure: poisoned archives, wrong repo/branch/ID grant, quota/race, lookalike action, unsupported revision and local id-token request fail without unsafe read/write.
   - Evidence: `task-14-local-services.txt`. Commit: `Provide explicit local cache and artifact adapters`.
 
-- [ ] 15. Publish local commands and structured results
+- [ ] 15. Publish local planning/execution commands and structured results
   - Recommended task executor category: deep-low; command integration follows existing SDK contribution/completion patterns.
-  - Complete list/plan/run loaders and public Effect exports, argument schemas, trust acknowledgment, explicit secret refs, dry-run capabilities and truthful Renderer/JSON projection. Return references and redacted intent, not raw authored secrets, full protocol payloads or provider paths. Add black-box compiled CLI tests using a supplied test-binary path.
+  - Complete plan/run loaders and public Effect exports, argument schemas, trust acknowledgment, explicit secret refs, dry-run capabilities and truthful Renderer/JSON projection. The independent list command belongs to early inspection (#1856), not this task's runtime prerequisites. Return references and redacted intent, not raw authored secrets, full protocol payloads or provider paths. Add black-box compiled CLI tests using a supplied test-binary path.
   - Depends: 6, 13, 14. Closes GAP-5. No core registry command additions or implicit MCP write exposure.
-  - QA: `bun test plugins/github-actions/test/commands/local.test.ts plugins/github-actions/test/machine-output.test.ts`; happy: list without provider, explicit event plan, successful/failed workflow envelopes; failure: missing trust, unknown args/job, unsupported intent and cancellation return declared exit/tag semantics consistently across formats.
+  - QA: `bun test plugins/github-actions/test/commands/local.test.ts plugins/github-actions/test/machine-output.test.ts`; happy: explicit event plan, successful/failed workflow envelopes and retained list behavior; failure: missing trust, unknown args/job, unsupported intent and cancellation return declared exit/tag semantics consistently across formats.
   - Evidence: `task-15-cli.txt`. Commit: `Expose optional local Actions commands`.
 
 - [ ] 16. Provision one verified ephemeral official runner
@@ -366,7 +384,7 @@ All `plugins/github-actions/**` files and specifically named execution-extension
 - [ ] 22. Document compatibility and protect ordinary Lando performance
   - Recommended task executor category: writing; reader-facing guides and their fixtures are authored together.
   - Add executable local list/plan/run guidance and explicit opt-in remote setup/limits under `docs/guides/plugins/github-actions/`, plus a supported-feature/pin matrix generated from the plugin registry. Load lando-write-docs for these future reader-facing artifacts only. Include trust limits, real Node prerequisites, local adapter differences, cancellation/recovery and provider support evidence.
-  - Depends: 15, 20. Closes GAP-5. Add `plugins/github-actions/test/idle-imports.test.ts` and owner-appropriate CLI budget checks; do not change ordinary startup defaults or add live registration to routine guides.
+  - Depends: 15, 20 for execution guidance. Early inspection (#1856) ships its own read-only guide and import/startup proof independently. Closes GAP-5. Extend `plugins/github-actions/test/idle-imports.test.ts` and owner-appropriate CLI budget checks; do not change ordinary startup defaults or add live registration to routine guides.
   - QA: `bun test plugins/github-actions/test/idle-imports.test.ts`; run each new guide with `bun run dev:guides <guide-path> --once`, positive scenario counts, lint:guides, guide coverage/public transcripts/drift and gate:pr. happy: installed-but-unused plugin causes zero provider/network/session starts and preserves the foundation's same-toolchain budgets; failure: negative fixtures with an eager provider call or uncovered command fail the corresponding budget/coverage assertion, and unsupported-feature guide scenarios assert structured refusal.
   - Evidence: `task-22-guides.txt`, `task-22-performance.json`. Commit: `Document and guard the optional Actions integration`.
 

@@ -7,7 +7,7 @@ import { phpDbClientBuildStepsForSources } from "./php-db-client-sources.ts";
 
 export { PHP_MONGOSH_RELEASE } from "./php-db-client-sources.ts";
 
-import { hasCustomPhpImage } from "./php-via.ts";
+import { readPhpRuntimePolicy } from "./php-runtime-policy.ts";
 
 const PHP_FEATURE_ID = "service-lando.php";
 
@@ -120,22 +120,38 @@ export const detectPhpDbClients = (
 export const phpDbClientBuildSteps = (installs: ReadonlyArray<ClientInstall>) =>
   phpDbClientBuildStepsForSources(installs);
 
-const installsFor = (selection: PhpDbClientSelection, views: ReadonlyArray<AppFeatureServiceView>) => {
-  if (selection.mode === "disabled") return [];
-  if (selection.mode === "explicit") return [{ family: selection.family, version: selection.version }];
-  return detectPhpDbClients(views);
+const installsFor = (selection: PhpDbClientSelection, detected: ReadonlyArray<ClientInstall>) => {
+  switch (selection.mode) {
+    case "disabled":
+      return [];
+    case "explicit":
+      return [{ family: selection.family, version: selection.version }];
+    case "auto":
+      return detected;
+    default:
+      return selection satisfies never;
+  }
 };
 
-const applyPhpDbClient = (ctx: AppFeatureContext): void => {
+const applyPhpDbClient = Effect.fn("PhpDbClient.apply")(function* (ctx: AppFeatureContext) {
+  const selections = new Map<string, PhpDbClientSelection>();
+  for (const service of ctx.selected) {
+    if (!service.featureIds.includes(PHP_FEATURE_ID)) continue;
+    const policy = yield* readPhpRuntimePolicy(service, ctx.featureId);
+    if (policy.artifactSource === "stock")
+      selections.set(service.serviceName, resolvePhpDbClient(service.normalizedConfig.db_client));
+  }
+  const detected = [...selections.values()].some((selection) => selection.mode === "auto")
+    ? detectPhpDbClients(ctx.selected)
+    : [];
   ctx.forEachSelected((mutator) => {
-    if (!mutator.service.featureIds.includes(PHP_FEATURE_ID)) return;
-    if (hasCustomPhpImage(mutator.service.normalizedConfig)) return;
-    const selection = resolvePhpDbClient(mutator.service.normalizedConfig.db_client);
-    for (const step of phpDbClientBuildSteps(installsFor(selection, ctx.selected))) {
+    const selection = selections.get(mutator.service.serviceName);
+    if (selection === undefined) return;
+    for (const step of phpDbClientBuildSteps(installsFor(selection, detected))) {
       mutator.addBuildStep(step);
     }
   });
-};
+});
 
 export const phpDbClientFeature: AppFeatureDefinition = {
   id: PHP_DB_CLIENT_FEATURE_ID,
@@ -145,5 +161,5 @@ export const phpDbClientFeature: AppFeatureDefinition = {
     hasFeature: [PHP_FEATURE_ID],
     types: ["mariadb", "mongodb", "mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "postgres"],
   },
-  apply: (ctx) => Effect.sync(() => applyPhpDbClient(ctx)),
+  apply: applyPhpDbClient,
 };

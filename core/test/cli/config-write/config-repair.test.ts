@@ -6,7 +6,7 @@ import { CommandWarnings, makeCommandWarnings } from "@lando/engine/landofile/co
 import { Effect } from "effect";
 import { appConfigSet } from "../../../src/cli/commands/app-config.ts";
 import { globalConfigSet } from "../../../src/cli/commands/meta/global-config.ts";
-import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
+import { globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 test.each(["app", "global"] as const)(
   "%s config set repairs a key while warning about unrelated problems",
@@ -23,7 +23,7 @@ test.each(["app", "global"] as const)(
           return surface === "app"
             ? yield* appConfigSet({ key: "router.httpPort", value: "8080", cwd: root })
             : yield* globalConfigSet({ key: "router.httpPort", value: "8080" }, file);
-        }).pipe(Effect.provide(testStateStoreLayer), Effect.provideService(CommandWarnings, warnings)),
+        }).pipe(Effect.provide(globalConfigLayer(root)), Effect.provideService(CommandWarnings, warnings)),
       );
       // Then the write succeeds with one warning naming the remaining issue and its fix.
       expect(outcome.changed).toBe(true);

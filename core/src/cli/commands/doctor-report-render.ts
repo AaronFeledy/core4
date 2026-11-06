@@ -143,7 +143,13 @@ const groupToRow = (group: ReadonlyArray<DoctorCheckLike>): SummaryRow => {
   const head = group[0];
   if (head === undefined) throw new Error("doctor summary group cannot be empty");
   const tone = doctorStatusTone(head.status);
-  if (head.status === "pass") return { label: head.name, tone, value: "pass" };
+  if (head.status === "pass")
+    return {
+      label: head.name,
+      tone,
+      value: "pass",
+      ...(head.name === "app-listener" ? { fields: groupFields(group) } : {}),
+    };
   const fields = groupFields(group);
   const remedy = remedyText(head.solutions);
   return {
@@ -237,6 +243,7 @@ const selfSection = (report: DoctorSelfReport): SummarySection => ({
 
 const allChecks = (report: DoctorReport): ReadonlyArray<DoctorCheckLike> => [
   ...report.provider.checks,
+  ...(report.appListeners?.checks ?? []),
   ...report.subsystems.checks,
   ...report.globalApp.checks,
   ...report.mcp.checks,
@@ -378,6 +385,8 @@ export const buildDoctorReportSummary = (
       })),
     });
   push(checkSection("provider", report.provider.checks, options));
+  if (report.appListeners !== undefined)
+    push(checkSection("app-listeners", report.appListeners.checks, options));
   push(checkSection("subsystems", report.subsystems.checks, options));
   push(checkSection("global app", report.globalApp.checks, options));
   push(checkSection("mcp", report.mcp.checks, options));
@@ -489,6 +498,7 @@ export const renderDoctorReport = (
         ]),
     ...(report.skipped ?? []).map((entry) => `${entry.section}: SKIPPED · ${entry.reason}`),
     provider,
+    ...(report.appListeners === undefined ? [] : ["app-listeners:", renderDoctorResult(report.appListeners)]),
     subsystems,
     globalApp,
     mcp,

@@ -42,13 +42,13 @@ describe("makeHealthcheckRunner", () => {
 
     expect(stringResult).toEqual({ healthy: true, service, attempts: 1, lastStatus: "ok" });
     expect(stringExec.calls).toEqual([
-      { target: { app: appId, service }, command: { command: ["sh", "-c", "exit 0"] } },
+      { target: { app: appId, service }, command: { command: ["sh", "-c", "exit 0"], raw: true } },
     ]);
 
     const arrayExec = execSequence([0]);
     await drive(makeHealthcheckRunner(arrayExec).run(commandPlan(["true"]), appId, service));
 
-    expect(arrayExec.calls.map((call) => call.command)).toEqual([{ command: ["true"] }]);
+    expect(arrayExec.calls.map((call) => call.command)).toEqual([{ command: ["true"], raw: true }]);
   });
 
   test("command exit 1 exhausts configured retries", async () => {

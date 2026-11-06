@@ -1,0 +1,11 @@
+name: lando-memcached
+services:
+  custom:
+    type: memcached:1.5.22
+    mem: 256
+    portforward: true
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/memcached": ../..

@@ -57,7 +57,9 @@ Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by 
 
 ## Debug PHP and Node
 
-PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service so Lando installs the extension and connects to an IDE listening on port `9003`. See [Xdebug in PhpStorm](xdebug-phpstorm.mdx). A `launch.json` PHP debug config's `pathMappings` maps the in-container app path to your workspace folder. `/app` is Lando's default in-container app mount; adjust the key if a service overrides its mount path.
+PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service so Lando installs the extension and connects to an IDE listening on port `9003`. The default client host is `debugger.lando.internal`. See [Xdebug in PhpStorm](xdebug-phpstorm.mdx). When VS Code runs on Windows and Lando runs in WSL, run `lando config set debugger.host windows`, start the app again, and allow TCP 9003 on Windows; that guide covers NAT, explicit IPv4/IPv6 addresses, and unsupported mirrored modes. A `launch.json` PHP debug config's `pathMappings` maps the in-container app path to your workspace folder. `/app` is Lando's default in-container app mount; adjust the key if a service overrides its mount path.
+
+Start VS Code's PHP debug listener, then run `lando xdebug status` from the app directory. Its `Listener:` line reports a one-second TCP connection attempt from the PHP service. A reachable TCP listener does not prove a DBGp session or working path mappings; trigger a PHP request and verify a breakpoint. A failed connection reports the reason and leaves status exit code 0. `lando xdebug on` and `off` do not probe the listener. On WSL, or when `debugger.host` is configured, `lando doctor` reports host configuration and Windows discovery separately from listener reachability.
 
 For Node, start with `node --inspect=0.0.0.0:9229 server.js`, publish the debug port on the node service, and attach with `address: localhost`, `port: 9229`, `localRoot: ${workspaceFolder}`, `remoteRoot: /app`, and `restart: true`.
 

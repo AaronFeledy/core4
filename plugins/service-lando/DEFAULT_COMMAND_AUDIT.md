@@ -18,8 +18,8 @@ or changes a default command.
 
 ## Reproducing a failure
 
-Every row in the table has been checked the same way, and a newly added default
-command should be checked the same way before its row is written. Put the
+Use this procedure when verifying a default command; source review alone does
+not establish live runtime behavior. Put the
 service in a Landofile with a non-root `user:` that exists in the image, then
 start it:
 
@@ -47,7 +47,7 @@ section below.
 | Service type / mode | Source | Runtime write targets | Non-root `user:` | Status |
 | --- | --- | --- | --- | --- |
 | `apache` | `src/services/apache.ts` `apacheStartCommand` | none | works | **fixed** |
-| `php:*` via `apache` (default) | `src/services/php-via.ts` `apacheStartCommand` | none | works | **fixed** |
+| stock `php:*` via `apache` (default) | `src/services/php-via.ts` `apacheStartCommand` | no launcher config writes; piped access/error logs | use an unprivileged `port:`, such as `8080`; default `/var/www` home prepared for `www-data` | earlier managed-provider checks recorded below; expanded ownership suite not yet live-verified here |
 | `php:*` via `fpm` | `src/services/php-via.ts` `fpmStartCommand` | `/tmp/lando-php-fpm.conf` | works | **fixed** |
 | `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `nginx` without `backend:` | `src/services/nginx.ts` via `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
@@ -96,21 +96,65 @@ image instead, described in its own section below.
 
 ## How the Apache-served PHP launcher was fixed
 
-The PHP image is Debian's Apache, not the Alpine `httpd` layout, so the same
-directives needed one extra move. `apache2.conf` reads
+The PHP image is Debian's Apache, not the Alpine `httpd` layout.
+`apache2.conf` reads
 `IncludeOptional sites-enabled/*.conf` and the package ships `000-default.conf`
 enabled, whose `<VirtualHost *:80>` pins `DocumentRoot /var/www/html`. A `-c`
 directive is applied after the whole configuration tree is read, but it lands on
 the main server, and a virtual host keeps its own `DocumentRoot` through the
 merge. A directive alone therefore cannot move the document root while that site is
-enabled. A build step retires the enabled site, which leaves the main server
-answering every request and makes the launcher's directives the whole
-configuration.
+enabled. A root build step retires the enabled site. With no authored `port:`,
+the main server answers requests; with an authored port, the launcher emits
+`Listen <port>` and a generated `<VirtualHost *:<port>>` carrying the serving
+directives. Neither path writes startup configuration into `/etc/apache2`.
+
+Configuration writes were not the only non-root hazard. Opening the image's
+log symlinks through `/dev/stdout`, `/dev/stderr`, or `/proc/self/fd/*` can fail
+with `EACCES` when a non-root process reopens a runtime-owned descriptor path.
+The launcher now saves inherited stderr with `exec 3>&2` before starting
+Apache. Global directives configure a piped `CustomLog` through `/bin/cat` to
+stdout and a piped `ErrorLog` through `/bin/sh -c 'exec /bin/cat >&3'` to the
+saved stderr. Shell descriptor duplication uses the inherited open descriptor
+without reopening an fd path. Saving stderr matters because Apache can redirect
+a piped logger's own stderr to stdout; using `>&2` inside that logger would
+mix error records into the access stream.
+
+Previously recorded live checks on the managed `lando` provider verified HTTP serving as `www-data`
+on port `8080`, one stdout access record per request, stderr PHP errors, and
+successful stop/start. Root controls covered both the omitted-port main server
+and an explicit-port virtual host. A non-root control without `port:` failed
+for privileged-port binding rather than reopening the error-log path. These
+observations describe that runtime configuration, not every provider or host.
+They are not evidence that the expanded three-case ownership suite has run.
+
+These logging directives are outside the generated virtual host, so both the
+main-server and authored-port shapes inherit them. The root build step also
+removes `/etc/apache2/conf-enabled/other-vhosts-access-log.conf`: `CustomLog`
+is additive, and leaving that include enabled would retain a second access log
+that tries to open the image's log path. No startup chmod, chown, or config
+rewrite is needed. Log content remains available through `lando logs`.
 
 No `PidFile` override is needed here, unlike the `apache` row. The PHP image
-already creates `APACHE_RUN_DIR` and `APACHE_LOCK_DIR` mode `1777` and hands
-`APACHE_LOG_DIR` to `www-data`, so the paths `apache2-foreground` touches before
-`exec` are writable by any identity.
+already creates `APACHE_RUN_DIR` and `APACHE_LOCK_DIR` mode `1777`. That writable
+runtime-directory setup does not by itself prove that reopening log descriptors
+is safe. Use `port: 8080` or another unprivileged port for portable non-root
+binding; omitting `port:` leaves the `80` listener and runtime-dependent permission.
+
+This preparation and launcher apply only when Lando owns stock PHP startup.
+A custom `image:`, a normalized Compose `build.context`, or an authored
+`command:`/`entrypoint:` opts out of the generated Apache setup. A contextual
+build remains custom even when the planner also supplies the stock image
+reference. Additive `build.artifact` or `build.app` scripts alone do not opt out.
+Custom builds also own PHP prerequisite and binary installs and FPM/CLI startup;
+explicit Composer packages and Xdebug environment/tooling remain active.
+
+The resolved policy is computed once in `php-runtime-policy.ts` and passed to
+the PHP feature and app-feature views. Artifact ownership and process ownership
+are separate: an authored process on a stock artifact keeps stock installers
+but opts out of process preparation. Only generated processes get implicit
+pathless console aliases. Apache's `access` selects stdout and `error` selects
+stderr, with the selected source id on returned chunks. The default log view
+reads console once; aliases add neither file followers nor redirect build steps.
 
 ## How the nginx-family launchers were fixed
 
@@ -167,6 +211,11 @@ only `[global]` plus an absolute `include=/usr/local/etc/php-fpm.d/*.conf`, so
 including it pulls the whole stock tree in unchanged. `[www]` is already
 declared by three of the bundled files; re-opening the pool merges into the
 same pool, and the later `listen` wins.
+
+The stock FPM configuration sends both access and error records to stderr.
+Its `access` and `error` catalog aliases therefore select the same pipe, not
+separate producers. `lando info` reports `console/stderr` for both; no fake
+file path or redirect is needed.
 
 Under a non-root master php-fpm logs that the pool's `user` and `group`
 directives are ignored. That is a notice, not a failure, and the right response
@@ -236,12 +285,18 @@ only references the paths.
 
 ## Residual: privileged ports under a non-root user
 
-Removing the writes does not grant a non-root process the right to bind a port
-below 1024. `static:caddy` and `varnish` still listen on `80` by default, and
-`net.ipv4.ip_unprivileged_port_start` defaults to `1024` in a fresh container
-network namespace. Docker sets that sysctl to `0` for its containers; Podman
-does not, so a non-root service that keeps a privileged port can still fail to
-bind on a Podman-backed provider even with a write-free launcher.
+Removing the writes does not establish a non-root process's right to bind a
+port below 1024. `static:caddy` and `varnish` still listen on `80` by default.
+Effective bind permission depends on runtime configuration, including the
+network namespace's unprivileged-port threshold and capabilities. A provider
+name or rootless mode is not enough evidence to predict success or failure.
+
+The engine emits `LANDO_NONROOT_LOW_PORT_UNVERIFIED` before start hooks and
+builds for a declared user other than explicit root/UID 0 with a planned port
+below 1024. It records service, provider, user, port, and `policy: unknown` as
+string context. Named identities receive conditional wording. This is a warning,
+not a probe, hard rejection, port change, or provider capability guarantee.
+Machine output retains the structured warning once; human output narrates it.
 
 `nginx`, `static`, `apache`, and `php:*` via `apache` derive their listener
 from `port:`, so the residual has an author-side answer there: set `port: 8080`
@@ -252,9 +307,11 @@ from `port:`, so the residual has an author-side answer there: set `port: 8080`
 `apache` emits `Listen <port>`, wraps the generated document-root, directory,
 and error-page directives in `<VirtualHost *:<port>>`, and deletes the image's
 `Listen 80` from `/etc/apache2/ports.conf` during the build. Without an
-authored `port:` neither type changes its launcher, image, or build steps. An
+authored `port:` neither type adds listener-specific edits. Stock PHP still
+gets the logging and default-site preparation described above. An
 authored `command:` or `entrypoint:` skips the generated launcher and the image
-edit, so that launcher owns `Listen`. A custom `image:` on `php:*` does the same.
+edit, so that launcher owns `Listen`. A custom `image:` or `build.context` on
+`php:*` does the same.
 A custom `image:` on `apache` still gets the generated start command, but skips
 `Listen` and the image edit, because that image may not ship `httpd.conf`.
 `php:*` via `fpm` listens on `9000` and never had the problem.
@@ -264,7 +321,7 @@ Two mechanisms were considered and rejected for the service type itself:
 - Requesting `cap_add: ["NET_BIND_SERVICE"]` through the Compose extension.
   `findUnsupportedComposeKnob` fails closed when the active provider declares no
   `composeKnobs`, and `@lando/provider-docker` declares none. This would
-  break non-root services on the one provider that does not need the capability.
+  reject otherwise valid plans without establishing their actual bind permission.
 - Reading provider capabilities inside the feature. `ServiceFeatureContext`
   deliberately exposes no provider or capability accessor; a feature may only
   emit intent.

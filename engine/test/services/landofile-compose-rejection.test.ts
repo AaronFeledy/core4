@@ -202,6 +202,24 @@ describe("Landofile Compose rejection surface", () => {
     });
   });
 
+  test.each(["hostname", "domainname"])("rejects compose %s with its matrix remediation", async (keyPath) => {
+    await withTempDir(async (dir) => {
+      // Given
+      const { source, exit } = await loadYamlExit(dir, yamlService(`    ${keyPath}: broker`));
+
+      // When
+      const error = failureOf(exit);
+
+      // Then
+      expectRejection(error, {
+        keyPath,
+        remediation: composeServiceDispositions[keyPath]?.remediation,
+        service: "web",
+        source,
+      });
+    });
+  });
+
   test("allows ordinary Lando service keys absent from the Compose matrix", async () => {
     await withTempDir(async (dir) => {
       // Given

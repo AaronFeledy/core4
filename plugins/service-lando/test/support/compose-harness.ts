@@ -11,10 +11,12 @@ import {
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { prepareServiceMounts } from "@lando/engine/planner/mounts";
+import { normalizeAppSlug } from "@lando/engine/planner/naming";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
 import { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
 import { applyAuthoredHealthcheck, validateAuthoredAppMount } from "@lando/engine/services/planner";
+import { appNameFor } from "../../src/app-name.ts";
 import { serviceFeatures } from "../../src/features/index.ts";
 import { assertConnectionProjections } from "../../src/services/_connection-helpers.ts";
 
@@ -94,8 +96,10 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
       },
       baseKind: resolution.base,
       appName: args.appName,
+      appSlug: normalizeAppSlug(appNameFor(args), args.appRoot),
       appRoot: args.appRoot,
       normalizedConfig: resolution.normalizedConfig,
+      resolutionMetadata: resolution.metadata,
       features,
       host: args.host,
     }),

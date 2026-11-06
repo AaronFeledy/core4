@@ -27,6 +27,7 @@ const recordingEvents = () => {
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     } satisfies EventServiceShape),
@@ -62,6 +63,7 @@ describe("doctor progress outcomes", () => {
     ]);
     expect(doctorSections({ app: true, deprecations: true }).map((section) => section.id)).toEqual([
       "provider",
+      "app-listeners",
       "certificate-authority",
       "network-trust",
       "subsystems",

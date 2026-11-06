@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
+import { FileSyncSessionRef } from "@lando/sdk/schema";
+import type { FileSyncEngineShape } from "@lando/sdk/services";
+import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";
 import {
   beginOrResumeAcceleratedStart,
@@ -11,9 +14,11 @@ import {
   type FailurePoint,
   changedPlan,
   oldPlan,
+  ordinaryPlan,
   rotationHarness,
   syncPlan,
   targetFor,
+  withEngineId,
 } from "./start-file-sync-rotation-support.ts";
 
 const tmpfsTarget = PortablePath.make("/app/tmp");
@@ -194,3 +199,142 @@ test("unfinished old attempt retains its identity restrictions before rotation",
   expect(harness.calls).toEqual([]);
   expect(harness.sessions.every(({ ref }) => ref.startsWith("old-"))).toBe(true);
 });
+
+test("ordinary opt-out cannot supersede an unfinished accelerated journal", async () => {
+  const harness = await Effect.runPromise(rotationHarness({ desired: ordinaryPlan }));
+  await Effect.runPromise(beginOrResumeAcceleratedStart(oldPlan, app).pipe(Effect.provide(harness.layer)));
+  expect(Exit.isFailure(await Effect.runPromiseExit(start(harness)))).toBe(true);
+  expect(harness.calls).toEqual([]);
+  expect(harness.applied()).toBe(oldPlan);
+});
+
+test("rotates accelerated-to-ordinary through old engine and creates zero sessions", async () => {
+  const harness = await Effect.runPromise(rotationHarness({ desired: ordinaryPlan }));
+  await Effect.runPromise(start(harness));
+  expect(harness.calls.slice(0, 6)).toEqual(["quiesce", "drain", "dispose", "targets", "complete", "retire"]);
+  expect(harness.cleanedPlans).toEqual([oldPlan]);
+  expect(harness.sessions).toEqual([]);
+  expect(harness.applied()?.fileSync).toEqual([]);
+  expect(harness.calls.filter((call) => call.startsWith("create:"))).toEqual([]);
+  harness.calls.splice(0);
+  await Effect.runPromise(start(harness));
+  expect(harness.calls).toEqual(["init", "apply"]);
+});
+
+test.each(["quiesce", "drain", "conflict"] as const)(
+  "ordinary opt-out refuses %s failure without disposing targets",
+  async (failAt) => {
+    const harness = await Effect.runPromise(rotationHarness({ desired: ordinaryPlan, failAt }));
+    expect(Exit.isFailure(await Effect.runPromiseExit(start(harness)))).toBe(true);
+    expect(harness.applied()).toBe(oldPlan);
+    expect(harness.cleanedPlans).toEqual([]);
+    expect(harness.calls).not.toContain("apply");
+    await Effect.runPromise(start(harness));
+    expect(harness.applied()?.fileSync).toEqual([]);
+  },
+);
+
+test.each(["missingSession", "unknownApplied"] as const)(
+  "ordinary opt-out refuses %s without mutation",
+  async (failure) => {
+    const harness = await Effect.runPromise(rotationHarness({ desired: ordinaryPlan, [failure]: true }));
+    expect(Exit.isFailure(await Effect.runPromiseExit(start(harness)))).toBe(true);
+    expect(harness.applied()).toBe(oldPlan);
+    expect(harness.calls).toEqual([]);
+  },
+);
+
+test("engine switch drains through old engine A before creating sessions on engine B", async () => {
+  const desired = withEngineId(changedPlan, "engine-b");
+  const bCalls: string[] = [];
+  const engineB: FileSyncEngineShape = {
+    ...TestFileSyncEngine,
+    id: "engine-b",
+    sessionsPersistAcrossProcesses: true,
+    isAvailable: Effect.succeed(true),
+    listSessions: () => Effect.succeed([]),
+    createSession: (spec) =>
+      Effect.sync(() => {
+        bCalls.push(`create:${spec.service}`);
+        harness.calls.push(`create-b:${spec.service}`);
+        return FileSyncSessionRef.make(`b-${spec.service}`);
+      }),
+    flushSession: () => Effect.void,
+    appLifecycle: {
+      disposalPhase: () => Effect.succeed("absent" as const),
+      invalidateDrain: () => Effect.void,
+      drain: () => Effect.void,
+      dispose: () => Effect.void,
+      completeDisposal: () => Effect.void,
+    },
+  };
+  const harness = await Effect.runPromise(rotationHarness({ desired, alternateEngines: [engineB] }));
+  await Effect.runPromise(start(harness));
+  // Old engine A quiesce/drain/dispose precede any B session creation.
+  expect(harness.calls.slice(0, 6)).toEqual(["quiesce", "drain", "dispose", "targets", "complete", "retire"]);
+  expect(harness.calls.filter((call) => call.startsWith("create:"))).toEqual([]);
+  expect(bCalls).toEqual(["create:web", "create:worker"]);
+  expect(harness.calls.indexOf("create-b:web")).toBeGreaterThan(harness.calls.indexOf("complete"));
+  expect(harness.applied()?.fileSync.every((entry) => entry.engineId === "engine-b")).toBe(true);
+});
+
+test("matching session specs still rotate when only the engine id changes", async () => {
+  const desired = withEngineId(oldPlan, "engine-b");
+  const engineB: FileSyncEngineShape = {
+    ...TestFileSyncEngine,
+    id: "engine-b",
+    sessionsPersistAcrossProcesses: true,
+    isAvailable: Effect.succeed(true),
+    listSessions: () => Effect.succeed([]),
+    createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`b-${spec.service}`)),
+    flushSession: () => Effect.void,
+    appLifecycle: {
+      disposalPhase: () => Effect.succeed("absent" as const),
+      invalidateDrain: () => Effect.void,
+      drain: () => Effect.void,
+      dispose: () => Effect.void,
+      completeDisposal: () => Effect.void,
+    },
+  };
+  const harness = await Effect.runPromise(rotationHarness({ desired, alternateEngines: [engineB] }));
+  await Effect.runPromise(start(harness));
+  expect(harness.calls).toContain("drain");
+  expect(harness.cleanedPlans).toEqual([oldPlan]);
+  expect(harness.applied()?.fileSync.every((entry) => entry.engineId === "engine-b")).toBe(true);
+});
+
+test("unavailable old engine blocks ordinary opt-out without unsafe apply", async () => {
+  const harness = await Effect.runPromise(
+    rotationHarness({
+      desired: ordinaryPlan,
+      injectedEngineId: "not-the-applied-engine",
+    }),
+  );
+  const failed = await Effect.runPromiseExit(start(harness));
+  expect(Exit.isFailure(failed)).toBe(true);
+  expect(harness.calls).toEqual([]);
+  expect(harness.applied()).toBe(oldPlan);
+  expect(harness.sessions.every(({ ref }) => ref.startsWith("old-"))).toBe(true);
+});
+
+test.each([true, false])(
+  "unsupported desired mode fails before init, preparation, or rotation (fresh=%s)",
+  async (fresh) => {
+    const engine: FileSyncEngineShape = {
+      ...TestFileSyncEngine,
+      id: "unsupported",
+      capabilities: { ...TestFileSyncEngine.capabilities, modes: ["one-way-safe"] },
+    };
+    const harness = await Effect.runPromise(
+      rotationHarness({
+        fresh,
+        desired: withEngineId(oldPlan, engine.id),
+        alternateEngines: [engine],
+      }),
+    );
+    const result = await Effect.runPromiseExit(start(harness));
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(harness.calls).toEqual([]);
+    expect(harness.applied()).toBe(fresh ? undefined : oldPlan);
+  },
+);

@@ -18,12 +18,14 @@ import {
   writeWorkerRecord as writeWorkerRecordV2,
 } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
 import {
   buildHostProxyAllowlistDoctorCheck,
   hostProxyAllowlistFreshness,
 } from "../../src/cli/commands/doctor-host-proxy-allowlist.ts";
 import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
+import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
@@ -198,12 +200,13 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "unix-socket",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
     servers.push(server);
     await listenUnix(server, socketPath);
-    await chmod(socketPath, 0o600);
+    await chmod(socketPath, 0o666);
     await Effect.runPromise(
       writeWorkerRecord(
         app,
@@ -261,11 +264,12 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "unix-socket",
           protocolVersion: 1,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
     servers.push(server);
-    await mkdir(runDir, { recursive: true });
+    await mkdir(runDir, { recursive: true, mode: 0o700 });
     await listenUnix(server, socketPath);
     await chmod(socketPath, 0o600);
     await writeFile(
@@ -292,7 +296,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
   });
 
-  test("warns when a live Unix endpoint is not a mode-0600 socket", async () => {
+  test("warns when a live Unix socket is outside an owner-only run directory", async () => {
     // Given
     const root = await tempRoot();
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
@@ -307,12 +311,14 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "unix-socket",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
     servers.push(server);
     await listenUnix(server, socketPath);
-    await chmod(socketPath, 0o644);
+    await chmod(socketPath, 0o666);
+    await chmod(root, 0o755);
     await Effect.runPromise(
       writeWorkerRecord(
         app,
@@ -338,7 +344,12 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
       status: "warn",
-      context: { socketType: "socket", socketMode: "0644", reachability: "unreachable" },
+      context: {
+        socketType: "socket",
+        socketMode: "0666",
+        privateRunDirectory: "false",
+        reachability: "unreachable",
+      },
     });
   });
 
@@ -408,7 +419,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
     try {
       // When: options omit userDataRoot so only PathsService can isolate the scan
-      const checks = await Effect.runPromise(
+      const { checks } = await Effect.runPromise(
         hostProxyTransportDoctorChecks({
           provider: TestRuntimeProvider,
           providerKind: "user-installed",
@@ -479,7 +490,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(ndjson).not.toContain(secret);
   });
 
-  test("reports a pre-upgrade TCP worker without probe metadata as informational", async () => {
+  test("skips a pre-upgrade TCP worker without probe metadata", async () => {
     // Given
     const root = await tempRoot();
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
@@ -525,28 +536,19 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
     // Then
     const check = result.checks.find((candidate) => candidate.name === "host-proxy-transport");
-    expect(check).toMatchObject({
-      status: "pass",
-      severity: "info",
-      context: {
-        appId: "demo",
-        transport: "tcp-host-gateway",
-        reachability: "not-probed",
-        endpoint: "missing",
-        containerGateway: "host.containers.internal",
-        reason: "pre-upgrade-record",
-      },
-      solutions: [],
+    expect(check).toBeUndefined();
+    expect(result.skipped).toContainEqual({
+      section: "host-proxy-transport:demo",
+      status: "skipped",
+      reason: "pre-upgrade-record",
     });
 
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, {
       now: new Date("1970-01-01T00:00:00.000Z"),
     });
-    expect(text).toContain("host-proxy-transport: pass");
-    expect(text).toContain("reason: pre-upgrade-record");
+    expect(text).not.toContain("host-proxy-transport: pass");
     expect(ndjson).toContain('"event":"doctor.check"');
-    expect(ndjson).toContain('"containerGateway":"host.containers.internal"');
     expect(text).not.toContain(controlToken);
     expect(ndjson).not.toContain(controlToken);
   });
@@ -570,6 +572,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -683,6 +686,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -769,7 +773,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
       {
         target: { app: "demo", service: "a-stopped" },
         command: {
-          command: ["/usr/local/bin/lando", "open", "--print"],
+          command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
           env: { LANDO_HOST_PROXY_URL: containerUrl },
           stdin: "ignore",
           tty: false,
@@ -778,7 +782,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
       {
         target: { app: "demo", service: "b-broken" },
         command: {
-          command: ["/usr/local/bin/lando", "open", "--print"],
+          command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
           env: { LANDO_HOST_PROXY_URL: containerUrl },
           stdin: "ignore",
           tty: false,
@@ -787,7 +791,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
       {
         target: { app: "demo", service: "c-appserver" },
         command: {
-          command: ["/usr/local/bin/lando", "open", "--print"],
+          command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
           env: { LANDO_HOST_PROXY_URL: containerUrl },
           stdin: "ignore",
           tty: false,
@@ -840,6 +844,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -913,7 +918,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
       context: { reachability: "reachable" },
       solutions: [],
     });
-    expect(commands).toEqual([["/usr/local/bin/lando", "open", "--print"]]);
+    expect(commands).toEqual([["/usr/local/bin/lando", "open", "--print", "--format=json"]]);
   });
 
   test("probes a bridged guest Unix socket through the container instead of the host filesystem", async () => {
@@ -933,6 +938,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -998,7 +1004,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
     expect(commands).toEqual([
       {
-        command: ["/usr/local/bin/lando", "open", "--print"],
+        command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
         env: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
         stdin: "ignore",
         tty: false,
@@ -1092,20 +1098,16 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const result = await runDoctor(root, provider);
 
     // Then
-    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
-      status: "pass",
-      severity: "info",
-      context: {
-        reachability: "not-probed",
-        reason: "provider-mismatch",
-        workerProviderId: "different-provider",
-      },
-      solutions: [],
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toBeUndefined();
+    expect(result.skipped).toContainEqual({
+      section: "host-proxy-transport:demo",
+      status: "skipped",
+      reason: "provider-mismatch",
     });
     expect(execCalls).toBe(0);
   });
 
-  test("reports legacy TCP state without probe metadata as informational", async () => {
+  test("skips legacy TCP state without probe metadata", async () => {
     // Given
     const root = await tempRoot();
     const appId = "legacy-tcp";
@@ -1139,11 +1141,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const result = await runDoctor(root, provider);
 
     // Then
-    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
-      status: "pass",
-      severity: "info",
-      context: { appId, reachability: "not-probed", reason: "pre-upgrade-record" },
-      solutions: [],
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toBeUndefined();
+    expect(result.skipped).toContainEqual({
+      section: `host-proxy-transport:${appId}`,
+      status: "skipped",
+      reason: "pre-upgrade-record",
     });
   });
 
@@ -1204,7 +1206,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     }
 
     // When
-    const checks = await Effect.runPromise(
+    const { checks } = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
         provider: TestRuntimeProvider,
         providerKind: "user-installed",
@@ -1239,7 +1241,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     }
 
     // When
-    const checks = await Effect.runPromise(
+    const { checks } = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
         provider: TestRuntimeProvider,
         providerKind: "user-installed",
@@ -1278,6 +1280,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -1327,15 +1330,20 @@ describe("meta:doctor host-proxy transport reachability", () => {
     };
 
     // When
-    await runDoctor(root, provider);
+    const result = await runDoctor(root, provider);
 
     // Then
     expect(calls).toEqual(
       Array.from({ length: 8 }, (_, index) => `service-${String(index).padStart(2, "0")}`),
     );
+    expect(result.skipped).toContainEqual({
+      section: "host-proxy-transport:demo",
+      status: "skipped",
+      reason: "probe-service-cap-exhausted",
+    });
   });
 
-  test("reports stopped and unavailable probe services as informational inconclusive", async () => {
+  test("skips stopped and unavailable probe services when reachability is inconclusive", async () => {
     // Given
     const root = await tempRoot();
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
@@ -1353,6 +1361,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -1412,16 +1421,31 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const result = await runDoctor(root, provider);
 
     // Then
-    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
-      status: "pass",
-      severity: "info",
-      context: { reachability: "not-probed", reason: "probe-services-inconclusive" },
-      solutions: [],
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toBeUndefined();
+    expect(result.skipped).toContainEqual({
+      section: "host-proxy-transport:demo",
+      status: "skipped",
+      reason: "probe-services-inconclusive",
     });
     expect(calls).toEqual(["stopped", "unavailable"]);
+    const report = await Effect.runPromise(
+      collectDoctorReport({
+        options: { env: {} },
+        provider: Effect.succeed(result),
+        deprecations: Effect.succeed({ entries: [] }),
+        certs: Effect.succeed(UNRESOLVED_CERTS_STATUS),
+      }).pipe(Effect.provideService(ConfigService, buildConfigService(root))),
+    );
+    const encoded = Schema.encodeSync(DoctorReportSchema)(report);
+    expect(encoded.provider.checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
+    expect(encoded.skipped).toContainEqual({
+      section: "host-proxy-transport:demo",
+      status: "skipped",
+      reason: "probe-services-inconclusive",
+    });
   });
 
-  test("warns when app:open exits 127 without a valid envelope", async () => {
+  test.each([69, 127])("warns when app:open exits %s without a valid envelope", async (exitCode) => {
     // Given
     const root = await tempRoot();
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
@@ -1439,6 +1463,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -1476,7 +1501,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           tcpHostGateway: "host.containers.internal",
         },
       },
-      exec: () => Effect.succeed({ exitCode: 127, stdout: "", stderr: "lando: not found" }),
+      exec: () => Effect.succeed({ exitCode, stdout: "", stderr: "host proxy unavailable" }),
     };
 
     // When
@@ -1508,6 +1533,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: process.pid,
+          bridge: "none",
         }),
       );
     });
@@ -1558,7 +1584,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     };
 
     // When
-    const checks = await Effect.runPromise(
+    const { checks, skipped } = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(
           hostProxyTransportDoctorChecks({
@@ -1583,6 +1609,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({ name: "host-proxy-state", status: "warn" });
+    expect(skipped).toContainEqual({
+      section: "host-proxy",
+      status: "skipped",
+      reason: "worker-budget-exhausted",
+    });
   });
 
   test("bounds root discovery with the aggregate Effect-clock budget without a false warning", async () => {
@@ -1603,7 +1634,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     );
 
     // When
-    const checks = await Effect.runPromise(
+    const { checks, skipped } = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(
           hostProxyTransportDoctorChecks({
@@ -1636,5 +1667,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(checks.some((check) => check.name === "host-proxy-state")).toBe(false);
     expect(checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
+    expect(skipped).toContainEqual({
+      section: "host-proxy",
+      status: "skipped",
+      reason: "worker-root-budget-exhausted",
+    });
   });
 });

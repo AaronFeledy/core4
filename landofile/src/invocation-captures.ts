@@ -28,7 +28,7 @@ export const captureTemplate = (site: ParsedPendingSite, context: ExpressionCont
   const fail = (): never => {
     throw new ConfigExpressionError({
       message: "Invocation static capture is unbounded or exceeds its budget.",
-      path: site.path.join("."),
+      path: site.path,
       expression: templateSource(site.template),
       filePath: "file" in site.source ? site.source.file : "<invocation>",
       remediation: "Reference a specific static value and keep captures below 65536 bytes.",

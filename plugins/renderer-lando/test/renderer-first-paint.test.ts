@@ -144,7 +144,7 @@ const createFakeTerminalRecorder = (
 
 describe("TaskTreeViewModel — first-paint skeleton", () => {
   test("paints the parent line plus one pending placeholder per declared child", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web", "db", "cache"]));
     const frame = vm.snapshot().frameLines.map(stripAnsi);
     expect(frame[0]).toBe("╭─ Building");
@@ -157,7 +157,7 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
   });
 
   test("deduplicates declared children before counting and painting placeholders", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web", "db", "web"]));
     const frame = vm.snapshot().frameLines.map(stripAnsi);
     expect(frame.at(-1)).toBe("╰─ 0/2 running");
@@ -168,14 +168,14 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
   });
 
   test("first paint exposes styled content lines matching the logical skeleton", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["a", "b"]));
     expect(vm.frameLines().map(stripAnsi).join("\n")).toBe(vm.snapshot().frameLines.join("\n"));
     expect(vm.snapshot().frameLines).toHaveLength(4);
   });
 
   test("skeleton renders before any work: no running marker, no detail panel on first paint", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["a", "b", "c"]));
     const frame = vm.snapshot().frameLines.map(stripAnsi);
     expect(frame.at(-1)).toBe("╰─ 0/3 running");
@@ -186,7 +186,7 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
   });
 
   test("a child's task.start transitions its placeholder to running; siblings stay pending", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web", "db", "cache"]));
     vm.apply(taskStart("web", "web service", "build"));
     const frame = vm.snapshot().frameLines;
@@ -199,7 +199,7 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
   });
 
   test("pending placeholders preserve declared child order", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["z", "a", "m"]));
     const frame = vm.snapshot().frameLines.map(stripAnsi);
     const placeholders = frame.filter((line) => line.includes("◌"));
@@ -207,7 +207,7 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
   });
 
   test("pending placeholders are not focus targets (focus lands on started tasks only)", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["a", "b", "c"]));
     expect(vm.focusableTaskIds()).toEqual([]);
     expect(vm.canExpandTask("a")).toBe(false);
@@ -216,7 +216,7 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
   });
 
   test("empty declared children paint just the parent skeleton line", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", []));
     const frame = vm.snapshot().frameLines.map(stripAnsi);
     expect(frame.at(-1)).toBe("╰─ 0/0 running");

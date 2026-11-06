@@ -7,9 +7,11 @@ import { ComposePreservedPathCapabilities } from "./compose-preserved-path-capab
 import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabilities.ts";
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
-import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { CertificateName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { ListenerObservation } from "./listener-observation.ts";
 import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
+import { scanFields } from "./scan-fields.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 
 export { HealthcheckPlan } from "./healthcheck-plan.ts";
@@ -66,7 +68,10 @@ export const RoutePlan = Schema.Struct({
         "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
     }),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
-  hostname: RouteHostname,
+  hostname: RouteHostname.annotateKey({
+    description:
+      "Host header pattern. Planning requires an https or both route's wildcards to sit only in the leftmost label, with at least one label after it, so a certificate can cover the route.",
+  }),
   /** TLS scheme (`http`, `https`, `both`). */
   scheme: Schema.Literals(["http", "https", "both"]),
   /** Service name this route targets. */
@@ -93,14 +98,7 @@ export type RoutePlan = typeof RoutePlan.Type;
 export const ScannerConfig = Schema.Union([
   Schema.Literal(false),
   Schema.Struct({
-    path: Schema.optionalKey(Schema.String.pipe(Schema.check(Schema.isStartingWith("/")))).annotate({
-      description: "URL path to probe, starting with a slash.",
-    }),
-    okCodes: Schema.optionalKey(
-      Schema.Array(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 100, maximum: 599 })))),
-    ).annotate({
-      description: "HTTP response status codes accepted as reachable.",
-    }),
+    ...scanFields,
     retries: Schema.optionalKey(
       Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 20 }))),
     ).annotate({
@@ -152,6 +150,10 @@ export const CheckResult = Schema.Struct({
   statusCode: Schema.optionalKey(Schema.Int).annotate({ description: "Observed HTTP response status." }),
   message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
   detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),
+  listener: Schema.optionalKey(ListenerObservation).annotate({
+    description:
+      "TCP bindings observed in the service when an unreachable check targets its expected listener.",
+  }),
 }).annotate({ identifier: "CheckResult", description: "An owner-classified post-start HTTP check." });
 export type CheckResult = typeof CheckResult.Type;
 
@@ -160,19 +162,45 @@ export type CheckResult = typeof CheckResult.Type;
  */
 export const CertificatePlan = Schema.Struct({
   /** Common name. */
-  cn: Schema.String,
+  cn: CertificateName,
   /** Subject Alt Names. */
-  sans: Schema.Array(Schema.String),
+  sans: Schema.Array(CertificateName),
   /** CA id this cert was issued by. */
   caId: Schema.String,
 });
 export type CertificatePlan = typeof CertificatePlan.Type;
 
+/** Leaf certificate request a `CertificateAuthority` decodes before it issues anything. */
+export const CertificateSpec = Schema.Struct({
+  cn: CertificateName.annotateKey({ description: "Common name of the leaf certificate." }),
+  sans: Schema.Array(CertificateName).annotateKey({
+    description: "Subject alternative names: DNS names, leftmost *. wildcards, or IP addresses.",
+  }),
+}).annotate({
+  identifier: "CertificateSpec",
+  title: "Certificate Spec",
+  description: "Leaf certificate request names, validated before a certificate authority issues them.",
+});
+export type CertificateSpec = typeof CertificateSpec.Type;
+
+/**
+ * Dedicated hostname containers use to reach a debugger/IDE on the host.
+ * Distinct from `host.lando.internal`, which stays on the host gateway for
+ * cross-engine proxy routes and general host reachability.
+ */
+export const DEBUGGER_HOST_ALIAS = "debugger.lando.internal" as const;
+
+/**
+ * Compose/runtime sentinel the provider rewrites to the host gateway address
+ * when creating the container. Keeps plans from guessing a numeric address.
+ */
+export const HOST_GATEWAY_TARGET = "host-gateway" as const;
+
 /**
  * Host alias — extra `/etc/hosts` entry inside the service container.
  */
 export const HostAliasPlan = Schema.Struct({
-  hostname: Schema.String,
+  hostname: HostAliasName,
   ip: Schema.String,
 });
 export type HostAliasPlan = typeof HostAliasPlan.Type;
@@ -347,6 +375,9 @@ export const ProviderCapabilities = Schema.Struct({
   buildSsh: Schema.Boolean,
   multiServiceApply: Schema.Boolean,
   serviceExec: Schema.Boolean,
+  serviceInit: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Whether native service init is supported; omission means unsupported.",
+  }),
   serviceLogs: Schema.Boolean,
   serviceLogSources: Schema.Boolean,
   serviceHealth: Schema.Literals(["native", "lando", "none"]),
@@ -359,6 +390,9 @@ export const ProviderCapabilities = Schema.Struct({
   persistentStorage: Schema.Boolean,
   bindMounts: Schema.Boolean,
   bindMountPerformance: Schema.Literals(["native", "slow", "none"]),
+  fileSyncTargets: Schema.optionalKey(Schema.Literal("prepared-volume")).annotate({
+    description: "Provider implements preparation and inspection of owned file-sync volume targets.",
+  }),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
   volumeSnapshot: Schema.Literals(["native", "none"]),
@@ -419,7 +453,7 @@ export const AppRef = Schema.Struct({
   id: Schema.String,
   /**
    * Materialized app root (user app root, `<userDataRoot>/global/`, or
-   * `<userCacheRoot>/scratch/<id>/root/`).
+   * `<userDataRoot>/scratch/<id>/root/`).
    */
   root: AbsolutePath,
 });

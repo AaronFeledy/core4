@@ -21,6 +21,32 @@ const ignoredComposeKeys = {
 } as const;
 
 const composeHealthcheckFixtures = [
+  {
+    name: "Compose command and timing survive shared execution metadata",
+    input: { test: ["CMD", "id", "-u"], interval: "500ms", user: "1001:1002", target: "service" },
+    expected: {
+      kind: "command",
+      command: ["id", "-u"],
+      intervalSeconds: 0.5,
+      user: "1001:1002",
+      target: "service",
+    },
+  },
+  {
+    name: "host shell command retains execution locus",
+    input: { test: "test -f ready", timeout: "2s", target: "host" },
+    expected: { kind: "command", command: "test -f ready", timeoutSeconds: 2, target: "host" },
+  },
+  {
+    name: "invalid execution target",
+    input: { command: "true", target: "vm" },
+    expectedErrorFragment: "host",
+  },
+  {
+    name: "invalid execution user",
+    input: { command: "true", user: "bad user" },
+    expectedErrorFragment: "user",
+  },
   { name: "false disables the probe", input: false, expected: false },
   {
     name: "string is a shell command",
@@ -34,14 +60,14 @@ const composeHealthcheckFixtures = [
   },
   { name: "bare NONE is an executable", input: ["NONE"], expected: { kind: "command", command: ["NONE"] } },
   {
-    name: "none drops probe targets and timings",
+    name: "none preserves supplied timing metadata",
     input: { kind: "none", command: "x", url: "http://x", port: 80, intervalSeconds: 2, startInterval: "5s" },
-    expected: false,
+    expected: { kind: "none", intervalSeconds: 2, startInterval: "5s" },
   },
   {
-    name: "disable ignores test and timings",
+    name: "disable preserves normalized timing metadata",
     input: { disable: true, test: "x", interval: "5s", start_interval: "1s" },
-    expected: false,
+    expected: { kind: "none", intervalSeconds: 5, startInterval: "1s" },
   },
   { name: "empty shorthand string", input: "", expectedErrorFragment: "must not be empty" },
   { name: "empty shorthand argv", input: [], expectedErrorFragment: "must not be empty" },
@@ -61,7 +87,11 @@ const composeHealthcheckFixtures = [
     input: { test: ["CMD-SHELL", "echo ready"] },
     expected: { kind: "command", command: "echo ready" },
   },
-  { name: "NONE test disables the probe", input: { test: ["NONE"], interval: "5s" }, expected: false },
+  {
+    name: "NONE test disables the probe",
+    input: { test: ["NONE"], interval: "5s" },
+    expected: { kind: "none", intervalSeconds: 5 },
+  },
   { name: "empty test array is rejected", input: { test: [] }, expectedErrorFragment: "CMD" },
   {
     name: "NONE test rejects extra arguments",
@@ -116,7 +146,7 @@ const composeHealthcheckFixtures = [
     expected: { startInterval: "5s" },
   },
   {
-    name: "none validates and discards shared and Compose fields",
+    name: "none validates and preserves shared metadata",
     input: {
       test: ["CMD", "x"],
       disable: false,
@@ -125,7 +155,7 @@ const composeHealthcheckFixtures = [
       retries: "3",
       start_interval: "5s",
     },
-    expected: false,
+    expected: { kind: "none", retries: 3, startInterval: "5s" },
   },
   {
     name: "command selects Lando precedence over disable",

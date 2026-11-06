@@ -2,7 +2,7 @@
  * `@lando/proxy-traefik` — Traefik-backed RouterService + bundled global service.
  *
  * The `globalServices` map is the compiled-binary-safe contribution surface:
- * `meta:global:install`'s bundled-first loader reads it instead of dynamically
+ * `global configuration reconciliation`'s bundled-first loader reads it instead of dynamically
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */
@@ -18,6 +18,8 @@ import { PluginManifest } from "@lando/sdk/schema";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { routerBindAddressCheck } from "./doctor-bind-address.ts";
+import { legacyRouteFilesCheck } from "./doctor-legacy-routes.ts";
+import { socketProxyHelperDoctorCheck } from "./doctor-socket-proxy-helper.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 import { routerFileWatcherCheck } from "./doctor-watcher.ts";
 import diagnosticsGlobalService from "./global-services/diagnostics.ts";
@@ -25,6 +27,7 @@ import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 import { layer } from "./proxy.ts";
+import { makeSocketProxyHostMaintainer } from "./socket-proxy-host-maintainer.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
@@ -34,6 +37,8 @@ export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { routerBindAddressCheck } from "./doctor-bind-address.ts";
+export { legacyRouteFilesCheck } from "./doctor-legacy-routes.ts";
+export { socketProxyHelperDoctorCheck } from "./doctor-socket-proxy-helper.ts";
 export { routerFileWatcherCheck } from "./doctor-watcher.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
 export { appCertificateFiles } from "./proxy-paths.ts";
@@ -112,6 +117,9 @@ export const plugin = definePlugin({
     preferredHostPortsCheck,
     advertisedProxyPortsCheck,
     routerFileWatcherCheck,
+    legacyRouteFilesCheck,
     routerBindAddressCheck,
+    socketProxyHelperDoctorCheck,
   ],
+  hostMaintainers: process.platform === "linux" ? [makeSocketProxyHostMaintainer()] : [],
 });

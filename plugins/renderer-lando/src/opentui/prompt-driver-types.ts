@@ -83,6 +83,14 @@ export interface RendererLike {
   width: number;
   height: number;
   start?(): unknown;
+  addPostProcessFn?(
+    process: (
+      buffer: {
+        readonly buffers: { readonly fg: Uint16Array; readonly bg: Uint16Array };
+      },
+      deltaTime: number,
+    ) => void,
+  ): void;
   requestRender?(): unknown;
   resize?(width: number, height: number): void;
   destroy(): unknown | Promise<unknown>;
@@ -100,19 +108,22 @@ interface ConstructorLike<Ctx, T> {
 }
 
 export interface OpenTuiModuleLike<R extends RendererLike = RendererLike> {
+  readonly RGBA: {
+    defaultForeground(): { readonly buffer: Uint16Array };
+    defaultBackground(): { readonly buffer: Uint16Array };
+  };
   createCliRenderer(config: object): Promise<R>;
   BoxRenderable: ConstructorLike<R, RenderableLike>;
   TextRenderable: ConstructorLike<R, RenderableLike>;
   InputRenderable: ConstructorLike<R, InputRenderableLike>;
   TextareaRenderable: ConstructorLike<R, TextareaRenderableLike>;
   SelectRenderable: ConstructorLike<R, SelectRenderableLike>;
-  TabSelectRenderable: ConstructorLike<R, SelectRenderableLike>;
   InputRenderableEvents: { ENTER: string; INPUT: string; CHANGE: string };
   SelectRenderableEvents: { ITEM_SELECTED: string; SELECTION_CHANGED: string };
-  TabSelectRenderableEvents: { ITEM_SELECTED: string };
 }
 
 export interface OpenTuiPromptDriverDeps<R extends RendererLike = RendererLike> {
+  readonly noColor?: boolean;
   loadModule?: () => Promise<OpenTuiModuleLike<R>>;
   createRenderer?: (mod: OpenTuiModuleLike<R>) => Promise<R>;
   /** Production starts the live paint loop; test harness drives frames manually so it injects a no-op. */

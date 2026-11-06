@@ -17,6 +17,7 @@ import {
   GLOBAL_APPLY_REMEDIATION,
   bringUp,
 } from "../src/podman/bring-up.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
@@ -60,11 +61,15 @@ const plan: AppPlan = {
 };
 
 /** Fake libpod API whose container start always fails with the given body. */
-const failingStartApi = (startBody: string): EngineHttpApi => ({
+const failingStartApi = (startBody: string, selectedPlan: AppPlan = plan): EngineHttpApi => ({
   request: (request) =>
     Effect.sync((): EngineHttpResponse => {
+      if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+        return { status: 200, body: "[]" };
+      }
       if (request.method === "GET" && request.path.startsWith("/networks/")) {
-        return { status: 200, body: "{}" };
+        const name = decodeURIComponent(request.path.slice("/networks/".length));
+        return { status: 200, body: JSON.stringify(ownedNetworkInspection(selectedPlan, name)) };
       }
       if (request.method === "GET" && request.path.endsWith("/json")) {
         return { status: 404, body: "{}" };
@@ -96,7 +101,7 @@ describe("bringUp start-failure remediation hook", () => {
       // When container start fails through bringUp.
       const error = await Effect.runPromise(
         bringUp(globalPlan, {
-          api: failingStartApi('{"message":"synthetic start failure"}'),
+          api: failingStartApi('{"message":"synthetic start failure"}', globalPlan),
           ctx,
           ...(declines ? { startFailureRemediation: () => undefined } : {}),
         }).pipe(Effect.flip),
@@ -188,9 +193,12 @@ describe("bringUp network-create remediation hook", () => {
   const networkCreateFailingApi: EngineHttpApi = {
     request: (request) =>
       Effect.succeed(
-        request.method === "GET" && (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
-          ? { status: 404, body: "{}" }
-          : { status: 500, body: '{"message":"unable to execute \'nft\': netavark"}' },
+        request.method === "GET" && request.path.startsWith("/containers/json?")
+          ? { status: 200, body: "[]" }
+          : request.method === "GET" &&
+              (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
+            ? { status: 404, body: "{}" }
+            : { status: 500, body: '{"message":"unable to execute \'nft\': netavark"}' },
       ),
   };
 
@@ -246,10 +254,12 @@ describe("bringUp provider identity", () => {
     const api: EngineHttpApi = {
       request: (request) =>
         Effect.succeed(
-          request.method === "GET" &&
-            (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
-            ? { status: 404, body: "{}" }
-            : { status: 500, body: '{"message":"network create refused"}' },
+          request.method === "GET" && request.path.startsWith("/containers/json?")
+            ? { status: 200, body: "[]" }
+            : request.method === "GET" &&
+                (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
+              ? { status: 404, body: "{}" }
+              : { status: 500, body: '{"message":"network create refused"}' },
         ),
     };
 

@@ -1,37 +1,30 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
-import { type TunnelSession, TunnelSession as TunnelSessionSchema } from "@lando/sdk/schema";
-import { StateStore } from "@lando/sdk/services";
+import type { TunnelSession } from "@lando/sdk/schema";
+import { PathsService, StateStore } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "@lando/paths";
-
-const TunnelRegistryEntry = Schema.Struct({
-  session: TunnelSessionSchema,
-  pid: Schema.Number.pipe(Schema.check(Schema.isInt())),
-  updatedAt: Schema.String,
-});
-
-const TunnelRegistryEntries = Schema.Array(TunnelRegistryEntry);
-
-type TunnelRegistryEntry = typeof TunnelRegistryEntry.Type;
-type TunnelRegistryEntries = typeof TunnelRegistryEntries.Type;
+import {
+  TUNNEL_REGISTRY_VERSION,
+  TunnelRegistryEntries,
+  type TunnelRegistryEntry,
+  migrateTunnelRegistryEntries,
+} from "./registry-migrate.ts";
 
 const registrySpec = {
-  root: "userCache",
+  root: "userData",
   namespace: "tunnels",
   key: "registry.bin",
   schema: TunnelRegistryEntries,
-  version: 1,
+  version: TUNNEL_REGISTRY_VERSION,
   codec: "binary",
   lock: "advisory",
   default: [] as TunnelRegistryEntries,
+  onVersionMismatch: migrateTunnelRegistryEntries,
 } as const;
-
-const runDir = (): string => makeLandoPaths().tunnelRunDir;
 
 const stateError = (operation: string, path: string, cause: unknown): StateStoreError =>
   new StateStoreError({
@@ -65,11 +58,11 @@ const partitionEntries = (
   return { live: live as TunnelRegistryEntries, staleIds };
 };
 
-const writeRunArtifacts = (session: TunnelSession): Effect.Effect<void, StateStoreError> => {
-  const dir = runDir();
+const writeRunArtifacts = Effect.fnUntraced(function* (session: TunnelSession) {
+  const dir = (yield* PathsService).tunnelRunDir;
   const path = join(dir, `${session.id}.json`);
   const pidPath = join(dir, `${session.id}.pid`);
-  return Effect.tryPromise({
+  yield* Effect.tryPromise({
     try: async () => {
       await mkdir(dir, { recursive: true });
       await writeFile(path, `${JSON.stringify({ session, pid: process.pid })}\n`, "utf8");
@@ -77,11 +70,11 @@ const writeRunArtifacts = (session: TunnelSession): Effect.Effect<void, StateSto
     },
     catch: (cause) => stateError("write-tunnel-run-artifacts", path, cause),
   });
-};
+});
 
-const removeRunArtifacts = (sessionId: string): Effect.Effect<void, StateStoreError> => {
-  const dir = runDir();
-  return Effect.tryPromise({
+const removeRunArtifacts = Effect.fnUntraced(function* (sessionId: string) {
+  const dir = (yield* PathsService).tunnelRunDir;
+  yield* Effect.tryPromise({
     try: async () => {
       await rm(join(dir, `${sessionId}.json`), { force: true });
       await rm(join(dir, `${sessionId}.pid`), { force: true });
@@ -89,13 +82,13 @@ const removeRunArtifacts = (sessionId: string): Effect.Effect<void, StateStoreEr
     },
     catch: (cause) => stateError("remove-tunnel-run-artifacts", dir, cause),
   });
-};
+});
 
 const bucket = Effect.flatMap(StateStore, (store) => store.open(registrySpec));
 
 export const recordTunnelSession = Effect.fn("TunnelRegistry.recordTunnelSession")(function* (
   session: TunnelSession,
-): Effect.fn.Return<void, StateStoreError, StateStore> {
+): Effect.fn.Return<void, StateStoreError, StateStore | PathsService> {
   const registry = yield* bucket;
   const now = DateTime.formatIso(yield* DateTime.now);
   yield* registry.update((current) => {
@@ -109,7 +102,7 @@ export const recordTunnelSession = Effect.fn("TunnelRegistry.recordTunnelSession
 
 export const reconcileTunnelRegistry = Effect.fn("TunnelRegistry.reconcileTunnelRegistry")(function* (
   activeSessionIds: ReadonlySet<string> = new Set(),
-): Effect.fn.Return<ReadonlyArray<TunnelSession>, StateStoreError, StateStore> {
+): Effect.fn.Return<ReadonlyArray<TunnelSession>, StateStoreError, StateStore | PathsService> {
   const registry = yield* bucket;
   const reconciled = yield* registry.modify((current) => {
     const { live, staleIds } = partitionEntries(current ?? [], activeSessionIds);
@@ -121,7 +114,7 @@ export const reconcileTunnelRegistry = Effect.fn("TunnelRegistry.reconcileTunnel
 
 export const removeTunnelSession = Effect.fn("TunnelRegistry.removeTunnelSession")(function* (
   sessionId: string,
-): Effect.fn.Return<void, StateStoreError, StateStore> {
+): Effect.fn.Return<void, StateStoreError, StateStore | PathsService> {
   const registry = yield* bucket;
   yield* registry.update((current) =>
     partitionEntries(current ?? [], new Set()).live.filter((entry) => entry.session.id !== sessionId),

@@ -10,10 +10,10 @@
  * a bad fetch.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, rename, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Effect, Ref, Schema, type Scope, Stream } from "effect";
+import { Effect, Predicate, Ref, Schema, type Scope, Stream } from "effect";
 
 /** Failure raised while persisting/verifying a streamed artifact. */
 export class VerifiedStreamError extends Schema.TaggedError<VerifiedStreamError>()("VerifiedStreamError", {
@@ -37,6 +37,8 @@ export interface PersistVerifiedStreamParams<E, R = never> {
   readonly expectedSha256?: string | undefined;
   readonly expectedSizeBytes?: number | undefined;
   readonly mode?: number | undefined;
+  /** Prepare the empty temp file before consuming or writing any payload bytes. */
+  readonly beforeWrite?: ((path: string) => Promise<void>) | undefined;
   /** Override the temp-suffix generator (tests). */
   readonly randomId?: (() => string) | undefined;
 }
@@ -52,6 +54,24 @@ const removeIfPresent = (path: string): Promise<void> =>
     .then(() => undefined)
     .catch(() => undefined);
 
+const sizeMismatch = (sizeBytes: number, expectedSizeBytes: number): VerifiedStreamError =>
+  new VerifiedStreamError({
+    reason: "size",
+    message: `Downloaded size ${sizeBytes} does not match expected ${expectedSizeBytes}.`,
+    expectedSizeBytes,
+    actualSizeBytes: sizeBytes,
+  });
+
+const invalidExpectedSize = (expectedSizeBytes: number | undefined): VerifiedStreamError | undefined =>
+  expectedSizeBytes !== undefined && (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes < 0)
+    ? new VerifiedStreamError({
+        reason: "size",
+        message: "Expected download size must be a nonnegative safe integer.",
+        expectedSizeBytes,
+        actualSizeBytes: 0,
+      })
+    : undefined;
+
 const verify = (
   sha256: string,
   sizeBytes: number,
@@ -59,12 +79,7 @@ const verify = (
   expectedSizeBytes: number | undefined,
 ): VerifiedStreamError | undefined => {
   if (expectedSizeBytes !== undefined && sizeBytes !== expectedSizeBytes) {
-    return new VerifiedStreamError({
-      reason: "size",
-      message: `Downloaded size ${sizeBytes} does not match expected ${expectedSizeBytes}.`,
-      expectedSizeBytes,
-      actualSizeBytes: sizeBytes,
-    });
+    return sizeMismatch(sizeBytes, expectedSizeBytes);
   }
   if (expectedSha256 !== undefined && sha256 !== expectedSha256) {
     return new VerifiedStreamError({
@@ -77,14 +92,53 @@ const verify = (
   return undefined;
 };
 
+const isMissing = (cause: unknown): boolean =>
+  Predicate.hasProperty(cause, "code") && (cause.code === "ENOENT" || cause.code === "ENOTDIR");
+
+const notReplaceable = (): VerifiedStreamError =>
+  new VerifiedStreamError({
+    reason: "persist",
+    message: "The destination exists and is not a regular file.",
+  });
+
+/** Throws unless the destination is absent or resolves to a regular file. Inspection errors fail closed. */
+const assertReplaceableDestination = async (path: string): Promise<void> => {
+  const info = await stat(path).catch(async (cause: unknown) => {
+    if (!isMissing(cause)) throw cause;
+    // A dangling symlink exists even though its target doesn't; renaming would replace the link.
+    const link = await lstat(path).catch((linkCause: unknown) => {
+      if (isMissing(linkCause)) return undefined;
+      throw linkCause;
+    });
+    if (link !== undefined) throw notReplaceable();
+    return undefined;
+  });
+  if (info !== undefined && !info.isFile()) throw notReplaceable();
+};
+
 /**
  * Stream `body` into `destinationPath` atomically with checksum/size
  * verification. Requires an ambient `Scope`: a finalizer removes the temp file
- * unless the verified rename committed.
+ * unless the verified rename committed. An existing destination must be a
+ * regular file: renaming over a named pipe, socket, device, or directory would
+ * replace it rather than write into it, so that fails before any bytes are read.
  */
 export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(function* <E, R>(
   params: PersistVerifiedStreamParams<E, R>,
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
+  const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
+  if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
+  yield* Effect.tryPromise({
+    try: () => assertReplaceableDestination(params.destinationPath),
+    catch: (cause) =>
+      cause instanceof VerifiedStreamError
+        ? cause
+        : new VerifiedStreamError({
+            reason: "persist",
+            message: "Failed to inspect the destination.",
+            cause,
+          }),
+  });
   const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
   const committed = yield* Ref.make(false);
 
@@ -115,18 +169,45 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
     (h) => Effect.promise(() => h.close().catch(() => undefined)),
   );
 
+  if (params.beforeWrite !== undefined) {
+    const beforeWrite = params.beforeWrite;
+    yield* Effect.tryPromise({
+      try: () => beforeWrite(tempPath),
+      catch: (cause) =>
+        new VerifiedStreamError({ reason: "persist", message: "Failed to prepare temp file.", cause }),
+    });
+  }
+
   const hash = createHash("sha256");
   const size = yield* Ref.make(0);
 
   yield* Stream.runForEach(params.body, (chunk) =>
-    Effect.tryPromise({
-      try: async () => {
-        await handle.write(chunk);
-        hash.update(chunk);
-      },
-      catch: (cause) =>
-        new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
-    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+    Effect.gen(function* () {
+      const nextSize = (yield* Ref.get(size)) + chunk.length;
+      if (params.expectedSizeBytes !== undefined && nextSize > params.expectedSizeBytes) {
+        return yield* Effect.fail(sizeMismatch(nextSize, params.expectedSizeBytes));
+      }
+      let offset = 0;
+      while (offset < chunk.length) {
+        const { bytesWritten } = yield* Effect.tryPromise({
+          try: () => handle.write(chunk.subarray(offset)),
+          catch: (cause) =>
+            new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
+        });
+        if (
+          !Number.isSafeInteger(bytesWritten) ||
+          bytesWritten <= 0 ||
+          bytesWritten > chunk.length - offset
+        ) {
+          return yield* Effect.fail(
+            new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes." }),
+          );
+        }
+        offset += bytesWritten;
+      }
+      hash.update(chunk);
+      yield* Ref.set(size, nextSize);
+    }),
   );
 
   const sizeBytes = yield* Ref.get(size);
@@ -150,10 +231,14 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
       try: async () => {
         await handle.sync().catch(() => undefined);
         await handle.close();
+        // The destination can change while the body streams; check again right before replacing it.
+        await assertReplaceableDestination(params.destinationPath);
         await rename(tempPath, params.destinationPath);
       },
       catch: (cause) =>
-        new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
+        cause instanceof VerifiedStreamError
+          ? cause
+          : new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
     }),
   );
   yield* Ref.set(committed, true);
@@ -169,13 +254,20 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
 export const collectVerifiedStream = Effect.fn("VerifiedStream.collect")(function* <E, R>(
   params: CollectVerifiedStreamParams<E, R>,
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, R> {
+  const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
+  if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
   const hash = createHash("sha256");
   const size = yield* Ref.make(0);
 
   yield* Stream.runForEach(params.body, (chunk) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
+      const nextSize = (yield* Ref.get(size)) + chunk.length;
+      if (params.expectedSizeBytes !== undefined && nextSize > params.expectedSizeBytes) {
+        return yield* Effect.fail(sizeMismatch(nextSize, params.expectedSizeBytes));
+      }
       hash.update(chunk);
-    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+      yield* Ref.set(size, nextSize);
+    }),
   );
 
   const sizeBytes = yield* Ref.get(size);

@@ -78,6 +78,7 @@ describe("drupal decomposition", () => {
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
+          uploadDirs: ["sites/*/files"],
           port: 80,
           dependsOn: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
@@ -116,6 +117,7 @@ describe("drupal decomposition", () => {
       type: "nginx",
       backend: "appserver",
       webroot: "{{ recipe.webroot }}",
+      uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
   });

@@ -8,15 +8,18 @@ import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
 import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { setActiveRendererMode, setActiveResultFormat } from "../../src/cli/compiled-runtime.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
+import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   isPluginOwnedCommandId,
   pluginOwnedCliFlagError,
   pluginOwnedCommandEffect,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
+  tryPluginOwnedCommand,
 } from "../../src/cli/run-plugin-owned-command.ts";
 
 const DbImportResult = Schema.Struct({
@@ -85,7 +88,7 @@ const makeDbImportPlugin = () => {
     name: "@example/db-fixture",
     version: "1.0.0",
     api: 4,
-    contributes: { commands: ["db:import"] },
+    contributes: { commands: [{ id: "db:import", summary: spec.summary ?? "Import database." }] },
   });
   return definePlugin({
     name: manifest.name,
@@ -101,17 +104,135 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
     plugins: [],
     globalPlugins: [],
     certificateAuthorities: [],
-    commands: [{ id: "db:import", pluginName: plugin.name, source: "explicit", load }],
+    commands: [
+      {
+        id: "db:import",
+        descriptor: { id: "db:import", summary: makeDbImportSpec().summary ?? "Import database." },
+        pluginName: plugin.name,
+        source: "explicit",
+        load,
+      },
+    ],
     hostContext: Context.empty(),
   });
 };
 
 describe("plugin-owned command dispatch", () => {
+  test("refuses terminal stdout from argv before invoking a plugin flag parser", async () => {
+    let parsed = false;
+    let ran = false;
+    const spec: ExecutableCommandSpec = {
+      id: "fixture:dump",
+      summary: "Dump a payload.",
+      namespace: "fixture",
+      bootstrap: "plugins",
+      args: { file: { type: "string", stdio: "stdout" } },
+      flags: {
+        value: {
+          type: "string",
+          parse: (value) => {
+            parsed = true;
+            return value;
+          },
+        },
+      },
+      resultSchema: Schema.Void,
+      run: () =>
+        Effect.sync(() => {
+          ran = true;
+        }),
+    };
+    const catalog = createPluginCommandCatalog(undefined, () =>
+      Effect.succeed({
+        commands: [
+          {
+            id: spec.id,
+            descriptor: { id: spec.id, summary: spec.summary ?? "" },
+            load: async () => spec,
+            pluginName: "fixture",
+            source: "explicit",
+          },
+        ],
+        plugins: [],
+        globalPlugins: [],
+        certificateAuthorities: [],
+        hostContext: Context.empty(),
+      }),
+    );
+    setActiveResultFormat("json");
+    setActiveRendererMode("plain");
+    const stdoutTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    try {
+      expect(await tryPluginOwnedCommand(spec.id, ["-", "--value=x"], undefined, catalog)).toBe(true);
+      expect(process.exitCode).toBe(2);
+      expect(parsed).toBe(false);
+      expect(ran).toBe(false);
+    } finally {
+      if (stdoutTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+      else Object.defineProperty(process.stdout, "isTTY", stdoutTTY);
+      setActiveResultFormat("text");
+      setActiveRendererMode("lando");
+      process.exitCode = 0;
+    }
+  });
+  test("interrupts a pending async flag parser before the command runs", async () => {
+    // Given a plugin command whose flag parser never settles.
+    const parsing = Promise.withResolvers<void>();
+    let ran = false;
+    const spec: ExecutableCommandSpec = {
+      id: "fixture:hang",
+      summary: "Hang while parsing.",
+      namespace: "fixture",
+      bootstrap: "plugins",
+      flags: {
+        wait: {
+          type: "string",
+          parse: () => {
+            parsing.resolve();
+            return new Promise<never>(() => {});
+          },
+        },
+      },
+      resultSchema: Schema.Void,
+      run: () =>
+        Effect.sync(() => {
+          ran = true;
+        }),
+    };
+    const catalog = createPluginCommandCatalog(undefined, () =>
+      Effect.succeed({
+        commands: [
+          {
+            id: spec.id,
+            descriptor: { id: spec.id, summary: "Hang while parsing." },
+            load: async () => spec,
+            pluginName: "@example/hang",
+            source: "explicit",
+          },
+        ],
+        plugins: [],
+        globalPlugins: [],
+        certificateAuthorities: [],
+        hostContext: Context.empty(),
+      }),
+    );
+    const controller = new AbortController();
+
+    // When the user interrupts while the parser is pending.
+    const dispatched = tryPluginOwnedCommand("fixture:hang", ["--wait=forever"], controller.signal, catalog);
+    await parsing.promise;
+    controller.abort("SIGINT");
+
+    // Then dispatch settles without running the command.
+    expect(await dispatched).toBe(true);
+    expect(ran).toBe(false);
+  });
+
   test("loads a compliant confirmation flag and passes -y through execution to run", async () => {
     // Given
     const spec = {
       id: "db:import",
-      summary: "Import a dump.",
       namespace: "db",
       bootstrap: "app",
       resultSchema: Schema.Boolean,
@@ -128,7 +249,7 @@ describe("plugin-owned command dispatch", () => {
       pluginOwnedCommandEffect(spec, ["-y"], false).pipe(Effect.provideService(Renderer, silentRenderer)),
     );
     // Then
-    expect(target.spec).toBe(spec);
+    expect(target.spec).toMatchObject({ ...spec, summary: makeDbImportSpec().summary });
     expect(result).toBe(true);
   });
 
@@ -188,17 +309,52 @@ describe("plugin-owned command dispatch", () => {
     expect(isPluginOwnedCommandId("--help")).toBe(false);
   });
 
-  test("renders plugin spec flag tokens for help", () => {
-    // Given
-    const spec = makeDbImportSpec();
-
-    // When
+  test("renders plugin help with namespaced usage, flag metadata, and the shared global footer", () => {
+    const spec: ExecutableCommandSpec = {
+      ...makeDbImportSpec(),
+      id: "db:backup:import",
+      flags: {
+        host: { type: "string", description: "Database host." },
+        port: { type: "number", valueType: "integer", description: "Database port." },
+        mode: { type: "option", options: ["replace", "append"] },
+        yes: { type: "boolean", description: "Skip confirmation prompts." },
+        label: { type: "string", multiple: true, description: "Repeat for each label." },
+      },
+      args: { file: { type: "string", required: true }, schema: { type: "string" } },
+      strict: true,
+    };
     const help = renderPluginOwnedCommandHelp(spec);
 
-    // Then
-    expect(help).toContain("db:import");
-    expect(help).toContain("--host");
-    expect(help).toContain("FILE");
+    expect(help).toContain("Import a database dump.");
+    expect(help).toContain("\n  lando db:backup:import <FILE> [SCHEMA]\n");
+    expect(help).toContain("\n  --host <value> Database host.");
+    expect(help).toContain("\n  --port <integer> Database port.");
+    expect(help).toContain("\n  --mode <value> (replace, append)");
+    expect(help).toContain("\n  --yes, -y Skip confirmation prompts.");
+    expect(help).toContain("\n  --label <value> Repeat for each label.");
+    expect(help).toContain("Global flags (--format (text, json, yaml), --json [fields]");
+    expect(help).not.toContain("\n  --json");
+    expect(help).not.toContain("\n  --format");
+    expect(help).not.toContain("$ lando");
+    expect(help).not.toContain("\nSTATUS\n");
+    expect(renderPluginOwnedCommandHelp(spec, { styled: true })).toContain("\u001b[");
+    expect(renderPluginOwnedCommandHelp(spec, { styled: false })).not.toContain("\u001b[");
+  });
+
+  test("preserves strict-false single-argument usage and repeated flag occurrences", () => {
+    const spec: ExecutableCommandSpec = {
+      ...makeDbImportSpec(),
+      flags: { label: { type: "string", multiple: true } },
+      args: { file: { type: "string", required: true, multiple: true } },
+      strict: false,
+    };
+    const help = renderPluginOwnedCommandHelp(spec);
+    expect(help).toContain("lando db:import <FILE...>");
+    expect(help).toContain("\n  --label <value>\n");
+    expect(help).not.toContain("--label <value...>");
+    expect(
+      pluginOwnedCommandInputFromArgv(spec, ["--label", "one", "--label=two", "a.sql", "b.sql"]),
+    ).toEqual({ flags: { label: ["one", "two"] }, args: { file: "a.sql" }, raw: ["b.sql"] });
   });
 
   test("parses fixture plugin argv and decodes the spec resultSchema", async () => {

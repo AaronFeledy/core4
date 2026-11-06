@@ -60,9 +60,11 @@ export const sidebar = [
           { label: "Run the FastAPI recipe", slug: "guides/recipes/fastapi-workflow" },
           { label: "Run the MEAN recipe", slug: "guides/recipes/mean-workflow" },
           { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
+          { label: "Run Symfony Messenger workers", slug: "guides/recipes/symfony-messenger" },
           { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
           { label: "Run Laravel Reverb websockets", slug: "guides/recipes/laravel-reverb" },
           { label: "Run Laravel Horizon queues", slug: "guides/recipes/laravel-horizon" },
+          { label: "Run Vite HMR with Laravel", slug: "guides/recipes/laravel-vite" },
           { label: "Run the SvelteKit recipe", slug: "guides/recipes/sveltekit-workflow" },
           { label: "Run the Next.js recipe", slug: "guides/recipes/nextjs-workflow" },
           { label: "Run the Node API recipe", slug: "guides/recipes/node-api-workflow" },
@@ -106,6 +108,7 @@ export const sidebar = [
         items: [
           { label: "Everyday commands", slug: "guides/cli/everyday-commands" },
           { label: "Refresh a stale app cache", slug: "guides/cli/cache-refresh" },
+          { label: "Clean up the remote source cache", slug: "guides/cli/sources-gc" },
           { label: "See more CLI output", slug: "guides/cli/verbosity-and-debug" },
           { label: "Trace a slow command", slug: "guides/cli/trace-a-command" },
           { label: "Export traces", slug: "guides/cli/export-traces" },
@@ -136,7 +139,7 @@ export const sidebar = [
           { label: "Run lando doctor", slug: "guides/subsystems/doctor-walkthrough" },
           { label: "Reach an app from another device", slug: "guides/subsystems/external-access" },
           { label: "Trust local HTTPS certificates", slug: "guides/subsystems/certificates-mkcert" },
-          { label: "Resolve lndo.site on this machine", slug: "guides/subsystems/host-proxy" },
+          { label: "Resolve lndo.site on this machine", slug: "guides/subsystems/host-dns" },
         ],
       },
       {
@@ -145,6 +148,7 @@ export const sidebar = [
         items: [
           { label: "Add a plugin", slug: "guides/plugins/install-from-npm" },
           { label: "See plugin discovery scopes", slug: "guides/plugins/discovery-scopes" },
+          { label: "Inspect GitHub Actions workflows", slug: "guides/plugins/github-actions-inspection" },
           { label: "Manage plugin trust", slug: "guides/plugins/trust-management" },
           { label: "Scaffold a plugin", slug: "guides/plugins/authoring-new-plugin" },
           { label: "Test and build a plugin", slug: "guides/plugins/test-and-build-plugin" },

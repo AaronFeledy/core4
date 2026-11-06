@@ -64,7 +64,11 @@ lando npm run build
 
 `public/build` lands in the shared `/app`, so Apache serves it right away. `node_modules` lives in a volume private to the `node` service.
 
+For hot reload through the proxy while you edit, see [Run Vite HMR with the Laravel recipe](./laravel-vite.mdx).
+
 ## See what the recipe writes
+
+The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP out of uploaded files, including through the `public/storage` symlink.
 
 | Piece | What you get |
 | --- | --- |

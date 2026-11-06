@@ -244,9 +244,14 @@ export const recoveryHarness = Effect.fnUntraced(function* (
     ...options.harnessOptions,
   });
   yield* beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(
-    Effect.flatMap((pending) =>
-      options.phase === "preparing" ? Effect.void : pending.advance(options.phase ?? "apply-intent"),
-    ),
+    Effect.flatMap((pending) => {
+      const phase = options.phase ?? "apply-intent";
+      if (phase === "preparing") return Effect.void;
+      const sessionsReady = pending.advance("record-sessions");
+      return phase === "sessions-ready"
+        ? sessionsReady
+        : sessionsReady.pipe(Effect.andThen(pending.advance("record-apply-intent")));
+    }),
     Effect.provide(harness.layer),
   );
   return { ...harness, calls, sessions };

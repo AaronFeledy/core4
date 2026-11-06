@@ -124,6 +124,11 @@ const expectations = {
   },
   "corpus/runtime-knobs.compose.yaml": (context) => {
     const database = servicePlan(context, "database");
+    expect(database.init).toBe(true);
+    expect(valueAt(database.extensions.compose, "init")).toBeUndefined();
+    const optedOut = servicePlan(context, "opted_out");
+    expect(optedOut.init).toBe(false);
+    expect(valueAt(optedOut.extensions.compose, "init")).toBeUndefined();
     expect(database.mounts).toContainEqual({
       type: "tmpfs",
       target: PortablePath.make("/run"),

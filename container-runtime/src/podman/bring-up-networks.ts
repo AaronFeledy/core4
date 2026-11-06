@@ -1,7 +1,13 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AuthoredNetworkPlan } from "@lando/sdk/schema";
+import type { ProviderError } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
-import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
+import type {
+  EngineHttpApi,
+  EngineHttpRequest,
+  EngineHttpResponse,
+  ProviderErrorContext,
+} from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
 import { networkLabelsDecision, networkOwnershipLabels } from "../native-ownership.ts";
 
@@ -10,6 +16,9 @@ const NetworkInspection = Schema.fromJsonString(
     Name: Schema.String,
     Driver: Schema.optionalKey(Schema.String),
     Labels: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
+    Id: Schema.optionalKey(Schema.Unknown),
+    ID: Schema.optionalKey(Schema.Unknown),
+    id: Schema.optionalKey(Schema.Unknown),
   }),
 );
 
@@ -47,52 +56,54 @@ export const preflightExternalNetwork = Effect.fnUntraced(function* (
   }
 });
 
-export const ensureAuthoredNetwork = Effect.fnUntraced(function* (
-  api: EngineHttpApi,
-  input: { readonly plan: AppPlan; readonly network: AuthoredNetworkPlan },
+export const ensurePrivateNetwork = Effect.fnUntraced(function* (
+  request: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, ProviderError>,
+  input: {
+    readonly plan: AppPlan;
+    readonly name: string;
+    readonly driver: string;
+    readonly create: (
+      labels: Readonly<Record<string, string>>,
+    ) => Effect.Effect<EngineHttpResponse, ProviderError>;
+    readonly conflictRemediation?: string;
+    readonly createFailure?: (response: EngineHttpResponse) => ProviderUnavailableError;
+  },
   ctx: ProviderErrorContext,
 ) {
-  const { plan, network } = input;
-  if (api.request === undefined) return yield* Effect.fail(missingApi(ctx, "bringUp.network"));
+  const { plan, name, driver } = input;
   const labels = networkOwnershipLabels(plan);
-  const driver = network.driver ?? "bridge";
-  const path = `/networks/${encodeURIComponent(network.name)}` as const;
-  let inspected = yield* api.request({ method: "GET", path });
+  const path = `/networks/${encodeURIComponent(name)}` as const;
+  let inspected = yield* request({ method: "GET", path });
   const fail = (reason: string, remediation: string) =>
     Effect.fail(
       new ProviderUnavailableError({
         providerId: ctx.providerId,
         operation: "bringUp.network",
-        message: `Network ${network.name}: ${reason}`,
+        message: `Network ${name}: ${reason}`,
         remediation,
       }),
     );
   const retry = "Inspect the network conflict, then run `lando start` again.";
   if (inspected.status === 404) {
-    const created = yield* api.request({
-      method: "POST",
-      path: "/networks/create",
-      body: {
-        Name: network.name,
-        Driver: driver,
-        Labels: labels,
-      },
-    });
+    const created = yield* input.create(labels);
     if (created.status === 200 || created.status === 201) return;
-    if (created.status !== 409) return yield* fail(`create returned HTTP ${created.status}.`, retry);
-    inspected = yield* api.request({ method: "GET", path });
+    if (created.status !== 409) {
+      if (input.createFailure !== undefined) return yield* Effect.fail(input.createFailure(created));
+      return yield* fail(`create returned HTTP ${created.status}.`, retry);
+    }
+    inspected = yield* request({ method: "GET", path });
   }
   if (inspected.status !== 200) return yield* fail(`inspect returned HTTP ${inspected.status}.`, retry);
   const decoded = Schema.decodeUnknownOption(NetworkInspection)(inspected.body);
-  if (Option.isNone(decoded) || decoded.value.Name !== network.name) {
+  if (Option.isNone(decoded) || decoded.value.Name !== name) {
     return yield* fail("exact name could not be verified.", retry);
   }
+  const nativeId = decoded.value.Id ?? decoded.value.ID ?? decoded.value.id;
+  if (typeof nativeId !== "string" || nativeId.length === 0)
+    return yield* fail("native ID could not be verified.", retry);
   switch (networkLabelsDecision(decoded.value.Labels ?? undefined, labels)) {
     case "foreign":
-      return yield* fail(
-        "another project owns this network.",
-        `To join it, set \`external: true\` and \`name: ${network.name}\` under networks.${network.key}.`,
-      );
+      return yield* fail("another project owns this network.", input.conflictRemediation ?? retry);
     case "legacy":
       return yield* fail(
         "it is not verifiably Lando's network.",
@@ -107,4 +118,31 @@ export const ensureAuthoredNetwork = Effect.fnUntraced(function* (
       "Run `lando destroy`, then `lando start` to recreate the network with the planned driver.",
     );
   }
+});
+
+export const ensureAuthoredNetwork = Effect.fnUntraced(function* (
+  api: EngineHttpApi,
+  input: { readonly plan: AppPlan; readonly network: AuthoredNetworkPlan },
+  ctx: ProviderErrorContext,
+) {
+  if (api.request === undefined) return yield* Effect.fail(missingApi(ctx, "bringUp.network"));
+  const { plan, network } = input;
+  const driver = network.driver ?? "bridge";
+  const request = api.request;
+  return yield* ensurePrivateNetwork(
+    request,
+    {
+      plan,
+      name: network.name,
+      driver,
+      conflictRemediation: `To join it, set \`external: true\` and \`name: ${network.name}\` under networks.${network.key}.`,
+      create: (labels) =>
+        request({
+          method: "POST",
+          path: "/networks/create",
+          body: { Name: network.name, Driver: driver, Labels: labels },
+        }),
+    },
+    ctx,
+  );
 });

@@ -97,12 +97,11 @@ export interface ServiceTypeInput {
  * A reference to a composable feature the planner applies to the seeded base
  * draft in priority order. `config` carries the feature's resolved
  * options; the planner reads the feature's priority from its definition.
- * A non-empty string at `config.webroot` declares that the composed feature
- * handles the effective root, whether as server configuration or context.
- * The declaring plugin must implement that meaning; this is not proof of HTTP
- * serving. Explicit authored webroot requires at least one such declaration
- * after inheritance and planner substitutions, before app-plan cache lookup.
- * Features own path validation and must not declare roots they silently ignore.
+ * Service-field support is declared explicitly by the feature definition's
+ * `validateEffective` result, never inferred from keys in this config. Validation
+ * sees Original decoded config and final inherited immutable facts before cache
+ * lookup, including when authored endpoints replace discovery. Claims name only
+ * fields the feature actually represents; findings use ServiceFeatureError.issues.
  */
 export interface FeatureRef {
   readonly id: string;
@@ -177,35 +176,11 @@ export interface ServiceType {
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }
 
-/** Normalized flag metadata carried alongside a registered tooling command. */
-export interface RegisteredCommandFlag {
-  readonly name: string;
-  readonly alias?: string;
-  readonly boolean: boolean;
-  readonly choices?: ReadonlyArray<string>;
-  readonly default?: string | boolean;
-  readonly required: boolean;
-  readonly description?: string;
-}
-
-/** Normalized positional-argument metadata carried alongside a registered tooling command. */
-export interface RegisteredCommandArg {
-  readonly name: string;
-  readonly order: number;
-  readonly choices?: ReadonlyArray<string>;
-  readonly default?: string;
-  readonly required: boolean;
-  readonly description?: string;
-}
-
 export interface RegisteredCommand {
   readonly id: string;
   readonly summary: string;
   readonly hidden: boolean;
-  readonly input?: {
-    readonly flags: ReadonlyArray<RegisteredCommandFlag>;
-    readonly args: ReadonlyArray<RegisteredCommandArg>;
-  };
+  readonly input?: import("../schema/tooling-input.ts").ToolingInputDeclaration;
 }
 
 export class CommandRegistry extends Context.Service<

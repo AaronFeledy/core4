@@ -145,6 +145,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/laravel-workflow");
     expect(slugs).toContain("guides/recipes/laravel-reverb");
     expect(slugs).toContain("guides/recipes/laravel-horizon");
+    expect(slugs).toContain("guides/recipes/laravel-vite");
     expect(slugs).toContain("guides/recipes/sveltekit-workflow");
     expect(slugs).toContain("guides/recipes/nextjs-workflow");
     expect(slugs).toContain("guides/recipes/node-api-workflow");

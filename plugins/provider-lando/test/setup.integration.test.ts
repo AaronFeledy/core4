@@ -116,7 +116,7 @@ describe("provider-lando setup", () => {
     }
   });
 
-  test("succeeds with a reachable socket and reports the detected Podman version", async () => {
+  test("external setup reports the detected version without installing a managed bundle", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-state-"));
     const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
     const provider = await Effect.runPromise(
@@ -154,8 +154,6 @@ describe("provider-lando setup", () => {
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state).toEqual({
         podmanVersion: "6.0.2",
-        runtimeBundleVersion: "0.0.0-test",
-        runtimeBundleSha256: sha256(bundleBytes),
         socketPath: "/tmp/lando-test.sock",
       });
     } finally {
@@ -302,6 +300,7 @@ describe("provider-lando setup", () => {
           podmanMachine: machineRunner("running", calls),
           artifactDownload,
           stateDir,
+          providerSocketPath: join(stateDir, "podman.sock"),
         }),
       );
 
@@ -365,6 +364,7 @@ describe("provider-lando setup", () => {
             podmanMachine: machineRunner("running", calls),
             artifactDownload,
             stateDir,
+            providerSocketPath: join(stateDir, "podman.sock"),
           }),
         );
 
@@ -925,14 +925,16 @@ describe("provider-lando setup runtime bundle extraction", () => {
   });
 
   test("extracts the verified runtime bundle into runtimeBinDir with executable bits", async () => {
+    const { catatonitFixture } = await import("./fixtures/catatonit.ts");
+    const helper = catatonitFixture();
     const root = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
     const stateDir = join(root, "providers");
     const runtimeBinDir = join(root, "runtime", "bin");
     const runtimeConfigDir = join(root, "runtime", "config");
     try {
       const archiveBytes = buildTarGz([
-        { path: "podman", bytes: new TextEncoder().encode("podman") },
-        { path: "gvproxy", bytes: new TextEncoder().encode("gvproxy") },
+        { path: "podman", bytes: new TextEncoder().encode("podman"), mode: 0o755 },
+        { path: "gvproxy", bytes: new TextEncoder().encode("gvproxy"), mode: 0o755 },
       ]);
       const result = await Effect.runPromise(
         setupProviderLando({
@@ -942,7 +944,9 @@ describe("provider-lando setup runtime bundle extraction", () => {
             ping: Effect.succeed(undefined),
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(archiveBytes),
+          runtimeBundleDownloader: downloaderFor(archiveBytes, "0.1.7"),
+          artifactDownload: helper.download,
+          _catatonitPackage: helper.pkg,
           stateDir,
           runtimeBinDir,
           runtimeConfigDir,
@@ -977,7 +981,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state.runtimeBinDir).toBe(runtimeBinDir);
-      expect(state.runtimeBundleVersion).toBe("0.0.0-test");
+      expect(state.runtimeBundleVersion).toBe("0.1.7");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1143,6 +1147,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(v1, "1.0.0"),
+          managedRuntimeSetup: () => Effect.void,
           runtimeBinDir,
         });
 
@@ -1168,6 +1173,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(v2, "2.0.0"),
+          managedRuntimeSetup: () => Effect.void,
           runtimeBinDir,
         }),
       );

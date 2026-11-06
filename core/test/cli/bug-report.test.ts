@@ -108,7 +108,7 @@ describe("buildBugReport: envelope extraction", () => {
   test("preserves expression fields when plain and JSON bug reports render", () => {
     const error = new ConfigExpressionError({
       message: "Missing expression value",
-      path: "services.appserver.environment.GREETING",
+      path: ["services", "appserver", "environment", "GREETING"],
       expression: "hi-{{ app.nope }}",
       filePath: "/app/.lando.yml",
       remediation: "Fix expression",
@@ -122,6 +122,7 @@ describe("buildBugReport: envelope extraction", () => {
       ["filePath", "/app/.lando.yml"],
     ])
       expect(plain).toContain(`${key}: ${value}`);
+    // The diagnostic record flattens extra fields to their display text; the envelope keeps the array.
     expect(json).toMatchObject({
       expression: "hi-{{ app.nope }}",
       path: "services.appserver.environment.GREETING",

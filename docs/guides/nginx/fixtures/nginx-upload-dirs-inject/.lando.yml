@@ -1,0 +1,12 @@
+# lando-lint: expect-invalid unsafe uploadDirs interpolation must fail native authoring validation
+name: nginx-upload-dirs-inject
+runtime: 4
+services:
+  web:
+    type: nginx
+    backend: app
+    uploadDirs:
+      - "files; } location / {"
+  app:
+    type: "php:8.3"
+    via: fpm

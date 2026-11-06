@@ -1,4 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -12,6 +13,7 @@ export const lowerServiceMemory = (
   lowered: { readonly id: string; readonly patch: Readonly<Record<string, unknown>> },
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
+  const cursor = serviceCursor(service, ctx);
   const { id } = lowered;
   const patch: Record<string, unknown> = {};
   const diagnostics: ConfigTranslateDiagnostic[] = [];
@@ -19,6 +21,7 @@ export const lowerServiceMemory = (
   const search = id === "elasticsearch" || id === "opensearch";
   for (const key of ["mem", "plugins"] as const) {
     if (!Object.hasOwn(service, key)) continue;
+    cursor.mapTo([key]);
     const relative = [key];
     if (key === "plugins" && search) {
       blocked = true;
@@ -99,5 +102,5 @@ export const lowerServiceMemory = (
       );
     }
   }
-  return { patch, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
+  return { patch, claims: cursor.claims, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
 };

@@ -17,8 +17,13 @@ import (
 	"time"
 )
 
-func proxyEnv() map[string]string {
-	return map[string]string{"LANDO_HOST_PROXY_SOCKET": "/missing/socket", "LANDO_HOST_PROXY_SESSION": "session", "LANDO_HOST_PROXY_APP": "app", "LANDO_HOST_PROXY_TOKEN": "token"}
+func proxyEnv(t *testing.T) map[string]string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "credentials")
+	if err := os.WriteFile(path, []byte(`{"version":1,"app":"app","session":"session","token":"token"}`), 0444); err != nil {
+		t.Fatal(err)
+	}
+	return map[string]string{"LANDO_HOST_PROXY_SOCKET": "/missing/socket", "LANDO_HOST_PROXY_CREDENTIALS_FILE": path}
 }
 
 func TestMissingProxyEnvironment(t *testing.T) {
@@ -26,13 +31,10 @@ func TestMissingProxyEnvironment(t *testing.T) {
 		name, message string
 		remove        []string
 	}{
-		{"target", "LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL", []string{"LANDO_HOST_PROXY_SOCKET", "LANDO_HOST_PROXY_SESSION"}},
-		{"session first", "LANDO_HOST_PROXY_SESSION", []string{"LANDO_HOST_PROXY_SESSION", "LANDO_HOST_PROXY_APP", "LANDO_HOST_PROXY_TOKEN"}},
-		{"app second", "LANDO_HOST_PROXY_APP", []string{"LANDO_HOST_PROXY_APP", "LANDO_HOST_PROXY_TOKEN"}},
-		{"token third", "LANDO_HOST_PROXY_TOKEN", []string{"LANDO_HOST_PROXY_TOKEN"}},
+		{"target", "LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL", []string{"LANDO_HOST_PROXY_SOCKET"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			env := proxyEnv()
+			env := proxyEnv(t)
 			for _, key := range tc.remove {
 				delete(env, key)
 			}
@@ -65,7 +67,7 @@ func TestProxyRequestOverRealTransports(t *testing.T) {
 					t.Error(err)
 				}
 			}))
-			env := proxyEnv()
+			env := proxyEnv(t)
 			if network == "unix" {
 				if err := server.Listener.Close(); err != nil {
 					t.Fatal(err)
@@ -150,13 +152,18 @@ type singleByteReader struct{ io.Reader }
 func (r *singleByteReader) Read(p []byte) (int, error) { return r.Reader.Read(p[:min(1, len(p))]) }
 
 func TestProxyTransportErrors(t *testing.T) {
-	for _, target := range []string{"", "http://[bad", "http://127.0.0.1:0"} {
-		t.Run(target, func(t *testing.T) {
-			env := proxyEnv()
-			env["LANDO_HOST_PROXY_URL"] = target
+	for _, tc := range []struct {
+		target string
+		code   int
+	}{
+		{"", 69}, {"http://[bad", 127}, {"http://127.0.0.1:0", 69},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			env := proxyEnv(t)
+			env["LANDO_HOST_PROXY_URL"] = tc.target
 			var out, stderr bytes.Buffer
 			code := runHostProxy(context.Background(), nil, helperIO{stdout: &out, stderr: &stderr, env: env})
-			if code != 127 || stderr.Len() == 0 || !strings.HasSuffix(stderr.String(), "\n") {
+			if code != tc.code || stderr.Len() == 0 || !strings.HasSuffix(stderr.String(), "\n") {
 				t.Fatalf("code=%d stderr=%q", code, stderr.String())
 			}
 		})

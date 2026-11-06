@@ -14,10 +14,10 @@ import {
 import {
   EventService,
   type LandoEvent,
+  ProcessRunner,
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-  ShellRunner,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 
@@ -79,6 +79,7 @@ export const recordingEventLayer = () => {
       subscribe: () => Stream.die("unused event subscription"),
       subscribeQueue: Effect.die("unused event queue"),
       waitFor: () => Effect.die("unused event wait"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("unused event wait"),
       query: () => Effect.die("unused event query"),
     }),
@@ -110,12 +111,11 @@ export const commandServices = (
 ) =>
   Layer.mergeAll(
     Layer.succeed(
-      ShellRunner,
-      ShellRunner.of({
-        exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-        run: () => Effect.die("unused shell run"),
-        runScript: () => Effect.die("unused shell script"),
-        interactive: () => Effect.die("unused interactive shell"),
+      ProcessRunner,
+      ProcessRunner.of({
+        run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+        stream: () => Stream.die("unused process stream"),
+        streamWithExit: () => Stream.die("unused process stream"),
       }),
     ),
     eventLayer,

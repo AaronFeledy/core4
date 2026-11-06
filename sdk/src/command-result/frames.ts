@@ -1,6 +1,7 @@
 import { StreamFrame } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
+import { encodeRedactedJson } from "./redacted-json.ts";
 
 export interface EncodeStreamEventFrameOptions {
   readonly event: string;
@@ -22,18 +23,18 @@ export const identityRedactor: Redactor = {
 
 export const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<string, never> =>
   Effect.try({
-    try: () => Schema.encodeUnknownSync(StreamFrame)(frame),
+    try: () => encodeRedactedJson(Schema.encodeUnknownSync(StreamFrame)(frame), redactor),
     catch: (error) => error,
   }).pipe(
-    Effect.map((encoded) => redactor.redactString(JSON.stringify(encoded))),
     Effect.catch(() =>
       Effect.succeed(
-        redactor.redactString(
-          JSON.stringify({
+        encodeRedactedJson(
+          {
             _tag: "event",
             event: "stream-frame-encode-error",
             payload: { message: "Failed to encode stream frame." },
-          }),
+          },
+          redactor,
         ),
       ),
     ),

@@ -10,7 +10,12 @@ import {
   updateAuthoredIncludes,
   verifyAuthoredIncludes,
 } from "./include-pipeline.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+import {
+  makeNpmPackageTarball,
+  makeTestLandofilePorts,
+  makeTestLandofileStateStore,
+  makeTestNpmRegistry,
+} from "./support.ts";
 
 let root: string;
 const SHA = "a".repeat(40);
@@ -24,12 +29,15 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
-const options = () => ({
-  appRoot: root,
-  cacheRoot: join(root, "cache"),
-  ports: makeTestLandofilePorts(join(root, "cache")),
-  stateStore: makeTestLandofileStateStore(),
-});
+const options = () => {
+  const cacheRoot = join(root, "cache");
+  return {
+    appRoot: root,
+    cacheRoot,
+    ports: makeTestLandofilePorts(cacheRoot),
+    stateStore: makeTestLandofileStateStore(cacheRoot),
+  };
+};
 
 for (const [name, body] of [
   ["incomplete entry", `  - source: ${source}\n    resolved: ${SHA}\n`],
@@ -54,8 +62,8 @@ for (const [name, body] of [
           ...options(),
           landofile: { includes: [source] },
           deps: {
-            gitCloner: {
-              clone: async () => {
+            git: {
+              fetch: async () => {
                 calls++;
                 throw new Error("must not acquire");
               },
@@ -101,11 +109,11 @@ test("network pin checks parent bytes before parsing its child", async () => {
         ...options(),
         landofile: { includes: [source] },
         deps: {
-          gitCloner: {
-            clone: async ({ dest, ref }) => {
+          git: {
+            fetch: async ({ dest, ref }) => {
               refs.push(ref);
               await Bun.write(join(dest, "php.yml"), "includes:\n  - github:acme/child/php.yml\n");
-              return { commitSha: SHA };
+              return { commit: SHA };
             },
           },
         },
@@ -117,49 +125,48 @@ test("network pin checks parent bytes before parsing its child", async () => {
   expect(refs).toEqual([SHA]);
 });
 
-const npmDeps = (specs: string[], version = "1.2.3") => {
-  const bytes = new Uint8Array([1]);
-  return {
-    npmRecipeSource: {
-      resolve: async (spec: string) => {
-        specs.push(spec);
-        return {
-          packageName: "@acme/fragments",
-          version,
-          dist: {
-            tarball: "https://registry.example/pkg.tgz",
-            shasum: createHash("sha1").update(bytes).digest("hex"),
-          },
-        };
-      },
+const npmRegistryDeps = (specs: string[], version = "1.2.3") => {
+  const tarball = makeNpmPackageTarball({
+    "web.yml": CONTENT,
+    "cache.yml": "services:\n  cache:\n    type: redis\n",
+  });
+  const npmRegistry = makeTestNpmRegistry({
+    name: "@acme/fragments",
+    version,
+    tarball,
+    onPackument: (name) => {
+      specs.push(`${name}@${version}`);
     },
-    npmFetcher: { fetch: async () => bytes },
-    npmExtractor: {
-      extract: async (_bytes: Uint8Array, dest: string) => {
-        await mkdir(join(dest, "package"), { recursive: true });
-        await Bun.write(join(dest, "package", "web.yml"), CONTENT);
-        await Bun.write(join(dest, "package", "cache.yml"), "services:\n  cache:\n    type: redis\n");
-      },
-    },
-  };
+  });
+  return { npmRegistry, tarball };
 };
 
 test("two npm fragments from one package have distinct pins and unambiguous cache layout", async () => {
   // Given
   const specs: string[] = [];
+  const { npmRegistry, tarball } = npmRegistryDeps(specs);
+  const sha256 = createHash("sha256").update(tarball).digest("hex");
+  const base = options();
   const input = {
-    ...options(),
+    ...base,
+    ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
     landofile: {
       includes: [
         { source: "npm:@acme/fragments", path: "web.yml" },
         { source: "npm:@acme/fragments", path: "cache.yml" },
       ],
     },
-    deps: npmDeps(specs),
+    deps: { npmRegistry },
   };
   // When
   const report = await Effect.runPromise(updateAuthoredIncludes(input));
-  const loaded = await Effect.runPromise(resolveAuthoredIncludes({ ...input, deps: {} }));
+  const loaded = await Effect.runPromise(
+    resolveAuthoredIncludes({
+      ...input,
+      deps: { npmRegistry },
+      ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
+    }),
+  );
   // Then
   expect(report.entries.map(({ source }) => source)).toEqual([
     "npm:@acme/fragments/cache.yml",
@@ -167,9 +174,7 @@ test("two npm fragments from one package have distinct pins and unambiguous cach
   ]);
   expect(loaded.services?.[ServiceName.make("cache")]?.type).toBe("redis");
   expect(
-    await Bun.file(
-      join(root, "cache", "includes", "npm", "@acme+fragments@1.2.3", "package", "web.yml"),
-    ).text(),
+    await Bun.file(join(root, "cache", "sources", "archive", sha256, "tree", "package", "web.yml")).text(),
   ).toBe(CONTENT);
 });
 
@@ -179,37 +184,59 @@ for (const returned of ["1.2.3", "2.0.0"]) {
     const locked = `includes:\n  - source: npm:@acme/fragments/web.yml\n    version: latest\n    resolved: 1.2.3\n    checksum: ${checksum}\n`;
     await Bun.write(join(root, ".lando.lock.yml"), locked);
     const specs: string[] = [];
+    const tarball = makeNpmPackageTarball({ "web.yml": CONTENT });
+    // Accept: packument publishes 1.2.3. Drift: dist-tag "1.2.3" points at 2.0.0 so resolve drifts.
+    const npmRegistry = makeTestNpmRegistry({
+      name: "@acme/fragments",
+      version: returned === "1.2.3" ? "1.2.3" : "2.0.0",
+      tarball,
+      extraVersions: returned === "1.2.3" ? [] : ["1.2.3"],
+      tags: returned === "1.2.3" ? {} : { "1.2.3": "2.0.0" },
+      onPackument: (name) => {
+        specs.push(`${name}@1.2.3`);
+      },
+    });
+    const base = options();
     // When
     const result = await Effect.runPromise(
       Effect.result(
         resolveAuthoredIncludes({
-          ...options(),
+          ...base,
+          ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
           landofile: { includes: [{ source: "npm:@acme/fragments@latest", path: "web.yml" }] },
-          deps: npmDeps(specs, returned),
+          deps: { npmRegistry },
         }),
       ),
     );
     // Then
     expect(specs).toEqual(["@acme/fragments@1.2.3"]);
     if (returned === "1.2.3") expect(result._tag).toBe("Success");
-    else expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileLockMismatchError" } });
+    else
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "LandofileLockMismatchError" },
+      });
     expect(await Bun.file(join(root, ".lando.lock.yml")).text()).toBe(locked);
   });
 }
 
 test("npm network refresh repairs existing poisoned bytes instead of blessing them", async () => {
   // Given
-  const cached = join(root, "cache", "includes", "npm", "@acme+fragments@1.2.3", "package");
-  await mkdir(cached, { recursive: true });
+  const specs: string[] = [];
+  const { npmRegistry, tarball } = npmRegistryDeps(specs);
+  const sha256 = createHash("sha256").update(tarball).digest("hex");
+  const base = options();
+  const input = {
+    ...base,
+    ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
+    landofile: { includes: [{ source: "npm:@acme/fragments", path: "web.yml" }] },
+    deps: { npmRegistry },
+  };
+  await Effect.runPromise(updateAuthoredIncludes(input));
+  const cached = join(root, "cache", "sources", "archive", sha256, "tree", "package");
   await Bun.write(join(cached, "web.yml"), "name: poisoned\n");
   // When
-  const report = await Effect.runPromise(
-    updateAuthoredIncludes({
-      ...options(),
-      landofile: { includes: [{ source: "npm:@acme/fragments", path: "web.yml" }] },
-      deps: npmDeps([]),
-    }),
-  );
+  const report = await Effect.runPromise(updateAuthoredIncludes(input));
   // Then
   expect(report.entries[0]?.checksum).toBe(checksum);
   expect(await Bun.file(join(cached, "web.yml")).text()).toBe(CONTENT);
@@ -217,16 +244,20 @@ test("npm network refresh repairs existing poisoned bytes instead of blessing th
 
 test("an npm registry version that would escape the include cache fails before anything is removed", async () => {
   // Given: a directory outside the include cache that a traversal could reach
-  const outside = join(root, "cache", "includes", "keep");
+  const outside = join(root, "cache", "sources", "keep");
   await mkdir(outside, { recursive: true });
   await Bun.write(join(outside, "web.yml"), "keep\n");
+  const specs: string[] = [];
+  const { npmRegistry } = npmRegistryDeps(specs, "1.2.3/../../keep");
+  const base = options();
   // When: the registry reports a version containing path segments
   const error = await Effect.runPromise(
     Effect.flip(
       updateAuthoredIncludes({
-        ...options(),
+        ...base,
+        ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
         landofile: { includes: [{ source: "npm:@acme/fragments", path: "web.yml" }] },
-        deps: npmDeps([], "1.2.3/../../keep"),
+        deps: { npmRegistry },
       }),
     ),
   );
@@ -242,13 +273,16 @@ test("a lock entry whose npm version is not an exact version fails closed withou
     `includes:\n  - source: npm:@acme/fragments/web.yml\n    resolved: ../keep\n    checksum: ${checksum}\n`,
   );
   const specs: string[] = [];
+  const { npmRegistry } = npmRegistryDeps(specs);
+  const base = options();
   // When
   const error = await Effect.runPromise(
     Effect.flip(
       resolveAuthoredIncludes({
-        ...options(),
+        ...base,
+        ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
         landofile: { includes: [{ source: "npm:@acme/fragments", path: "web.yml" }] },
-        deps: npmDeps(specs),
+        deps: { npmRegistry },
       }),
     ),
   );

@@ -10,7 +10,7 @@ import {
 const source = (input: {
   readonly id: string;
   readonly path: string;
-  readonly strategy: LogSource["strategy"];
+  readonly strategy: "redirect" | "follow";
   readonly stream?: LogSource["stream"];
 }): LogSource => ({
   id: LogSourceId.make(input.id),
@@ -22,6 +22,19 @@ const source = (input: {
 });
 
 describe("redirectLogSourceBuildSteps", () => {
+  test("never emits filesystem build steps or followers for native aliases", () => {
+    // Given two logical names sharing a native daemon pipe.
+    const logSources: LogSource[] = [
+      { id: LogSourceId.make("access"), strategy: "console", stream: "stderr" },
+      { id: LogSourceId.make("error"), strategy: "console", stream: "stderr" },
+    ];
+    // When reifying the sources.
+    const steps = redirectLogSourceBuildSteps({ base: "lando", logSources });
+    // Then aliases need neither file preparation nor runtime followers.
+    expect(steps).toEqual([]);
+    expect(runtimeFollowLogSources(logSources)).toEqual([]);
+  });
+
   test("emits argv-safe parent creation immediately before a stdout redirect", () => {
     const steps = redirectLogSourceBuildSteps({
       base: "lando",

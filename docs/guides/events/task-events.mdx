@@ -88,6 +88,13 @@ events:
 
 `command: app:lint` re-enters the top-level command path, exactly as if you had typed `lando lint`. That fires `pre-lint` and `post-lint` too.
 
+`command:` runs in the current Lando process. Nested commands and SDK calls can
+reuse that process's app mutation lock, subject to their admission and event
+recursion checks. A shell step that starts a child `lando` needs a separate lock;
+it cannot borrow its parent's ownership. Recognized parent ownership causes an
+immediate refusal, while other contention uses the normal bounded wait. Run a
+separate mutation after the parent finishes.
+
 Pass declared inputs by name. Positional `order` controls the argument sequence,
 not the order of keys in your Landofile:
 

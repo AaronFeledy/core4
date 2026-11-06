@@ -4,6 +4,7 @@ import type { RecipePrompt } from "@lando/sdk/schema";
 import { postInitAuthorizationIssue } from "../../src/recipes/post-init/authorization";
 import { runPostInit } from "../../src/recipes/post-init/runtime";
 import { collectPrompts } from "../../src/recipes/prompts/runtime";
+import { unexpectedBun } from "../_support/process-runner.ts";
 
 for (const when of ["{{ secrets.hidden }}", '{{ options.hidden + "', "{{ options.hidden }}"]) {
   test(`keeps expression errors free of raw answer data: ${when}`, async () => {
@@ -11,6 +12,7 @@ for (const when of ["{{ secrets.hidden }}", '{{ options.hidden + "', "{{ options
     const secret = "private-answer-67249";
     // When parsing, scope checking, or boolean evaluation rejects the condition.
     const result = runPostInit({
+      runBun: unexpectedBun,
       actions: [{ type: "message", text: "unused", when }],
       destination: "/tmp",
       recipeId: "review",
@@ -40,6 +42,7 @@ for (const supplied of [false, true]) {
     let invocations = 0;
     // When the resolved answers reach post-init authorization.
     await runPostInit({
+      runBun: unexpectedBun,
       actions: [{ type: "command", cmd: "app:start", when: "{{ options.start }}" }],
       destination: "/tmp",
       recipeId: "review",
