@@ -71,10 +71,6 @@ describe("Effect version pin", () => {
     expect(workspaces?.catalog?.effect).toBe(EFFECT_VERSION);
   });
 
-  test("the TypeScript devDependency floor is ^5.9.0", () => {
-    expect(rootManifest.devDependencies?.typescript).toBe("^5.9.0");
-  });
-
   test("every workspace declares effect through the catalog and depends on no @effect package", async () => {
     // Given: every workspace manifest, including the root.
     const offenders: string[] = [];

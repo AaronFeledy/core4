@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { type ModuleEdge, scanModuleEdgesFromSource } from "../module-edge-scan.ts";
 import type { FileRecord } from "./types.ts";

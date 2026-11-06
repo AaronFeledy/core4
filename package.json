@@ -38,8 +38,9 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/bun": "^1.4.4",
-    "mdast-util-to-markdown": "^2.2.0",
-    "typescript": "^5.9.0"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@typescript/typescript6": "^6.0.2",
+    "mdast-util-to-markdown": "^2.2.0"
   },
   "scripts": {
     "build": "bun run --filter='*' build",
@@ -53,7 +54,7 @@
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
     "bench:landofile-load": "bun run scripts/bench-landofile-load.ts",
     "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
-    "typecheck": "bun run scripts/typecheck.ts",
+    "typecheck": "tsc -b",
     "check:types": "bun check",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "lint": "biome check . && bun run check:deprecations",

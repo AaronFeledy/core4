@@ -2022,7 +2022,6 @@
     "core/test/scripts/provider-matrix-native-init.test.ts": 2,
     "core/test/scripts/runtime-bundle-fetch.test.ts": 2,
     "core/test/scripts/service-listener-nightly.test.ts": 2,
-    "core/test/scripts/typecheck.test.ts": 2,
     "core/test/scripts/workflow-performance-bun-preparation.test.ts": 2,
     "core/test/scripts/workflow-performance-isolation.test.ts": 2,
     "core/test/scripts/workflow-performance-runtime-stop.test.ts": 2,
