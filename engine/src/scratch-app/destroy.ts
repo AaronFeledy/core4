@@ -127,20 +127,20 @@ export const makeScratchReaper = Effect.gen(function* () {
             }),
         });
         yield* registry.remove(input.id);
-        yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
       }).pipe(
         Effect.onError(() =>
           entry === undefined
             ? Effect.void
             : registry
-                .upsert({
+                .upsert("mark-pending-cleanup", {
                   ...entry,
-                  status: "destroyed-pending-cleanup",
                   updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
                 })
                 .pipe(Effect.exit, Effect.asVoid),
         ),
       );
+      // Outside the guard: once the entry is removed, a failed post-event must not bring it back.
+      yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
     },
     Effect.mapError((cause) =>
       cause instanceof ScratchAppError

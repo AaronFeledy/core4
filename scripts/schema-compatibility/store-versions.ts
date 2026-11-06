@@ -1,4 +1,4 @@
-import { SchemaCompatibilityInputError } from "../schema-compatibility-artifacts.ts";
+import { type SchemaArtifactSet, SchemaCompatibilityInputError } from "../schema-compatibility-artifacts.ts";
 import type { PersistedStoreId } from "./model.ts";
 
 const STORE_VERSION_SOURCES = {
@@ -14,9 +14,14 @@ const STORE_VERSION_SOURCES = {
 export const loadBasePersistedStoreVersions = async (
   repoRoot: string,
   baseRef: string,
+  artifacts: SchemaArtifactSet = new Map(),
 ): Promise<Readonly<Partial<Record<PersistedStoreId, number>>>> => {
   const versions: Partial<Record<PersistedStoreId, number>> = {};
+  for (const { persistedState } of artifacts.values()) {
+    if (persistedState !== undefined) versions[persistedState.store] = persistedState.version;
+  }
   for (const store of ["applied-state", "tunnel-registry"] as const) {
+    if (versions[store] !== undefined) continue;
     for (const source of STORE_VERSION_SOURCES[store]) {
       const child = Bun.spawn(["git", "show", `${baseRef}:${source.path}`], {
         cwd: repoRoot,

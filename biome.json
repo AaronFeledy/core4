@@ -8,8 +8,6 @@
   "files": {
     "maxSize": 4194304,
     "ignore": [
-      "dist",
-      "**/dist",
       "node_modules",
       "**/node_modules",
       ".local",

@@ -50,6 +50,7 @@
     "./log-follow": "./src/log-follow/index.ts",
     "./network-trust": "./src/network-trust/index.ts",
     "./probe": "./src/probe/index.ts",
+    "./transitions": "./src/transitions/index.ts",
     "./recipes": "./src/recipes/index.ts",
     "./task-progress": "./src/task-progress/index.ts",
     "./renderer": "./src/renderer/index.ts",

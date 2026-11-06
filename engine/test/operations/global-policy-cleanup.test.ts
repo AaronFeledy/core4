@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, AppId, PluginManifest, ProviderId, appIdentityKey } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { StateStore } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { readGlobalPolicy } from "../../src/global-app/enablement.ts";
 import { GlobalPolicyReconciliationError } from "../../src/global-app/errors.ts";
 import { readGlobalReconciliation } from "../../src/global-app/reconciliation.ts";
@@ -87,6 +88,74 @@ test("reconcile retries pending missing-container route cleanup and preserves si
     expect(f.published).toEqual([["sibling"]]);
   });
 });
+
+test.each(["disable", "reconcile"] as const)(
+  "%s converges after interruption immediately following every receipt write",
+  async (operation) => {
+    const attempt = async (interruptAt?: number) => {
+      let writes = 0;
+      await withFixture(async (f) => {
+        f.startContainer(f.planFor(["mail", "sibling"]), "mail");
+        if (operation === "reconcile") {
+          f.setOnline(false);
+          const seeded = await Effect.runPromise(
+            Effect.result(globalDisable({ selectors: ["mail"], allowDisruption: true })).pipe(
+              Effect.provide(f.layer),
+            ),
+          );
+          expect(seeded._tag).toBe("Failure");
+          if (seeded._tag === "Failure")
+            expect(seeded.failure).toBeInstanceOf(GlobalPolicyReconciliationError);
+          f.setOnline(true);
+        }
+        const afterWrite = Effect.suspend(() => {
+          writes += 1;
+          return writes === interruptAt ? Effect.interrupt : Effect.void;
+        });
+        const store = StateStore.of({
+          ...f.state.service,
+          open: (spec) =>
+            f.state.service.open(spec).pipe(
+              Effect.map((bucket) =>
+                spec.key !== ".lando.reconciliation.json"
+                  ? bucket
+                  : {
+                      ...bucket,
+                      set: (value) => bucket.set(value).pipe(Effect.tap(afterWrite)),
+                      update: (change) => bucket.update(change).pipe(Effect.tap(afterWrite)),
+                      modify: (change) => bucket.modify(change).pipe(Effect.tap(afterWrite)),
+                    },
+              ),
+            ),
+        });
+        const exit = await Effect.runPromiseExit(
+          (operation === "disable" ? globalDisable({ selectors: ["mail"] }) : globalReconcile()).pipe(
+            Effect.provideService(StateStore, store),
+            Effect.provide(f.layer),
+          ),
+        );
+        if (interruptAt === undefined) {
+          expect(Exit.isSuccess(exit)).toBe(true);
+          return;
+        }
+        expect(writes).toBe(interruptAt);
+        expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+        const resumed = await Effect.runPromise(globalReconcile().pipe(Effect.provide(f.layer)));
+        expect(resumed.pending).toEqual([]);
+        expect(
+          (await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(f.layer)))).pending,
+        ).toEqual([]);
+        expect(f.removed).toEqual(["mail"]);
+        expect([...f.containers.keys()]).toEqual(["sibling"]);
+        expect(f.published.at(-1)).toEqual(["sibling"]);
+      });
+      return writes;
+    };
+    const writes = await attempt();
+    expect(writes).toBeGreaterThan(0);
+    for (let interruptAt = 1; interruptAt <= writes; interruptAt += 1) await attempt(interruptAt);
+  },
+);
 
 test("offline evidence refuses without acknowledgement and saves pending intent only when acknowledged", async () => {
   await withFixture(async (f) => {

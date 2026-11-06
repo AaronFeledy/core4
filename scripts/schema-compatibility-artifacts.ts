@@ -1,17 +1,36 @@
 import { resolve } from "node:path";
 
-import type { JsonSchema, JsonValue, SchemaPolarity } from "./schema-compatibility/model.ts";
-import { isJsonObject } from "./schema-compatibility/model.ts";
+import type {
+  JsonSchema,
+  JsonValue,
+  PersistedStateRef,
+  SchemaPolarity,
+} from "./schema-compatibility/model.ts";
+import { isJsonObject, isPersistedStoreId } from "./schema-compatibility/model.ts";
 import { schemaPolarity } from "./schema-compatibility/polarity.ts";
 
 export interface SchemaArtifact {
   readonly surface: string;
   readonly polarity: SchemaPolarity;
   readonly schema: JsonSchema;
+  readonly persistedState?: PersistedStateRef;
 }
 
 export type SchemaArtifactSet = ReadonlyMap<string, SchemaArtifact>;
-export type SchemaArtifactFamily = "sdk" | "command";
+export const SCHEMA_ARTIFACT_FAMILIES = {
+  sdk: { prefix: "schema:", label: "SDK schemas", generatorPath: "scripts/build-schema-snapshot.ts" },
+  command: {
+    prefix: "command:",
+    label: "command schemas",
+    generatorPath: "scripts/build-schema-snapshot.ts",
+  },
+  persisted: {
+    prefix: "persisted:",
+    label: "internal persisted schemas",
+    generatorPath: "scripts/build-persisted-schema-snapshot.ts",
+  },
+} as const;
+export type SchemaArtifactFamily = keyof typeof SCHEMA_ARTIFACT_FAMILIES;
 
 export interface BaseSchemaArtifacts {
   readonly artifacts: SchemaArtifactSet;
@@ -93,25 +112,61 @@ const addArtifact = (artifacts: Map<string, SchemaArtifact>, artifact: SchemaArt
   artifacts.set(artifact.surface, artifact);
 };
 
-export const loadWorkingSchemaArtifacts = async (repoRoot: string): Promise<SchemaArtifactSet> => {
+export const loadWorkingSchemaArtifacts = async (
+  repoRoot: string,
+  unavailableFamilies: ReadonlyArray<SchemaArtifactFamily> = [],
+): Promise<SchemaArtifactSet> => {
   const artifacts = new Map<string, SchemaArtifact>();
-  const schemaIndexPath = resolve(repoRoot, "dist/schemas/index.json");
-  const schemaIndex = parseJson(await Bun.file(schemaIndexPath).text(), "dist/schemas/index.json");
-  for (const [schemaId, artifactPath] of metadataEntries(schemaIndex, "dist/schemas/index.json")) {
-    addArtifact(artifacts, {
-      surface: `schema:${schemaId}`,
-      polarity: schemaPolarity(schemaId),
-      schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
-    });
+  if (!unavailableFamilies.includes("sdk")) {
+    const schemaIndexPath = resolve(repoRoot, "dist/schemas/index.json");
+    const schemaIndex = parseJson(await Bun.file(schemaIndexPath).text(), "dist/schemas/index.json");
+    for (const [schemaId, artifactPath] of metadataEntries(schemaIndex, "dist/schemas/index.json")) {
+      addArtifact(artifacts, {
+        surface: `schema:${schemaId}`,
+        polarity: schemaPolarity(schemaId),
+        schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
+      });
+    }
   }
-  const commandIndexPath = resolve(repoRoot, "dist/command-schemas/index.json");
-  const commandIndex = parseJson(await Bun.file(commandIndexPath).text(), "dist/command-schemas/index.json");
-  for (const [commandId, artifactPath] of commandEntries(commandIndex, "dist/command-schemas/index.json")) {
-    addArtifact(artifacts, {
-      surface: `command:${commandId}`,
-      polarity: "output",
-      schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
-    });
+  if (!unavailableFamilies.includes("command")) {
+    const commandIndexPath = resolve(repoRoot, "dist/command-schemas/index.json");
+    const commandIndex = parseJson(
+      await Bun.file(commandIndexPath).text(),
+      "dist/command-schemas/index.json",
+    );
+    for (const [commandId, artifactPath] of commandEntries(commandIndex, "dist/command-schemas/index.json")) {
+      addArtifact(artifacts, {
+        surface: `command:${commandId}`,
+        polarity: "output",
+        schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
+      });
+    }
+  }
+  if (!unavailableFamilies.includes("persisted")) {
+    const indexPath = "dist/persisted-schemas/index.json";
+    const index = parseJson(await Bun.file(resolve(repoRoot, indexPath)).text(), indexPath);
+    if (!Array.isArray(index)) throw new SchemaCompatibilityInputError(`${indexPath} must contain an array.`);
+    for (const entry of index) {
+      if (
+        !isJsonObject(entry) ||
+        !isPersistedStoreId(entry.id) ||
+        typeof entry.version !== "number" ||
+        !Number.isInteger(entry.version) ||
+        entry.version < 1 ||
+        typeof entry.jsonSchemaPath !== "string"
+      ) {
+        throw new SchemaCompatibilityInputError(`${indexPath} contains an invalid persisted schema entry.`);
+      }
+      addArtifact(artifacts, {
+        surface: `persisted:${entry.id}`,
+        polarity: "input",
+        schema: parseSchema(
+          await Bun.file(resolve(repoRoot, entry.jsonSchemaPath)).text(),
+          entry.jsonSchemaPath,
+        ),
+        persistedState: { store: entry.id, version: entry.version },
+      });
+    }
   }
   return artifacts;
 };

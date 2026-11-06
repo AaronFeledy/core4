@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
 import { GlobalAppService, StateStore } from "@lando/sdk/services";
@@ -11,6 +11,70 @@ export const GlobalReconciliationPending = Schema.Struct({
   message: Schema.String,
 });
 export type GlobalReconciliationPending = typeof GlobalReconciliationPending.Type;
+
+type Phase = GlobalReconciliationPending["phase"];
+
+/** Independent obligations: clearing one phase proves nothing about another. */
+const pendingOperations = {
+  // A command replaces its selection; generation always describes the whole configuration.
+  reconciliation: {
+    adds: ["evidence", "containers", "routes", "generation"],
+    clears: ["evidence", "containers", "routes", "generation"],
+  },
+  policy: { adds: ["evidence", "routes", "generation"], clears: [] },
+  receiptFailure: { adds: ["evidence"], clears: [] },
+  evidence: { adds: ["evidence"], clears: ["evidence"] },
+  discovery: { adds: ["containers", "routes"], clears: [] },
+  containers: { adds: ["containers"], clears: ["containers"] },
+  routes: { adds: [], clears: ["routes"] },
+  generation: { adds: [], clears: ["generation"] },
+  resources: { adds: [], clears: ["evidence", "containers", "routes"] },
+} as const satisfies Readonly<
+  Record<string, { readonly adds: readonly Phase[]; readonly clears: readonly Phase[] }>
+>;
+
+export const pendingWork = (
+  phase: Phase,
+  services: ReadonlyArray<string>,
+  message: string,
+): GlobalReconciliationPending => ({ phase, services: [...services], message });
+
+/** Validate requested edits, including idempotent ones, before changing any obligation. */
+export const transitionGlobalPending = (
+  pending: ReadonlyArray<GlobalReconciliationPending>,
+  operation: keyof typeof pendingOperations,
+  change: {
+    readonly adds?: ReadonlyArray<GlobalReconciliationPending>;
+    readonly clears?: ReadonlyArray<{ readonly phase: Phase; readonly services?: ReadonlyArray<string> }>;
+  },
+): Result.Result<ReadonlyArray<GlobalReconciliationPending>, GlobalAppError> => {
+  const allowed: { readonly adds: readonly Phase[]; readonly clears: readonly Phase[] } =
+    pendingOperations[operation];
+  for (const action of ["adds", "clears"] as const) {
+    for (const { phase } of change[action] ?? []) {
+      if (!allowed[action].includes(phase))
+        return Result.fail(
+          new GlobalAppError({
+            operation,
+            message: `Global reconciliation operation ${operation} cannot ${action === "adds" ? "add" : "clear"} phase ${phase}.`,
+            remediation: "Repair the reconciliation caller to use the operation that owns this obligation.",
+          }),
+        );
+    }
+  }
+  const retained = pending.flatMap((entry) => {
+    let services = entry.services;
+    for (const clear of change.clears ?? []) {
+      if (clear.phase !== entry.phase) continue;
+      const selected = clear.services;
+      if (selected === undefined) return [];
+      services = services.filter((id) => !selected.includes(id));
+      if (services.length === 0) return [];
+    }
+    return services === entry.services ? [entry] : [{ ...entry, services }];
+  });
+  return Result.succeed([...retained, ...(change.adds ?? [])]);
+};
 
 export const GlobalReconciliationTarget = Schema.Struct({
   id: Schema.String,
@@ -31,6 +95,7 @@ export const GlobalReconciliationState = Schema.Struct({
   pending: Schema.Array(GlobalReconciliationPending),
 });
 export type GlobalReconciliationState = typeof GlobalReconciliationState.Type;
+export const GLOBAL_RECONCILIATION_VERSION = 1;
 
 const emptyState = (): GlobalReconciliationState => ({
   revision: 0,
@@ -56,7 +121,7 @@ const reconciliationBucket = Effect.fn("GlobalApp.reconciliationBucket")(functio
       root: { app: paths.root },
       key: ".lando.reconciliation.json",
       schema: GlobalReconciliationState,
-      version: 1,
+      version: GLOBAL_RECONCILIATION_VERSION,
       mode: 0o600,
       lock: "advisory",
       onCorrupt: "fail",
@@ -71,38 +136,54 @@ export const readGlobalReconciliation = Effect.fn("GlobalApp.readReconciliation"
   return (yield* bucket.get.pipe(Effect.mapError(receiptError))) ?? emptyState();
 });
 
+const updateReconciliation = Effect.fn("GlobalApp.updateReconciliation")(function* (
+  update: (previous: GlobalReconciliationState) => Result.Result<GlobalReconciliationState, GlobalAppError>,
+) {
+  const bucket = yield* reconciliationBucket();
+  return yield* bucket
+    .modify((previous) => {
+      const current = previous ?? emptyState();
+      const result = update(current);
+      return [result, Result.getOrElse(result, () => current)] as const;
+    })
+    .pipe(Effect.mapError(receiptError), Effect.flatMap(Effect.fromResult));
+});
+
 /** Keep pending work for other selections; each command replaces only its own receipt. */
 export const recordGlobalReconciliation = Effect.fn("GlobalApp.recordReconciliation")(function* (
   next: GlobalReconciliationState,
   options: { readonly supersede?: ReadonlyArray<string> } = {},
 ) {
-  const bucket = yield* reconciliationBucket();
   // Receipt replacement scope does not establish ownership for resource cleanup.
   const selected = new Set(options.supersede ?? next.contributions);
-  return yield* bucket
-    .update((previous) => {
-      const pending = [
-        ...(previous?.pending ?? []).flatMap((entry) => {
-          if (entry.phase === "generation") return [];
-          const services = entry.services.filter((id) => !selected.has(id));
-          return services.length === 0 ? [] : [{ ...entry, services }];
-        }),
-        ...next.pending,
-      ];
-      const pendingIds = new Set(pending.flatMap((entry) => entry.services));
-      return {
-        ...next,
-        ...(previous?.routesClearedRevision === next.revision
-          ? { routesClearedRevision: previous.routesClearedRevision }
-          : {}),
-        targets: [
-          ...(previous?.targets ?? []).filter((target) => !selected.has(target.id)),
-          ...(next.targets ?? []),
-        ].filter((target) => pendingIds.has(target.id)),
-        pending,
-      };
-    })
-    .pipe(Effect.mapError(receiptError));
+  const services = [...selected];
+  return yield* updateReconciliation((previous) =>
+    transitionGlobalPending(previous.pending, "reconciliation", {
+      clears: [
+        { phase: "generation" },
+        ...(["evidence", "containers", "routes"] as const).map((phase) => ({
+          phase,
+          services,
+        })),
+      ],
+      adds: next.pending,
+    }).pipe(
+      Result.map((pending) => {
+        const pendingIds = new Set(pending.flatMap((entry) => entry.services));
+        return {
+          ...next,
+          ...(previous.routesClearedRevision === next.revision
+            ? { routesClearedRevision: previous.routesClearedRevision }
+            : {}),
+          targets: [
+            ...(previous.targets ?? []).filter((target) => !selected.has(target.id)),
+            ...(next.targets ?? []),
+          ].filter((target) => pendingIds.has(target.id)),
+          pending,
+        };
+      }),
+    ),
+  );
 });
 
 /** Configuration regeneration may finish without completing previously pending container cleanup. */
@@ -111,13 +192,15 @@ export const recordGlobalGeneration = Effect.fn("GlobalApp.recordGeneration")(fu
   if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return;
   const current = yield* bucket.get.pipe(Effect.mapError(receiptError));
   if (current === null || current.pending.every((entry) => entry.phase !== "generation")) return;
-  yield* bucket
-    .update((previous) => ({
-      ...(previous ?? emptyState()),
-      revision,
-      pending: (previous?.pending ?? []).filter((entry) => entry.phase !== "generation"),
-    }))
-    .pipe(Effect.mapError(receiptError));
+  yield* updateReconciliation((previous) =>
+    transitionGlobalPending(previous.pending, "generation", { clears: [{ phase: "generation" }] }).pipe(
+      Result.map((pending) => ({
+        ...previous,
+        revision,
+        pending,
+      })),
+    ),
+  );
 });
 
 /** Whole-app teardown proves container and route cleanup without changing saved intent. */
@@ -126,14 +209,18 @@ export const recordGlobalResourceCleanup = Effect.fn("GlobalApp.recordResourceCl
   if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return;
   const current = yield* bucket.get.pipe(Effect.mapError(receiptError));
   if (current === null) return;
-  yield* bucket
-    .update((previous) => ({
-      ...(previous ?? emptyState()),
-      routesClearedRevision: previous?.revision ?? 0,
-      targets: [],
-      pending: (previous?.pending ?? []).filter((entry) => entry.phase === "generation"),
-    }))
-    .pipe(Effect.mapError(receiptError));
+  yield* updateReconciliation((previous) =>
+    transitionGlobalPending(previous.pending, "resources", {
+      clears: [{ phase: "evidence" }, { phase: "containers" }, { phase: "routes" }],
+    }).pipe(
+      Result.map((pending) => ({
+        ...previous,
+        routesClearedRevision: previous.revision,
+        targets: [],
+        pending,
+      })),
+    ),
+  );
 });
 
 /** Route-only recovery cannot prove that unknown container ownership has been resolved. */
@@ -142,11 +229,13 @@ export const recordGlobalRouteCleanup = Effect.fn("GlobalApp.recordRouteCleanup"
   if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return;
   const current = yield* bucket.get.pipe(Effect.mapError(receiptError));
   if (current === null) return;
-  yield* bucket
-    .update((previous) => ({
-      ...(previous ?? emptyState()),
-      routesClearedRevision: previous?.revision ?? 0,
-      pending: (previous?.pending ?? []).filter((entry) => entry.phase !== "routes"),
-    }))
-    .pipe(Effect.mapError(receiptError));
+  yield* updateReconciliation((previous) =>
+    transitionGlobalPending(previous.pending, "routes", { clears: [{ phase: "routes" }] }).pipe(
+      Result.map((pending) => ({
+        ...previous,
+        routesClearedRevision: previous.revision,
+        pending,
+      })),
+    ),
+  );
 });

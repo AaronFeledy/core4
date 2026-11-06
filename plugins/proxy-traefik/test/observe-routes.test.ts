@@ -154,6 +154,8 @@ test.each(["linux", "darwin", "win32", "wsl"] as const)(
       JSON.stringify({
         ...acquisition,
         mode: "socket-helper",
+        helperInstalled: true,
+        socketsActive: true,
         httpPort: 80,
         httpsPort: 443,
         bindHttpPort: 38080,

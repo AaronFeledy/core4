@@ -4,7 +4,7 @@ import type { FileSyncError } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { openJournal, readJournal, readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
-import { digest, journalRecovery } from "./accelerated-start-record.ts";
+import { digest, journalRecovery, pendingStartTransitions } from "./accelerated-start-record.ts";
 
 export const acceleratedStartStopError = (app: AppRef, cause: FileSyncError) =>
   new FileSyncStopError({
@@ -37,7 +37,9 @@ export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, pl
     record: pending,
     clear: bucket
       .modify((current) =>
-        current !== null && digest(current) === digest(pending)
+        current !== null &&
+        digest(current) === digest(pending) &&
+        pendingStartTransitions.step("abandon", current.phase)._tag === "Advance"
           ? ([true, { ...current, phase: "completed" }] as const)
           : ([false, current ?? pending] as const),
       )

@@ -19,8 +19,10 @@ import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import {
   GlobalReconciliationPending,
   type GlobalReconciliationTarget,
+  pendingWork,
   readGlobalReconciliation,
   recordGlobalReconciliation,
+  transitionGlobalPending,
 } from "../global-app/reconciliation.ts";
 import {
   GlobalContributionStateSchema,
@@ -76,14 +78,6 @@ export const GlobalPolicyChangeResultSchema = Schema.Struct({
 export type GlobalPolicyChangeResult = typeof GlobalPolicyChangeResultSchema.Type;
 
 type Operation = GlobalPolicyChangeResult["operation"];
-type Pending = typeof GlobalReconciliationPending.Type;
-
-const pendingWork = (phase: Pending["phase"], services: ReadonlyArray<string>, message: string): Pending => ({
-  phase,
-  services: [...services],
-  message,
-});
-
 const dependencyBlockers = (
   resolution: GlobalResolution,
   selected: ReadonlySet<string>,
@@ -529,21 +523,25 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
     plugins: prepared.plugins,
     states: effectiveCandidate.entries.filter((entry) => selected.has(entry.id)),
     servicesRemoved: [],
-    pending: [
-      ...(operation === "enable" || ids.length === 0
-        ? []
-        : [pendingWork("evidence", ids, "Selected cleanup has not yet acquired ownership evidence.")]),
-      ...(priorRouteIds.length === 0
-        ? []
-        : [
-            pendingWork(
-              "routes",
-              priorRouteIds,
-              "Earlier route withdrawal is still unconfirmed; applied-plan changes do not complete it.",
-            ),
-          ]),
-      pendingWork("generation", contributionIds, "Generated configuration has not yet been reconciled."),
-    ],
+    pending: yield* Effect.fromResult(
+      transitionGlobalPending([], "policy", {
+        adds: [
+          ...(operation === "enable" || ids.length === 0
+            ? []
+            : [pendingWork("evidence", ids, "Selected cleanup has not yet acquired ownership evidence.")]),
+          ...(priorRouteIds.length === 0
+            ? []
+            : [
+                pendingWork(
+                  "routes",
+                  priorRouteIds,
+                  "Earlier route withdrawal is still unconfirmed; applied-plan changes do not complete it.",
+                ),
+              ]),
+          pendingWork("generation", contributionIds, "Generated configuration has not yet been reconciled."),
+        ],
+      }),
+    ),
   };
   const causes: unknown[] = supersessionUncertainties.map(
     (message) =>
@@ -599,16 +597,19 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
     receipt = {
       ...receipt,
       dist: generation.success,
-      pending: receipt.pending.filter((entry) => entry.phase !== "generation"),
+      pending: yield* Effect.fromResult(
+        transitionGlobalPending(receipt.pending, "generation", { clears: [{ phase: "generation" }] }),
+      ),
     };
   const recorded = yield* Effect.result(recordProgress(receipt, targets, supersededIds));
   if (recorded._tag === "Failure") {
     receipt = {
       ...receipt,
-      pending: [
-        ...receipt.pending,
-        pendingWork("evidence", ids, "The reconciliation receipt could not be saved."),
-      ],
+      pending: yield* Effect.fromResult(
+        transitionGlobalPending(receipt.pending, "receiptFailure", {
+          adds: [pendingWork("evidence", ids, "The reconciliation receipt could not be saved.")],
+        }),
+      ),
     };
     return yield* Effect.fail(incomplete(receipt, [...causes, recorded.failure]));
   }

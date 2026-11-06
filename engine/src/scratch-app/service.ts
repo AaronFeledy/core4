@@ -774,7 +774,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       rootPath: String(scratchPaths.root),
       status: "acquiring",
     });
-    yield* scratchRegistry.upsert(registryEntry);
+    yield* scratchRegistry.upsert("acquire", registryEntry);
 
     yield* materializeDir(scratchPaths.instanceRoot).pipe(
       Effect.tapError(() =>
@@ -829,10 +829,9 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       Effect.tap(() =>
         nowIso.pipe(
           Effect.flatMap((updatedAt) =>
-            scratchRegistry.upsert({
+            scratchRegistry.upsert("mark-running", {
               ...registryEntry,
               rootPath: String(startPlan.root),
-              status: "running",
               updatedAt,
             }),
           ),
@@ -873,7 +872,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       rootPath: String(scratchPaths.root),
       status: "acquiring",
     });
-    yield* scratchRegistry.upsert(registryEntry);
+    yield* scratchRegistry.upsert("acquire", registryEntry);
 
     yield* materializeDir(scratchPaths.instanceRoot).pipe(
       Effect.tapError(() =>
@@ -956,10 +955,9 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       Effect.tap(() =>
         nowIso.pipe(
           Effect.flatMap((updatedAt) =>
-            scratchRegistry.upsert({
+            scratchRegistry.upsert("mark-running", {
               ...registryEntry,
               rootPath: String(startPlan.root),
-              status: "running",
               updatedAt,
             }),
           ),
@@ -1136,7 +1134,7 @@ export const detachScratchApp = Effect.fnUntraced(function* (
   const entry = yield* registry.get(id);
   if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
   const { ownerPid: _ownerPid, ...rest } = entry;
-  yield* registry.upsert({ ...rest, detached: true, updatedAt: yield* nowIso });
+  yield* registry.upsert("detach", { ...rest, detached: true, updatedAt: yield* nowIso });
   retainedScratchIds.add(id);
 });
 
