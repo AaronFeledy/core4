@@ -244,7 +244,7 @@ describe("executeDbCommand", () => {
                   app: target.app,
                   service: target.service,
                   providerId: source.provider,
-                  status: "stopped",
+                  status: "exited",
                   publications: { status: "unknown" as const },
                 }),
             }
