@@ -74,7 +74,8 @@ for (const [key, value] of [
     const result = await run({ subcommand: "get", key });
     // Then
     expect(result.value).toEqual(value);
-    expect(Schema.encodeSync(ConfigResultSchema)(result).value).toEqual(value);
+    const encoded = Schema.encodeSync(ConfigResultSchema)(result);
+    expect("value" in encoded ? encoded.value : undefined).toEqual(value);
   });
   test(`view preserves encoded ${key} when set persisted a map`, async () => {
     // Given
@@ -83,8 +84,9 @@ for (const [key, value] of [
     const result = await run({});
     // Then
     expect(result.config?.[key]).toEqual(value);
-    expect(Schema.encodeSync(ConfigResultSchema)(result).config).toMatchObject({ [key]: value });
-    expect(Schema.encodeSync(ConfigResultSchema)(written).value).toEqual(value);
+    expect(Schema.encodeSync(ConfigResultSchema)(result)).toMatchObject({ config: { [key]: value } });
+    const encoded = Schema.encodeSync(ConfigResultSchema)(written);
+    expect("value" in encoded ? encoded.value : undefined).toEqual(value);
   });
 }
 

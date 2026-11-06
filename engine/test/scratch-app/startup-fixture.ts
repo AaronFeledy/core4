@@ -17,7 +17,11 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Stream } from "effect";
-import { ScratchRegistry, type ScratchRegistryEntry } from "../../src/scratch-app/registry.ts";
+import {
+  ScratchRegistry,
+  type ScratchRegistryEntry,
+  planScratchRegistryWrite,
+} from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
@@ -115,14 +119,13 @@ const makeFixture = async (
   const registry = ScratchRegistry.of({
     get: (id) => Effect.sync(() => entries.get(id)),
     list: () => Effect.sync(() => [...entries.values()]),
-    read: () => Effect.sync(() => ({ version: 1, entries: [...entries.values()] })),
-    upsert: (entry) =>
-      (entry.status === "running" ? registration : Effect.void).pipe(
-        Effect.andThen(
-          Effect.sync(() => {
-            entries.set(entry.id, entry);
-          }),
-        ),
+    read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
+    upsert: (...write) =>
+      (write[0] === "mark-running" ? registration : Effect.void).pipe(
+        Effect.andThen(planScratchRegistryWrite(entries.get(write[1].id), ...write)),
+        Effect.map((plan) => {
+          if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+        }),
       ),
     remove: (id) =>
       Effect.sync(() => {

@@ -239,7 +239,7 @@ const makeDestroyLayer = (
         appRoot: plannedApp.root,
         providerId,
         service: ServiceName.make("orphan"),
-        status: "stopped" as const,
+        status: "exited" as const,
         containerId: "orphan-container",
         publications: { status: "unknown" as const },
       },
@@ -328,8 +328,7 @@ const makeDestroyLayer = (
         app: plannedApp.id,
         service: ServiceName.make("web"),
         providerId,
-        status: "stopped",
-        state: "stopped",
+        status: "exited" as const,
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
@@ -348,9 +347,10 @@ const makeDestroyLayer = (
       setup: () => Effect.void,
       revalidateStartup: Effect.void,
       observeRoutes: () => Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: (app) =>
-        Effect.sync(() => void routeRemovals.push(String(app))).pipe(
+      applyRoutes: (routes, owner) =>
+        Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
+      removeRoutes: (owner) =>
+        Effect.sync(() => void routeRemovals.push(String(owner.id))).pipe(
           Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
         ),
       status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
@@ -425,7 +425,7 @@ const makeDestroyLayer = (
                           appRoot: plannedApp.root,
                           providerId,
                           service: ServiceName.make("orphan"),
-                          status: "stopped" as const,
+                          status: "exited" as const,
                           containerId: "orphan-container",
                           publications: { status: "unknown" as const },
                         },

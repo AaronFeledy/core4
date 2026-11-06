@@ -193,6 +193,8 @@ import {
   ServiceScopedLandofile,
   SourceCompiledLandofile,
 } from "./compiled-landofile.ts";
+import { ConfigKeyDescription } from "./config-key.ts";
+import { ConfigLintRuleDescriptor, ConfigLintRuleId } from "./config-lint-rules.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -272,6 +274,7 @@ import {
 } from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionInfo,
@@ -294,7 +297,7 @@ import {
   LifecycleCommandId,
 } from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
-import { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { CertificateName, DomainName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
   repairLandofileExtensions,
@@ -368,6 +371,7 @@ import {
   AppRef,
   AuthoredNetworkPlan,
   CertificatePlan,
+  CertificateSpec,
   CheckResult,
   DependencyPlan,
   EndpointPlan,
@@ -418,6 +422,7 @@ import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
 import { RouteEvidence } from "./proxy.ts";
 import {
+  AppRouteOwner,
   ProxyApplyResult,
   ProxyAuthority,
   ProxyCapabilities,
@@ -597,6 +602,7 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = schemaRegistry({
+  ConfigKeyDescription,
   SecretReference,
   SecretRef,
   BoundTextReference,
@@ -699,6 +705,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteHostname,
   RoutePathPrefix,
   DomainName,
+  HostAliasName,
+  CertificateName,
   InternalEndpoint,
   PublishedEndpoint,
   EndpointPlan,
@@ -713,6 +721,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
+  AppRouteOwner,
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
@@ -723,6 +732,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
+  CertificateSpec,
   ListenerAuthority,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -781,6 +791,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostEvents,
   LifecycleCommandId,
   ConfigLintViolation,
+  ConfigLintRuleDescriptor,
+  ConfigLintRuleId,
   ConfigLintResult,
   DownloadRequest,
   DownloadResult,
@@ -903,6 +915,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouterServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
   PreparedFileSyncTarget,
@@ -1169,6 +1182,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProxyConfig: "Proxy setup configuration supplied by core.",
   RouterConfig: "Shared host-router bind address and port policy.",
   ProxyAuthority: "Externally visible authority selected by a proxy implementation.",
+  AppRouteOwner: "Rename-stable owner of durable router artifacts for one application.",
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
   EndpointScan: "Sparse plan-only startup scan defaults for a logical listener.",
@@ -1205,6 +1219,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
   ServiceShutdownObservation: "Attributed daemon shutdown facts without inferred graceful or forced cleanup.",
   FileSyncQuiesceResult: "File sync writer quiescence receipt with optional shutdown observations.",
+  FileSyncDisposalPhase:
+    "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
   DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
   ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
   StartedService: "Service startup result with scoped connection evidence.",

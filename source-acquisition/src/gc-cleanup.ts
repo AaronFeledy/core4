@@ -62,7 +62,7 @@ const describeLease = (row: LeaseFile): GcLeftover => ({
   id: row.name,
   bytes: row.bytes,
   lastUsedAt: iso(row.mtime),
-  eligible: !row.live,
+  eligible: row.error === undefined && !row.live,
   outcome: row.error !== undefined ? "failed" : row.live ? "busy" : "kept",
   reason: row.error ?? (row.live ? "live-lease" : "dead-lease"),
   ...(row.pid === undefined ? {} : { pid: row.pid }),

@@ -248,6 +248,22 @@
     "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
   },
   {
+    "fixture": "core/examples/certs",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "path /certs/cert.crt must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.",
+          "path": ["services", "web3", "certs"],
+          "rule": "landofile.validation"
+        }
+      ]
+    },
+    "category": "conversion-gap",
+    "reason": "Lando 3 API 4 certs: names the in-container certificate path; the translation keeps it as custom certificate material outside the app root, which final planning rejects (#2061)."
+  },
+  {
     "fixture": "core/examples/command",
     "outcome": {
       "stage": "unsupported",
@@ -533,6 +549,22 @@
     "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
   },
   {
+    "fixture": "core/examples/mounts",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "Route web1.lando-mounts.lndo.site for service web1 is ambiguous between HTTP listeners: 8080/tcp, 8443/tcp.",
+          "path": ["services", "web1", "routes"],
+          "rule": "landofile.validation"
+        }
+      ]
+    },
+    "category": "conversion-gap",
+    "reason": "Two translated HTTP listeners leave the default route ambiguous, which final planning rejects (#2061)."
+  },
+  {
     "fixture": "core/examples/networking",
     "outcome": {
       "stage": "lint",
@@ -633,6 +665,22 @@
     "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
   },
   {
+    "fixture": "core/examples/scanner",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "path /certs/cert.crt must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.",
+          "path": ["services", "web4", "certs"],
+          "rule": "landofile.validation"
+        }
+      ]
+    },
+    "category": "conversion-gap",
+    "reason": "Lando 3 API 4 certs: names the in-container certificate path; the translation keeps it as custom certificate material outside the app root, which final planning rejects (#2061)."
+  },
+  {
     "fixture": "core/examples/security",
     "outcome": {
       "stage": "unsupported",
@@ -693,13 +741,13 @@
           "sourceId": "core/examples/storage/.lando.yml",
           "kind": "unsupported",
           "keyPath": ["services", "db", "storage", 3, "scope"],
-          "message": "Lando 4 does not support global data storage yet"
+          "message": "Lando 4 does not support global data storage"
         },
         {
           "sourceId": "core/examples/storage/.lando.yml",
           "kind": "unsupported",
           "keyPath": ["services", "alpine", "persistent-storage", 2, "scope"],
-          "message": "Lando 4 does not support global data storage yet"
+          "message": "Lando 4 does not support global data storage"
         }
       ]
     },
@@ -715,7 +763,7 @@
           "sourceId": "core/examples/storage/app2/.lando.yml",
           "kind": "unsupported",
           "keyPath": ["services", "alpine", "storage", 0, "scope"],
-          "message": "Lando 4 does not support global data storage yet"
+          "message": "Lando 4 does not support global data storage"
         }
       ]
     },
@@ -1137,6 +1185,22 @@
     },
     "category": "unsupported-diagnostics",
     "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mailpit/.",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "A Compose service requires an image or build artifact.",
+          "path": ["services", "node", "type"],
+          "rule": "landofile.validation"
+        }
+      ]
+    },
+    "category": "conversion-gap",
+    "reason": "The translation drops the top-level image of a type: lando service, so final planning finds no image or build artifact (#2061)."
   },
   {
     "fixture": "mailpit/examples/advanced",
@@ -3079,6 +3143,22 @@
     "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
   },
   {
+    "fixture": "phpmyadmin/examples/5.x",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "Route for service pma_theme with hostname pma_theme.lando-pma.lndo.site: Expected a host pattern such as app.lndo.site or *.app.lndo.site, without a scheme, port, or path.",
+          "path": ["routes", 2, "hostname"],
+          "rule": "landofile.route"
+        }
+      ]
+    },
+    "category": "conversion-gap",
+    "reason": "Service pma_theme cannot form a default route hostname because of its underscore, which final planning rejects (#2059)."
+  },
+  {
     "fixture": "postgres/examples/10",
     "outcome": {
       "stage": "unsupported",
@@ -3821,6 +3901,22 @@
     },
     "category": "unsupported-diagnostics",
     "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "upsun/.",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "A Compose service requires an image or build artifact.",
+          "path": ["services", "node", "type"],
+          "rule": "landofile.validation"
+        }
+      ]
+    },
+    "category": "conversion-gap",
+    "reason": "The translation drops the top-level image of a type: lando service, so final planning finds no image or build artifact (#2061)."
   },
   {
     "fixture": "upsun/examples/fixed-magento",

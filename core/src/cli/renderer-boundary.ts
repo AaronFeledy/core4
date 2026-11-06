@@ -39,6 +39,7 @@ import {
 } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
+import { makePlainRenderer } from "@lando/renderer/runtime";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
 import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
 import {
@@ -47,7 +48,9 @@ import {
   runCommandLifecycle,
   withCommandEventService,
 } from "./command-lifecycle";
+import { CommandPayloadStdout, machineOutputOnStderr } from "./command-payload-stdout";
 import { FinishCommandProgress, finishCommandProgress } from "./command-progress";
+import { commandStdioExitCode } from "./command-stdio";
 import { type CommandTraceCapture, formatCommandTrace } from "./command-tracer";
 import { withCommandTracing } from "./command-tracing";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
@@ -123,6 +126,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly jqExpression?: string;
   /** Resolved `LandoCommandSpec.documentOutput` match for this invocation. */
   readonly documentOutput?: boolean;
+  readonly payloadStdout?: boolean;
   readonly io?: RendererIO;
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
@@ -235,12 +239,20 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   // which is the bug-report renderer for pre-command failures.
   const reporter = ErrorReporter.make(() => undefined);
   const { landoRenderer } = await import("./renderer/bundled-renderers");
-  const io = withStdioTerminalNewlines(
+  const routing = resolveOutputRouting({
+    rendererMode: options.rendererMode,
+    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
+    declaresStreaming: options.streaming !== undefined,
+    live: options.streamingMode === "live",
+  });
+  const payloadStdout = options.payloadStdout === true && routing.stdout !== "human";
+  const realIO = withStdioTerminalNewlines(
     options.io ?? createStdioRendererIO(undefined, undefined, undefined, { env: sourceEnv }),
     options.rendererMode !== "json" &&
       options.resultFormat !== "ndjson" &&
       !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT),
   );
+  const io = payloadStdout ? machineOutputOnStderr(realIO) : realIO;
   let brokenPipe = false;
   const brokenPipeSignal = Effect.callback<never>((resume) => {
     const unsubscribe = onStdioBrokenPipe(() => {
@@ -272,12 +284,6 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     noColor: io.noColor === true,
   };
   const rendererLayer = RendererOutput.layerServiceForMode(options.rendererMode, landoRenderer, io);
-  const routing = resolveOutputRouting({
-    rendererMode: options.rendererMode,
-    format: renderContext.format,
-    declaresStreaming: options.streaming !== undefined,
-    live: options.streamingMode === "live",
-  });
   const envelopeFormat = routing.stdout !== "human";
   const commandWarnings = makeCommandWarnings(envelopeFormat);
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
@@ -287,6 +293,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     rendererLayer,
     commandWarningsLayer,
     redactionLayer,
+    ...(payloadStdout ? [Layer.succeed(CommandPayloadStdout, makePlainRenderer(realIO).output.stdout)] : []),
   ) as Layer.Layer<R, RE>;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
@@ -360,7 +367,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(2);
           return;
         }
-        setExitCode(options.failureExitCode?.(failure.error) ?? 1);
+        setExitCode(commandStdioExitCode(failure.error) ?? options.failureExitCode?.(failure.error) ?? 1);
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);

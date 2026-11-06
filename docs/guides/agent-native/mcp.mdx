@@ -3,7 +3,7 @@ id: mcp
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 120000
-tags: [beta, docs, mcp, agent]
+tags: [docs, mcp, agent]
 ---
 
 # Drive Lando through MCP
@@ -614,11 +614,15 @@ const tools = JSON.parse(stdout);`}
     </Step>
   </Scenario>
 
-The two read-only tools are `app:config:get` and `app:config:view`. Both accept
-optional `flags.source` (`raw`, `merged`, or `resolved`) and `flags.path`.
-The source defaults to `resolved`. Get selects `args.key ?? flags.path`, so
-`args.key` is optional but one selector is required. View reads the complete
-source unless `flags.path` selects a value. The fixed `lando://app/config`
+The read-only config tools are `app:config:get`, `app:config:view`, and
+`app:config:describe`. Get and view accept optional `flags.source` (`raw`,
+`merged`, or `resolved`) and `flags.path`. The source defaults to `resolved`.
+Get selects `args.key ?? flags.path`, so `args.key` is optional but one
+selector is required. View reads the complete source unless `flags.path`
+selects a value. Describe reads no app at all: it answers what a Landofile key
+takes, its type summary, description, default, child keys, and JSON Schema,
+for `args.key` or for the document root when you omit it. Call it before
+proposing a Landofile change to learn which values the key accepts. The fixed `lando://app/config`
 resource still returns resolved configuration. Umbrella and write-capable ids:
 `app:config`, `app:config:set`, `app:config:unset`, `app:config:edit`,
 `app:config:validate` are not MCP tools, even through explicit allow

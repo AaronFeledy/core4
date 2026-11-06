@@ -153,7 +153,9 @@ const portsExhausted = (input: {
       "Set router.httpPort, router.httpsPort, or router.httpFallbacks / router.httpsFallbacks to unused host ports.",
   });
 
-export const classifyAcquisition = (input: ClassifyAcquisitionInput): AcquisitionDecision => {
+export const classifyAcquisition = (
+  input: ClassifyAcquisitionInput,
+): AcquisitionDecision & { readonly mode: "direct" | "occupied-hop" } => {
   const httpTryList = input.httpTryList ?? DEFAULT_HTTP_TRY_LIST;
   const httpsTryList = input.httpsTryList ?? DEFAULT_HTTPS_TRY_LIST;
   const bindAddress = input.bindAddress ?? LOOPBACK_HOST;

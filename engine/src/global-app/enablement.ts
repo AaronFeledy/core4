@@ -48,6 +48,8 @@ const selectionError = (message: string): GlobalAppError =>
       "Run `lando global:list` and select an exact contribution id or plugin package, or use --all.",
   });
 
+export const GLOBAL_POLICY_VERSION = 1;
+
 export const globalPolicyBucket = Effect.fn("GlobalApp.policyBucket")(function* () {
   const store = yield* StateStore;
   return yield* store
@@ -55,7 +57,7 @@ export const globalPolicyBucket = Effect.fn("GlobalApp.policyBucket")(function* 
       root: "userConf",
       key: "global.config.yml",
       schema: GlobalPolicy,
-      version: 1,
+      version: GLOBAL_POLICY_VERSION,
       codec: {
         encode: (policy) => Bun.YAML.stringify(policy),
         decode: (raw) =>

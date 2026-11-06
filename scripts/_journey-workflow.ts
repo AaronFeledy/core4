@@ -7,7 +7,6 @@ import {
   type PlatformReadinessCell,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
 const SCHEDULE_IF =
   "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
@@ -39,9 +38,6 @@ export const createJourneyWorkflowBuilder = (workflow: string) => {
 
   const isLinuxLando = (cell: PlatformReadinessCell): boolean =>
     cell.id.startsWith("linux-") && cell.provider === "lando";
-  const isLinuxCurrentCommit = (cell: PlatformReadinessCell): boolean =>
-    cell.bundleMode === "current-commit" && cell.bundleKey.startsWith("linux-");
-
   const setupFlags = (cell: PlatformReadinessCell): string => {
     const flags = `--yes --provider=${cell.provider} --skip-install-ca --skip-shell-integration --skip-file-sync`;
     return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
@@ -69,25 +65,10 @@ ${containerHelperDownloadStep}
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external`;
 
-  const renderLinuxSourceBuildPrereqs = (): string => `
-      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain} # 1.88.0
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
-`;
-
   const renderBundleSteps = (cell: PlatformReadinessCell): string => {
     switch (cell.bundleMode) {
       case "current-commit":
-        return `${isLinuxCurrentCommit(cell) ? renderLinuxSourceBuildPrereqs() : ""}
-      - name: Assemble current-commit ${cell.bundleKey} runtime bundle
+        return `      - name: Assemble current-commit ${cell.bundleKey} runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform ${cell.bundleKey}
 
       - name: Build local runtime bundle manifest

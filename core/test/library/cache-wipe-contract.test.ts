@@ -44,18 +44,19 @@ const providerLayers = () => {
         ),
       ),
     inspect: (target) =>
-      TestRuntimeProvider.inspect(target).pipe(
-        Effect.map((observed) => {
-          const plan = [...plans.values()].find((plan) => plan.id === target.app);
-          return {
-            ...observed,
-            providerId: ProviderId.make(TestRuntimeProvider.id),
-            ...(plan === undefined ? {} : { appRoot: plan.root }),
-            containerId: `${target.app}-${target.service}`,
-            health: "healthy" as const,
-          };
-        }),
-      ),
+      Effect.sync(() => {
+        const plan = [...plans.values()].find((plan) => plan.id === target.app);
+        return {
+          app: target.app,
+          service: target.service,
+          providerId: ProviderId.make(TestRuntimeProvider.id),
+          ...(plan === undefined ? {} : { appRoot: plan.root }),
+          containerId: `${target.app}-${target.service}`,
+          status: "running" as const,
+          health: "healthy" as const,
+          publications: { status: "unknown" as const },
+        };
+      }),
     list: () =>
       Effect.sync(() =>
         [...plans.values()].flatMap((plan) =>

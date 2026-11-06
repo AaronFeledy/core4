@@ -141,9 +141,9 @@ test("initial full start keeps completed routed jobs out of addresses and URL sc
         app: plan.id,
         providerId: plan.provider,
         service,
-        status: service === web.name ? "stopped" : "running",
-        state: service === web.name ? "stopped" : "running",
-        ...(service === web.name ? { exitCode: 0 } : {}),
+        ...(service === web.name
+          ? { status: "exited" as const, exitCode: 0 }
+          : { status: "running" as const }),
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
         publications: {
           status: "present",
@@ -200,7 +200,7 @@ test("projects the latest binding only after readiness changes the final observa
         app: plan.id,
         service,
         providerId: plan.provider,
-        status: "running",
+        status: "running" as const,
         publications: {
           status: "present",
           bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort }],

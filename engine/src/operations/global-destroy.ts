@@ -7,14 +7,11 @@ import { Effect, Schema } from "effect";
 
 import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 
-import {
-  executeGlobalTeardown,
-  globalTeardownAppRef,
-  resolveGlobalTeardown,
-} from "@lando/engine/operations/global-teardown";
+import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/operations/global-teardown";
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
+import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export interface GlobalDestroyOptions {
@@ -69,7 +66,7 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
       if (loaded.evidence.kind === "absent") {
         if (options.providerId === undefined) {
           const router = yield* RouterService;
-          yield* router.removeRoutes(globalTeardownAppRef(loaded).id);
+          yield* router.removeRoutes(routeOwnerFromGlobalTeardown(loaded));
           yield* recordGlobalRouteCleanup();
         }
         return {

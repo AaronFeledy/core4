@@ -3,7 +3,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 
 import { CommandInputValidationError } from "@lando/sdk/errors";
 
-import { dbInputFromCommand, validateExportCompressionLevel } from "../src/command-input.ts";
+import { dbInputFromCommand, validateExportCompression } from "../src/command-input.ts";
 import { spec as exportSpec } from "../src/commands/export.ts";
 import { executeDbCommand } from "../src/execute.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
@@ -17,51 +17,61 @@ describe("export compression level input", () => {
   });
 
   test.each([
-    ["dump.sql.gz", -1, "gzip --compression-level must be between 0 and 9."],
-    ["dump.sql.gz", 10, "gzip --compression-level must be between 0 and 9."],
-    ["dump.sql.zst", 0, "zstd --compression-level must be between 1 and 22."],
-    ["dump.sql.zst", 23, "zstd --compression-level must be between 1 and 22."],
-    ["dump.sql", 1, "--compression-level cannot be used with an uncompressed export."],
-    ["dump.sql.gz", 1.5, "--compression-level must be an integer."],
-    ["dump.sql.gz", Number.NaN, "--compression-level must be an integer."],
-    ["dump.sql.gz", Number.POSITIVE_INFINITY, "--compression-level must be an integer."],
-    ["dump.sql.gz", Number.MAX_SAFE_INTEGER + 1, "--compression-level must be an integer."],
-    ["dump.sql", Number.NaN, "--compression-level must be an integer."],
-  ] as const)("rejects %s level %s before any execution", async (file, compressionLevel, message) => {
-    // Given
-    const harness = makeSqlTestDeps({ password: "secret" });
+    ["dump.sql.gz", -1, "gzip --compression-level must be between 0 and 9.", undefined],
+    ["dump.sql.gz", 10, "gzip --compression-level must be between 0 and 9.", undefined],
+    ["dump.sql.zst", 0, "zstd --compression-level must be between 1 and 22.", undefined],
+    ["dump.sql.zst", 23, "zstd --compression-level must be between 1 and 22.", undefined],
+    ["dump.sql", 1, "--compression-level cannot be used with an uncompressed export.", undefined],
+    ["dump.sql.gz", 1.5, "--compression-level must be an integer.", undefined],
+    ["dump.sql.gz", Number.NaN, "--compression-level must be an integer.", undefined],
+    ["dump.sql.gz", Number.POSITIVE_INFINITY, "--compression-level must be an integer.", undefined],
+    ["dump.sql.gz", Number.MAX_SAFE_INTEGER + 1, "--compression-level must be an integer.", undefined],
+    ["dump.sql", Number.NaN, "--compression-level must be an integer.", undefined],
+    ["-", 1, "--compression-level cannot be used with an uncompressed export.", undefined],
+    ["-", 10, "gzip --compression-level must be between 0 and 9.", "gzip"],
+    ["-", 0, "zstd --compression-level must be between 1 and 22.", "zstd"],
+  ] as const)(
+    "rejects %s level %s before any execution",
+    async (file, compressionLevel, message, compression) => {
+      // Given
+      const harness = makeSqlTestDeps({ password: "secret" });
 
-    // When
-    const exit = await Effect.runPromiseExit(
-      executeDbCommand(harness.deps, { action: "export", yes: true, file, compressionLevel }),
-    );
+      // When
+      const exit = await Effect.runPromiseExit(
+        executeDbCommand(harness.deps, {
+          action: "export",
+          yes: true,
+          file,
+          compressionLevel,
+          ...(compression === undefined ? {} : { compression }),
+        }),
+      );
 
-    // Then
-    if (!Exit.isFailure(exit)) throw new Error("expected input validation failure");
-    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(CommandInputValidationError);
-    expect(error).toMatchObject({
-      _tag: "CommandInputValidationError",
-      target: "db:export",
-      field: "compression-level",
-      kind: "flag",
-      reason: "constraint",
-      message,
-      remediation:
-        "Use an integer from 0-9 with a .gz destination or 1-22 with a .zst destination, or omit --compression-level.",
-    });
-    expect(harness.transfers()).toEqual([]);
-    expect(harness.execs()).toEqual([]);
-    expect(harness.published()).toEqual([]);
-    expect(harness.lifecycle()).toEqual([]);
-  });
+      // Then
+      if (!Exit.isFailure(exit)) throw new Error("expected input validation failure");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(CommandInputValidationError);
+      expect(error).toMatchObject({
+        _tag: "CommandInputValidationError",
+        target: "db:export",
+        field: "compression-level",
+        kind: "flag",
+        reason: "constraint",
+        message,
+      });
+      expect(harness.transfers()).toEqual([]);
+      expect(harness.execs()).toEqual([]);
+      expect(harness.published()).toEqual([]);
+      expect(harness.lifecycle()).toEqual([]);
+    },
+  );
 
   test.each([
-    ["dump.sql.gz", 0],
-    ["dump.sql.gz", 9],
-    ["dump.sql.zst", 1],
-    ["dump.sql.zst", 22],
-    [undefined, 0],
+    ["dump.sql.gz", 0, undefined],
+    ["dump.sql.gz", 9, undefined],
+    ["dump.sql.zst", 1, undefined],
+    ["dump.sql.zst", 22, undefined],
+    [undefined, 0, undefined],
   ] as const)("accepts %s level %s at the input boundary", async (file, compressionLevel) => {
     // Given
     const input = {
@@ -72,7 +82,7 @@ describe("export compression level input", () => {
     } as const;
 
     // When
-    const exit = await Effect.runPromiseExit(validateExportCompressionLevel(input));
+    const exit = await Effect.runPromiseExit(validateExportCompression(input));
 
     // Then
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -85,7 +95,7 @@ describe("export compression level input", () => {
       const input = dbInputFromCommand("export", { argv: [], parsedArgv: [], flags: {}, args: { file } });
 
       // When
-      const exit = await Effect.runPromiseExit(validateExportCompressionLevel(input));
+      const exit = await Effect.runPromiseExit(validateExportCompression(input));
 
       // Then
       expect(input).not.toHaveProperty("compressionLevel");
@@ -110,8 +120,8 @@ describe("export compression level input", () => {
   });
 
   for (const [compression, file, level] of [
-    ["gzip", "dump.sql.gz", 0],
-    ["zstd", "dump.sql.zst", 19],
+    ["gzip", "dump.sql.gz", 0, undefined],
+    ["zstd", "dump.sql.zst", 19, undefined],
   ] as const) {
     test(`writes the requested ${compression} level through the export command pipeline`, async () => {
       // Given
@@ -154,4 +164,48 @@ describe("export compression level input", () => {
       ).toBe(payload);
     });
   }
+});
+
+describe("export --compression", () => {
+  test.each(["dump.sql", "dump.sql.gz", undefined])(
+    "is refused for a file export (%s) before any execution",
+    async (file) => {
+      // Given
+      const harness = makeSqlTestDeps({ password: "secret" });
+      // When
+      const exit = await Effect.runPromiseExit(
+        executeDbCommand(harness.deps, {
+          action: "export",
+          yes: true,
+          compression: "gzip",
+          ...(file === undefined ? {} : { file }),
+        }),
+      );
+      // Then
+      const error = Exit.isFailure(exit)
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+        : undefined;
+      expect(error).toMatchObject({
+        _tag: "CommandInputValidationError",
+        field: "compression",
+        kind: "flag",
+      });
+      expect(harness.execs()).toEqual([]);
+    },
+  );
+
+  test("accepts a level that matches the compression chosen for stdout", async () => {
+    // Given
+    const input = {
+      action: "export",
+      yes: true,
+      file: "-",
+      compression: "zstd",
+      compressionLevel: 19,
+    } as const;
+    // When
+    const exit = await Effect.runPromiseExit(validateExportCompression(input));
+    // Then
+    expect(Exit.isSuccess(exit)).toBe(true);
+  });
 });

@@ -53,12 +53,7 @@ export const inspectEntry = async (root: string, key: SourceKey): Promise<Physic
       const recordStats = await lstat(recordPath);
       if (recordStats.isFile() && !recordStats.isSymbolicLink()) {
         const value: unknown = JSON.parse(await readFile(recordPath, "utf8"));
-        valid =
-          Schema.is(EntryRecord)(value) &&
-          value.kind === key.kind &&
-          value.id === id &&
-          /^[a-f\d]{64}$/u.test(value.treeDigest) &&
-          (key.kind === "git" ? /^[a-f\d]{40}$/u : /^[a-f\d]{64}$/u).test(id);
+        valid = Schema.is(EntryRecord)(value) && value.kind === key.kind && value.id === id;
         if (valid) {
           const tree = await lstat(containedPath(path, "tree"));
           valid = tree.isDirectory() && !tree.isSymbolicLink();

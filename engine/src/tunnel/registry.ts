@@ -1,32 +1,29 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 
-import { StateStoreError } from "@lando/sdk/errors";
-import { type TunnelSession, TunnelSession as TunnelSessionSchema } from "@lando/sdk/schema";
+import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
+import type { TunnelSession } from "@lando/sdk/schema";
 import { PathsService, StateStore } from "@lando/sdk/services";
 
-const TunnelRegistryEntry = Schema.Struct({
-  session: TunnelSessionSchema,
-  pid: Schema.Number.pipe(Schema.check(Schema.isInt())),
-  updatedAt: Schema.String,
-});
-
-const TunnelRegistryEntries = Schema.Array(TunnelRegistryEntry);
-
-type TunnelRegistryEntry = typeof TunnelRegistryEntry.Type;
-type TunnelRegistryEntries = typeof TunnelRegistryEntries.Type;
+import {
+  TUNNEL_REGISTRY_VERSION,
+  TunnelRegistryEntries,
+  type TunnelRegistryEntry,
+  migrateTunnelRegistryEntries,
+} from "./registry-migrate.ts";
 
 const registrySpec = {
   root: "userData",
   namespace: "tunnels",
   key: "registry.bin",
   schema: TunnelRegistryEntries,
-  version: 1,
+  version: TUNNEL_REGISTRY_VERSION,
   codec: "binary",
   lock: "advisory",
   default: [] as TunnelRegistryEntries,
+  onVersionMismatch: migrateTunnelRegistryEntries,
 } as const;
 
 const stateError = (operation: string, path: string, cause: unknown): StateStoreError =>
@@ -43,8 +40,9 @@ const pidIsAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (cause) {
+    // EPERM means the process exists but belongs to another user.
+    return !isErrnoCode(cause, "ESRCH");
   }
 };
 
@@ -58,10 +56,10 @@ const partitionEntries = (
     if (pidIsAlive(entry.pid) || activeSessionIds.has(entry.session.id)) live.push(entry);
     else staleIds.push(entry.session.id);
   }
-  return { live: live as TunnelRegistryEntries, staleIds };
+  return { live, staleIds };
 };
 
-const writeRunArtifacts = Effect.fnUntraced(function* (session: TunnelSession) {
+const writeRunArtifacts = Effect.fnUntraced(function* (session: TunnelRegistryEntry["session"]) {
   const dir = (yield* PathsService).tunnelRunDir;
   const path = join(dir, `${session.id}.json`);
   const pidPath = join(dir, `${session.id}.pid`);
@@ -94,13 +92,14 @@ export const recordTunnelSession = Effect.fn("TunnelRegistry.recordTunnelSession
 ): Effect.fn.Return<void, StateStoreError, StateStore | PathsService> {
   const registry = yield* bucket;
   const now = DateTime.formatIso(yield* DateTime.now);
+  const { status: _status, ...registration } = session;
   yield* registry.update((current) => {
     const next = partitionEntries(current ?? [], new Set()).live.filter(
       (entry) => entry.session.id !== session.id,
     );
-    return [...next, { session, pid: process.pid, updatedAt: now }];
+    return [...next, { session: registration, pid: process.pid, updatedAt: now }];
   });
-  yield* writeRunArtifacts(session);
+  yield* writeRunArtifacts(registration);
 });
 
 export const reconcileTunnelRegistry = Effect.fn("TunnelRegistry.reconcileTunnelRegistry")(function* (
@@ -109,7 +108,10 @@ export const reconcileTunnelRegistry = Effect.fn("TunnelRegistry.reconcileTunnel
   const registry = yield* bucket;
   const reconciled = yield* registry.modify((current) => {
     const { live, staleIds } = partitionEntries(current ?? [], activeSessionIds);
-    return [{ sessions: live.map((entry) => entry.session), staleIds }, live];
+    return [
+      { sessions: live.map((entry) => ({ ...entry.session, status: "ready" as const })), staleIds },
+      live,
+    ];
   });
   for (const staleId of reconciled.staleIds) yield* removeRunArtifacts(staleId);
   return reconciled.sessions;

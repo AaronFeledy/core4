@@ -72,7 +72,7 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userDataRoot>/shell/<app-id>/history` | Host `app:shell` history: bounded, resolved secrets redacted before writes, skipped by `--no-history` (§8.2.3). |
 | `<userCacheRoot>/templates/<engineId>/`, `sources/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content; `sources/` is the §12.8 source store. |
 | `<userCacheRoot>/logs/file-sync/` | Retained file-sync daemon and engine logs. |
-| `<userCacheRoot>/transfer-staging/` | Operation-scoped `DataMover` staging files, removed when their transfer scope closes. |
+| `<userCacheRoot>/transfer-staging/` | Operation-scoped `DataMover` staging files and SQL import or seed dump staging (§10.7), removed when their scope closes. Owner-only directory `0700` and files `0600` on POSIX, verified private ACL on Windows before any payload bytes are written; tighten an existing Lando-created staging directory. |
 | `<userDataRoot>/scratch/<scratch-id>/root/` | Materialized scratch app root, removed atomically at destroy. |
 | `<userDataRoot>/scratch/<scratch-id>/lock` | Per-scratch lifecycle lock. |
 | `<userDataRoot>/scratch/registry.bin` | Durable scratch registry; its `StateStore` advisory lock serializes cross-process mutation (§21.11). |

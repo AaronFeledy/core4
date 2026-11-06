@@ -3,7 +3,7 @@ id: testing-runtime
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, library, testing]
+tags: [docs, library, testing]
 ---
 
 # Testing runtime
@@ -176,7 +176,7 @@ Library hosts and tests can lower the cap for deterministic boundary coverage wi
 
 `makeLandoRuntime({ config })` relocates `userConfRoot`, `userCacheRoot`, `userDataRoot`, and `systemPluginRoot` for an isolated `PathsService`.
 
-@lando/core/testing is stable on the next channel for Beta 1.
+`@lando/core/testing` is a supported public entry point of `@lando/core`.
 
 ## Interaction test double
 

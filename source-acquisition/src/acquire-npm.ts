@@ -241,7 +241,7 @@ export const npmAcquisition = (
       })),
       pin,
     };
-    yield* storage.locked(
+    yield* storage.sessionLocked(
       bucket.set({
         name: pin.name,
         version: pin.version,

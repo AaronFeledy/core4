@@ -33,6 +33,12 @@ import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const testRegistry = () => makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
 
+/** Seeds pass through acquisition, as a real scratch start does, before their recorded status. */
+const seedRegistry = (entry: ScratchRegistryEntry) => {
+  const registry = testRegistry();
+  return registry.upsert("acquire", entry).pipe(Effect.andThen(registry.upsert("mark-running", entry)));
+};
+
 const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -248,15 +254,14 @@ const planWithDetails = (dataRoot: string, id: string): AppPlan => {
 describe("ScratchAppService list/info backed by the registry", () => {
   test("list derives attached / detached / orphan lifetime status", async () => {
     await withTempRoots(async ({ dataRoot }) => {
-      const registry = testRegistry();
       await Effect.runPromise(
-        registry.upsert(seedEntry(dataRoot, { id: "scratch-attached-000001", ownerPid: process.pid })),
+        seedRegistry(seedEntry(dataRoot, { id: "scratch-attached-000001", ownerPid: process.pid })),
       );
       await Effect.runPromise(
-        registry.upsert(seedEntry(dataRoot, { id: "scratch-detached-000002", detached: true })),
+        seedRegistry(seedEntry(dataRoot, { id: "scratch-detached-000002", detached: true })),
       );
       await Effect.runPromise(
-        registry.upsert(seedEntry(dataRoot, { id: "scratch-orphan-000003", ownerPid: 999_999_999 })),
+        seedRegistry(seedEntry(dataRoot, { id: "scratch-orphan-000003", ownerPid: 999_999_999 })),
       );
 
       const listed = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.list()));
@@ -273,7 +278,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
   test("info reads mounts, network membership, and endpoints from the cached plan", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const id = "scratch-detail-000004";
-      await Effect.runPromise(testRegistry().upsert(seedEntry(dataRoot, { id })));
+      await Effect.runPromise(seedRegistry(seedEntry(dataRoot, { id })));
       const instanceRoot = join(dataRoot, "scratch", id);
       await rm(instanceRoot, { recursive: true, force: true }).catch(() => undefined);
       await Bun.write(join(instanceRoot, ".keep"), "");
@@ -314,7 +319,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
   test("info degrades gracefully to empty detail when no plan is cached", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const id = "scratch-noplan-000005";
-      await Effect.runPromise(testRegistry().upsert(seedEntry(dataRoot, { id, detached: true })));
+      await Effect.runPromise(seedRegistry(seedEntry(dataRoot, { id, detached: true })));
       const info = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.info(id)));
       expect(info.status).toBe("detached");
       expect(info.mounts).toEqual([]);

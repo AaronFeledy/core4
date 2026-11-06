@@ -6,7 +6,7 @@ import { Effect } from "effect";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
 
-test.each(["running", "exited"])(
+test.each(["running", "exited"] as const)(
   "doctor observes %s sidecar in the managed runtime without a host probe",
   async (state) => {
     // Given
@@ -20,7 +20,6 @@ test.each(["running", "exited"])(
           service: ServiceName.make("ssh-agent"),
           providerId: ProviderId.make("lando"),
           status: state,
-          state,
           publications: { status: "present" as const, bindings: [] },
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),

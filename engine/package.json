@@ -34,6 +34,7 @@
     "./composition": "./src/composition.ts",
     "./config-write/dot-path": "./src/config-write/dot-path.ts",
     "./config-write/editor": "./src/config-write/editor.ts",
+    "./config-write/key-schema": "./src/config-write/key-schema.ts",
     "./config-write/readiness": "./src/config-write/readiness.ts",
     "./config-write/value-parse": "./src/config-write/value-parse.ts",
     "./config-write/verbs": "./src/config-write/verbs.ts",

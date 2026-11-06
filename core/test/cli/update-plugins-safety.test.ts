@@ -3,7 +3,12 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readInstalledPluginRegistry, recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
+import {
+  mutateInstalledPluginRegistry,
+  readInstalledPluginRegistry,
+  recordInstalledPlugin,
+  removeInstalledPlugin,
+} from "@lando/engine/plugins/installed-registry";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
@@ -196,11 +201,26 @@ test.each(["source", "path", "selector"])("same-version %s drift is not overwrit
     version: "1.0.0",
     path: field === "path" ? `${f.current}-other` : f.current,
     requestedSelector: field === "selector" ? "1.0.0" : "latest",
-    ...(field === "source" ? { source: "linked" as const, linkedPath: f.current } : {}),
+    ...(field === "source"
+      ? { source: "linked" as const, linkedPath: f.current }
+      : { source: "installed" as const }),
   };
   const runner = await f.runner({
     packument: async () => {
-      await recordInstalledPlugin(f.pluginsRoot, changed);
+      if (field === "source") {
+        await removeInstalledPlugin(f.pluginsRoot, name);
+        await Effect.runPromise(
+          mutateInstalledPluginRegistry(
+            {
+              pluginsRoot: f.pluginsRoot,
+              mutation: { operation: "link", entry: { ...changed, linkedPath: f.current } },
+            },
+            (commit) => Effect.promise(commit),
+          ),
+        );
+      } else {
+        await recordInstalledPlugin(f.pluginsRoot, changed);
+      }
       return f.packument;
     },
   });

@@ -32,7 +32,6 @@ test("scratch acquisition readies the runtime before applying its plan", async (
           service: target.service,
           providerId: ProviderId.make("lando"),
           status: "running" as const,
-          state: "running",
           publications: { status: "unknown" as const },
           containerId: "scratch-web",
         }),

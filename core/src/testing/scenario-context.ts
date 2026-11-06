@@ -251,7 +251,7 @@ const shellNotImplemented = (command: string): NotImplementedError =>
   new NotImplementedError({
     message: `<Run shell=\"${command}\"> is not implemented`,
     commandId: "guide.run.shell",
-    remediation: 'Use `<Run command="…">` for guide scenarios. Shell runners are not available yet.',
+    remediation: 'Use `<Run command="…">` for guide scenarios. Shell runners are not supported.',
   });
 
 const fixtureSymlinkError = (name: string, path: string): GuideFixtureSymlinkError =>

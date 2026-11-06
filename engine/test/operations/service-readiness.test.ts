@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
-import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { type AppPlan, ServiceName, type ServiceRunObservation } from "@lando/sdk/schema";
+import type { RuntimeProviderShape, ServiceRuntimeFields, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Clock, DateTime, Deferred, Effect, Exit, Scope, Stream } from "effect";
 import { withRetainedSession } from "../../src/operations/retained-session.ts";
@@ -12,13 +12,12 @@ import { byTag, makeHarness, plan, web } from "./start-progress-topology-support
 
 const app = { kind: "user", id: plan.id, root: plan.root } as const;
 const target = { app, root: plan.root, plan };
-const runtime = (extras: Partial<ServiceRuntimeInfo> = {}): ServiceRuntimeInfo => ({
+const runtime = (extras: Partial<ServiceRuntimeFields> | ServiceRunObservation = {}): ServiceRuntimeInfo => ({
   app: plan.id,
   service: web.name,
   providerId: plan.provider,
-  status: "running",
+  status: "running" as const,
   publications: { status: "unknown" },
-  state: "running",
   containerId: "web-container",
   lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
   ...extras,
@@ -69,7 +68,7 @@ test("delayed exit without a healthcheck fails start with evidence and retains t
     },
     inspect: () =>
       Effect.map(Clock.currentTimeMillis, (now) =>
-        runtime(now >= 500 ? { status: "stopped", state: "stopped", exitCode: 17 } : {}),
+        runtime(now >= 500 ? { status: "exited" as const, exitCode: 17 } : {}),
       ).pipe(Effect.tap(() => Deferred.succeed(inspected, undefined))),
   });
   const timed = await runExitUnderClock(
@@ -165,7 +164,7 @@ test("a service that has passed readiness is still monitored while a sibling wai
           service: selected.service,
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           ...(selected.service === web.name && now >= 3_000
-            ? { status: "stopped", state: "stopped", exitCode: 2 }
+            ? { status: "exited" as const, exitCode: 2 }
             : {}),
         }),
       ),
@@ -222,7 +221,7 @@ test("a healthcheck wait fails fast when the process exits rather than exhaustin
     logs,
     inspect: () =>
       Effect.map(Clock.currentTimeMillis, (now) =>
-        runtime(now >= 250 ? { status: "stopped", state: "stopped", exitCode: 7 } : {}),
+        runtime(now >= 250 ? { status: "exited" as const, exitCode: 7 } : {}),
       ),
     exec: () => Effect.never,
   } satisfies RuntimeProviderShape;

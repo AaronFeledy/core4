@@ -97,7 +97,7 @@ test("one runtime-free worker serves fresh open children with current config, co
     expect(denied.status).toBe(403);
     expect(denied.response).toMatchObject({
       code: "scheme-not-allowed",
-      remediation: `Allow this scheme with: lando config set hostProxy.allowedSchemes '["custom"]' --type=json`,
+      remediation: `Allow this scheme with: lando config set hostProxy.allowedSchemes '["custom"]'`,
     });
     await writeFile(join(paths.userConfRoot, "config.yml"), "hostProxy:\n  allowedSchemes:\n    - CuStOm\n");
     expect((await invoke({ _tag: "openUrl", url: "CUSTOM:private-target" })).response).toEqual({

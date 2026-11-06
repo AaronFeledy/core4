@@ -66,6 +66,7 @@ const emptySnapshotsLayer = Layer.succeed(
   DataMover.of({
     transfer: () => Effect.die("unexpected transfer"),
     transferStream: () => Stream.die("unexpected transferStream"),
+    read: () => Stream.die("unexpected read"),
     snapshot: () => Effect.die("unexpected snapshot"),
     restore: () => Effect.die("unexpected restore"),
     listSnapshots: () => Effect.succeed([]),
@@ -612,7 +613,7 @@ test.each(["supported-disable", "direct-policy-write"] as const)(
               router.applyRoutes(routes, app).pipe(
                 Effect.tap(() =>
                   Effect.sync(() => {
-                    if (app === f.plan.id) published++;
+                    if (app.id === f.plan.id) published++;
                   }),
                 ),
               ),

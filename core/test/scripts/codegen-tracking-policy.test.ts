@@ -38,6 +38,11 @@ const derivedTypeScriptPolicies = [
     trackingPath: "docs/reference/service-listeners.mdx",
   },
   {
+    ids: ["config-lint-rule-reference"],
+    ignoreProbe: "docs/reference/config-lint-rules.mdx",
+    trackingPath: "docs/reference/config-lint-rules.mdx",
+  },
+  {
     ids: ["command-registry-manifest", "setup-plugin-flags"],
     ignoreProbe: "core/src/cli/generated/command-ids.ts",
     trackingPath: "core/src/cli/generated",

@@ -64,6 +64,7 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `bundled-command-descriptors` | Ship list, bundled plugin manifests, and their command modules | Cold-safe bundled command descriptor table | Derived drift and descriptor parity tests |
 | `command-reference` | Command registry, manifest, and bundled command descriptors | CLI command reference for built-in and bundled plugin commands | Derived regeneration and docs build |
 | `compose-key-matrix` | Compose dispositions | Compose compatibility reference | Derived regeneration and docs build |
+| `config-lint-rule-reference` | `CONFIG_LINT_RULES` descriptors | `docs/reference/config-lint-rules.mdx` | Derived regeneration, reference-rendering tests, and docs build |
 | `opentui-native-stubs` | Native-root catalog, release targets, installed OpenTUI metadata, lockfile | Target mapping and non-target stubs | Derived drift and per-target relocated smoke |
 | `php-base-images` | PHP prerequisites and supported versions | Versioned PHP Dockerfiles | Derived drift and image tests |
 | `ci-workflow` | CI platform and supply-chain configuration | PR CI workflow | Committed-workflow regeneration and diff |
@@ -151,6 +152,8 @@ GitHub Actions owns release automation. The generated release workflow runs shar
 | `dev` | `vX.Y.Z-dev.N` or `main` | Snapshot binaries; no npm publish |
 
 The target matrix is the six §13.5 targets: `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `windows-x64`, and `windows-arm64`. The reference Linux runner is 4 vCPU and 16 GB RAM. Signing secrets are workflow-scoped; stable publication requires protected-environment approval. Runtime bundles publish independently as immutable `runtime-v*` assets in this repository, and binary releases MUST fail closed on placeholder, missing, mutable, or off-repository bundle pins.
+
+Linux runtime bundles MUST be assembled natively, without emulation, in isolated container builds from digest-pinned base and toolchain images and a signed, fixed Ubuntu package snapshot; host compilers and APT state MUST NOT supply build inputs. Repository assembly MUST support Docker Engine with Buildx and, on Linux, an already-running Lando-managed runtime through its API without opening its storage. These assembly prerequisites MUST NOT become installation prerequisites for Lando, and no builder image is published. Identical inputs MUST produce byte-identical archives on either engine; nightly independently rebuilds both architectures with Docker Buildx and fails on any archive-byte difference. Snapshot index updates and package downloads use bounded retries without weakening signature or checksum verification. Pull-request bundle jobs follow CI tier selection and assemble only on cache misses. Cache keys MUST cover every staged build-context file's path and bytes, the target platform, and the repository build arguments, and the staged assembly code MUST exclude unrelated runtime modules so unrelated changes keep the key.
 
 ### 17.9 Acceptance criteria
 

@@ -21,6 +21,8 @@ export const LockKeysResult = Schema.Union([
 export type LockKeysResult = typeof LockKeysResult.Type;
 export type LockKey = typeof LockKey.Type;
 export const GcOutcome = Schema.Literals(["kept", "removed", "busy", "withheld", "failed"]);
+// GC rows are observations, never persisted lifecycle states. Eligibility
+// cannot authorize removal of an entry whose same observation protects it.
 export const GcEntry = Schema.Struct({
   kind: Schema.Literals(["git", "archive"]),
   id: Schema.String,
@@ -35,7 +37,14 @@ export const GcEntry = Schema.Struct({
   npm: Schema.optionalKey(
     Schema.Array(Schema.Struct({ name: Schema.String, version: Schema.String, registry: Schema.String })),
   ),
-});
+}).check(
+  Schema.makeFilter(
+    (row) =>
+      !row.eligible ||
+      (!row.protected && !row.leased && row.outcome !== "busy" && row.outcome !== "withheld"),
+    { expected: "only unprotected, unleased entries may be eligible" },
+  ),
+);
 export const GcLeftover = Schema.Struct({
   kind: Schema.Literals(["staging", "replaced", "gc", "lease", "npm-index", "ref", "root", "inventory"]),
   id: Schema.String,
@@ -45,7 +54,11 @@ export const GcLeftover = Schema.Struct({
   outcome: GcOutcome,
   reason: Schema.optionalKey(Schema.String),
   pid: Schema.optionalKey(Schema.Number),
-});
+}).check(
+  Schema.makeFilter((row) => !row.eligible || (row.outcome !== "busy" && row.outcome !== "withheld"), {
+    expected: "busy or withheld leftovers cannot be eligible",
+  }),
+);
 export const SourceGcReportSchema = Schema.Struct({
   prune: Schema.Boolean,
   olderThanDays: Schema.Number,

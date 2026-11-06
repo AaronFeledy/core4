@@ -2,6 +2,7 @@ import { types } from "node:util";
 import { Result, Schema } from "effect";
 import { LandoInternalError } from "../errors/internal.ts";
 import { TaggedErrorJson } from "../schema/machine-output.ts";
+import { ValidationIssue } from "../schema/validation-issue.ts";
 import { isJsonSafe } from "./json-safe.ts";
 
 export const internalErrorRemediation =
@@ -15,6 +16,29 @@ const ownValue = (value: object | undefined, key: string): unknown => {
 
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value : undefined;
+
+const decodeIssue = Schema.decodeUnknownResult(ValidationIssue);
+
+/**
+ * Keep every issue that decodes. An issue whose only defect is an unregistered `rule` keeps its path,
+ * message, and suggestion without the rule, so one bad id never drops its siblings.
+ */
+const projectIssues = (value: unknown): ReadonlyArray<ValidationIssue> | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const issues: ValidationIssue[] = [];
+  for (const item of value) {
+    const decoded = decodeIssue(item);
+    if (Result.isSuccess(decoded)) {
+      issues.push(decoded.success);
+      continue;
+    }
+    if (item === null || typeof item !== "object" || !("rule" in item)) continue;
+    const { rule: _unregistered, ...withoutRule } = item;
+    const retried = decodeIssue(withoutRule);
+    if (Result.isSuccess(retried)) issues.push(retried.success);
+  }
+  return issues.length === 0 && value.length > 0 ? undefined : issues;
+};
 
 const reserved = new Set([
   "_tag",
@@ -63,12 +87,15 @@ const projectTaggedError = (error: unknown, ancestors: readonly unknown[]): type
     if (key === "service" && text(value) === undefined) continue;
     extra[key] = value;
   }
-  for (const key of ["reason", "issues", "steps"] as const) {
+  for (const key of ["reason", "steps"] as const) {
     const value = ownValue(record, key);
     if (!isJsonSafe(value)) continue;
     const decoded = Schema.decodeUnknownResult(TaggedErrorJson.schema.fields[key])(value);
     if (Result.isSuccess(decoded) && decoded.success !== undefined) extra[key] = decoded.success;
   }
+  const issues = ownValue(record, "issues");
+  const projectedIssues = isJsonSafe(issues) ? projectIssues(issues) : undefined;
+  if (projectedIssues !== undefined) extra.issues = projectedIssues;
   const failures = ownValue(record, "failures");
   if (Array.isArray(failures) && !types.isProxy(failures) && ancestors.length < 8) {
     const members: (typeof TaggedErrorJson.Type)[] = [];

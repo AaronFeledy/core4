@@ -59,7 +59,7 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
     }),
     "no-viewer": Flags.boolean({
       description:
-        "Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior).",
+        "Reserved for the interactive log viewer; accepted as a no-op until the viewer exists (does not change follow behavior).",
       default: false,
     }),
   },

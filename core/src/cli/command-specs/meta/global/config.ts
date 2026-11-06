@@ -41,10 +41,10 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   strict: false,
   args: {
     subcommand: Args.string({
-      description: "Subcommand: view (default), set, unset, edit, validate.",
+      description: "Subcommand: view (default), set, unset, edit, validate, describe.",
       required: false,
     }),
-    key: Args.string({ description: "Dot-path key for set/unset.", required: false }),
+    key: Args.string({ description: "Dot-path key for get/set/unset/describe.", required: false }),
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {

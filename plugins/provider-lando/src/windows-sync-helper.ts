@@ -7,7 +7,8 @@ import {
 } from "@lando/container-runtime/podman/volume-prune";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Duration, Effect, Predicate, Schema } from "effect";
+import { Duration, Effect, Predicate } from "effect";
+import { changeReceipt, openReceipt, stateFailure } from "./windows-sync-helper-receipt.ts";
 
 import {
   type EngineHttpRequest,
@@ -23,38 +24,9 @@ const TARGET_PATH = "/sync";
 const ENTRYPOINT = ["sh", "-c"] as const;
 const KEEP_ALIVE = ["while :; do sleep 3600; done"] as const;
 const HELPER_USER = "0:0";
-const ReceiptSchema = Schema.Struct({
-  specDigest: Schema.String,
-  volumeNonce: Schema.String,
-  volumeCreatedAt: Schema.NullOr(Schema.String),
-  helperNonce: Schema.String,
-  containerId: Schema.NullOr(Schema.String),
-  removing: Schema.optionalKey(Schema.Boolean),
-});
-type Receipt = typeof ReceiptSchema.Type;
 const nonce = (): string => randomBytes(32).toString("hex");
 const receiptKey = (spec: WindowsSyncHelperSpec): string =>
   `${sha256Hex(JSON.stringify([spec.appId, spec.service, spec.mountKey]))}.json`;
-const openReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) =>
-  stateStore.open({
-    namespace: "windows-sync-helpers",
-    key: receiptKey(spec),
-    schema: ReceiptSchema,
-    version: 1,
-    codec: "json",
-    mode: 0o600,
-    lock: "advisory",
-    onCorrupt: "fail",
-    onVersionMismatch: "discard",
-  });
-const stateFailure = (cause: unknown): ProviderUnavailableError =>
-  new ProviderUnavailableError({
-    providerId: "lando",
-    operation: "syncHelper.receipt",
-    message: "Unable to read or update the sync helper ownership receipt.",
-    remediation: REMEDIATION,
-    cause,
-  });
 const withReceiptLock = <A, E>(
   stateStore: PluginStateStore,
   spec: WindowsSyncHelperSpec,
@@ -353,34 +325,10 @@ const requireCreatedAt = (body: JsonRecord): Effect.Effect<string, ProviderUnava
     ? Effect.succeed(body.CreatedAt)
     : Effect.fail(failure("syncHelper.volume", "The sync volume has no durable instance fingerprint."));
 
-const saveReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec, receipt: Receipt) =>
-  openReceipt(stateStore, spec).pipe(
-    Effect.flatMap((bucket) => bucket.set(receipt)),
-    Effect.mapError(stateFailure),
-  );
-
 const loadReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) =>
-  openReceipt(stateStore, spec).pipe(
-    Effect.flatMap((bucket) =>
-      bucket.exists.pipe(
-        Effect.flatMap((exists) => {
-          if (!exists) return Effect.succeed<Receipt | null>(null);
-          return bucket.get.pipe(
-            Effect.flatMap((receipt) =>
-              receipt === null
-                ? Effect.fail(
-                    failure(
-                      "syncHelper.receipt",
-                      "The sync helper ownership receipt has an unknown version.",
-                    ),
-                  )
-                : Effect.succeed(receipt),
-            ),
-          );
-        }),
-      ),
-    ),
-    Effect.mapError((cause) => (cause instanceof ProviderUnavailableError ? cause : stateFailure(cause))),
+  openReceipt(stateStore, receiptKey(spec)).pipe(
+    Effect.flatMap((bucket) => bucket.get),
+    Effect.mapError(stateFailure),
   );
 
 const collision = (kind: string) =>
@@ -475,15 +423,12 @@ export const ensureWindowsSyncHelper = (
         if (volume !== undefined) return yield* Effect.fail(collision("sync volume"));
         const existingHelper = yield* inspectContainer(api, containerName);
         if (existingHelper !== undefined) return yield* Effect.fail(collision("sync helper"));
-        receipt = {
+        receipt = yield* changeReceipt(stateStore, receiptKey(spec), {
+          operation: "claim",
           specDigest: digest,
           volumeNonce: nonce(),
-          volumeCreatedAt: null,
           helperNonce: nonce(),
-          containerId: null,
-          removing: false,
-        };
-        yield* saveReceipt(stateStore, spec, receipt);
+        });
       }
       if (receipt.specDigest !== digest) {
         return yield* Effect.fail(
@@ -496,7 +441,7 @@ export const ensureWindowsSyncHelper = (
           }),
         );
       }
-      if (receipt.removing === true) return yield* Effect.fail(collision("sync helper removal"));
+      if (receipt.phase === "removing") return yield* Effect.fail(collision("sync helper removal"));
       if (volume === undefined) {
         if (receipt.volumeCreatedAt !== null) return yield* Effect.fail(collision("sync volume"));
         const created = yield* request(api, {
@@ -522,8 +467,10 @@ export const ensureWindowsSyncHelper = (
           labelsFor(spec, digest, "volume", receipt.volumeNonce),
           createdAt,
         );
-        receipt = { ...receipt, volumeCreatedAt: createdAt };
-        yield* saveReceipt(stateStore, spec, receipt);
+        receipt = yield* changeReceipt(stateStore, receiptKey(spec), {
+          operation: "record-volume",
+          volumeCreatedAt: createdAt,
+        });
       } else {
         if (receipt.volumeCreatedAt === null) return yield* Effect.fail(collision("sync volume"));
         yield* requireOwnedVolume(
@@ -567,8 +514,10 @@ export const ensureWindowsSyncHelper = (
         if (typeof responseId !== "string" || responseId.length === 0) {
           return yield* Effect.fail(collision("sync helper"));
         }
-        receipt = { ...receipt, containerId: responseId };
-        yield* saveReceipt(stateStore, spec, receipt);
+        receipt = yield* changeReceipt(stateStore, receiptKey(spec), {
+          operation: "record-helper",
+          containerId: responseId,
+        });
         container = yield* inspectContainer(api, containerName);
         if (container === undefined) return yield* Effect.fail(collision("sync helper"));
         yield* ownedContainerId(
@@ -653,10 +602,10 @@ export const inspectWindowsSyncHelper = (
           return yield* Effect.fail(collision("sync resources"));
         return undefined;
       }
-      if (receipt.specDigest !== digest || receipt.removing === true)
+      if (receipt.specDigest !== digest || receipt.phase === "removing")
         return yield* Effect.fail(collision("sync helper receipt"));
       if (receipt.volumeCreatedAt === null) {
-        if (volume !== undefined || container !== undefined || receipt.containerId !== null)
+        if (volume !== undefined || container !== undefined)
           return yield* Effect.fail(collision("sync preparation"));
         return undefined;
       }
@@ -719,15 +668,9 @@ export const removeWindowsSyncHelper = (
         return yield* Effect.fail(collision("sync volume"));
       }
       if (receipt.volumeCreatedAt === null) {
-        if (
-          options.removeVolume !== true ||
-          volume !== undefined ||
-          container !== undefined ||
-          receipt.containerId !== null
-        )
+        if (options.removeVolume !== true || volume !== undefined || container !== undefined)
           return yield* Effect.fail(collision("sync preparation"));
-        const bucket = yield* openReceipt(stateStore, spec).pipe(Effect.mapError(stateFailure));
-        yield* bucket.remove.pipe(Effect.mapError(stateFailure));
+        yield* changeReceipt(stateStore, receiptKey(spec), { operation: "forget" });
         return true;
       }
       if (volume !== undefined) {
@@ -738,14 +681,15 @@ export const removeWindowsSyncHelper = (
           receipt.volumeCreatedAt,
         );
       }
-      if (container === undefined && receipt.removing !== true && receipt.containerId !== null)
+      if (container === undefined && receipt.phase !== "removing" && receipt.containerId !== null)
         return yield* Effect.fail(collision("sync helper"));
-      if (container === undefined && options.removeVolume !== true && receipt.removing !== true) return false;
-      if (volume === undefined && !(options.removeVolume === true && receipt.removing === true))
+      if (container === undefined && options.removeVolume !== true && receipt.phase !== "removing")
+        return false;
+      if (volume === undefined && !(options.removeVolume === true && receipt.phase === "removing"))
         return yield* Effect.fail(collision("sync volume"));
       if (container !== undefined && receipt.containerId === null)
         return yield* Effect.fail(collision("sync helper"));
-      if (receipt.removing !== true) yield* saveReceipt(stateStore, spec, { ...receipt, removing: true });
+      yield* changeReceipt(stateStore, receiptKey(spec), { operation: "begin-removal" });
       if (container !== undefined && receipt.containerId !== null) {
         const id = yield* ownedContainerId(
           api,
@@ -792,15 +736,12 @@ export const removeWindowsSyncHelper = (
           if ((yield* inspectVolume(api, volumeName)) !== undefined)
             return yield* Effect.fail(collision("sync volume"));
         }
-        const bucket = yield* openReceipt(stateStore, spec).pipe(Effect.mapError(stateFailure));
-        yield* bucket.remove.pipe(Effect.mapError(stateFailure));
+        yield* changeReceipt(stateStore, receiptKey(spec), { operation: "forget" });
         return true;
       }
-      yield* saveReceipt(stateStore, spec, {
-        ...receipt,
-        containerId: null,
+      yield* changeReceipt(stateStore, receiptKey(spec), {
+        operation: "reset-helper",
         helperNonce: nonce(),
-        removing: false,
       });
       return true;
     }),

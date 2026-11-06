@@ -116,8 +116,7 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
       "lando plugin:add <remote-source-plugin>",
       "lando setup --provider=<provider-with-remotes>",
     ],
-    remediation:
-      "Install a RemoteSource plugin for this remote, then rerun the command. Bundled remotes ship in Lando 4.1.",
+    remediation: "Install a RemoteSource plugin for this remote, then rerun the command.",
   });
 
 const outputRedactor = Effect.fnUntraced(function* (profile: RedactionProfile) {

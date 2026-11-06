@@ -13,6 +13,7 @@ import { TestFileSyncEngine } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan, app } from "./accelerated-start-recovery-support.ts";
+import { disposalPhaseTracker } from "./file-sync-disposal-support.ts";
 import { makeHarness } from "./start-progress-topology-support.ts";
 
 export const syncPlan = (plan: AppPlan): AppPlan => ({
@@ -115,7 +116,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
   const calls: string[] = [];
   const cleanedPlans: AppPlan[] = [];
   let applied: AppPlan | undefined = options.fresh ? undefined : oldPlan;
-  let phase: "absent" | "active" | "drained" | "disposing" | "completed" = "active";
+  const disposal = disposalPhaseTracker("active");
   let failure = options.failAt;
   const trip = (point: FailurePoint) =>
     Effect.suspend(() => {
@@ -151,13 +152,11 @@ export const rotationHarness = Effect.fnUntraced(function* (
         ),
       ),
     appLifecycle: {
-      disposalPhase: () => Effect.sync(() => phase),
+      disposalPhase: () => Effect.sync(disposal.phase),
       invalidateDrain: () =>
         Effect.suspend(() => {
           calls.push("invalidate");
-          if (phase === "completed" && sessions.length === 0) return Effect.die("stale drain");
-          phase = "active";
-          return Effect.void;
+          return disposal.apply("invalidateDrain");
         }),
       drain: () =>
         Effect.gen(function* () {
@@ -174,12 +173,12 @@ export const rotationHarness = Effect.fnUntraced(function* (
               }),
             );
           }
-          phase = "drained";
+          yield* disposal.apply("drain");
         }),
       dispose: () =>
         Effect.gen(function* () {
           calls.push("dispose");
-          phase = "disposing";
+          yield* disposal.apply("dispose");
           sessions.pop();
           yield* trip("dispose");
           sessions.splice(0);
@@ -188,13 +187,13 @@ export const rotationHarness = Effect.fnUntraced(function* (
         Effect.gen(function* () {
           calls.push("complete");
           yield* trip("complete");
-          phase = "completed";
+          yield* disposal.apply("completeDisposal");
         }),
     },
     createSession: (spec) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         calls.push(`create:${spec.service}`);
-        phase = "active";
+        yield* disposal.apply("createSession");
         const ref = `new-${spec.service}`;
         sessions.push(info(spec, ref));
         return FileSyncSessionRef.make(ref);
@@ -309,6 +308,6 @@ export const rotationHarness = Effect.fnUntraced(function* (
     cleanedPlans,
     desired,
     applied: () => applied,
-    phase: () => phase,
+    phase: disposal.phase,
   };
 });

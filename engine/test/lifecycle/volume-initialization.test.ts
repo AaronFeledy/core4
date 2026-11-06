@@ -234,10 +234,10 @@ test("cooperative cancellation waits for the creation receipt persist step", asy
               live.open({ ...spec, root: { path: AbsolutePath.make(root) } }).pipe(
                 Effect.map((bucket) => ({
                   ...bucket,
-                  modify: (update) =>
+                  mutate: (update) =>
                     Deferred.succeed(writing, undefined).pipe(
                       Effect.andThen(Deferred.await(release)),
-                      Effect.andThen(bucket.modify(update)),
+                      Effect.andThen(bucket.mutate(update)),
                     ),
                 })),
               ),

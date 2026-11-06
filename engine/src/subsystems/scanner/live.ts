@@ -21,7 +21,7 @@ import {
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
-import { observedPublicationConnection, serviceState } from "../../operations/service-connections.ts";
+import { observedPublicationConnection, serviceStateOf } from "../../operations/service-connections.ts";
 import { endpointScanPolicy } from "../../services/endpoint-scan.ts";
 import {
   SCANNER_ID,
@@ -180,7 +180,7 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
     return infos.flatMap((runtime) =>
       runtime.publications.status === "present"
         ? runtime.publications.bindings.map((binding) => ({
-            ...observedPublicationConnection(binding, serviceState(runtime.state ?? runtime.status)),
+            ...observedPublicationConnection(binding, serviceStateOf(runtime)),
             service: runtime.service,
           }))
         : [],

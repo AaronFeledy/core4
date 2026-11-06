@@ -253,7 +253,6 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
       if (
         runtimeIdentity(runtime) !== expected ||
         runtime.status !== "running" ||
-        (runtime.state !== undefined && runtime.state !== "running") ||
         runtime.health === "unhealthy" ||
         runtime.health === "starting"
       )

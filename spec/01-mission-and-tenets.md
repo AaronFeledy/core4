@@ -3,7 +3,7 @@
 > **Part 1 of 20** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
-This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Release stages and sequencing live only in the [ROADMAP](./ROADMAP.md).
+This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Implementation status and release bars live only in the [ROADMAP](./ROADMAP.md); release stages never put specified work out of scope.
 
 §1 and §14 are paired because they define what Lando v4 is and is not.
 
@@ -108,7 +108,7 @@ The forms ship from the same source at the same version and MUST NOT drift.
 ### 14.1 Non-goals
 
 - v3 execution/emulation, automatic conversion, resource adoption, legacy state import, retired image manufacture, or Lando 3 binary management.
-- Hoster-specific synchronization logic in core; §10.12 specifies generic orchestration, not a core vendor connector or a claim of shipped implementation.
+- Hoster-specific synchronization logic in core; §10.12 specifies generic orchestration, not a core vendor connector.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
@@ -118,12 +118,9 @@ The forms ship from the same source at the same version and MUST NOT drift.
 
 ### 14.2 Open decisions
 
-| Decision | Required resolution |
-|---|---|
-| Telemetry inventory and privacy | Finalize events, redaction, retention, and disablement controls. |
-| Renderer wiring at the CLI boundary | Route command output through `Renderer`, add renderer config, and enforce the output boundary. |
+No product decisions are open.
 
-Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher.
+Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher; telemetry has an event inventory gate, allowlisted redaction, a retention policy, and a `telemetry.enabled` switch; command output routes through `Renderer` with renderer config and an enforced output boundary.
 
 The following extension constraints apply without committing to an implementation schedule:
 

@@ -63,7 +63,7 @@ const withApp = async <A>(
                 declaredProviderCapabilities: () => capabilities,
               }),
             ),
-          ).pipe(Effect.provide(Plugins.layer)),
+          ).pipe(Effect.provide(Plugins.layer), Effect.provide(BunFileSystem.layer)),
         ),
     });
   } finally {
@@ -165,7 +165,7 @@ test.each([
       bindMounts: false,
       persistentStorage: false,
     });
-    expect(result.valid).toBe(!bindError);
+    expect(result.valid, JSON.stringify(result.violations)).toBe(!bindError);
     expect(result.violations.map(({ path }) => path)).toEqual(
       bindError ? [["services", "web", "appMount"]] : [],
     );

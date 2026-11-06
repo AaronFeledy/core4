@@ -26,6 +26,8 @@ export interface SnapshotPersistence {
   readonly providerRegistry?: Context.Service.Shape<typeof RuntimeProviderRegistry>;
 }
 
+export const SNAPSHOT_SIDECAR_VERSION = 1;
+
 export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
   persistence: SnapshotPersistence,
   handle: SnapshotAddress,
@@ -36,7 +38,7 @@ export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
       root: { path: AbsolutePath.make(paths.store) },
       key: `${handle.id}.json`,
       schema: SnapshotInfo,
-      version: 1,
+      version: SNAPSHOT_SIDECAR_VERSION,
       codec: "json",
       onCorrupt: "fail",
       onVersionMismatch: (_raw, version) => {

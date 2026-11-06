@@ -318,10 +318,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
           });
 
           const initialRuntime = new Map<string, ServiceRuntimeInfo>();
-          if (pendingStart !== undefined) yield* pendingStart.advance("sessions-ready");
+          if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
           const applyAndInspect = Effect.gen(function* () {
             yield* verifyActiveVolumeCoordination(provider);
-            if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
+            if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
             yield* Effect.scoped(
               applyWithResolvedEnvironment(
                 provider,

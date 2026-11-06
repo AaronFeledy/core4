@@ -447,7 +447,7 @@ const orphanGroup = (input: {
     appRoot: AbsolutePath.make(input.root),
     service: ServiceName.make(name),
     providerId,
-    status: "running",
+    status: "running" as const,
     publications: { status: "unknown" as const },
     ...((input.withoutContainerId ?? []).includes(name) ? {} : { containerId: `container-${name}` }),
   })),
@@ -516,12 +516,11 @@ describe("applied-state teardown", () => {
             ...observed,
             ...orphanGroup({ root: join(parent, "other"), services: ["other-root"] }).services,
             {
-              ...observed[0],
               app: AppId.make("other-app"),
               service: ServiceName.make("other-app"),
               appRoot: AbsolutePath.make(root),
               providerId,
-              status: "running",
+              status: "running" as const,
               publications: { status: "unknown" },
               containerId: "foreign",
             },
@@ -1044,7 +1043,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1077,7 +1078,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1105,7 +1108,9 @@ describe("applied-state teardown", () => {
           id: oldPlan.id,
           root: oldPlan.root,
         }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );

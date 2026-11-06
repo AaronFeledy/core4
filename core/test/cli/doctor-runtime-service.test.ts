@@ -264,11 +264,15 @@ describe("meta:doctor runtime-service check", () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-runtime-service-"));
     try {
       await Effect.runPromise(
-        writeSetupReadiness(dataRoot, "lando", steps, {
-          running: true,
-          socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
-          pid: 2468,
-          runtimeVersion: "5.0.0",
+        writeSetupReadiness(dataRoot, "lando", {
+          status: "ready",
+          steps,
+          runtimeService: {
+            running: true,
+            socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
+            pid: 2468,
+            runtimeVersion: "5.0.0",
+          },
         }),
       );
       const provider: RuntimeServiceTestProvider = {
@@ -296,11 +300,15 @@ describe("meta:doctor runtime-service check", () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-runtime-service-redact-"));
     try {
       await Effect.runPromise(
-        writeSetupReadiness(dataRoot, "lando", steps, {
-          running: true,
-          socketPath:
-            "/home/u/.local/share/lando/runtime/run/podman.sock?token=ABC123&X-Amz-Signature=deadbeef",
-          pid: 2468,
+        writeSetupReadiness(dataRoot, "lando", {
+          status: "ready",
+          steps,
+          runtimeService: {
+            running: true,
+            socketPath:
+              "/home/u/.local/share/lando/runtime/run/podman.sock?token=ABC123&X-Amz-Signature=deadbeef",
+            pid: 2468,
+          },
         }),
       );
       const provider: RuntimeServiceTestProvider = {

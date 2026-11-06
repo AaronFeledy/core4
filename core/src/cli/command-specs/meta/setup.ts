@@ -67,7 +67,7 @@ import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-
 
 export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
+export { SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -108,6 +108,18 @@ export const setupSpec: LandoCommandSpec<
       capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
     });
 
+    const userDataRootRaw = globalConfig.userDataRoot;
+    const userDataRoot =
+      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const recorder = makeSetupReadinessRecorder(
+      userDataRoot,
+      resolution.providerId,
+      redaction._tag === "Some" ? redaction.value : undefined,
+    );
+    yield* recorder.start;
+    yield* Effect.addFinalizer(recorder.finish);
+
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
 
@@ -120,6 +132,7 @@ export const setupSpec: LandoCommandSpec<
     });
 
     const selectedProvider = selection.providerId;
+    recorder.setProvider(selectedProvider);
     const persistsSelection =
       !inputBooleanFlag(input, "skip-provider") &&
       (selection.source === "flag" || selection.source === "prompt");
@@ -149,15 +162,6 @@ export const setupSpec: LandoCommandSpec<
     const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
 
     const selectedProviderId = String(selectedProvider);
-    const userDataRootRaw = globalConfig.userDataRoot;
-    const userDataRoot =
-      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    const recorder = makeSetupReadinessRecorder(
-      userDataRoot,
-      selectedProviderId,
-      redaction._tag === "Some" ? redaction.value : undefined,
-    );
     const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
@@ -299,7 +303,7 @@ export const setupSpec: LandoCommandSpec<
       networkCaInjectionConfigured,
       ...(providerSwitch === undefined ? {} : { providerSwitch }),
     };
-  }),
+  }, Effect.scoped),
   render: (result, _input, ctx) => {
     if (
       typeof result !== "object" ||

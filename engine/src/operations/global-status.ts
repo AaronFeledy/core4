@@ -5,13 +5,18 @@ import { AppId, ServiceConnection, ServiceState } from "@lando/sdk/schema";
 import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
-import { GlobalReconciliationPending, readGlobalReconciliation } from "../global-app/reconciliation.ts";
+import {
+  GlobalReconciliationPending,
+  pendingWork,
+  readGlobalReconciliation,
+} from "../global-app/reconciliation.ts";
 import { GlobalContributionStateSchema, readGlobalResolution } from "../global-app/resolution.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { type ObservedService, collectObservedConnections, observeService } from "./connection-collector.ts";
+import { serviceStateOf } from "./connection-state.ts";
 import { readGlobalLandofile } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
@@ -82,13 +87,7 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
   const pending =
     receipt._tag === "Success"
       ? [...receipt.success.pending]
-      : [
-          {
-            phase: "evidence" as const,
-            services: [],
-            message: "Pending reconciliation records could not be read.",
-          },
-        ];
+      : [pendingWork("evidence", [], "Pending reconciliation records could not be read.")];
   const diagnostics: string[] = [];
   if (placement._tag === "Failure")
     diagnostics.push(diagnostic("Applied global placement could not be read.", placement.failure));
@@ -196,31 +195,34 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     const runtime = owned.find((service) => service.service === name);
     const collected = connections.find((row) => row.name === name);
     const ownershipUnknown = uncertain.some((service) => service.service === name);
-    const rawState = runtime?.state ?? runtime?.status;
     const status =
       collected?.state ??
-      (Schema.is(ServiceState)(rawState)
-        ? rawState
+      (runtime !== undefined
+        ? serviceStateOf(runtime)
         : observed?._tag === "Success" && !ownershipUnknown
           ? "stopped"
           : "unknown");
     const work = pending.filter((entry) => entry.services.length === 0 || entry.services.includes(name));
     if (ownershipUnknown)
-      work.push({
-        phase: "evidence",
-        services: [name],
-        message: "Observed resource ownership is incomplete; absence cannot be verified.",
-      });
+      work.push(
+        pendingWork(
+          "evidence",
+          [name],
+          "Observed resource ownership is incomplete; absence cannot be verified.",
+        ),
+      );
     if (
       policy?.state === "disabled" &&
       status !== "stopped" &&
       !work.some((entry) => entry.phase === "containers" || entry.phase === "evidence")
     ) {
-      work.push({
-        phase: status === "unknown" ? "evidence" : "containers",
-        services: [name],
-        message: "Disabled contribution still has running or unverified resources.",
-      });
+      work.push(
+        pendingWork(
+          status === "unknown" ? "evidence" : "containers",
+          [name],
+          "Disabled contribution still has running or unverified resources.",
+        ),
+      );
     }
     return {
       app: "global",

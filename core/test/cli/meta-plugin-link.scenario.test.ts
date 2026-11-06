@@ -114,14 +114,7 @@ describe("meta:plugin:link command", () => {
       source: "linked",
       linkedPath: resolve(pluginRoot),
     });
-    const linkedState = await readJson<
-      Record<string, { readonly source: string; readonly linkedPath: string; readonly registryEntry: string }>
-    >(join(userDataRoot, "plugins", ".lando-linked.json"));
-    expect(linkedState["@acme/lando-plugin-linked"]).toEqual({
-      source: "linked",
-      linkedPath: resolve(pluginRoot),
-      registryEntry,
-    });
+    expect(await exists(join(userDataRoot, "plugins", ".lando-linked.json"))).toBe(false);
     expect(await exists(toolingCacheDir)).toBe(false);
   });
 
@@ -206,8 +199,8 @@ describe("meta:plugin:link command", () => {
     }
   });
 
-  test("rejects a manifest name that targets linked-state metadata", async () => {
-    const pluginRoot = await makePluginRoot(".lando-linked.json", "managed-linked-state");
+  test("rejects a manifest name that targets the mutation lock", async () => {
+    const pluginRoot = await makePluginRoot(".lando-plugin-mutation.lock", "managed-lock");
 
     const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
 
@@ -215,9 +208,9 @@ describe("meta:plugin:link command", () => {
     if (exit._tag === "Failure") {
       const cause = JSON.stringify(exit.cause);
       expect(cause).toContain("PluginManifestError");
-      expect(cause).toContain("reserved plugins root entry .lando-linked.json");
+      expect(cause).toContain("reserved plugins root entry .lando-plugin-mutation.lock");
     }
-    expect(await exists(join(userDataRoot, "plugins", ".lando-linked.json"))).toBe(false);
+    expect(await exists(join(userDataRoot, "plugins", ".lando-plugin-mutation.lock"))).toBe(false);
   });
 
   test("refuses stale linked state when registry records a non-linked plugin", async () => {
@@ -267,7 +260,7 @@ describe("meta:plugin:link command", () => {
     }
   });
 
-  test("treats corrupt linked state as empty when linking a fresh plugin", async () => {
+  test("leaves stray linked state untouched when linking a fresh plugin", async () => {
     const pluginRoot = await makePluginRoot("lando-plugin-corrupt-linked-state", "corrupt-linked-state");
     const pluginsRoot = join(userDataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
@@ -277,25 +270,17 @@ describe("meta:plugin:link command", () => {
 
     expect(result.registryEntry).toBe(join(pluginsRoot, "lando-plugin-corrupt-linked-state"));
     expect(await readlink(result.registryEntry)).toBe(resolve(pluginRoot));
-    const linkedState = await readJson<Record<string, { readonly linkedPath: string }>>(
-      join(pluginsRoot, ".lando-linked.json"),
-    );
-    expect(linkedState["lando-plugin-corrupt-linked-state"]?.linkedPath).toBe(resolve(pluginRoot));
+    expect(await readFile(join(pluginsRoot, ".lando-linked.json"), "utf8")).toBe("not-json");
   });
 
-  test("treats a corrupt registry as empty when linking a fresh plugin", async () => {
+  test("refuses a corrupt registry without replacing it", async () => {
     const pluginRoot = await makePluginRoot("lando-plugin-corrupt-registry", "corrupt-registry");
     const pluginsRoot = join(userDataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
     await writeFile(join(pluginsRoot, "registry.json"), "not-json");
 
-    const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
-
-    expect(result.registryEntry).toBe(join(pluginsRoot, "lando-plugin-corrupt-registry"));
-    expect(await readlink(result.registryEntry)).toBe(resolve(pluginRoot));
-    const registry = await readJson<Record<string, { readonly linkedPath: string }>>(
-      join(pluginsRoot, "registry.json"),
-    );
-    expect(registry["lando-plugin-corrupt-registry"]?.linkedPath).toBe(resolve(pluginRoot));
+    await expect(runPluginLink({ cwd: pluginRoot, cacheRoot })).rejects.toThrow("registry is corrupt");
+    expect(await readFile(join(pluginsRoot, "registry.json"), "utf8")).toBe("not-json");
+    expect(await exists(join(pluginsRoot, "lando-plugin-corrupt-registry"))).toBe(false);
   });
 });

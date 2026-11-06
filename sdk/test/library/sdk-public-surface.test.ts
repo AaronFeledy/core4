@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import {
   ConfigError,

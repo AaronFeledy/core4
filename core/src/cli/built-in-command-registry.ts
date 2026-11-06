@@ -6,6 +6,7 @@ import { appAgentSkillsRemoveSpec } from "./command-specs/app/agent/skills/remov
 import { appAgentSkillsUpdateSpec } from "./command-specs/app/agent/skills/update";
 import { appCacheRefreshSpec } from "./command-specs/app/cache/refresh";
 import { appConfigSpec } from "./command-specs/app/config";
+import { appConfigDescribeSpec } from "./command-specs/app/config/describe";
 import { appConfigExplainSpec } from "./command-specs/app/config/explain";
 import { appConfigLintSpec } from "./command-specs/app/config/lint";
 import { appConfigMigrateSpec } from "./command-specs/app/config/migrate";
@@ -56,6 +57,7 @@ import { metaConfigSpec } from "./command-specs/meta/config";
 import { metaDoctorSpec } from "./command-specs/meta/doctor";
 import { metaEventsFollowSpec } from "./command-specs/meta/events/follow";
 import { metaGlobalConfigSpec } from "./command-specs/meta/global/config";
+import { metaGlobalConfigDescribeSpec } from "./command-specs/meta/global/config-describe";
 import {
   metaGlobalConfigEditSpec,
   metaGlobalConfigSetSpec,
@@ -151,6 +153,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       appAgentSkillsRemoveSpec,
       appCacheRefreshSpec,
       appConfigSpec,
+      appConfigDescribeSpec,
       appConfigLintSpec,
       appConfigExplainSpec,
       appConfigMigrateSpec,
@@ -205,6 +208,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaSourcesGcSpec,
       metaEventsFollowSpec,
       metaGlobalConfigSpec,
+      metaGlobalConfigDescribeSpec,
       metaGlobalConfigSetSpec,
       metaGlobalConfigUnsetSpec,
       metaGlobalConfigEditSpec,
@@ -302,8 +306,7 @@ export const notImplementedErrorForCommand = (commandId: string): NotImplemented
     ? new NotImplementedError({
         message: `Command ${commandId} is not implemented.`,
         commandId,
-        remediation:
-          "This command is not available yet. Run `lando --help` to see currently available commands.",
+        remediation: "This command is not available. Run `lando --help` to see available commands.",
       })
     : notImplementedErrorForSpec(entry.spec);
 };

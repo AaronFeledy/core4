@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export const FORBIDDEN_EFFECT_MEMBERS: ReadonlySet<string> = new Set(["retry", "repeat", "schedule"]);
 

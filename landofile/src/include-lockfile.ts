@@ -91,7 +91,8 @@ const renderLockfile = (entries: ReadonlyArray<LockEntry>): string => {
   lines.push("");
   return lines.join("\n");
 };
-const LockEntriesSchema = Schema.Array(
+export const INCLUDE_LOCKFILE_VERSION = 1;
+export const LockEntriesSchema = Schema.Array(
   Schema.Struct({
     source: Schema.String.check(Schema.isMinLength(1)),
     version: Schema.optionalKey(Schema.String),
@@ -120,7 +121,7 @@ const openLockfileBucket = (
       root,
       key,
       schema: LockEntriesSchema,
-      version: 1,
+      version: INCLUDE_LOCKFILE_VERSION,
       lock: "none",
       onCorrupt: "fail",
       default: [],

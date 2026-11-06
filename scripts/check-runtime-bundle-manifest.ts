@@ -34,7 +34,7 @@ export interface CheckManifestInvariantInput {
 /**
  * A committed manifest entry MUST pin a real, published asset. A checksum is a
  * placeholder when it is not a well-formed SHA-256, or when it is "all-zero
- * style" — the pre-release scaffolding pattern (`0000…0001`) — which we detect
+ * style" — the placeholder scaffolding pattern (`0000…0001`) — which we detect
  * as fewer than five non-zero hex nibbles. A genuine SHA-256 has ~60 non-zero
  * nibbles; the odds of a real digest tripping this are ~16^-60.
  */

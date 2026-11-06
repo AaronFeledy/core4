@@ -47,7 +47,6 @@ test.each([false, true])(
           service: target.service,
           providerId: plan.provider,
           status: "running" as const,
-          state: "running" as const,
           publications: { status: "unknown" as const },
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
           containerId: String(target.service),

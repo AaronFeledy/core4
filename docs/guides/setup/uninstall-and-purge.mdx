@@ -3,7 +3,7 @@ id: setup-uninstall-and-purge
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, setup, uninstall]
+tags: [docs, setup, uninstall]
 ---
 
 # Uninstall and purge
@@ -93,3 +93,7 @@ On Linux, the managed `lando` runtime keeps its rootless Podman state (the pause
 ## Resume a failed uninstall
 
 A failed confirmed uninstall writes a resumable report of completed, failed, skipped, and manual steps. The report lands at `<userDataRoot>/uninstall/report.json`, or under a private tmpdir if purge already removed the data root. After you fix the failure, rerun the same `--keep-data` or `--purge` command to resume.
+
+In JSON output and the report, each step's `status` keeps its planning classification: `owned`, `user-owned`, `skipped`, or `manual`. Execution adds an `outcome` of `completed`, `skipped`, `manual`, or `failed`. Only failed outcomes carry an `error`; `detail` explains a manual outcome or why a target was preserved. Dry-run plans have no outcome.
+
+For example, a data root classified as `owned` stays `owned` if removal is deferred. Its outcome is `manual` while the install record still needs cleanup, or `failed` if a host-maintainer step prevents safe removal. If the install record is removed later in the same run and nothing blocks deletion, the data root's outcome becomes `completed`.

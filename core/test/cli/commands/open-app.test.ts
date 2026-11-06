@@ -190,8 +190,7 @@ describe("openForPlan", () => {
             app: target.app,
             service: target.service,
             providerId,
-            status: "running",
-            state: "running",
+            status: "running" as const,
             publications: {
               status: "present" as const,
               bindings: [{ port: 80, transport: "tcp" as const, bindAddress: "127.0.0.1", hostPort: 49152 }],
