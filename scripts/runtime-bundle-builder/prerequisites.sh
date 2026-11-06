@@ -12,15 +12,16 @@ Check-Valid-Until: no
 EOF
 printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
 export DEBIAN_FRONTEND=noninteractive
-# Snapshot outages outlast APT's per-file retries, so every network phase backs off as a whole.
+# Snapshot outages outlast APT's per-file retries, so every network phase backs off as a whole
+# for about eight minutes before failing.
 with_snapshot_backoff() {
   local action="$1"
   shift
-  for DELAY in 0 5 15 45; do
+  for DELAY in 0 10 30 60 120 240; do
     if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
     if "$@"; then return 0; fi
   done
-  echo "::error title=runtime-bundle-apt-snapshot::Failed to $action from Ubuntu snapshot $UBUNTU_SNAPSHOT after 4 attempts"
+  echo "::error title=runtime-bundle-apt-snapshot::Failed to $action from Ubuntu snapshot $UBUNTU_SNAPSHOT after 6 attempts"
   exit 1
 }
 PACKAGES=(build-essential ca-certificates libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap unzip xz-utils)

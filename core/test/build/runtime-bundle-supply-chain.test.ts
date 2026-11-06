@@ -187,7 +187,7 @@ POLICY`;
 
     expect(result.exitCode).toBe(0);
     expect(result.updates).toBe("--error-on=any\n".repeat(3));
-    expect(result.sleeps).toBe("5\n15\n");
+    expect(result.sleeps).toBe("10\n30\n");
     expect(result.installed).toBe(true);
     expect(result.retries).toBe('Acquire::Retries "3";\n');
     expect(result.sources).toContain("URIs: https://snapshot.ubuntu.com/ubuntu/20261019T000000Z/");
@@ -196,12 +196,12 @@ POLICY`;
     expect(result.oldIndexExists).toBe(false);
   });
 
-  test("fails closed with an annotation after four failed index updates", async () => {
+  test("fails closed with an annotation after six failed index updates", async () => {
     const result = await runPrerequisiteScript("exit 1", "1.0", "exit 100");
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.updates).toBe("--error-on=any\n".repeat(4));
-    expect(result.sleeps).toBe("5\n15\n45\n");
+    expect(result.updates).toBe("--error-on=any\n".repeat(6));
+    expect(result.sleeps).toBe("10\n30\n60\n120\n240\n");
     expect(result.installed).toBe(false);
     expect(result.output).toContain("::error title=runtime-bundle-apt-snapshot::");
   });
@@ -217,16 +217,16 @@ POLICY`;
     expect(result.exitCode).toBe(0);
     expect(result.updates).toBe("--error-on=any\n");
     expect(result.downloads).toBe("download\n".repeat(3));
-    expect(result.sleeps).toBe("5\n15\n");
+    expect(result.sleeps).toBe("10\n30\n");
     expect(result.installed).toBe(true);
   });
 
-  test("fails closed with an annotation after four failed package downloads", async () => {
+  test("fails closed with an annotation after six failed package downloads", async () => {
     const result = await runPrerequisiteScript("exit 1", "1.0", "exit 0", "exit 100");
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.downloads).toBe("download\n".repeat(4));
-    expect(result.sleeps).toBe("5\n15\n45\n");
+    expect(result.downloads).toBe("download\n".repeat(6));
+    expect(result.sleeps).toBe("10\n30\n60\n120\n240\n");
     expect(result.installed).toBe(false);
     expect(result.output).toContain("::error title=runtime-bundle-apt-snapshot::Failed to download packages");
   });

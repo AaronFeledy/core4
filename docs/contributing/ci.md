@@ -605,7 +605,7 @@ On an arm64 host, use `--platform linux-arm64` and `lando-runtime-linux-arm64.ta
 
 The `tar` check confirms the archive is readable. Provider acceptance and release publication run separately, and no builder image is published. A failed build or pack leaves an existing archive at the destination intact.
 
-If assembly reports a Bun pin mismatch, install and run the Bun version committed in `.bun-version`. Package index updates and downloads from the pinned Ubuntu snapshot each make four attempts, 5, 15, and 45 seconds apart, then fail with a `runtime-bundle-apt-snapshot` annotation. If that happens, check the build engine's DNS and HTTPS access and retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages.
+If assembly reports a Bun pin mismatch, install and run the Bun version committed in `.bun-version`. Package index updates and downloads from the pinned Ubuntu snapshot each make six attempts over about eight minutes (10, 30, 60, 120, and 240 seconds apart), then fail with a `runtime-bundle-apt-snapshot` annotation that names the failed phase. A sustained `snapshot.ubuntu.com` outage outlasts that window; CI jobs whose cache key matches are unaffected because they reuse the cached archive. If that happens, check the build engine's DNS and HTTPS access and retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages.
 
 ### Update the builder pins
 
