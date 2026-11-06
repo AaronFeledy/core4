@@ -46,6 +46,13 @@ export const HelpCatalogResult = Schema.Struct({
       sourcePath: ToolingCommandUnavailableError.fields.sourcePath,
       remediation: ToolingCommandUnavailableError.fields.remediation,
     }),
+    Schema.Struct({
+      status: Schema.Literal("unavailable"),
+      reason: Schema.Literal("rebuild-failed"),
+      sourcePath: Schema.optional(Schema.String),
+      remediation: Schema.String,
+      error: Schema.Struct({ _tag: Schema.String, message: Schema.String }),
+    }),
   ]),
   sections: Schema.Struct({
     common: Schema.Array(HelpCatalogRow),
