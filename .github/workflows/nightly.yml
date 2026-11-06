@@ -146,6 +146,60 @@ jobs:
           echo "::notice title=ci-timing::runtime-bundle-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
 
 
+  runtime-bundle-reproducibility-linux-x64:
+    needs: [runtime-bundle-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download the Linux x64 runtime bundle CI assembled for this commit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle-reference
+
+      - name: Rebuild the Linux x64 runtime bundle on this runner
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --engine docker --out-dir dist/cache/runtime-bundle-rebuild
+
+      - name: Compare the rebuild with the CI archive
+        run: bun run scripts/check-runtime-bundle-reproducibility.ts dist/cache/runtime-bundle-reference/lando-runtime-linux-x64.tar.gz dist/cache/runtime-bundle-rebuild/lando-runtime-linux-x64.tar.gz
+
+  runtime-bundle-reproducibility-linux-arm64:
+    needs: [runtime-bundle-linux-arm64]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download the Linux arm64 runtime bundle CI assembled for this commit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle-reference
+
+      - name: Rebuild the Linux arm64 runtime bundle on this runner
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64 --engine docker --out-dir dist/cache/runtime-bundle-rebuild
+
+      - name: Compare the rebuild with the CI archive
+        run: bun run scripts/check-runtime-bundle-reproducibility.ts dist/cache/runtime-bundle-reference/lando-runtime-linux-arm64.tar.gz dist/cache/runtime-bundle-rebuild/lando-runtime-linux-arm64.tar.gz
+
   file-sync-contract-linux-x64:
     runs-on: ubuntu-26.04
     timeout-minutes: 10

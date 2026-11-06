@@ -613,10 +613,16 @@ Each toolchain version is an `ARG` at the top of `scripts/runtime-bundle-builder
 
 ### Bundle builds in CI
 
-Every pull request that changes code, and every push to `main`, runs `runtime-bundle-linux-x64` and `runtime-bundle-linux-arm64` on native runners. Each job reuses a cached archive when its cache key matches and assembles only on a miss. The key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled assembly script, bundle source pins, and patch) plus the target platform and repository build arguments. The bundled assembly script contains only bundle-assembly code, so unrelated changes keep the key and the cached archive. Print the key a build would use:
+`runtime-bundle-linux-x64` runs whenever CI tests guide scenarios or providers, and `runtime-bundle-linux-arm64` runs on a native arm64 runner for every pull request that changes code. Both run on pushes to `main`, which saves the caches pull requests reuse. Each job reuses a cached archive when its cache key matches and assembles only on a miss. The key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled assembly script, bundle source pins, and patch) plus the target platform and repository build arguments. The bundled assembly script contains only bundle-assembly code, so unrelated changes keep the key and the cached archive. Print the key a build would use:
 
 ```bash
 bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key
+```
+
+Assembly is reproducible: the same inputs produce a byte-identical archive on either engine. Rust helpers build with `--remap-path-prefix`, so their random work directory never reaches the binaries. Nightly's `runtime-bundle-reproducibility-linux-x64` and `runtime-bundle-reproducibility-linux-arm64` jobs rebuild each archive on a fresh native runner, which has no shared build cache, and compare it with the archive CI cached for the same commit. On a mismatch it fails and names every member that differs. Compare any two archives the same way:
+
+```bash
+bun run scripts/check-runtime-bundle-reproducibility.ts <reference.tar.gz> <rebuild.tar.gz>
 ```
 
 CI downloads the x64 archive into provider integration and guide scenarios. Nightly's `mysql-arm-client-linux-arm64` job installs the arm64 archive and runs the socket, `ldd`, and MySQL client checks. A change to builder inputs changes the key, so the pull request's bundle jobs assemble both architectures from scratch; read the `Assemble` step in each job's log to confirm. `platform-readiness` runs only on `main`.
