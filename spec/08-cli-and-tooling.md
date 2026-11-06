@@ -250,7 +250,7 @@ In a batch update, failed-operation mutation safety applies to the affected plug
 
 #### 8.2.6 The `meta:mcp` command
 
-`meta:mcp` serves stdio MCP; streamable HTTP transport is not specified and is sequenced in the ROADMAP (§10.14). Tools derive from built-in `LandoCommandSpec`s and from plugin commands (manifest descriptor plus loaded `ExecutableCommandSpec`) and return §8.11 envelopes. Effective allowance is the default set (built-ins with `mcpAllowed` and bundled plugin descriptors with `mcpAllowed`) plus global `mcp.allow` and `--allow`, minus config or CLI denies. A plugin descriptor's `mcpAllowed` from any other discovery source marks eligibility only: the command needs explicit allowance, and a plugin that replaces a bundled command id does not inherit the bundled default. `--allow` accepts built-in, plugin, and (with tooling) tooling ids. Destructive commands are never default-allowed. `--list` reports each plugin tool's plugin and discovery source and lists diagnostics for eligible commands that were excluded. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
+`meta:mcp` serves stdio MCP; streamable HTTP transport is not yet specified; adding it starts with a §10.14 transport contract. Tools derive from built-in `LandoCommandSpec`s and from plugin commands (manifest descriptor plus loaded `ExecutableCommandSpec`) and return §8.11 envelopes. Effective allowance is the default set (built-ins with `mcpAllowed` and bundled plugin descriptors with `mcpAllowed`) plus global `mcp.allow` and `--allow`, minus config or CLI denies. A plugin descriptor's `mcpAllowed` from any other discovery source marks eligibility only: the command needs explicit allowance, and a plugin that replaces a bundled command id does not inherit the bundled default. `--allow` accepts built-in, plugin, and (with tooling) tooling ids. Destructive commands are never default-allowed. `--list` reports each plugin tool's plugin and discovery source and lists diagnostics for eligible commands that were excluded. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
 
 The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-call events to `pre-mcp-call`/`post-mcp-call`. It MUST NOT be host-proxy or recipe-post-init allowed.
 
@@ -408,7 +408,7 @@ Steps are string commands or objects containing `cmd`, `task`, `command`, `defer
 
 Direct and indirect cycles return `ToolingCommandCycleError`. Effective bootstrap is the transitive maximum of declared and nested command requirements. Nested invocations publish the target's `cli-<id>-init|run|error` events with fresh `invocationId` and parent correlation, but MUST NOT independently trigger foreground completion presentation. Output shares the parent `Renderer`; `silent` suppresses renderer events, not logs. Interruption propagates. The step calls the canonical Effect program directly and does not reparse argv.
 
-This is a frozen producer contract; the nested-correlation and notification-suppression rules are proven through MCP dispatch, and tooling `command:` step execution is sequenced in the ROADMAP.
+This producer contract is stable; the nested-correlation and notification-suppression rules are proven through MCP dispatch.
 
 #### 8.5.3 Variables and environment
 
@@ -669,7 +669,7 @@ All Bun actions are destination-bounded, redacted, and shape-validated by the re
 
 Bundled recipes are authored as `RecipeSource` values, compiled at codegen through the same source compiler as external recipes into inert generated manifests and a cold catalog, and ship `README.mdx` under `recipes/<id>/`. Generated artifacts contain no callable logic and no handwritten snapshot, digest, or fragment twins. The set MAY grow in a minor release; removal requires a major version and `DeprecationNotice` (§18). Generated Landofiles MUST be YAML.
 
-The catalog also ships `node-api`, `node-postgres`, `node-ts`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`, for 24 bundled recipes in total. Hoster recipes depending on `RemoteSource` (§10.12) remain sequenced in the ROADMAP; Lando 3 compatibility shims remain out of scope. The bundled `rails` recipe includes `rails` and `bundle` tooling, gives every prompt a non-interactive default, and requires an executable README under `recipes/rails/`.
+The catalog also ships `node-api`, `node-postgres`, `node-ts`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`, for 24 bundled recipes in total. Hoster recipes require a `RemoteSource` implementation (§10.12); Lando 3 compatibility shims remain out of scope. The bundled `rails` recipe includes `rails` and `bundle` tooling, gives every prompt a non-interactive default, and requires an executable README under `recipes/rails/`.
 
 #### 8.8.11 Recipe authoring surface
 
@@ -802,13 +802,13 @@ Initialization failure MUST degrade to non-TTY line mode with a debug notice and
 
 #### 8.9.4 Rich render events
 
-`CodeSnippetEvent` (`code.snippet`) carries code plus optional language, path, start line, and highlighted lines. `DiffRenderEvent` (`diff.render`) carries unified diff plus optional path/language. `MarkdownBlockEvent` (`markdown.block`) carries Markdown. These schemas are frozen contract-only surface; rich TTY presentation and core emitters are sequenced in the ROADMAP.
+`CodeSnippetEvent` (`code.snippet`) carries code plus optional language, path, start line, and highlighted lines. `DiffRenderEvent` (`diff.render`) carries unified diff plus optional path/language. `MarkdownBlockEvent` (`markdown.block`) carries Markdown. These schemas are stable public contracts; rich TTY presentation and core emitters build on them without a schema change.
 
-Until then, and in degraded/plain modes, renderers emit safe verbatim forms; JSON passes structured events. Publishers MUST redact content. Plain unified diffs MUST remain patch-applicable. Unknown languages fall back to plain text.
+Without rich presentation, and in degraded/plain modes, renderers emit safe verbatim forms; JSON passes structured events. Publishers MUST redact content. Plain unified diffs MUST remain patch-applicable. Unknown languages fall back to plain text.
 
 #### 8.9.5 Renderer panel slots
 
-Renderer panels are frozen contract-only surface; default-renderer runtime support and the first bundled consumer are sequenced in the ROADMAP. Published schema contracts are:
+Renderer panel schemas are stable public contracts; default-renderer runtime support and bundled consumers build on them without a schema change. Published schema contracts are:
 
 - `RendererPanelSlot`: closed ids `status-bar`, `task-tree:footer`, `doctor:summary`.
 - `RendererPanelId`: validated plugin-scoped id.
@@ -822,11 +822,11 @@ Renderer panels are frozen contract-only surface; default-renderer runtime suppo
 
 Plugins contribute `rendererPanels:` (§9.5). Manifest shape, ids, slots, watch events, and module containment validate before import; failures are `PluginManifestError`. Panels import only in isolated workers when their slot becomes visible. Export failures, identity mismatch, or load failure are `PluginLoadError`. Runtime/decode/bound failures isolate and permanently drop only that panel with a debug notice; malformed output MUST NOT be clipped into validity. Panels are output-only, have no terminal/input control, and consume already-redacted events. Untrusted panels use standard plugin trust.
 
-The panel runtime, when it ships, MUST enforce bounded worker startup, binary messages, render deadlines, one in-flight render, coalescing, and last-good view retention without blocking the render loop. The `@lando/sdk/test` Renderer panel contract suite proves timeout, throw, invalid output, purity, determinism, and bounds in a terminable worker. It is a §13.1 shared suite, not one of the §4.2 six plugin-abstraction kit suites.
+The panel runtime MUST enforce bounded worker startup, binary messages, render deadlines, one in-flight render, coalescing, and last-good view retention without blocking the render loop. The `@lando/sdk/test` Renderer panel contract suite proves timeout, throw, invalid output, purity, determinism, and bounds in a terminable worker. It is a §13.1 shared suite, not one of the §4.2 six plugin-abstraction kit suites.
 
 #### 8.9.6 Keymap: renderer actions and bindings
 
-The closed action vocabulary and defaults are frozen; global `keymap:` overrides and the help overlay are sequenced in the ROADMAP.
+The closed action vocabulary and defaults are stable; global `keymap:` overrides and the help overlay build on them without adding actions.
 
 | Action | Surface | Default |
 |---|---|---|
@@ -859,7 +859,7 @@ Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per ru
 
 #### 8.9.8 Interactive log viewer
 
-The `app:logs --follow` TTY viewer is a frozen contract whose implementation is sequenced in the ROADMAP. It consumes the same redacted labeled `LogChunk` stream and selectors as line mode, adds bounded scrollback and source filtering, starts following, unsticks on scroll, and uses `viewer.*` actions. Exit leaves visible logs in normal scrollback. `--no-viewer`, non-TTY, `plain`, and `json` force byte-identical line mode. Until the viewer ships, `--no-viewer` is accepted as a no-op; no new schema is introduced.
+The `app:logs --follow` TTY viewer contract is stable. It consumes the same redacted labeled `LogChunk` stream and selectors as line mode, adds bounded scrollback and source filtering, starts following, unsticks on scroll, and uses `viewer.*` actions. Exit leaves visible logs in normal scrollback. `--no-viewer`, non-TTY, `plain`, and `json` force byte-identical line mode. While the default renderer has no viewer, `--no-viewer` is accepted as a no-op; the viewer introduces no new schema.
 
 Renderer lifecycle and presentation names are stable:
 

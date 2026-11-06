@@ -17,7 +17,7 @@ const globalFlagsFooter = (command: { readonly resultFormats?: ReadonlyArray<Opt
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }
-  | { readonly kind: "deferred"; readonly plan: { readonly phase: string } }
+  | { readonly kind: "deferred"; readonly plan: { readonly summary: string } }
   | { readonly kind: "embedding-exempt" };
 
 export type CommandHelpSpec = {
@@ -133,7 +133,7 @@ const aliasLines = (extras: ReadonlyArray<string>, style: HelpStyle): ReadonlyAr
 const deferredStatusLines = (status: CommandHelpStatus, style: HelpStyle): ReadonlyArray<string> => {
   switch (status.kind) {
     case "deferred":
-      return ["", style.heading("STATUS"), `  Planned for Lando ${status.plan.phase}.`];
+      return ["", style.heading("STATUS"), `  ${status.plan.summary}`];
     case "implemented":
     case "embedding-exempt":
       return [];

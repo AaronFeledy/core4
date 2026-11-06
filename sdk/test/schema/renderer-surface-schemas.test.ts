@@ -20,7 +20,7 @@ import {
   validateKeymapConfigConflicts,
 } from "@lando/sdk/schema";
 
-describe("4.1 renderer surface freeze (schemas)", () => {
+describe("renderer surface schemas", () => {
   test("panel slot vocabulary and manifest entry decode", () => {
     expect(Schema.decodeUnknownSync(RendererPanelSlot)("status-bar")).toBe("status-bar");
     expect(Result.isFailure(Schema.decodeUnknownResult(RendererPanelSlot)("unknown"))).toBe(true);

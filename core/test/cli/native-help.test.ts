@@ -8,6 +8,7 @@ import { Effect } from "effect";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { suggestCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
 import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
+import { metaEventsFollowSpec } from "../../src/cli/command-specs/meta/events/follow.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 
@@ -142,14 +143,14 @@ describe("native registry help", () => {
     },
   );
 
-  test("Given a deferred command, when help is requested, then its phase status renders successfully", async () => {
+  test("Given a deferred command, when help is requested, then its deferral status renders successfully", async () => {
     // Given / When
     const result = await runCli(["events", "--help"]);
 
     // Then
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("STATUS");
-    expect(result.stdout).toContain("Planned for Lando 4.1.");
+    expect(result.stdout).toContain(metaEventsFollowSpec.deferred?.summary ?? "<missing deferral summary>");
   });
 
   test("Given a bounded compatibility form, when help is requested, then it resolves to canonical command help", async () => {

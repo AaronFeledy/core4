@@ -1,6 +1,6 @@
 # Lando v4: Architecture Specification (Index)
 
-> **Status:** Authored architecture planning contract, not a shipped artifact or evidence of implementation. It states the intended design when code differs; runtime compatibility remains governed by published contracts. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md).
+> **Status:** Authored architecture planning contract, not a shipped artifact or evidence of implementation. It states the intended design when code differs; runtime compatibility remains governed by published contracts. Implementation status and release bars belong only in [`ROADMAP.md`](./ROADMAP.md); a release stage never puts specified work out of scope.
 > **Audience:** Lando Core maintainers, plugin authors, contributors, and embedding hosts integrating `@lando/core` as a library.
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
@@ -252,6 +252,7 @@ If you are looking for a public surface or policy:
 - Cross-references use stable `§N` section numbers, not file numbers; section numbers are independent of part numbers.
 - Schemas are named in the spec and published canonically from `@lando/sdk` and `@lando/core/schema` (§7.8).
 - **MUST**, **MUST NOT**, **SHOULD**, and **MAY** carry RFC 2119 weight.
+- Status words keep fixed meanings. **Stable** or **frozen** means a published shape is compatibility-governed (§18); building the runtime behind a stable contract needs no contract change. **Deferred** or **not yet implemented** means specified but not built: it is in scope whenever a task asks for it, built to the contract, with any missing design authored in the owning part first. Only §14.1 and the part-level non-goal sections put work out of scope. Release stages never change these meanings.
 
 ## Canonical Surface Governance
 

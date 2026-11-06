@@ -62,7 +62,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 
 The host proxy (§10.10) is also intentionally absent and core-owned: its detached per-app dispatcher is unreachable by in-process overrides, owns the authentication/allowlist/containment boundary for container re-entry into Lando, and has no concrete replacement need. It has no public replaceable service tag or plugin contribution surface.
 
-Core owns generic pull/push/switch orchestration and `CodeSync`; installed source and Dataset plugins supply the data plane, including the bundled `dotenv` plugin (§10.12). Neither `CodeSync` nor the scope-local `lando-session` secret store is a plugin replacement surface. This catalog specifies the design; release sequencing remains in `ROADMAP.md`.
+Core owns generic pull/push/switch orchestration and `CodeSync`; installed source and Dataset plugins supply the data plane, including the bundled `dotenv` plugin (§10.12). Neither `CodeSync` nor the scope-local `lando-session` secret store is a plugin replacement surface. Implementation status is tracked in `ROADMAP.md`.
 
 `ExecutionSessionService` is core-owned and non-replaceable. Consumers use its SDK contract through existing command/tooling contributions; no new manifest family is introduced (§22).
 
