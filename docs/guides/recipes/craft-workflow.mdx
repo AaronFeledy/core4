@@ -7,7 +7,7 @@ tags: [beta, docs, recipes, craft, lamp, php, mariadb]
 
 # Run a Craft CMS site on the LAMP recipe
 
-Craft wants Composer, a `web/` document root, working `.htaccess` rewrites, and PHP's `bcmath` extension. The LAMP recipe plus `allowOverride`, a one-line image build, and a `lando craft` tool covers that path. Run these commands from your host terminal.
+Run Craft CMS 5 with Composer and MariaDB on LAMP. Run these commands from your host terminal.
 
 ```sh
 lando init --recipe lamp --name=craft-demo --answer=webroot=web --yes
@@ -54,7 +54,7 @@ Run the commands in this section from a POSIX shell on your host (WSL on Windows
 `create-project` wants an empty directory, and the app root already holds `.lando.yml`. Install into `tmp-app` with `--no-scripts` so Composer does not launch Craft's interactive installer, then copy it into the root:
 
 ```sh
-lando composer create-project craftcms/craft tmp-app --no-scripts
+lando composer create-project craftcms/craft tmp-app "^5" --no-scripts
 lando exec appserver -- sh -c "cp -a tmp-app/. . && rm -rf tmp-app && chown -R $(id -u):$(id -g) /app"
 ```
 
@@ -78,7 +78,7 @@ lando exec --user "$(id -u):$(id -g)" appserver -- php craft setup/db-creds \
 
 `--database` matches the app name (here `craft-demo`). Use the service key `database`, not `127.0.0.1` or `localhost`.
 
-Generate the admin password, then install. Craft's default password rules want an uppercase letter, a lowercase letter, a digit, and a special character. The `Aa1-` prefix covers all four:
+Generate and save a random admin password, then install:
 
 ```sh
 CRAFT_ADMIN_PASSWORD="Aa1-$(openssl rand -base64 18)"
@@ -145,7 +145,9 @@ Setup saved these in `.env` as `CRAFT_DB_*`. Craft's MySQL driver talks to Maria
 lando db:export craft.sql.gz
 ```
 
-`db:export` writes a gzipped dump into your current directory. To load a dump back, pipe it into the MariaDB client. It connects to the app's database, here `craft-demo`:
+`db:export` writes a gzipped dump into your current directory.
+
+Loading a dump executes its SQL and can replace existing data. Export a backup first. This direct-client path has no confirmation or automatic recovery snapshot. The client connects to the app's database, here `craft-demo`:
 
 ```sh
 gunzip -c craft.sql.gz | lando mariadb
@@ -215,4 +217,3 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 - [Change a LAMP stack after init](./lamp-stack-variants.mdx)
 - [Customize PHP](../services/php-customization.mdx) for extra extensions and `build.artifact`
 - [Exclude paths from the app mount](../setup/file-sync-excludes.mdx) when you want `vendor/` on the host
-- [Import and export app databases](../tooling/db-import-export.mdx)
