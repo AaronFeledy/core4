@@ -46,7 +46,7 @@ test.each([
   {
     workflow: renderNightlyWorkflow,
     job: "mysql-arm-client-linux-arm64",
-    before: "Assemble current-commit linux-arm64 runtime bundle",
+    before: "Prepare provider via lando setup against the current-commit manifest",
   },
   {
     workflow: renderNightlyWorkflow,
