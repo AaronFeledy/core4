@@ -83,6 +83,7 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 | MCP streamable HTTP transport | §10.14 | Not started | Stdio only; needs a §10.14 transport contract first. |
 | `registry:<id>` includes | §7.7.1 | Not started | Local, `user:`, git, and `npm:` includes are built. |
 | `meta:plugin:add` from Git, `file:`, or tarball | §9.6 | Not started | npm sources are built. |
+| Live MCP tooling catalog replacement | §8.5.1, §10.14 | Not started | Sessions rebuild the index when they start and keep that catalog; clients reconnect after the app's commands change. |
 
 ### Runtime, checks, and build
 
