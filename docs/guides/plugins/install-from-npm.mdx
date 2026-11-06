@@ -3,7 +3,7 @@ id: install-from-npm
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, npm]
+tags: [docs, plugins, npm]
 ---
 
 # Install a plugin from npm
@@ -17,7 +17,7 @@ it skips the trust prompt and saves the package name.
 lando plugin:add @lando/plugin-php --trust
 ```
 
-Only npm registry specifications are supported in this Beta. Git URLs, tarball
+Only npm registry specifications are supported. Git URLs, tarball
 URLs, and `file:` paths fail with `NotImplementedError`. To develop a checkout,
 use [Link a local plugin](./link-local-plugin.mdx).
 

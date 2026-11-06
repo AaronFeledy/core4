@@ -62,16 +62,16 @@ describe("managed-file codecs — encode", () => {
     );
   });
 
-  test("toml is declared but deferred to 4.x", async () => {
+  test("toml is declared but not supported", async () => {
     const error = await failure(encode("toml", { a: 1 }));
     expect(error.reason).toBe("format");
-    expect(error.remediation).toContain("4.x");
+    expect(error.remediation).toContain("not supported");
   });
 
-  test("ini is declared but deferred to 4.x", async () => {
+  test("ini is declared but not supported", async () => {
     const error = await failure(encode("ini", { a: 1 }));
     expect(error.reason).toBe("format");
-    expect(error.remediation).toContain("4.x");
+    expect(error.remediation).toContain("not supported");
   });
 
   test("a non-emittable structured value fails with reason format", async () => {
@@ -134,26 +134,26 @@ describe("managed-file codecs — decode", () => {
     expect(error.reason).toBe("decode");
   });
 
-  test("toml decode is deferred to 4.x", async () => {
+  test("toml decode is not supported", async () => {
     const error = await failure(decode("toml", "a = 1"));
     expect(error.reason).toBe("format");
-    expect(error.remediation).toContain("4.x");
+    expect(error.remediation).toContain("not supported");
   });
 });
 
 describe("managed-file codecs — mergeManaged (keys-mode stub)", () => {
   test.each(["env", "json", "yaml", "landofile"] as const)(
-    "%s keys-mode merge is deferred to 4.x",
+    "%s keys-mode merge is not supported",
     async (format) => {
       const error = await failure(mergeManaged(format, { a: 1 }, { b: 2 }, "# lando"));
       expect(error.reason).toBe("format");
-      expect(error.remediation).toContain("4.x");
+      expect(error.remediation).toContain("not supported");
     },
   );
 
-  test("text keys-mode merge is also deferred to 4.x", async () => {
+  test("text keys-mode merge is also not supported", async () => {
     const error = await failure(mergeManaged("text", "existing", "owned", "# lando"));
     expect(error.reason).toBe("format");
-    expect(error.remediation).toContain("4.x");
+    expect(error.remediation).toContain("not supported");
   });
 });

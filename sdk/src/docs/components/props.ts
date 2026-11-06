@@ -11,7 +11,7 @@ export type ComponentId = typeof ComponentId.Type;
 
 const unsupportedComponentPropsError = (component: string, key: string): NotImplementedError =>
   new NotImplementedError({
-    message: `<${component}> prop \`${key}\` is not supported yet.`,
+    message: `<${component}> prop \`${key}\` is not supported.`,
     commandId: `guide.component.${component.toLowerCase()}`,
     remediation:
       "Unsupported guide component prop. Remove the unsupported prop or use a supported guide component shape.",
@@ -35,7 +35,7 @@ const unsupportedGuideComponentError = (componentName: string, hostPath: string)
   new NotImplementedError({
     message: `<${componentName}> is not supported at ${hostPath}.`,
     commandId: `guide.component.${componentName.toLowerCase()}`,
-    remediation: `<${componentName}> is not supported yet.`,
+    remediation: `<${componentName}> is not supported.`,
   });
 
 export const assertSupportedGuideComponent = (componentName: string, hostPath: string): void => {

@@ -2,7 +2,7 @@
 id: from-lando-3
 provider: test
 timeout: 60000
-tags: [beta, docs, tutorial, lando3]
+tags: [docs, tutorial, lando3]
 ---
 
 # Run Lando 4 next to Lando 3
@@ -19,7 +19,7 @@ The installer refuses to replace an executable without a matching Lando 4 instal
 
 ## Put lando on PATH
 
-Download the platform-qualified binary from a `v4.0.0-dev.N` prerelease. Release assets still start with `lando-` (`lando-linux-x64`, `lando-darwin-arm64`, `lando-windows-x64.exe`). The asset name does not pick the installed name. Save the file as `lando` (`lando.exe` on Windows) and put it on PATH. For Linux x64, run the following from the download directory; replace the asset name on other Linux or macOS architectures. On Windows, use the [PowerShell installation instructions](../install/path-and-setup.mdx) instead. These commands preserve an existing executable in a unique backup before installing:
+The [POSIX](../install/posix-installer.mdx) and [Windows](../install/windows-installer.mdx) installers put `lando` on PATH for you. To install by hand, download the platform-qualified binary from a [GitHub release](../install/github-releases.mdx). Release assets start with `lando-` (`lando-linux-x64`, `lando-darwin-arm64`, `lando-windows-x64.exe`). The asset name does not pick the installed name. Save the file as `lando` (`lando.exe` on Windows) and put it on PATH. For Linux x64, run the following from the download directory; replace the asset name on other Linux or macOS architectures. On Windows, use the [PowerShell installation instructions](../install/path-and-setup.mdx) instead. These commands preserve an existing executable in a unique backup before installing:
 
 ```sh
 (
@@ -59,8 +59,6 @@ Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then o
 
 ## Update lando
 
-The update hosts are not serving v4 artifacts yet. For current Alpha installs, download and verify a new GitHub prerelease and follow the manual installation steps above. The update flow below describes installer-managed copies once the signed update manifests are available.
-
 `lando update` replaces the binary Lando 4 installed, and nothing else.
 
 ```sh
@@ -70,7 +68,7 @@ lando update
 
 Both read the signed release manifest from the update server before they look at your disk, so neither one runs offline.
 
-Lando 4 writes an install record when it installs itself. Update reads that record to find the executable, confirms the file on disk still matches the record byte for byte, and only then stages, verifies, and swaps the new binary. Only a recorded executable with the Lando command name is a target; sharing the name does not prove ownership. Earlier prereleases recorded `lando4` or `lando4.exe`, and those recorded copies remain manageable.
+Lando 4 writes an install record when it installs itself. Update reads that record to find the executable, confirms the file on disk still matches the record byte for byte, and only then stages, verifies, and swaps the new binary. Only a recorded executable with the Lando command name is a target; sharing the name does not prove ownership. A record that names `lando4` or `lando4.exe`, the command name earlier development builds installed, remains manageable.
 
 If the record is missing, points somewhere else, or no longer matches the file, update refuses and tells you to rerun the installer. It does not guess, and it never adopts a binary it did not install. Installed Lando 4 some other way, such as through a package manager? Update it the same way you installed it.
 
@@ -183,4 +181,4 @@ Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Bundled recipe 
 
 - Two apps with the same name, one on each version, do not know about each other. Stop the Lando 3 one before starting the Lando 4 one if they share a port.
 - `lando poweroff` powers off Lando 4. Use your saved Lando 3 executable path to power off its apps.
-- Alpha install details and where to file bugs: [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+- Where to file bugs and what to attach: [Alpha install and bug reports](../../alpha-install-and-bug-reports.md#bug-report-checklist).

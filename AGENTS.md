@@ -4,11 +4,11 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 ## Source of Truth
 
-- Lando v4 is a pre-release Bun monorepo. Workspace packages: `@lando/core` (CLI + library API + wiring), `@lando/sdk` (public contracts), `@lando/engine` (orchestration runtime), `@lando/container-runtime`, and the private packages `@lando/paths`, `@lando/state-store`, `@lando/landofile`, `@lando/redaction`, `@lando/http-client`, `@lando/managed-file`, `@lando/source-acquisition`, `@lando/data-mover`, `@lando/telemetry`, `@lando/renderer`, `@lando/mcp`, plus bundled plugins under `plugins/*`.
-- Lando v4 has not shipped yet. Conform code to the intended design; do not preserve unreleased behavior for its own sake.
-- Release milestones never forbid work. A capability described as deferred, not yet implemented, or planned for a later release is in scope whenever a task asks for it; build it to its contract. A feature freeze exists only when a maintainer declares one; never infer one from a milestone name.
+- Lando v4 is a Bun monorepo. Workspace packages: `@lando/core` (CLI + library API + wiring), `@lando/sdk` (public contracts), `@lando/engine` (orchestration runtime), `@lando/container-runtime`, and the private packages `@lando/paths`, `@lando/state-store`, `@lando/landofile`, `@lando/redaction`, `@lando/http-client`, `@lando/managed-file`, `@lando/source-acquisition`, `@lando/data-mover`, `@lando/telemetry`, `@lando/renderer`, `@lando/mcp`, plus bundled plugins under `plugins/*`.
+- Conform code to the intended design; do not preserve current behavior for its own sake.
+- Release milestones never forbid work. A capability described anywhere as deferred or not implemented is in scope whenever a task asks for it; build it to its contract. A feature freeze exists only when a maintainer declares one; never infer one from a milestone name.
 - The specification tree is authored planning material, not a shipped part of this repository, and may be deleted at any time. Only files inside it may cite or read it; every other file must state the durable detail itself. Enforced by the `spec-reference` rule in `check:boundaries`.
-- Gut-and-replace is allowed before first ship. Do not add compatibility shims, legacy adapters, or dual paths unless a persisted artifact requires them.
+- Gut-and-replace is allowed. Do not add compatibility shims, legacy adapters, or dual paths unless a persisted artifact requires them.
 - Read nested instructions before editing package code: `core/AGENTS.md` for CLI/runtime details and `sdk/AGENTS.md` for SDK contract rules.
 
 ## Core Code Tenets

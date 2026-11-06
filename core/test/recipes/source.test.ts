@@ -183,7 +183,7 @@ describe("resolveRecipeRef — deferred remote sources", () => {
       expect(failure).toBeInstanceOf(NotImplementedError);
       if (failure instanceof NotImplementedError) {
         expect(failure.commandId).toBe("recipe.source.resolve");
-        expect(failure.remediation).toContain("not supported yet");
+        expect(failure.remediation).toContain("--source=git");
         expect(failure.message).toContain(`"${scheme}"`);
         expect(failure.message).toContain(`"${ref}"`);
       }

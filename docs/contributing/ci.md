@@ -81,7 +81,7 @@ General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build
 
 ## Static checks
 
-CI pins Bun via `.bun-version` at 1.4.3; the Beta 1 floor is `>=1.4.3`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
+CI pins Bun via `.bun-version` at 1.4.3; the Bun floor is `>=1.4.3`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
 
 Non-broad pull requests run portable static checks once on Linux x64. Broad runs, including PRs changing the root `.bun-version`, retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
 
@@ -240,7 +240,7 @@ The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maint
 
 ## Library API and recipe test layers
 
-CI runs the Alpha library API and recipe layers as separate branch-protectable jobs:
+CI runs the library API and recipe layers as separate branch-protectable jobs:
 
 ```bash
 bun test core/test/library sdk/test/library
@@ -577,7 +577,7 @@ LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
-Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
+Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting.
 
 ## Nightly source-store acceptance
 
@@ -603,7 +603,7 @@ bun test plugins/provider-docker/test/contract.integration.test.ts
 bun test plugins/provider-podman/test/contract.integration.test.ts
 ```
 
-Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check for Beta.
+Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check.
 
 ## Platform readiness
 
@@ -671,9 +671,9 @@ Distribution signatures use an explicitly labeled test-only verifier fixture. Th
 
 Do not run this purge scenario on a workstation or shared runtime. Isolated Lando roots keep their managed runtime, private runtime directory, and pause process apart, but the socket-proxy helper under `/etc` and cgroups delegation are host-global, and the scenario checks that no other Lando owns them. The script requires `LANDO_LIFECYCLE_FRESH_RUNNER=1` and rejects existing host integration and Lando resources before installation. Inspect the command and prerequisites with `bun run scripts/install-lifecycle-journey.ts --help`.
 
-## Alpha platform scope
+## Platform acceptance
 
-Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main, manual CI, and PRs changing the root `.bun-version` run the broad hosted matrix; other PRs select their smaller path-based profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
+Live evidence covers all six compile targets, not Linux x64 only. Compile smoke is not acceptance. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main, manual CI, and PRs changing the root `.bun-version` run the broad hosted matrix; other PRs select their smaller path-based profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
 
 ## Docs build
 

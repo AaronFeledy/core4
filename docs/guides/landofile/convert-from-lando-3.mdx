@@ -3,7 +3,7 @@ id: convert-from-lando-3
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 90000
-tags: [beta, docs, landofile, lando3, translate]
+tags: [docs, landofile, lando3, translate]
 ---
 
 # Convert a Lando 3 app to Lando 4
@@ -214,7 +214,7 @@ Conversion reads `app-mount`, `mounts`, and `storage` on `api: 4` services the w
 - A `:ro` suffix, as in `app-mount: /app:ro` or `./config:/etc/app:ro`, becomes `readOnly: true`, and so does Compose's `read_only: true`. Lando 3 passed a camelCase `readOnly` key to Compose, which doesn't accept it, so conversion drops that key.
 - A `!path` entry in `excludes` reopened that path from the app root. On the app mount it becomes an `includes` entry. On any other mount, conversion adds a separate bind of `./path` at that location, because Lando 3 re-bound it from the app root rather than from the mount's source.
 - `type: copy` becomes a live bind with a `needs-review` note, because the files are no longer copied into the image. Ownership settings (`owner`, `user`, `group`, `permissions`) have no Lando 4 mount equivalent and are dropped; set ownership in an image build step instead.
-- `storage` keeps Lando 3's volume sharing. A service-scoped entry gets its own volume named `<app>-<service>-<target>`, so two services that both store `/data` keep separate data. `scope: app` and `scope: project` share one volume named `<app>-<target>`. An explicit `source` keeps its name. Conversion does not move data out of Lando 3 volumes. `scope: global` is `unsupported`, because Lando 4 doesn't support global data storage yet.
+- `storage` keeps Lando 3's volume sharing. A service-scoped entry gets its own volume named `<app>-<service>-<target>`, so two services that both store `/data` keep separate data. `scope: app` and `scope: project` share one volume named `<app>-<target>`. An explicit `source` keeps its name. Conversion does not move data out of Lando 3 volumes. `scope: global` is `unsupported`, because Lando 4 has no global data storage scope.
 - `endpoints` on an `api: 4` service did nothing in Lando 3 and is dropped.
 - `ports` entries with `/http` or `/https`, such as `5173:5173/http`, become HTTP endpoints published on the same host port. A host port of `0`, as in `0:80`, becomes a publication on a random host port, which is what Lando 3 asked Docker for.
 

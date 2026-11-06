@@ -47,7 +47,7 @@ export const PluginLinkResultSchema = Schema.Struct({
 });
 
 const conflictRemediation =
-  "Remove or unlink the existing plugin entry before linking this local authoring checkout. Automatic replacement is deferred to unlink/restore support.";
+  "Remove or unlink the existing plugin entry before linking this local authoring checkout. Lando does not replace an existing entry automatically.";
 
 export const pluginLink = Effect.fn("PluginLink.link")(function* (
   options: PluginLinkOptions = {},

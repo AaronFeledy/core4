@@ -4,22 +4,26 @@ Lando builds containerized local development environments without requiring Dock
 Define your services, development tools, local URLs, and HTTPS certificates in
 a `.lando.yml` file, then start the environment with `lando start`.
 
-This repository is the experimental v4 rewrite of [Lando](https://lando.dev).
-**Public Alpha 1 is not an official Lando release or production-ready.** Commands,
-APIs, and configuration may change without migration support. Use the Alpha to
-try the new version and report what breaks.
+This repository is Lando 4, the rewrite of [Lando](https://lando.dev) as a Bun and
+TypeScript monorepo. Release status and install limits are recorded in
+[Alpha install and bug reports](./docs/alpha-install-and-bug-reports.md).
 
-## Install the Alpha
+## Install
 
-Download the latest `v4.0.0-dev.N` prerelease from
-[Releases](https://github.com/AaronFeledy/core4/releases). Binaries are available
-for Linux, macOS, and Windows on x64 and ARM64. They are unsigned; installers and
-self-update are not available in this Alpha.
+On Linux, macOS, and WSL, run the installer:
 
-Download your platform's binary and `SHA256SUMS`, then follow the
-[installation instructions](./docs/alpha-install-and-bug-reports.md) to verify
-the checksum and put `lando` on PATH. Check that `lando` resolves to the Alpha
-binary, especially if you also have Lando 3 installed:
+```sh
+curl -fsSL https://get.lando.dev/install.sh | sh
+```
+
+On Windows, run the [PowerShell installer](./docs/guides/install/windows-installer.mdx).
+Each installer verifies the signed release checksum, installs `lando`, prints the
+command that puts it on PATH, and offers to run setup. To install a downloaded
+binary by hand instead, follow [Install from a GitHub release](./docs/guides/install/github-releases.mdx)
+and [Put lando on PATH and run setup](./docs/guides/install/path-and-setup.mdx).
+
+Check that `lando` resolves to the new binary, especially if you also have
+Lando 3 installed:
 
 ```sh
 lando version
@@ -28,9 +32,9 @@ lando version
 Lando manages its own Podman runtime, so you do not need to install a container
 runtime separately.
 
-**Intel Mac limitation:** the managed provider is not supported on Intel Macs in
-this Alpha. Check the [platform guidance](./docs/alpha-install-and-bug-reports.md#choose-setup-for-your-platform)
-before continuing.
+**Intel Mac limitation:** the managed provider is not supported on Intel Macs.
+Install and start Docker Desktop first, then choose Docker when setup asks. See
+the [platform guidance](./docs/alpha-install-and-bug-reports.md#choose-setup-for-your-platform).
 
 Run setup and follow the prompts:
 
@@ -92,6 +96,8 @@ lando stop
   and [Landofile guides](./docs/guides/landofile/).
 - **Run project commands:** add [tooling](./docs/guides/tooling/) for commands inside your services.
 - **Find a command or option:** use the [CLI reference](./docs/reference/commands.mdx).
+- **Stay current:** `lando update` replaces an installer-managed binary from the
+  signed channel manifest. See [Update channels and manifests](./docs/guides/update/channels-and-manifests.mdx).
 
 ## Extend Lando
 
@@ -109,7 +115,7 @@ Lando 4 is a Bun and TypeScript monorepo built on Effect. Read the
 [contributor source map](./docs/contributing/repository.md) for source builds,
 package boundaries, tests, and compiled binaries, then follow the repository
 conventions in [AGENTS.md](./AGENTS.md). You do not need the contributor toolchain
-to use a prebuilt Alpha binary.
+to use a prebuilt binary.
 
 ## Get help and report bugs
 

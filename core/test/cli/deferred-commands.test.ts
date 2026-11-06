@@ -128,7 +128,7 @@ describe("deferred command remediation contract", () => {
       expect(error._tag).toBe("NotImplementedError");
       expect(error.commandId).toBe(entry.id);
       expect(error.message).toContain("not implemented");
-      expect(error.remediation).toContain("not available yet");
+      expect(error.remediation).toContain("not available");
       expect(error.remediation).not.toMatch(STACK_FRAME_PATTERN);
       expect(error.remediation).not.toMatch(SOURCE_FILE_PATH_PATTERN);
     }
@@ -195,7 +195,7 @@ describe("deferred command remediation contract", () => {
       expect(plan).toBeDefined();
       if (plan === undefined) continue;
       expect(plan.remediation, `${commandId}: remediation must explain availability`).toContain(
-        "not available yet",
+        "not available",
       );
       expect(plan.remediation, `${commandId}: remediation must not contain stack frames`).not.toMatch(
         STACK_FRAME_PATTERN,

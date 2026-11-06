@@ -81,7 +81,7 @@ export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFa
 ) {}
 
 /**
- * Service identities that indicate the subsystem is not yet wired to a real
+ * Service identities that indicate the subsystem is not wired to a real
  * implementation (fallback/disabled stubs).
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);

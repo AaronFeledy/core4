@@ -58,8 +58,7 @@ test("unavailable certificates preserve setup and issuance errors", async () => 
   );
   const failure = Result.fail(
     new CaError({
-      message:
-        "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).",
+      message: "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA.",
       caId: "unavailable",
       remediation:
         "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",

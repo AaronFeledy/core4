@@ -93,9 +93,9 @@ export const parseBunShellScriptFrontMatter = Effect.fnUntraced(function* (
     if (unsupported !== undefined)
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `.bun.sh front-matter field "${unsupported}:" at ${scriptPath} is not supported yet.`,
+          message: `.bun.sh front-matter field "${unsupported}:" at ${scriptPath} is not supported.`,
           commandId: "landofile.parse",
-          remediation: "Remove the field from the .bun.sh front-matter; this surface is not supported yet.",
+          remediation: "Remove the field from the .bun.sh front-matter; this surface is not supported.",
         }),
       );
   }

@@ -152,5 +152,5 @@ export const initSpec: LandoCommandSpec<typeof InitAppResultSchema.Type> = {
       default: false,
     }),
   },
-  run: () => Effect.die("not yet implemented: apps:init"),
+  run: () => Effect.die("not implemented: apps:init"),
 };

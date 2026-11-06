@@ -260,7 +260,7 @@ const applyPlan = async (stateDir: string, dockerApi: DockerApiClient) => {
 
 const isUnavailableExec = (error: unknown): boolean => {
   if (!(error instanceof ProviderUnavailableError)) return false;
-  return error.message.includes("does not implement exec yet");
+  return error.message.includes("does not implement exec");
 };
 
 describe("provider-docker cross-process state", () => {
