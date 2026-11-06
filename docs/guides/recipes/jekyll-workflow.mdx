@@ -174,10 +174,9 @@ tooling:
       JEKYLL_ENV: production
 ```
 
-Lando caches the app's command list, so refresh it before you call the new task (see [Refresh a stale app cache](../cli/cache-refresh.mdx)):
+Lando picks up the new task on the first call:
 
 ```sh
-lando app:cache:refresh
 lando build-prod
 ```
 

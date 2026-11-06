@@ -31,7 +31,7 @@ tooling:
     cmd: echo greeting
 ```
 
-Save the file and run `lando app:cache:refresh` from the app directory. Check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
+Save the file. From the app directory, check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
 
 ```sh
 lando greet dev -n team
@@ -63,7 +63,7 @@ flags:
     default: true
 ```
 
-After refreshing the command cache, `lando greet dev --loud=false` binds `loud` to false. `--loud` and `--loud=true` bind it to true; repeated flags use the last occurrence. Lando does not generate `--no-loud`. The space-separated spelling `--loud false` sets `loud` to true and leaves `false` as a positional token, not a boolean value.
+With that change saved, `lando greet dev --loud=false` binds `loud` to false. `--loud` and `--loud=true` bind it to true; repeated flags use the last occurrence. Lando does not generate `--no-loud`. The space-separated spelling `--loud false` sets `loud` to true and leaves `false` as a positional token, not a boolean value.
 
 For a command that accepts only argv, Lando forwards value flags as `--name=value`, true as `--name`, and false by omitting the positive switch. This is a forwarding rule, not a promise to turn off the child program's own default. Lando does not invent a downstream negation flag. A `.bun.sh` script receives the actual boolean through `LANDO_INPUT` and `LANDO_FLAG_LOUD`, so it can implement either branch directly.
 
@@ -177,15 +177,12 @@ tooling:
 
 This object can merge with an object task from a lower config layer. An authored task always replaces a service-type task of the same name, so this does not preserve a service type's definition. Deleting the key lets an inherited task return; use `false` when it must stay off.
 
-For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and refresh the command cache. It is hidden from listings, help, and the MCP tooling catalog, and direct calls fail with `ToolingDisabledError` without running the body.
+For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. From the next invocation on, it is hidden from listings, help, and the MCP tooling catalog, and direct calls fail with `ToolingDisabledError` without running the body.
 
 <Guide>
   <Scenario id="run-with-flag-alias-and-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="greet-help">
       <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
@@ -203,9 +200,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
     </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
-    </Step>
     <Step name="run-greet-with-bad-target">
       <Run command="lando greet staging --format=json" expectExit={1} />
       <Verify errorTag="ToolingInputError" expect={{ regex: "Argument target must match a declared choice" }} />
@@ -218,9 +212,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="reject-omitted-leading-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-tag-without-label">
       <Run command="lando tag --format=json" expectExit={1} />
@@ -238,9 +229,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
     </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
-    </Step>
     <Step name="run-deploy-in-worker">
       <Verify command="lando deploy -s worker --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"deploy\"[\\s\\S]*\"service\":\\s*\"worker\"" } }} />
     </Step>
@@ -255,9 +243,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="refuse-disabled-task" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-legacy">
       <Run command="lando legacy --format=json" expectExit={1} />
@@ -275,9 +260,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="hide-and-refuse-false-task" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="hide-retired-task">
       <Verify command="lando --help" expect={{ stdout: { not: { regex: "retired-shorthand" } } }} />
