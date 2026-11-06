@@ -337,7 +337,7 @@ describe("meta:plugin:remove command", () => {
     }
   });
 
-  test("does not overwrite a corrupt installed registry during removal", async () => {
+  test("preserves plugin files and a corrupt installed registry during removal", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     const pluginDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
     const registryPath = join(pluginsRoot, "registry.json");
@@ -352,7 +352,8 @@ describe("meta:plugin:remove command", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    expect(await exists(pluginDir)).toBe(false);
+    expect(await exists(pluginDir)).toBe(true);
+    expect(await Bun.file(join(pluginDir, "package.json")).text()).toBe(`{"name":"@lando/plugin-php"}`);
     expect(await Bun.file(registryPath).text()).toBe("not json");
   });
 

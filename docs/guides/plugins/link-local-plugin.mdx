@@ -60,12 +60,14 @@ the link command. Lando validates the manifest before creating the link.
 
 ## What it writes
 
-The link target is `<userDataRoot>/plugins/<manifest.name>`. State also lands in:
+The symlink is `<userDataRoot>/plugins/<manifest.name>`. Lando records its claim
+in `<userDataRoot>/plugins/registry.json` with `source: "linked"` and the checkout's
+absolute path in `linkedPath`. Registry changes share a lock so concurrent plugin
+commands cannot overwrite each other's entries.
 
-- `<userDataRoot>/plugins/.lando-linked.json`
-- `<userDataRoot>/plugins/registry.json` with `source: "linked"`
-
-An existing non-linked install of the same name is left alone. Unlink or remove it first. `file:` on `plugin:add` fails with `NotImplementedError`. Link is the local path.
+An existing installed plugin of the same name is left alone. Remove it before
+linking. Lando also refuses to replace a regular file or directory at the symlink
+path. `file:` on `plugin:add` fails with `NotImplementedError`. Link is the local path.
 
 Also trust the absolute checkout if you need postinstall or authoring-root checks:
 
@@ -82,7 +84,10 @@ paths are rejected.
 lando meta:plugin:unlink @acme/lando-plugin-demo
 ```
 
-Only linked names unlink. A registry install is `lando plugin:remove`.
+Unlink requires a linked entry in the registry. It removes that entry and the
+symlink, leaving your checkout untouched. If the symlink is already missing,
+unlink still removes the registry entry. It does not restore an earlier install.
+Use `lando plugin:remove` for an installed plugin.
 
 ## Verify
 
