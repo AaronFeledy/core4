@@ -153,6 +153,8 @@ GitHub Actions owns release automation. The generated release workflow runs shar
 
 The target matrix is the six §13.5 targets: `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `windows-x64`, and `windows-arm64`. The reference Linux runner is 4 vCPU and 16 GB RAM. Signing secrets are workflow-scoped; stable publication requires protected-environment approval. Runtime bundles publish independently as immutable `runtime-v*` assets in this repository, and binary releases MUST fail closed on placeholder, missing, mutable, or off-repository bundle pins.
 
+Linux runtime bundles MUST be assembled natively in an isolated BuildKit build from digest-pinned base and toolchain images and a signed, fixed Ubuntu package snapshot, never from the runner's installed compilers or APT state. Repository bundle assembly MAY require Docker Engine with Buildx; that prerequisite never extends to installed Lando or ordinary source development, and no builder image is published. Snapshot index updates and package downloads use bounded retries without weakening signature or checksum verification. CI reuses an assembled bundle only under a cache key derived from every staged build-context file's path and bytes plus the target platform and repository build arguments, not from a separately maintained input list.
+
 ### 17.9 Acceptance criteria
 
 The following augment §15.C and define binary-shipping acceptance. The ROADMAP assigns release milestones to this quality bar:

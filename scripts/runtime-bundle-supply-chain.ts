@@ -6,29 +6,3 @@ export const RUNTIME_BUNDLE_ACTION_PINS = {
   uploadArtifact: "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
   cache: "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
 } as const;
-
-/** Inputs that can change the Linux archive, including the bundled entry's local module graph. */
-export const LINUX_RUNTIME_BUNDLE_CACHE_INPUTS = [
-  "plugins/provider-lando/runtime-bundle-sources.json",
-  "scripts/assemble-runtime-bundle.ts",
-  "scripts/build-runtime-bundle.ts",
-  "scripts/check-runtime-bundle-manifest.ts",
-  "scripts/linux-podman-source-build.ts",
-  "scripts/linux-podman-portability.ts",
-  "scripts/runtime-bundle-sources.ts",
-  "scripts/runtime-bundle-fetch.ts",
-  "scripts/runtime-bundle-licenses.ts",
-  "scripts/linux-runtime-bundle-builder.ts",
-  "scripts/runtime-bundle-builder/**",
-  "scripts/runtime-bundle-supply-chain.ts",
-  "scripts/patches/netavark-v2.0.0-systemd-user-bus.patch",
-  ".bun-version",
-  "bun.lock",
-  "package.json",
-  "tsconfig.json",
-  "tsconfig.base.json",
-  "scripts/tsconfig.json",
-] as const;
-
-export const linuxRuntimeBundleCacheHashFiles = (): string =>
-  `hashFiles(${LINUX_RUNTIME_BUNDLE_CACHE_INPUTS.map((path) => `'${path}'`).join(", ")})`;

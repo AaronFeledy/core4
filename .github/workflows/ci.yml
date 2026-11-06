@@ -1724,22 +1724,26 @@ jobs:
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Restore assembled Linux x64 runtime bundle
-        id: runtime-bundle-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/build-runtime-bundle.ts', 'scripts/check-runtime-bundle-manifest.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-runtime-bundle-builder.ts', 'scripts/runtime-bundle-builder/**', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', '.bun-version', 'bun.lock', 'package.json', 'tsconfig.json', 'tsconfig.base.json', 'scripts/tsconfig.json') }}-${{ github.repository }}
-
       - name: Setup Bun
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
+
+      - name: Derive Linux x64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
 
       - name: Assemble current-commit Linux x64 runtime bundle
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'

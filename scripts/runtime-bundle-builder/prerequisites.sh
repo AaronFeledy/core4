@@ -11,16 +11,22 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 Check-Valid-Until: no
 EOF
 printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-for DELAY in 0 5 15 45; do
-  if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-  if apt-get update --error-on=any; then break; fi
-  if [ "$DELAY" -eq 45 ]; then
-    echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-    exit 1
-  fi
-done
+export DEBIAN_FRONTEND=noninteractive
+# Snapshot outages outlast APT's per-file retries, so every network phase backs off as a whole.
+with_snapshot_backoff() {
+  local action="$1"
+  shift
+  for DELAY in 0 5 15 45; do
+    if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
+    if "$@"; then return 0; fi
+  done
+  echo "::error title=runtime-bundle-apt-snapshot::Failed to $action from Ubuntu snapshot $UBUNTU_SNAPSHOT after 4 attempts"
+  exit 1
+}
 PACKAGES=(build-essential ca-certificates libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap unzip xz-utils)
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${PACKAGES[@]}"
+with_snapshot_backoff "update indexes" apt-get update --error-on=any
+with_snapshot_backoff "download packages" apt-get install -y --no-install-recommends --download-only "${PACKAGES[@]}"
+apt-get install -y --no-install-recommends --no-download "${PACKAGES[@]}"
 for PACKAGE in "${PACKAGES[@]}"; do
   INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
   POLICY="$(apt-cache policy "$PACKAGE")"

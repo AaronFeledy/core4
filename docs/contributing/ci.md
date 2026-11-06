@@ -369,44 +369,25 @@ Provider integration tests intentionally stay serial because they share Docker/P
 
 `provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`.
 
-Linux Podman-backed jobs install the Podman 6 toolchain from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2 and Aardvark-dns v2 in its helper directory and `passt`/pasta, `crun`, `conmon` as dependencies) because Ubuntu 24.04 apt ships Podman 4.9.x and the OBS Kubic xUbuntu_24.04 repository does not publish Podman 6 packages yet; the shared install/assert steps live in `scripts/ci-podman-install.ts`, and every Podman-backed job asserts `podman --version` satisfies the >= 6.0.0 floor (numeric major.minor.patch, suffixes ignored) with remediation before any Podman-backed step runs.
+The managed runtime runs containers with the bundle's own `crun` and `conmon`, which its private `containers.conf` names, so a runner's older preinstalled `crun` does not affect container start.
 
-The managed runtime resolves its OCI runtime from the default system search list (`/usr/bin/crun` first) rather than the bundle or `helper_binaries_dir`, so the install step overwrites `/usr/bin/crun` with the Podman 6 toolchain `crun`. A runner's preinstalled pre-Podman-6 `crun` otherwise fails container start with `crun: unknown version specified`.
-
-The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`.
+The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), downloads the current-commit runtime bundle that `runtime-bundle-linux-x64` assembled into `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the bundled `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`.
 
 Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`. Managed-CLI live suites require an explicit, answering `LANDO_TEST_PODMAN_SOCKET` that matches their Paths-resolved managed socket; a different socket does not enable them. Teardown is `dist/lando poweroff`.
 
-To reproduce the setup-driven provider preparation locally (requires a local Podman >= 6.0.0 on PATH, e.g. `brew install podman`; set `LANDO_CI_PODMAN_HELPER_DIR="$(brew --prefix)/opt/podman/libexec/podman"` so the Homebrew helper directory is staged):
+To reproduce the setup-driven provider preparation on a Linux x64 host, build `dist/lando`, then [assemble the current-commit runtime bundle](#build-a-linux-runtime-bundle) and set up the managed provider from its local manifest. Run these from the repository root:
 
 ```bash
-mkdir -p dist/cache/runtime-bundle
-STAGE="$(mktemp -d)"
-cp "$(command -v podman)" "$STAGE/podman"
-for helper in newuidmap newgidmap pasta passt rootlessport catatonit slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
-  src="$(command -v "$helper" 2>/dev/null || true)"
-  if test -z "$src" && test -n "${LANDO_CI_PODMAN_HELPER_DIR:-}" && test -x "$LANDO_CI_PODMAN_HELPER_DIR/$helper"; then src="$LANDO_CI_PODMAN_HELPER_DIR/$helper"; fi
-  if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
-  if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
-done
-tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
-rm -rf "$STAGE"
-
-MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
-cat > dist/cache/runtime-bundle/storage.conf <<EOF
-[storage]
-driver = "overlay"
-
-[storage.options.overlay]
-mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
-EOF
-export CONTAINERS_STORAGE_CONF="$PWD/dist/cache/runtime-bundle/storage.conf"
+bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
 LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
 LANDO_USER_DATA_ROOT="${LANDO_USER_DATA_ROOT:-$HOME/.local/share/lando}"
 export XDG_RUNTIME_DIR="$(jq -r .env.XDG_RUNTIME_DIR "$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json")"
 LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
 LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
 "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
+export LANDO_TEST_PODMAN_SOCKET="$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
 bun test core/test/live
 bun test plugins/provider-lando/test --filter=integration
 bun test plugins/provider-docker/test --filter=integration
@@ -598,7 +579,7 @@ Cells cover Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and Orb
 
 The native machine cells are advisory because GitHub-hosted macOS and Windows runners do not provide a dependable nested-virtualization contract. Prepared runners opt in with `LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE=1` or `LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE=1`; `LANDO_TEST_PODMAN_COMMAND` may select the prepared Podman binary. Missing opt-in, unsupported hosts, and absent Podman tooling produce structured skips. Once opted in with tooling present, start/stop/restart/destroy failures are recorded as failed cells, never passes. The Docker Engine, Lando-managed Linux, and system Podman 6 Linux cells remain release-blocking.
 
-Every cell regenerates derived sources before acceptance so plugin tests can import generated bundled modules. The `docker-engine-linux-latest` cell runs on `ubuntu-26.04` and installs unpinned `docker-ce` from Docker's apt repository. It then asserts that `exec-umask-mode` passed: a missing, skipped, or failed check fails the job even though the cell is not marked release-blocking. Keep this cell out of required status checks until it has a record of passing on `main`.
+Every cell regenerates derived sources before acceptance so plugin tests can import generated bundled modules. The system Podman 6 Linux cell installs Podman from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2, Aardvark-dns v2, `passt`/pasta, `crun`, and `conmon`) because Ubuntu 24.04 apt ships Podman 4.9.x. The install and `podman --version` floor assertion steps live in `scripts/ci-podman-install.ts`. The `docker-engine-linux-latest` cell runs on `ubuntu-26.04` and installs unpinned `docker-ce` from Docker's apt repository. It then asserts that `exec-umask-mode` passed: a missing, skipped, or failed check fails the job even though the cell is not marked release-blocking. Keep this cell out of required status checks until it has a record of passing on `main`.
 
 Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 
@@ -635,9 +616,15 @@ tar -tzf dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz >/dev/null
 
 The `tar` check establishes archive readability; live provider acceptance requires separate checks. Assembly uses an on-demand BuildKit build with a small, explicit context. Compilation uses a pinned Noble base, signed Ubuntu snapshot (`20261019T000000Z`), and pinned Go, Rust, and Bun images inside the builder. Host Bun still runs the wrapper; host Go, Rust, and APT source-build prerequisites are unnecessary. Provider acceptance and release publication run separately. No builder image is published.
 
-If assembly reports a Bun pin mismatch, first install and run the Bun version already committed in `.bun-version`. Change `.bun-version`, the Bun image, and its assertion together only as an intentional, reviewed toolchain update. If signed snapshot indexes cannot be reached, inspect the Buildx worker's DNS and HTTPS access, then retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages. A failed pack leaves an existing destination archive intact.
+If assembly reports a Bun pin mismatch, first install and run the Bun version already committed in `.bun-version`. Change `.bun-version`, the Bun image, and its assertion together only as an intentional, reviewed toolchain update. Index updates and package downloads from the snapshot each make four attempts, 5, 15, and 45 seconds apart, then fail with a `runtime-bundle-apt-snapshot` annotation. If that happens, inspect the Buildx worker's DNS and HTTPS access, then retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages. A failed pack leaves an existing destination archive intact.
 
-To update pins, change the base and toolchain image digests, installed-toolchain path, and matching version assertions in `scripts/runtime-bundle-builder/Dockerfile`. Set the signed snapshot in `scripts/runtime-bundle-builder/prerequisites.sh` and keep the Noble base older than that snapshot. Coordinate the Bun image and assertion with `.bun-version`. Verify component and license SHA-256 values before updating `plugins/provider-lando/runtime-bundle-sources.json`. `LINUX_RUNTIME_BUNDLE_CACHE_INPUTS` in `scripts/runtime-bundle-supply-chain.ts` lists x64 file inputs; the cache key also names the platform and repository. Regenerate workflows and run `bun run codegen:check` and focused bundle tests on the reviewable tree.
+To update pins, change the base and toolchain image digests, installed-toolchain path, and matching version assertions in `scripts/runtime-bundle-builder/Dockerfile`. Set the signed snapshot in `scripts/runtime-bundle-builder/prerequisites.sh` and keep the Noble base older than that snapshot. Coordinate the Bun image and assertion with `.bun-version`. Verify component and license SHA-256 values before updating `plugins/provider-lando/runtime-bundle-sources.json`. Regenerate workflows and run `bun run codegen:check` and focused bundle tests on the reviewable tree.
+
+CI reuses an assembled x64 bundle only when its BuildKit build would be identical. The cache key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled entry script, bundle source pins, and patch) plus the target platform and repository build arguments. Print the key a build would use:
+
+```bash
+bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key
+```
 
 To check native acceptance before merge, push the reviewed branch and authenticate `gh` with workflow dispatch permission. Replace `<reviewbranch>` with that branch:
 

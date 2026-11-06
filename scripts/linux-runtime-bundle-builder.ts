@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { BundleCommandRunner } from "./assemble-runtime-bundle.ts";
@@ -32,6 +32,66 @@ export const assertLinuxBuilderBunPin = (
   }
 };
 
+interface LinuxRuntimeBundleBuildArgs {
+  readonly hostKey: string;
+  readonly repository: string;
+}
+
+const buildxPlatform = (hostKey: string): string => (hostKey === "linux-x64" ? "linux/amd64" : "linux/arm64");
+
+const buildArgs = (options: LinuxRuntimeBundleBuildArgs): ReadonlyArray<string> => [
+  `BUNDLE_PLATFORM=${options.hostKey}`,
+  `REPOSITORY=${options.repository}`,
+];
+
+/** Writes the complete BuildKit context: the bundled entry plus every file it reads at build time. */
+const stageLinuxRuntimeBundleContext = async (context: string): Promise<void> => {
+  const scriptsDir = join(context, "scripts");
+  await mkdir(join(scriptsDir, "patches"), { recursive: true });
+  const result = await Bun.build({
+    entrypoints: [join(recipeRoot, "entry.ts")],
+    outdir: scriptsDir,
+    naming: "entry.js",
+    target: "bun",
+  });
+  if (!result.success) throw new AggregateError(result.logs, "Cannot bundle runtime builder entry");
+  for (const name of ["Dockerfile", "prerequisites.sh"]) {
+    await copyFile(join(recipeRoot, name), join(context, name));
+  }
+  const sources = "plugins/provider-lando/runtime-bundle-sources.json";
+  await mkdir(dirname(join(context, sources)), { recursive: true });
+  await copyFile(join(repoRoot, sources), join(context, sources));
+  const patch = "netavark-v2.0.0-systemd-user-bus.patch";
+  await copyFile(join(repoRoot, "scripts", "patches", patch), join(scriptsDir, "patches", patch));
+};
+
+/** SHA-256 over the platform, build arguments, and every staged context file's path and bytes. */
+export const linuxRuntimeBundleContextDigest = async (
+  context: string,
+  options: LinuxRuntimeBundleBuildArgs,
+): Promise<string> => {
+  const hash = createHash("sha256");
+  for (const field of [buildxPlatform(options.hostKey), ...buildArgs(options)]) hash.update(`${field}\0`);
+  for (const path of (await readdir(context, { recursive: true })).sort()) {
+    if (!(await lstat(join(context, path))).isFile()) continue;
+    const bytes = await readFile(join(context, path));
+    hash.update(`${path}\0${bytes.byteLength}\0`);
+    hash.update(bytes);
+  }
+  return hash.digest("hex");
+};
+
+/** Actions cache key for an assembled Linux bundle: identical inputs to `docker buildx build` share a key. */
+export const linuxRuntimeBundleCacheKey = async (options: LinuxRuntimeBundleBuildArgs): Promise<string> => {
+  const context = await mkdtemp(join(tmpdir(), "rb-builder-"));
+  try {
+    await stageLinuxRuntimeBundleContext(context);
+    return `runtime-bundle-${options.hostKey}-${await linuxRuntimeBundleContextDigest(context, options)}`;
+  } finally {
+    await rm(context, { recursive: true, force: true });
+  }
+};
+
 export const buildLinuxRuntimeBundle = async (options: {
   readonly hostKey: string;
   readonly outDir: string;
@@ -48,37 +108,18 @@ export const buildLinuxRuntimeBundle = async (options: {
   let outputArtifact: string | undefined;
   try {
     exportDir = await mkdtemp(join(tmpdir(), "rb-export-"));
-    const scriptsDir = join(context, "scripts");
-    await mkdir(join(scriptsDir, "patches"), { recursive: true });
-    const result = await Bun.build({
-      entrypoints: [join(recipeRoot, "entry.ts")],
-      outdir: scriptsDir,
-      naming: "entry.js",
-      target: "bun",
-    });
-    if (!result.success) throw new AggregateError(result.logs, "Cannot bundle runtime builder entry");
-    for (const name of ["Dockerfile", "prerequisites.sh"]) {
-      await copyFile(join(recipeRoot, name), join(context, name));
-    }
-    const sources = "plugins/provider-lando/runtime-bundle-sources.json";
-    await mkdir(dirname(join(context, sources)), { recursive: true });
-    await copyFile(join(repoRoot, sources), join(context, sources));
-    const patch = "netavark-v2.0.0-systemd-user-bus.patch";
-    await copyFile(join(repoRoot, "scripts", "patches", patch), join(scriptsDir, "patches", patch));
+    await stageLinuxRuntimeBundleContext(context);
     await options.execute([
       "docker",
       "buildx",
       "build",
       "--platform",
-      options.hostKey === "linux-x64" ? "linux/amd64" : "linux/arm64",
+      buildxPlatform(options.hostKey),
       "--target",
       "bundle",
       "--output",
       `type=local,dest=${exportDir}`,
-      "--build-arg",
-      `BUNDLE_PLATFORM=${options.hostKey}`,
-      "--build-arg",
-      `REPOSITORY=${options.repository}`,
+      ...buildArgs(options).flatMap((arg) => ["--build-arg", arg]),
       "--file",
       join(context, "Dockerfile"),
       context,

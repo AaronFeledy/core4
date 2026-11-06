@@ -66,8 +66,8 @@ const runSelection = async (options: {
     ["bash", "-euo", "pipefail", "-c", selectionCommand(options.dockerfile, options.link)],
     {
       cwd: repoRoot,
+      // A BuildKit RUN starts from the image env only; a host BASH_ENV would run under `-u` first.
       env: {
-        ...process.env,
         TARGETARCH: options.arch,
         RUSTUP_HOME: options.rustup,
         PATH: `${options.proxyBin}:${process.env.PATH ?? ""}`,
@@ -118,7 +118,7 @@ describe("pinned Rust selection in the production Dockerfile", () => {
             "command -v rustc; rustc --version; command -v cargo; cargo --version",
           ],
           {
-            env: { ...process.env, PATH: `${link}/bin:${proxyBin}:${process.env.PATH ?? ""}` },
+            env: { PATH: `${link}/bin:${proxyBin}:${process.env.PATH ?? ""}` },
             stdout: "pipe",
             stderr: "pipe",
           },

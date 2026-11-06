@@ -250,6 +250,7 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
 const main = async (argv: ReadonlyArray<string>): Promise<void> => {
   let hostKey: string | undefined;
   let outDir = DEFAULT_OUT_DIR;
+  let printCacheKey = false;
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--platform") {
       hostKey = argv[i + 1];
@@ -257,22 +258,25 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
     } else if (argv[i] === "--out-dir") {
       outDir = resolve(argv[i + 1] ?? "");
       i += 1;
+    } else if (argv[i] === "--cache-key") {
+      printCacheKey = true;
     } else {
       throw new Error(`assemble-runtime-bundle: unknown argument ${argv[i]}`);
     }
   }
   if (hostKey === undefined) throw new Error("assemble-runtime-bundle: --platform <host-key> is required");
   if (isLinuxRuntimeBundle(hostKey)) {
-    const { buildLinuxRuntimeBundle } = await import("./linux-runtime-bundle-builder.ts");
-    const artifactPath = await buildLinuxRuntimeBundle({
-      hostKey,
-      outDir,
-      repository: await resolveManifestRepository(),
-      execute: run,
-    });
+    const builder = await import("./linux-runtime-bundle-builder.ts");
+    const repository = await resolveManifestRepository();
+    if (printCacheKey) {
+      process.stdout.write(`${await builder.linuxRuntimeBundleCacheKey({ hostKey, repository })}\n`);
+      return;
+    }
+    const artifactPath = await builder.buildLinuxRuntimeBundle({ hostKey, outDir, repository, execute: run });
     process.stdout.write(`${artifactPath}\n`);
     return;
   }
+  if (printCacheKey) throw new Error("assemble-runtime-bundle: --cache-key applies only to Linux host keys");
   const sources = parseRuntimeBundleSources(JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")));
   const result = await assembleBundle({
     hostKey,

@@ -25,6 +25,7 @@ const runPrerequisiteScript = async (
   aptCacheBody: string,
   installedVersion: string,
   updateBody = "exit 0",
+  downloadBody = "exit 0",
 ) => {
   const fakeBin = await mkdtemp(resolve(tmpdir(), "runtime-bundle-apt-"));
   const writeCommand = async (name: string, body: string): Promise<void> => {
@@ -43,6 +44,7 @@ const runPrerequisiteScript = async (
     await Bun.write(resolve(fixtureEtc, "sources.list.d/live.sources"), "live source\n");
     await Bun.write(resolve(fixtureLists, "old-index"), "old\n");
     await Bun.write(resolve(fakeBin, "updates"), "");
+    await Bun.write(resolve(fakeBin, "downloads"), "");
     await Bun.write(resolve(fakeBin, "sleeps"), "");
     await writeCommand(
       "apt-get",
@@ -51,7 +53,14 @@ const runPrerequisiteScript = async (
   printf '%s\\n' "$*" >>"$APT_TEST_ROOT/updates"
   ${updateBody}
 elif [ "$1" = "install" ]; then
-  touch "$APT_TEST_ROOT/installed"
+  case " $* " in
+    *" --download-only "*)
+      echo download >>"$APT_TEST_ROOT/downloads"
+      ${downloadBody}
+      ;;
+    *" --no-download "*) touch "$APT_TEST_ROOT/installed" ;;
+    *) exit 64 ;;
+  esac
 fi`,
     );
     await writeCommand("sleep", `printf '%s\\n' "$1" >>"$APT_TEST_ROOT/sleeps"`);
@@ -83,6 +92,7 @@ fi`,
       liveSourceExists: await Bun.file(resolve(fixtureEtc, "sources.list.d/live.sources")).exists(),
       oldIndexExists: await Bun.file(resolve(fixtureLists, "old-index")).exists(),
       updates: await Bun.file(resolve(fakeBin, "updates")).text(),
+      downloads: await Bun.file(resolve(fakeBin, "downloads")).text(),
       sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
       installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
     };
@@ -185,6 +195,31 @@ POLICY`;
     expect(result.sleeps).toBe("5\n15\n45\n");
     expect(result.installed).toBe(false);
     expect(result.output).toContain("::error title=runtime-bundle-apt-snapshot::");
+  });
+
+  test("retries failed package downloads with backoff, then installs without the network", async () => {
+    const result = await runPrerequisiteScript(
+      `printf '  Candidate: 1.0\\n  Version table:\\n *** 1.0 500\\n        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages\\n'`,
+      "1.0",
+      "exit 0",
+      'test "$(wc -l < "$APT_TEST_ROOT/downloads")" -ge 3',
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.updates).toBe("--error-on=any\n");
+    expect(result.downloads).toBe("download\n".repeat(3));
+    expect(result.sleeps).toBe("5\n15\n");
+    expect(result.installed).toBe(true);
+  });
+
+  test("fails closed with an annotation after four failed package downloads", async () => {
+    const result = await runPrerequisiteScript("exit 1", "1.0", "exit 0", "exit 100");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.downloads).toBe("download\n".repeat(4));
+    expect(result.sleeps).toBe("5\n15\n45\n");
+    expect(result.installed).toBe(false);
+    expect(result.output).toContain("::error title=runtime-bundle-apt-snapshot::Failed to download packages");
   });
 
   test("keeps the generated runtime workflow drift-free", async () => {

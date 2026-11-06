@@ -1496,9 +1496,13 @@ describe("ci workflow", () => {
     expect(runtimeBundle).toContain("          name: runtime-bundle-linux-x64-current");
     expect(runtimeBundle).not.toContain("actions/setup-go@");
     expect(runtimeBundle).not.toContain("dtolnay/rust-toolchain@");
-    expect(runtimeBundle).toContain("scripts/check-runtime-bundle-manifest.ts");
-    expect(runtimeBundle).toContain("package.json");
-    expect(runtimeBundle).toContain("-${{ github.repository }}");
+    expect(runtimeBundle).toContain(
+      '          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key)"',
+    );
+    expect(runtimeBundle).toContain("          key: ${{ steps.runtime-bundle-key.outputs.key }}");
+    expect(runtimeBundle.indexOf("--cache-key")).toBeLessThan(
+      runtimeBundle.indexOf("id: runtime-bundle-cache"),
+    );
     expect(providerIntegration).toContain(
       "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
     );

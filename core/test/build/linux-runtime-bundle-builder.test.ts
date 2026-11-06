@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { access, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   assertLinuxBuilderBunPin,
   assertNativeLinuxBundle,
   buildLinuxRuntimeBundle,
+  linuxRuntimeBundleCacheKey,
+  linuxRuntimeBundleContextDigest,
 } from "../../../scripts/linux-runtime-bundle-builder.ts";
-import { LINUX_RUNTIME_BUNDLE_CACHE_INPUTS } from "../../../scripts/runtime-bundle-supply-chain.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const hostKey = `linux-${process.arch}`;
@@ -196,35 +197,52 @@ describe("Linux runtime bundle builder", () => {
     },
   );
 
-  test("cache inputs cover Bun's actual local dependency graph", async () => {
-    const result = await Bun.build({
-      entrypoints: [join(repoRoot, "scripts/runtime-bundle-builder/entry.ts")],
-      target: "bun",
-      sourcemap: "external",
+  nativeTest("derives the cache key from the exact context and build arguments it transfers", async () => {
+    await withOutDir(async (outDir) => {
+      const buildArgs = { hostKey, repository: "owner/repo" };
+      const key = await linuxRuntimeBundleCacheKey(buildArgs);
+      let transferredKey = "";
+      await buildLinuxRuntimeBundle({
+        ...buildArgs,
+        outDir,
+        execute: async (cmd) => {
+          const digest = await linuxRuntimeBundleContextDigest(cmd.at(-1) ?? "", buildArgs);
+          transferredKey = `runtime-bundle-${hostKey}-${digest}`;
+          await writeFile(join(exportPath(cmd), filename), "bundle");
+        },
+      });
+      expect(transferredKey).toBe(key);
     });
-    expect(result.success).toBe(true);
-    const map = result.outputs.find((output) => output.path.endsWith(".map"));
-    expect(map).toBeDefined();
-    const sources = (await map?.json()) as { sources: string[] };
-    const cached = new Set<string>(LINUX_RUNTIME_BUNDLE_CACHE_INPUTS);
-    const localSources = sources.sources.filter((path) => !path.startsWith("node_modules/"));
-    expect(localSources.length).toBeGreaterThan(0);
-    for (const source of localSources) {
-      expect(
-        cached.has(source) ||
-          (source.startsWith("scripts/runtime-bundle-builder/") &&
-            cached.has("scripts/runtime-bundle-builder/**")),
-      ).toBe(true);
-    }
-    for (const path of [
-      "package.json",
-      "tsconfig.json",
-      "tsconfig.base.json",
-      "scripts/tsconfig.json",
-      ".bun-version",
-      "bun.lock",
-    ]) {
-      expect(cached.has(path)).toBe(true);
-    }
+  });
+
+  test("keys each platform and repository separately and reproducibly", async () => {
+    const x64 = await linuxRuntimeBundleCacheKey({ hostKey: "linux-x64", repository: "owner/repo" });
+    expect(x64).toMatch(/^runtime-bundle-linux-x64-[0-9a-f]{64}$/u);
+    expect(await linuxRuntimeBundleCacheKey({ hostKey: "linux-x64", repository: "owner/repo" })).toBe(x64);
+    const arm64 = await linuxRuntimeBundleCacheKey({ hostKey: "linux-arm64", repository: "owner/repo" });
+    expect(arm64.slice("runtime-bundle-linux-arm64-".length)).not.toBe(
+      x64.slice("runtime-bundle-linux-x64-".length),
+    );
+    expect(await linuxRuntimeBundleCacheKey({ hostKey: "linux-x64", repository: "fork/repo" })).not.toBe(x64);
+  });
+
+  test("changes the context digest when any staged file's path or bytes change", async () => {
+    await withOutDir(async (context) => {
+      const buildArgs = { hostKey: "linux-x64", repository: "owner/repo" };
+      await mkdir(join(context, "scripts"));
+      await writeFile(join(context, "Dockerfile"), "FROM scratch\n");
+      await writeFile(join(context, "scripts/entry.js"), "run();\n");
+      const original = await linuxRuntimeBundleContextDigest(context, buildArgs);
+
+      await mkdir(join(context, "empty"));
+      expect(await linuxRuntimeBundleContextDigest(context, buildArgs)).toBe(original);
+
+      await writeFile(join(context, "scripts/entry.js"), "run(1);\n");
+      const edited = await linuxRuntimeBundleContextDigest(context, buildArgs);
+      expect(edited).not.toBe(original);
+
+      await rename(join(context, "scripts/entry.js"), join(context, "scripts/main.js"));
+      expect(await linuxRuntimeBundleContextDigest(context, buildArgs)).not.toBe(edited);
+    });
   });
 });

@@ -18,10 +18,7 @@ import {
   LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import {
-  RUNTIME_BUNDLE_ACTION_PINS,
-  linuxRuntimeBundleCacheHashFiles,
-} from "./runtime-bundle-supply-chain.ts";
+import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 import { UNIT_SHARD_COUNT } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -585,22 +582,26 @@ export const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
 
 ${timingStartStep}
 
-      - name: Restore assembled Linux x64 runtime bundle
-        id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ ${linuxRuntimeBundleCacheHashFiles()} }}-\${{ github.repository }}
-
       - name: Setup Bun
-        if: ${linuxRuntimeBundleCacheMiss}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        if: ${linuxRuntimeBundleCacheMiss}
         run: bun install --frozen-lockfile
+
+      - name: Derive Linux x64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: \${{ steps.runtime-bundle-key.outputs.key }}
 
       - name: Assemble current-commit Linux x64 runtime bundle
         if: ${linuxRuntimeBundleCacheMiss}
