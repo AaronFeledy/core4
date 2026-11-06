@@ -54,7 +54,6 @@ for (const [host, succeeds] of [
           service: request.service,
           providerId: desired.provider,
           status: "running",
-          state: "running",
           containerId: "php",
           labels,
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),

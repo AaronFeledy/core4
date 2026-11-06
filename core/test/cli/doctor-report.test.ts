@@ -209,7 +209,7 @@ describe("meta:doctor combined report", () => {
           ...(withError
             ? [
                 {
-                  rule: "env-file.read",
+                  rule: "env-file.read" as const,
                   severity: "error" as const,
                   path: ["env_file", 1],
                   message: "Missing env file",

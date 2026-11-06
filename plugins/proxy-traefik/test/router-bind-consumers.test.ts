@@ -234,6 +234,8 @@ test("helper unit forwarding retains a private backend", () => {
       {
         ...acquisition,
         mode: "socket-helper",
+        helperInstalled: true,
+        socketsActive: true,
         bindHttpPort: 38080,
         bindHttpsPort: 38443,
         fingerprint: { ...acquisition.fingerprint, bindAddress: "192.0.2.24" },

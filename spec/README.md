@@ -1,6 +1,6 @@
 # Lando v4: Architecture Specification (Index)
 
-> **Status:** Authored architecture planning contract, not a shipped artifact or evidence of implementation. It states the intended design when code differs; runtime compatibility remains governed by published contracts. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md).
+> **Status:** Authored architecture planning contract, not a shipped artifact or evidence of implementation. It states the intended design when code differs; runtime compatibility remains governed by published contracts. Implementation status and release bars belong only in [`ROADMAP.md`](./ROADMAP.md); a release stage never puts specified work out of scope.
 > **Audience:** Lando Core maintainers, plugin authors, contributors, and embedding hosts integrating `@lando/core` as a library.
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
@@ -136,7 +136,7 @@ If you are looking for a public surface or policy:
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication | 07 | §7.8 |
-| Shared resolved-Landofile validation, lint rules, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
+| Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
@@ -252,6 +252,7 @@ If you are looking for a public surface or policy:
 - Cross-references use stable `§N` section numbers, not file numbers; section numbers are independent of part numbers.
 - Schemas are named in the spec and published canonically from `@lando/sdk` and `@lando/core/schema` (§7.8).
 - **MUST**, **MUST NOT**, **SHOULD**, and **MAY** carry RFC 2119 weight.
+- Status words keep fixed meanings. **Stable** or **frozen** means a published shape is compatibility-governed (§18); building the runtime behind a stable contract needs no contract change. **Deferred** or **not yet implemented** means specified but not built: it is in scope whenever a task asks for it, built to the contract, with any missing design authored in the owning part first. Only §14.1 and the part-level non-goal sections put work out of scope. Release stages never change these meanings.
 
 ## Canonical Surface Governance
 

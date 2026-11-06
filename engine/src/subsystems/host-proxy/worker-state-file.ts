@@ -7,11 +7,8 @@ import type { AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import {
-  readDetachedWorkerRecord,
-  withDetachedWorkerLock,
-  writeDetachedWorkerRecord,
-} from "../detached-worker/state-file.ts";
+import { type WorkerClaim, withDetachedWorkerLock } from "../detached-worker/claim.ts";
+import { readDetachedWorkerRecord, writeDetachedWorkerRecord } from "../detached-worker/state-file.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
 import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-records.ts";
 
@@ -70,22 +67,37 @@ export const readLegacyWorkerRecordAt = (
     Effect.catch(() => Effect.succeed(undefined)),
   );
 
+/** Publishes the record under a claim the caller already holds. */
+export const publishWorkerRecord = (
+  claim: WorkerClaim,
+  record: HostProxyWorkerRecord,
+  privateFileAccess: PrivateFileAccess,
+) =>
+  writeDetachedWorkerRecord(claim, { schema: HostProxyWorkerRecord, privateFileAccess }, record).pipe(
+    Effect.mapError(() => stateError("Failed to write host-proxy worker state.", claim.path)),
+  );
+
 export const writeWorkerRecord = (
   app: AppRef,
   paths: RootOverrides | undefined,
   record: HostProxyWorkerRecord,
   privateFileAccess: PrivateFileAccess,
-) => {
-  const path = workerStatePath(app, paths);
-  return writeDetachedWorkerRecord({ path, schema: HostProxyWorkerRecord, privateFileAccess }, record).pipe(
-    Effect.mapError(() => stateError("Failed to write host-proxy worker state.", path)),
+) =>
+  withWorkerRecordLock(
+    app,
+    paths,
+    (claim) => publishWorkerRecord(claim, record, privateFileAccess),
+    privateFileAccess,
+  ).pipe(
+    Effect.mapError(() =>
+      stateError("Failed to write host-proxy worker state.", workerStatePath(app, paths)),
+    ),
   );
-};
 
 export const withWorkerRecordLock = <A, E>(
   app: Pick<AppRef, "id" | "root">,
   paths: RootOverrides | undefined,
-  body: Effect.Effect<A, E>,
+  body: (claim: WorkerClaim) => Effect.Effect<A, E>,
   privateFileAccess: PrivateFileAccess,
 ) =>
   withDetachedWorkerLock(

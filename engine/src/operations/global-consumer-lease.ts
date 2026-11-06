@@ -10,6 +10,7 @@ import { Context, Effect, Ref } from "effect";
 import {
   type GlobalActivationReservation,
   GlobalActivationScope,
+  admitsGlobalConsumers,
   withGlobalActivationPolicyGate,
 } from "../global-app/activation-scope.ts";
 import { globalPolicyIdentity } from "../global-app/mutation.ts";
@@ -85,7 +86,7 @@ export const withGlobalConsumerReservation = Effect.fnUntraced(function* <A, E, 
   return yield* Effect.acquireUseRelease(
     withGlobalActivationPolicyGate(
       Ref.modify(scope.state, (state) =>
-        state.policyOwner === undefined
+        admitsGlobalConsumers(state)
           ? ([true, { ...state, entries: [...state.entries, reservation], epoch: state.epoch + 1 }] as const)
           : ([false, state] as const),
       ).pipe(

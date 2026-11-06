@@ -3,15 +3,23 @@ id: update-permission-errors
 provider: test
 platforms: [linux]
 timeout: 60000
-tags: [beta, docs, update, permissions]
+tags: [docs, update, permissions]
 ---
 
 # Update permission errors
 
-> **Alpha status:** In-place `lando update` is **not a shipping user path**. `update.lando.dev` is down, and there is no signed Windows or macOS binary to replace. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+`lando update` replaces the installed binary in place. When it cannot write to that location, it names the path and stops. It does not run `sudo`, request UAC, or make any other silent privilege hop to overwrite an install path.
 
 If a downloaded Linux or macOS binary will not execute, first check that it is the asset for your platform and that your shell resolves the intended file. An execution failure does not by itself prove an ownership problem. Follow [Put lando on PATH and run setup](../install/path-and-setup.mdx) to set its executable permission, install it in a directory you can write, and verify `lando --version`.
 
-Alpha does not elevate for you. It will not run `sudo`, UAC, or any other silent privilege hop to overwrite an install path.
+## Fix a Linux or macOS permission failure
 
-When in-place update does ship, a permission failure will name the path and stop. The code path does not invoke elevation. Until that ship date, replace the binary yourself from a `v4.0.0-dev.N` prerelease or from source.
+Update reports `permission_failure` with the directory it could not write. Pick one:
+
+- Fix write permissions on that directory and rerun `lando update`.
+- Reinstall Lando into a user-writable directory with the [POSIX installer](../install/posix-installer.mdx) and `LANDO_INSTALL_DIR`.
+- Download the matching binary from the [GitHub release](../install/github-releases.mdx) and install it yourself: `sudo install -m 755 <downloaded-lando-binary> <executable-path>`.
+
+## Fix a Windows permission failure
+
+On Windows, update stages the new binary and hands replacement to a helper after the running process exits. If Windows requires elevation for the install path, open PowerShell as Administrator and replace `lando.exe` by hand with the staged or downloaded binary, or reinstall into a user-writable directory. The failure message lists the exact moves to make and how to restore the backup if replacement fails.

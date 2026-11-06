@@ -1,7 +1,35 @@
 import type { DatabaseFamily } from "@lando/sdk/database-creds";
+// allow: SIZE_OK — Declarative family switches keep client commands and dump policies together; streaming mechanics live in separate modules.
+import {
+  type DumpCompletenessRule,
+  mongoDumpCompleteness,
+  textDumpCompleteness,
+} from "./dump-completeness.ts";
 import { mssqlClient, mssqlResetCommand, mssqlRestoreCommand } from "./mssql.ts";
 
 export type SqlFamily = DatabaseFamily;
+
+export const dumpCompleteness = (family: SqlFamily): DumpCompletenessRule | undefined => {
+  switch (family) {
+    case "mysql":
+    case "mariadb":
+      return textDumpCompleteness({
+        header: /^-- (?:MySQL|MariaDB) dump /mu,
+        complete: /(?:^|\n)-- Dump completed(?: on [^\n]*)?\r?$/u,
+      });
+    case "postgres":
+      return textDumpCompleteness({
+        header: /^-- PostgreSQL database dump\r?$/mu,
+        complete: /(?:^|\n)--\r?\n-- PostgreSQL database dump complete\r?\n--\r?(?:\n|$)/u,
+      });
+    case "mongodb":
+      return mongoDumpCompleteness;
+    case "mssql":
+      return undefined;
+    default:
+      return assertNever(family);
+  }
+};
 
 export type SqlCommandCreds = {
   readonly user: string;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import corePackage from "../../package.json";
 
@@ -147,12 +147,11 @@ describe("@lando/core App-handle entry export", () => {
         JSON.stringify({
           extends: join(repoRoot, "tsconfig.base.json"),
           compilerOptions: {
-            baseUrl: repoRoot,
             declaration: false,
             declarationMap: false,
             emitDeclarationOnly: false,
             noEmit: true,
-            paths: { "@lando/core": ["core/src/index.ts"] },
+            paths: { "@lando/core": [join(repoRoot, "core/src/index.ts")] },
             typeRoots: [join(dependencyPackageRoot, "@types")],
           },
           include: ["consumer.ts"],
@@ -161,7 +160,7 @@ describe("@lando/core App-handle entry export", () => {
 
       // When: TypeScript resolves the public type-only imports.
       const typecheck = await runCommand(
-        [process.execPath, join(dependencyPackageRoot, "typescript/bin/tsc"), "-p", tempDir],
+        [process.execPath, join(dependencyPackageRoot, "@typescript/native/bin/tsc"), "-p", tempDir],
         tempDir,
       );
 

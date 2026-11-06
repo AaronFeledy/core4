@@ -96,6 +96,7 @@ const makeLifecycleHarness = (input: {
       fingerprint: defaultAcquisitionFingerprint(),
       helperInstalled: input.helperInstalled,
       socketsActive: input.mode === "socket-helper",
+      ...(input.mode === "socket-helper" ? { bindHttpPort: 38080, bindHttpsPort: 38443 } : {}),
     })}\n`,
   );
   const socketProxy: SocketProxyDependencies = {

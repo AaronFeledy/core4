@@ -160,6 +160,7 @@ describe("resolveLandofileIncludes", () => {
       issues: expect.arrayContaining([
         {
           path: ["services", "api", "imgae"],
+          kind: "unexpected",
           message: "Expected no excess property",
           suggestion: 'Did you mean "image"?',
           source: {

@@ -16,6 +16,7 @@ import { activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { HelpCommandDescriptor } from "./help-command-descriptor";
+import { commandHelpInput } from "./help-command-input";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { helpRedactor } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
@@ -220,6 +221,7 @@ export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
         extras: [],
         summary: entry.spec.summary,
         source: "built-in",
+        input: commandHelpInput(entry.spec),
       },
       activeResultFormat,
     );

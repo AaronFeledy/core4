@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
-import { RouterService, type RuntimeProviderShape, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { type AppPlan, ServiceName, type ServiceRunObservation } from "@lando/sdk/schema";
+import {
+  RouterService,
+  type RuntimeProviderShape,
+  type ServiceRuntimeFields,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { infoApp } from "../../src/operations/info.ts";
@@ -12,12 +17,11 @@ import { failureOf, runExitUnderClock, successOf } from "../subsystems/healthche
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const target = { root: plan.root, plan, app: { kind: "user", id: plan.id, root: plan.root } as const };
-const runtime = (extras: Partial<ServiceRuntimeInfo> = {}): ServiceRuntimeInfo => ({
+const runtime = (extras: Partial<ServiceRuntimeFields> | ServiceRunObservation = {}): ServiceRuntimeInfo => ({
   app: plan.id,
   service: web.name,
   providerId: plan.provider,
-  status: "running",
-  state: "running",
+  status: "running" as const,
   publications: { status: "unknown" },
   containerId: "web-container",
   lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
@@ -56,7 +60,7 @@ test("selected info preserves full-plan completion intent without inspecting unr
     inspect: ({ service }) =>
       Effect.sync(() => {
         inspected.push(String(service));
-        return runtime({ service, status: "stopped", state: "stopped", exitCode: 0 });
+        return runtime({ service, status: "exited" as const, exitCode: 0 });
       }),
   });
   try {
@@ -82,7 +86,7 @@ test("selected info preserves full-plan completion intent without inspecting unr
 test.each([0, 1])("completion-intent services require verified exit 0 (actual %s)", async (exitCode) => {
   const provider = {
     ...TestRuntimeProvider,
-    inspect: () => Effect.succeed(runtime({ status: "stopped", state: "stopped", exitCode })),
+    inspect: () => Effect.succeed(runtime({ status: "exited" as const, exitCode })),
     exec: () => Effect.die("Jobs must not execute healthchecks"),
   } satisfies RuntimeProviderShape;
   const timed = await runExitUnderClock(
@@ -121,7 +125,7 @@ test.each(["restart", "rebuild"] as const)(
           { service: web.name, condition: "service_completed_successfully", required: true },
         ]);
       },
-      inspect: () => Effect.succeed(runtime({ status: "stopped", state: "stopped", exitCode: 0 })),
+      inspect: () => Effect.succeed(runtime({ status: "exited" as const, exitCode: 0 })),
       exec: () => Effect.die("Jobs must not execute healthchecks"),
     });
     const selected = { ...target, plan: plannedApp };
@@ -172,8 +176,7 @@ test.each(["restart", "rebuild"] as const)(
       onStop: () => {
         stopped++;
       },
-      inspect: () =>
-        Effect.succeed(runtime(applied ? { status: "stopped", state: "stopped", exitCode: 19 } : {})),
+      inspect: () => Effect.succeed(runtime(applied ? { status: "exited" as const, exitCode: 19 } : {})),
     });
     const effect =
       operation === "restart"

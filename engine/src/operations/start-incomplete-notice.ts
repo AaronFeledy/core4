@@ -57,14 +57,13 @@ const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan) {
       unverified.push(service);
       continue;
     }
-    const state = runtime.state ?? runtime.status;
     // Only a verified absent container is omitted; an id-less unknown is still unknown.
-    if (runtime.containerId === undefined && (state === "stopped" || state === "missing")) continue;
+    if (runtime.status === "absent") continue;
     if (runtime.containerId === undefined) {
       unverified.push(service);
       continue;
     }
-    switch (state) {
+    switch (runtime.status) {
       case "running":
         running.push(service);
         break;
@@ -72,14 +71,19 @@ const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan) {
         running.push(`${service} (restarting)`);
         break;
       case "created":
-      case "stopped":
       case "paused":
       case "exited":
       case "dead":
         stopped.push(service);
         break;
-      default:
+      case "removing":
+      case "unknown":
         unverified.push(service);
+        break;
+      default: {
+        const exhaustive: never = runtime.status;
+        return exhaustive;
+      }
     }
   }
   return `Start did not complete. Resources were left in place. Running: ${listed(running)}; created/stopped: ${listed(stopped)}; unverified: ${listed(unverified)}. Agent forwarding/file sync remain active where established. Inspect \`lando info\` and \`lando logs\`; fix the reported error, then run \`lando start\`. Run \`lando stop\` to shut down or \`lando destroy\` to remove resources; named volumes require \`--volumes\`.`;

@@ -2,7 +2,7 @@
 id: drupal-stack-overrides
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, drupal, php, database]
+tags: [docs, recipes, drupal, php, database]
 ---
 
 # Change a Drupal stack after init
@@ -55,10 +55,12 @@ services:
 
 ## Swap the database engine
 
-The default `database` service is `type: mariadb:11.4`. Swap `type:` to another engine or pin an image. Starting does not migrate old data.
+The default `database` service is `type: mariadb:11.4`. Swap `type:` to another engine or pin an image. With a custom MySQL image, set the PHP service's `db_client` to a compatible version because Lando cannot infer client compatibility from that image. Starting does not migrate old data.
 
 ```yaml
 services:
+  appserver:
+    db_client: mysql:8.4
   database:
     type: mysql
     image: mysql:8.4
@@ -80,11 +82,12 @@ services:
 
 ## Run two database services
 
-Add a second database service and put it on the appserver `dependsOn` list.
+Add a second database service and put it on the appserver `dependsOn` list. Select the PHP client explicitly for the custom MySQL image.
 
 ```yaml
 services:
   appserver:
+    db_client: mysql:8.0
     dependsOn:
       - database
       - database-legacy

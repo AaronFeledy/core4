@@ -1,22 +1,36 @@
 import { resolve } from "node:path";
 
 import type {
-  CompatibilityException,
   JsonSchema,
   JsonValue,
+  PersistedStateRef,
   SchemaPolarity,
 } from "./schema-compatibility/model.ts";
-import { isJsonObject } from "./schema-compatibility/model.ts";
+import { isJsonObject, isPersistedStoreId } from "./schema-compatibility/model.ts";
 import { schemaPolarity } from "./schema-compatibility/polarity.ts";
 
 export interface SchemaArtifact {
   readonly surface: string;
   readonly polarity: SchemaPolarity;
   readonly schema: JsonSchema;
+  readonly persistedState?: PersistedStateRef;
 }
 
 export type SchemaArtifactSet = ReadonlyMap<string, SchemaArtifact>;
-export type SchemaArtifactFamily = "sdk" | "command";
+export const SCHEMA_ARTIFACT_FAMILIES = {
+  sdk: { prefix: "schema:", label: "SDK schemas", generatorPath: "scripts/build-schema-snapshot.ts" },
+  command: {
+    prefix: "command:",
+    label: "command schemas",
+    generatorPath: "scripts/build-schema-snapshot.ts",
+  },
+  persisted: {
+    prefix: "persisted:",
+    label: "internal persisted schemas",
+    generatorPath: "scripts/build-persisted-schema-snapshot.ts",
+  },
+} as const;
+export type SchemaArtifactFamily = keyof typeof SCHEMA_ARTIFACT_FAMILIES;
 
 export interface BaseSchemaArtifacts {
   readonly artifacts: SchemaArtifactSet;
@@ -51,7 +65,7 @@ const parseJsonValue = (value: unknown, source: string): JsonValue => {
   throw new SchemaCompatibilityInputError(`Invalid JSON value in ${source}.`);
 };
 
-const parseJson = (text: string, source: string): JsonValue => {
+export const parseJson = (text: string, source: string): JsonValue => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -98,57 +112,61 @@ const addArtifact = (artifacts: Map<string, SchemaArtifact>, artifact: SchemaArt
   artifacts.set(artifact.surface, artifact);
 };
 
-export const loadWorkingSchemaArtifacts = async (repoRoot: string): Promise<SchemaArtifactSet> => {
+export const loadWorkingSchemaArtifacts = async (
+  repoRoot: string,
+  unavailableFamilies: ReadonlyArray<SchemaArtifactFamily> = [],
+): Promise<SchemaArtifactSet> => {
   const artifacts = new Map<string, SchemaArtifact>();
-  const schemaIndexPath = resolve(repoRoot, "dist/schemas/index.json");
-  const schemaIndex = parseJson(await Bun.file(schemaIndexPath).text(), "dist/schemas/index.json");
-  for (const [schemaId, artifactPath] of metadataEntries(schemaIndex, "dist/schemas/index.json")) {
-    addArtifact(artifacts, {
-      surface: `schema:${schemaId}`,
-      polarity: schemaPolarity(schemaId),
-      schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
-    });
+  if (!unavailableFamilies.includes("sdk")) {
+    const schemaIndexPath = resolve(repoRoot, "dist/schemas/index.json");
+    const schemaIndex = parseJson(await Bun.file(schemaIndexPath).text(), "dist/schemas/index.json");
+    for (const [schemaId, artifactPath] of metadataEntries(schemaIndex, "dist/schemas/index.json")) {
+      addArtifact(artifacts, {
+        surface: `schema:${schemaId}`,
+        polarity: schemaPolarity(schemaId),
+        schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
+      });
+    }
   }
-  const commandIndexPath = resolve(repoRoot, "dist/command-schemas/index.json");
-  const commandIndex = parseJson(await Bun.file(commandIndexPath).text(), "dist/command-schemas/index.json");
-  for (const [commandId, artifactPath] of commandEntries(commandIndex, "dist/command-schemas/index.json")) {
-    addArtifact(artifacts, {
-      surface: `command:${commandId}`,
-      polarity: "output",
-      schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
-    });
+  if (!unavailableFamilies.includes("command")) {
+    const commandIndexPath = resolve(repoRoot, "dist/command-schemas/index.json");
+    const commandIndex = parseJson(
+      await Bun.file(commandIndexPath).text(),
+      "dist/command-schemas/index.json",
+    );
+    for (const [commandId, artifactPath] of commandEntries(commandIndex, "dist/command-schemas/index.json")) {
+      addArtifact(artifacts, {
+        surface: `command:${commandId}`,
+        polarity: "output",
+        schema: parseSchema(await Bun.file(resolve(repoRoot, artifactPath)).text(), artifactPath),
+      });
+    }
+  }
+  if (!unavailableFamilies.includes("persisted")) {
+    const indexPath = "dist/persisted-schemas/index.json";
+    const index = parseJson(await Bun.file(resolve(repoRoot, indexPath)).text(), indexPath);
+    if (!Array.isArray(index)) throw new SchemaCompatibilityInputError(`${indexPath} must contain an array.`);
+    for (const entry of index) {
+      if (
+        !isJsonObject(entry) ||
+        !isPersistedStoreId(entry.id) ||
+        typeof entry.version !== "number" ||
+        !Number.isInteger(entry.version) ||
+        entry.version < 1 ||
+        typeof entry.jsonSchemaPath !== "string"
+      ) {
+        throw new SchemaCompatibilityInputError(`${indexPath} contains an invalid persisted schema entry.`);
+      }
+      addArtifact(artifacts, {
+        surface: `persisted:${entry.id}`,
+        polarity: "input",
+        schema: parseSchema(
+          await Bun.file(resolve(repoRoot, entry.jsonSchemaPath)).text(),
+          entry.jsonSchemaPath,
+        ),
+        persistedState: { store: entry.id, version: entry.version },
+      });
+    }
   }
   return artifacts;
-};
-
-export const loadCompatibilityExceptions = async (
-  path: string,
-): Promise<ReadonlyArray<CompatibilityException>> => {
-  const parsed = parseJson(await Bun.file(path).text(), path);
-  if (!Array.isArray(parsed)) throw new SchemaCompatibilityInputError(`${path} must contain an array.`);
-  const seen = new Set<string>();
-  return parsed.map((entry) => {
-    if (
-      !isJsonObject(entry) ||
-      typeof entry.surface !== "string" ||
-      typeof entry.changeKind !== "string" ||
-      typeof entry.path !== "string" ||
-      typeof entry.justification !== "string" ||
-      entry.justification.trim().length === 0
-    ) {
-      throw new SchemaCompatibilityInputError(`${path} contains an invalid compatibility exception.`);
-    }
-    const key = `${entry.surface}\0${entry.changeKind}\0${entry.path}`;
-    if (seen.has(key))
-      throw new SchemaCompatibilityInputError(
-        `${path} contains duplicate exception ${entry.surface} ${entry.path}.`,
-      );
-    seen.add(key);
-    return {
-      surface: entry.surface,
-      changeKind: entry.changeKind,
-      path: entry.path,
-      justification: entry.justification,
-    };
-  });
 };

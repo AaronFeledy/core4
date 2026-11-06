@@ -7,6 +7,7 @@ import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
 import {
   enforceManifestFreshness,
+  readUpdateManifestState,
   recordUpdateManifestSuccess,
   writeUpdateFailureState,
 } from "../../src/update/manifest.ts";
@@ -57,7 +58,7 @@ test("A admits 4.2, B admits and records 4.3, A success cannot lower floor, then
   await run(recordUpdateManifestSuccess(statePath, "stable", "4.2.0"));
   const afterA = JSON.parse(await readFile(statePath, "utf8"));
   expect(afterA).toEqual({
-    version: 1,
+    version: 2,
     data: { stable: { latest: "4.3.0" } },
   });
 
@@ -113,7 +114,7 @@ test("failure and success writes preserve channel floors and failure metadata", 
   await run(recordUpdateManifestSuccess(statePath, "stable", "4.4.0"));
 
   expect(JSON.parse(await readFile(statePath, "utf8"))).toEqual({
-    version: 1,
+    version: 2,
     data: {
       next: { latest: "5.0.0-next.1" },
       stable: {
@@ -132,6 +133,107 @@ test("failure and success writes preserve channel floors and failure metadata", 
           platform: "linux-x64",
         },
       },
+    },
+  });
+});
+
+test.each(["4.3.0", "4.5.0", "4.7.0"])(
+  "v1 migration preserves failure history and never lowers either observation (%s)",
+  async (targetVersion) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-freshness-migrate-"));
+    roots.push(root);
+    const path = join(root, "state.json");
+    const lastFailure = { category: "network_failure", targetVersion, platform: "linux-x64" } as const;
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        data: {
+          stable: { latest: "4.5.0", lastFailure },
+          next: { latest: "5.0.0-next.1" },
+        },
+      }),
+    );
+
+    const state = await run(readUpdateManifestState(path));
+
+    expect(state).toEqual({
+      stable: { latest: targetVersion === "4.7.0" ? "4.7.0" : "4.5.0", lastFailure },
+      next: { latest: "5.0.0-next.1" },
+    });
+    await run(recordUpdateManifestSuccess(path, "stable", "4.4.0"));
+    expect(JSON.parse(await readFile(path, "utf8")).version).toBe(2);
+    expect(JSON.parse(await readFile(path, "utf8")).data).toEqual(state);
+  },
+);
+
+test("v2 rejects a failure above its floor for every writer without changing bytes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-freshness-contradiction-"));
+  roots.push(root);
+  const path = join(root, "state.json");
+  const raw = JSON.stringify({
+    version: 2,
+    data: {
+      stable: {
+        latest: "4.2.0",
+        lastFailure: { category: "network_failure", targetVersion: "4.3.0", platform: "linux-x64" },
+      },
+    },
+  });
+  await writeFile(path, raw);
+
+  for (const action of [
+    readUpdateManifestState(path),
+    recordUpdateManifestSuccess(path, "stable", "4.4.0"),
+    enforceManifestFreshness(manifest("4.4.0"), path, { persist: true }),
+  ]) {
+    expect(await run(Effect.result(action))).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "UpdateNetworkError" },
+    });
+  }
+  await run(
+    writeUpdateFailureState({
+      path,
+      channel: "stable",
+      category: "network_failure",
+      targetVersion: "4.4.0",
+      platform: "linux-x64",
+    }),
+  );
+  expect(await readFile(path, "utf8")).toBe(raw);
+});
+
+test("delayed failure replaces history while concurrent observations retain the highest floor", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-freshness-concurrent-"));
+  roots.push(root);
+  const path = join(root, "state.json");
+  await run(
+    writeUpdateFailureState({
+      path,
+      channel: "stable",
+      category: "network_failure",
+      targetVersion: "4.2.0",
+      platform: "linux-x64",
+    }),
+  );
+  await Promise.all([
+    run(enforceManifestFreshness(manifest("4.6.0"), path, { persist: true })),
+    run(recordUpdateManifestSuccess(path, "stable", "4.5.0")),
+    run(
+      writeUpdateFailureState({
+        path,
+        channel: "stable",
+        category: "permission_failure",
+        targetVersion: "4.3.0",
+        platform: "darwin-arm64",
+      }),
+    ),
+  ]);
+  expect(await run(readUpdateManifestState(path))).toEqual({
+    stable: {
+      latest: "4.6.0",
+      lastFailure: { category: "permission_failure", targetVersion: "4.3.0", platform: "darwin-arm64" },
     },
   });
 });

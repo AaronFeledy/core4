@@ -193,7 +193,6 @@ describe("provider-lando inspect", () => {
     expect(snapshots).toHaveLength(2);
     expect(snapshots.map((snapshot) => String(snapshot.service)).sort()).toEqual(["database", "node"]);
     for (const snapshot of snapshots) {
-      expect(snapshot.state).toBe("running");
       expect(snapshot.status).toBe("running");
       expect(snapshot.containerId).toBe(`lando-inspectapp--${snapshot.service}-id`);
       expect(snapshot.publications).toEqual({ status: "unknown" });
@@ -217,8 +216,7 @@ describe("provider-lando inspect", () => {
       app: appId,
       service: node.name,
       providerId,
-      state: "stopped",
-      status: "stopped",
+      status: "exited",
       containerId: "lando-inspectapp--node-id",
       publications: { status: "unknown" },
     });
@@ -236,7 +234,7 @@ describe("provider-lando inspect", () => {
       try {
         const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 
-        expect(snapshot.state).toBe("running");
+        expect(snapshot.status).toBe("running");
         expect(snapshot.publications).toEqual({
           status: "present",
           bindings: [

@@ -64,6 +64,8 @@ export const retire = <A extends GcEntry | GcLeftover>(
         Effect.gen(function* () {
           const report = yield* decide;
           if (!report.eligible || report.outcome === "failed") return { report, aside: undefined };
+          // decide re-observes PID liveness, references and namespace membership
+          // under this lock; the inventory is never authority to remove a path.
           const aside = containedPath(storage.root, `.gc-${process.pid}-${crypto.randomUUID()}`);
           yield* io(report.id, async () => {
             await realContainedPath(storage.root, dirname(path));

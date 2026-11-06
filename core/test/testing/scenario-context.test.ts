@@ -460,9 +460,7 @@ describe("withScenarioContext", () => {
       `<Run shell="echo hi"> is not implemented`,
     );
     expect(error instanceof NotImplementedError ? error.commandId : undefined).toBe("guide.run.shell");
-    expect(error instanceof NotImplementedError ? error.remediation : undefined).toContain(
-      "not available yet",
-    );
+    expect(error instanceof NotImplementedError ? error.remediation : undefined).toContain("not supported");
   });
 
   test("fixtures.use deep-copies per-guide fixtures before mutation and does not re-copy", async () => {

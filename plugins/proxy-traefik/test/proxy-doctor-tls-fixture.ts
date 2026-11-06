@@ -4,7 +4,7 @@ import { basename, join, posix } from "node:path";
 import { Effect } from "effect";
 
 import type { PluginDoctorReport } from "@lando/sdk/plugins";
-import type { AppId, HostPlatform, RoutePlan } from "@lando/sdk/schema";
+import type { AppRouteOwner, HostPlatform, RoutePlan } from "@lando/sdk/schema";
 
 import { proxyTlsDoctorCheck } from "../src/index.ts";
 import {
@@ -58,7 +58,7 @@ export const removeProxyTlsFixture = (fixture: ProxyTlsFixture): Promise<void> =
   rm(fixture.userDataRoot, { recursive: true, force: true });
 
 interface HttpsRouteFixture {
-  readonly app: AppId;
+  readonly app: AppRouteOwner;
   readonly routes: ReadonlyArray<RoutePlan>;
   readonly tlsFiles?: TraefikTlsFiles;
 }
@@ -89,7 +89,7 @@ export const writeDefaultTls = async (
 
 export const writeAppTls = async (
   fixture: ProxyTlsFixture,
-  app: AppId,
+  app: AppRouteOwner,
 ): Promise<ReturnType<typeof appCertificateFiles>> => {
   const files = appCertificateFiles(fixture.paths, app);
   await Promise.all([
@@ -110,7 +110,10 @@ export const writeNamedTls = async (
   return containerTlsFiles(names.cert, names.key);
 };
 
-export const symlinkAppTls = async (fixture: ProxyTlsFixture, app: AppId): Promise<TraefikTlsFiles> => {
+export const symlinkAppTls = async (
+  fixture: ProxyTlsFixture,
+  app: AppRouteOwner,
+): Promise<TraefikTlsFiles> => {
   const files = appCertificateFiles(fixture.paths, app);
   const targets = {
     cert: join(fixture.userDataRoot, "external.crt"),

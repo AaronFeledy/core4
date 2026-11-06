@@ -10,9 +10,8 @@ import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lan
 import {
   type AppPlan,
   type LoadScopedLandofile,
-  type ServiceConnection,
+  ServiceInfoConsistent,
   type ServicePlan,
-  type ServiceState,
   landoServiceNetworkAttachments,
   serviceAppMount,
 } from "@lando/sdk/schema";
@@ -23,7 +22,6 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-  type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
@@ -35,7 +33,7 @@ import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { infoLogSources } from "./info-log-sources.ts";
-import { projectServiceProbes } from "./info-probes.ts";
+import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
@@ -57,14 +55,11 @@ const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppServ
   };
 };
 
-const toServiceInfo = (
+const serviceInfoMetadata = (
   plan: AppPlan,
   service: ServicePlan,
-  status: ServiceState,
-  connections: readonly ServiceConnection[],
   capabilities: RuntimeProviderShape["capabilities"],
-  runtimeHealth: ServiceRuntimeInfo["health"],
-): InfoAppService => {
+): Omit<InfoAppService, "status" | "health" | "readiness" | "connections"> => {
   const logSources = infoLogSources(service, capabilities);
   const creds = credsFromConnection(service.connection);
   const artifact =
@@ -99,16 +94,13 @@ const toServiceInfo = (
     type: service.type,
     provider: String(service.provider),
     primary: service.primary,
-    status,
     ...(artifact === undefined ? {} : { artifact }),
     ...(service.user === undefined ? {} : { user: service.user }),
     ...(service.workingDirectory === undefined ? {} : { workingDirectory: service.workingDirectory }),
     hostnames,
     ...(certs === undefined ? {} : { certs }),
-    ...projectServiceProbes(service, runtimeHealth),
     ...(service.home === undefined ? {} : { home: service.home }),
     ...(service.listenerAuthority === undefined ? {} : { listenerAuthority: service.listenerAuthority }),
-    connections,
     ...(logSources.length === 0 ? {} : { logSources }),
     ...(creds === undefined ? {} : { creds }),
   };
@@ -129,14 +121,17 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   const services = rows.map((row) => {
     const service = Object.values(plan.services).find((service) => String(service.name) === row.name);
     if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
-    const runtime = observations.find((observed) => observed.name === row.name)?.runtime;
-    const mounts = projectServiceMounts(plan, service, runtime);
+    const observed = observations.find((candidate) => candidate.name === row.name);
+    if (observed === undefined) throw new TypeError(`Missing observation for ${row.name}`);
+    const mounts = projectServiceMounts(plan, service, observed.runtime);
     const appMount = serviceAppMount(service);
-    return {
-      ...toServiceInfo(plan, service, row.state, row.connections, provider.capabilities, runtime?.health),
+    return ServiceInfoConsistent.make({
+      ...serviceInfoMetadata(plan, service, provider.capabilities),
+      ...projectServiceObservation(service, observed),
+      connections: row.connections,
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),
-    };
+    });
   });
 
   const hostProxy =

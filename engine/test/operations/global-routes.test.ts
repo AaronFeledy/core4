@@ -2,11 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import { GlobalAppError, ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type AppRouteOwner,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
 import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
+import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { publishGlobalRoutes as publishGlobalRoutesEffect } from "../../src/operations/global-routes.ts";
 
 const publishGlobalRoutes = (...args: Parameters<typeof publishGlobalRoutesEffect>) =>
@@ -67,20 +75,19 @@ const observation = {
   providerId: plan.provider,
   service: sibling,
   status: "running" as const,
-  state: "running",
   publications: { status: "unknown" as const },
 };
 
 describe("global route publication", () => {
   test("route-free plans withdraw the definition without applying or listing", async () => {
     // Given a route-free app whose earlier definition may still be published.
-    const removed: string[] = [];
+    const removed: ReturnType<typeof routeOwnerFromPlan>[] = [];
     const router = {
       ...makeRouter(),
       applyRoutes: () => Effect.die("Route-free publication must not apply"),
-      removeRoutes: (app: AppId) =>
+      removeRoutes: (owner: AppRouteOwner) =>
         Effect.sync(() => {
-          removed.push(app);
+          removed.push(owner);
         }),
     };
     const provider = { list: () => Effect.die("Route-free publication must not list") };
@@ -94,7 +101,7 @@ describe("global route publication", () => {
       ),
     );
     // Then the stale definition is withdrawn and no URLs are advertised.
-    expect(removed).toEqual([plan.id]);
+    expect(removed).toEqual([routeOwnerFromPlan(plan)]);
     expect(urls).toBeUndefined();
   });
 
@@ -103,7 +110,7 @@ describe("global route publication", () => {
       test(`failure preserves published routes (${current.routes.length} routes, router ${current.router?.enabled ?? true}, ${failed.length} failures)`, async () => {
         // Given published routes different from the current plan, with partial or total group failure.
         const router = makeRouter();
-        await Effect.runPromise(router.applyRoutes(plan.routes, plan.id));
+        await Effect.runPromise(router.applyRoutes(plan.routes, routeOwnerFromPlan(plan)));
         // When publication follows the failed startup, no router mutation or observation is allowed.
         const urls = await Effect.runPromise(
           publishGlobalRoutes(
@@ -118,7 +125,7 @@ describe("global route publication", () => {
           ),
         );
         // Then the actual published definition survives unchanged, without advertising success URLs.
-        expect(router.routesByApp.get(plan.id)).toEqual(plan.routes);
+        expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual(plan.routes);
         expect(urls).toBeUndefined();
       });
     }
@@ -128,14 +135,14 @@ describe("global route publication", () => {
     // Given a published definition and a failed attempt to replace it.
     const router = makeRouter();
     const provider = { list: () => Effect.die("All groups selected; must not list") };
-    await Effect.runPromise(router.applyRoutes(plan.routes, plan.id));
+    await Effect.runPromise(router.applyRoutes(plan.routes, routeOwnerFromPlan(plan)));
     await Effect.runPromise(
       publishGlobalRoutes(router, provider, siblingPlan, {
         started: new Set([sibling]),
         failed: new Set([mail]),
       }),
     );
-    expect(router.routesByApp.get(plan.id)).toEqual(plan.routes);
+    expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual(plan.routes);
     // When every group succeeds on retry.
     const urls = await Effect.runPromise(
       publishGlobalRoutes(router, provider, siblingPlan, {
@@ -144,7 +151,7 @@ describe("global route publication", () => {
       }),
     );
     // Then the current routes replace the retained definition and URLs are advertised again.
-    expect(router.routesByApp.get(plan.id)).toEqual(siblingPlan.routes);
+    expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual(siblingPlan.routes);
     expect(urls).toBeUndefined();
   });
 
@@ -163,12 +170,12 @@ describe("global route publication", () => {
       }),
     );
     // Then all declared routes and their advertised URLs are available.
-    expect(router.routesByApp.get(plan.id)).toEqual(siblingPlan.routes);
+    expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual(siblingPlan.routes);
     expect(urls).toBeUndefined();
   });
 
-  for (const status of ["stopped", "missing", "running", "paused", "restarting"] as const) {
-    test(`selected start ${status === "stopped" || status === "missing" ? "excludes" : "preserves"} ${status} siblings`, async () => {
+  for (const status of ["exited", "missing", "running", "paused", "restarting"] as const) {
+    test(`selected start ${status === "exited" || status === "missing" ? "excludes" : "preserves"} ${status} siblings`, async () => {
       // Given a selected service and an owned sibling with the indicated status.
       const router = makeRouter();
       const provider = {
@@ -179,9 +186,9 @@ describe("global route publication", () => {
         publishGlobalRoutes(router, provider, siblingPlan, { started: new Set([mail]), failed: new Set() }),
       );
       // Then only active owned siblings remain published.
-      expect(router.routesByApp.get(plan.id)?.map((route) => route.service)).toEqual(
-        status === "stopped" || status === "missing" ? [mail] : [mail, sibling],
-      );
+      expect(
+        router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)?.map((route) => route.service),
+      ).toEqual(status === "exited" || status === "missing" ? [mail] : [mail, sibling]);
     });
   }
 
@@ -202,18 +209,18 @@ describe("global route publication", () => {
         publishGlobalRoutes(router, provider, siblingPlan, { started: new Set([mail]), failed: new Set() }),
       );
       // Then foreign resources cannot keep the sibling hostname live.
-      expect(router.routesByApp.get(plan.id)).toEqual(plan.routes);
+      expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual(plan.routes);
     });
   }
 
   test("disabled router removes routes without applying or listing", async () => {
     // Given disabled routing with a previously published route file.
-    const removed: string[] = [];
+    const removed: ReturnType<typeof routeOwnerFromPlan>[] = [];
     const router = {
       ...makeRouter(),
-      removeRoutes: (app: AppId) =>
+      removeRoutes: (owner: AppRouteOwner) =>
         Effect.sync(() => {
-          removed.push(app);
+          removed.push(owner);
         }),
       applyRoutes: () => Effect.die("Disabled routing must not apply"),
     };
@@ -228,7 +235,7 @@ describe("global route publication", () => {
       ),
     );
     // Then the global file is removed and no route URLs are returned.
-    expect(removed).toEqual([plan.id]);
+    expect(removed).toEqual([routeOwnerFromPlan(plan)]);
     expect(urls).toBeUndefined();
   });
 
@@ -270,7 +277,7 @@ describe("global route publication", () => {
       }),
     );
     // Then applyRoutes receives an empty route set, not a skipped update.
-    expect(router.routesByApp.get(plan.id)).toEqual([]);
+    expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual([]);
   });
 
   test("publication propagates route application failures unchanged", async () => {
@@ -311,7 +318,7 @@ describe("global route publication", () => {
     );
     // Then the provider error survives and the route file is not replaced.
     expect(result).toMatchObject({ _tag: "Failure", failure: error });
-    expect(router.routesByApp.size).toBe(0);
+    expect(router.routesByOwner.size).toBe(0);
   });
 });
 

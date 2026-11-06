@@ -118,7 +118,7 @@ test("old reachable managed runtime serves rescue requests without repair or ext
     requests.length = 0;
     // When real provider operations use the reachable API.
     expect(await Effect.runPromise(provider.inspect({ app, service, plan }))).toMatchObject({
-      status: "stopped",
+      status: "exited",
     });
     expect(
       await Effect.runPromise(Stream.runCollect(provider.logs({ app, service, plan }, { follow: false }))),

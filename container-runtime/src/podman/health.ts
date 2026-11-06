@@ -1,13 +1,15 @@
-import { Duration, Effect, Ref } from "effect";
+import { Duration, Effect, Ref, Schema } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceHealthObservation, ServiceRunObservation } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { redactDetails, redactorFor } from "../redact.ts";
 import { inspect } from "./inspect.ts";
+
+const isServiceRunObservation = Schema.is(ServiceRunObservation);
 
 const defaultServiceHealthPolicy: RetryPolicy = {
   maxAttempts: 30,
@@ -15,24 +17,22 @@ const defaultServiceHealthPolicy: RetryPolicy = {
   timeout: Duration.seconds(15),
 };
 
-const healthFromProbeValue = (value: unknown): ServiceRuntimeInfo["health"] | "invalid" => {
-  if (typeof value !== "object" || value === null) return "invalid";
-  if (!("health" in value)) return undefined;
-  const health = value.health;
-  switch (health) {
+const classifyObservation = (value: unknown): "green" | "yellow" | "red" => {
+  if (!isServiceRunObservation(value)) return "red";
+  if (value.status !== "running") return "red";
+  switch (value.health) {
     case undefined:
     case "healthy":
+      return "green";
     case "starting":
+      return "yellow";
     case "unhealthy":
-      return health;
-    default:
-      return "invalid";
+      return "red";
+    default: {
+      const exhaustive: never = value.health;
+      return exhaustive;
+    }
   }
-};
-
-const statusFromProbeValue = (value: unknown): ServiceRuntimeInfo["status"] | undefined => {
-  if (typeof value !== "object" || value === null || !("status" in value)) return undefined;
-  return typeof value.status === "string" ? value.status : undefined;
 };
 
 export interface WaitForServiceHealthOptions {
@@ -57,7 +57,7 @@ const unavailableFromProbe = (
     readonly attempts: number;
     readonly elapsedMs: number;
     readonly outcome: "green" | "yellow" | "red";
-    readonly lastHealth?: ServiceRuntimeInfo["health"];
+    readonly lastHealth?: ServiceHealthObservation;
     readonly lastError?: unknown;
   },
 ): ProviderUnavailableError =>
@@ -94,14 +94,7 @@ export const waitForServiceHealth = Effect.fn("RuntimeProvider.waitForServiceHea
       id: `provider-${ctx.providerId}-service-health`,
       policy: options.policy ?? defaultServiceHealthPolicy,
       classify: {
-        success: (value) => {
-          const health = healthFromProbeValue(value);
-          if (statusFromProbeValue(value) === "running" && (health === "healthy" || health === undefined)) {
-            return "green";
-          }
-          if (health === "starting") return "yellow";
-          return "red";
-        },
+        success: classifyObservation,
         failure: () => "red",
       },
     },
@@ -131,7 +124,7 @@ export const waitForServiceHealth = Effect.fn("RuntimeProvider.waitForServiceHea
       attempts: result.attempts,
       elapsedMs: result.elapsedMs,
       outcome: result.outcome,
-      ...(info?.health === undefined ? {} : { lastHealth: info.health }),
+      ...(info?.status !== "running" || info.health === undefined ? {} : { lastHealth: info.health }),
       ...(result.lastError === undefined ? {} : { lastError: result.lastError }),
     }),
   );

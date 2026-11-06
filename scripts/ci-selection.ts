@@ -20,6 +20,7 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
   "container-helper-arm64": "broad",
   "build-linux-x64": "guides",
   "runtime-bundle-linux-x64": "guides",
+  "runtime-bundle-linux-arm64": "runtime",
   "guide-scenarios-linux-x64-runner": "guides",
   "guide-scenarios-linux-x64": "guides",
   "unit-tests-linux-x64-shard": "runtime",

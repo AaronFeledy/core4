@@ -132,6 +132,19 @@ test("pending-cleanup write failure preserves the original provider failure", as
   });
 });
 
+test("a failed post-scratch-destroy event cannot bring back the removed entry", async () => {
+  // Given a destroy whose resources and registry entry are removed before the closing event fails.
+  await withDestroyFixture({ postScratchDestroyFail: true }, async (f) => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (s) => s.destroy(f.id)).pipe(Effect.result, Effect.provide(f.layer)),
+    );
+    // Then the failure surfaces but no pending-cleanup entry is written for resources that are gone.
+    expect(result._tag).toBe("Failure");
+    expect(f.calls).not.toContain("registry:upsert");
+    expect(f.entries.size).toBe(0);
+  });
+});
+
 test("a mismatched cached plan cannot delete another app's snapshots", async () => {
   // Given a scratch cache containing a different app id under the same owner.
   await withDestroyFixture({ cwd: true }, async (f) => {

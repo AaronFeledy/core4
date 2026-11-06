@@ -68,6 +68,14 @@
       "digest": "19ca47822cd36b2ff703ef380c3c2c6beaaa677667103e38390774781099904d"
     },
     {
+      "fixture": "docs/guides/certificates-mkcert/fixtures/certificate-routes",
+      "digest": "3fd3605fe40808c2ae675efc55460ca952591a8398b920424b8049dfc3b9e355"
+    },
+    {
+      "fixture": "docs/guides/certificates-mkcert/fixtures/invalid-certificate-route",
+      "digest": "eff4ccb649e3da396f2e7983962ccb65927d44cfdb482938bf8a359a5b9c6785"
+    },
+    {
       "fixture": "docs/guides/ci-github-actions/fixtures/ci-github-actions-demo",
       "digest": "7cfd04435d03ae54cfa73ba9187764f510ac48751a78a13f62e9173f2101d530"
     },
@@ -1392,18 +1400,18 @@
         "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
       },
       "after": {
-        "digest": "d8d00f6fa98810ea2e051b7c724a596e3aa1c309b16ca267b79fb7e7b4fd7610"
+        "digest": "5cb591dec3c70c9445fec30445c88b61000ba885de22c6729e1b422723f60ae0"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer."
     },
     "docs/guides/drupal-stack-overrides/fixtures/two-database-services": {
       "before": {
         "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
       },
       "after": {
-        "digest": "fc87e3aef6c08c23945f4b4c42f7998ce97f153026374b85b8fa3eda9fa27d4f"
+        "digest": "29848fc57ac608c0c720fc12d83844fa71149d2917c822bb1108f492bdf98859"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer."
     },
     "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
       "before": {
@@ -1572,9 +1580,9 @@
         "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
       },
       "after": {
-        "digest": "8ce3989a78b0312903b6811adcf1593a85c8a14bd1491afa3a6e73cd287190b9"
+        "digest": "28d568a6b5f7ea70efb72d047a6f59a095355bfcff057898b1ff9d08ca8c15a2"
       },
-      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener."
+      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener. Its two deep-wildcard routes now use the object form with scheme: http, because an HTTPS route with a wildcard below the leftmost label cannot get a certificate."
     },
     "docs/guides/secret-stores/fixtures/secret-stores-demo": {
       "before": {

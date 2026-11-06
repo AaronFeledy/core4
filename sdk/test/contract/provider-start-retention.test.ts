@@ -70,7 +70,7 @@ const makeRetentionDouble = (): {
         app: target.app,
         service: target.service,
         providerId: testProviderId,
-        status: "stopped",
+        status: "absent",
         publications: { status: "unknown" },
       };
     }
@@ -78,7 +78,7 @@ const makeRetentionDouble = (): {
       app: record.app,
       service: record.service,
       providerId: testProviderId,
-      status: record.running ? "running" : "stopped",
+      status: record.running ? "running" : "exited",
       publications: { status: "unknown" },
       containerId: record.id,
     };
@@ -193,7 +193,7 @@ describe("runProviderStartRetentionContract", () => {
           app: target.app,
           service: target.service,
           providerId: testProviderId,
-          status: "stopped",
+          status: "absent",
           publications: { status: "unknown" },
         }),
     };

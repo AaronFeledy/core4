@@ -3,7 +3,7 @@ id: release-compiled-bytecode-budget
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 60000
-tags: [beta, docs, release]
+tags: [docs, release]
 ---
 
 # Release compiled bytecode budget
@@ -25,7 +25,7 @@ Every release binary is compiled with Bun bytecode enabled. Windows targets must
 --compile --bytecode
 ```
 
-Compile targets match the Beta 1 CI platform ids (`darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64,windows-arm64`).
+Compile targets match the CI platform ids (`darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64,windows-arm64`).
 
 The reference cold-build budget is enforced on linux-x64.
 

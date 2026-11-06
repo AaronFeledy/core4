@@ -1,7 +1,5 @@
 import { Effect } from "effect";
 
-import { AppId } from "@lando/sdk/schema";
-
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
@@ -10,6 +8,7 @@ import {
   routingStateFile,
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { isOwnerRouteFileName, parseRouteFileMetadata } from "./route-file-metadata.ts";
 import { DEFAULT_AUTHORITY_PORTS, authorityPortsFrom, persistedAuthorities } from "./routing.ts";
 
 const isConcurrentRemoval = (cause: unknown): boolean =>
@@ -54,10 +53,15 @@ export const persistedStatus = Effect.fnUntraced(function* (dependencies: Traefi
   );
   const entries = yield* Effect.forEach(routeFiles, (file) =>
     dependencies.fileSystem.readText(joinFor(dependencies.paths)(directory, file)).pipe(
-      Effect.map((content) => ({
-        app: AppId.make(decodeURIComponent(file.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length))),
-        authorities: persistedAuthorities(content, ports),
-      })),
+      Effect.map((content) => {
+        if (!isOwnerRouteFileName(file)) return undefined;
+        const metadata = parseRouteFileMetadata(content);
+        if (metadata === undefined) return undefined;
+        return {
+          app: metadata.app,
+          authorities: persistedAuthorities(content, ports),
+        };
+      }),
       Effect.catch((cause) => (isConcurrentRemoval(cause) ? Effect.succeed(undefined) : Effect.fail(cause))),
     ),
   );

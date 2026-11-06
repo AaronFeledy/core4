@@ -2,7 +2,12 @@ import { Effect, Schema } from "effect";
 
 import { causeMessage } from "@lando/sdk/errors";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-import type { HostPlatform, HostUninstallStep } from "@lando/sdk/schema";
+import type {
+  HostPlatform,
+  HostUninstallOutcome,
+  HostUninstallStep,
+  UninstallStepResult,
+} from "@lando/sdk/schema";
 import type { PrivilegeService } from "@lando/sdk/services";
 
 import type { HostMaintenanceRegistryShape } from "../runtime/host-maintenance";
@@ -148,7 +153,7 @@ export const planHostUninstallContributions = (
   });
 };
 
-export const conflictResultStep = (error: UninstallContributionConflictError): UninstallPlanStep => ({
+export const conflictResultStep = (error: UninstallContributionConflictError): UninstallStepResult => ({
   id: "host-maintenance-contributions",
   label: "host maintenance contributions",
   target: contributedStepId(error.maintainerId, error.stepId),
@@ -166,18 +171,8 @@ export const executeHostUninstallContribution = (
     readonly userDataRoot: string;
     readonly elevate?: ElevateCapability;
   },
-): Effect.Effect<{
-  readonly outcome: UninstallStepOutcome;
-  readonly error?: string;
-  readonly detail?: string;
-}> => {
+): Effect.Effect<HostUninstallOutcome> => {
   const { localStep, uninstall } = binding;
-  if (localStep.status !== "owned") {
-    const outcome: UninstallStepOutcome =
-      localStep.status === "manual" || localStep.status === "user-owned" ? "manual" : "skipped";
-    return Effect.succeed({ outcome });
-  }
-
   return Effect.gen(function* () {
     const exit = yield* Effect.exit(
       uninstall.execute({
@@ -191,11 +186,23 @@ export const executeHostUninstallContribution = (
       return { outcome: "failed" as const, error: causeMessage(exit.cause) };
     }
     const result = exit.value;
-    return {
-      outcome: result.outcome,
-      ...(result.error === undefined ? {} : { error: result.error }),
-      ...(result.detail === undefined ? {} : { detail: result.detail }),
-    };
+    // Rebuild from known fields: the caller spreads this over the plan step, so
+    // extra keys a plugin returns (status, id) must not overwrite plan fields.
+    const detail = result.detail === undefined ? {} : { detail: result.detail };
+    switch (result.outcome) {
+      case "completed":
+        return { outcome: "completed", ...detail };
+      case "skipped":
+        return { outcome: "skipped", ...detail };
+      case "manual":
+        return { outcome: "manual", detail: result.detail };
+      case "failed":
+        return { outcome: "failed", error: result.error, ...detail };
+      default: {
+        const exhaustive: never = result;
+        return exhaustive;
+      }
+    }
   });
 };
 

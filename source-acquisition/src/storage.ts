@@ -3,6 +3,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import { Clock, Effect, Schema } from "effect";
 import { SourceAcquisitionError, acquisitionError, displaySource } from "./errors.ts";
+import { makeLeaseLifecycle } from "./lease-lifecycle.ts";
 import { EntryRecord } from "./records.ts";
 import { containedPath, realContainedPath, treeDigest } from "./tree.ts";
 import type { SourceKey, SourcePin, SourceSnapshot, SourceStoreOptions } from "./types.ts";
@@ -55,6 +56,7 @@ export const makeStorage = (
 ) => {
   const lockKey = `source-cache-${sha256Hex(root)}`;
   const keys = new Map<string, SourceKey>();
+  const withLease = makeLeaseLifecycle();
   const leasePath = containedPath(root, ".leases", `${lease.token}.json`);
   const locked = <A, E>(effect: Effect.Effect<A, E>) =>
     options.stateStore
@@ -86,6 +88,9 @@ export const makeStorage = (
           { mode: 0o600 },
         );
         await rename(temporary, leasePath);
+        // Rename is the commit point. Commit memory before stage cleanup can fail
+        // or interruption can be delivered; utimes/write/rename failures commit neither.
+        if (pending !== undefined) keys.set(`${pending.kind}/${keyId(pending)}`, pending);
       }),
     );
   const register = Effect.fn("SourceSession.register")(function* (key: SourceKey) {
@@ -94,7 +99,6 @@ export const makeStorage = (
     const now = yield* Clock.currentTimeMillis;
     yield* io(id, () => utimes(containedPath(entryPath(key), "entry.json"), now / 1000, now / 1000));
     yield* writeLease(key);
-    keys.set(id, key);
   });
   const readEntry = Effect.fn("SourceStore.readEntry")(function* (key: SourceKey) {
     if (!validKey(key))
@@ -115,12 +119,7 @@ export const makeStorage = (
         if (!(await lstat(recordPath)).isFile() || (await lstat(recordPath)).isSymbolicLink())
           return undefined;
         const parsed: unknown = JSON.parse(await readFile(recordPath, "utf8"));
-        if (
-          !Schema.is(EntryRecord)(parsed) ||
-          parsed.kind !== key.kind ||
-          parsed.id !== keyId(key) ||
-          !/^[a-f\d]{64}$/u.test(parsed.treeDigest)
-        )
+        if (!Schema.is(EntryRecord)(parsed) || parsed.kind !== key.kind || parsed.id !== keyId(key))
           return undefined;
         const tree = containedPath(dir, "tree");
         if (!(await lstat(tree)).isDirectory() || (await lstat(tree)).isSymbolicLink()) return undefined;
@@ -147,7 +146,10 @@ export const makeStorage = (
         return undefined;
       return { key, pin, root: tree };
     });
-    return keys.has(`${key.kind}/${keyId(key)}`) ? body : locked(body);
+    return withLease(
+      "use",
+      Effect.suspend(() => (keys.has(`${key.kind}/${keyId(key)}`) ? body : locked(body))),
+    );
   };
   const publish = Effect.fn("SourceStore.publish")(function* <P extends SourcePin>(input: {
     readonly key: SourceKey;
@@ -178,53 +180,65 @@ export const makeStorage = (
     yield* io(input.source, () =>
       writeFile(containedPath(stage, "entry.json"), JSON.stringify(record), { mode: 0o600 }),
     );
-    return yield* locked(
-      Effect.gen(function* () {
-        const existing = yield* readEntry(key);
-        const target = entryPath(key);
-        const replace =
-          existing !== undefined &&
-          input.repair &&
-          (yield* io(input.source, () => treeDigest(containedPath(target, "tree")))) !== digest;
-        if (existing === undefined || replace) {
-          yield* io(input.source, async () => {
-            await mkdir(containedPath(root, key.kind), { recursive: true });
-            await realContainedPath(root, containedPath(root, key.kind));
-            let aside: string | undefined;
-            try {
-              await lstat(target);
-              aside = containedPath(root, `.replaced-${process.pid}-${crypto.randomUUID()}`);
-              await rename(target, aside);
-            } catch (cause) {
-              if (!isErrnoCode(cause, "ENOENT")) throw cause;
-            }
-            try {
-              await rename(stage, target);
-            } catch (cause) {
-              if (aside !== undefined) await rename(aside, target);
-              throw cause;
-            }
-            if (aside !== undefined) await rm(aside, { recursive: true, force: true });
-          });
-        }
-        yield* register(key);
-        return { key, pin, root: yield* io(input.source, () => realpath(containedPath(target, "tree"))) };
-      }),
+    return yield* withLease(
+      "use",
+      locked(
+        Effect.gen(function* () {
+          const existing = yield* readEntry(key);
+          const target = entryPath(key);
+          const replace =
+            existing !== undefined &&
+            input.repair &&
+            (yield* io(input.source, () => treeDigest(containedPath(target, "tree")))) !== digest;
+          if (existing === undefined || replace) {
+            yield* io(input.source, async () => {
+              await mkdir(containedPath(root, key.kind), { recursive: true });
+              await realContainedPath(root, containedPath(root, key.kind));
+              let aside: string | undefined;
+              try {
+                await lstat(target);
+                aside = containedPath(root, `.replaced-${process.pid}-${crypto.randomUUID()}`);
+                await rename(target, aside);
+              } catch (cause) {
+                if (!isErrnoCode(cause, "ENOENT")) throw cause;
+              }
+              try {
+                await rename(stage, target);
+              } catch (cause) {
+                if (aside !== undefined) await rename(aside, target);
+                throw cause;
+              }
+              // Replaced published trees belong to meta:sources:gc, including
+              // leftovers after a crash. Publication only changes namespace membership.
+            });
+          }
+          yield* register(key);
+          return { key, pin, root: yield* io(input.source, () => realpath(containedPath(target, "tree"))) };
+        }),
+      ),
     );
   });
   return {
     root,
     locked,
+    sessionLocked: <A, E>(body: Effect.Effect<A, E>) => withLease("use", locked(body)),
     open,
     publish,
     stage,
-    // Empty lease creation and final unlink expose no entries; key registration stays locked.
-    initialize: io("lease", async () => {
-      await mkdir(root, { recursive: true });
-      await mkdir(containedPath(root, ".leases"), { recursive: true, mode: 0o700 });
-      await realContainedPath(root, containedPath(root, ".leases"));
-    }).pipe(Effect.andThen(writeLease())),
-    release: io("lease", () => rm(leasePath, { force: true })),
+    // Empty creation and unlink expose no entries. The session mutex also
+    // excludes warm opens and late publication while release is in progress.
+    initialize: withLease(
+      "initialize",
+      io("lease", async () => {
+        await mkdir(root, { recursive: true });
+        await mkdir(containedPath(root, ".leases"), { recursive: true, mode: 0o700 });
+        await realContainedPath(root, containedPath(root, ".leases"));
+      }).pipe(Effect.andThen(writeLease())),
+    ),
+    release: withLease(
+      "release",
+      io("lease", () => rm(leasePath, { force: true })),
+    ),
   };
 };
 export type Storage = ReturnType<typeof makeStorage>;

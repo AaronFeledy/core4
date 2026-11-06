@@ -27,6 +27,7 @@ import {
   type RoutePlan,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
 
@@ -122,9 +123,10 @@ const writeProxyFiles = async (root: string, slug: string, routes: ReadonlyArray
     join(dynamicDir, "fallback.yml"),
     renderTraefikFallbackConfig().replace(TRAEFIK_DIAGNOSTICS_HOSTNAME, TRAEFIK_DIAGNOSTICS_ID),
   );
+  const owner = { id: AppId.make(slug), ownerKey: appIdentityKey("owner", root) };
   await writeFile(
-    join(dynamicDir, `routes-${slug}.yml`),
-    renderTraefikDynamicConfig(routes, AppId.make(slug)),
+    join(dynamicDir, `routes-${owner.ownerKey}.yml`),
+    renderTraefikDynamicConfig(routes, owner),
   );
   return { dynamicDir };
 };

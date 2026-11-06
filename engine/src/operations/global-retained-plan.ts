@@ -1,6 +1,6 @@
 import { canonicalJson } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
-import type { AppPlan, NetworkingPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type NetworkingPlan, type ServicePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -303,13 +303,12 @@ export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings"
   const observed = yield* provider.list({ app: desired.id, includeUnplanned: true });
   const selected = new Set(selectedIds);
   const priorNames = new Set(Object.keys(prior?.services ?? {}));
-  const activeStatus = (status: string) => ["running", "paused", "restarting"].includes(status);
   if (
     observed.some(
       (service) =>
         service.app === desired.id &&
         !selected.has(String(service.service)) &&
-        activeStatus(service.status) &&
+        isActiveRunStatus(service.status) &&
         (service.appRoot === undefined ||
           (service.appRoot === desired.root &&
             (service.providerId !== desired.provider ||
@@ -333,7 +332,7 @@ export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings"
   const observedIds = new Set(owned.map((service) => String(service.service)));
   const retained = new Set([...observedIds].filter((id) => !selected.has(id)));
   const active = new Set(
-    owned.filter((service) => activeStatus(service.status)).map((service) => String(service.service)),
+    owned.filter((service) => isActiveRunStatus(service.status)).map((service) => String(service.service)),
   );
   const resolution = yield* readGlobalResolution({
     providerId: desired.provider,

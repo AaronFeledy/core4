@@ -3,7 +3,7 @@ id: proxy-traefik
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, proxy, traefik]
+tags: [docs, subsystems, proxy, traefik]
 ---
 
 # Use the Traefik proxy
@@ -24,7 +24,11 @@ does not prevent hostname conflicts.
 Before `start` or `restart` reports success, Lando confirms that Traefik loaded
 the app's complete route configuration. Unchanged routes are checked immediately,
 without rewriting their files or reissuing current certificates. This confirms
-routing configuration, not the HTTP status your app returns.
+routing configuration, not the HTTP status your app returns. Routes belong to the
+app folder, so the check also waits until Traefik drops routes that folder
+published under an earlier `name:`. Route files from development builds are
+outside that check; `lando doctor` reports them as `legacy-route-files`. See
+[Change an app's name](../landofile/app-name-edge-cases.mdx#change-an-apps-name).
 
 If Traefik cannot confirm the routes within 30 seconds, the command fails with
 `ProxyApplyError` instead of claiming readiness. The app stays available for

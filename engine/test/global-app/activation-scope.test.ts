@@ -6,6 +6,13 @@ import {
   withGlobalRoutePublication,
 } from "../../src/global-app/activation-scope.ts";
 
+test("claims outside the coordinator name the coordination they attempted", async () => {
+  const policy = await Effect.runPromise(withGlobalPolicyChange("enable", Effect.void).pipe(Effect.result));
+  const route = await Effect.runPromise(withGlobalRoutePublication(Effect.void).pipe(Effect.result));
+  expect(policy).toMatchObject({ failure: { _tag: "GlobalAppError", operation: "policy-coordination" } });
+  expect(route).toMatchObject({ failure: { _tag: "GlobalAppError", operation: "route-coordination" } });
+});
+
 test("a route publication excludes sibling policy and route writes until asynchronous completion", async () => {
   await Effect.runPromise(
     withGlobalActivationScope(

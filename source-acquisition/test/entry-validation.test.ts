@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { withTestSources } from "../src/testing.ts";
@@ -58,7 +58,7 @@ describe("entry validation and repair", () => {
     const url = "https://example.test/source.tgz";
     const sha256 = sha256Of(bytes);
     archive.set(url, bytes);
-    await withTestSources({ archive: archive.transport }, ({ session }) =>
+    await withTestSources({ archive: archive.transport }, ({ session, root }) =>
       Effect.gen(function* () {
         const original = yield* session.acquireArchive({ url, sha256 });
         yield* Effect.promise(() => writeFile(join(original.root, "file"), "poison"));
@@ -67,6 +67,15 @@ describe("entry validation and repair", () => {
         const repaired = yield* session.acquireArchive({ url, sha256 }, { repair: true });
         expect(yield* Effect.promise(() => readFile(join(repaired.root, "file"), "utf8"))).toBe(
           "authoritative",
+        );
+        const retired = (yield* Effect.promise(() => readdir(root))).filter((name) =>
+          name.startsWith(".replaced-"),
+        );
+        expect(retired).toHaveLength(1);
+        const previous = retired[0];
+        if (previous === undefined) throw new Error("Missing replaced entry");
+        expect(yield* Effect.promise(() => readFile(join(root, previous, "tree", "file"), "utf8"))).toBe(
+          "poison",
         );
       }),
     );

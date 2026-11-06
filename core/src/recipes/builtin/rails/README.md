@@ -6,7 +6,7 @@ application and install its dependencies before starting the Rails server.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Prepare the application
 
@@ -34,9 +34,10 @@ service, not configuration to the Rails server.
 - `lando bundle …`: Bundler inside the web service.
 - `lando rake …`: Rake inside the web service.
 
-## Alpha limitations
+## Limitations
 
 - The recipe writes a Landofile and a minimal Gemfile; `rails new .` runs through the
   generated tooling once the app is started.
-- Active Job adapters beyond Redis-backed Sidekiq, Action Cable scaling, and
-  multi-database routing are deferred to Beta.
+- The recipe wires `DATABASE_URL` and `REDIS_URL` only. It does not configure
+  an Active Job adapter, Sidekiq, Action Cable scaling, or multi-database
+  routing; add those gems and services to the Landofile yourself.

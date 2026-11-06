@@ -3,12 +3,12 @@ id: setup-compiled-binary-parity
 provider: test
 platforms: [linux]
 timeout: 60000
-tags: [beta, docs, setup, uninstall, compiled]
+tags: [docs, setup, uninstall, compiled]
 ---
 
 # Run setup from the compiled binary
 
-Alpha ships unsigned compiled `lando` binaries for Linux, macOS, and Windows on GitHub `v4.0.0-dev.N` prereleases. `get.lando.dev` and `update.lando.dev` are not serving v4 artifacts.
+Lando ships signed compiled `lando` binaries for Linux, macOS, and Windows on each GitHub release, and the installers at `get.lando.dev` install the same binaries. Setup behaves the same whether you ran the installer or installed a downloaded binary by hand.
 
 [Put the downloaded binary on PATH](../install/path-and-setup.mdx) first, then run setup in your terminal and follow the prompts. Choose the recommended Lando-managed runtime on supported hosts; Docker is not required. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you.
 

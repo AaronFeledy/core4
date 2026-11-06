@@ -6,7 +6,7 @@ installed or configured for you.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -19,9 +19,10 @@ installed or configured for you.
 - `lando astro …`: Astro CLI through `npx`.
 - `lando npm …`: npm inside the web service.
 
-## Alpha limitations
+## Limitations
 
-- The recipe uses the bundled `node:<lts|22>` service type. A dedicated Astro
-  service type with first-class build presets is deferred to Beta.
-- Astro adapters (Vercel, Netlify, Cloudflare) are deferred; the recipe
-  assumes a Node-based dev/preview server.
+- There is no dedicated Astro service type; the recipe uses the bundled
+  `node:<lts|22>` service type with no build presets.
+- The recipe does not install or configure Astro adapters (Vercel, Netlify,
+  Cloudflare). It assumes a Node-based dev/preview server; add an adapter
+  through `lando npm` if your deployment needs one.

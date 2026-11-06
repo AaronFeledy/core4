@@ -194,6 +194,11 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
       expect(firstWorkflow).toContain("include-hidden-files: true");
       expect(firstWorkflow).toContain("mysql-arm-client-linux-arm64:");
+      expect(firstWorkflow).toContain("runtime-bundle-linux-arm64:");
+      expect(firstWorkflow).toContain("needs: [container-helper, runtime-bundle-linux-arm64]");
+      expect(firstWorkflow).toContain(
+        "          name: runtime-bundle-linux-arm64-current\n          path: dist/cache/runtime-bundle\n",
+      );
       expect(firstWorkflow).toContain("runs-on: ubuntu-24.04-arm");
       expect(firstWorkflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
       expect(firstWorkflow).toContain("runtime-bundle-linux-arm64-current");
@@ -336,9 +341,9 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(41);
+      expect(versionFileMatches).toBe(42);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(18);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(21);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
@@ -578,8 +583,7 @@ describe("ci workflow codegen", () => {
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
       expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-      expect(staticChecksPlatform).toContain("- name: Typecheck");
-      expect(staticChecksPlatform).toContain("if: matrix.platform == 'linux-x64'");
+      expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
       expect(staticChecksPlatform).not.toContain("- name: Audit dependencies");
@@ -616,19 +620,22 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "caches the assembled linux-x64 runtime bundle across unrelated PRs",
+    "caches the assembled native Linux runtime bundles across unrelated PRs",
     async () => {
       await runCodegen();
 
       const workflow = await readFile(workflowPath, "utf8");
 
-      expect(workflow).toContain("runtime-bundle-linux-x64:");
-      expect(workflow).toContain("id: runtime-bundle-cache");
-      expect(workflow).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
-      expect(workflow).toContain("key: runtime-bundle-linux-x64-${{ hashFiles(");
-      expect(workflow).toContain("scripts/patches/netavark-v2.0.0-systemd-user-bus.patch");
-      expect(workflow).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
-      expect(workflow).toContain("run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64");
+      for (const hostKey of ["linux-x64", "linux-arm64"]) {
+        const job = workflow.split(`\n  runtime-bundle-${hostKey}:\n`)[1]?.split(/^ {2}[a-z]/m)[0] ?? "";
+        expect(job).toContain("id: runtime-bundle-cache");
+        expect(job).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
+        expect(job).toContain("key: ${{ steps.runtime-bundle-key.outputs.key }}");
+        expect(job).toContain(`bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key`);
+        expect(job).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
+        expect(job).toContain(`run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}\n`);
+        expect(job).toContain(`name: runtime-bundle-${hostKey}-current`);
+      }
     },
     codegenTestTimeout,
   );

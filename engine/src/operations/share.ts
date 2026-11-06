@@ -84,8 +84,7 @@ const unavailable = (requested?: string): TunnelProviderUnavailableError =>
       "lando plugin:add <tunnel-service-plugin>",
       "lando setup --provider=<provider-with-tunnels>",
     ],
-    remediation:
-      "Install a TunnelService plugin, then rerun the command. Bundled tunnel connectors ship in Lando 4.1.",
+    remediation: "Install a TunnelService plugin, then rerun the command.",
   });
 
 const resolveTunnelService = Effect.fnUntraced(function* (requested?: string) {

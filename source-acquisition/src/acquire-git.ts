@@ -70,7 +70,7 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
             { verify },
           );
           if (snapshot === undefined) return undefined;
-          yield* storage.locked(refs.set({ commit }));
+          yield* storage.sessionLocked(refs.set({ commit }));
           return snapshot;
         }),
       );
@@ -105,7 +105,7 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
           repair: verify,
           source: locator.url,
         });
-        yield* storage.locked(refs.set({ commit }));
+        yield* storage.sessionLocked(refs.set({ commit }));
         return snapshot;
       }),
     );

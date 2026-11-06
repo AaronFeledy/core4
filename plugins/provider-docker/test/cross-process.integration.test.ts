@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
@@ -259,11 +260,11 @@ const applyPlan = async (stateDir: string, dockerApi: DockerApiClient) => {
 
 const isUnavailableExec = (error: unknown): boolean => {
   if (!(error instanceof ProviderUnavailableError)) return false;
-  return error.message.includes("does not implement exec yet");
+  return error.message.includes("does not implement exec");
 };
 
 describe("provider-docker cross-process state", () => {
-  test("apply with appliedPlanState writes a version-3 envelope", async () => {
+  test("apply with appliedPlanState writes the current applied-state envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
       await applyPlan(stateDir, fake.api);
@@ -271,7 +272,7 @@ describe("provider-docker cross-process state", () => {
       const path = appliedPlanPath(stateDir, plan.id);
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
-      expect(raw.version).toBe(3);
+      expect(raw.version).toBe(APPLIED_STATE_VERSION);
       expect(raw.data).toBeDefined();
     });
   });
@@ -309,7 +310,7 @@ describe("provider-docker cross-process state", () => {
 
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("running");
+      expect(snapshot.status).toBe("running");
     });
   });
 

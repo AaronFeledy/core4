@@ -8,6 +8,7 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Schema } from "effect";
 import { formatBugReport } from "./bug-report";
 import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
+import { machineOutputOnStderr } from "./command-payload-stdout";
 import { DEFAULT_RESULT_FORMAT, isEnvelopeResultFormat } from "./format-flags";
 import type { RunWithRendererHandlingOptions } from "./renderer-boundary";
 
@@ -31,9 +32,15 @@ export const renderTerminalFailure = async <A, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
   redactor: Redactor,
 ): Promise<void> => {
-  const io = options.io ?? createStdioRendererIO();
   const outcome = commandFailureOutcome(cause, options.signal);
   const format = options.resultFormat ?? DEFAULT_RESULT_FORMAT;
+  const realIO =
+    options.io ??
+    createStdioRendererIO(undefined, undefined, undefined, {
+      terminalNewlines: !isEnvelopeResultFormat(format),
+    });
+  const io =
+    options.payloadStdout === true && isEnvelopeResultFormat(format) ? machineOutputOnStderr(realIO) : realIO;
   await Effect.runPromise(
     Effect.gen(function* () {
       yield* recordCliDefect(cause, redactor, io);

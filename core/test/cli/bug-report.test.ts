@@ -527,7 +527,7 @@ describe("renderPlainBugReport: stable multi-line output", () => {
         error: new NotImplementedError({
           message: "deferred",
           commandId: "meta:plugin:trust",
-          remediation: "not available yet",
+          remediation: "not available",
         }),
         context: ctx({ commandId: "meta:plugin:trust" }),
       }),

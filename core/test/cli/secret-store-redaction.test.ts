@@ -37,7 +37,7 @@ import * as BunShellRunner from "../_support/shell-runner.ts";
 
 test.each([
   { failApply: false, providerState: "running", expectedState: "running" },
-  { failApply: false, providerState: "opaque", expectedState: "unknown" },
+  { failApply: false, providerState: "unknown", expectedState: "unknown" },
   { failApply: true, providerState: "running", expectedState: "running" },
 ])(
   "start --format=json redacts scheme-store values (failure $failApply, state $providerState)",
@@ -77,6 +77,7 @@ test.each([
     };
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
+      logs: () => Stream.make({ service: ServiceName.make("web"), stream: "stdout", line: value }),
       readAppEnvironment: () => Effect.succeed(applied.map((value) => Redacted.make(value))),
       execStream: () =>
         Stream.make(
@@ -107,8 +108,7 @@ test.each([
           app: target.app,
           service: target.service,
           providerId: ProviderId.make(TestRuntimeProvider.id),
-          status: "running",
-          state: providerState === "opaque" ? `Provider observed ${applied[0]}` : providerState,
+          status: providerState,
           publications: { status: "present", bindings: [] },
         }),
     };
@@ -134,7 +134,7 @@ test.each([
           primary: true,
           environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
           mounts: [],
-          // Keep a secret in the projected result even when the opaque provider state is discarded.
+          // Keep a secret in the projected result even though a provider cannot carry free-form state text.
           endpoints: [{ _tag: "internal", protocol: "tcp", port: 8080, name: value }],
           routes: [],
           dependsOn: [],
@@ -201,29 +201,40 @@ test.each([
             ok: false,
             error: { _tag: "ProviderUnavailableError", message: "Provider observed [redacted]" },
           }
-        : {
-            command: "app:start",
-            ok: true,
-            result: {
-              servicesStarted: [
-                {
-                  name: "web",
-                  state: expectedState,
-                  connections: [
-                    {
-                      scope: "app",
-                      source: "listener",
-                      endpoint: { names: ["[redacted]"] },
-                      state: expectedState === "running" ? "active" : "unknown",
-                    },
-                  ],
-                },
-              ],
+        : providerState === "unknown"
+          ? {
+              command: "app:start",
+              ok: false,
+              error: {
+                _tag: "ServiceNotReadyError",
+                reason: "not-running",
+                state: "unknown",
+                logTail: { lines: ["[redacted]"] },
+              },
+            }
+          : {
+              command: "app:start",
+              ok: true,
+              result: {
+                servicesStarted: [
+                  {
+                    name: "web",
+                    state: expectedState,
+                    connections: [
+                      {
+                        scope: "app",
+                        source: "listener",
+                        endpoint: { names: ["[redacted]"] },
+                        state: expectedState === "running" ? "active" : "unknown",
+                      },
+                    ],
+                  },
+                ],
+              },
             },
-          },
     );
-    expect(exits).toEqual(failApply ? [1] : [0]);
-    if (!failApply) {
+    expect(exits).toEqual(failApply || providerState === "unknown" ? [1] : [0]);
+    if (!failApply && providerState === "running") {
       const execIo = createBufferedRendererIO({ isTTY: false });
       await runWithRendererHandling(execApp({ service: "web", command: ["printenv", "DISPLAY_VALUE"] }), {
         runtime,

@@ -128,8 +128,7 @@ const makeFixture = async (directory: string) => {
               service: service.name,
               containerId: `container-${service.name}`,
               lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-              status: "running",
-              state: "running",
+              status: "running" as const,
               publications: { status: "present", bindings: [] },
             });
           return { changed: true };
@@ -404,10 +403,11 @@ for (const change of [
       if (change === "identity" || change === "stopped") {
         const runtime = f.runtimes.get("dependency");
         if (runtime === undefined) throw new Error("expected dependency");
-        f.runtimes.set("dependency", {
-          ...runtime,
-          ...(change === "identity" ? { containerId: "replacement" } : { status: "stopped" as const }),
-        });
+        if (change === "identity") f.runtimes.set("dependency", { ...runtime, containerId: "replacement" });
+        else {
+          const { health: _health, exitCode: _exitCode, status: _status, ...fields } = runtime;
+          f.runtimes.set("dependency", { ...fields, status: "exited" });
+        }
       }
       await f.ensure();
       expect(f.calls).toMatchObject({ generation: 2, planning: 2, build: 2, apply: 2 });

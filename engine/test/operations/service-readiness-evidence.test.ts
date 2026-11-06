@@ -17,7 +17,7 @@ const stopped = {
   app: plan.id,
   service: web.name,
   providerId: plan.provider,
-  status: "stopped",
+  status: "exited" as const,
   publications: { status: "unknown" as const },
   exitCode: 17,
 };
@@ -152,9 +152,11 @@ test("a changed StartedAt fails readiness even when the container id is unchange
     ...TestRuntimeProvider,
     inspect: () =>
       Effect.map(Clock.currentTimeMillis, (now) => ({
-        ...stopped,
-        status: "running",
-        state: "running",
+        app: stopped.app,
+        service: stopped.service,
+        providerId: stopped.providerId,
+        publications: stopped.publications,
+        status: "running" as const,
         containerId: "same-container",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(now >= 250 ? 250 : 0)),
       })),

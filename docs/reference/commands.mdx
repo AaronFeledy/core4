@@ -84,8 +84,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for set/unset. |
-| `subcommand` | Subcommand: view (default), set, unset, edit, validate. |
+| `key` | Dot-path key for get/set/unset/describe. |
+| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, describe. |
 | `value` | Value for set. |
 
 Flags:
@@ -97,6 +97,17 @@ Flags:
 | `--path` | Dot-path key selector. |
 | `--source` | Inspect raw layers, authored composition, or resolved config. (one of `raw`, `merged`, `resolved`) |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando app:config:describe`
+
+Describe accepted values for a Landofile key.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key; omit to list root keys. |
 
 ## `lando app:config:edit`
 
@@ -276,7 +287,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--follow, -f` | Stream new log lines until interrupted. |
-| `--no-viewer` | Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior). |
+| `--no-viewer` | Reserved for the interactive log viewer; accepted as a no-op until the viewer exists (does not change follow behavior). |
 | `--service, -s` | Filter logs to a single planned service. |
 | `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
 | `--source` | Select a declared source id, or `console` for all container logs. Console aliases and redirects select a native stdout/stderr pipe; aliases on the same pipe share its logs. |
@@ -758,13 +769,14 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Destination dump file. |
+| `file` | Destination dump file. Use - to write to stdout. |
 
 Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--compression-level` | Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix. |
+| `--compression` | Compress a dump written to stdout (-). File exports use the .gz or .zst suffix instead. (one of `gzip`, `zstd`) |
+| `--compression-level` | Host compression level: gzip 0-9 or zstd 1-22, chosen by the .gz or .zst suffix, or by --compression with -. |
 | `--service` | Source database service. |
 | `--yes, -y` | Skip confirmation prompts. |
 
@@ -778,7 +790,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Dump file to import. |
+| `file` | Dump file to import. Use - to read from stdin. |
 
 Flags:
 
@@ -829,7 +841,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Dump file to seed from. |
+| `file` | Dump file to seed from. Use - to read from stdin. |
 
 Flags:
 
@@ -903,8 +915,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for get/set/unset. |
-| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, translate. |
+| `key` | Dot-path key for get/set/unset/describe. |
+| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, translate, describe. |
 | `value` | Value for set. |
 
 Flags:
@@ -949,8 +961,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for set/unset. |
-| `subcommand` | Subcommand: view (default), set, unset, edit, validate. |
+| `key` | Dot-path key for get/set/unset/describe. |
+| `subcommand` | Subcommand: view (default), set, unset, edit, validate, describe. |
 | `value` | Value for set. |
 
 Flags:
@@ -961,6 +973,18 @@ Flags:
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando meta:global:config:describe`
+
+Describe accepted values for a global Landofile key.
+
+Aliases: `lando global:config:describe`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key; omit to list root keys. |
 
 ## `lando meta:global:config:edit`
 

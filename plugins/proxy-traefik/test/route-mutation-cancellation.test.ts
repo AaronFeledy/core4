@@ -6,6 +6,7 @@ import { makeTraefikRouterService } from "../src/proxy.ts";
 import { removeAppCertificates } from "../src/tls.ts";
 import { app } from "./proxy-tls-harness.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";
+import { routeMetadataLine } from "./route-owner-fixture.ts";
 
 for (const operation of ["empty-routes", "remove-routes", "certificate", "private-key"] as const) {
   test(`cancellation joins an in-flight ${operation} unlink before releasing its caller`, async () => {
@@ -17,7 +18,12 @@ for (const operation of ["empty-routes", "remove-routes", "certificate", "privat
         : operation === "private-key"
           ? certificates.key
           : routeFile(fixture.dependencies.paths, app);
-    fixture.files.set(target, "previous publication");
+    fixture.files.set(
+      target,
+      operation === "certificate" || operation === "private-key"
+        ? "previous publication"
+        : `${routeMetadataLine(app)}\nprevious publication`,
+    );
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let callerReleased = false;

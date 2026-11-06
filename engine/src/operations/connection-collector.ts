@@ -8,10 +8,11 @@ import {
 } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import {
   observedPublicationConnection,
   projectServiceConnections,
-  serviceState,
+  serviceStateOf,
 } from "./service-connections.ts";
 
 export interface ObservedService {
@@ -31,7 +32,7 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
   const routeEvidence =
     router._tag === "Some" && plan.routes.length > 0
       ? yield* router.value
-          .observeRoutes(plan.id, plan.routes)
+          .observeRoutes(routeOwnerFromPlan(plan), plan.routes)
           .pipe(Effect.catchTag("ProxyError", () => Effect.succeed(undefined)))
       : undefined;
   const services = Object.values(plan.services);
@@ -63,14 +64,7 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
 export const observeService = (plan: AppPlan, runtime: ServiceRuntimeInfo): ObservedService => ({
   name: String(runtime.service),
   runtime,
-  state:
-    completionIntentServices(plan).has(String(runtime.service)) &&
-    (runtime.state ?? runtime.status) === "stopped" &&
-    runtime.exitCode === 0
-      ? "completed"
-      : (runtime.state ?? runtime.status) === "completed"
-        ? "stopped"
-        : serviceState(runtime.state ?? runtime.status),
+  state: serviceStateOf(runtime, completionIntentServices(plan).has(String(runtime.service))),
 });
 
 export const collectPlanObservations = Effect.fn("Connections.observePlan")(function* (

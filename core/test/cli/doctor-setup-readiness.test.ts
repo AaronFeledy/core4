@@ -4,6 +4,27 @@ import { buildSetupReadinessDoctorCheck } from "../../src/cli/commands/doctor-se
 import type { SetupReadinessSummary } from "../../src/cli/commands/setup-readiness";
 
 describe("doctor setup readiness", () => {
+  test.each([
+    { status: "in-progress", providerId: "lando", command: "lando setup" },
+    { status: "in-progress", providerId: "docker", command: "lando setup --provider=docker" },
+    { status: "failed", providerId: "podman", command: "lando setup --provider=podman" },
+  ] as const)("warns and offers `$command` when a $status record has no failed step", (row) => {
+    const check = buildSetupReadinessDoctorCheck(
+      {
+        status: row.status,
+        providerId: row.providerId,
+        updatedAt: "2026-09-22T00:00:00.000Z",
+        steps: [{ id: "provider", status: "satisfied", evidence: "Provider setup completed." }],
+      },
+      { id: row.providerId, displayName: "Provider", version: "test" },
+    );
+
+    expect(check.status).toBe("warn");
+    expect(check.runtimeStatus).toBe(row.status);
+    expect(check.solutions).toEqual([
+      { kind: "manual", description: expect.stringContaining(`\`${row.command}\``), command: row.command },
+    ]);
+  });
   test("treats optional skipped file-sync as ready without setup remediation", () => {
     const summary = {
       status: "ready",

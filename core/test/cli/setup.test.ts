@@ -63,7 +63,6 @@ import {
   SetupResultSchema,
   SetupStepFailedError,
   maybeSelectSetupProvider,
-  setupDeferredFileSyncPath,
   setupSpec,
 } from "../../src/cli/command-specs/meta/setup.ts";
 import {
@@ -2468,7 +2467,7 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toContain(fileSyncSatisfiedLine);
   });
 
-  test("--skip-file-sync records the explicitly configured engine without installing it", async () => {
+  test("--skip-file-sync records deferred readiness without installing the configured engine", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-deferred-"));
     try {
       const provider = {
@@ -2512,16 +2511,9 @@ describe("meta:setup command", () => {
         ),
       );
 
-      const marker = JSON.parse(await readFile(setupDeferredFileSyncPath(userDataRoot), "utf-8")) as {
-        readonly status: string;
-        readonly engineId: string;
-        readonly resumeCommand: string;
-      };
-      expect(marker).toEqual({
-        status: "deferred",
-        engineId: "custom-sync",
-        resumeCommand: "lando setup",
-      });
+      const readiness = await Effect.runPromise(readSetupReadiness(userDataRoot));
+      expect(readiness?.status).toBe("deferred");
+      expect(readiness?.steps.find((step) => step.id === "file-sync")?.status).toBe("deferred");
       expect(setupSpec.render?.(result)).toContain(
         "file-sync: engine installation skipped (run lando setup to install later)",
       );

@@ -6,14 +6,24 @@ import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { acquisitionError } from "./errors.ts";
 
+/** Publication is observed from the atomic directory namespace, not a stored
+ * phase: a complete entry is reusable only at its content-addressed path.
+ * Staging/replaced paths never claim to be the current publication. Repair
+ * re-observes the tree under the store lock; GC alone retires it.
+ */
 export const EntryRecord = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literals(["git", "archive"]),
   id: Schema.String,
   format: Schema.Literal(1),
-  treeDigest: Schema.String,
+  treeDigest: Schema.String.check(Schema.isPattern(/^[a-f\d]{64}$/u)),
   provenance: Schema.Struct({ source: Schema.String }),
-});
+}).check(
+  Schema.makeFilter(
+    (record) => (record.kind === "git" ? /^[a-f\d]{40}$/u : /^[a-f\d]{64}$/u).test(record.id),
+    { expected: "a content identity matching the entry kind" },
+  ),
+);
 export type EntryRecord = typeof EntryRecord.Type;
 export const NpmIndexRecord = Schema.Struct({
   name: Schema.String,

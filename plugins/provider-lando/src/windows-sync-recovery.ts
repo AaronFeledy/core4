@@ -159,7 +159,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
             appRoot: AbsolutePath.make(root),
             service: ServiceName.make(service),
             containerId: container.Id,
-            status: "stopped",
+            status: "unknown",
             publications: { status: "unknown" },
             labels,
           });

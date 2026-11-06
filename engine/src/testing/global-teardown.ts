@@ -163,7 +163,8 @@ export const globalTeardownHarness = async (
   const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
   const router = RouterService.of({
     ...makeTestRouterService(),
-    removeRoutes: Effect.fnUntraced(function* (_app: AppId) {
+    stop: Effect.die("Global lifecycle must not stop the shared router"),
+    removeRoutes: Effect.fnUntraced(function* (_owner) {
       calls.push("removeRoutes");
       if (input.routeFailure)
         return yield* Effect.fail(
@@ -191,9 +192,9 @@ export const globalTeardownHarness = async (
       )).root;
       return RouterService.of({
         ...router,
-        removeRoutes: (app) => {
+        removeRoutes: (owner) => {
           routeRoots.push(capturedRoot);
-          return router.removeRoutes(app);
+          return router.removeRoutes(owner);
         },
       });
     }),
@@ -258,9 +259,9 @@ export const globalTeardownHarness = async (
     ),
     Layer.succeed(RouterService, {
       ...router,
-      removeRoutes: (app) => {
+      removeRoutes: (owner) => {
         routeRoots.push(root);
-        return router.removeRoutes(app);
+        return router.removeRoutes(owner);
       },
     }),
     Layer.succeed(

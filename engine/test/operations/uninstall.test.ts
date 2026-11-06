@@ -114,7 +114,7 @@ describe("record-backed uninstall", () => {
             // Then: only proven ownership permits deletion; refusals retain repair evidence.
             const step = result.steps.find((entry) => entry.id === "installed-binary");
             const status =
-              scenario === "owned" || (scenario === "changed-before-remove" && dryRun)
+              scenario === "owned" || scenario === "changed-before-remove"
                 ? "owned"
                 : scenario === "invalid"
                   ? "manual"
@@ -122,6 +122,7 @@ describe("record-backed uninstall", () => {
                     ? "skipped"
                     : "user-owned";
             expect(step?.status).toBe(status);
+            if (scenario === "changed-before-remove" && !dryRun) expect(step?.outcome).toBe("manual");
             expect(result.failed).toBe(false);
             if (scenario === "foreign-basename" || scenario === "digest-mismatch")
               expect(step?.detail).toContain(scenario);
@@ -1060,6 +1061,12 @@ describe("uninstall shellenv profile strip", () => {
       expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
         outcome: "manual",
       });
+      for (const id of ["install-record", "user-data-root"]) {
+        expect(result.steps.find((step) => step.id === id)).toMatchObject({
+          status: "owned",
+          outcome: "manual",
+        });
+      }
       expect(existsSync(record)).toBe(true);
       expect(existsSync(binary)).toBe(false);
     } finally {
@@ -1114,6 +1121,7 @@ describe("uninstall shellenv profile strip", () => {
       expect(existsSync(roots.userDataRoot)).toBe(false);
       expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
       expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        status: "owned",
         outcome: "completed",
       });
       expect(result.steps.filter((step) => step.outcome === "completed").at(-1)?.id).toBe("install-record");

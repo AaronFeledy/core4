@@ -2,7 +2,7 @@
 id: your-landofile
 provider: test
 timeout: 60000
-tags: [beta, docs, landofile]
+tags: [docs, landofile]
 ---
 
 # Write a Landofile
@@ -268,6 +268,15 @@ lando app:config set services.web.port 4000
 lando app:config unset services.web.port
 lando app:config edit
 ```
+
+To see what a key accepts before you set it, describe it. `describe` reads the Landofile schema, not your app, so it works from any directory:
+
+```sh
+lando app:config describe services.web.port
+lando app:config describe services.web
+```
+
+The first line says what the key takes, for example `` `services.web.port` takes an integer from 1 to 65535. ``, followed by its description and any default. Describing a mapping such as `services.web` also lists its keys. When `set` rejects a value, its remediation names the same accepted type.
 
 Before saving, Lando validates the candidate file on its own and the effective stack with the candidate in place of `.lando.yml`. A problem the file already had elsewhere doesn't stop you from repairing one key; a write is rejected if it introduces a problem or leaves the written key, or anything under it, invalid. Lando still has to read every layer, so an unreadable file or malformed YAML in another layer stops the command. `edit` opens the file in `$VISUAL` or `$EDITOR`, or the one you pass with `--editor`; it can repair malformed YAML and saves your buffer byte for byte, template directives included.
 

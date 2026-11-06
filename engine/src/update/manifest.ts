@@ -15,7 +15,7 @@ import {
   UpdateManifestSchema,
   UpdateManifestSemver,
 } from "@lando/sdk/schema";
-import { Downloader, StateStore } from "@lando/sdk/services";
+import { Downloader, StateStore, type StateWrite } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { resolveUserDataRoot } from "../config/roots";
@@ -321,10 +321,16 @@ const UpdateManifestChannelEntryFields = Schema.Struct({
 const UpdateManifestChannelEntrySchema = knownKeysOnly(UpdateManifestChannelEntryFields, [
   "latest",
   "lastFailure",
-]);
+]).check(
+  Schema.makeFilter(
+    (entry) =>
+      entry.lastFailure === undefined || compareVersions(entry.lastFailure.targetVersion, entry.latest) <= 0,
+    { expected: "a last failure target at or below the observed version floor" },
+  ),
+);
 type UpdateManifestStateEntry = typeof UpdateManifestChannelEntryFields.Type;
 
-const UpdateManifestStateSchema = knownKeysOnly(
+export const UpdateManifestStateSchema = knownKeysOnly(
   Schema.Struct({
     stable: Schema.optionalKey(UpdateManifestChannelEntrySchema),
     next: Schema.optionalKey(UpdateManifestChannelEntrySchema),
@@ -334,7 +340,16 @@ const UpdateManifestStateSchema = knownKeysOnly(
 );
 type UpdateManifestState = typeof UpdateManifestStateSchema.Type;
 
-const UPDATE_MANIFEST_STATE_VERSION = 1;
+const LegacyUpdateManifestStateSchema = knownKeysOnly(
+  Schema.Struct({
+    stable: Schema.optionalKey(knownKeysOnly(UpdateManifestChannelEntryFields, ["latest", "lastFailure"])),
+    next: Schema.optionalKey(knownKeysOnly(UpdateManifestChannelEntryFields, ["latest", "lastFailure"])),
+    dev: Schema.optionalKey(knownKeysOnly(UpdateManifestChannelEntryFields, ["latest", "lastFailure"])),
+  }),
+  ["stable", "next", "dev"],
+);
+
+export const UPDATE_MANIFEST_STATE_VERSION = 2;
 const emptyUpdateManifestState: UpdateManifestState = {};
 
 const normalizeUpdateManifestState = (state: UpdateManifestState | null | undefined): UpdateManifestState => {
@@ -346,7 +361,12 @@ const normalizeUpdateManifestState = (state: UpdateManifestState | null | undefi
   };
 };
 
-/** Never lower a channel floor; seed absent channels from the candidate version. */
+/** Observation-derived monotonic register, not a finite lifecycle. Every writer
+ * merges under the bucket's advisory lock: latest never falls. lastFailure is
+ * the last recorded attempt (including delayed older attempts), not current
+ * health; success retains it. Its target cannot exceed latest. Admission reads
+ * latest only. Migration also uses this merge, conservatively raising old floors.
+ */
 const mergeChannelLatest = (
   current: UpdateManifestStateEntry | undefined,
   candidateLatest: string,
@@ -359,6 +379,26 @@ const mergeChannelLatest = (
   const failure = lastFailure !== undefined ? lastFailure : current?.lastFailure;
   return failure === undefined ? { latest } : { latest, lastFailure: failure };
 };
+
+const mergeChannel = (
+  current: UpdateManifestState | null,
+  channel: UpdateChannel,
+  candidateLatest: string,
+  lastFailure?: UpdateManifestStateEntry["lastFailure"],
+): UpdateManifestState => {
+  const state = normalizeUpdateManifestState(current);
+  return { ...state, [channel]: mergeChannelLatest(state[channel], candidateLatest, lastFailure) };
+};
+
+const manifestReplayError = (channel: UpdateChannel, cachedVersion: string, manifestVersion: string) =>
+  new UpdateManifestReplayError({
+    message: `Update manifest ${channel} channel version ${manifestVersion} is older than previously observed signed version ${cachedVersion}. Refusing possible manifest replay.`,
+    channel,
+    cachedVersion,
+    manifestVersion,
+    remediation:
+      "Use a trusted channel whose signed manifest is at least as new as the last verified version; wait for a newer signed release and retry `lando update` without disabling freshness checks.",
+  });
 
 const freshnessCorruptError = (path: string, cause: unknown): UpdateNetworkError =>
   new UpdateNetworkError({
@@ -387,7 +427,7 @@ const mapFreshnessStoreError = (path: string, cause: StateStoreError): UpdateNet
   if (cause.reason === "decode" || cause.reason === "version") return freshnessCorruptError(path, cause);
   return freshnessIoError(
     path,
-    cause.operation === "set" || cause.operation === "modify" || cause.operation === "update"
+    cause.operation === "set" || cause.operation === "update" || cause.operation === "mutate"
       ? "write"
       : "read",
     cause,
@@ -404,8 +444,21 @@ const updateManifestStateBucketSpec = (statePath: string) =>
     mode: 0o600,
     lock: "advisory" as const,
     onCorrupt: "fail" as const,
-    // Unknown envelope versions must fail closed; StateStore wraps the throw as reason:"version".
-    onVersionMismatch: (_raw: unknown, fromVersion: number): UpdateManifestState => {
+    // Migration preserves both observations; unknown versions still fail closed.
+    onVersionMismatch: (raw: unknown, fromVersion: number): UpdateManifestState => {
+      if (fromVersion === 1) {
+        const legacy = Schema.decodeUnknownSync(LegacyUpdateManifestStateSchema)(raw);
+        return Schema.decodeUnknownSync(UpdateManifestStateSchema)(
+          Object.fromEntries(
+            (["stable", "next", "dev"] as const).flatMap((channel) => {
+              const entry = legacy[channel];
+              return entry === undefined
+                ? []
+                : [[channel, mergeChannelLatest(entry, entry.lastFailure?.targetVersion ?? entry.latest)]];
+            }),
+          ),
+        );
+      }
       throw new StateStoreError({
         reason: "version",
         operation: "get",
@@ -433,10 +486,6 @@ const openUpdateManifestStateBucket = (statePath: string) =>
     }),
   );
 
-type FreshnessAdmission =
-  | { readonly kind: "admit" }
-  | { readonly kind: "reject"; readonly cachedVersion: string; readonly manifestVersion: string };
-
 export const readUpdateManifestState = (
   path: string,
 ): Effect.Effect<UpdateManifestState, UpdateNetworkError> =>
@@ -453,15 +502,7 @@ export const recordUpdateManifestSuccess = Effect.fn("Update.recordUpdateManifes
   latest: string,
 ): Effect.fn.Return<void, UpdateNetworkError> {
   yield* openUpdateManifestStateBucket(path).pipe(
-    Effect.flatMap((bucket) =>
-      bucket.update((current) => {
-        const state = normalizeUpdateManifestState(current);
-        return {
-          ...state,
-          [channel]: mergeChannelLatest(state[channel], latest),
-        };
-      }),
-    ),
+    Effect.flatMap((bucket) => bucket.update((current) => mergeChannel(current, channel, latest))),
     Effect.asVoid,
     Effect.mapError((cause) => mapFreshnessStoreError(path, cause)),
   );
@@ -483,17 +524,9 @@ export const writeUpdateFailureState = Effect.fn("Update.writeUpdateFailureState
   // Best effort: never substitute `{}` after a failed read (corruption/io). Skip the write entirely.
   yield* openUpdateManifestStateBucket(path).pipe(
     Effect.flatMap((bucket) =>
-      bucket.update((current) => {
-        const state = normalizeUpdateManifestState(current);
-        return {
-          ...state,
-          [channel]: mergeChannelLatest(state[channel], targetVersion, {
-            category,
-            targetVersion,
-            platform,
-          }),
-        };
-      }),
+      bucket.update((current) =>
+        mergeChannel(current, channel, targetVersion, { category, targetVersion, platform }),
+      ),
     ),
     Effect.catch(() => Effect.void),
   );
@@ -512,61 +545,26 @@ export const enforceManifestFreshness = Effect.fn("Update.enforceManifestFreshne
   options: { readonly persist: boolean },
 ): Effect.fn.Return<void, UpdateNetworkError | UpdateManifestReplayError> {
   if (!options.persist) {
-    const state = yield* readUpdateManifestState(statePath);
-    const cached = state[manifest.channel];
-    if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0) {
-      return yield* Effect.fail(
-        new UpdateManifestReplayError({
-          message: `Update manifest ${manifest.channel} channel version ${manifest.latest} is older than previously observed signed version ${cached.latest}. Refusing possible manifest replay.`,
-          channel: manifest.channel,
-          cachedVersion: cached.latest,
-          manifestVersion: manifest.latest,
-          remediation:
-            "Use a trusted channel whose signed manifest is at least as new as the last verified version; wait for a newer signed release and retry `lando update` without disabling freshness checks.",
-        }),
-      );
-    }
+    const cached = (yield* readUpdateManifestState(statePath))[manifest.channel];
+    if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0)
+      return yield* Effect.fail(manifestReplayError(manifest.channel, cached.latest, manifest.latest));
     return;
   }
 
-  // Compare-and-advance under one advisory lock; admission verdict is the modify result.
-  const verdict = yield* openUpdateManifestStateBucket(statePath).pipe(
+  // Compare-and-advance under one advisory lock; a replay fails before anything is written.
+  yield* openUpdateManifestStateBucket(statePath).pipe(
     Effect.flatMap((bucket) =>
-      bucket.modify((current): readonly [FreshnessAdmission, UpdateManifestState] => {
-        const state = normalizeUpdateManifestState(current);
-        const cached = state[manifest.channel];
-        if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0) {
-          return [
-            {
-              kind: "reject",
-              cachedVersion: cached.latest,
-              manifestVersion: manifest.latest,
-            },
-            state,
-          ];
-        }
-        return [
-          { kind: "admit" },
-          {
-            ...state,
-            [manifest.channel]: mergeChannelLatest(cached, manifest.latest),
-          },
-        ];
+      bucket.mutate((current) => {
+        const cached = normalizeUpdateManifestState(current)[manifest.channel];
+        return cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0
+          ? Effect.fail(manifestReplayError(manifest.channel, cached.latest, manifest.latest))
+          : Effect.succeed<StateWrite<UpdateManifestState, void>>({
+              _tag: "Set",
+              value: mergeChannel(current, manifest.channel, manifest.latest),
+              result: undefined,
+            });
       }),
     ),
-    Effect.mapError((cause) => mapFreshnessStoreError(statePath, cause)),
+    Effect.catchTag("StateStoreError", (cause) => Effect.fail(mapFreshnessStoreError(statePath, cause))),
   );
-
-  if (verdict.kind === "reject") {
-    return yield* Effect.fail(
-      new UpdateManifestReplayError({
-        message: `Update manifest ${manifest.channel} channel version ${verdict.manifestVersion} is older than previously observed signed version ${verdict.cachedVersion}. Refusing possible manifest replay.`,
-        channel: manifest.channel,
-        cachedVersion: verdict.cachedVersion,
-        manifestVersion: verdict.manifestVersion,
-        remediation:
-          "Use a trusted channel whose signed manifest is at least as new as the last verified version; wait for a newer signed release and retry `lando update` without disabling freshness checks.",
-      }),
-    );
-  }
 });

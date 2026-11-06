@@ -18,7 +18,7 @@ import { postInitSemanticIssues } from "./action-semantics.ts";
 
 export { RecipeManifestService } from "@lando/sdk/services";
 
-const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported yet.";
+const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported.";
 
 // Forward-compat verb gate: every shipped `bun:` verb is supported, so this
 // set is empty. A future deferred verb is added here to fail loudly before

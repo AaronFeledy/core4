@@ -39,7 +39,7 @@ export const landofileValidationError = (
 };
 
 export const validationErrorFromCause = (file: string, parsed: unknown, cause: unknown) => {
-  const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue) : [];
+  const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue, [], { input: parsed }) : [];
   const unknown = leaves.filter((issue) => issue._tag === "Unexpected");
   const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
   const issues = (

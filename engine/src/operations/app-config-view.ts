@@ -25,7 +25,7 @@ export interface AppConfigViewOptions {
   readonly source?: "raw" | "merged" | "resolved";
   readonly path?: string;
   readonly key?: string;
-  readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate";
+  readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "describe";
   readonly cwd?: string;
 }
 

@@ -4,6 +4,7 @@ import * as app from "@lando/sdk/app";
 import * as commandResult from "@lando/sdk/command-result";
 import * as databaseCreds from "@lando/sdk/database-creds";
 import * as digest from "@lando/sdk/digest";
+import * as errno from "@lando/sdk/errno";
 import * as errors from "@lando/sdk/errors";
 import * as events from "@lando/sdk/events";
 import * as expressions from "@lando/sdk/expressions";
@@ -36,6 +37,7 @@ import * as services from "@lando/sdk/services";
 import * as taskProgress from "@lando/sdk/task-progress";
 import * as template from "@lando/sdk/template";
 import * as toolProvisioning from "@lando/sdk/tool-provisioning";
+import * as transitions from "@lando/sdk/transitions";
 import * as verifiedStream from "@lando/sdk/verified-stream";
 import * as yaml from "@lando/sdk/yaml";
 import * as effect from "effect";
@@ -61,6 +63,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk/command-result": commandResult,
   "@lando/sdk/database-creds": databaseCreds,
   "@lando/sdk/digest": digest,
+  "@lando/sdk/errno": errno,
   "@lando/sdk/errors": errors,
   "@lando/sdk/events": events,
   "@lando/sdk/expressions": expressions,
@@ -93,6 +96,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk/task-progress": taskProgress,
   "@lando/sdk/template": template,
   "@lando/sdk/tool-provisioning": toolProvisioning,
+  "@lando/sdk/transitions": transitions,
   "@lando/sdk/verified-stream": verifiedStream,
   "@lando/sdk/yaml": yaml,
   effect,

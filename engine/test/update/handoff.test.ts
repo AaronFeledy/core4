@@ -6,9 +6,10 @@ import { updateHandoffDir } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
-import { Effect, Schema } from "effect";
+import { Effect, Exit, Schema } from "effect";
 
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { UpdateNetworkError } from "../../src/update/errors.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
 
 const roots: string[] = [];
@@ -64,6 +65,60 @@ describe("update replacement handoff", () => {
     expect(first).toEqual(result);
     expect(second).toBeUndefined();
     expect(stateStore.snapshot().size).toBe(0);
+  });
+
+  test("a finished deferred receipt cannot be finished again or consumed as a one-shot", async () => {
+    // Given: a Windows replacement already recorded success.
+    const handoff = makeUpdateHandoff(makeTestStateStore().service);
+    const token = await Effect.runPromise(handoff.saveDeferred({ updatedCore: false, updatedPlugins: [] }));
+    await Effect.runPromise(handoff.finishDeferred(token));
+    // When: a late failure path and the one-shot consumer reach the same receipt.
+    const refinished = await Effect.runPromiseExit(
+      handoff.finishDeferred(token, { tag: "UpdatePermissionError", message: "late", remediation: "retry" }),
+    );
+    const oneShot = await Effect.runPromise(handoff.consume(token));
+    // Then: the recorded success survives for the deferred consumer.
+    expect(Exit.isFailure(refinished)).toBe(true);
+    expect(oneShot).toBeUndefined();
+    expect(await Effect.runPromise(handoff.consumeDeferred(token))).toEqual({
+      updatedCore: true,
+      updatedPlugins: [],
+    });
+  });
+
+  test("a one-shot receipt cannot be finished as a deferred replacement", async () => {
+    const handoff = makeUpdateHandoff(makeTestStateStore().service);
+    const result = { updatedCore: true, updatedPlugins: [] };
+    const token = await Effect.runPromise(handoff.save(result));
+    const refused = await Effect.runPromise(Effect.result(handoff.finishDeferred(token)));
+    expect(refused._tag).toBe("Failure");
+    if (refused._tag !== "Failure") throw new Error("Expected a refused finish");
+    expect(refused.failure).toBeInstanceOf(UpdateNetworkError);
+    expect(String(refused.failure.cause)).toContain("cannot finish-deferred while one-shot");
+    expect(Exit.isFailure(await Effect.runPromiseExit(handoff.finishDeferred(crypto.randomUUID())))).toBe(
+      true,
+    );
+    expect(await Effect.runPromise(handoff.consume(token))).toEqual(result);
+  });
+
+  test("a refused consume leaves the stored receipt bytes untouched", async () => {
+    // Given a pending deferred receipt whose bytes differ from what a rewrite would emit.
+    const stateStore = makeTestStateStore();
+    const handoff = makeUpdateHandoff(stateStore.service);
+    const token = await Effect.runPromise(handoff.saveDeferred({ updatedCore: false, updatedPlugins: [] }));
+    const [saved] = [...stateStore.snapshot()];
+    if (saved === undefined) throw new Error("Expected the saved receipt");
+    const [file, bytes] = saved;
+    const path = AbsolutePath.make(file);
+    const stored = JSON.stringify(JSON.parse(new TextDecoder().decode(bytes)));
+    await Effect.runPromise(stateStore.writeRaw(path, stored));
+
+    // When the one-shot consumer reaches the pending receipt.
+    const consumed = await Effect.runPromise(handoff.consume(token));
+
+    // Then it returns nothing and does not rewrite the receipt.
+    expect(consumed).toBeUndefined();
+    expect(new TextDecoder().decode(await Effect.runPromise(stateStore.readRaw(path)))).toBe(stored);
   });
 
   test("persists under userData and survives user cache deletion", async () => {

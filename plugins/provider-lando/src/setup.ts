@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { chmod, lstat, readFile, rename } from "node:fs/promises";
-import { Result } from "effect";
-
-import { Cause, DateTime, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
+import { RecordedMachineOwnership, SetupMachineOwnership } from "./setup-machine-ownership.ts";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
@@ -243,12 +242,6 @@ export interface SetupResult {
   readonly statePath?: string;
 }
 
-type RecordedMachineOwnership = {
-  readonly name: "lando";
-  readonly createdByLando: boolean;
-  readonly createdAt?: string;
-};
-
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
 
@@ -290,23 +283,8 @@ const readExistingMachineOwnership = Effect.fnUntraced(function* (
     return undefined;
   }
 
-  if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
-  const machine = (parsed as { readonly machine: unknown }).machine;
-  if (typeof machine !== "object" || machine === null) return undefined;
-  const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
-  const createdByLando =
-    "createdByLando" in machine
-      ? (machine as { readonly createdByLando: unknown }).createdByLando
-      : undefined;
-  if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
-  const createdAt = "createdAt" in machine ? machine.createdAt : undefined;
-  if (createdAt !== undefined && (typeof createdAt !== "string" || createdAt.length === 0)) return undefined;
-  const ownership: RecordedMachineOwnership = {
-    name: "lando",
-    createdByLando,
-    ...(createdAt === undefined ? {} : { createdAt }),
-  };
-  return ownership;
+  const decoded = Schema.decodeUnknownResult(SetupMachineOwnership)(parsed);
+  return Result.isSuccess(decoded) ? decoded.success.machine : undefined;
 });
 
 const verifyRecordedMachineOwnership = Effect.fnUntraced(function* (
@@ -1173,7 +1151,16 @@ export const persistSetupState = (
   Effect.tryPromise({
     try: async () => {
       const statePath = providerStatePath(stateDir);
-      const body = `${JSON.stringify(state, null, 2)}\n`;
+      const body = `${JSON.stringify(
+        {
+          ...state,
+          ...(state.machine === undefined
+            ? {}
+            : { machine: Schema.encodeSync(RecordedMachineOwnership)(state.machine) }),
+        },
+        null,
+        2,
+      )}\n`;
       try {
         const info = await lstat(statePath);
         if (info.isFile() && (await readFile(statePath, "utf8")) === body) {

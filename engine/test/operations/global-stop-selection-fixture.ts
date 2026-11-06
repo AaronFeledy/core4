@@ -88,7 +88,9 @@ export const harness = (
 ) => {
   const removed: ServiceRuntimeInfo[] = [];
   const removedIds = new Set<string | undefined>();
-  const states = new Map(["mail", "database", "sibling"].map((name) => [name, "running"]));
+  const states = new Map<string, "running" | "exited">(
+    ["mail", "database", "sibling"].map((name) => [name, "running"]),
+  );
   const published: string[][] = [];
   const observed = (): readonly ServiceRuntimeInfo[] =>
     (

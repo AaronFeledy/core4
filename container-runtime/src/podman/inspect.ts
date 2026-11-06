@@ -21,6 +21,7 @@ import { APP_ROOT_LABEL } from "../labels.ts";
 import { containerOwnershipLabels } from "../native-ownership.ts";
 import { fingerprintInspectPublishPorts } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import { runObservationFromInspectState } from "../run-observation.ts";
 import { inspectBindSources, inspectContainerLabels, inspectNetworkNames } from "./bring-up-recreate.ts";
 import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
@@ -30,6 +31,8 @@ interface ContainerInspect {
   readonly State?: {
     readonly Health?: { readonly Status?: string };
     readonly Running?: boolean;
+    readonly Paused?: boolean;
+    readonly Restarting?: boolean;
     readonly Status?: string;
     readonly StartedAt?: string;
     readonly ExitCode?: number;
@@ -92,35 +95,6 @@ const request = (
 ): Effect.Effect<EngineHttpResponse, ProviderError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.ctx, operation)) : deps.api.request(input);
 
-const statusFromInspect = (inspect: ContainerInspect): string => {
-  if (inspect.State?.Running === true || inspect.State?.Status === "running") {
-    return "running";
-  }
-  if (inspect.State?.Running === false) return "stopped";
-  switch (inspect.State?.Status) {
-    case "created":
-    case "exited":
-    case "dead":
-    case "stopped":
-    case "removing":
-      return "stopped";
-    default:
-      return "unknown";
-  }
-};
-
-const healthFromInspect = (inspect: ContainerInspect): ServiceRuntimeInfo["health"] | undefined => {
-  const status = inspect.State?.Health?.Status?.trim().toLowerCase();
-  switch (status) {
-    case "healthy":
-    case "starting":
-    case "unhealthy":
-      return status;
-    default:
-      return undefined;
-  }
-};
-
 const lastStartedAt = (inspect: ContainerInspect): Date | undefined => {
   const startedAt = inspect.State?.StartedAt;
   if (startedAt === undefined || startedAt.length === 0 || startedAt.startsWith("0001-")) {
@@ -161,8 +135,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       appRoot: plan.root,
       service: service.name,
       providerId: plan.provider,
-      status: "stopped",
-      state: "stopped",
+      status: "absent",
       publications: { status: "missing" },
       mounts: { status: "missing" },
     };
@@ -196,14 +169,12 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       service: service.name,
       providerId: plan.provider,
       status: "unknown",
-      state: "unknown",
       publications: { status: "unknown" },
       mounts: { status: "unknown" },
       labels,
     };
   }
-  const status = statusFromInspect(decoded);
-  const health = healthFromInspect(decoded);
+  const run = runObservationFromInspectState(decoded.State);
   const startedAt = lastStartedAt(decoded);
   const bindSources = inspectBindSources(decoded);
   const networkNames = inspectNetworkNames(decoded);
@@ -212,16 +183,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     appRoot: plan.root,
     service: service.name,
     providerId: plan.provider,
-    status,
-    state:
-      decoded.State?.Status === "restarting" || decoded.State?.Status === "paused"
-        ? decoded.State.Status
-        : status,
-    ...((decoded.State?.Status === "exited" || decoded.State?.Status === "dead") &&
-    typeof decoded.State.ExitCode === "number"
-      ? { exitCode: decoded.State.ExitCode }
-      : {}),
-    ...(health === undefined ? {} : { health }),
+    ...run,
     ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
     ...(typeof decoded.Image === "string" && decoded.Image.length > 0
       ? { imageIdentity: decoded.Image }

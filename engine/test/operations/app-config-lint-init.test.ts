@@ -78,7 +78,7 @@ const featureRegistry = (source: "service" | "app", init: boolean, calls: string
   return Plugins.layerWith({ app: false, user: false }, [...bundledPluginModules(), plugin]);
 };
 
-test.each(cases)("lint defers %s feature init=%s to fail-closed final planning", async (source, init) => {
+test.each(cases)("lint validates %s feature init=%s in final planning", async (source, init) => {
   const root = await mkdtemp(join(tmpdir(), "lando-feature-init-lint-"));
   const calls: string[] = [];
   const registry = featureRegistry(source, init, calls);
@@ -97,11 +97,14 @@ test.each(cases)("lint defers %s feature init=%s to fail-closed final planning",
         ),
       ).pipe(Effect.provide(registry)),
     );
-    expect(linted.valid).toBe(true);
-    expect(linted.violations.filter((issue) => issue.path.join(".") === "services.web.init")).toMatchObject([
-      { severity: "warning", rule: "landofile.capability" },
-    ]);
-    expect(calls).toEqual([]);
+    expect(linted.valid).toBe(!init);
+    expect(
+      linted.violations
+        .filter((issue) => issue.path.join(".") === "services.web.init")
+        .map((issue) => issue.severity),
+    ).toEqual(init ? ["warning", "error"] : ["warning"]);
+    expect(calls).toEqual([source]);
+    calls.length = 0;
 
     const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }));
     if (snapshot.resolved === undefined) throw new Error("Expected resolved snapshot");
@@ -156,7 +159,8 @@ test.each(cases)(
           .filter((issue) => issue.path.join(".") === "services.web.init")
           .map((issue) => issue.severity),
       ).toEqual(init ? ["error"] : []);
-      expect(calls).toEqual([]);
+      expect(calls).toEqual(init ? [] : [source]);
+      calls.length = 0;
 
       const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }));
       if (snapshot.resolved === undefined) throw new Error("Expected resolved snapshot");

@@ -35,7 +35,7 @@ test.each(["current", "stale", "missing"] as const)(
         defaultTlsFile(paths),
         dashboardConfigFile(paths),
       ].map((path) => fixture.files.get(path));
-      await Effect.runPromise(acknowledge(stateStore, app, routeReloadDigest(snapshot)));
+      await Effect.runPromise(acknowledge(stateStore, app.ownerKey, routeReloadDigest(snapshot)));
     }
     if (generation === "stale") fixture.files.set(dashboardConfigFile(paths), "changed-dashboard");
     fixture.mutations.length = 0;

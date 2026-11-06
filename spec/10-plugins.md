@@ -99,7 +99,7 @@ Command ids MUST be canonical and namespaced. Command descriptors carry no `name
 | `commands` | Command registry | Obeys namespace and alias rules (§8.1); a declared `yes` flag follows §8.3.1. |
 | `initSources` | Init command | Supplies prompts, source auth, dynamic choices, and acquisition locators; core acquires and commits (§8.8.13). |
 | `routerServices`, `tunnelServices` | Networking subsystems | Implements routing or sharing contracts. |
-| `remoteSources`, `datasets` | Remote-sync subsystem | Implements the §10.12 contracts; core owns orchestration, `CodeSync`, setup, and tool execution. Bundled implementations are sequenced in the ROADMAP. |
+| `remoteSources`, `datasets` | Remote-sync subsystem | Implements the §10.12 contracts; core owns orchestration, `CodeSync`, setup, and tool execution. |
 | `certificateAuthorities` | Certs subsystem | Implements certificate authority contracts. |
 | `loggers`, `renderers`, `rendererPanels` | Output services | Implements logging, rendering, or frozen panel contracts. |
 | `toolingEngines` | Tooling service | Executes compiled tooling graphs. |

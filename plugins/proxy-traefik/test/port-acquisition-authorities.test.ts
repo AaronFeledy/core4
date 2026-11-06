@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Schema } from "effect";
 
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import type {
   PrivilegeService,
   ProcessResult,
@@ -11,6 +11,7 @@ import type {
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
 import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
@@ -70,7 +71,7 @@ const makePrivilege = (
   };
 };
 
-const app = AppId.make("demo");
+const app = routeOwner("demo");
 const routes = [
   {
     hostname: "web.demo.lndo.site",

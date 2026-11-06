@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { DataTransferError, ProviderUnavailableError, ProxyError, ScratchAppError } from "@lando/sdk/errors";
+import {
+  DataTransferError,
+  EventError,
+  ProviderUnavailableError,
+  ProxyError,
+  ScratchAppError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -28,7 +34,11 @@ import {
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
-import { ScratchRegistry, type ScratchRegistryEntry } from "../../src/scratch-app/registry.ts";
+import {
+  ScratchRegistry,
+  type ScratchRegistryEntry,
+  planScratchRegistryWrite,
+} from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
@@ -59,6 +69,7 @@ interface DestroyFixtureOptions {
   readonly routeFail?: boolean;
   readonly copyFail?: boolean;
   readonly registryFail?: boolean;
+  readonly postScratchDestroyFail?: boolean;
 }
 
 export const withDestroyFixture = async (
@@ -197,8 +208,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       ScratchRegistry.of({
         get: (key) => Effect.sync(() => entries.get(key)),
         list: () => Effect.sync(() => [...entries.values()]),
-        read: () => Effect.sync(() => ({ version: 1, entries: [...entries.values()] })),
-        upsert: (value) =>
+        read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
+        upsert: (...write) =>
           Effect.sync(() => {
             calls.push("registry:upsert");
           }).pipe(
@@ -211,9 +222,11 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                       remediation: "Injected registry write failure for destroy fixture.",
                     }),
                   )
-                : Effect.sync(() => {
-                    entries.set(value.id, value);
-                  }),
+                : planScratchRegistryWrite(entries.get(write[1].id), ...write).pipe(
+                    Effect.map((plan) => {
+                      if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+                    }),
+                  ),
             ),
           ),
         remove: (key) =>
@@ -227,7 +240,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
-        removeRoutes: () =>
+        removeRoutes: (_owner) =>
           Effect.sync(() => {
             calls.push("routes");
           }).pipe(
@@ -250,18 +263,26 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       EventService,
       EventService.of({
         publish: (event) =>
-          Effect.sync(() => {
-            calls.push(event._tag);
-            events.push(event);
-            const app = Predicate.hasProperty(event, "app") ? event.app : undefined;
-            if (
-              Predicate.hasProperty(app, "kind") &&
-              app.kind === "scratch" &&
-              Predicate.hasProperty(app, "root") &&
-              typeof app.root === "string"
-            )
-              rootObservations.push({ tag: event._tag, exists: existsSync(app.root) });
-          }),
+          options.postScratchDestroyFail === true && event._tag === "post-scratch-destroy"
+            ? Effect.fail(
+                new EventError({
+                  message: "injected post-scratch-destroy failure",
+                  event: event._tag,
+                  remediation: "Injected event failure for destroy fixture.",
+                }),
+              )
+            : Effect.sync(() => {
+                calls.push(event._tag);
+                events.push(event);
+                const app = Predicate.hasProperty(event, "app") ? event.app : undefined;
+                if (
+                  Predicate.hasProperty(app, "kind") &&
+                  app.kind === "scratch" &&
+                  Predicate.hasProperty(app, "root") &&
+                  typeof app.root === "string"
+                )
+                  rootObservations.push({ tag: event._tag, exists: existsSync(app.root) });
+              }),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused queue"),
         waitFor: () => Effect.never,
@@ -284,6 +305,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
               )
             : Effect.die("unused transfer"),
         transferStream: () => Stream.empty,
+        read: () => Stream.empty,
         snapshot: () => Effect.die("unused snapshot"),
         restore: () => Effect.die("unused restore"),
         resolveSnapshot: () => Effect.die("unused resolve"),

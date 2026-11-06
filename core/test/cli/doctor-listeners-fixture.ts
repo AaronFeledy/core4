@@ -102,7 +102,6 @@ export const listenerProvider = (
         service: service.name,
         providerId: plan.provider,
         status: "running",
-        state: "running",
         containerId: `container-${service.name}`,
         publications: { status: "unknown" as const },
       })),

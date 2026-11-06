@@ -3,7 +3,7 @@ id: global-doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, global, doctor, diagnostics]
+tags: [docs, global, doctor, diagnostics]
 ---
 
 # Read the global-app doctor check
@@ -70,6 +70,12 @@ The first remediation is always something you can do without privileges, such as
 A watcher that starts but never delivers events, which some virtual filesystems cause, is not detected by this check.
 
 Read the `filesystem-watch` check in the same report for a live CLI-host result. Linux and WSL test one watch allocation. Windows also confirms one file event on the host's temporary filesystem. Neither result looks inside the provider VM or refreshes this router record. See [Check filesystem watches on this host](../subsystems/doctor-walkthrough.mdx#check-filesystem-watches-on-this-host).
+
+## Read the legacy route files check
+
+Each route file in the router's configuration directory is named after a hash of its owner: the app folder for user and global apps, the scratch id for scratch apps. That's what lets a renamed app replace its routes instead of leaving the old hostnames live. The `legacy-route-files` check warns about any `routes-*.yml` file that doesn't use that layout, such as files that development builds named after the app. Starting or destroying an app never adopts or deletes a file it can't attribute, so those hostnames stay published until you remove the file. The check also reports an owner-named file whose first line isn't Lando's route metadata; `lando start` refuses to overwrite that file.
+
+Doctor only reads. It lists the full paths of the files it found, and marks the list as truncated when there are too many to show. Delete those files. On Windows, then run `lando global:restart` so Traefik reloads its route configuration. Republish the routes you still need: run `lando start` in a user app, `lando global:start` for global services, or start a scratch app again with its scratch command.
 
 ## Verify
 
