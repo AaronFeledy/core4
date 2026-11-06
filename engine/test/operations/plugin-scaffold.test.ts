@@ -55,7 +55,7 @@ describe("plugin scaffold", () => {
         ]) {
           expect(sources).not.toMatch(banned);
         }
-        expect(packageJson.devDependencies.typescript).toBe("^5.9.0");
+        expect(packageJson.devDependencies.typescript).toBe("^7.0.2");
         const compiler = Bun.spawn(
           [
             process.execPath,

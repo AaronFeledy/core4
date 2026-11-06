@@ -64,7 +64,7 @@ export class Greeter extends Context.Service<Greeter, {
 }
 ```
 
-Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and uses TypeScript 5.9 or newer.
+Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and TypeScript 7.
 
 ## Declare a feature's endpoints
 
@@ -245,7 +245,7 @@ Check your generated service and package before you start replacing the example.
     <Step name="scaffold">
       <Run command="lando meta:plugin:new @acme/lando-plugin-demo ./demo --template bare --cspace acme --description Demo-plugin --no-interactive --format=json" />
       <Verify file="demo/src/service.ts" expect={{ regex: "extends Context\\.Service<[\\s\\S]*@acme/lando-plugin-demo/Greeter[\\s\\S]*static readonly layer = Layer\\.effect\\([\\s\\S]*Greeter\\.of\\([\\s\\S]*Effect\\.fn\\(\"Greeter\\.greet\"\\)" }} />
-      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.0\\.0\"[\\s\\S]*\"typescript\":\\s*\"\\^5\\.9\\.0\"" }} />
+      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.0\\.0\"[\\s\\S]*\"typescript\":\\s*\"\\^7\\.0\\.2\"" }} />
     </Step>
   </Scenario>
 </Guide>
