@@ -1,100 +1,103 @@
-# Lando v4 release roadmap
+# Lando v4 status and release bars
 
-No public Lando v4 release has shipped. This file is the canonical planning ladder for maintainers. When this document and an Alpha PRD disagree, the PRD wins.
+No public Lando v4 release has shipped. This file records what is built and what each release must prove before it is tagged.
 
-Current stage: **Alpha 1**. Ordered Alpha stories live in [`spec/alpha/prd-alpha-00-index.md`](./alpha/prd-alpha-00-index.md) (US-592 through US-600).
+**This file never decides what may be worked on.** A capability that is not built is in scope whenever a task asks for it: build it to its spec section, and author any missing design in that section first. Release stages gate tags, not merges. Only §14.1 and the part-level non-goal sections put work out of scope.
 
-## Cadence
+**Feature freeze: not in effect.** A freeze exists only when a maintainer replaces this line with a dated declaration.
 
-| Stage | Status | Version / channel |
+## Release ladder
+
+| Stage | Version / channel | Artifacts |
 | --- | --- | --- |
-| Pre-alpha | historical; never publicly released | none |
-| Alpha 1 | current | `4.0.0-dev.N` on `dev` |
-| Beta 1 | next; hardening only | first `4.0.0-beta.N` on `next` |
-| RC | later | `4.0.0-rc.N`; first production distribution |
-| 4.0 GA | later | `4.0.0` on `stable` |
-| 4.1+ | deferred | post-GA minors |
+| Alpha (current) | `4.0.0-dev.N` on `dev` | Unsigned GitHub prereleases |
+| Beta | `4.0.0-beta.N` on `next` | First Beta tag |
+| RC | `4.0.0-rc.N` on `next` | First production-signed distribution |
+| 4.0 GA | `4.0.0` on `stable` | Promoted from the last green RC |
+| 4.x | Later minors | Release vehicles only; no work is reserved for them |
 
-## Pre-alpha (historical)
+Earlier private phases (MVP and the internal Alphas and Betas) are pre-alpha history, not a forward plan.
 
-Private-repo phases built this tree and never left the lab. That work stays on the record. It is not a public release, and those phase names are not a forward plan.
+## Release bars
 
-What is already in the working tree:
+### Alpha (`4.0.0-dev.N`)
 
-- MVP walking skeleton: Effect runtime, SDK contracts, `lando start` on Linux.
-- Catalog and runtime breadth: common service types, recipes, tooling, global app, scratch apps, providers, Mutagen, proxy, CA, doctor, setup, uninstall.
-- Governance and agent-native surfaces: schemas, telemetry, machine output, MCP, `lando open`, Landofile version constraint, `lando run`, architecture-simplicity, Lando 3 parity.
-- Host identity: host SSH-agent forwarding (`sshAgent.sidecar: false`), gpg-agent forwarding, and pluggable secret stores (bundled `env` and `1password`) ship together on the §10.4 relay and §4.2 `SecretStore` contracts (§10.4, §9).
+Exit when:
 
-The old ladder (MVP, four Alphas, a contract-completion Beta, then a hardening Beta) is retired. Do not schedule new 4.0 work as a later Alpha.
+1. Live `lando setup` and `lando doctor` pass on all six targets: `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `windows-x64`, and `windows-arm64`.
+2. Drupal and Rails journeys pass on all six targets: start the app, run recipe tooling, and run `lando info`.
+3. On `darwin-x64`, the supported path is Docker Desktop through `provider-docker`; `provider-lando` stays fail-closed there.
+4. Public artifacts are unsigned `4.0.0-dev.N` builds on `dev`.
 
-## Alpha 1 (current)
+Status (2026-11-05): main CI publishes unsigned six-target GitHub prereleases (latest `v4.0.0-dev.1445`); no `4.0.0-dev.N` npm package has been published. The `platform-readiness`, `drupal-journey`, and `rails-journey` workflows cover all six targets, but none has passed on `main` yet: the latest completed runs failed on the Linux cells and cancelled the self-hosted macOS and Windows cells. Criteria 3 and 4 hold.
 
-Ship a public Alpha that testers can run. Public Alpha binaries and npm packages use `4.0.0-dev.N` on the `dev` channel. Alpha artifacts are not production-signed.
+### Beta (`4.0.0-beta.N`)
 
-Six-platform support is an **exit target**, not a claim about today.
+Exit when known Alpha blockers are fixed and the candidate is ready for RC.
 
-### Alpha exit targets
+### RC (`4.0.0-rc.N`)
 
-| Target | Provider path required at exit |
-| --- | --- |
-| `linux-x64` | `lando` (managed Podman) |
-| `linux-arm64` | `lando` (managed Podman) |
-| `darwin-arm64` | `lando` (managed Podman) |
-| `darwin-x64` | `provider-docker` / Docker Desktop. `provider-lando` stays tagged fail-closed. |
-| `windows-x64` | `lando` (managed Podman) |
-| `windows-arm64` | `lando` (managed Podman) |
+RC is the first stage that requires production signing, notarization, SBOM, SLSA provenance, curl-pipe installers, and self-update on the release matrix (§17.9). Alpha and Beta do not.
 
-Feature freeze begins only after every Alpha PRD story passes. No new 4.0 feature surface after that.
+Exit when every §17.9 binary-shipping item is green on the release platforms and two RC iterations have zero blocker bugs.
 
-App checks (§10.5.2) replace the URL scanner before freeze, in order: ownership-classified verdicts with a neutral `expected` state and router error marker; `checks` replacing `scanner` with app-level rules and profiles; `command` and `tcp` kinds plus `app:check`.
+Status (2026-11-05): signing, notarization, SBOM, provenance, and cosign stages exist in the manual signed-release orchestrator and are credential-gated; CI wires none of them. Installer scripts and `lando update` exist. The live install surface is GitHub Release artifacts, as unsigned dev prereleases only; the `get.lando.dev` installers and `update.lando.dev` channel manifests are not live.
 
-### Alpha 1 exit criteria
+### 4.0 GA
 
-1. Every story in [`spec/alpha/prd-alpha-00-index.md`](./alpha/prd-alpha-00-index.md) is accepted (US-592 through US-600).
-2. Live `lando setup` and `lando doctor` succeed on all six targets.
-3. Drupal and Rails journeys succeed on all six targets (start the app, run recipe tooling, `lando info`).
-4. Public Alpha artifacts are `4.0.0-dev.N` on `dev`. Production signing, notarization, SBOM, provenance, installers, and self-update wait for RC.
-5. On `darwin-x64`, the supported path is Docker Desktop via `provider-docker`. `provider-lando` remains tagged fail-closed.
-6. Feature freeze is entered.
+Tag `4.0.0` from the last green RC onto `stable`. The GA tag adds only version bumps and RC bug fixes.
 
-## Beta 1 (hardening)
+## Capability status
 
-Hardening only. This is the old hardening Beta, renamed. No new commands, flags, service types, schema fields, or events. Fix bugs, diagnostics, docs drift, and performance regressions against shipped budgets.
+Audited against `main` on 2026-11-05. **Built** means reachable from the CLI or library. **Partial** means some runtime exists, and the note names what is missing. **Contract only** means SDK schemas, service tags, or a `NotImplementedError` stub exist without a runtime. **Not started** means nothing exists beyond the spec. Update a row in the change that moves it.
 
-First public `4.0.0-beta.N` ships on `next`.
+Built and not listed below: the Effect runtime and SDK contracts; the service-type catalog, recipes, and tooling, including `command:` steps; global and scratch apps; the `lando`, Docker, and Podman providers; Mutagen file sync, proxy, CA, setup, doctor, and uninstall; schemas, telemetry, machine output, and MCP over stdio; `lando open`, `lando run`, and the Landofile version constraint; host SSH-agent and gpg-agent forwarding; the `env` and `1password` secret stores; and the `@lando/core/testing` export (not yet published to npm).
 
-### Beta 1 exit criteria
+### Remote sync, hosters, and sharing
 
-Known Alpha blockers are burned down. The candidate is ready for RC. No new feature surface landed.
+| Capability | Spec | Status | Notes |
+| --- | --- | --- | --- |
+| `RemoteSource`/`Dataset` orchestration for pull, push, and remotes | §10.12 | Partial | Engine operations, CLI commands, and library handles are wired and fail closed without plugins. No bundled `RemoteSource` or `Dataset`; no `switch`. |
+| `CodeSync` | §10.12.1 | Not started | Contract-suite doubles reject code-tree bindings. |
+| Remote protection | §10.12.8 | Partial | Environment-level `protected`/`protectedByDefault` and push `--force` exist; target-bound approval does not. |
+| Tethered sessions | §10.12.5 | Not started | Only an MCP never-allow entry for `app:remote:tether`. |
+| Vendor tools | §10.12.4 | Contract only | `RemoteToolMissingError` and `capabilities.tool`; the engine never runs a vendor tool. |
+| Bundled `dotenv` config `Dataset` | §10.12.7 | Not started | `dotenv` appears only as an unsupported tooling key. |
+| `lando` and `lando-session` secret stores, durable grants | §9.5.1 | Not started | |
+| SSH identities for remotes | §10.4 | Not started | Host agent forwarding is built. |
+| Hoster init sources | §8.8.13 | Not started | Git, tarball, npm, and registry recipe init are built. |
+| Local-snapshot translation and `remote-metadata` cache | §7.4.2, §12.1 | Not started | The `ConfigTranslator` framework is built. |
+| Pantheon, Acquia, and Upsun connectors; hoster recipes | §10.12, §8.8 | Not started | |
+| `TunnelService` and `lando share` | §10.2.2 | Partial | Share, list, stop, and the tunnel registry are wired; no bundled `TunnelService`. |
 
-## RC
+### Renderer and CLI
 
-Production distribution rehearsal. Tag `4.0.0-rc.N`.
+| Capability | Spec | Status | Notes |
+| --- | --- | --- | --- |
+| Rich render events (`code.snippet`, `diff.render`, `markdown.block`) | §8.9.4 | Partial | Schemas plus plain and JSON fallbacks; no rich TTY presentation or core emitters. |
+| Renderer panel slots | §8.9.5 | Contract only | Schemas, manifest validation, and the contract suite; no runtime or bundled panel. |
+| Keymap overrides and help overlay | §8.9.6 | Partial | Action vocabulary and `KeymapConfig` schema exist; the renderer uses fixed task-tree keys, with no global `keymap:` wiring and no overlay. |
+| Interactive `app:logs --follow` viewer | §8.9.8 | Not started | Line-mode follow works; `--no-viewer` is a no-op. |
+| `meta:events:follow` | §8.2 | Contract only | Registered deferred command returning `NotImplementedError`. |
+| Task-tree `--tail`, `--expand`, and `--collapse` flags | §8.9 | Not started | Flags fail with remediation; Enter/Esc expand and collapse keybindings are built. |
+| MCP streamable HTTP transport | §10.14 | Not started | Stdio only; needs a §10.14 transport contract first. |
+| `registry:<id>` includes | §7.7.1 | Not started | Local, `user:`, git, and `npm:` includes are built. |
+| `meta:plugin:add` from Git, `file:`, or tarball | §9.6 | Not started | npm sources are built. |
 
-RC is the first stage that requires production signing, notarization, SBOM, SLSA provenance, curl-pipe installers, and self-update on the release matrix. Alpha and Beta do not.
+### Runtime, checks, and build
 
-### RC exit criteria
+| Capability | Spec | Status | Notes |
+| --- | --- | --- | --- |
+| App checks: ownership-classified verdicts | §10.5.2 | Partial | `ready`, `app-error`, `service-error`, and `lando-error` with the router marker exist; the neutral `expected` state does not. |
+| App checks: Landofile `checks` replacing `scanner` | §10.5.2 | Not started | Depends on the verdict row. |
+| App checks: `command` and `tcp` kinds plus `app:check` | §10.5.2 | Not started | Checks are HTTP only. Depends on the `checks` row. |
+| Programmable execution | §22 | Not started | The §22 contracts are on `main`, so nothing blocks implementation. Build in dependency order: contracts and retained runtime; configuration-backed scratch and admission; environment, process, and artifact integration; public access, guides, and performance proof. Each slice includes its tests. |
+| Readiness scheduler extraction | §5.3, §10.5.1 | Not started | Providers still run readiness attempts inline. |
+| Durable readiness last-proof storage | §6.10 | Not started | Needs an identity and invalidation design first. |
+| Full Bun config-source isolation for child processes | §9.6 | Not started | Network and CA projection are built. |
+| Error, event, service, recipe-action, API-report, acceptance-index, Mutagen-client, and plugin-template generators | §17.2 | Not started | |
+| Multi-provider apps | §5.9 | Not started | One provider per app. |
+| §14.2 extension constraints: OS-keychain store, persistent agent, explicit `global:` dependencies, service-type `topLevelAlias` | §14.2 | Not started | Each has its trigger condition in §14.2. |
+| Install surfaces beyond GitHub Releases and `get.lando.dev` | §17.7 | Not started | Outside the current install contract; adding one extends §17.7 and §17.8. |
 
-Every §17.9 binary-shipping item is green on the release platforms. Two RC iterations with zero blocker bugs.
-
-## 4.0 GA
-
-Tag `4.0.0` from the last green RC onto `stable`. Version bumps and RC bug fixes only.
-
-## 4.1+
-
-Post-GA minors. Out of 4.0:
-
-- `TunnelService` / `lando share` (contract frozen; no bundled tunnel)
-- Hoster synchronization remains planned for this wave, not shipped by these spec edits: §10.12 source/Dataset orchestration, `CodeSync`, protected operations, revocable foreground tether, vendor tools, and the bundled `dotenv` plugin; §9.5.1 durable grants and scope-local credentials; §10.4 SSH identities; §8.8.13 init sources; §7.4.2 local-snapshot translation with explicit metadata refresh. Bundled Pantheon, Acquia, and Upsun connectors remain here. Any of this core surface moves into 4.0 only through an accepted Alpha PRD story before feature freeze; nothing lands in Beta 1.
-- Renderer 4.1: rich render events, panel slots, keymap remapping, interactive `app:logs --follow` viewer
-- Deferred meta commands: `meta:events:follow`
-
-Later 4.x work (distro packages, persistent agent, multi-provider apps, and the rest of the §14.2 deferrals) stays post-GA.
-
-## Programmable execution: authored, not scheduled
-
-§22 is planned local-development functionality with no assigned release, Alpha exit commitment, or Beta feature exception. Implementation remains blocked until the contract changes merge and the merge gate records the verified PR and commit.
-
-Order: contracts and retained runtime; configuration-backed scratch and admission; environment/process/artifact integration; public access, guides, and performance proof. Reuse existing prerequisite fixes rather than duplicate them. Each slice includes its tests. Platform integrations and detached/distributed execution remain outside this work.
+Smaller deferred items are noted inline in their spec sections and in GitHub issues. The same rule applies to them: deferred means not built, not out of scope.

@@ -149,7 +149,7 @@ Effect plus a small set of YAML/CA primitives are the only target runtime depend
 | `@lando/core/docs/components` | executable-guide runtime and AST helpers (§19.3) |
 | `@lando/core/docs/redactions` | transcript redaction list (§19.6) |
 
-The removed `./oclif` adapter is not public. The default entry MUST NOT pull a heavy CLI framework into its graph; `./cli` MUST NOT require `@oclif/core`; `./schema` MUST be tree-shakeable per schema; `./paths` MUST be Effect-free and OCLIF-free; `./landofile` MUST remain OCLIF-free and avoid the full runtime. `./testing` follows the compatibility contract in §16.8; its publication schedule belongs to the ROADMAP. Docs entry points MUST be tree-shakeable and MUST NOT pull the Effect runtime or `@oclif/core`.
+The removed `./oclif` adapter is not public. The default entry MUST NOT pull a heavy CLI framework into its graph; `./cli` MUST NOT require `@oclif/core`; `./schema` MUST be tree-shakeable per schema; `./paths` MUST be Effect-free and OCLIF-free; `./landofile` MUST remain OCLIF-free and avoid the full runtime. `./testing` follows the compatibility contract in §16.8; its publication status is tracked in the ROADMAP. Docs entry points MUST be tree-shakeable and MUST NOT pull the Effect runtime or `@oclif/core`.
 
 Every entry point ships its own declarations, uses type-only re-exports where appropriate, and is ESM-only. `bin/lando.ts` consumes `@lando/core/cli`; the compiled binary is one consumer, not a separate architecture (§16.4).
 

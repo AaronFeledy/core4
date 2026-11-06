@@ -540,7 +540,7 @@ Tagged errors are `DataTransferError`, `DataEndpointUnsupportedError`, `DataChec
 
 ### 10.12 Remote data sync (`RemoteSource` + `Dataset` + `CodeSync`)
 
-Core owns generic orchestration, `CodeSync`, setup, and tool execution. Vendor APIs, environment models, and credential formats MUST remain plugin-owned. The bundled `dotenv` config `Dataset` is a plugin, not hoster logic in core. No bundled `RemoteSource` is assumed; missing implementations MUST fail with installation remediation (§4.3). These are authored contracts, not a claim of shipped implementation; sequencing belongs to `ROADMAP.md`.
+Core owns generic orchestration, `CodeSync`, setup, and tool execution. Vendor APIs, environment models, and credential formats MUST remain plugin-owned. The bundled `dotenv` config `Dataset` is a plugin, not hoster logic in core. No bundled `RemoteSource` is assumed; missing implementations MUST fail with installation remediation (§4.3). Implementation status is tracked in `ROADMAP.md`.
 
 **Contracts and selection**
 

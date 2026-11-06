@@ -1192,7 +1192,6 @@ describe("EventCommandExecutorLayer.layer", () => {
     const deferred = {
       summary: "Deferred test command.",
       remediation: "Use an implemented command.",
-      phase: "4.1" as const,
     };
     const spec: LandoCommandSpec = {
       ...testSpec(() => Effect.die("deferred command must not run")),
