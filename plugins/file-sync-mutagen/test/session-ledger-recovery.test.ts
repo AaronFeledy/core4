@@ -10,7 +10,7 @@ import { makeTestStateStore } from "@lando/state-store/testing";
 import { Cause, Effect, Exit } from "effect";
 import type { MutagenProcessClient } from "../src/mutagen-process-client.ts";
 import { openLedger } from "../src/session-ledger.ts";
-import { fake, id, name, privateFileAccess, spec } from "./support/mutagen-process.ts";
+import { fake, id, name, privateFileAccess, runDisposalPlan, spec } from "./support/mutagen-process.ts";
 
 test.each([
   { operation: "invalidateAppDrain", edge: "invalidate-drain", to: "invalidated", tag: "FileSyncStartError" },
@@ -101,15 +101,29 @@ const interruptWrites = (stateStore: PluginStateStore, after: number) => {
       stateStore.open(bucketSpec).pipe(
         Effect.map((bucket) => ({
           ...bucket,
-          set: (value) =>
-            bucket.set(value).pipe(
-              Effect.andThen(
-                Effect.suspend(() => {
-                  writes += 1;
-                  return writes === after ? Effect.interrupt : Effect.void;
-                }),
-              ),
-            ),
+          // Count only writes that reach the file; a settled (Keep) mutation is not a write.
+          mutate: (f) => {
+            let wrote = false;
+            return bucket
+              .mutate((current) =>
+                f(current).pipe(
+                  Effect.tap((write) =>
+                    Effect.sync(() => {
+                      wrote = write._tag !== "Keep";
+                    }),
+                  ),
+                ),
+              )
+              .pipe(
+                Effect.tap(() =>
+                  Effect.suspend(() => {
+                    if (!wrote) return Effect.void;
+                    writes += 1;
+                    return writes === after ? Effect.interrupt : Effect.void;
+                  }),
+                ),
+              );
+          },
         })),
       ),
   };
@@ -137,27 +151,13 @@ test.each(initialStates)(
         const resumed = harness.reopen();
         const recovery = await Effect.runPromiseExit(
           Effect.gen(function* () {
-            const phase = yield* resumed.disposalPhase(spec.app);
-            switch (phase) {
-              case "absent":
-              case "active":
-                yield* resumed.invalidateAppDrain(spec.app);
-                yield* resumed.create({ name, spec });
-                yield* resumed.drainApp(spec.app);
-                yield* resumed.disposeApp(spec.app);
-                break;
-              case "drained":
-              case "disposing":
-                yield* resumed.disposeApp(spec.app);
-                break;
-              case "completed":
-                break;
-              default: {
-                const exhaustive: never = phase;
-                return exhaustive;
-              }
+            const found = yield* resumed.disposalPhase(spec.app);
+            // Nothing sessionful survived (or the app is merely active): restart it, then let the plan finish.
+            if (found === "absent" || found === "active") {
+              yield* resumed.invalidateAppDrain(spec.app);
+              yield* resumed.create({ name, spec });
             }
-            yield* resumed.completeAppDisposal(spec.app);
+            yield* runDisposalPlan(resumed, yield* resumed.disposalPhase(spec.app));
           }),
         );
         expect(recovery._tag, `${initial}, interrupted after ledger write ${after}`).toBe("Success");

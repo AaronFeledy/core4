@@ -1,7 +1,13 @@
 import { isDeepStrictEqual } from "node:util";
 import { sameRealpath } from "@lando/paths";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { FileSyncSessionSpec } from "@lando/sdk/schema";
+import {
+  type FileSyncDisposalOperation,
+  type FileSyncDisposalPhase,
+  FileSyncSessionSpec,
+  fileSyncDisposalTransitions,
+} from "@lando/sdk/schema";
+import type { StateWrite } from "@lando/sdk/services";
 import { type Transitions, defineTransitions, illegalTransitionMessage } from "@lando/sdk/transitions";
 import { Schema } from "effect";
 
@@ -54,7 +60,7 @@ export const openLedger = (stateStore: PluginStateStore) =>
 type ReceiptPhase = SessionReceipt["phase"] | "absent";
 type DrainPhase = AppDrain["phase"] | "absent";
 
-const receiptTransitions = defineTransitions<ReceiptPhase>()({
+export const receiptTransitions = defineTransitions<ReceiptPhase>()({
   "prepare-create": { from: ["absent"], to: "preparing" },
   "commit-create": { from: ["preparing"], to: "committed" },
   "forget-uncreated": { from: ["preparing"], to: "absent" },
@@ -65,12 +71,48 @@ const receiptTransitions = defineTransitions<ReceiptPhase>()({
   "finish-terminate": { from: ["disposing"], to: "absent" },
 });
 
-const drainTransitions = defineTransitions<DrainPhase>()({
-  "invalidate-drain": { from: ["absent", "invalidated", "preparing", "drained"], to: "invalidated" },
-  "begin-drain": { from: ["absent", "invalidated", "preparing", "drained"], to: "preparing" },
+/**
+ * Projection of this ledger onto the contract phases of
+ * `fileSyncDisposalTransitions`. `invalidated` and `preparing` are the ledger's
+ * finer detail inside the contract's `active`: an interrupted drain is still an
+ * active app until a drain finishes. Callers validate receipts against the drain
+ * first; this only names the phase.
+ */
+const DRAIN_CONTRACT_PHASE: { readonly [Phase in AppDrain["phase"]]: FileSyncDisposalPhase } = {
+  invalidated: "active",
+  preparing: "active",
+  drained: "drained",
+  disposing: "disposing",
+  completed: "completed",
+};
+
+export const projectDisposalPhase = (
+  drain: AppDrain["phase"] | undefined,
+  ownsSessions: boolean,
+): FileSyncDisposalPhase =>
+  drain === undefined ? (ownsSessions ? "active" : "absent") : DRAIN_CONTRACT_PHASE[drain];
+
+// A missing drain with owned sessions projects to active. The public contract
+// selects eligible sources; the ledger retains its intermediate durable writes.
+const drainSources = (operation: FileSyncDisposalOperation): readonly DrainPhase[] =>
+  ["absent" as const, ...AppDrain.fields.phase.literals].filter(
+    (phase) =>
+      fileSyncDisposalTransitions.step(
+        operation,
+        projectDisposalPhase(phase === "absent" ? undefined : phase, true),
+      )._tag === "Advance",
+  );
+
+export const drainTransitions = defineTransitions<DrainPhase>()({
+  "invalidate-drain": { from: drainSources("invalidateDrain"), to: "invalidated" },
+  "begin-drain": { from: drainSources("drain"), to: "preparing" },
   "finish-drain": { from: ["preparing"], to: "drained" },
-  "begin-disposal": { from: ["drained"], to: "disposing", settledIn: ["disposing"] },
-  "complete-disposal": { from: ["disposing"], to: "completed" },
+  "begin-disposal": {
+    from: drainSources("dispose").filter((phase) => phase !== "disposing"),
+    to: "disposing",
+    settledIn: ["disposing"],
+  },
+  "complete-disposal": { from: drainSources("completeDisposal"), to: "completed" },
   "clear-completion": { from: ["completed"], to: "absent" },
 });
 
@@ -130,7 +172,7 @@ const changedEntryIssue = <State extends string, Operation extends string>(
   return `${messages.join(" ")} Requested state: ${change.to}. Run lando destroy to finish interrupted disposal, then lando start to recreate the sessions.`;
 };
 
-/** Check only changed identities, using the ledger already read under the caller's lock. */
+/** Check only changed identities against the ledger read under the bucket lock. */
 export const ledgerTransitionIssue = (current: SessionLedger, write: LedgerWrite): string | undefined => {
   const next = write.next;
   const names = new Set([...current.sessions, ...next.sessions].map((entry) => entry.name));
@@ -163,4 +205,17 @@ export const ledgerTransitionIssue = (current: SessionLedger, write: LedgerWrite
     if (issue !== undefined) return issue;
   }
   return undefined;
+};
+
+export type LedgerWritePlan =
+  | StateWrite<SessionLedger, SessionLedger>
+  | { readonly _tag: "Illegal"; readonly message: string };
+
+/** Pure planner for one locked ledger write: an unchanged ledger keeps the file untouched. */
+export const planLedgerWrite = (current: SessionLedger, write: LedgerWrite): LedgerWritePlan => {
+  if (isDeepStrictEqual(current, write.next)) return { _tag: "Keep", result: current };
+  const issue = ledgerTransitionIssue(current, write);
+  return issue === undefined
+    ? { _tag: "Set", value: write.next, result: write.next }
+    : { _tag: "Illegal", message: issue };
 };

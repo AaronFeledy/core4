@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import { AppId } from "@lando/sdk/schema";
-import { type SessionLedger, type SessionReceipt, ledgerTransitionIssue } from "../src/session-ledger.ts";
+import {
+  type SessionLedger,
+  type SessionReceipt,
+  ledgerTransitionIssue,
+  planLedgerWrite,
+} from "../src/session-ledger.ts";
 import { helper, id, name, spec } from "./support/mutagen-process.ts";
 
 const receipt: SessionReceipt = {
@@ -83,4 +88,18 @@ test("checks newly inserted entries and refuses an operation's wrong destination
       drains: ["begin-drain"],
     }),
   ).toContain('app "other"');
+});
+
+test("a settled ledger write keeps the file and an illegal one names its blocker", () => {
+  const current: SessionLedger = { sessions: [{ ...receipt, phase: "disposing" }] };
+  expect(
+    planLedgerWrite(current, {
+      next: { sessions: [{ ...receipt, phase: "disposing" }] },
+      receipts: ["begin-disposal"],
+    }),
+  ).toEqual({ _tag: "Keep", result: current });
+  expect(planLedgerWrite(current, { next: { sessions: [] }, receipts: ["begin-disposal"] })).toMatchObject({
+    _tag: "Illegal",
+    message: expect.stringContaining(name),
+  });
 });

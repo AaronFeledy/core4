@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { FileSyncStartError } from "@lando/sdk/errors";
+import { FileSyncStartError, type StateStoreError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import { StateStore } from "@lando/sdk/services";
+import { StateStore, type StateWrite } from "@lando/sdk/services";
 import { illegalTransitionMessage } from "@lando/sdk/transitions";
 import { Effect } from "effect";
 import {
@@ -114,58 +114,47 @@ export const readPendingAcceleratedStart = Effect.fnUntraced(function* (app: App
 export const beginOrResumeAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
   const planned = yield* plannedStartRecord(plan, app);
   const bucket = yield* openJournal(app);
-  const result = yield* bucket
-    .modify<{ readonly record: PendingStart; readonly resumed: boolean; readonly matches: boolean }>(
-      (current) => {
-        if (current !== null && current.phase !== "completed")
-          return [
-            { record: current, resumed: true, matches: sameStartIdentity(current, planned) },
-            current,
-          ] as const;
-        return [{ record: planned, resumed: false, matches: true }, planned] as const;
-      },
-    )
-    .pipe(
-      Effect.mapError((cause) =>
-        journalError("Unable to persist accelerated-start intent.", cause, bucket.path),
-      ),
-    );
-  if (!result.matches) return yield* Effect.fail(identityError(result.record, bucket.path));
-  const record = result.record;
-  type AdvanceOutcome = { readonly _tag: "OwnerChanged" } | ReturnType<typeof pendingStartTransitions.step>;
+  const storeError = (message: string) => (cause: StateStoreError | FileSyncStartError) =>
+    cause._tag === "StateStoreError" ? journalError(message, cause, bucket.path) : cause;
+  // An open attempt resumes as recorded; only a completed or absent journal starts a new one.
+  const record = yield* bucket
+    .mutate((current): Effect.Effect<StateWrite<PendingStart, PendingStart>, FileSyncStartError> => {
+      if (current === null || current.phase === "completed")
+        return Effect.succeed({ _tag: "Set", value: planned, result: planned });
+      return sameStartIdentity(current, planned)
+        ? Effect.succeed({ _tag: "Keep", result: current })
+        : Effect.fail(identityError(current, bucket.path));
+    })
+    .pipe(Effect.mapError(storeError("Unable to persist accelerated-start intent.")));
   const advance = (step: PendingStartStep) =>
     bucket
-      .modify<AdvanceOutcome>((current) => {
+      .mutate((current): Effect.Effect<StateWrite<PendingStart, void>, FileSyncStartError> => {
         if (current === null || current.attemptId !== record.attemptId || !sameStartIdentity(current, record))
-          return [{ _tag: "OwnerChanged" }, current ?? record] as const;
+          return Effect.fail(journalError("Accelerated-start journal ownership changed."));
         const verdict = pendingStartTransitions.step(step, current.phase);
-        return [verdict, verdict._tag === "Advance" ? { ...current, phase: verdict.to } : current] as const;
+        switch (verdict._tag) {
+          case "Advance":
+            return Effect.succeed({
+              _tag: "Set",
+              value: { ...current, phase: verdict.to },
+              result: undefined,
+            });
+          case "Settled":
+            return Effect.succeed({ _tag: "Keep", result: undefined });
+          case "Illegal":
+            return Effect.fail(
+              journalError(
+                illegalTransitionMessage(`Accelerated-start attempt ${record.attemptId}`, step, verdict),
+                undefined,
+                bucket.path,
+              ),
+            );
+        }
       })
-      .pipe(
-        Effect.mapError((cause) =>
-          journalError("Unable to advance accelerated-start intent.", cause, bucket.path),
-        ),
-        Effect.flatMap((verdict) => {
-          switch (verdict._tag) {
-            case "Advance":
-            case "Settled":
-              return Effect.void;
-            case "OwnerChanged":
-              return Effect.fail(journalError("Accelerated-start journal ownership changed."));
-            case "Illegal":
-              return Effect.fail(
-                journalError(
-                  illegalTransitionMessage(`Accelerated-start attempt ${record.attemptId}`, step, verdict),
-                  undefined,
-                  bucket.path,
-                ),
-              );
-          }
-        }),
-      );
+      .pipe(Effect.mapError(storeError("Unable to advance accelerated-start intent.")));
   return {
     attemptId: record.attemptId,
-    ...(result.resumed ? { resumedFrom: record.phase } : {}),
+    ...(record === planned ? {} : { resumedFrom: record.phase }),
     record,
     advance,
     complete: advance("complete"),

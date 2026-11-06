@@ -12,6 +12,7 @@ import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { DateTime, Effect, Option } from "effect";
 import { beginOrResumeAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
+import { disposalPhaseTracker } from "./file-sync-disposal-support.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 export const app = { kind: "user", id: plan.id, root: plan.root } as const;
@@ -82,7 +83,7 @@ export const recoveryHarness = Effect.fnUntraced(function* (
       status: "running",
       lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
     });
-  let phase: "active" | "drained" | "disposing" | "completed" = "active";
+  const disposal = disposalPhaseTracker("active");
   const fileSync = {
     ...TestFileSyncEngine,
     id: "mutagen",
@@ -96,7 +97,11 @@ export const recoveryHarness = Effect.fnUntraced(function* (
           : (["two-way-safe", "one-way-replica"] as const),
     },
     appLifecycle: {
-      invalidateDrain: () => Effect.sync(() => calls.push("invalidate")),
+      invalidateDrain: () =>
+        Effect.suspend(() => {
+          calls.push("invalidate");
+          return disposal.apply("invalidateDrain");
+        }),
       // Mirrors Mutagen: an app with no owned sessions has nothing to drain.
       drain: () =>
         sessions.length === 0
@@ -108,23 +113,26 @@ export const recoveryHarness = Effect.fnUntraced(function* (
                 remediation: "Skip drain when the app owns no sessions, or create sessions before draining.",
               }),
             )
-          : Effect.sync(() => {
+          : Effect.suspend(() => {
               calls.push("drain");
-              phase = "drained";
+              return disposal.apply("drain");
             }),
       dispose: () =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           calls.push("dispose");
+          yield* disposal.apply("dispose");
           sessions.splice(0);
-          phase = "disposing";
         }),
       completeDisposal: () =>
-        Effect.sync(() => {
+        Effect.suspend(() => {
           calls.push("complete");
-          phase = "completed";
+          return disposal.apply("completeDisposal");
         }),
       disposalPhase: () =>
-        Effect.sync(() => (phase === "active" && sessions.length === 0 ? ("absent" as const) : phase)),
+        Effect.sync(() => {
+          const phase = disposal.phase();
+          return phase === "active" && sessions.length === 0 ? ("absent" as const) : phase;
+        }),
     },
     listSessions: (filter: FileSyncSessionFilter) =>
       Effect.sync(() =>
@@ -153,8 +161,9 @@ export const recoveryHarness = Effect.fnUntraced(function* (
             }),
         }),
     createSession: (spec: FileSyncSessionSpec) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         calls.push(`create:${spec.mode}`);
+        yield* disposal.apply("createSession");
         const ref = FileSyncSessionRef.make(spec.mode);
         sessions.push({
           ...spec,

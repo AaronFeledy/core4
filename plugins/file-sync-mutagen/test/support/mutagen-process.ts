@@ -1,9 +1,17 @@
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, type FileSyncSessionSpec, PortablePath, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type FileSyncDisposalPhase,
+  type FileSyncSessionSpec,
+  PortablePath,
+  ServiceName,
+  planFileSyncDisposal,
+} from "@lando/sdk/schema";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
-import { makeMutagenProcessClient } from "../../src/mutagen-process-client.ts";
+import { type MutagenProcessClient, makeMutagenProcessClient } from "../../src/mutagen-process-client.ts";
 
 export const id = "sync_Abc123";
 export const name = "cms-web-app-root";
@@ -214,3 +222,24 @@ export const fake = (
     },
   };
 };
+
+/** Run the SDK planner's remaining retirement steps for `phase` against a process client. */
+export const runDisposalPlan = (client: MutagenProcessClient, phase: FileSyncDisposalPhase) =>
+  Effect.forEach(
+    planFileSyncDisposal(phase),
+    (step) => {
+      switch (step) {
+        case "drain":
+          return client.drainApp(spec.app);
+        case "dispose":
+          return client.disposeApp(spec.app);
+        case "completeDisposal":
+          return client.completeAppDisposal(spec.app);
+        default: {
+          const exhaustive: never = step;
+          return exhaustive;
+        }
+      }
+    },
+    { discard: true },
+  );
