@@ -9,11 +9,14 @@ import {
   linuxRuntimeBundleCacheKey,
   linuxRuntimeBundleContextDigest,
 } from "../../../scripts/linux-runtime-bundle-builder.ts";
+import type {
+  LinuxBundleBuildEngine,
+  LinuxBundleBuildRequest,
+} from "../../../scripts/linux-runtime-bundle-engines.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const hostKey = `linux-${process.arch}`;
+const hostKey = "linux-x64";
 const filename = `lando-runtime-${hostKey}.tar.gz`;
-const nativeTest = process.platform === "linux" && ["x64", "arm64"].includes(process.arch) ? test : test.skip;
 const pathExists = async (path: string): Promise<boolean> =>
   access(path).then(
     () => true,
@@ -28,11 +31,11 @@ const withOutDir = async (run: (outDir: string) => Promise<void>): Promise<void>
   }
 };
 
-const exportPath = (cmd: ReadonlyArray<string>): string => {
-  const output = cmd[cmd.indexOf("--output") + 1];
-  expect(output).toStartWith("type=local,dest=");
-  return output?.slice("type=local,dest=".length) ?? "";
-};
+const fakeEngine = (build: (request: LinuxBundleBuildRequest) => Promise<void>): LinuxBundleBuildEngine => ({
+  id: "docker",
+  probe: async () => "linux/amd64",
+  build,
+});
 
 describe("Linux runtime bundle builder", () => {
   test("requires native host and matching immutable Bun image pin", async () => {
@@ -42,6 +45,8 @@ describe("Linux runtime bundle builder", () => {
     const bunVersion = (await readFile(join(repoRoot, ".bun-version"), "utf8")).trim();
     expect(() => assertLinuxBuilderBunPin(dockerfile, bunVersion, bunVersion)).not.toThrow();
     expect(() => assertLinuxBuilderBunPin(dockerfile, "0.0.0", bunVersion)).toThrow("pin mismatch");
+    const unpinned = dockerfile.replace(/(FROM oven\/bun:\$\{BUN_VERSION\})@sha256:[0-9a-f]{64}/u, "$1");
+    expect(() => assertLinuxBuilderBunPin(unpinned, bunVersion, bunVersion)).toThrow("builder=missing");
     expect(dockerfile).toContain('test "$BUILDPLATFORM" = "$TARGETPLATFORM"');
     expect(dockerfile).toContain("linux-x64:amd64|linux-arm64:arm64");
     expect(dockerfile.indexOf('test "$BUILDPLATFORM"')).toBeLessThan(
@@ -50,7 +55,7 @@ describe("Linux runtime bundle builder", () => {
     expect(dockerfile).toContain("GOTOOLCHAIN=local");
   });
 
-  nativeTest("transfers a minimal context and atomically exports the requested archive", async () => {
+  test("transfers a minimal context and atomically exports the requested archive", async () => {
     await withOutDir(async (outDir) => {
       let context = "";
       let exported = "";
@@ -58,16 +63,12 @@ describe("Linux runtime bundle builder", () => {
         hostKey,
         outDir,
         repository: "owner/repo",
-        execute: async (cmd) => {
-          expect(cmd.slice(0, 3)).toEqual(["docker", "buildx", "build"]);
-          expect(cmd.slice(cmd.indexOf("--platform"), cmd.indexOf("--platform") + 2)).toEqual([
-            "--platform",
-            process.arch === "arm64" ? "linux/arm64" : "linux/amd64",
-          ]);
-          expect(cmd).toContain(`BUNDLE_PLATFORM=${hostKey}`);
-          expect(cmd).toContain("REPOSITORY=owner/repo");
-          context = cmd.at(-1) ?? "";
-          exported = exportPath(cmd);
+        engine: fakeEngine(async (request) => {
+          expect(request.platform).toBe("linux/amd64");
+          expect(request.buildArgs).toEqual([`BUNDLE_PLATFORM=${hostKey}`, "REPOSITORY=owner/repo"]);
+          expect(request.artifactName).toBe(filename);
+          context = request.context;
+          exported = request.exportDir;
           expect(exported.startsWith(context)).toBe(false);
           const entries = await readdir(context, { recursive: true });
           expect(entries.sort()).toEqual(
@@ -84,7 +85,7 @@ describe("Linux runtime bundle builder", () => {
             ].sort(),
           );
           await writeFile(join(exported, filename), "bundle");
-        },
+        }),
       });
       expect(artifact).toBe(join(outDir, filename));
       expect(await readFile(artifact, "utf8")).toBe("bundle");
@@ -93,7 +94,7 @@ describe("Linux runtime bundle builder", () => {
     });
   });
 
-  nativeTest("keeps the previous archive and cleans up after an export failure", async () => {
+  test("keeps the previous archive and cleans up after an export failure", async () => {
     await withOutDir(async (outDir) => {
       await writeFile(join(outDir, filename), "previous");
       let context = "";
@@ -103,11 +104,11 @@ describe("Linux runtime bundle builder", () => {
           hostKey,
           outDir,
           repository: "owner/repo",
-          execute: async (cmd) => {
-            context = cmd.at(-1) ?? "";
-            exported = exportPath(cmd);
+          engine: fakeEngine(async (request) => {
+            context = request.context;
+            exported = request.exportDir;
             throw new Error("buildx failed");
-          },
+          }),
         }),
       ).rejects.toThrow("buildx failed");
       expect(await readFile(join(outDir, filename), "utf8")).toBe("previous");
@@ -117,7 +118,7 @@ describe("Linux runtime bundle builder", () => {
     });
   });
 
-  nativeTest("rejects a linked export without replacing an existing archive", async () => {
+  test("rejects a linked export without replacing an existing archive", async () => {
     await withOutDir(async (outDir) => {
       await writeFile(join(outDir, filename), "previous");
       await expect(
@@ -125,9 +126,9 @@ describe("Linux runtime bundle builder", () => {
           hostKey,
           outDir,
           repository: "owner/repo",
-          execute: async (cmd) => {
-            await symlink(join(outDir, filename), join(exportPath(cmd), filename));
-          },
+          engine: fakeEngine(async (request) => {
+            await symlink(join(outDir, filename), join(request.exportDir, filename));
+          }),
         }),
       ).rejects.toThrow("Invalid runtime bundle export");
       expect(await readFile(join(outDir, filename), "utf8")).toBe("previous");
@@ -135,7 +136,7 @@ describe("Linux runtime bundle builder", () => {
     });
   });
 
-  nativeTest.each([false, true])(
+  test.each([false, true])(
     "preserves a build failure while attempting every owned cleanup (undefined=%p)",
     async (throwUndefined) => {
       await withOutDir(async (outDir) => {
@@ -159,9 +160,13 @@ describe("Linux runtime bundle builder", () => {
             hostKey: process.env.BUNDLE_HOST_KEY,
             outDir: process.env.BUNDLE_OUT_DIR,
             repository: "owner/repo",
-            execute: async () => {
-              if (process.env.THROW_UNDEFINED) throw undefined;
-              throw new Error("buildx failed");
+            engine: {
+              id: "docker",
+              probe: async () => "linux/amd64",
+              build: async () => {
+                if (process.env.THROW_UNDEFINED) throw undefined;
+                throw new Error("buildx failed");
+              },
             },
           });
         } catch (cause) {
@@ -197,7 +202,7 @@ describe("Linux runtime bundle builder", () => {
     },
   );
 
-  nativeTest("derives the cache key from the exact context and build arguments it transfers", async () => {
+  test("derives the cache key from the exact context and build arguments it transfers", async () => {
     await withOutDir(async (outDir) => {
       const buildArgs = { hostKey, repository: "owner/repo" };
       const key = await linuxRuntimeBundleCacheKey(buildArgs);
@@ -205,11 +210,11 @@ describe("Linux runtime bundle builder", () => {
       await buildLinuxRuntimeBundle({
         ...buildArgs,
         outDir,
-        execute: async (cmd) => {
-          const digest = await linuxRuntimeBundleContextDigest(cmd.at(-1) ?? "", buildArgs);
+        engine: fakeEngine(async (request) => {
+          const digest = await linuxRuntimeBundleContextDigest(request.context, buildArgs);
           transferredKey = `runtime-bundle-${hostKey}-${digest}`;
-          await writeFile(join(exportPath(cmd), filename), "bundle");
-        },
+          await writeFile(join(request.exportDir, filename), "bundle");
+        }),
       });
       expect(transferredKey).toBe(key);
     });
@@ -244,5 +249,28 @@ describe("Linux runtime bundle builder", () => {
       await rename(join(context, "scripts/entry.js"), join(context, "scripts/main.js"));
       expect(await linuxRuntimeBundleContextDigest(context, buildArgs)).not.toBe(edited);
     });
+  });
+  test("bundles only bundle-assembly modules into the builder entry, keeping its cache key stable", async () => {
+    // A module outside this set (e.g. the SDK error barrel) would change the key on unrelated edits.
+    const result = await Bun.build({
+      entrypoints: [join(repoRoot, "scripts/runtime-bundle-builder/entry.ts")],
+      target: "bun",
+      sourcemap: "external",
+    });
+    expect(result.success).toBe(true);
+    const map = result.outputs.find((output) => output.path.endsWith(".map"));
+    const { sources } = (await map?.json()) as { sources: string[] };
+    // Workspace packages can appear through their node_modules link; third-party packages stay excluded.
+    const local = sources
+      .map((path) => path.replace(/^node_modules\/@lando\/sdk\//u, "sdk/"))
+      .filter((path) => !path.startsWith("node_modules/") || path.startsWith("node_modules/@lando/"));
+    expect(local).toContain("scripts/assemble-runtime-bundle.ts");
+    const outside = local.filter(
+      (path) =>
+        !path.startsWith("scripts/") &&
+        !path.startsWith("plugins/provider-lando/src/") &&
+        !["sdk/src/digest/index.ts", "sdk/src/errors/errno.ts"].includes(path),
+    );
+    expect(outside).toEqual([]);
   });
 });

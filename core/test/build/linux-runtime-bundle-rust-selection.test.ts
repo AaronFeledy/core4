@@ -11,6 +11,11 @@ const pathEntryExists = async (path: string): Promise<boolean> =>
     () => true,
     () => false,
   );
+const dockerfileArg = (dockerfile: string, name: string): string => {
+  const value = new RegExp(`^ARG ${name}=(\\S+)$`, "mu").exec(dockerfile)?.[1];
+  if (value === undefined) throw new Error(`Missing ARG ${name} in Dockerfile`);
+  return value;
+};
 const architectures = [
   { arch: "amd64", triple: "x86_64-unknown-linux-gnu" },
   { arch: "arm64", triple: "aarch64-unknown-linux-gnu" },
@@ -69,6 +74,7 @@ const runSelection = async (options: {
       // A BuildKit RUN starts from the image env only; a host BASH_ENV would run under `-u` first.
       env: {
         TARGETARCH: options.arch,
+        RUST_VERSION: dockerfileArg(options.dockerfile, "RUST_VERSION"),
         RUSTUP_HOME: options.rustup,
         PATH: `${options.proxyBin}:${process.env.PATH ?? ""}`,
       },
@@ -100,11 +106,12 @@ const writeToolchain = async (
 
 describe("pinned Rust selection in the production Dockerfile", () => {
   nativeTest.each(architectures)(
-    "selects installed Rust 1.88.0 for $arch without rustup proxies",
+    "selects the pinned installed Rust for $arch without rustup proxies",
     async ({ arch, triple }) => {
       const dockerfile = await readFile(dockerfilePath, "utf8");
+      const rustVersion = dockerfileArg(dockerfile, "RUST_VERSION");
       await withFixture(async ({ rustup, link, proxyBin, marker }) => {
-        const pinned = await writeToolchain(rustup, "1.88.0", triple, ["rustc", "cargo"]);
+        const pinned = await writeToolchain(rustup, rustVersion, triple, ["rustc", "cargo"]);
         await writeToolchain(rustup, "1.99.1", triple, ["rustc", "cargo"]);
         const selected = await runSelection({ dockerfile, rustup, link, proxyBin, arch });
         expect(selected.exitCode).toBe(0);
@@ -125,8 +132,8 @@ describe("pinned Rust selection in the production Dockerfile", () => {
         );
         const [verifyCode, output] = await Promise.all([verify.exited, new Response(verify.stdout).text()]);
         expect(verifyCode).toBe(0);
-        expect(output).toContain(`${link}/bin/rustc\nrustc 1.88.0\n`);
-        expect(output).toContain(`${link}/bin/cargo\ncargo 1.88.0\n`);
+        expect(output).toContain(`${link}/bin/rustc\nrustc ${rustVersion}\n`);
+        expect(output).toContain(`${link}/bin/cargo\ncargo ${rustVersion}\n`);
         expect(await Bun.file(marker).exists()).toBe(false);
       });
     },
@@ -139,7 +146,9 @@ describe("pinned Rust selection in the production Dockerfile", () => {
       for (const names of [[], ["rustc"], ["cargo"]]) {
         await withFixture(async ({ rustup, link, proxyBin, marker }) => {
           await writeToolchain(rustup, "1.99.1", triple, ["rustc", "cargo"]);
-          if (names.length > 0) await writeToolchain(rustup, "1.88.0", triple, names);
+          if (names.length > 0) {
+            await writeToolchain(rustup, dockerfileArg(dockerfile, "RUST_VERSION"), triple, names);
+          }
           const selected = await runSelection({ dockerfile, rustup, link, proxyBin, arch });
           expect(selected.exitCode).not.toBe(0);
           expect(await pathEntryExists(link)).toBe(false);
@@ -165,8 +174,10 @@ describe("pinned Rust selection in the production Dockerfile", () => {
     expect(dockerfile).toContain("ENV PATH=/usr/local/go/bin:/usr/local/rust-toolchain/bin:$PATH");
     expect(dockerfile).not.toContain("RUSTUP_TOOLCHAIN=stable");
     expect(dockerfile).not.toContain("PATH=/usr/local/go/bin:/usr/local/cargo/bin");
-    expect(dockerfile).toContain('RUN --network=none test "$(go env GOVERSION)" = go1.25.6');
-    expect(dockerfile).toContain("test \"$(rustc --version | cut -d ' ' -f2)\" = 1.88.0");
-    expect(dockerfile).toContain("test \"$(cargo --version | cut -d ' ' -f2)\" = 1.88.0");
+    expect(dockerfile).toContain('RUN --network=none test "$(go env GOVERSION)" = "go$GO_VERSION"');
+    expect(dockerfile).toContain('test "$(rustc --version | cut -d \' \' -f2)" = "$RUST_VERSION"');
+    expect(dockerfile).toContain('test "$(cargo --version | cut -d \' \' -f2)" = "$RUST_VERSION"');
+    expect(dockerfile).toMatch(/^FROM rust:\$\{RUST_VERSION\}-slim-bookworm@sha256:[0-9a-f]{64} AS rust$/mu);
+    expect(dockerfile).toMatch(/^FROM golang:\$\{GO_VERSION\}@sha256:[0-9a-f]{64} AS go$/mu);
   });
 });

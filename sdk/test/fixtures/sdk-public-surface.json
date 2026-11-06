@@ -555,6 +555,7 @@
       "LANDO_DB_ENV_KEYS"
     ],
     "./digest": ["canonicalJson", "sha256Hex"],
+    "./errno": ["errnoCode", "isErrnoCode"],
     "./docs/components": [
       "AxisToken",
       "CleanupProps",

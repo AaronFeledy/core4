@@ -588,56 +588,38 @@ Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagno
 
 ## Build a Linux runtime bundle
 
-On Linux x64 or ARM64, use Docker Engine and a Buildx worker native to that host. Choose the matching command below. Use `.bun-version`'s Bun and prepare dependencies from the repository root:
+Linux runtime bundles compile inside a container, so your host needs no Go, Rust, or APT build packages. You need `.bun-version`'s Bun and one native build engine:
+
+- Docker Engine with the Buildx plugin.
+- The Lando runtime, after `lando setup`. The build runs through the managed Podman API, so Docker is not needed.
+
+From the repository root, assemble the bundle for your host's architecture and check that the archive reads:
 
 ```bash
 bun install --frozen-lockfile
-docker buildx version
-```
-
-For Linux x64 and native amd64 Buildx, run:
-
-```bash
 bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 tar -tzf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz >/dev/null
 ```
 
-For Linux ARM64 and native arm64 Buildx, run:
+On an arm64 host, use `--platform linux-arm64` and `lando-runtime-linux-arm64.tar.gz`. The assembler uses Docker Buildx when it answers and the Lando runtime otherwise, and prints which engine it chose. Pass `--engine docker` or `--engine lando` to choose yourself. The engine must build natively for the requested platform; the assembler never emulates, so it refuses an engine that runs on another architecture. When no engine can build, the error says why each one was rejected and how to fix it. If the Lando runtime is stopped, start it with `lando global:start`.
 
-```bash
-bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
-tar -tzf dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz >/dev/null
-```
+The `tar` check confirms the archive is readable. Provider acceptance and release publication run separately, and no builder image is published. A failed build or pack leaves an existing archive at the destination intact.
 
-The `tar` check establishes archive readability; live provider acceptance requires separate checks. Assembly uses an on-demand BuildKit build with a small, explicit context. Compilation uses a pinned Noble base, signed Ubuntu snapshot (`20261019T000000Z`), and pinned Go, Rust, and Bun images inside the builder. Host Bun still runs the wrapper; host Go, Rust, and APT source-build prerequisites are unnecessary. Provider acceptance and release publication run separately. No builder image is published.
+If assembly reports a Bun pin mismatch, install and run the Bun version committed in `.bun-version`. Package index updates and downloads from the pinned Ubuntu snapshot each make four attempts, 5, 15, and 45 seconds apart, then fail with a `runtime-bundle-apt-snapshot` annotation. If that happens, check the build engine's DNS and HTTPS access and retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages.
 
-If assembly reports a Bun pin mismatch, first install and run the Bun version already committed in `.bun-version`. Change `.bun-version`, the Bun image, and its assertion together only as an intentional, reviewed toolchain update. Index updates and package downloads from the snapshot each make four attempts, 5, 15, and 45 seconds apart, then fail with a `runtime-bundle-apt-snapshot` annotation. If that happens, inspect the Buildx worker's DNS and HTTPS access, then retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages. A failed pack leaves an existing destination archive intact.
+### Update the builder pins
 
-To update pins, change the base and toolchain image digests, installed-toolchain path, and matching version assertions in `scripts/runtime-bundle-builder/Dockerfile`. Set the signed snapshot in `scripts/runtime-bundle-builder/prerequisites.sh` and keep the Noble base older than that snapshot. Coordinate the Bun image and assertion with `.bun-version`. Verify component and license SHA-256 values before updating `plugins/provider-lando/runtime-bundle-sources.json`. Regenerate workflows and run `bun run codegen:check` and focused bundle tests on the reviewable tree.
+Each toolchain version is an `ARG` at the top of `scripts/runtime-bundle-builder/Dockerfile`: `GO_VERSION`, `RUST_VERSION`, and `BUN_VERSION`. Change a version together with its image digest on the matching `FROM` line; the Rust toolchain path and the in-build version checks read the same `ARG`. `BUN_VERSION` must equal `.bun-version`, and the assembler refuses to build when they differ, so change both in one reviewed toolchain update. The signed snapshot is `UBUNTU_SNAPSHOT` in `scripts/runtime-bundle-builder/prerequisites.sh`, and the Noble base image must predate it; `core/test/build/runtime-bundle-supply-chain.test.ts` checks that ordering. Verify component and license SHA-256 values before updating `plugins/provider-lando/runtime-bundle-sources.json`. Then regenerate workflows and run `bun run codegen:check` and the focused bundle tests.
 
-CI reuses an assembled x64 bundle only when its BuildKit build would be identical. The cache key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled entry script, bundle source pins, and patch) plus the target platform and repository build arguments. Print the key a build would use:
+### Bundle builds in CI
+
+Every pull request that changes code, and every push to `main`, runs `runtime-bundle-linux-x64` and `runtime-bundle-linux-arm64` on native runners. Each job reuses a cached archive when its cache key matches and assembles only on a miss. The key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled assembly script, bundle source pins, and patch) plus the target platform and repository build arguments. The bundled assembly script contains only bundle-assembly code, so unrelated changes keep the key and the cached archive. Print the key a build would use:
 
 ```bash
 bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key
 ```
 
-To check native acceptance before merge, push the reviewed branch and authenticate `gh` with workflow dispatch permission. Replace `<reviewbranch>` with that branch:
-
-```bash
-gh workflow run ci.yml --ref <reviewbranch>
-gh workflow run nightly.yml --ref <reviewbranch>
-```
-
-Dispatch only starts the runs. Find each completed `<run-id>`, then inspect its head SHA, result, and job logs against the reviewed commit:
-
-```bash
-gh run list --workflow ci.yml --branch <reviewbranch>
-gh run list --workflow nightly.yml --branch <reviewbranch>
-gh run view <run-id> --json headSha,conclusion,jobs
-gh run view <run-id> --log
-```
-
-CI must actually run `Assemble current-commit Linux x64 runtime bundle` (an Actions cache miss), then pass local-manifest provider setup. A cache miss alone does not prove cold BuildKit layers; inspect builder logs. Nightly's `mysql-arm-client-linux-arm64` job must pass native ARM assembly, manifest install, socket and `ldd` checks, and MySQL client tests. `platform-readiness` is restricted to `main`, so it is not the branch route.
+CI downloads the x64 archive into provider integration and guide scenarios. Nightly's `mysql-arm-client-linux-arm64` job installs the arm64 archive and runs the socket, `ldd`, and MySQL client checks. A change to builder inputs changes the key, so the pull request's bundle jobs assemble both architectures from scratch; read the `Assemble` step in each job's log to confirm. `platform-readiness` runs only on `main`.
 
 ## Platform readiness
 

@@ -136,6 +136,15 @@ describe("runtime-bundle workflow supply chain", () => {
     }
   });
 
+  test("builds on a Noble base older than the signed snapshot it upgrades from", async () => {
+    const dockerfile = await readFile(resolve(repoRoot, "scripts/runtime-bundle-builder/Dockerfile"), "utf8");
+    const baseDate = /^FROM ubuntu:noble-(\d{8})@sha256:[0-9a-f]{64} AS builder$/mu.exec(dockerfile)?.[1];
+    const snapshotDate = /^UBUNTU_SNAPSHOT=(\d{8})T\d{6}Z$/mu.exec(await prerequisiteScript())?.[1];
+    expect(baseDate).toBeDefined();
+    expect(snapshotDate).toBeDefined();
+    expect(Number(baseDate)).toBeLessThan(Number(snapshotDate));
+  });
+
   test("verifies package candidates without a pipefail SIGPIPE", async () => {
     const aptCacheBody = `cat <<'POLICY'
   Candidate: 1.0

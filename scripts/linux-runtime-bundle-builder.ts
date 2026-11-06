@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { BundleCommandRunner } from "./assemble-runtime-bundle.ts";
+import type { LinuxBundleBuildEngine } from "./linux-runtime-bundle-engines.ts";
+import { runWithCleanup } from "./runtime-bundle-cleanup.ts";
 
 const repoRoot = resolve(import.meta.dir, "..");
 const recipeRoot = join(repoRoot, "scripts", "runtime-bundle-builder");
@@ -24,7 +25,8 @@ export const assertLinuxBuilderBunPin = (
   bunVersion: string,
   runningVersion: string,
 ): void => {
-  const imageVersion = /^FROM oven\/bun:([^@\s]+)@sha256:[0-9a-f]{64} AS bun$/mu.exec(dockerfile)?.[1];
+  const pinnedImage = /^FROM oven\/bun:\$\{BUN_VERSION\}@sha256:[0-9a-f]{64} AS bun$/mu.test(dockerfile);
+  const imageVersion = pinnedImage ? /^ARG BUN_VERSION=(\S+)$/mu.exec(dockerfile)?.[1] : undefined;
   if (imageVersion !== bunVersion || runningVersion !== bunVersion) {
     throw new Error(
       `assemble-runtime-bundle: Bun pin mismatch (.bun-version=${bunVersion}, builder=${imageVersion ?? "missing"}, host=${runningVersion})`,
@@ -37,7 +39,8 @@ interface LinuxRuntimeBundleBuildArgs {
   readonly repository: string;
 }
 
-const buildxPlatform = (hostKey: string): string => (hostKey === "linux-x64" ? "linux/amd64" : "linux/arm64");
+export const buildxPlatform = (hostKey: string): string =>
+  hostKey === "linux-x64" ? "linux/amd64" : "linux/arm64";
 
 const buildArgs = (options: LinuxRuntimeBundleBuildArgs): ReadonlyArray<string> => [
   `BUNDLE_PLATFORM=${options.hostKey}`,
@@ -96,60 +99,40 @@ export const buildLinuxRuntimeBundle = async (options: {
   readonly hostKey: string;
   readonly outDir: string;
   readonly repository: string;
-  readonly execute: BundleCommandRunner;
+  readonly engine: LinuxBundleBuildEngine;
 }): Promise<string> => {
-  assertNativeLinuxBundle(options.hostKey);
   const bunVersion = (await readFile(join(repoRoot, ".bun-version"), "utf8")).trim();
   assertLinuxBuilderBunPin(await readFile(join(recipeRoot, "Dockerfile"), "utf8"), bunVersion, Bun.version);
+  const filename = `lando-runtime-${options.hostKey}.tar.gz`;
   const context = await mkdtemp(join(tmpdir(), "rb-builder-"));
   let exportDir = "";
   let temporaryArtifact: string | undefined;
-  let primaryFailure: { cause: unknown } | undefined;
-  let outputArtifact: string | undefined;
-  try {
-    exportDir = await mkdtemp(join(tmpdir(), "rb-export-"));
-    await stageLinuxRuntimeBundleContext(context);
-    await options.execute([
-      "docker",
-      "buildx",
-      "build",
-      "--platform",
-      buildxPlatform(options.hostKey),
-      "--target",
-      "bundle",
-      "--output",
-      `type=local,dest=${exportDir}`,
-      ...buildArgs(options).flatMap((arg) => ["--build-arg", arg]),
-      "--file",
-      join(context, "Dockerfile"),
-      context,
-    ]);
-    const filename = `lando-runtime-${options.hostKey}.tar.gz`;
-    const exportedArtifact = join(exportDir, filename);
-    const artifactStat = await lstat(exportedArtifact);
-    if (!artifactStat.isFile() || artifactStat.size === 0) throw new Error("Invalid runtime bundle export");
-    await mkdir(options.outDir, { recursive: true });
-    const artifactPath = join(options.outDir, filename);
-    temporaryArtifact = join(options.outDir, `.${filename}.${randomUUID()}.tmp`);
-    await copyFile(exportedArtifact, temporaryArtifact);
-    await rename(temporaryArtifact, artifactPath);
-    temporaryArtifact = undefined;
-    outputArtifact = artifactPath;
-  } catch (cause) {
-    primaryFailure = { cause };
-  }
-  const cleanup = [
-    rm(context, { recursive: true, force: true }),
-    ...(exportDir === "" ? [] : [rm(exportDir, { recursive: true, force: true })]),
-    ...(temporaryArtifact === undefined ? [] : [rm(temporaryArtifact, { force: true })]),
-  ];
-  const results = await Promise.allSettled(cleanup);
-  const cleanupFailure = results.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
+  return runWithCleanup(
+    async () => {
+      exportDir = await mkdtemp(join(tmpdir(), "rb-export-"));
+      await stageLinuxRuntimeBundleContext(context);
+      await options.engine.build({
+        context,
+        platform: buildxPlatform(options.hostKey),
+        buildArgs: buildArgs(options),
+        exportDir,
+        artifactName: filename,
+      });
+      const exportedArtifact = join(exportDir, filename);
+      const artifactStat = await lstat(exportedArtifact);
+      if (!artifactStat.isFile() || artifactStat.size === 0) throw new Error("Invalid runtime bundle export");
+      await mkdir(options.outDir, { recursive: true });
+      const artifactPath = join(options.outDir, filename);
+      temporaryArtifact = join(options.outDir, `.${filename}.${randomUUID()}.tmp`);
+      await copyFile(exportedArtifact, temporaryArtifact);
+      await rename(temporaryArtifact, artifactPath);
+      temporaryArtifact = undefined;
+      return artifactPath;
+    },
+    () => [
+      rm(context, { recursive: true, force: true }),
+      ...(exportDir === "" ? [] : [rm(exportDir, { recursive: true, force: true })]),
+      ...(temporaryArtifact === undefined ? [] : [rm(temporaryArtifact, { force: true })]),
+    ],
   );
-  if (primaryFailure !== undefined) throw primaryFailure.cause;
-  if (cleanupFailure !== undefined) throw cleanupFailure.reason;
-  if (outputArtifact === undefined)
-    throw new Error("assemble-runtime-bundle: builder did not export an archive");
-  return outputArtifact;
 };
