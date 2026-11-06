@@ -66,6 +66,12 @@
     "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
   },
   {
+    "surface": "command:cli:help",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed #2053 pre-release machine-help addition: built-in and plugin descriptor arms accept optional ordered input flags and args, including declared defaults, choices, spellings and positional stdio. Required descriptor fields and the tooling input/revision arm are unchanged, and catalog producers still omit inputs. Built-in and fixture-plugin CLI regressions cover the new target payload; the schema snapshot test verifies publication of both catalog and target shapes. The conservative classifier cannot descend through this anyOf change."
+  },
+  {
     "surface": "command:app:config:lint",
     "changeKind": "unsupported-construct",
     "path": "$.violations.items.rule.anyOf",

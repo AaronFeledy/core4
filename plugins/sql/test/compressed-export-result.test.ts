@@ -19,7 +19,6 @@ describe("compressed export artifact metadata", () => {
           withHostDumpCompression({
             path: file,
             compression,
-            direction: "export",
             transfer: (path) =>
               Effect.promise(async () => {
                 await writeFile(path, payload);

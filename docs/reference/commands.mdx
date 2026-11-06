@@ -769,13 +769,14 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Destination dump file. |
+| `file` | Destination dump file. Use - to write to stdout. |
 
 Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--compression-level` | Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix. |
+| `--compression` | Compress a dump written to stdout (-). File exports use the .gz or .zst suffix instead. (one of `gzip`, `zstd`) |
+| `--compression-level` | Host compression level: gzip 0-9 or zstd 1-22, chosen by the .gz or .zst suffix, or by --compression with -. |
 | `--service` | Source database service. |
 | `--yes, -y` | Skip confirmation prompts. |
 
@@ -789,7 +790,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Dump file to import. |
+| `file` | Dump file to import. Use - to read from stdin. |
 
 Flags:
 
@@ -840,7 +841,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Dump file to seed from. |
+| `file` | Dump file to seed from. Use - to read from stdin. |
 
 Flags:
 

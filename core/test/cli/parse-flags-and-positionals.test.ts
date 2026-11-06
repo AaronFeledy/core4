@@ -44,6 +44,12 @@ describe("parseFlagsAndPositionals", () => {
     expect(parseFlagsAndPositionals(argv, definitions, { strict: false }).positionals).toEqual(argv);
   });
 
+  test("strict mode preserves bare - as a positional stdio selector", () => {
+    const parsed = parseFlagsAndPositionals(["-", "--service", "db", "-"], definitions, { strict: true });
+    expect(parsed.flags).toEqual({ service: ["db"] });
+    expect(parsed.positionals).toEqual(["-", "-"]);
+  });
+
   test("a trailing value-flag with no value is dropped without consuming anything", () => {
     const parsed = parseFlagsAndPositionals(["web", "--tail"], definitions, { strict: true });
     expect(parsed.flags).toEqual({});

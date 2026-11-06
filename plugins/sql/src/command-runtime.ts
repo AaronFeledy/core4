@@ -10,20 +10,22 @@ import {
   EventService,
   InteractionService,
   LandofileService,
+  PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   StateStore,
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import { validateExportCompressionLevel } from "./command-input.ts";
+import { validateExportCompression } from "./command-input.ts";
 import { providerSqlExec } from "./dispatch.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
-  yield* validateExportCompressionLevel(input);
+  yield* validateExportCompression(input);
   const landofiles = yield* LandofileService;
   const environmentResolver = yield* EnvironmentValueResolver;
   const registry = yield* RuntimeProviderRegistry;
@@ -31,6 +33,8 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const interaction = yield* InteractionService;
   const events = yield* EventService;
   const stateStore = yield* StateStore;
+  const paths = yield* PathsService;
+  const privateFileAccess = yield* PrivateFileAccessService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
   const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
@@ -54,6 +58,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       plan,
       environmentResolver,
       transfer: (spec) => Effect.scoped(mover.transfer(spec)),
+      read: (from) => mover.read(from),
       snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
       restore: (handle, store, opts) => Effect.scoped(mover.restore(handle, store, opts)),
       listSnapshots: (filter) => mover.listSnapshots(filter),
@@ -73,6 +78,8 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               remediation: "Pass an existing app root with --from-path.",
             }),
         }).pipe(Effect.map(AbsolutePath.make)),
+      stagingDir: paths.transferStagingDir,
+      privateFileAccess,
       exec: providerSqlExec(provider, planned),
       resume: (service, identity) => {
         const resume = provider.resume;

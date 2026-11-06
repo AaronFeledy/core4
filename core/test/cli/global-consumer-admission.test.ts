@@ -66,6 +66,7 @@ const emptySnapshotsLayer = Layer.succeed(
   DataMover.of({
     transfer: () => Effect.die("unexpected transfer"),
     transferStream: () => Stream.die("unexpected transferStream"),
+    read: () => Stream.die("unexpected read"),
     snapshot: () => Effect.die("unexpected snapshot"),
     restore: () => Effect.die("unexpected restore"),
     listSnapshots: () => Effect.succeed([]),

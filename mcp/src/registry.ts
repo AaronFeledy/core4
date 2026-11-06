@@ -63,6 +63,7 @@ export interface McpInputMemberView {
   readonly valueType?: "string" | "integer";
   readonly min?: number;
   readonly options?: ReadonlyArray<string>;
+  readonly stdio?: "stdin" | "stdout";
 }
 
 /** A JSON-Schema-shaped object (the value carried in `McpToolDescriptor.inputSchema`). */
@@ -94,7 +95,12 @@ const memberSchema = (view: McpInputMemberView): JsonSchemaObject => {
     ...(memberType(view) === "integer" && view.min !== undefined ? { minimum: view.min } : {}),
   };
   const base: JsonSchemaObject = view.multiple === true ? { type: "array", items: scalar } : scalar;
-  return view.description === undefined ? base : { ...base, description: view.description };
+  let description = view.description;
+  if (view.stdio !== undefined) {
+    const sentence = "A filesystem path is required; - is CLI-only.";
+    description = description ? `${description} ${sentence}` : sentence;
+  }
+  return description === undefined ? base : { ...base, description };
 };
 
 const groupSchema = (members: Readonly<Record<string, unknown>> | undefined): JsonSchemaObject => {
@@ -189,6 +195,14 @@ const validateGroup = (
       });
     }
     const view = asView(declared[name]);
+    if (group === "args" && view.stdio !== undefined && value === "-") {
+      throw new McpToolInputError({
+        message: `Argument ${name} on tool ${toolId} cannot use -; process streams are CLI-only.`,
+        toolId,
+        path: `args.${name}`,
+        remediation: `Provide args.${name} as a filesystem path, or use - with the CLI.`,
+      });
+    }
     if (!typeMatches(view, value)) {
       throw new McpToolInputError({
         message: `Invalid type for ${group}.${name} on tool ${toolId}; expected ${jsonTypeFor(view)}.`,

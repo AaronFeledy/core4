@@ -35,6 +35,7 @@ const refusalOutputMode = (
 export const rejectUnsupportedResultFormat = async (
   commandId: string,
   command: ResultFormatCapability | undefined,
+  options: { readonly payloadStdout?: boolean } = {},
 ): Promise<boolean> => {
   if (supportsResultFormat(command, activeResultFormat)) return false;
   await renderPreCommandFailure({
@@ -45,6 +46,7 @@ export const rejectUnsupportedResultFormat = async (
       supported: commandResultFormats(command),
     }),
     ...refusalOutputMode(activeResultFormat),
+    ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
     failureExitCode: 2,
   });
   return true;
