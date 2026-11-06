@@ -332,7 +332,7 @@ ${bunSetupStep}
 
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
-    needs: [${CONTAINER_HELPER_JOB_ID}]
+    needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-arm64]
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
@@ -344,8 +344,11 @@ ${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
-      - name: Assemble current-commit linux-arm64 runtime bundle
-        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+      - name: Download current-commit Linux arm64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle
 
       - name: Report current-commit ARM runtime bundle fingerprints
         run: |
@@ -355,14 +358,6 @@ ${landoRootlessPrereqSteps}
           SIZE="$(wc -c < "$BUNDLE" | tr -d ' ')"
           echo "linux-arm64 sha256=$SHA size=$SIZE"
           echo "::notice title=runtime-bundle-candidate::linux-arm64 sha256=$SHA size=$SIZE"
-
-      - name: Upload current-commit linux-arm64 runtime bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: runtime-bundle-linux-arm64-current
-          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Build local runtime bundle manifest
         run: |
@@ -557,7 +552,8 @@ const sourceStoreAcceptanceJobs = SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS.map((id) 
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
     renderContainerHelperJob(),
-    linuxRuntimeBundleJob,
+    linuxRuntimeBundleJob("linux-x64"),
+    linuxRuntimeBundleJob("linux-arm64"),
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     serviceListenerNightlyJob,

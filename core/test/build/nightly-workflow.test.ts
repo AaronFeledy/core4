@@ -61,6 +61,7 @@ test("nightly jobs regenerate derived sources after frozen install and before th
         ...Object.keys(firstDerivedConsumer),
         "runtime-bundle-manifest-live",
         "runtime-bundle-linux-x64",
+        "runtime-bundle-linux-arm64",
       ].sort(),
     );
 
@@ -87,6 +88,20 @@ test("nightly jobs regenerate derived sources after frozen install and before th
     }
 
     const armSteps = jobs["mysql-arm-client-linux-arm64"]?.steps ?? [];
+    expect(jobs["mysql-arm-client-linux-arm64"]?.needs).toContain("runtime-bundle-linux-arm64");
+    const bundleDownload = armSteps.findIndex(
+      (step) => step.name === "Download current-commit Linux arm64 runtime bundle",
+    );
+    expect(bundleDownload).toBeGreaterThanOrEqual(0);
+    expect(armSteps[bundleDownload]).toMatchObject({
+      uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+      with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
+    });
+    expect(
+      armSteps.some(
+        (step) => typeof step.run === "string" && step.run.includes("assemble-runtime-bundle.ts"),
+      ),
+    ).toBe(false);
     const localManifest = armSteps.findIndex(
       (step) =>
         step.name === "Build local runtime bundle manifest" &&
@@ -94,6 +109,7 @@ test("nightly jobs regenerate derived sources after frozen install and before th
         step.run.includes("bun run scripts/build-runtime-bundle.ts --local"),
     );
     expect(localManifest).toBeGreaterThanOrEqual(0);
+    expect(localManifest).toBeGreaterThan(bundleDownload);
     expect(localManifest).toBeLessThan(armSteps.findIndex((step) => step.run === "bun run codegen"));
 
     const pinSteps = jobs["runtime-bundle-manifest-live"]?.steps ?? [];
