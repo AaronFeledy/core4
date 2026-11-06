@@ -119,5 +119,14 @@ const constBindingResolver = (source: ts.SourceFile): ConstBindingResolver => {
   };
 };
 
-export const resolveConstString = (expression: ts.Expression, source: ts.SourceFile): string | undefined =>
-  resolveStaticString(expression, constBindingResolver(source));
+// Rules resolve many expressions per file; build each file's binding table once.
+const resolvers = new WeakMap<ts.SourceFile, ConstBindingResolver>();
+
+export const resolveConstString = (expression: ts.Expression, source: ts.SourceFile): string | undefined => {
+  let resolver = resolvers.get(source);
+  if (resolver === undefined) {
+    resolver = constBindingResolver(source);
+    resolvers.set(source, resolver);
+  }
+  return resolveStaticString(expression, resolver);
+};
