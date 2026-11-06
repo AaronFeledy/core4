@@ -38,8 +38,9 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/bun": "^1.4.4",
-    "mdast-util-to-markdown": "^2.2.0",
-    "typescript": "^5.9.0"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@typescript/typescript6": "^6.0.2",
+    "mdast-util-to-markdown": "^2.2.0"
   },
   "scripts": {
     "build": "bun run --filter='*' build",
@@ -53,8 +54,7 @@
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
     "bench:landofile-load": "bun run scripts/bench-landofile-load.ts",
     "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
-    "typecheck": "bun run scripts/typecheck.ts",
-    "check:types": "bun check",
+    "typecheck": "tsc -b",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "lint": "biome check . && bun run check:deprecations",
     "audit": "bun audit --ignore=GHSA-ch52-4w7c-c8xp",
@@ -65,7 +65,7 @@
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
     "codegen:check": "bun run codegen && bun run check:codegen-drift",
-    "gate:pr": "bun run check:types && bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
+    "gate:pr": "bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
     "codegen:guide-scenarios": "bun run scripts/build-guide-scenarios.ts",
     "docs:scenario": "bun run scripts/docs-scenario.ts",
     "docs:build": "bun run codegen && bun run --filter='@lando/docs' build",

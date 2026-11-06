@@ -148,7 +148,6 @@ describe("share command skeleton", () => {
           const error = JSON.stringify(exit.cause.toJSON());
           expect(error).toContain("TunnelProviderUnavailableError");
           expect(error).toContain("plugin:add");
-          expect(error).toContain("Lando 4.1");
         }
       }
     });

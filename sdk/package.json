@@ -68,6 +68,14 @@
     "effect": "catalog:",
     "semver": "^7.8.5"
   },
+  "peerDependencies": {
+    "@typescript/typescript6": "^6.0.2"
+  },
+  "peerDependenciesMeta": {
+    "@typescript/typescript6": {
+      "optional": true
+    }
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",

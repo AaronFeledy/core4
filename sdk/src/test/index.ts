@@ -55,6 +55,8 @@ export * from "./renderer-contract.ts";
  * - packageRoot: plugin package directory (has package.json + src/).
  * - sourceRoot / repoRoot / packageJson: optional fixture overrides.
  * - alwaysAllowed: defaults to @lando/sdk + @lando/container-runtime.
+ * Parsing uses the TypeScript 6 compiler API, so install the optional
+ * `@typescript/typescript6` peer dependency next to TypeScript 7.
  */
 export {
   type CollectImportBoundaryViolationsOptions,

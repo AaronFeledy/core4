@@ -8,7 +8,7 @@ tags: [beta, docs, cli, share]
 
 # Share a service or extra port
 
-Install a TunnelService plugin before you share. Bundled tunnel connectors ship in Lando 4.1.
+Install a TunnelService plugin before you share. Lando does not bundle one yet.
 
 ```sh
 lando plugin:add <tunnel-service-plugin>
@@ -102,7 +102,7 @@ lando share:stop <session>
     </Step>
     <Step name="share-service-port">
       <Run command="lando share --target storybook:6006 --format=json" expectExit={1} />
-      <Verify errorTag="TunnelProviderUnavailableError" expect={{ regex: "Bundled tunnel connectors ship in Lando 4\\.1" }} />
+      <Verify errorTag="TunnelProviderUnavailableError" expect={{ regex: "Install a TunnelService plugin" }} />
     </Step>
     <Step name="share-list">
       <Run command="lando share:list --format=json" expectExit={1} />

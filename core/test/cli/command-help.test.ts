@@ -221,8 +221,10 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then STATUS explains that the command is not yet implemented
-    expect(sectionBody(help, "STATUS")).toContain("Planned for Lando 4.1.");
+    // Then STATUS carries the deferral summary
+    const summary = entry.spec.deferred?.summary;
+    if (summary === undefined) throw new Error("expected meta:events:follow to carry a deferral plan");
+    expect(sectionBody(help, "STATUS")).toContain(summary);
   });
 
   test("omits STATUS when the command is implemented", () => {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { renderColdRootHelp } from "../../src/cli/cold-path-output.ts";
 import { BUNDLED_PLUGIN_MANIFESTS } from "../../src/cli/generated/bundled-command-descriptors.ts";
 import { pluginTopicRows } from "../../src/cli/root-help-topics.ts";

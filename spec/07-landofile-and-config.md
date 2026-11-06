@@ -163,7 +163,7 @@ Every engine receives schema-defined `TemplateRenderContext`, limited to scopes 
 | Composition/defaults | `includes`, `defaultTemplateEngine`, `templateVars`, `env_file` |
 | Runtime/provider | `provider`, `toolingEngine`, `providers` |
 | App behavior | `services`, `tooling`, `toolingDefaults`, `toolingIncludes`, `commandAliases`, `events`, `proxy`, `router`, `checks` (§10.5.2), `sshAgent`, `gpgAgent` |
-| Remote sync | `remotes`, `sync` (§10.12 authored orchestration contract; bundled implementations are sequenced in the ROADMAP) |
+| Remote sync | `remotes`, `sync` (§10.12 orchestration contract) |
 | Translation sources | `translate` (§7.4.2) |
 | Plugins | `plugins`, `pluginDirs` |
 | Compose subset | `volumes`, `networks`, `configs`, `secrets`, `include`, `x-*` |
@@ -294,7 +294,7 @@ Any §7.4–§7.6 key MAY carry the §18.5 `deprecated` annotation, propagated t
 | Local | Relative or absolute path resolved from the including source; MUST remain under app root unless explicitly relaxed. |
 | Git | Hosted shorthand, `https`, `git+https`, `ssh`, `git+ssh`, or `git@host:path`; `version` or an `@ref` suffix requests a tag, branch, or full commit SHA. The resolved commit is locked and content-addressed. |
 | npm | Package and optional path/version (an exact version or dist-tag; semver ranges are rejected); the tarball is verified before extraction against the first SRI token of the registry's `dist.integrity` when its algorithm is supported, otherwise against the legacy sha1 `dist.shasum`, and fails closed when the registry publishes neither usable value (§12.8.2), and the resolved package version is locked and cached. |
-| Registry | `registry:<id>` syntax is reserved; implementation is sequenced in the ROADMAP and MUST require signature verification. |
+| Registry | `registry:<id>` syntax is reserved for registry-sourced includes, which MUST require signature verification. |
 
 `kind` is `landofile` (default), `tooling`, or `compose`. Landofile and Compose fragments expand into ordered prepared overlays before §7.2. Tooling contributions assemble on the composed document before the single full runtime decode, without decoding whole fragment documents, and share the §8.5.8 `toolingIncludes` contract. Tooling sources read local fragments only, resolve file helpers in their own directory, and materialize against merged recipe options before wire-task validation and namespace assembly. Compose `include` normalizes to `kind: compose`. Services in Compose fragments default to `type: compose` and `appMount: false` when absent, while explicit fragment values and higher-precedence layers override these defaults; `home` follows normal planning rules (§6.5). Relative host paths in local Compose fragments resolve from the fragment's directory and are rebased to portable app-root-relative paths before merging; `build.dockerfile` remains relative to its build context, and an omitted build context is the fragment's directory. Short-syntax volume sources are rebased only when they are host paths; a bare name stays a named volume. Git/npm Compose fragments retain their existing path values rather than acquiring host binds into the include cache.
 
