@@ -2,8 +2,8 @@ import { Context, Effect, Layer, Schema } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
-import { type StateBucket, StateStore } from "@lando/sdk/services";
-import { defineTransitions, illegalTransitionMessage } from "@lando/sdk/transitions";
+import { type StateBucket, StateStore, type StateWrite } from "@lando/sdk/services";
+import { defineTransitions, illegalTransitionMessage, planTransition } from "@lando/sdk/transitions";
 
 // The scratch registry — a thin, scratch-shaped view over a single durable
 // `StateBucket` under the user data root. All atomic write, advisory
@@ -53,7 +53,7 @@ export type ScratchRegistryEnvelope = typeof RegistryEnvelopeSchema.Type;
 type RegistryEntries = ReadonlyArray<ScratchRegistryEntry>;
 
 /** Each write names its step, and the step (not the caller) decides the stored status. */
-const scratchRegistryTransitions = defineTransitions<ScratchRegistryEntry["status"] | "absent">()({
+export const scratchRegistryTransitions = defineTransitions<ScratchRegistryEntry["status"] | "absent">()({
   acquire: { from: ["absent"], to: "acquiring" },
   "mark-running": { from: ["acquiring"], to: "running" },
   detach: { from: ["acquiring", "running"] },
@@ -70,49 +70,65 @@ const scratchRegistryTransitions = defineTransitions<ScratchRegistryEntry["statu
 
 type ScratchRegistryOperation = keyof typeof scratchRegistryTransitions.edges;
 export type ScratchRegistryWrite = Exclude<ScratchRegistryOperation, "remove">;
-/** Writers supply every field but the status, which their operation determines. */
-export type ScratchRegistryWriteEntry = Omit<ScratchRegistryEntry, "status">;
+/** Only acquisition accepts the initial detached policy; subsequent operations own it. */
+export type ScratchRegistryWriteEntry = Omit<ScratchRegistryEntry, "status" | "detached">;
+type ScratchRegistryWriteArgs =
+  | [operation: "acquire", entry: ScratchRegistryWriteEntry & Pick<ScratchRegistryEntry, "detached">]
+  | [operation: Exclude<ScratchRegistryWrite, "acquire">, entry: ScratchRegistryWriteEntry];
+type ScratchRegistryMutation = ScratchRegistryWriteArgs | [operation: "remove", id: string];
 
-export type ScratchRegistryWritePlan =
-  | { readonly _tag: "Unchanged" }
-  | { readonly _tag: "Store"; readonly entry: ScratchRegistryEntry }
-  | { readonly _tag: "Delete" }
-  | { readonly _tag: "Reject"; readonly message: string };
+const illegalWriteRemediation =
+  "Run `lando apps:scratch:gc --prune` to clean up scratch apps left mid-destroy, then acquire a new scratch app.";
 
-/** Pure so the durable registry and its test doubles apply the same table. */
+/**
+ * Pure so the durable registry and its test doubles apply the same table. `Set`
+ * stores the entry and `Remove` drops it; a settled step keeps the registry.
+ */
 export const planScratchRegistryWrite = (
-  operation: ScratchRegistryOperation,
-  id: string,
   previous: ScratchRegistryEntry | undefined,
-  entry?: ScratchRegistryWriteEntry,
-): ScratchRegistryWritePlan => {
-  const verdict = scratchRegistryTransitions.step(operation, previous?.status ?? "absent");
-  switch (verdict._tag) {
-    case "Settled":
-      return { _tag: "Unchanged" };
+  ...[operation, entry]: ScratchRegistryMutation
+): Effect.Effect<StateWrite<ScratchRegistryEntry, void>, ScratchAppError> => {
+  const plan = planTransition(
+    scratchRegistryTransitions,
+    operation,
+    previous?.status ?? "absent",
+    (status): ScratchRegistryEntry | null => {
+      if (operation === "remove" || status === "absent") return null;
+      const detached =
+        operation === "acquire" ? entry.detached : operation === "detach" || previous?.detached === true;
+      return { ...entry, status, detached };
+    },
+  );
+  switch (plan._tag) {
+    case "Keep":
+      return Effect.succeed({ _tag: "Keep", result: undefined });
+    case "Write":
+      return Effect.succeed(
+        plan.value === null
+          ? { _tag: "Remove", result: undefined }
+          : { _tag: "Set", value: plan.value, result: undefined },
+      );
     case "Illegal":
-      return { _tag: "Reject", message: illegalTransitionMessage(`Scratch app ${id}`, operation, verdict) };
-    case "Advance": {
-      const status = verdict.to;
-      return status === "absent" || entry === undefined
-        ? { _tag: "Delete" }
-        : { _tag: "Store", entry: { ...entry, status } };
-    }
+      return Effect.fail(
+        new ScratchAppError({
+          operation: "registry.write",
+          message: illegalTransitionMessage(
+            `Scratch app ${typeof entry === "string" ? entry : entry.id}`,
+            operation,
+            plan.verdict,
+          ),
+          remediation: illegalWriteRemediation,
+        }),
+      );
   }
 };
 
-const scratchRegistryError = (operation: string, message: string, cause: unknown): ScratchAppError =>
+const scratchRegistryError = (operation: string, message: string, cause: StateStoreError): ScratchAppError =>
   new ScratchAppError({
     operation,
     message,
     cause,
-    remediation:
-      typeof cause === "object" &&
-      cause !== null &&
-      "remediation" in cause &&
-      typeof cause.remediation === "string"
-        ? cause.remediation
-        : "Repair the scratch registry state under the user data root, then retry.",
+    remediation: cause.remediation,
   });
 
 const sortById = (entries: RegistryEntries): RegistryEntries =>
@@ -120,10 +136,7 @@ const sortById = (entries: RegistryEntries): RegistryEntries =>
 
 export interface ScratchRegistryService {
   readonly read: () => Effect.Effect<ScratchRegistryEnvelope, ScratchAppError>;
-  readonly upsert: (
-    operation: ScratchRegistryWrite,
-    entry: ScratchRegistryWriteEntry,
-  ) => Effect.Effect<void, ScratchAppError>;
+  readonly upsert: (...write: ScratchRegistryWriteArgs) => Effect.Effect<void, ScratchAppError>;
   readonly remove: (id: string) => Effect.Effect<void, ScratchAppError>;
   readonly list: () => Effect.Effect<ReadonlyArray<ScratchRegistryEntry>, ScratchAppError>;
   readonly get: (id: string) => Effect.Effect<ScratchRegistryEntry | undefined, ScratchAppError>;
@@ -180,62 +193,54 @@ export const makeScratchRegistry = (store: StateStore["Service"]): ScratchRegist
   const withBucket = <A>(
     operation: string,
     message: string,
-    use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
+    use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, ScratchAppError | StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
     openRegistryBucket(store).pipe(
-      Effect.flatMap((bucket) =>
-        use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
+      Effect.flatMap(use),
+      Effect.mapError((cause) =>
+        cause._tag === "StateStoreError" ? scratchRegistryError(operation, message, cause) : cause,
       ),
     );
 
-  const readEntries = (operation: string, message: string): Effect.Effect<RegistryEntries, ScratchAppError> =>
-    withBucket(operation, message, (bucket) => bucket.get.pipe(Effect.map((entries) => entries ?? [])));
+  const list = () =>
+    withBucket("registry.read", "Unable to read the scratch registry.", (bucket) =>
+      bucket.get.pipe(Effect.map((entries) => entries ?? [])),
+    );
 
   const read = () =>
-    readEntries("registry.read", "Unable to read the scratch registry.").pipe(
+    list().pipe(
       Effect.map(
         (entries) => ({ version: SCRATCH_REGISTRY_VERSION, entries }) satisfies ScratchRegistryEnvelope,
       ),
     );
 
-  const list = () => readEntries("registry.read", "Unable to read the scratch registry.");
-
   const get = (id: string) => list().pipe(Effect.map((entries) => entries.find((entry) => entry.id === id)));
 
-  const write = (operation: ScratchRegistryOperation, id: string, entry?: ScratchRegistryWriteEntry) =>
-    withBucket("registry.write", "Unable to write the scratch registry.", (bucket) =>
-      bucket.modify((current): readonly [ScratchAppError | undefined, RegistryEntries] => {
+  const write = (...mutation: ScratchRegistryMutation) => {
+    const value = mutation[1];
+    const id = typeof value === "string" ? value : value.id;
+    return withBucket("registry.write", "Unable to write the scratch registry.", (bucket) =>
+      bucket.mutate((current) => {
         const entries = current ?? [];
-        const plan = planScratchRegistryWrite(
-          operation,
-          id,
+        return planScratchRegistryWrite(
           entries.find((existing) => existing.id === id),
-          entry,
+          ...mutation,
+        ).pipe(
+          Effect.map((plan): StateWrite<RegistryEntries, void> => {
+            const remaining = entries.filter((existing) => existing.id !== id);
+            switch (plan._tag) {
+              case "Keep":
+                return plan;
+              case "Remove":
+                return { _tag: "Set", value: remaining, result: undefined };
+              case "Set":
+                return { _tag: "Set", value: sortById([...remaining, plan.value]), result: undefined };
+            }
+          }),
         );
-        const remaining = entries.filter((existing) => existing.id !== id);
-        switch (plan._tag) {
-          case "Unchanged":
-            return [undefined, entries];
-          case "Delete":
-            return [undefined, remaining];
-          case "Store":
-            return [undefined, sortById([...remaining, plan.entry])];
-          case "Reject":
-            return [
-              scratchRegistryError("registry.write", plan.message, {
-                remediation:
-                  "Run `lando apps:scratch:gc --prune` to clean up scratch apps left mid-destroy, then acquire a new scratch app.",
-              }),
-              entries,
-            ];
-        }
       }),
-    ).pipe(Effect.flatMap((error) => (error === undefined ? Effect.void : Effect.fail(error))));
+    );
+  };
 
-  const upsert = (operation: ScratchRegistryWrite, entry: ScratchRegistryWriteEntry) =>
-    write(operation, entry.id, entry);
-
-  const remove = (id: string) => write("remove", id);
-
-  return { read, upsert, remove, list, get };
+  return { read, upsert: write, remove: (id) => write("remove", id), list, get };
 };

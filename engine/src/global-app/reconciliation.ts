@@ -1,7 +1,7 @@
 import { Effect, Result, Schema } from "effect";
 
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
-import { GlobalAppService, StateStore } from "@lando/sdk/services";
+import { GlobalAppService, StateStore, type StateWrite } from "@lando/sdk/services";
 
 export const GlobalReconciliationPhase = Schema.Literals(["evidence", "containers", "routes", "generation"]);
 
@@ -15,7 +15,7 @@ export type GlobalReconciliationPending = typeof GlobalReconciliationPending.Typ
 type Phase = GlobalReconciliationPending["phase"];
 
 /** Independent obligations: clearing one phase proves nothing about another. */
-const pendingOperations = {
+export const pendingOperations = {
   // A command replaces its selection; generation always describes the whole configuration.
   reconciliation: {
     adds: ["evidence", "containers", "routes", "generation"],
@@ -132,22 +132,45 @@ const reconciliationBucket = Effect.fn("GlobalApp.reconciliationBucket")(functio
 
 export const readGlobalReconciliation = Effect.fn("GlobalApp.readReconciliation")(function* () {
   const bucket = yield* reconciliationBucket();
-  if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return emptyState();
   return (yield* bucket.get.pipe(Effect.mapError(receiptError))) ?? emptyState();
 });
 
+/**
+ * Apply one obligation change under the receipt lock and return the stored receipt.
+ * `undefined` keeps the receipt unwritten; `existing` is false until one is saved.
+ */
 const updateReconciliation = Effect.fn("GlobalApp.updateReconciliation")(function* (
-  update: (previous: GlobalReconciliationState) => Result.Result<GlobalReconciliationState, GlobalAppError>,
+  update: (
+    previous: GlobalReconciliationState,
+    existing: boolean,
+  ) => Result.Result<GlobalReconciliationState | undefined, GlobalAppError>,
 ) {
   const bucket = yield* reconciliationBucket();
   return yield* bucket
-    .modify((previous) => {
-      const current = previous ?? emptyState();
-      const result = update(current);
-      return [result, Result.getOrElse(result, () => current)] as const;
+    .mutate((stored) => {
+      const previous = stored ?? emptyState();
+      return bucket.exists.pipe(
+        Effect.flatMap((existing) => Effect.fromResult(update(previous, existing))),
+        Effect.map(
+          (next): StateWrite<GlobalReconciliationState, GlobalReconciliationState> =>
+            next === undefined
+              ? { _tag: "Keep", result: previous }
+              : { _tag: "Set", value: next, result: next },
+        ),
+      );
     })
-    .pipe(Effect.mapError(receiptError), Effect.flatMap(Effect.fromResult));
+    .pipe(Effect.catchTag("StateStoreError", (cause) => Effect.fail(receiptError(cause))));
 });
+
+/**
+ * Cleanup records only change an existing receipt. Checking before taking the lock keeps
+ * observation-only teardown from creating the global root just to hold the lock file.
+ */
+const whenRecorded = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  reconciliationBucket().pipe(
+    Effect.flatMap((bucket) => bucket.exists.pipe(Effect.mapError(receiptError))),
+    Effect.flatMap((exists) => (exists ? Effect.asVoid(effect) : Effect.void)),
+  );
 
 /** Keep pending work for other selections; each command replaces only its own receipt. */
 export const recordGlobalReconciliation = Effect.fn("GlobalApp.recordReconciliation")(function* (
@@ -188,54 +211,46 @@ export const recordGlobalReconciliation = Effect.fn("GlobalApp.recordReconciliat
 
 /** Configuration regeneration may finish without completing previously pending container cleanup. */
 export const recordGlobalGeneration = Effect.fn("GlobalApp.recordGeneration")(function* (revision: number) {
-  const bucket = yield* reconciliationBucket();
-  if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return;
-  const current = yield* bucket.get.pipe(Effect.mapError(receiptError));
-  if (current === null || current.pending.every((entry) => entry.phase !== "generation")) return;
-  yield* updateReconciliation((previous) =>
-    transitionGlobalPending(previous.pending, "generation", { clears: [{ phase: "generation" }] }).pipe(
-      Result.map((pending) => ({
-        ...previous,
-        revision,
-        pending,
-      })),
+  yield* whenRecorded(
+    updateReconciliation((previous) =>
+      previous.pending.every((entry) => entry.phase !== "generation")
+        ? Result.succeed(undefined)
+        : transitionGlobalPending(previous.pending, "generation", { clears: [{ phase: "generation" }] }).pipe(
+            Result.map((pending) => ({ ...previous, revision, pending })),
+          ),
     ),
   );
 });
 
 /** Whole-app teardown proves container and route cleanup without changing saved intent. */
 export const recordGlobalResourceCleanup = Effect.fn("GlobalApp.recordResourceCleanup")(function* () {
-  const bucket = yield* reconciliationBucket();
-  if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return;
-  const current = yield* bucket.get.pipe(Effect.mapError(receiptError));
-  if (current === null) return;
-  yield* updateReconciliation((previous) =>
-    transitionGlobalPending(previous.pending, "resources", {
-      clears: [{ phase: "evidence" }, { phase: "containers" }, { phase: "routes" }],
-    }).pipe(
-      Result.map((pending) => ({
-        ...previous,
-        routesClearedRevision: previous.revision,
-        targets: [],
-        pending,
-      })),
+  yield* whenRecorded(
+    updateReconciliation((previous, existing) =>
+      !existing
+        ? Result.succeed(undefined)
+        : transitionGlobalPending(previous.pending, "resources", {
+            clears: [{ phase: "evidence" }, { phase: "containers" }, { phase: "routes" }],
+          }).pipe(
+            Result.map((pending) => ({
+              ...previous,
+              routesClearedRevision: previous.revision,
+              targets: [],
+              pending,
+            })),
+          ),
     ),
   );
 });
 
 /** Route-only recovery cannot prove that unknown container ownership has been resolved. */
 export const recordGlobalRouteCleanup = Effect.fn("GlobalApp.recordRouteCleanup")(function* () {
-  const bucket = yield* reconciliationBucket();
-  if (!(yield* bucket.exists.pipe(Effect.mapError(receiptError)))) return;
-  const current = yield* bucket.get.pipe(Effect.mapError(receiptError));
-  if (current === null) return;
-  yield* updateReconciliation((previous) =>
-    transitionGlobalPending(previous.pending, "routes", { clears: [{ phase: "routes" }] }).pipe(
-      Result.map((pending) => ({
-        ...previous,
-        routesClearedRevision: previous.revision,
-        pending,
-      })),
+  yield* whenRecorded(
+    updateReconciliation((previous, existing) =>
+      !existing
+        ? Result.succeed(undefined)
+        : transitionGlobalPending(previous.pending, "routes", { clears: [{ phase: "routes" }] }).pipe(
+            Result.map((pending) => ({ ...previous, routesClearedRevision: previous.revision, pending })),
+          ),
     ),
   );
 });

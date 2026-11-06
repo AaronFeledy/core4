@@ -1134,7 +1134,7 @@ export const detachScratchApp = Effect.fnUntraced(function* (
   const entry = yield* registry.get(id);
   if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
   const { ownerPid: _ownerPid, ...rest } = entry;
-  yield* registry.upsert("detach", { ...rest, detached: true, updatedAt: yield* nowIso });
+  yield* registry.upsert("detach", { ...rest, updatedAt: yield* nowIso });
   retainedScratchIds.add(id);
 });
 

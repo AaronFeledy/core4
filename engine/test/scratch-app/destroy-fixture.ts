@@ -209,7 +209,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         get: (key) => Effect.sync(() => entries.get(key)),
         list: () => Effect.sync(() => [...entries.values()]),
         read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
-        upsert: (operation, value) =>
+        upsert: (...write) =>
           Effect.sync(() => {
             calls.push("registry:upsert");
           }).pipe(
@@ -222,10 +222,11 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                       remediation: "Injected registry write failure for destroy fixture.",
                     }),
                   )
-                : Effect.sync(() => {
-                    const plan = planScratchRegistryWrite(operation, value.id, entries.get(value.id), value);
-                    if (plan._tag === "Store") entries.set(value.id, plan.entry);
-                  }),
+                : planScratchRegistryWrite(entries.get(write[1].id), ...write).pipe(
+                    Effect.map((plan) => {
+                      if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+                    }),
+                  ),
             ),
           ),
         remove: (key) =>

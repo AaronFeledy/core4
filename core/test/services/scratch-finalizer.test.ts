@@ -366,7 +366,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
                   app: target.app,
                   service: target.service,
                   providerId,
-                  status: "stopped",
+                  status: "exited" as const,
                   exitCode: 17,
                   publications: { status: "present", bindings: [] },
                 }),
