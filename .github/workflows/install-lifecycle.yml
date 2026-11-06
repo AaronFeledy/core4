@@ -54,7 +54,7 @@ jobs:
           bun test core/test/container-helper/helper.integration.test.ts
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -136,7 +136,7 @@ jobs:
 
       - name: Upload lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: install-lifecycle-linux-x64
           path: ${{ runner.temp }}/install-lifecycle.json
@@ -200,7 +200,7 @@ jobs:
 
       - name: Upload lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: install-lifecycle-windows-x64
           path: ${{ runner.temp }}/install-lifecycle.json
