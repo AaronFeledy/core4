@@ -1,12 +1,9 @@
-import { createHash } from "node:crypto";
 import { lstat, mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { type RootOverrides, makeLandoPaths } from "@lando/paths";
+import { dirname } from "node:path";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
-import { withAdvisoryLockUsing } from "@lando/state-store/lock";
-import { resolveStatePath } from "@lando/state-store/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
+import { type WorkerClaim, changeWorkerClaim } from "./claim.ts";
 
 export const readDetachedWorkerRecord = <A, I>(path: string, schema: Schema.Codec<A, I>) =>
   Effect.tryPromise({
@@ -20,53 +17,32 @@ export const readDetachedWorkerRecord = <A, I>(path: string, schema: Schema.Code
   });
 
 export const writeDetachedWorkerRecord = <A, I>(
+  claim: WorkerClaim,
   options: {
-    readonly path: string;
     readonly schema: Schema.Codec<A, I>;
     readonly privateFileAccess: PrivateFileAccess;
     readonly directoryMode?: number;
   },
   record: A,
 ) =>
-  Effect.tryPromise({
-    try: () => mkdir(dirname(options.path), { recursive: true, mode: options.directoryMode ?? 0o700 }),
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.andThen(
-      Effect.try(() => `${JSON.stringify(Schema.encodeSync(options.schema)(record), null, 2)}\n`),
-    ),
-    Effect.flatMap((body) =>
-      writeFileAtomicScoped(options.path, body, {
-        mode: 0o600,
-        privateFileAccess: options.privateFileAccess.enforce,
-      }),
-    ),
-  );
-
-export const withDetachedWorkerLock = <A, E>(
-  options: {
-    readonly path: string;
-    readonly label: string;
-    readonly paths: RootOverrides | undefined;
-    readonly privateFileAccess: PrivateFileAccess;
-  },
-  body: Effect.Effect<A, E>,
-) => {
-  const key = `${options.label}-${createHash("sha256")
-    .update(resolve(dirname(options.path)))
-    .digest("hex")}`;
-  return resolveStatePath(
-    "userData",
-    "operation-locks",
-    key,
-    options.label,
-    makeLandoPaths(options.paths).roots,
-  ).pipe(
-    Effect.flatMap(({ file }) =>
-      withAdvisoryLockUsing(options.privateFileAccess, { expireLiveOwner: false })(file, options.label, body),
+  changeWorkerClaim(
+    claim,
+    "publish",
+    Effect.tryPromise({
+      try: () => mkdir(dirname(claim.path), { recursive: true, mode: options.directoryMode ?? 0o700 }),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.andThen(
+        Effect.try(() => `${JSON.stringify(Schema.encodeSync(options.schema)(record), null, 2)}\n`),
+      ),
+      Effect.flatMap((body) =>
+        writeFileAtomicScoped(claim.path, body, {
+          mode: 0o600,
+          privateFileAccess: options.privateFileAccess.enforce,
+        }),
+      ),
     ),
   );
-};
 
 /**
  * Whether a worker record may be trusted: a regular file owned by this user with no group or other

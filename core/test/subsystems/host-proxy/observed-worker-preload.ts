@@ -26,8 +26,7 @@ const provider = {
       app: target.app,
       service: target.service,
       providerId: ProviderId.make("lando"),
-      status: "running",
-      state: "running",
+      status: "running" as const,
       publications: { status: "present" as const, bindings: [] },
     }),
 };
