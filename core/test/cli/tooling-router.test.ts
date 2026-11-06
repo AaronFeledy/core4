@@ -240,7 +240,7 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
   });
 });
 
-test("Given a schema-version-2 cache blob, when resolving a listed task, then it is a cache-miss not an exception", async () => {
+test("Given a schema-version-2 cache blob, when resolving a listed task, then the index is rebuilt instead of trusted", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given — prior index generation still lists the task; current schema is newer
     expect(Number(COMMAND_INDEX_SCHEMA_VERSION)).toBeGreaterThan(2);
@@ -251,15 +251,8 @@ test("Given a schema-version-2 cache blob, when resolving a listed task, then it
     // When
     const route = await Effect.runPromise(resolveToolingRoute("quality", { cwd: root, cacheRoot }));
 
-    // Then — mismatch is a clean miss (never a thrown decode error, never a usable hit)
-    expect(route).toEqual({
-      _tag: "cache-miss",
-      commandId: "app:quality",
-      name: "quality",
-      reason: "invalid-cache",
-      sourcePath: join(root, ".lando.yml"),
-      remediation: expect.stringContaining("lando app:cache:refresh"),
-    });
+    // Then — mismatch is never a thrown decode error or a usable hit; the rebuilt index has no such task
+    expect(route).toMatchObject({ _tag: "unknown-tooling", commandId: "app:quality", name: "quality" });
   });
 });
 
@@ -318,7 +311,7 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
   });
 });
 
-test("Given an uncached Landofile task, when resolving it, then the router does not parse and register it", async () => {
+test("Given an uncached Landofile task, when resolving it, then the router rebuilds and routes it", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
@@ -331,10 +324,7 @@ test("Given an uncached Landofile task, when resolving it, then the router does 
     const route = await Effect.runPromise(resolveToolingRoute("uncached", { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toMatchObject({
-      _tag: "cache-miss",
-      remediation: expect.stringContaining("lando app:cache:refresh"),
-    });
+    expect(route).toMatchObject({ _tag: "tooling", commandId: "app:uncached" });
   });
 });
 
@@ -396,7 +386,7 @@ test("Given another namespace or a directory outside an app, when resolving, the
   });
 });
 
-test("Given a stale version-policy cache, when resolving a task, then it requires refresh without running it", async () => {
+test("Given a stale version-policy cache, when resolving a task, then the rebuild's version error is reported without running it", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     const marker = join(root, "task-ran");
@@ -416,13 +406,14 @@ test("Given a stale version-policy cache, when resolving a task, then it require
     // Then
     expect(route).toMatchObject({
       _tag: "cache-miss",
-      remediation: expect.stringContaining("lando app:cache:refresh"),
+      reason: "rebuild-failed",
+      error: { _tag: "LandofileVersionConstraintError" },
     });
     expect(await Bun.file(marker).exists()).toBe(false);
   });
 });
 
-test("Given a missing cache with a remote include, when resolving, then it performs no task or network side effect", async () => {
+test("Given a remote include without a fragment path, rebuilding a missing index reports subpath-invalid without task or network effects", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     let requests = 0;
@@ -450,7 +441,8 @@ test("Given a missing cache with a remote include, when resolving, then it perfo
       // Then
       expect(route).toMatchObject({
         _tag: "cache-miss",
-        remediation: expect.stringContaining("lando app:cache:refresh"),
+        reason: "rebuild-failed",
+        error: { _tag: "LandofileIncludeError", kind: "subpath-invalid" },
       });
       expect(requests).toBe(0);
       expect(await Bun.file(marker).exists()).toBe(false);
@@ -460,7 +452,7 @@ test("Given a missing cache with a remote include, when resolving, then it perfo
   });
 });
 
-test("Given a cache-miss remediation, when extracting backticked lando commands, then each resolves in the built-in registry", async () => {
+test("Given rebuild is disabled, a stale cache reports remediation without a manual refresh command", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
@@ -469,9 +461,11 @@ test("Given a cache-miss remediation, when extracting backticked lando commands,
       ["name: router-test", "tooling:", "  uncached:", "    cmd: echo must-not-run", ""].join("\n"),
     );
 
-    // When
-    const route = await Effect.runPromise(resolveToolingRoute("uncached", { cwd: root, cacheRoot }));
-    if (route._tag !== "cache-miss") {
+    // When — without a rebuild the stale index stays a cache-state miss
+    const route = await Effect.runPromise(
+      resolveToolingRoute("uncached", { cwd: root, cacheRoot, rebuild: false }),
+    );
+    if (route._tag !== "cache-miss" || route.reason === "rebuild-failed") {
       throw new Error(`expected cache-miss, got ${route._tag}`);
     }
     const tokens = [...route.remediation.matchAll(/`lando\s+([^`]+)`/g)].flatMap((match) => {
@@ -479,12 +473,13 @@ test("Given a cache-miss remediation, when extracting backticked lando commands,
       return captured === undefined ? [] : [captured.trim()];
     });
 
-    // Then
-    expect(tokens.length).toBeGreaterThan(0);
+    // Then — automatic rebuild means no manual refresh step is ever named
+    expect(route).toMatchObject({ reason: "stale-cache", staleReason: "source" });
+    expect(route.remediation).toMatch(/\S/u);
     for (const token of tokens) {
       expect(resolveBuiltInCommand(token), `${token} must resolve in the built-in registry`).toBeDefined();
     }
-    expect(tokens).toContain("app:cache:refresh");
+    expect(route.remediation).not.toContain("app:cache:refresh");
   });
 });
 

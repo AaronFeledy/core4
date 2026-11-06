@@ -202,7 +202,7 @@ test("unknown custom targets fail with close matches and remediation", async () 
       alias: "hi",
       target: "app:grete",
       closeMatches: expect.arrayContaining(["app:greet"]),
-      remediation: expect.stringContaining("app:cache:refresh"),
+      remediation: expect.stringContaining("app:greet"),
     });
   });
 });

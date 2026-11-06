@@ -32,7 +32,7 @@ import { pluginHelpRows, printPluginTopicHelp, tryPluginCommandHelp } from "./pl
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { toolingMetadataStatus } from "./tooling-cache-status";
 import { readCliAppCommandCache } from "./tooling-command-cache";
-import { resolveToolingRoute, toolingRouteError } from "./tooling-router";
+import { resolveToolingRoute, toolingRouteFailure } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 const readHelpCache = async () => {
@@ -200,7 +200,7 @@ export const dispatchHelpTarget = async (
           }
           return renderPreCommandFailure({
             commandId: route.commandId,
-            error: toolingRouteError(route),
+            error: toolingRouteFailure(route),
             rendererMode: activeRendererMode,
             resultFormat: activeResultFormat,
           });

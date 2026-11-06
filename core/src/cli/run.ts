@@ -86,7 +86,7 @@ import {
 } from "./run-help";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { resolveToolingRoute, toolingHelpRequested, toolingRouteError } from "./tooling-router";
+import { resolveToolingRoute, toolingHelpRequested, toolingRouteFailure } from "./tooling-router";
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -148,13 +148,11 @@ const rejectJsonControlConflicts = async (): Promise<boolean> => {
 const resolveToolingRouteExit = async (
   token: string | undefined,
   catalog: PluginCommandCatalog,
-  options: { readonly signal?: AbortSignal; readonly rebuildMissing: boolean },
+  options: { readonly signal?: AbortSignal; readonly rebuild: boolean; readonly rebuildNotice?: boolean },
 ) => {
+  const { signal, ...routeOptions } = options;
   const exit = await Effect.runPromiseExit(
-    interruptOnAbort(
-      Effect.result(resolveToolingRoute(token, { catalog, rebuildMissing: options.rebuildMissing })),
-      options.signal,
-    ),
+    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog, ...routeOptions })), signal),
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
@@ -214,7 +212,10 @@ const runCompiledCli = async (
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
       ? await resolveToolingRouteExit(rawHead, catalog, {
           ...(signal === undefined ? {} : { signal }),
-          rebuildMissing: hostProxy === undefined,
+          // `lando help` rebuilds in its own dispatcher, so help for a built-in never rebuilds.
+          rebuild: hostProxy === undefined && rawHead !== "help",
+          // Output modes are not resolved yet; machine-output argv/env still silences the notice.
+          rebuildNotice: preCommandOutputMode({ argv: rawArgv, env: process.env }).rendererMode !== "json",
         })
       : undefined;
   const isBunOrXAlias =
@@ -376,7 +377,7 @@ const runCompiledCli = async (
       passthroughAliasResolution ??
       (await resolveToolingRouteExit(argv[0], catalog, {
         ...(signal === undefined ? {} : { signal }),
-        rebuildMissing: hostProxy === undefined,
+        rebuild: hostProxy === undefined,
       }));
     if (aliasResolution._tag === "Failure") {
       await renderAliasResolutionFailure(aliasResolution.failure);
@@ -404,7 +405,7 @@ const runCompiledCli = async (
       if (hint !== undefined) {
         return renderPreCommandFailure({
           commandId: route.commandId,
-          error: toolingRouteError({ ...route, remediation: `${route.remediation} ${hint}` }),
+          error: toolingRouteFailure(route, hint),
           rendererMode: activeRendererMode,
           resultFormat: activeResultFormat,
         });

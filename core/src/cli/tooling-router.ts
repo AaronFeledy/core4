@@ -38,7 +38,9 @@ const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;
-  readonly rebuildMissing?: boolean;
+  readonly rebuild?: boolean;
+  /** Allow the slow-rebuild stderr notice; callers that resolve before output modes are set decide here. */
+  readonly rebuildNotice?: boolean;
   /** The invocation's plugin catalog; routing never acquires a second one. */
   readonly catalog?: PluginCommandCatalog;
 }
@@ -95,9 +97,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   const receipt = yield* readCliAppCommandCache({
     cwd: appRoot,
-    // A missing index already yields to a built-in alias below; rebuilding first would only run
+    // A non-fresh index already yields to a built-in alias below; rebuilding first would only run
     // app compile side effects (include pinning) ahead of a command that owns its own policy.
-    rebuildMissing: options.rebuildMissing !== false && resolveBuiltInCommand(token) === undefined,
+    rebuild: options.rebuild !== false && resolveBuiltInCommand(token) === undefined,
+    ...(options.rebuildNotice === undefined ? {} : { rebuildNotice: options.rebuildNotice }),
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(
     // A built-in owns its Landofile policy (teardown tolerates the conflict, start reports it),
@@ -117,6 +120,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     }
     if (name === undefined) return { _tag: "not-tooling" } as const;
     const commandId = `app:${name}`;
+    if (receipt?.status === "rebuild-failed") {
+      const { sourcePath, error } = receipt;
+      return { _tag: "cache-miss", reason: "rebuild-failed", commandId, name, sourcePath, error } as const;
+    }
     return {
       _tag: "cache-miss",
       commandId,
@@ -218,8 +225,17 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);
 });
 
+type ToolingRouteMiss = Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>;
+
+export const toolingRouteFailure = (route: ToolingRouteMiss, hint?: string): unknown => {
+  if (route._tag === "cache-miss" && route.reason === "rebuild-failed") return route.error;
+  return toolingRouteError(
+    hint === undefined ? route : { ...route, remediation: `${route.remediation} ${hint}` },
+  );
+};
+
 export const toolingRouteError = (
-  route: Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>,
+  route: Exclude<ToolingRouteMiss, { readonly reason: "rebuild-failed" }>,
 ): ToolingCommandUnavailableError =>
   new ToolingCommandUnavailableError({
     message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable (${route._tag === "unknown-tooling" ? "unknown-command" : route.reason}).`,

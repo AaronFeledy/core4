@@ -169,25 +169,19 @@ test("scenario 8: duplicate ids retain their first owner and missing loaders are
   }
 });
 
-test("a stale tooling cache refuses a bare plugin alias and names the plugin command", async () => {
+test("a bare plugin alias routes with missing and stale tooling indexes", async () => {
   const f = await createCatalogFixture();
   try {
     await f.install("@example/first", [
       { id: "fx:inspect", summary: "Inspect fixture.", topLevelAlias: "inspect" },
     ]);
-    // A missing index is rebuilt, so the alias routes once no tooling task owns it.
     const rebuilt = await f.invoke(["inspect", "--format=json"]);
     expect(rebuilt.exit, rebuilt.stderr).toBe(0);
     expect(JSON.parse(rebuilt.stdout).result).toBe("@example/first");
-    // A stale index is not rebuilt, and the changed Landofile could now define tooling named inspect.
     await f.landofile("tooling: {}\n");
     const run = await f.invoke(["inspect", "--format=json"]);
-    expect(run.exit).not.toBe(0);
-    const error = JSON.parse(run.stdout).error;
-    expect(error._tag).toBe("ToolingCommandUnavailableError");
-    expect(error.remediation).toContain("Run `lando fx:inspect` to run the plugin command directly.");
-    const direct = await f.invoke(["fx:inspect", "--format=json"]);
-    expect(direct.exit, direct.stderr).toBe(0);
+    expect(run.exit, run.stderr).toBe(0);
+    expect(JSON.parse(run.stdout).result).toBe("@example/first");
   } finally {
     await f.cleanup();
   }

@@ -88,12 +88,18 @@ test.each(["desc", "description", "summary", "service"])(
   },
 );
 
-test("additions and removals leave the index usable for routing", async () => {
-  await withCache(async (root, cacheRoot, path) => {
+test("an added script leaves the index usable for routing", async () => {
+  await withCache(async (root, cacheRoot) => {
     await writeFile(join(root, ".lando/scripts/new.bun.sh"), "# ---\n# ---\necho new\n");
-    await rm(path);
     const cache = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: root, cacheRoot }));
     expect(cache?.entries[0]?.id).toBe("app:probe");
+  });
+});
+
+test("a removed indexed script stales the index", async () => {
+  await withCache(async (root, cacheRoot, path) => {
+    await rm(path);
+    expect(await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: root, cacheRoot }))).toBeNull();
   });
 });
 
