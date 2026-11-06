@@ -18,11 +18,13 @@ import {
  */
 const TABLE_COMMANDS = [
   "app:config",
+  "app:config:describe",
   "app:config:translate",
   "apps:list",
   "apps:scratch:list",
   "meta:config",
   "meta:global:config",
+  "meta:global:config:describe",
   "meta:global:info",
   "meta:global:list",
   "meta:global:status",
