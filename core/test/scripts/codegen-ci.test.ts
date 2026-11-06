@@ -578,8 +578,7 @@ describe("ci workflow codegen", () => {
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
       expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-      expect(staticChecksPlatform).toContain("- name: Typecheck");
-      expect(staticChecksPlatform).toContain("if: matrix.platform == 'linux-x64'");
+      expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
       expect(staticChecksPlatform).not.toContain("- name: Audit dependencies");
