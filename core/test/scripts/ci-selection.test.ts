@@ -353,7 +353,7 @@ describe("CI selection", () => {
     },
   );
 
-  test("typechecks docs-only PRs in the Linux static cell instead of repeating it in guide jobs", () => {
+  test("typechecks docs-only PRs in the static cells instead of repeating it in guide jobs", () => {
     const jobs = Schema.decodeUnknownSync(
       Schema.Struct({
         jobs: Schema.Record(
@@ -372,7 +372,6 @@ describe("CI selection", () => {
     )(Bun.YAML.parse(renderCiWorkflow())).jobs;
     expect(jobs["static-checks-platform"]?.steps.find((step) => step.run === "bun run typecheck")).toEqual({
       name: "Typecheck",
-      if: "matrix.platform == 'linux-x64'",
       run: "bun run typecheck",
     });
     expect(

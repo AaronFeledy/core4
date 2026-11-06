@@ -1,4 +1,4 @@
-import type ts from "typescript";
+import type ts from "@typescript/typescript6";
 
 import type { ModuleEdge } from "../module-edge-scan.ts";
 
