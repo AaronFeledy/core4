@@ -6,7 +6,7 @@ and its dependencies before starting the Django server.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Prepare the application
 
@@ -38,9 +38,10 @@ what it is doing.
 - `lando django`: Django management script through `python manage.py`.
 - `lando pip`: pip inside the web service.
 
-## Alpha limitations
+## Limitations
 
 - The recipe writes a Landofile only; after installing Django, bootstrap the
   project with `lando exec web -- django-admin startproject config .`.
-- Channels / ASGI workers and additional broker backends beyond Redis are
-  deferred to Beta.
+- The recipe configures Redis as the only broker and Celery as the only
+  worker. It does not configure Channels, ASGI workers, or other broker
+  backends; add those services to the Landofile yourself.

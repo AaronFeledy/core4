@@ -824,7 +824,7 @@ describe("LandofileService layer — tooling: unsupported-field rejection (US-01
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
-    expect(error.remediation).toContain("not supported yet");
+    expect(error.remediation).toContain("not supported");
   };
 
   const assertRejectsLandofile = async (content: ReadonlyArray<string>): Promise<void> => {

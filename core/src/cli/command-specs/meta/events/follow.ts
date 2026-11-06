@@ -13,9 +13,9 @@ export const metaEventsFollowSpec: LandoCommandSpec<object> = {
   topLevelAlias: "events",
   bootstrap: "minimal",
   deferred: {
-    summary: "Lifecycle-event streaming through `meta:events:follow` is not available yet.",
+    summary: "Lifecycle-event streaming through `meta:events:follow` is not available.",
     remediation:
-      "`meta:events:follow` is not available yet. Use `--renderer=json` on a specific command to observe its event stream.",
+      "`meta:events:follow` is not available. Use `--renderer=json` on a specific command to observe its event stream.",
   },
-  run: () => Effect.die("not yet implemented: meta:events:follow"),
+  run: () => Effect.die("not implemented: meta:events:follow"),
 };

@@ -6,7 +6,7 @@ framework for you.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -23,8 +23,10 @@ version supports every PHP version. Choose a version supported by your project.
 - `lando composer …`: Composer.
 - `lando php …`: PHP CLI inside the appserver service.
 
-## Alpha limitations
+## Limitations
 
 - This recipe selects the Apache PHP variant. The PHP service also supports FPM and CLI variants; configure your Landofile explicitly if you need a different service layout.
-- Lando enables `mod_rewrite` during the stock Apache service build. Vhost
-  templates beyond the bundled defaults are deferred.
+- Lando enables `mod_rewrite` during the stock Apache service build and
+  generates the vhost itself. The PHP service exposes `webroot:` and
+  `allowOverride:` for that vhost; there is no vhost template option. Supply
+  your own `command:` or `entrypoint:` if you need a custom Apache startup.

@@ -3,14 +3,19 @@ id: ci-github-actions
 provider: test
 platforms: [linux]
 timeout: 90000
-tags: [beta, docs, install, ci, github-actions]
+tags: [docs, install, ci, github-actions]
 ---
 
 # Run Lando in GitHub Actions
 
-> **Alpha status:** There is no live `get.lando.dev` installer and no `releases/latest` v4 binary. Do not curl `https://github.com/lando/core/releases/latest/download/lando-linux-x64`. That is not this product. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+CI can run Lando on `ubuntu-latest` once the Linux x64 binary is on PATH. The shortest path is the installer without its setup prompt:
 
-CI can run Lando on `ubuntu-latest` if you first put the Linux x64 `v4.0.0-dev.N` binary on PATH. Pin a specific prerelease tag from [AaronFeledy/core4 releases](https://github.com/AaronFeledy/core4/releases). Download the `lando-linux-x64` asset and `SHA256SUMS`, verify the checksum, and [put the binary on PATH as `lando`](./path-and-setup.mdx). Run the following from the checked-out app directory containing its Landofile:
+```sh
+curl -fsSL https://get.lando.dev/install.sh | LANDO_INSTALL_SKIP_SETUP=1 sh
+eval "$("$HOME/.local/share/lando/bin/lando" shellenv)"
+```
+
+To pin an exact version instead, pick a release tag from [AaronFeledy/core4 releases](https://github.com/AaronFeledy/core4/releases), download its `lando-linux-x64` asset and `SHA256SUMS`, verify the checksum, and [put the binary on PATH as `lando`](./path-and-setup.mdx). Then run the following from the checked-out app directory containing its Landofile:
 
 ```sh
 lando --version

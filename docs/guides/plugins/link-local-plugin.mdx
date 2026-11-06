@@ -3,7 +3,7 @@ id: link-local-plugin
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, authoring]
+tags: [docs, plugins, authoring]
 ---
 
 # Link a local plugin
@@ -65,7 +65,7 @@ The link target is `<userDataRoot>/plugins/<manifest.name>`. State also lands in
 - `<userDataRoot>/plugins/.lando-linked.json`
 - `<userDataRoot>/plugins/registry.json` with `source: "linked"`
 
-An existing non-linked install of the same name is left alone. Unlink or remove it first. `file:` on `plugin:add` is `NotImplementedError` in this Beta. Link is the local path.
+An existing non-linked install of the same name is left alone. Unlink or remove it first. `file:` on `plugin:add` fails with `NotImplementedError`. Link is the local path.
 
 Also trust the absolute checkout if you need postinstall or authoring-root checks:
 

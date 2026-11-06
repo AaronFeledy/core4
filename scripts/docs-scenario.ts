@@ -26,7 +26,7 @@ const deferredFlagError = (flag: string): NotImplementedError =>
   new NotImplementedError({
     message: `${flag} is not implemented for docs:scenario.`,
     commandId: "docs:scenario",
-    remediation: `${flag} is not supported yet.`,
+    remediation: `${flag} is not supported.`,
   });
 
 const formatError = (error: unknown): string => {

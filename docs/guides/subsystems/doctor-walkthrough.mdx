@@ -3,7 +3,7 @@ id: doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, doctor, diagnostics]
+tags: [docs, subsystems, doctor, diagnostics]
 ---
 
 # Run lando doctor
@@ -66,7 +66,7 @@ inspection is available. Certificate selection errors still appear as findings.
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
+If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Inspect leftover snapshot images
 

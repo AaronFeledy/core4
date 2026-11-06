@@ -2,7 +2,7 @@ import { Effect, Predicate } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-export const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported yet.";
+export const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported.";
 
 const UNSUPPORTED_TOOLING_TASK_KEYS = [
   "deps",

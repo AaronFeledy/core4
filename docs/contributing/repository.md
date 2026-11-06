@@ -6,7 +6,7 @@ description: Find Lando's package boundaries, source-build instructions, and val
 # Contributor source map
 
 Use this page to find the code and checks for a Lando change. To run an app rather
-than work on Lando itself, use the [Alpha install guide](../alpha-install-and-bug-reports.md).
+than work on Lando itself, use the [install guide](../alpha-install-and-bug-reports.md).
 Read the root [repository instructions](../../AGENTS.md) and any package-specific
 `AGENTS.md` before editing.
 
@@ -153,17 +153,14 @@ and the [release runbook](./release.md).
 The default managed-runtime manifest pins published assets. To test an unpublished
 runtime bundle, build it with `scripts/build-runtime-bundle.ts` and use
 `LANDO_RUNTIME_BUNDLE_MANIFEST` to select that manifest. This override is a
-development tool, not a prerequisite for ordinary Alpha setup.
+development tool, not a prerequisite for ordinary setup.
 
-Public Alpha 1 is the current milestone. Earlier internal phases are pre-alpha;
-Beta follows Alpha. The `dev` channel ships unsigned `4.0.0-dev.N` artifacts.
-Signing, installers, and self-update are later milestones, not Alpha delivery
-claims. The manual signed Beta pipeline is a separate release path.
+The `dev` channel ships unsigned `4.0.0-dev.N` artifacts. The manual signed
+pipeline in the [release runbook](./release.md) is a separate release path.
 
-Compiling six binaries is not Alpha acceptance: the
-[platform criteria](./ci.md#alpha-platform-scope) require live setup, doctor,
-and canonical Drupal and Rails journeys across all six targets. A roadmap
-rewrite does not satisfy these criteria.
+Compiling six binaries is not release acceptance: the
+[platform criteria](./ci.md#platform-acceptance) require live setup, doctor,
+and canonical Drupal and Rails journeys across all six targets.
 
 The public Rails recipe uses an executable `README.mdx` in `recipes/rails/`.
 Extend its existing built-in implementation rather than adding a duplicate recipe.

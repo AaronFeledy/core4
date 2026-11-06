@@ -107,7 +107,7 @@ export const lowerApi4Mounts = (service: V4Wire, ctx: ServiceLoweringContext): L
       cursor.acceptNoOp(relative);
       report(
         [...relative, "scope"],
-        "Lando 4 does not support global data storage yet",
+        "Lando 4 does not support global data storage",
         "Use scope: app to keep the data per app, or keep this app on Lando 3.",
         unsupportedServiceKey,
       );
