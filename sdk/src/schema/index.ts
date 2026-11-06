@@ -175,6 +175,7 @@ export * from "./subscriber.ts";
 export * from "./service-info.ts";
 export * from "./service-mount.ts";
 export * from "./service-connection.ts";
+export * from "./service-run-observation.ts";
 export * from "./service-dependency.ts";
 export * from "./service-feature-validation.ts";
 export * from "./services/index.ts";
@@ -182,7 +183,11 @@ export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
-export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
+export {
+  VolumeCreationFact,
+  VolumeInitializationPhase,
+  VolumeInitializationRecord,
+} from "./volume-initialization.ts";
 export {
   LayerMergeRule,
   SchemaLayerMergeAnnotationId,

@@ -274,6 +274,7 @@ import {
 } from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionInfo,
@@ -914,6 +915,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouterServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
   PreparedFileSyncTarget,
@@ -1217,6 +1219,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
   ServiceShutdownObservation: "Attributed daemon shutdown facts without inferred graceful or forced cleanup.",
   FileSyncQuiesceResult: "File sync writer quiescence receipt with optional shutdown observations.",
+  FileSyncDisposalPhase:
+    "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
   DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
   ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
   StartedService: "Service startup result with scoped connection evidence.",
