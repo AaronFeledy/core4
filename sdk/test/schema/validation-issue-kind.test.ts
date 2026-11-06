@@ -12,6 +12,7 @@ test.each([
   [Schema.Enum({ One: "one", Two: "two" }), "three", "value"],
   [Schema.Enum({ One: "one", Two: "two" }), 3, "type"],
   [Schema.Enum({ Low: 1, High: 2 }), 3, "value"],
+  [Schema.Never, "build", "unexpected"],
   [Schema.Union([Schema.String, Schema.Number]), false, "type"],
   [Schema.Union([Schema.String, Schema.Number.check(Schema.isGreaterThan(0))]), -1, "value"],
   [Schema.Union([Schema.Literal(false), Schema.Number.check(Schema.isGreaterThan(0))]), true, "value"],

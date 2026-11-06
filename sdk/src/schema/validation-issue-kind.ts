@@ -71,6 +71,8 @@ export const schemaIssueKind = (
   const actual = SchemaIssue.hasInput(issue) ? { input: issue.input } : evidence;
   switch (issue._tag) {
     case "InvalidType":
+      // A present key whose schema is Never is a key that is not allowed there.
+      if (issue.ast._tag === "Never") return "unexpected";
       // A literal or enum member rejects a value of the right kind too; only the input can tell which.
       if (issue.ast._tag !== "Literal" && issue.ast._tag !== "Enum") return "type";
       if (actual === undefined) return undefined;

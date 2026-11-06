@@ -49,8 +49,13 @@ export const sourceCoordinates = (source: SourceDocument, path: readonly (string
   return {};
 };
 
+// A finding is classified by rule and severity. The decoder kind is not part of that contract, and
+// scopes decode different inputs, so keeping it would split one defect into per-scope findings.
 export const attributeLintIssue = (
-  issue: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "reason" | "severity">>,
+  {
+    kind: _kind,
+    ...issue
+  }: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "reason" | "severity">>,
   scope: "fragment" | "effective",
   documents: readonly SourceDocument[],
 ): ConfigLintViolation => {
