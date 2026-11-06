@@ -98,23 +98,6 @@ export const writeDownloadedBinary = (
       }),
   });
 
-export const renameForUpdate = (
-  renamePath: UpdateRename,
-  from: string,
-  to: string,
-  permissionPath = to,
-): Effect.Effect<void, UpdatePermissionError> =>
-  Effect.tryPromise({
-    try: () => renamePath(from, to),
-    catch: (cause) =>
-      new UpdatePermissionError({
-        message: `Failed to rename ${from} to ${to}.`,
-        path: permissionPath,
-        remediation: posixPermissionRemediation(permissionPath),
-        cause,
-      }),
-  });
-
 export const cleanupUpdateTempDir = (tempDir: string): Effect.Effect<void> =>
   Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(Effect.catch(() => Effect.void));
 
