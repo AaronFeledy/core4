@@ -23,6 +23,7 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 - Brand primitives (`AppId`, `ServiceName`, `ProviderId`, `AbsolutePath`, `PortablePath`) as `Schema.String.pipe(Schema.brand(...))`; plain strings remain the `.Encoded` wire form.
 - Shared schemas live once in `src/schema/`; consuming barrels should `import` and `export type` rather than redefining.
 - Schema files use `// ====` section banners with a one-line description of what the section covers.
+- Use `withDefaultKey(value, { description })` for JSON decoding defaults so JSON Schema publishes the default and the field description; a `.annotate` after the pipe never reaches the published schema.
 
 ## Gotchas
 

@@ -107,6 +107,16 @@ test("preserves a mutated strict subtree for independent equality to reject", ()
   expect(jsonEquals(strictLandofile, selected)).toBe(false);
 });
 
+test("reads the single Landofile arm when the other arms carry no Landofile", () => {
+  // Given a direct output joined by a describe result.
+  const direct = { type: "object", properties: { source: { enum: ["global"] }, landofile: strictLandofile } };
+  const describe = { type: "object", properties: { subcommand: { enum: ["describe"] }, schema: {} } };
+  // When the embedding is selected, then the describe arm is not a candidate.
+  expect(configOutputLandofile({ anyOf: [describe, direct] })).toEqual(strictLandofile);
+  // And a lone permissive role still fails closed.
+  expect(() => configOutputLandofile({ anyOf: [merged] })).toThrow();
+});
+
 test("keeps direct embeddings and generic path traversal strict", () => {
   // Given a direct context embedding and a config output union.
   const direct = { properties: { landofile: strictLandofile } };

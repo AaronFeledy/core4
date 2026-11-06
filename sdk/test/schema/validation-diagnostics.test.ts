@@ -5,16 +5,21 @@ import {
   LandofileAuthoringFragmentNative,
   LandofileShape,
   RecipeManifest,
+  type ValidationIssue,
   authoringExpressionSlot,
   deriveAuthoringAst,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import { Result, Schema, SchemaAST, SchemaIssue } from "effect";
 
-const issues = (schema: Schema.ConstraintDecoder<unknown, never>, input: unknown) => {
+const issues = (
+  schema: Schema.ConstraintDecoder<unknown, never>,
+  input: unknown,
+): ReadonlyArray<Omit<ValidationIssue, "kind">> => {
   const result = Schema.decodeUnknownResult(schema)(input, { errors: "all", onExcessProperty: "error" });
   if (Result.isSuccess(result)) throw new Error("Expected schema failure");
-  return validationIssuesFromSchemaIssue(result.failure.issue);
+  // Kind classification has its own suite; these cases pin rendered diagnostics.
+  return validationIssuesFromSchemaIssue(result.failure.issue).map(({ kind: _kind, ...issue }) => issue);
 };
 
 test.each([
@@ -141,7 +146,7 @@ test("bounds a suspended expectation cycle without leaking its identifier", () =
   // When
   const messages = validationIssuesFromSchemaIssue(issue);
   // Then
-  expect(messages).toEqual([{ path: [], message: "Expected a value" }]);
+  expect(messages).toEqual([{ path: [], message: "Expected a value", kind: "type" }]);
 });
 
 test.each([

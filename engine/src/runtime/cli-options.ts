@@ -33,6 +33,8 @@ const DEFAULT_LOWER_TIER_NOTIFY_COMMANDS = new Set(["meta:update"]);
  * that fallible runtime eagerly and defeat the guarantee.
  */
 const BOOTSTRAP_PROMOTION_EXEMPT_COMMANDS = new Set([
+  "app:config:describe",
+  "meta:global:config:describe",
   "meta:doctor",
   "meta:config",
   "meta:version",

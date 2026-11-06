@@ -572,7 +572,12 @@ fails with the same message.
 `lando config set` and `unset` reject a candidate only when it introduces an
 issue (a new path/message pair) or leaves the written key or a descendant
 invalid. Rejections use `LandofileWriteValidationError` and `error.issues`,
-without changing the file. Unchanged issues elsewhere don't block the write;
+without changing the file. An issue from schema validation carries `kind`:
+`type` (wrong kind of value), `value` (right kind, rejected by a limit or allowed
+value), `unexpected`, or `missing`; branch on it instead of parsing `message`.
+`error.remediation` names what the written key takes when the schema knows the
+key, and `lando config describe <key> --format=json` returns the same facts,
+including the key's JSON Schema, before you write. Unchanged issues elsewhere don't block the write;
 the successful envelope carries one `LANDO_CONFIG_PREEXISTING_ISSUES` warning
 naming every remaining issue and its fix. `app:config` and `global:config`
 set/unset use the same rule. `telemetry off` applies it to `telemetry.enabled`.

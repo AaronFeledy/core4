@@ -70,7 +70,7 @@ Set either map from the shell as one JSON document. `LANDO_APP_ENV` and `LANDO_A
   <Scenario id="reject-core-owned-default" render={false} reason="Guards the core service environment namespace">
     <Step name="set-reserved-key">
       <Run command={`lando config set appEnv {"LANDO_APP_NAME":"blocked"} --format=json`} expectExit={1} />
-      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "as JSON:[\\s\\S]*exclude core-owned keys" }} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "^(?![\\s\\S]*as text:)[\\s\\S]*exclude core-owned keys" }} />
     </Step>
   </Scenario>
 

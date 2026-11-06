@@ -128,7 +128,7 @@ Don't delete the user data root by hand. It holds the runtime your apps run on, 
 Use `hostProxy.allowedSchemes` to allow URL schemes beyond the host proxy's built-in list. From your host terminal, set the full list of additional schemes and check the effective value:
 
 ```sh
-lando config set hostProxy.allowedSchemes '["figma","slack"]' --type=json
+lando config set hostProxy.allowedSchemes '["figma","slack"]'
 lando config get hostProxy.allowedSchemes --format=json
 ```
 
@@ -193,9 +193,36 @@ To return to automatic selection, run `lando config unset defaultFileSyncEngine`
     </Step>
   </Scenario>
 
+## Describe a key before you set it
+
+`lando config describe <key>` tells you what a key takes without reading or changing `config.yml`. It prints the accepted type and limits, the key's purpose, and, when the schema declares one, the default Lando uses while the key is absent:
+
+```sh
+lando config describe router.httpPort
+lando config describe telemetry
+```
+
+Leave out the key to list every top-level key, or name a mapping such as `router` to list its keys. `--format=json` adds `schema`, the JSON Schema for that key, so a script or agent can check a value before writing it. A key Lando doesn't know fails with `ConfigKeyNotFoundError`, which lists the valid keys at that level and suggests the closest one. `lando app:config describe` and `lando global:config describe` answer the same question for Landofile keys.
+
+  <Scenario id="describe-key" render>
+    <Step name="describe-port">
+      <Run command="lando config describe router.httpPort --format=json" />
+      <Verify command="lando config describe router.httpPort --format=json" expect={{ stdout: { regex: "\"summary\":\\s*\"an integer from 1 to 65535\"" } }} />
+    </Step>
+  </Scenario>
+
 ## Get, set, unset, validate, or edit a key
 
-Lando picks the value type from the config schema: text first, then number, boolean, null, or JSON. Use `--type` to force a type, for example `--type=json` to write a JSON array into a field that also accepts text.
+`set` works out the value type for you. It tries your value as text first, then as a number, boolean, null, or JSON, and keeps the first one the config schema accepts. Pass `--type` only when a field accepts more than one type and you want the later one, for example `--type=number` to store `8080` as a number in a field that also accepts text.
+
+When no reading of the value fits, the error reports the one that got past the type check, so `lando config set router.httpPort 99999999` fails with `Expected a value between 1 and 65535`, and its remediation names what the key takes: an integer from 1 to 65535. Each issue in `--format=json` carries `kind`: `type` when the value is the wrong kind of value, `value` when the kind fits but a limit or allowed value rejects it, and `unexpected` or `missing` for a key that shouldn't or must be there.
+
+  <Scenario id="reject-out-of-range-port" render={false} reason="Inferred set failures report only the interpretation that passed the type check">
+    <Step name="set-port">
+      <Run command="lando config set router.httpPort 99999999 --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "^(?![\\s\\S]*as text:)[\\s\\S]*takes an integer from 1 to 65535" }} />
+    </Step>
+  </Scenario>
 
 `set` and `unset` keep comments and formatting outside the value or entry you change. If Lando can't edit safely, it refuses without changing the file. Use `lando config edit` or edit by hand instead. The same rule applies to `lando app:config` and `lando global:config`; use their `edit` verb when an edit is refused.
 
