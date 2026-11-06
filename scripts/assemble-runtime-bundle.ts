@@ -266,7 +266,8 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
       return;
     }
     const engines = await import("./linux-runtime-bundle-engines.ts");
-    if (engine !== undefined && !engines.LINUX_BUNDLE_ENGINE_IDS.some((id) => id === engine)) {
+    const requested = engines.LINUX_BUNDLE_ENGINE_IDS.find((id) => id === engine);
+    if (engine !== undefined && requested === undefined) {
       throw new Error(
         `assemble-runtime-bundle: --engine must be one of ${engines.LINUX_BUNDLE_ENGINE_IDS.join(", ")}`,
       );
@@ -275,7 +276,7 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
     const selected = await engines.selectLinuxBundleBuildEngine({
       hostKey,
       platform,
-      requested: engines.LINUX_BUNDLE_ENGINE_IDS.find((id) => id === engine),
+      requested,
       engines: {
         docker: engines.dockerBuildEngine(engines.engineCommandRunner()),
         lando: engines.landoRuntimeBuildEngine(
