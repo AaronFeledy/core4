@@ -193,7 +193,10 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
     return ast;
   };
   const walk = (node: AST.AST, allowExpression: boolean): AST.AST => {
-    if (node.encoding !== undefined) return derive(AST.toEncoded(node), allowExpression);
+    if (node.encoding !== undefined) {
+      const [first, ...rest] = node.encoding;
+      return derive((rest.at(-1) ?? first).to, allowExpression);
+    }
     const kind = leafKind(node);
     if (kind) {
       const leaf =
