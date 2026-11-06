@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, type ServiceRunObservation } from "@lando/sdk/schema";
+import {
+  RuntimeProviderRegistry,
+  type ServiceRuntimeFields,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import {
@@ -36,12 +40,15 @@ const app = (
   requires: { globalServices: options.requires ?? ["mail"] },
   extensions: options.scratch ? { [SCRATCH_EXTENSION_KEY]: {} } : {},
 });
-const row = (plan: AppPlan, extra: Partial<ServiceRuntimeInfo> = {}): ServiceRuntimeInfo => ({
+const row = (
+  plan: AppPlan,
+  extra: Partial<ServiceRuntimeFields> | ServiceRunObservation = {},
+): ServiceRuntimeInfo => ({
   app: plan.id,
   appRoot: plan.root,
   providerId: plan.provider,
   service: firstService.name,
-  status: "running",
+  status: "running" as const,
   containerId: `container-${plan.id}`,
   publications: { status: "unknown" },
   ...extra,
@@ -78,7 +85,7 @@ test("protects legacy routed apps using the actual configured router id", () => 
 
 test("ignores stopped consumers and records active service-level orphan uncertainty", () => {
   const plan = app();
-  expect(resolve([plan], [row(plan, { status: "stopped" })]).consumers).toEqual([]);
+  expect(resolve([plan], [row(plan, { status: "exited" })]).consumers).toEqual([]);
   const orphan = { ...plan, services: {} };
   const impact = resolve([orphan], [row(plan)]);
   expect(impact.uncertainties.join(" ")).toContain("no unique readable applied service");

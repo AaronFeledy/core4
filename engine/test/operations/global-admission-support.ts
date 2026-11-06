@@ -142,8 +142,7 @@ export const makeGlobalAdmissionFixture = (options: {
                 service: service.name,
                 providerId: plan.provider,
                 containerId: `fixture-global-${service.name}`,
-                status: "running",
-                state: "running",
+                status: "running" as const,
                 lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10000)),
                 publications: { status: "present", bindings: [] },
               });

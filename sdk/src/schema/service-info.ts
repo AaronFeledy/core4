@@ -158,3 +158,40 @@ export const ServiceInfo = Schema.Struct({
   }),
 });
 export type ServiceInfo = typeof ServiceInfo.Type;
+
+// ============================================================================
+// Decode-only cross-field consistency of `status` and `health.state`.
+// ============================================================================
+
+const NATIVE_HEALTH_STATES: ReadonlySet<string> = new Set(["starting", "healthy", "unhealthy"]);
+const LIVE_SERVICE_STATES: ReadonlySet<string> = new Set([
+  "running",
+  "starting",
+  "healthy",
+  "unhealthy",
+  "ready",
+]);
+
+/**
+ * `ServiceInfo` plus the rule that its `status` and `health.state` describe one observation: a
+ * provider-reported health verdict exists only for a live container, and a `healthy`/`unhealthy`
+ * status cannot contradict the native verdict. Used when constructing info results and decoding
+ * external values; kept outside the registry so the published struct stays snapshot-stable.
+ */
+export const ServiceInfoConsistent = ServiceInfo.pipe(
+  Schema.check(
+    Schema.makeFilter((info: ServiceInfo) => {
+      const native = info.health?.state;
+      if (native === undefined || !NATIVE_HEALTH_STATES.has(native)) return undefined;
+      if (!LIVE_SERVICE_STATES.has(info.status))
+        return `health.state "${native}" requires a live status, found "${info.status}"`;
+      if (NATIVE_HEALTH_STATES.has(info.status) && native !== info.status) {
+        return `status "${info.status}" contradicts health.state "${native}"`;
+      }
+      if (info.status === "ready" && native !== "healthy") {
+        return `status "ready" contradicts health.state "${native}"`;
+      }
+      return undefined;
+    }),
+  ),
+);

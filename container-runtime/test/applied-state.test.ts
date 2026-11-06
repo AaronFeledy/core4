@@ -142,6 +142,8 @@ describe("applied plan state layouts", () => {
               exists: Effect.succeed(true),
               set: () => Effect.die("unexpected write"),
               update: () => Effect.die("unexpected update"),
+              mutate: () => Effect.die("this fixture does not support mutate"),
+              transition: () => Effect.die("this fixture does not support transition"),
               modify: () => Effect.die("unexpected modify"),
               remove: Effect.die("unexpected delete"),
             }),
@@ -211,6 +213,8 @@ describe("applied plan state layouts", () => {
             exists: Effect.succeed(true),
             set: () => Effect.die("read-only fixture"),
             update: () => Effect.die("read-only fixture"),
+            mutate: () => Effect.die("this fixture does not support mutate"),
+            transition: () => Effect.die("this fixture does not support transition"),
             modify: () => Effect.die("read-only fixture"),
             remove: Effect.die("read-only fixture"),
           }),
@@ -561,6 +565,8 @@ describe("applied plan records", () => {
             written.push(value);
           }),
         update: () => Effect.die("not used"),
+        mutate: () => Effect.die("this fixture does not support mutate"),
+        transition: () => Effect.die("this fixture does not support transition"),
         modify: <B>(f: (cur: A | null) => readonly [B, A]) =>
           Effect.sync(() => {
             const [result, next] = f(null);

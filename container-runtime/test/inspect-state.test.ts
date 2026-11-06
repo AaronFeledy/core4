@@ -88,6 +88,7 @@ test("marks mounts missing only when the container is absent", async () => {
       },
     ),
   );
+  expect(result.status).toBe("absent");
   expect(result.mounts).toEqual({ status: "missing" });
 });
 
@@ -110,34 +111,35 @@ test.each([{}, { State: {} }, { State: { Status: "unrecognized" } }])(
     // Then
     expect(result).toMatchObject({
       status: "unknown",
-      state: "unknown",
       publications: { status: "unknown" },
     });
   },
 );
 
-test.each(["created", "exited", "dead", "stopped"])(
-  "retains known stopped evidence for %s",
-  async (Status) => {
-    // Given
-    const api = {
-      request: () => Effect.succeed({ status: 200, body: JSON.stringify({ State: { Status } }) }),
-    };
-    // When
-    const result = await Effect.runPromise(
-      inspect(
-        plan,
-        { app: plan.id, service: service.name },
-        {
-          api,
-          ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
-        },
-      ),
-    );
-    // Then
-    expect(result).toMatchObject({ status: "stopped", state: "stopped" });
-  },
-);
+test.each([
+  ["created", "created"],
+  ["exited", "exited"],
+  ["dead", "dead"],
+  ["stopped", "exited"],
+] as const)("retains known stopped evidence for %s", async (Status, expected) => {
+  // Given
+  const api = {
+    request: () => Effect.succeed({ status: 200, body: JSON.stringify({ State: { Status } }) }),
+  };
+  // When
+  const result = await Effect.runPromise(
+    inspect(
+      plan,
+      { app: plan.id, service: service.name },
+      {
+        api,
+        ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
+      },
+    ),
+  );
+  // Then
+  expect(result).toMatchObject({ status: expected });
+});
 
 test.each([true, false])(
   "does not claim a foreign-root container as owned (coherent=%s)",
@@ -174,7 +176,6 @@ test.each([true, false])(
     // Then: no container identity or running claim for this plan.
     expect(result).toMatchObject({
       status: "unknown",
-      state: "unknown",
       publications: { status: "unknown" },
       mounts: { status: "unknown" },
     });

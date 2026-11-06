@@ -119,10 +119,10 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               status:
                 info.containerId === undefined
                   ? "missing"
-                  : info.status === "running" || info.state === "running"
+                  : info.status === "running"
                     ? "running"
                     : "stopped",
-              running: info.status === "running" || info.state === "running",
+              running: info.status === "running",
               ...(info.containerId === undefined ? {} : { containerId: info.containerId }),
               ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
             })),

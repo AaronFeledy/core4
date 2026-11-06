@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
-import { type AppPlan, type ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceConfig, ServicePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
@@ -311,7 +311,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
                   (service) =>
                     service.appRoot === applied.root &&
                     service.providerId === applied.provider &&
-                    ["running", "paused", "restarting"].includes(service.status),
+                    isActiveRunStatus(service.status),
                 )
                 .map((service) => String(service.service)),
             );

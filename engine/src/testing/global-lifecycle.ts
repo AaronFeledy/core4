@@ -9,6 +9,7 @@ import {
   type PluginManifest,
   ProviderId,
   ServiceName,
+  type ServiceRunObservation,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -18,6 +19,7 @@ import {
   PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
+  type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { FileSystem } from "@lando/sdk/services";
@@ -37,7 +39,7 @@ export const makeGlobalLifecycleFixture = (
   const providerId = ProviderId.make("lando");
   const planFor = (names: ReadonlyArray<string>) => globalLifecyclePlan(root, names);
   const containers = new Map<string, ServiceRuntimeInfo>();
-  const missingOverrides = new Map<string, Partial<ServiceRuntimeInfo>>();
+  const missingOverrides = new Map<string, Partial<ServiceRuntimeFields> | ServiceRunObservation>();
   const removed: string[] = [];
   const published: string[][] = [];
   const planned: Array<Parameters<AppPlanner["Service"]["plan"]>[0]> = [];
@@ -55,8 +57,7 @@ export const makeGlobalLifecycleFixture = (
           appRoot: root,
           providerId,
           service: service.name,
-          status: "stopped",
-          state: "stopped",
+          status: "absent",
           publications: { status: "missing" },
           mounts: { status: "missing" },
           ...missingOverrides.get(service.name),
@@ -85,8 +86,7 @@ export const makeGlobalLifecycleFixture = (
           service: target.service,
           providerId,
           ...(plan === undefined ? {} : { appRoot: plan.root }),
-          status: "stopped",
-          state: "stopped",
+          status: "absent",
           publications: { status: "missing" },
           mounts: { status: "missing" },
         };
@@ -223,7 +223,6 @@ export const makeGlobalLifecycleFixture = (
         service: ServiceName.make(name),
         containerId: `${plan.id}-${name}`,
         status: "running",
-        state: "running",
         publications: { status: "present", bindings: [] },
         mounts: { status: "present", mounts: [] },
       }),

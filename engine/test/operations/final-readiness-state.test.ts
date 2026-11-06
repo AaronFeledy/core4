@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import type { AppPlan, ServiceState } from "@lando/sdk/schema";
+import type { AppPlan } from "@lando/sdk/schema";
 import { UrlScanner } from "@lando/sdk/services";
 import { makeTestUrlScanner } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
@@ -35,14 +35,12 @@ for (const phase of ["readiness", "final-inspect"] as const) {
         inspect: ({ service }) =>
           Effect.sync(() => {
             if (checked) observations++;
-            const observedState: ServiceState =
-              observations >= (phase === "readiness" ? 1 : 2) ? state : "running";
+            const status = observations >= (phase === "readiness" ? 1 : 2) ? state : ("running" as const);
             return {
               app: plan.id,
               service,
               providerId: plan.provider,
-              status: "running",
-              state: observedState,
+              status,
               lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
               publications: {
                 status: "present" as const,
@@ -68,14 +66,13 @@ for (const phase of ["readiness", "final-inspect"] as const) {
               root: plan.root,
               app: { kind: "user", id: plan.id, root: plan.root },
             },
-          ).pipe(Effect.provideService(UrlScanner, scanner), Effect.provide(harness.layer)),
+          ).pipe(Effect.result, Effect.provideService(UrlScanner, scanner), Effect.provide(harness.layer)),
         );
-        // Then the state is authoritative and no connection is eligible for scanning.
-        expect(result.servicesStarted[0]?.state).toBe(state);
-        expect(result.servicesStarted[0]?.connections.map((connection) => connection.state)).toEqual([
-          state === "paused" ? "inactive" : "unknown",
-          state === "paused" ? "inactive" : "unknown",
-        ]);
+        // Then startup refuses the non-running observation and exposes no successful connections.
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "ServiceNotReadyError", reason: "not-running", state },
+        });
         expect(scanner.calls.filter((call) => call.op === "scan")).toEqual([]);
       } finally {
         rmSync(harness.userDataRoot, { recursive: true, force: true });

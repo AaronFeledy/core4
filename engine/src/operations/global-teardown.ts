@@ -2,7 +2,7 @@ import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId, type ServiceShutdownObservation } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type ServiceShutdownObservation, isActiveRunStatus } from "@lando/sdk/schema";
 import {
   EventService,
   FileSystem,
@@ -144,12 +144,7 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       service.containerId !== undefined,
   );
   const activeNames = new Set(
-    owned
-      .filter(
-        (service) =>
-          service.status === "running" || service.status === "paused" || service.status === "restarting",
-      )
-      .map((service) => String(service.service)),
+    owned.filter((service) => isActiveRunStatus(service.status)).map((service) => String(service.service)),
   );
   const selected = new Set(requested);
   const updateRoutes = online && evidence.plan.routes.some((route) => selected.has(String(route.service)));

@@ -286,7 +286,6 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         publications: {
           status: "present",
           bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
@@ -378,7 +377,6 @@ const makeCachedBuildLayer = () => {
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         publications: {
           status: "present",
           bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],

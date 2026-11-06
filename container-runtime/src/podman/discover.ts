@@ -6,6 +6,7 @@ import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { engineApiFailure, missingApi, parseEngineJson } from "../engine-errors.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "../labels.ts";
 import { redactResponseDetails, redactorFor, withApiReason } from "../redact.ts";
+import { runObservationFromListState } from "../run-observation.ts";
 
 const Containers = Schema.Array(
   Schema.Struct({
@@ -82,8 +83,7 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
         ...(appRoot === undefined ? {} : { appRoot: AbsolutePath.make(appRoot) }),
         service: ServiceName.make(service),
         containerId: container.Id,
-        status: container.State === "running" ? "running" : "stopped",
-        ...(container.State === undefined ? {} : { state: container.State }),
+        ...runObservationFromListState(container.State),
         publications: { status: "unknown" },
         labels,
       },

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import type { GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { routerEnabled } from "../config/router-config.ts";
@@ -41,9 +41,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
               service.app === plan.id &&
               service.appRoot === plan.root &&
               service.providerId === plan.provider &&
-              (service.status === "running" ||
-                service.status === "paused" ||
-                service.status === "restarting"),
+              isActiveRunStatus(service.status),
           )
           .map((service) => service.service),
       );

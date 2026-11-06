@@ -114,7 +114,7 @@ export const buildExecUmaskDoctorCheck = (
 };
 
 const runningService = (entries: ReadonlyArray<ServiceRuntimeInfo>): ServiceRuntimeInfo | undefined =>
-  entries.find((entry) => entry.status === "running" || entry.state === "running");
+  entries.find((entry) => entry.status === "running");
 
 export const collectExecUmaskDoctorCheck = Effect.fnUntraced(function* (input: {
   readonly provider: ExecUmaskDoctorProvider;

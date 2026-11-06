@@ -42,7 +42,7 @@ const service = {
   appRoot: root,
   service: ServiceName.make("web"),
   providerId,
-  status: "running",
+  status: "running" as const,
   publications: { status: "unknown" as const },
   containerId: "observed-container",
 };
