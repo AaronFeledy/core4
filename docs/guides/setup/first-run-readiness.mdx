@@ -35,6 +35,8 @@ Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed
 
 If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
 
+If you interrupt setup, rerun `lando setup` before relying on its result. Setup saves progress in `<userDataRoot>/setup/readiness.json` with status `in-progress` until the run ends. A completed run records `ready`, `deferred` when an installation was postponed, or `failed` when a step failed or was unavailable. Doctor warns about `in-progress` and tells you to rerun setup, even if the provider step succeeded. A missing or corrupt readiness file provides no setup evidence; rerun setup to recreate it.
+
 Setup waits up to about 30 seconds for the SSH sidecar's agent to answer before recording the `shell` step as ready. An empty but reachable agent is ready too. A sidecar that cannot start, stops before answering, or never answers within that wait does not fail setup by itself. Setup prints a warning with the redacted cause and remediation, finishes everything else, and records `shell` as unavailable. Apps start without SSH agent forwarding until the agent answers. Fix the cause, then rerun `lando setup` to refresh the record. Later app starts also bring the sidecar up and wait for its agent, but `lando doctor` keeps showing setup's record until you rerun setup.
 
 On Linux, if the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker` as the supported fallback.

@@ -1,5 +1,47 @@
 [
   {
+    "surface": "command:meta:plugin:unlink",
+    "changeKind": "property-removed",
+    "path": "$.restoredPath",
+    "justification": "Unlink can no longer restore a previous registry entry: the `.lando-linked.json` side file that carried `previousRegistry` was never written with it, so the `restored` action and its `restoredPath` were unreachable. The registry entry is now the only link record and unlink always reports `removed`."
+  },
+  {
+    "surface": "command:meta:global:disable",
+    "changeKind": "unsupported-construct",
+    "path": "$.states.items.anyOf",
+    "justification": "State-model correction restricts policy-disabled contributions to state disabled and policy-enabled contributions to enabled, blocked, or unverified. Existing fields and legal values are preserved; engine schema tests reject all four contradictory combinations. These command results are derived observations, not persisted state."
+  },
+  {
+    "surface": "command:meta:global:enable",
+    "changeKind": "unsupported-construct",
+    "path": "$.states.items.anyOf",
+    "justification": "State-model correction restricts policy-disabled contributions to state disabled and policy-enabled contributions to enabled, blocked, or unverified. Existing fields and legal values are preserved; engine schema tests reject all four contradictory combinations. These command results are derived observations, not persisted state."
+  },
+  {
+    "surface": "command:meta:global:list",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.anyOf",
+    "justification": "State-model correction restricts policy-disabled contributions to state disabled and policy-enabled contributions to enabled, blocked, or unverified. Existing fields and legal values are preserved; engine schema tests reject all four contradictory combinations. These command results are derived observations, not persisted state."
+  },
+  {
+    "surface": "command:meta:global:reconcile",
+    "changeKind": "unsupported-construct",
+    "path": "$.states.items.anyOf",
+    "justification": "State-model correction restricts policy-disabled contributions to state disabled and policy-enabled contributions to enabled, blocked, or unverified. Existing fields and legal values are preserved; engine schema tests reject all four contradictory combinations. These command results are derived observations, not persisted state."
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.policy.anyOf",
+    "justification": "State-model correction restricts policy-disabled contributions to state disabled and policy-enabled contributions to enabled, blocked, or unverified. Existing fields and legal values are preserved; engine schema tests reject all four contradictory combinations. These command results are derived observations, not persisted state."
+  },
+  {
+    "surface": "command:meta:uninstall",
+    "changeKind": "unsupported-construct",
+    "path": "$.steps.items.anyOf",
+    "justification": "Uninstall steps now separate plan classifications from executed outcomes through a flat union. The JSON keys are unchanged; status retains the planning observation, failure requires error, other outcomes forbid error, and skipped classifications cannot complete or fail. Manual shell cleanup may complete and user-owned discovery may fail. Reports are diagnostic output, never replayed persisted state. Schema decode and uninstall resume-preservation tests cover the intentional narrowing."
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "union-widened",
     "path": "$.anyOf",

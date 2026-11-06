@@ -56,6 +56,8 @@ const storeFixture = () => {
               records.set(path, next);
               return next;
             }),
+          mutate: () => Effect.die("this fixture does not support mutate"),
+          transition: () => Effect.die("this fixture does not support transition"),
           modify: <B>(f: (value: A | null) => readonly [B, A]) =>
             Effect.sync(() => {
               const [result, next] = f(read());

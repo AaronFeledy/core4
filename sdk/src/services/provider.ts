@@ -53,6 +53,7 @@ import type {
   ServiceCopyOutSpec,
   ServiceName,
   ServicePlan,
+  ServiceRunObservation,
   VolumeFilter,
   VolumeIdentity,
   VolumeInfo,
@@ -263,18 +264,13 @@ export interface LogChunk {
   readonly timestamp?: Date;
 }
 
-export interface ServiceRuntimeInfo {
+/** Identity and non-run-state evidence from one container inspection or listing. */
+export interface ServiceRuntimeFields {
   readonly app: AppId;
   /** Canonical app root proven by provider-owned runtime metadata. */
   readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
-  readonly status: string;
-  /** Container healthcheck status when the provider exposes one. */
-  readonly health?: "healthy" | "starting" | "unhealthy";
-  readonly state?: string;
-  /** Container exit code of a stopped container, when exposed by the runtime. */
-  readonly exitCode?: number;
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
@@ -289,6 +285,13 @@ export interface ServiceRuntimeInfo {
   /** Inspected network names attached to the container. */
   readonly networkNames?: ReadonlyArray<string>;
 }
+
+/**
+ * One provider observation of a service container. Run state is the closed
+ * {@link ServiceRunObservation} (`status`, plus `health` only while running and `exitCode` only
+ * once exited), normalized by the provider so consumers never reconcile engine spellings.
+ */
+export type ServiceRuntimeInfo = ServiceRuntimeFields & ServiceRunObservation;
 
 export interface ServiceRuntimeIdentity {
   readonly containerId: string;

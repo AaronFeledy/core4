@@ -11,10 +11,12 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  type ServiceRunObservation,
 } from "@lando/sdk/schema";
 import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -62,13 +64,15 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-type Observed = Partial<ServiceRuntimeInfo> | "fails" | "hangs" | "defects";
+type Observed = (Partial<ServiceRuntimeFields> & ServiceRunObservation) | "fails" | "hangs" | "defects";
 
-const runtimeFor = (name: string, observed: Partial<ServiceRuntimeInfo>): ServiceRuntimeInfo => ({
+const runtimeFor = (
+  name: string,
+  observed: Partial<ServiceRuntimeFields> & ServiceRunObservation,
+): ServiceRuntimeInfo => ({
   app: plan.id,
   service: ServiceName.make(name),
   providerId,
-  status: "stopped",
   publications: { status: "unknown" },
   ...observed,
 });
@@ -79,7 +83,7 @@ const makeRegistry = (observations: Readonly<Record<string, Observed>>, inspecte
     inspect: (target) => {
       const name = String(target.service);
       inspected.push(name);
-      const observed = observations[name] ?? {};
+      const observed = observations[name] ?? { status: "absent" as const };
       if (observed === "defects") return Effect.die("inspect defect");
       if (observed === "hangs") return Effect.never;
       if (observed === "fails")
@@ -149,16 +153,16 @@ describe("incomplete start notice", () => {
     ]);
   });
 
-  test.each(["created", "stopped", "paused", "exited", "dead"])(
+  test.each(["created", "paused", "exited", "dead"] as const)(
     "classifies known %s alongside running and unverified services",
     async (status) => {
       // Given: one running, one created, one stopped, one unobservable, and one missing container.
       const observations = {
         web: { status: "running", containerId: "web-id" },
-        db: { status: "stopped", containerId: "db-id" },
+        db: { status: "exited", containerId: "db-id" },
         worker: { status, containerId: "worker-id" },
         cache: "fails",
-        gone: { status: "stopped" },
+        gone: { status: "absent" },
       } as const;
       // When: the start fails after it began changing app resources.
       const { exit, notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });
@@ -218,9 +222,9 @@ describe("incomplete start notice", () => {
 
   test.each([
     ["unknown", "web-id", "unverified: web."],
-    ["provider-specific", "web-id", "unverified: web."],
+    ["removing", "web-id", "unverified: web."],
     ["unknown", undefined, "unverified: web."],
-    ["missing", undefined, "unverified: none."],
+    ["absent", undefined, "unverified: none."],
     ["restarting", "web-id", "Running: web (restarting);"],
   ] as const)("does not report %s as stopped", async (status, containerId, expected) => {
     // Given / When: an observed container whose state is not stopped.
@@ -249,15 +253,6 @@ describe("incomplete start notice", () => {
       expect(notices[0]).toContain("unverified: web.");
     },
   );
-
-  test("uses detailed provider state instead of a coarse stopped status", async () => {
-    // Given: the provider distinguishes a restarting container from its coarse status.
-    const observations = { web: { status: "stopped", state: "restarting", containerId: "web-id" } };
-    // When: inventory observes the incomplete start.
-    const { notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });
-    // Then: an actively restarting service is not reported as stopped.
-    expect(notices[0]).toContain("Running: web (restarting); created/stopped: none;");
-  });
 
   test.each(["immediate", "slow", "hanging"])(
     "bounds %s provider selection and inspection by one total second",
@@ -315,7 +310,7 @@ describe("incomplete start notice", () => {
   test("reports a foreign-root inspect result as unverified, never running", async () => {
     // Given: provider inspect already refused ownership (no containerId, unknown state).
     const observations = {
-      web: { status: "unknown", state: "unknown", labels: { "dev.lando.app-root": "/other/app" } },
+      web: { status: "unknown", labels: { "dev.lando.app-root": "/other/app" } },
     } as const;
     // When: start fails after mutation and inventory observes that service.
     const { notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });

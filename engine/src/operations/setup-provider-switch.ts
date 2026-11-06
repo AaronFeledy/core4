@@ -1,5 +1,5 @@
 import { AppPlacementError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, AppRef, type ProviderId } from "@lando/sdk/schema";
+import { type AppPlan, AppRef, type ProviderId, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { resolveAppPlacement } from "../providers/app-placement.ts";
@@ -59,7 +59,7 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
           (service) =>
             service.app === candidate.id &&
             service.appRoot === (candidate.identity?.appRoot ?? candidate.root) &&
-            ["running", "paused", "restarting"].includes(service.state ?? service.status),
+            isActiveRunStatus(service.status),
         ),
     )
     .map(appRef);

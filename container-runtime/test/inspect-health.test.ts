@@ -171,7 +171,7 @@ describe("podman inspect health", () => {
       },
     ]);
     const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
-    expect(observed.state).toBe("restarting");
+    expect(observed.status).toBe("restarting");
     expect(observed).not.toHaveProperty("exitCode");
   });
   test("omits placeholder exit zero for a never-started created container", async () => {
@@ -197,7 +197,7 @@ describe("podman inspect health", () => {
     const fake = apiFromResponses([{ status: 200, body: stoppedInspectBody() }]);
     const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
     expect(observed).toMatchObject({
-      status: "stopped",
+      status: "exited",
       exitCode: 17,
       containerId: "lando-healthapp--web-id",
     });

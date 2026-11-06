@@ -154,7 +154,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       service: service.name,
       plan: inspectionPlan,
     });
-    if (runtime.status === "stopped" && runtime.containerId === undefined) {
+    if (runtime.status === "absent") {
       return yield* Effect.fail(
         new ProviderUnavailableError({
           providerId: String(target.plan.provider),

@@ -60,7 +60,7 @@ export const makeSourceStore = (input: SourceStoreOptions): SourceStore => {
           if (registeredRoots.has(path)) return;
           const bucket = yield* sourceRecords(input.stateStore).root(path);
           const updatedAt = yield* Clock.currentTimeMillis;
-          yield* storage.locked(
+          yield* storage.sessionLocked(
             Effect.gen(function* () {
               if (!(yield* bucket.exists)) yield* bucket.set({ lockfile: path, updatedAt });
             }),

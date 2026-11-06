@@ -310,7 +310,7 @@ describe("provider-docker cross-process state", () => {
 
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("running");
+      expect(snapshot.status).toBe("running");
     });
   });
 

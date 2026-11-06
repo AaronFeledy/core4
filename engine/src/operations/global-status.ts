@@ -16,6 +16,7 @@ import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { type ObservedService, collectObservedConnections, observeService } from "./connection-collector.ts";
+import { serviceStateOf } from "./connection-state.ts";
 import { readGlobalLandofile } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
@@ -194,11 +195,10 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     const runtime = owned.find((service) => service.service === name);
     const collected = connections.find((row) => row.name === name);
     const ownershipUnknown = uncertain.some((service) => service.service === name);
-    const rawState = runtime?.state ?? runtime?.status;
     const status =
       collected?.state ??
-      (Schema.is(ServiceState)(rawState)
-        ? rawState
+      (runtime !== undefined
+        ? serviceStateOf(runtime)
         : observed?._tag === "Success" && !ownershipUnknown
           ? "stopped"
           : "unknown");

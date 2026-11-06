@@ -315,12 +315,10 @@ test.each(["restart", "rebuild"] as const)(
           app: plan.id,
           service: target.service,
           providerId: plan.provider,
-          status: applied ? "stopped" : "running",
+          ...(applied ? { status: "exited" as const, exitCode: 17 } : { status: "running" as const }),
           publications: { status: "unknown" },
-          state: applied ? "stopped" : "running",
           containerId: "container",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-          exitCode: 17,
         }),
     });
     const target = {

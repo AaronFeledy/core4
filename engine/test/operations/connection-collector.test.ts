@@ -82,7 +82,7 @@ test.each([false, true])("requires completion intent as well as exit zero (inten
     app: plan.id,
     providerId: plan.provider,
     service: web.name,
-    status: "stopped",
+    status: "exited",
     exitCode: 0,
     publications: { status: "missing" },
   });

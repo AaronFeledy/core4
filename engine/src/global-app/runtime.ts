@@ -80,7 +80,7 @@ export const layer = Layer.effect(
                   const owned = new Set<number>();
                   for (const service of services) {
                     if (service.service !== serviceId) continue;
-                    const running = (service.state ?? service.status).toLowerCase() === "running";
+                    const running = service.status === "running";
                     // Only a provider with an explicit ownership validator may
                     // reserve a stopped service's persisted pair. Providers
                     // without that capability retain running-only behavior.
@@ -125,11 +125,7 @@ export const layer = Layer.effect(
               .list({ app: AppId.make("global") })
               .pipe(
                 Effect.flatMap((services) =>
-                  services.some(
-                    (service) =>
-                      service.service === serviceId &&
-                      (service.state ?? service.status).toLowerCase() === "running",
-                  )
+                  services.some((service) => service.service === serviceId && service.status === "running")
                     ? provider
                         .restart({ app: AppId.make("global"), service: serviceId })
                         .pipe(Effect.as(true))

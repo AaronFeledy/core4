@@ -52,9 +52,9 @@ test("disable withdraws confirmed-missing planned service routes without claimin
 test.each([
   { publications: { status: "unknown" as const } },
   { mounts: { status: "unknown" as const } },
-  { status: "running" },
-  { state: "running" },
-  { state: "unknown" },
+  { status: "running" as const },
+  { status: "exited" as const },
+  { status: "unknown" as const },
   { providerId: ProviderId.make("other") },
 ])("missing container id with incomplete evidence stays pending: %j", async (override) => {
   await withFixture(async (f) => {
@@ -124,6 +124,7 @@ test.each(["disable", "reconcile"] as const)(
                       set: (value) => bucket.set(value).pipe(Effect.tap(afterWrite)),
                       update: (change) => bucket.update(change).pipe(Effect.tap(afterWrite)),
                       modify: (change) => bucket.modify(change).pipe(Effect.tap(afterWrite)),
+                      mutate: (change) => bucket.mutate(change).pipe(Effect.tap(afterWrite)),
                     },
               ),
             ),

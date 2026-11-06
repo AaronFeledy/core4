@@ -75,7 +75,6 @@ const observation = {
   providerId: plan.provider,
   service: sibling,
   status: "running" as const,
-  state: "running",
   publications: { status: "unknown" as const },
 };
 
@@ -175,8 +174,8 @@ describe("global route publication", () => {
     expect(urls).toBeUndefined();
   });
 
-  for (const status of ["stopped", "missing", "running", "paused", "restarting"] as const) {
-    test(`selected start ${status === "stopped" || status === "missing" ? "excludes" : "preserves"} ${status} siblings`, async () => {
+  for (const status of ["exited", "missing", "running", "paused", "restarting"] as const) {
+    test(`selected start ${status === "exited" || status === "missing" ? "excludes" : "preserves"} ${status} siblings`, async () => {
       // Given a selected service and an owned sibling with the indicated status.
       const router = makeRouter();
       const provider = {
@@ -189,7 +188,7 @@ describe("global route publication", () => {
       // Then only active owned siblings remain published.
       expect(
         router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)?.map((route) => route.service),
-      ).toEqual(status === "stopped" || status === "missing" ? [mail] : [mail, sibling]);
+      ).toEqual(status === "exited" || status === "missing" ? [mail] : [mail, sibling]);
     });
   }
 

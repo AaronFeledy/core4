@@ -5,7 +5,9 @@ import { gzipSync } from "node:zlib";
 
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import { PortNumber } from "@lando/sdk/schema";
-import { DateTime, Effect, Stream } from "effect";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { DateTime, Effect, Stream, absurd } from "effect";
 import { familyFromServiceType } from "../../src/families.ts";
 
 import {
@@ -20,7 +22,6 @@ import type {
   SnapshotFilter,
   SnapshotHandle,
   VolumeInfo,
-  VolumeInitializationRecord,
 } from "@lando/sdk/schema";
 import {
   AbsolutePath,
@@ -57,8 +58,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const lifecycle: SqlLifecycleStep[] = [];
   const snapshotFilters: SnapshotFilter[] = [];
   let countAttempts = 0;
-  let seedStatus = options.seedStatus ?? "fresh";
-  let seedOperationId = "fixture-operation";
+  const initializationStore = makeTestStateStore();
   let runtimeRunning = options.initiallyRunning !== false;
   const storage = options.storage ?? [
     { store: "sql-app_database_data", target: fixtureDataDestination(options.type ?? "mysql:8.0") },
@@ -337,29 +337,28 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       Effect.sync(() => {
         lifecycle.push("lock");
       }).pipe(Effect.andThen(body)),
-    initialization: (identity) =>
-      Effect.succeed({
-        read: Effect.sync(
-          (): VolumeInitializationRecord => ({
-            identity,
-            state:
-              seedStatus === "fresh" ? { _tag: "fresh" } : { _tag: seedStatus, operationId: seedOperationId },
-          }),
-        ),
-        begin: (operationId) =>
-          Effect.sync(() => {
-            if (seedStatus !== "fresh") return false;
-            seedStatus = "in-progress";
-            seedOperationId = operationId;
-            return true;
-          }),
-        finish: ({ operationId, outcome }) =>
-          Effect.sync(() => {
-            if (seedStatus !== "in-progress" || operationId !== seedOperationId) return false;
-            seedStatus = outcome;
-            return true;
-          }),
-      }),
+    initialization: Effect.fnUntraced(function* (identity) {
+      const state = yield* volumeInitialization(initializationStore.service, identity);
+      if ((yield* state.read) === null) {
+        yield* state.recordCreation;
+        const status = options.seedStatus ?? "fresh";
+        switch (status) {
+          case "fresh":
+            break;
+          case "in-progress":
+            yield* state.begin("fixture-operation");
+            break;
+          case "seeded":
+          case "failed":
+            yield* state.begin("fixture-operation");
+            yield* state.finish({ operationId: "fixture-operation", outcome: status });
+            break;
+          default:
+            return absurd(status);
+        }
+      }
+      return state;
+    }),
     publish: (event) =>
       Effect.sync(() => {
         published.push(String(event._tag));

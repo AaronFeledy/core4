@@ -660,7 +660,7 @@ describe("update signed manifest", () => {
 
     expect(result.updatedCore).toBe(true);
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
-      version: 1,
+      version: 2,
       data: { stable: { latest: "4.4.0" } },
     });
   });
@@ -701,7 +701,7 @@ describe("update signed manifest", () => {
 
     expect(result.updatedCore).toBe(true);
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
-      version: 1,
+      version: 2,
       data: {
         stable: {
           latest: "4.4.0",
@@ -1154,7 +1154,7 @@ describe("update signed manifest", () => {
     expect(probeCommands).toEqual([]);
   });
 
-  test("POSIX self-update restores the backup when installing the probed binary fails", async () => {
+  test("POSIX self-update keeps the executable present when installing the probed binary fails", async () => {
     const root = await makeTempRoot("lando-self-update-rename-rollback-");
     const executablePath = await seedOwnedBinary(root);
 
@@ -1166,6 +1166,7 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
     const renames: Array<readonly [string, string]> = [];
+    const executablePresent: boolean[] = [];
 
     const failure = await failureValue(
       runUpdate({
@@ -1180,7 +1181,9 @@ describe("update signed manifest", () => {
           execve: () => Effect.void,
           rename: async (from, to) => {
             renames.push([from, to]);
-            if (to === executablePath && renames.length === 2) throw new Error("install rename failed");
+            executablePresent.push(await Bun.file(executablePath).exists());
+            if (to === executablePath && from !== `${executablePath}.bak`)
+              throw new Error("install rename failed");
             await rename(from, to);
           },
         },
@@ -1191,6 +1194,7 @@ describe("update signed manifest", () => {
     );
 
     expect(failure).toBeInstanceOf(UpdatePermissionError);
+    expect(executablePresent.every(Boolean)).toBe(true);
     if (failure instanceof UpdatePermissionError) {
       expect(failure.path).toBe(executablePath);
       expect(failure.remediation).toContain("Lando will not run sudo automatically");
@@ -1199,8 +1203,8 @@ describe("update signed manifest", () => {
       );
     }
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
-    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
-    expect(renames.map(([, to]) => to)).toEqual([`${executablePath}.bak`, executablePath, executablePath]);
+    expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
+    expect(renames.map(([, to]) => to)).toEqual([executablePath]);
   });
 
   test("POSIX self-update retains the new binary and backup when re-exec fails", async () => {
@@ -1315,7 +1319,7 @@ describe("update signed manifest", () => {
     expect(probes).toHaveLength(2);
     const updateState = JSON.parse(await readFile(updateStatePath, "utf8"));
     expect(updateState).toEqual({
-      version: 1,
+      version: 2,
       data: {
         stable: {
           latest: "4.4.0",
@@ -1449,6 +1453,7 @@ describe("update signed manifest", () => {
     if (failure instanceof UpdatePermissionError) {
       expect(failure.path).toBe(executablePath);
       expect(failure.message).toContain("Failed to restore backup");
+      expect(failure.remediation).toContain(`kept at ${executablePath}.bak`);
       expect(failure.remediation).toContain("Lando will not run sudo automatically");
     }
     expect(await readFile(executablePath, "utf8")).toBe("new-binary");

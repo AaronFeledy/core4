@@ -120,14 +120,12 @@ const makeFixture = async (
     get: (id) => Effect.sync(() => entries.get(id)),
     list: () => Effect.sync(() => [...entries.values()]),
     read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
-    upsert: (operation, entry) =>
-      (operation === "mark-running" ? registration : Effect.void).pipe(
-        Effect.andThen(
-          Effect.sync(() => {
-            const plan = planScratchRegistryWrite(operation, entry.id, entries.get(entry.id), entry);
-            if (plan._tag === "Store") entries.set(entry.id, plan.entry);
-          }),
-        ),
+    upsert: (...write) =>
+      (write[0] === "mark-running" ? registration : Effect.void).pipe(
+        Effect.andThen(planScratchRegistryWrite(entries.get(write[1].id), ...write)),
+        Effect.map((plan) => {
+          if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+        }),
       ),
     remove: (id) =>
       Effect.sync(() => {

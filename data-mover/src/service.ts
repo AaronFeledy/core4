@@ -84,6 +84,7 @@ import {
   removeSnapshotArchive,
   resolveSnapshotInfo,
 } from "./snapshot-catalog.ts";
+export { SNAPSHOT_SIDECAR_VERSION } from "./snapshot-catalog.ts";
 import {
   matchesSnapshotSource,
   physicalVolumeGeneration,

@@ -1,12 +1,12 @@
-import { Schema } from "effect";
+import { Schema, Struct } from "effect";
 
 import { RouteHostname, TunnelSession as TunnelSessionSchema, TunnelTarget } from "@lando/sdk/schema";
 
-/** On-disk tunnel registry frame version; version 2 narrowed route target hostnames to RouteHostname. */
-export const TUNNEL_REGISTRY_VERSION = 2 as const;
+/** Version 3 stores registration facts; status is derived from current liveness. */
+export const TUNNEL_REGISTRY_VERSION = 3 as const;
 
 const TunnelRegistryEntry = Schema.Struct({
-  session: TunnelSessionSchema,
+  session: TunnelSessionSchema.mapFields(Struct.omit(["status"])),
   pid: Schema.Number.pipe(Schema.check(Schema.isInt())),
   updatedAt: Schema.String,
 });
@@ -15,6 +15,10 @@ export const TunnelRegistryEntries = Schema.Array(TunnelRegistryEntry);
 
 export type TunnelRegistryEntry = typeof TunnelRegistryEntry.Type;
 export type TunnelRegistryEntries = typeof TunnelRegistryEntries.Type;
+
+const Version2Entries = Schema.Array(
+  Schema.Struct({ ...TunnelRegistryEntry.fields, session: TunnelSessionSchema }),
+);
 
 const HistoricalRouteTarget = Schema.Struct({
   ...TunnelTarget.members[0].fields,
@@ -31,11 +35,14 @@ const HistoricalEntries = Schema.Array(
 );
 
 /**
- * Upgrade a version 1 registry: drop only entries whose hostname string the narrowed grammar
- * rejects (version 1 allowed a 253-character suffix after `*.`); malformed records fail closed.
+ * Drop legacy status snapshots. Version 1 also drops hostnames rejected by the
+ * narrowed grammar (it allowed a 253-character suffix after `*.`). Malformed records fail closed.
  */
 export const migrateTunnelRegistryEntries = (raw: unknown, fromVersion: number): TunnelRegistryEntries => {
-  Schema.decodeUnknownSync(Schema.Literal(1))(fromVersion);
+  Schema.decodeUnknownSync(Schema.Literals([1, 2]))(fromVersion);
+  if (fromVersion === 2) {
+    return Schema.decodeUnknownSync(TunnelRegistryEntries)(Schema.decodeUnknownSync(Version2Entries)(raw));
+  }
   const entries = Schema.decodeUnknownSync(HistoricalEntries)(raw);
   return Schema.decodeUnknownSync(TunnelRegistryEntries)(
     entries.filter(({ session }) => {

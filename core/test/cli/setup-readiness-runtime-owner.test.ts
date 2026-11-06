@@ -32,7 +32,7 @@ test("readiness persists only masked diagnostics after late runtime registration
     const persisted = await readFile(setupReadinessPath(root), "utf8");
     expect(persisted).not.toContain(canary);
     expect(JSON.parse(persisted)).toMatchObject({
-      status: "failed",
+      status: "in-progress",
       runtimeService,
       steps: [{ id: "provider", status: "failed", evidence: "provider setup failed: failed [redacted]" }],
     });
@@ -50,12 +50,13 @@ test("readiness read applies late runtime registrations to previously persisted 
   const canary = "opaque-readiness-history-value";
   try {
     await Effect.runPromise(
-      writeSetupReadiness(
-        root,
-        "podman",
-        [{ id: "provider", status: "failed", evidence: `failed ${canary}`, remediation: `retry ${canary}` }],
-        { running: true, socketPath: `/socket/${canary}`, runtimeVersion: canary },
-      ),
+      writeSetupReadiness(root, "podman", {
+        status: "failed",
+        steps: [
+          { id: "provider", status: "failed", evidence: `failed ${canary}`, remediation: `retry ${canary}` },
+        ],
+        runtimeService: { running: true, socketPath: `/socket/${canary}`, runtimeVersion: canary },
+      }),
     );
     Effect.runSync(owner.service.registerValues([canary]));
     // When

@@ -276,8 +276,7 @@ export const makeHarness = (
           app: plannedApp.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           publications: {
             status: "present",

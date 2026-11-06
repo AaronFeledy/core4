@@ -49,6 +49,8 @@ const makeSharedStateStore = (onAttempt: (count: number) => Effect.Effect<void>)
             values.set(key, next);
             return next;
           }),
+        mutate: () => Effect.die("this fixture does not support mutate"),
+        transition: () => Effect.die("this fixture does not support transition"),
         modify: (f) =>
           Effect.sync(() => {
             const [result, next] = f(current());

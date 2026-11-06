@@ -91,6 +91,23 @@ const readBinaryVersion = async (file: string): Promise<number> => {
 };
 
 describe("tunnel registry durable root", () => {
+  test.each(["starting", "ready", "stopped", "failed", "unknown"] as const)(
+    "reports a live registered session as ready regardless of the start snapshot %s",
+    async (status) => {
+      await withTempRoots(async () => {
+        await Effect.runPromise(
+          recordTunnelSession(sampleSession({ status })).pipe(Effect.provide(stateStoreLayer)),
+        );
+
+        const sessions = await Effect.runPromise(
+          reconcileTunnelRegistry().pipe(Effect.provide(stateStoreLayer)),
+        );
+
+        expect(sessions).toEqual([sampleSession({ status: "ready" })]);
+      });
+    },
+  );
+
   test("tunnel registry entry survives removal of a distinct user cache root", async () => {
     await withTempRoots(async ({ dataRoot, cacheRoot }) => {
       // Given a recorded tunnel session and disposable noise under the cache root.
@@ -113,7 +130,53 @@ describe("tunnel registry durable root", () => {
   });
 });
 
+describe("tunnel registry liveness", () => {
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps a session whose registering process belongs to another user",
+    async () => {
+      await withTempRoots(async ({ dataRoot }) => {
+        // Given: an entry recorded by pid 1, which exists but cannot be signalled by this user (EPERM).
+        const registryPath = join(dataRoot, "tunnels", "registry.bin");
+        const entries = [{ session: sampleSession({ id: "other-user" }), pid: 1, updatedAt: "2026-01-01" }];
+        await writeBinaryRegistry(registryPath, TUNNEL_REGISTRY_VERSION, entries);
+        // When
+        const sessions = await Effect.runPromise(
+          reconcileTunnelRegistry(new Set()).pipe(Effect.provide(stateStoreLayer)),
+        );
+        // Then: a live process is never reported stale just because it is not ours.
+        expect(sessions.map((entry) => entry.id)).toEqual(["other-user"]);
+      });
+    },
+  );
+});
+
 describe("tunnel registry version migration", () => {
+  test("migrates v2 status snapshots to facts and reports only live sessions", async () => {
+    await withTempRoots(async ({ dataRoot }) => {
+      const registryPath = join(dataRoot, "tunnels", "registry.bin");
+      const entries = [
+        { session: sampleSession({ status: "starting" }), pid: process.pid, updatedAt: "2026-01-01" },
+        { session: sampleSession({ id: "dead" }), pid: -1, updatedAt: "2026-01-01" },
+        {
+          session: sampleSession({ id: "provider-live", status: "unknown" }),
+          pid: -1,
+          updatedAt: "2026-01-01",
+        },
+      ];
+      await writeBinaryRegistry(registryPath, 2, entries);
+
+      const sessions = await Effect.runPromise(
+        reconcileTunnelRegistry(new Set(["provider-live"])).pipe(Effect.provide(stateStoreLayer)),
+      );
+
+      expect(sessions).toEqual([sampleSession(), sampleSession({ id: "provider-live" })]);
+      expect(
+        migrateTunnelRegistryEntries(entries, 2).every((entry) => !Object.hasOwn(entry.session, "status")),
+      ).toBe(true);
+      expect(await readBinaryVersion(registryPath)).toBe(TUNNEL_REGISTRY_VERSION);
+    });
+  });
+
   test("migrates a mixed origin/main v1 registry through StateStore without quarantine", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const validRoute = routeSession("tun_valid_route", "app.lndo.site", {
@@ -153,7 +216,7 @@ describe("tunnel registry version migration", () => {
       );
 
       // Then valid entries survive with fields intact, the bad host is dropped,
-      // the registry file is not quarantined, and the rewrite stamps v2.
+      // the registry file is not quarantined, and the rewrite stamps the current version.
       expect(sessions.map((entry) => entry.id)).toEqual([
         "tun_valid_route",
         "tun_valid_wild",

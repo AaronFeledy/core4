@@ -1,5 +1,5 @@
 import { GlobalAppError, causeMessage } from "@lando/sdk/errors";
-import type { AppPlan, ProviderId } from "@lando/sdk/schema";
+import { type AppPlan, type ProviderId, isActiveRunStatus, isIdleRunStatus } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 
@@ -36,9 +36,6 @@ export class GlobalConsumerProtectionError extends Schema.TaggedError<GlobalCons
   },
 ) {}
 
-const active = new Set(["running", "paused", "restarting", "starting", "healthy", "unhealthy"]);
-const inactive = new Set(["stopped", "exited", "dead", "created", "completed"]);
-
 /** Join fresh ownership observations to applied intent; missing evidence never proves absence. */
 export const resolveGlobalConsumerImpact = (input: {
   readonly providerId: ProviderId;
@@ -59,9 +56,8 @@ export const resolveGlobalConsumerImpact = (input: {
   });
   for (const observation of input.services) {
     if (String(observation.app) === "global") continue;
-    const state = observation.state ?? observation.status;
-    if (inactive.has(state)) continue;
-    if (!active.has(state)) {
+    if (isIdleRunStatus(observation.status)) continue;
+    if (!isActiveRunStatus(observation.status)) {
       uncertainties.add(`Runtime state for ${observation.app}/${observation.service} is unknown.`);
       continue;
     }
@@ -85,7 +81,7 @@ export const resolveGlobalConsumerImpact = (input: {
           other.app === observation.app &&
           other.appRoot === observation.appRoot &&
           other.service === observation.service &&
-          active.has(other.state ?? other.status),
+          isActiveRunStatus(other.status),
       ).length > 1
     )
       uncertainties.add(
@@ -100,7 +96,7 @@ export const resolveGlobalConsumerImpact = (input: {
         observation.appRoot === root &&
         observation.providerId === input.providerId &&
         !!observation.containerId &&
-        active.has(observation.state ?? observation.status),
+        isActiveRunStatus(observation.status),
     );
     if (running.length === 0) continue;
     const requirements = (plan.requires?.globalServices ?? []).filter((id) => selected.has(id));

@@ -338,7 +338,6 @@ const makeHarness = async (
                   service,
                   containerId: `test-${service}`,
                   status: "running" as const,
-                  state: "running",
                   publications: { status: "unknown" as const },
                 }));
         return [...globalServices, ...(options.consumerObservations ?? [])].filter(
@@ -440,9 +439,9 @@ const makeHarness = async (
         app: target.app,
         service: target.service,
         providerId,
-        status: exitCode === undefined ? "running" : "stopped",
-        state: exitCode === undefined ? "running" : "stopped",
-        ...(exitCode === undefined ? {} : { exitCode }),
+        ...(exitCode === undefined
+          ? { status: "running" as const }
+          : { status: "exited" as const, exitCode }),
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
         publications: publicationObservationFromInspect({
           NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } },
@@ -728,8 +727,7 @@ const registerConsumer = async (
     providerId: base.provider,
     service: service.name,
     containerId: `${id}-container`,
-    status: "running",
-    state: "running",
+    status: "running" as const,
     publications: { status: "unknown" },
   });
   return consumer;

@@ -12,7 +12,7 @@ import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import {
   observedPublicationConnection,
   projectServiceConnections,
-  serviceState,
+  serviceStateOf,
 } from "./service-connections.ts";
 
 export interface ObservedService {
@@ -64,14 +64,7 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
 export const observeService = (plan: AppPlan, runtime: ServiceRuntimeInfo): ObservedService => ({
   name: String(runtime.service),
   runtime,
-  state:
-    completionIntentServices(plan).has(String(runtime.service)) &&
-    (runtime.state ?? runtime.status) === "stopped" &&
-    runtime.exitCode === 0
-      ? "completed"
-      : (runtime.state ?? runtime.status) === "completed"
-        ? "stopped"
-        : serviceState(runtime.state ?? runtime.status),
+  state: serviceStateOf(runtime, completionIntentServices(plan).has(String(runtime.service))),
 });
 
 export const collectPlanObservations = Effect.fn("Connections.observePlan")(function* (

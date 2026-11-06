@@ -61,6 +61,58 @@ const entry = (id: string): ScratchRegistryEntry => ({
 const registryFile = (): string => join(makeLandoPaths().scratchDir, "registry.bin");
 
 describe("scratch registry", () => {
+  test.each(["acquiring", "running"] as const)("detach owns detached while %s", async (status) => {
+    await withTempRoots(async () => {
+      const registry = testRegistry();
+      const original = { ...entry("scratch-detach"), detached: false };
+      await Effect.runPromise(registry.upsert("acquire", original));
+      if (status === "running") await Effect.runPromise(registry.upsert("mark-running", original));
+
+      await Effect.runPromise(registry.upsert("detach", original));
+
+      expect(await Effect.runPromise(registry.get(original.id))).toMatchObject({ detached: true, status });
+    });
+  });
+
+  test.each([false, true])(
+    "writes preserve the stored detached=%s despite stale caller data",
+    async (detached) => {
+      await withTempRoots(async () => {
+        const registry = testRegistry();
+        const original = { ...entry("scratch-preserve"), detached };
+        await Effect.runPromise(registry.upsert("acquire", original));
+        const stale = { ...original, detached: !detached };
+
+        await Effect.runPromise(registry.upsert("mark-running", stale));
+        expect(await Effect.runPromise(registry.get(original.id))).toMatchObject({
+          detached,
+          status: "running",
+        });
+        await Effect.runPromise(registry.upsert("mark-pending-cleanup", stale));
+        expect(await Effect.runPromise(registry.get(original.id))).toMatchObject({
+          detached,
+          status: "destroyed-pending-cleanup",
+        });
+      });
+    },
+  );
+
+  test("mark-running cannot reattach an entry detached during acquisition", async () => {
+    await withTempRoots(async () => {
+      const registry = testRegistry();
+      const original = { ...entry("scratch-race"), detached: false };
+      await Effect.runPromise(registry.upsert("acquire", original));
+      await Effect.runPromise(registry.upsert("detach", original));
+
+      await Effect.runPromise(registry.upsert("mark-running", original));
+
+      expect(await Effect.runPromise(registry.get(original.id))).toMatchObject({
+        detached: true,
+        status: "running",
+      });
+    });
+  });
+
   test("rejects restarting an entry pending cleanup without changing the registry", async () => {
     await withTempRoots(async () => {
       const registry = testRegistry();
@@ -78,6 +130,26 @@ describe("scratch registry", () => {
       expect(result.failure.message).toContain("cannot mark-running while destroyed-pending-cleanup");
       expect(result.failure.remediation).toContain("lando apps:scratch:gc");
       await expect(Effect.runPromise(registry.list())).resolves.toEqual([pending]);
+    });
+  });
+
+  test("settled and refused steps leave the stored registry bytes untouched", async () => {
+    await withTempRoots(async () => {
+      // Given a stored registry whose bytes differ from what a rewrite would emit.
+      const registry = testRegistry();
+      const pending = entry("scratch-settled-000001");
+      await Effect.runPromise(registry.upsert("acquire", pending));
+      await Effect.runPromise(registry.upsert("mark-pending-cleanup", pending));
+      const stored = JSON.stringify(JSON.parse(await readFile(registryFile(), "utf8")));
+      await writeFile(registryFile(), stored);
+
+      // When removing an absent entry (settled) and restarting a pending one (refused).
+      await Effect.runPromise(registry.remove("scratch-absent-000002"));
+      const refused = await Effect.runPromise(Effect.result(registry.upsert("mark-running", pending)));
+
+      // Then neither step rewrote the file.
+      expect(refused._tag).toBe("Failure");
+      expect(await readFile(registryFile(), "utf8")).toBe(stored);
     });
   });
 

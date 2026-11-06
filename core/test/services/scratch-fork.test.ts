@@ -366,7 +366,7 @@ const makeScratchForkLayer = (
       ScratchRegistry,
       ScratchRegistry.of({
         ...registry,
-        upsert: (operation, entry) => {
+        upsert: (...write) => {
           upsertCount += 1;
           if (upsertCount === 2) {
             return Effect.fail(
@@ -378,7 +378,7 @@ const makeScratchForkLayer = (
               }),
             );
           }
-          return registry.upsert(operation, entry);
+          return registry.upsert(...write);
         },
       }),
     );

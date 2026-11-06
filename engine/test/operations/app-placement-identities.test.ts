@@ -137,7 +137,7 @@ test("user cleanup evidence excludes colocated scratch inventory and orphan reso
             appRoot: plan.root,
             service: ServiceName.make("web"),
             providerId: plan.provider,
-            status: "running",
+            status: "running" as const,
             publications: { status: "unknown" as const },
           },
         ]),

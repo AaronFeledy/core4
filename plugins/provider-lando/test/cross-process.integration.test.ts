@@ -562,7 +562,7 @@ describe("provider-lando cross-process state", () => {
       const snapshot = await runOnce(providerB.inspect({ app: plan.id, service: web.name }));
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("running");
+      expect(snapshot.status).toBe("running");
 
       await runOnce(providerB.destroy({ app: plan.id }, { volumes: false }));
 
@@ -748,7 +748,7 @@ describe("provider-lando cross-process state", () => {
 
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("stopped");
+      expect(snapshot.status).toBe("absent");
     });
   });
 

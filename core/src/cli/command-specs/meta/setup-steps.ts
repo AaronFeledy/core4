@@ -7,15 +7,12 @@
  * (deferred / installed / unavailable / satisfied) and returns the resulting
  * status. These are the side-effecting "steps" the command orchestration drives.
  */
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
-import { Effect, Option, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Option, Result, Schema } from "effect";
 
 import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
 
@@ -26,6 +23,8 @@ import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../
 import {
   type SetupReadinessRuntimeService,
   type SetupReadinessStep,
+  type SetupReadinessSummary,
+  completedSetupReadinessStatus,
   setupFailureEvidence,
   setupFailureRemediation,
   writeSetupReadiness,
@@ -78,20 +77,6 @@ export class SetupStepFailedError extends Schema.TaggedError<SetupStepFailedErro
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
-export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
-  join(userDataRoot, "setup", "file-sync-deferred.json");
-
-const recordDeferredFileSyncSetup = (userDataRoot: string, engineId?: string): Effect.Effect<void, never> =>
-  Effect.promise(async () => {
-    const markerPath = setupDeferredFileSyncPath(userDataRoot);
-    await mkdir(join(userDataRoot, "setup"), { recursive: true });
-    await writeFile(
-      markerPath,
-      `${JSON.stringify({ status: "deferred", engineId, resumeCommand: "lando setup" })}\n`,
-      "utf-8",
-    );
-  }).pipe(Effect.catch(() => Effect.void));
-
 export interface SetupReadinessRecorder {
   readonly record: (step: SetupReadinessStep) => Effect.Effect<void, never>;
   readonly recordFailure: (id: string, cause: unknown) => Effect.Effect<void, never>;
@@ -101,6 +86,9 @@ export interface SetupReadinessRecorder {
 
 export interface AccumulatingSetupReadinessRecorder extends SetupReadinessRecorder {
   readonly firstFailedStep: () => SetupReadinessStep | undefined;
+  readonly start: Effect.Effect<void>;
+  readonly finish: (exit: Exit.Exit<unknown, unknown>) => Effect.Effect<void>;
+  readonly setProvider: (providerId: string) => void;
 }
 
 export const makeSetupReadinessRecorder = (
@@ -110,7 +98,16 @@ export const makeSetupReadinessRecorder = (
 ): AccumulatingSetupReadinessRecorder => {
   const sourceEnv = { ...process.env };
   const readinessSteps: SetupReadinessStep[] = [];
+  let providerId = selectedProviderId;
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
+  const persist = (status: SetupReadinessSummary["status"]) => {
+    const write = writeSetupReadiness(userDataRoot, providerId, {
+      status,
+      steps: readinessSteps,
+      runtimeService: runtimeServiceReadiness,
+    });
+    return redaction === undefined ? write : write.pipe(Effect.provideService(RedactionService, redaction));
+  };
   const record = Effect.fnUntraced(function* (step: SetupReadinessStep): Effect.fn.Return<void> {
     const inherited = yield* Effect.serviceOption(RedactionService);
     const service = redaction ?? Option.getOrUndefined(inherited);
@@ -126,13 +123,7 @@ export const makeSetupReadinessRecorder = (
     const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
     if (existingIndex === -1) readinessSteps.push(safeStep);
     else readinessSteps[existingIndex] = safeStep;
-    const write = writeSetupReadiness(
-      userDataRoot,
-      selectedProviderId,
-      readinessSteps,
-      runtimeServiceReadiness,
-    );
-    yield* service === undefined ? write : write.pipe(Effect.provideService(RedactionService, service));
+    yield* persist("in-progress");
   });
   const recordFailure = Effect.fnUntraced(function* (id: string, cause: unknown) {
     const inherited = yield* Effect.serviceOption(RedactionService);
@@ -164,6 +155,14 @@ export const makeSetupReadinessRecorder = (
     });
   });
   return {
+    start: Effect.suspend(() => persist("in-progress")),
+    finish: (exit) => {
+      if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)) return Effect.void;
+      return persist(Exit.isFailure(exit) ? "failed" : completedSetupReadinessStatus(readinessSteps));
+    },
+    setProvider: (value) => {
+      providerId = value;
+    },
     record,
     recordFailure,
     recordUnavailable,
@@ -191,13 +190,12 @@ interface FileSyncSetupStepContext {
 export const runFileSyncSetupStep = Effect.fn("SetupCommand.runFileSyncSetupStep")(function* (
   ctx: FileSyncSetupStepContext,
 ): Effect.fn.Return<FileSyncStatus, FileSyncError> {
-  const { provider, input, userDataRoot, network, recorder, defaultEngine } = ctx;
+  const { provider, input, network, recorder, defaultEngine } = ctx;
   let fileSyncStatus: FileSyncStatus = "satisfied";
 
   const bindMountPerformance =
     provider.capabilities.bindMountPerformance === "slow" ? ("slow" as const) : ("native" as const);
   if (inputSkipFileSync(input) && bindMountPerformance === "slow" && defaultEngine !== "passthrough") {
-    if (userDataRoot !== undefined) yield* recordDeferredFileSyncSetup(userDataRoot, defaultEngine);
     yield* recorder.record({
       id: "file-sync",
       status: "deferred",

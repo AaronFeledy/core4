@@ -564,7 +564,7 @@ export const layer = (stateStore: PluginStateStore) =>
                     );
                     return owned === undefined
                       ? ("stopped" as const)
-                      : (owned.state ?? owned.status).toLowerCase() === "running"
+                      : owned.status === "running"
                         ? ("running" as const)
                         : ("stopped" as const);
                   }),
@@ -574,7 +574,7 @@ export const layer = (stateStore: PluginStateStore) =>
                       app: AppId.make("global"),
                       service: ServiceName.make("traefik"),
                     });
-                    return (service.state ?? service.status).toLowerCase() === "running"
+                    return service.status === "running"
                       ? service.publications
                       : { status: "unknown" as const };
                   }),

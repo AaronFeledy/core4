@@ -1,6 +1,7 @@
 import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
+import { fileSyncDisposalCommitted } from "@lando/sdk/schema";
 import { EventService, FileSyncEngine, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
@@ -56,7 +57,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
   );
   const lifecycle = oldEngine.appLifecycle;
   const phase = lifecycle === undefined ? undefined : yield* lifecycle.disposalPhase(target.app);
-  if (phase !== "disposing" && phase !== "completed" && desiredMatchesPrior) return;
+  if ((phase === undefined || !fileSyncDisposalCommitted(phase)) && desiredMatchesPrior) return;
 
   // Never clean targets using a desired/selected-service plan: users and ownership are old-plan data.
   const appRoot = target.plan.identity?.appRoot ?? target.root;

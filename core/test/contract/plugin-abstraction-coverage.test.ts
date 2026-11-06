@@ -64,6 +64,13 @@ const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
  */
 const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
   {
+    abstraction: "FileSyncEngine.appLifecycle",
+    makeExport: "makeFileSyncAppLifecycleContractSuite",
+    runExport: "runFileSyncAppLifecycleContract",
+    defaultPolicy: "built-in",
+    invocationFiles: ["plugins/file-sync-mutagen/test/app-lifecycle-contract.test.ts"],
+  },
+  {
     abstraction: "Renderer",
     makeExport: "makeRendererContractSuite",
     runExport: "runRendererContract",
@@ -269,7 +276,7 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
           file.startsWith("core/test/") ||
             file.startsWith("engine/test/") ||
             file.startsWith("renderer/test/") ||
-            file.startsWith("plugins/renderer-lando/test/"),
+            /^plugins\/[^/]+\/test\//u.test(file),
         ).toBe(true);
         expect(file.startsWith("sdk/test/")).toBe(false);
         expect(existsSync(resolve(REPO_ROOT, file))).toBe(true);

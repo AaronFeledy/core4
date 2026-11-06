@@ -208,7 +208,6 @@ const makeLogsLayer = (
         service: ServiceName.make("web"),
         providerId,
         status: "running",
-        state: "running",
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),

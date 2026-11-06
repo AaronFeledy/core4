@@ -61,6 +61,7 @@
     "./image-pull": "./src/image-pull.ts",
     "./image-ensure": "./src/image-ensure.ts",
     "./labels": "./src/labels.ts",
+    "./run-observation": "./src/run-observation.ts",
     "./service-lifecycle": "./src/service-lifecycle.ts",
     "./wait-for-exit": "./src/wait-for-exit.ts",
     "./docker/api-client": "./src/docker/api-client.ts",

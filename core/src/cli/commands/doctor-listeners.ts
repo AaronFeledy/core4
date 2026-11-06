@@ -35,7 +35,7 @@ const collectListeners = Effect.fnUntraced(function* (
       if (expected === undefined)
         return Effect.succeed(skipped(section, "No expected TCP listener is recorded in the applied plan."));
       const observed = running.find((entry) => entry.service === service.name);
-      if (observed === undefined || (observed.state ?? observed.status) !== "running")
+      if (observed === undefined || observed.status !== "running")
         return Effect.succeed(
           skipped(section, "The service is not running; no listener observation was attempted."),
         );

@@ -32,6 +32,14 @@ export const buildSetupReadinessDoctorCheck = (
     }
   }
   const setupCommand = setupCommandForProvider(summary.providerId);
+  // A run can fail before any step records evidence; it still needs a rerun hint.
+  const remediation =
+    summary.status === "in-progress"
+      ? `Setup did not finish. Rerun \`${setupCommand}\` to complete host setup.`
+      : (failedStep?.remediation ??
+        (failedStep !== undefined || summary.status === "failed"
+          ? `Rerun \`${setupCommand}\` to resume host setup.`
+          : undefined));
   return {
     name: "setup-readiness",
     status,
@@ -45,15 +53,9 @@ export const buildSetupReadinessDoctorCheck = (
     capabilities: {},
     context,
     solutions:
-      failedStep === undefined
+      remediation === undefined
         ? []
-        : [
-            {
-              kind: "manual" as const,
-              description: failedStep.remediation ?? `Rerun \`${setupCommand}\` to resume host setup.`,
-              command: setupCommand,
-            },
-          ],
+        : [{ kind: "manual" as const, description: remediation, command: setupCommand }],
     ...(selection === undefined ? {} : { selection }),
   };
 };

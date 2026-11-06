@@ -74,6 +74,7 @@ import {
   ScratchRegistry,
   type ScratchRegistryEntry,
   type ScratchRegistryEnvelope,
+  type ScratchRegistryService,
   planScratchRegistryWrite,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
@@ -812,16 +813,12 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         version: 2,
         entries: registryEntriesFrom(scratchRegistryEntries),
       } satisfies ScratchRegistryEnvelope),
-    upsert: (operation, entry) =>
-      Effect.sync(() => {
-        const plan = planScratchRegistryWrite(
-          operation,
-          entry.id,
-          scratchRegistryEntries.get(entry.id),
-          entry,
-        );
-        if (plan._tag === "Store") scratchRegistryEntries.set(entry.id, plan.entry);
-      }),
+    upsert: Effect.fn("TestScratchRegistry.upsert")(function* (
+      ...write: Parameters<ScratchRegistryService["upsert"]>
+    ) {
+      const plan = yield* planScratchRegistryWrite(scratchRegistryEntries.get(write[1].id), ...write);
+      if (plan._tag === "Set") scratchRegistryEntries.set(plan.value.id, plan.value);
+    }),
     remove: (id) =>
       Effect.sync(() => {
         scratchRegistryEntries.delete(id);

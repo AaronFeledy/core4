@@ -256,7 +256,6 @@ const makeRestartLayer = (
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         containerId: `cid-${String(target.service)}`,
         publications: {
           status: "present",

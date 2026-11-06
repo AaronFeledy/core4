@@ -12,6 +12,7 @@ import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/tel
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
 import { CORE_VERSION } from "../version";
+import { binarySwapFileSystem, swapBinary } from "./binary-swap.ts";
 import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import {
   type CoreUpdateFailureSchema,
@@ -50,7 +51,6 @@ import {
   isPermissionCause,
   posixPermissionRemediation,
   reexecUserArgv,
-  renameForUpdate,
   resolveSelfUpdateOptions,
   stringEnv,
   writeDownloadedBinary,
@@ -252,55 +252,47 @@ const applyPosixSelfUpdate = ({
               platform: selfUpdate.platform,
               destination: executablePath,
             });
-            yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
-            yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
-              Effect.catch((error) =>
-                renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.catch(() => Effect.void),
-                  Effect.flatMap(() => Effect.fail(error)),
-                ),
-              ),
-            );
-            yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
-              Effect.catch((error) =>
-                Effect.tryPromise({
-                  try: () => selfUpdate.rename(backupPath, executablePath),
-                  catch: (rollbackFailure) =>
-                    isPermissionCause(rollbackFailure)
-                      ? new UpdatePermissionError({
-                          message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
-                          path: executablePath,
-                          remediation: posixPermissionRemediation(executablePath),
-                          cause: rollbackFailure,
-                        })
-                      : withRollbackFailure(error, rollbackFailure),
-                }).pipe(Effect.flatMap(() => Effect.fail(error))),
-              ),
-            );
-            yield* Effect.tryPromise({
-              try: () => readFile(executablePath),
-              catch: (cause) =>
-                new UpdatePermissionError({
-                  message: `Failed to read updated Lando binary at ${executablePath}.`,
-                  path: executablePath,
-                  remediation: posixPermissionRemediation(executablePath),
-                  cause,
-                }),
-            }).pipe(
-              Effect.flatMap((installedBytes) =>
-                refreshInstallRecord({
+            yield* swapBinary(
+              { executablePath, stagedBinaryPath: tempBinaryPath, backupPath },
+              Effect.gen(function* () {
+                yield* runLaunchProbe(executablePath, attemptedVersion, platformId);
+                const installedBytes = yield* Effect.tryPromise({
+                  try: () => readFile(executablePath),
+                  catch: (cause) =>
+                    new UpdatePermissionError({
+                      message: `Failed to read updated Lando binary at ${executablePath}.`,
+                      path: executablePath,
+                      remediation: posixPermissionRemediation(executablePath),
+                      cause,
+                    }),
+                });
+                yield* refreshInstallRecord({
                   recordFile: selfUpdate.installRecordFile,
                   record: owned.record,
                   sha256: sha256Hex(installedBytes),
                   size: installedBytes.byteLength,
                   releaseVersion: attemptedVersion,
-                }),
-              ),
-              Effect.catch((error) =>
-                renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.andThen(Effect.fail(error)),
-                ),
-              ),
+                });
+              }),
+              {
+                fs: { ...binarySwapFileSystem, rename: selfUpdate.rename },
+                error: (message, cause) =>
+                  new UpdatePermissionError({
+                    message,
+                    path: executablePath,
+                    remediation: posixPermissionRemediation(executablePath),
+                    cause,
+                  }),
+                rollbackError: (error, cause) =>
+                  error instanceof UpdateLaunchProbeError && !isPermissionCause(cause)
+                    ? withRollbackFailure(error, cause)
+                    : new UpdatePermissionError({
+                        message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
+                        path: executablePath,
+                        remediation: `The previous Lando binary is kept at ${backupPath}; move it back over ${executablePath} to restore it. ${posixPermissionRemediation(executablePath)}`,
+                        cause,
+                      }),
+              },
             );
           }),
         );

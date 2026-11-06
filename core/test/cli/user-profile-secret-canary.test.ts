@@ -103,7 +103,6 @@ test.each([
           service: target.service,
           providerId: ProviderId.make("lando"),
           status: "running",
-          state: "running",
           publications: { status: "present", bindings: [] },
         }),
       execStream: () => {

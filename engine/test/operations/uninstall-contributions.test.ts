@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-import type { HostUninstallStep } from "@lando/sdk/schema";
+import { type HostUninstallStep, UninstallStepResult } from "@lando/sdk/schema";
 
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
@@ -160,7 +160,9 @@ describe("host uninstall contributions", () => {
               if (elevate === undefined) return { outcome: "failed" as const, error: "missing elevate" };
               const result = yield* elevate(["/bin/true"]);
               elevated.push(["/bin/true"]);
-              return { outcome: result.exitCode === 0 ? ("completed" as const) : ("failed" as const) };
+              return result.exitCode === 0
+                ? { outcome: "completed" as const }
+                : { outcome: "failed" as const, error: result.stderr };
             }),
         },
       };
@@ -206,11 +208,17 @@ describe("host uninstall contributions", () => {
         },
       );
       expect(result.steps.find((s) => s.id === "user-data-root")).toMatchObject({
-        status: "manual",
+        status: "owned",
         outcome: "failed",
       });
       expect(existsSync(join(roots.userDataRoot, "evidence.txt"))).toBe(true);
       expect(result.reportPath).toBeDefined();
+      const report = Schema.decodeUnknownSync(
+        Schema.fromJsonString(
+          Schema.Struct({ status: Schema.Literal("failed"), steps: Schema.Array(UninstallStepResult) }),
+        ),
+      )(readFileSync(join(roots.userDataRoot, "uninstall", "report.json"), "utf8"));
+      expect(result.steps).toEqual(report.steps);
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
     }
@@ -225,7 +233,13 @@ describe("host uninstall contributions", () => {
         id: "fake-helper",
         uninstall: {
           plan: () => Effect.succeed([ownedStep("unit-files")]),
-          execute: () => Effect.succeed({ outcome: "manual", detail: "no longer owned" }),
+          execute: () =>
+            Effect.succeed({
+              outcome: "manual",
+              detail: "no longer owned",
+              status: "user-owned",
+              id: "foreign",
+            }),
         },
       };
       const result = await Effect.runPromise(
@@ -235,11 +249,12 @@ describe("host uninstall contributions", () => {
       expect(result.reportPath).toBeDefined();
       expect(result.steps.find((s) => s.id === contributedStepId("fake-helper", "unit-files"))).toMatchObject(
         {
+          status: "owned",
           outcome: "manual",
         },
       );
       expect(result.steps.find((s) => s.id === "user-data-root")).toMatchObject({
-        status: "manual",
+        status: "owned",
         outcome: "failed",
       });
       expect(existsSync(join(roots.userDataRoot, "evidence.txt"))).toBe(true);
@@ -325,7 +340,7 @@ describe("host uninstall contributions", () => {
         },
       );
       expect(result.steps.find((s) => s.id === "user-data-root")).toMatchObject({
-        status: "manual",
+        status: "owned",
         outcome: "failed",
       });
       expect(existsSync(join(roots.userDataRoot, "evidence.txt"))).toBe(true);
@@ -394,7 +409,7 @@ describe("host uninstall contributions", () => {
       expect(existsSync(evidence)).toBe(true);
       expect(existsSync(roots.userDataRoot)).toBe(true);
       expect(result.steps.find((s) => s.id === "user-data-root")).toMatchObject({
-        status: "manual",
+        status: "owned",
         outcome: "failed",
       });
       expect(result.steps.find((s) => s.id === contributedStepId("fake-helper", "unit-files"))).toMatchObject(

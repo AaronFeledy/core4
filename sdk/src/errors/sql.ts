@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { VolumeInitializationPhase } from "../schema/volume-initialization.ts";
+
 export class SqlServiceNotFoundError extends Schema.TaggedError<SqlServiceNotFoundError>()(
   "SqlServiceNotFoundError",
   {
@@ -107,7 +109,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
 export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("SqlSeedStateError", {
   message: Schema.String,
   service: Schema.String,
-  status: Schema.Literals(["unknown", "fresh", "in-progress", "seeded", "failed"]),
+  status: Schema.Literals(["unknown", ...VolumeInitializationPhase.literals]),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
