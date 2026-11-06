@@ -41,7 +41,7 @@ const missingHostStepsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Host tooling task ${tool} has no structural host steps to run.`,
     tool,
-    remediation: `Add host: steps under tooling.${tool}, then run lando app:cache:refresh.`,
+    remediation: `Add host: steps under tooling.${tool}.`,
   });
 
 /**
