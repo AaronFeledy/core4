@@ -66,7 +66,7 @@ Illustrative MDX shape, not a verified transcript. Replace fixture names, behavi
 id: kebab-guide-id
 provider: test
 timeout: 60000
-tags: [beta, docs, <area>]
+tags: [docs, <area>]
 ---
 
 # Outcome-oriented title

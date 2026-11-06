@@ -18,6 +18,6 @@ export const notImplementedErrorForSpec = (spec: LandoCommandSpec): NotImplement
   return new NotImplementedError({
     message: `Command ${spec.id} is not implemented.`,
     commandId: spec.id,
-    remediation: "This command is not available yet. Run `lando --help` to see currently available commands.",
+    remediation: "This command is not available. Run `lando --help` to see available commands.",
   });
 };

@@ -23,5 +23,5 @@ export interface TerminalCapabilities {
 
 export const detectTerminal = (): TerminalCapabilities => {
   // TODO: use Bun's native terminal detection.
-  throw new Error("detectTerminal: not yet implemented");
+  throw new Error("detectTerminal: not implemented");
 };

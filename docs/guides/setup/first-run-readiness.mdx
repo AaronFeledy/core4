@@ -3,7 +3,7 @@ id: first-run-readiness
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 60000
-tags: [beta, docs, setup, readiness]
+tags: [docs, setup, readiness]
 ---
 
 # Check first-run readiness
@@ -31,7 +31,7 @@ When an older Lando build started the runtime service with your session's `XDG_R
 
 ## When setup fails
 
-Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime.
+Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime.
 
 If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
 

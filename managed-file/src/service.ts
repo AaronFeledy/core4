@@ -564,7 +564,7 @@ const decideOne = Effect.fnUntraced(function* (
   if (mf.mode === "keys") {
     return yield* fail("format", operation, {
       path: mf.path,
-      remediation: "`keys`-mode structured merge is not implemented yet; use `file` or `block`.",
+      remediation: "`keys`-mode structured merge is not supported; use `file` or `block`.",
     });
   }
   const marker = mf.marker ?? mf.id;

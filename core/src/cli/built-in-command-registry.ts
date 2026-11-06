@@ -306,8 +306,7 @@ export const notImplementedErrorForCommand = (commandId: string): NotImplemented
     ? new NotImplementedError({
         message: `Command ${commandId} is not implemented.`,
         commandId,
-        remediation:
-          "This command is not available yet. Run `lando --help` to see currently available commands.",
+        remediation: "This command is not available. Run `lando --help` to see available commands.",
       })
     : notImplementedErrorForSpec(entry.spec);
 };

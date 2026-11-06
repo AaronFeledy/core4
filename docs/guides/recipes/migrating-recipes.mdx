@@ -3,7 +3,7 @@ id: migrating-recipes
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, recipes, config, migrate]
+tags: [docs, recipes, config, migrate]
 ---
 
 # Move your Landofile to a newer recipe version without losing your edits
@@ -61,7 +61,7 @@ When an edge lands, the last line of the report is `run \`lando start\``. Run it
 
 Migrate commits only the longest prefix of edges where every hunk is non-blocking. Say the recipe publishes three edges from your recorded version. Edges 1 and 2 are clean and edge 3 has one hunk that blocks. You get edges 1 and 2 written, `recipe.version` and `recipe.producer` set once to the version edge 2 produced, and edge 3 reported as `blocked` with its remediation. Nothing from edge 3 lands, not even the hunks that would have been fine. Fix the blocker, run migrate again, and it picks up from edge 3.
 
-That partial run reads like this (illustrative shape; no bundled recipe publishes migration history yet, so you can't reproduce it against a bundled app today):
+That partial run reads like this (illustrative shape; no bundled recipe publishes migration history, so you can't reproduce it against a bundled app):
 
 ```text
 Landofile: /home/you/app/.lando.yml
@@ -99,7 +99,7 @@ When an edge renames a service, it rewrites `recipe.services`, the service key, 
 
 ### Repeat runs are no-ops
 
-Run migrate again after it completes and the file doesn't change by a byte. The report says `Status: no-op` and `Nothing changed: already current.` Same when there are no edges to walk because the recorded version already matches what the recipe publishes. That's the case for every bundled recipe today: none publishes `migrations:` yet, so a fresh `lando init` app is already current.
+Run migrate again after it completes and the file doesn't change by a byte. The report says `Status: no-op` and `Nothing changed: already current.` Same when there are no edges to walk because the recorded version already matches what the recipe publishes. That's the case for every bundled recipe: none publishes `migrations:`, so a fresh `lando init` app is already current.
 
 ## Get JSON
 

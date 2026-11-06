@@ -136,7 +136,7 @@ export const notImplementedError = (providerId: string, operation: string) =>
   new ProviderUnavailableError({
     providerId,
     operation,
-    message: `provider-${providerId} does not implement ${operation} yet.`,
+    message: `provider-${providerId} does not implement ${operation}.`,
     remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 

@@ -7,7 +7,7 @@ description: Records architectural and release decisions for Lando v4.
 
 ## Bun floor decision
 
-Beta 1 requires Bun `>=1.4.3`. The pinned CI/runtime version is `1.4.3` in `.bun-version`, and workspace package metadata mirrors that shared toolchain floor in `engines.bun`.
+Lando requires Bun `>=1.4.3`. The pinned CI/runtime version is `1.4.3` in `.bun-version`, and workspace package metadata mirrors that shared toolchain floor in `engines.bun`.
 
 Rationale: Bun 1.4.1 fixed cross-platform bytecode compilation, including the Linux-to-Windows startup crash; the pinned toolchain includes that fix. The central builder enables the programmatic equivalent of `bun build --compile --bytecode` for all six release targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Bytecode supports cross-compilation, but Windows release binaries must be compiled on Windows so Bun embeds the Lando icon and Windows version info. See "Platform scope" in `release.md` for release instructions. Any future target-specific failure is treated as a blocker that moves this floor rather than dropping bytecode.
 
@@ -27,7 +27,7 @@ Known constraints: Dependabot skips `npm:` aliases, so `@typescript/native` and 
 
 ## OCLIF major lock decision (superseded by architecture-simplicity)
 
-Original Beta 1 decision, kept here as historical context: Beta 1 would stay on OCLIF v4. At the time, package metadata recorded `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies; those literals are retained as decision evidence, not current dependency guidance.
+Original decision, kept here as historical context: the CLI would stay on OCLIF v4. At the time, package metadata recorded `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies; those literals are retained as decision evidence, not current dependency guidance.
 
 Original rationale: source mode depends on OCLIF v4 command loading, manifest generation, hooks, help, and parser behavior, while the compiled `$bunfs` binary deliberately does not route through OCLIF. The compiled path used the hand-rolled `runCompiledCli` router, and the compatibility contract was a dual dispatch model: shared command implementations, shared renderers, and compiled-binary dispatch parity tests that compare source and compiled behavior for representative commands and failure cases.
 
@@ -37,7 +37,7 @@ Historical compatibility notes: before the migration landed, OCLIF was isolated 
 
 ## Provider auto-setup default decision
 
-Beta 1 chooses guided opt-in for provider setup. `lando setup` is the explicit setup entrypoint, and routine first-run commands report readiness/remediation instead of aggressively provisioning providers behind the user's back.
+Lando uses guided opt-in for provider setup. `lando setup` is the explicit setup entrypoint, and routine first-run commands report readiness/remediation instead of aggressively provisioning providers behind the user's back.
 
 Defaults:
 
@@ -49,7 +49,7 @@ Rejected alternative: aggressive auto-setup is not the default. If a system prov
 
 ## Compose compatibility subset decision
 
-Beta 1 freezes the top-level Compose project subset a Landofile accepts directly. The accepted subset and its rationale are published at `docs/reference/compose-key-matrix.mdx`, the generated source of truth for this decision. Compose `version:` is accepted for compatibility, ignored by Lando, and treated as deprecated for new Landofiles.
+A Landofile accepts a fixed subset of top-level Compose project keys directly. The accepted subset and its rationale are published at `docs/reference/compose-key-matrix.mdx`, the generated source of truth for this decision. Compose `version:` is accepted for compatibility, ignored by Lando, and treated as deprecated for new Landofiles.
 
 Unsupported Compose project keys fail closed through the canonical schema/lint surface instead of being silently dropped. Targeted remediation for each rejected key, including `profiles` and non-`x-*` extension data, lives in the Detail column of `docs/reference/compose-key-matrix.mdx` rather than being restated here.
 
@@ -69,27 +69,27 @@ gpg-agent forwarding uses that same per-app relay and the agent's restricted ext
 
 ## Plugin trust model decision
 
-Beta 1 ships the plugin trust management surface now: `meta:plugin:trust list` prints the current trusted plugin names and trusted authoring roots, and `meta:plugin:trust revoke <name>` removes a persisted plugin-name trust entry. Trust grants are non-expiring Beta 1 state; users explicitly revoke plugin-name trust when it should no longer apply. Time-based expiry is rejected for Beta 1 because it would require migration, prompting, and renderer semantics without evidence that temporary trust solves the core postinstall risk.
+Lando ships a plugin trust management surface: `meta:plugin:trust list` prints the current trusted plugin names and trusted authoring roots, and `meta:plugin:trust revoke <name>` removes a persisted plugin-name trust entry. Trust grants do not expire; users explicitly revoke plugin-name trust when it should no longer apply. Time-based expiry is rejected because it would require migration, prompting, and renderer semantics without evidence that temporary trust solves the core postinstall risk.
 
-Trust scope is source-specific. npm/registry plugin installs are keyed to the requested package identity (for example `@lando/plugin-php` from `lando plugin:add @lando/plugin-php@1.2.3`), not to attacker-controlled package manifest or `landoPlugin.name` fields. Git plugin sources require explicit `--trust` for the install session until a future git-source identity policy ships. Local/linked plugin workflows use resolved absolute authoring roots: `meta:plugin:trust-authoring-root <abs>` applies only to plugin authoring roots resolved from local/link flows, never to npm registry packages unpacked into Lando's managed plugin cache.
+Trust scope is source-specific. npm/registry plugin installs are keyed to the requested package identity (for example `@lando/plugin-php` from `lando plugin:add @lando/plugin-php@1.2.3`), not to attacker-controlled package manifest or `landoPlugin.name` fields. Git plugin sources require explicit `--trust` for each install session; trust is not persisted for git sources. Local/linked plugin workflows use resolved absolute authoring roots: `meta:plugin:trust-authoring-root <abs>` applies only to plugin authoring roots resolved from local/link flows, never to npm registry packages unpacked into Lando's managed plugin cache.
 
 Flag model: `--trust` on `lando plugin:add` is an explicit one-shot install confirmation and persists the npm/registry package identity when persistent trust storage is available. non-interactive installs never prompt; an untrusted package with postinstall scripts is installed inertly with scripts disabled and remediation pointing at `lando plugin:trust <package>`. Interactive installs may prompt with the existing trusted-host-code wording for packages that need trust outside the postinstall-gated inert path; accepting that prompt trusts only the current Lando process session unless the user runs a persistent trust command.
 
 ## Release-automation posture decision
 
-Beta 1 runs the full signed release **manually until RC**. The generated `release` workflow stays scoped to unsigned six-target GitHub prereleases only: it republishes ci-built binaries for every CI platform as a `v4.0.0-dev.N` GitHub prerelease. It does not publish npm. Live npm `dev` packages stay on the manual `scripts/release.ts` orchestrator. Nothing in CI invokes the 14-stage signed release orchestrator (`scripts/release.ts`).
+The full signed release runs **manually**. The generated `release` workflow stays scoped to unsigned six-target GitHub prereleases only: it republishes ci-built binaries for every CI platform as a `v4.0.0-dev.N` GitHub prerelease. It does not publish npm. Live npm `dev` packages stay on the manual `scripts/release.ts` orchestrator. Nothing in CI invokes the 14-stage signed release orchestrator (`scripts/release.ts`).
 
-Rationale: the orchestrator is fully implemented and credential-gated, but release signing credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) is unassigned and no signing secrets are wired into any workflow. Wiring the full pipeline into CI now would produce a job that warning-skips every signing stage — the appearance of an automated release without a trustworthy signed artifact. Keeping the pipeline manual means a run either produces a genuinely signed release or fails closed. Full-pipeline CI is an explicit RC gate, not a Beta 1 deliverable.
+Rationale: the orchestrator is fully implemented and credential-gated, but release signing credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) is unassigned and no signing secrets are wired into any workflow. Wiring the full pipeline into CI now would produce a job that warning-skips every signing stage — the appearance of an automated release without a trustworthy signed artifact. Keeping the pipeline manual means a run either produces a genuinely signed release or fails closed. Full-pipeline CI waits on assigned signing credentials.
 
-Operational contract: maintainers cut `4.0.0-beta.N` by invoking `scripts/release.ts` by hand per `release.md`, which documents the exact invocation, the required per-stage credentials, and the verification steps. Local rehearsal (`LOCAL_REHEARSAL=1`) exercises stage ordering without credentials.
+Operational contract: maintainers cut a signed release by invoking `scripts/release.ts` by hand per `release.md`, which documents the exact invocation, the required per-stage credentials, and the verification steps. Local rehearsal (`LOCAL_REHEARSAL=1`) exercises stage ordering without credentials.
 
 Platform vocabulary is preserved across domains: CI/release artifact ids use `windows-x64`; the `win32-x64` runtime host key stays confined to the runtime-bundle and mutagen host-key domain and never appears in the release workflow.
 
-Revisit at RC: assign credential owners, then decide whether to promote the full orchestrator into a credential-gated CI workflow.
+Revisit once credential owners are assigned: decide whether to promote the full orchestrator into a credential-gated CI workflow.
 
 ## Paths primitive package promotion decision
 
-Beta 1 promotes the Effect-free paths primitive to its own private workspace package, `@lando/paths` (`paths/`), and promotes **nothing else**.
+This decision promotes the Effect-free paths primitive to its own private workspace package, `@lando/paths` (`paths/`), and promotes **nothing else**.
 
 **Promoted:** `core/src/config/{paths,paths-platform,overlay,yaml-min}.ts` (621 LOC) move to `paths/src/`. The seam qualifies because it imports only Node builtins plus type-only `@lando/sdk` types, imports zero `effect` and zero other core modules, and already has 61 first-party consumers including plugins reaching in by deep relative path.
 
@@ -97,7 +97,7 @@ Beta 1 promotes the Effect-free paths primitive to its own private workspace pac
 
 **`@lando/paths` is `private: true`**, like every other workspace package here. If `@lando/core` is ever published, `@lando/paths` publishes alongside it, because the public `@lando/core/paths` subpath re-exports it.
 
-**Rejected: promoting `StateStore`.** `core/src/state/` is one file, ~70 LOC, 7 importers, and has open Beta 1 fsync work targeting it. Moving it now would collide with in-flight changes for no consumer benefit.
+**Rejected: promoting `StateStore`.** At the time, `core/src/state/` was one file, ~70 LOC, 7 importers, with open fsync work targeting it. Moving it then would have collided with in-flight changes for no consumer benefit.
 
 **Rejected: promoting `RedactionService`.** It is an Effect service with 71 importers, and `@lando/sdk/secrets` already owns the redactor primitives. Promoting it would move an Effect layer, not an Effect-free primitive — a different and larger decision.
 

@@ -3,12 +3,12 @@ id: provider-docker-windows
 provider: test
 platforms: [win32]
 timeout: 120000
-tags: [beta, docs, provider-docker, setup, windows]
+tags: [docs, provider-docker, setup, windows]
 ---
 
 # Use Docker Desktop on Windows
 
-Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the GitHub `v4.0.0-dev.N` prerelease. Docker Desktop is the fallback provider, not the default. You need working Docker Desktop first. [Put the Lando binary on PATH](../install/path-and-setup.mdx), then run:
+[Install Lando on Windows](../install/windows-installer.mdx) first. Docker Desktop is the fallback provider, not the default. You need working Docker Desktop first. With `lando` on PATH, run:
 
 ```sh
 lando setup --provider=docker

@@ -741,13 +741,13 @@
           "sourceId": "core/examples/storage/.lando.yml",
           "kind": "unsupported",
           "keyPath": ["services", "db", "storage", 3, "scope"],
-          "message": "Lando 4 does not support global data storage yet"
+          "message": "Lando 4 does not support global data storage"
         },
         {
           "sourceId": "core/examples/storage/.lando.yml",
           "kind": "unsupported",
           "keyPath": ["services", "alpine", "persistent-storage", 2, "scope"],
-          "message": "Lando 4 does not support global data storage yet"
+          "message": "Lando 4 does not support global data storage"
         }
       ]
     },
@@ -763,7 +763,7 @@
           "sourceId": "core/examples/storage/app2/.lando.yml",
           "kind": "unsupported",
           "keyPath": ["services", "alpine", "storage", 0, "scope"],
-          "message": "Lando 4 does not support global data storage yet"
+          "message": "Lando 4 does not support global data storage"
         }
       ]
     },
