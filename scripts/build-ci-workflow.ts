@@ -18,10 +18,7 @@ import {
   LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import {
-  RUNTIME_BUNDLE_ACTION_PINS,
-  RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT,
-} from "./runtime-bundle-supply-chain.ts";
+import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 import { UNIT_SHARD_COUNT } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -574,60 +571,54 @@ const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRun
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
-export const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+export const linuxRuntimeBundleJob = (hostKey: "linux-x64" | "linux-arm64"): string => {
+  const platform = CI_PLATFORMS.find((candidate) => candidate.id === hostKey);
+  if (platform === undefined) throw new TypeError(`CI_PLATFORMS is missing ${hostKey}`);
+  const label = hostKey.replace("linux-", "Linux ");
+  return `  runtime-bundle-${hostKey}:
+    runs-on: ${hostKey === "linux-x64" ? LINUX_X64_PRIMARY_RUNNER : platform.runsOn}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
-      - name: Restore assembled Linux x64 runtime bundle
-        id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
-
       - name: Setup Bun
-        if: ${linuxRuntimeBundleCacheMiss}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        if: ${linuxRuntimeBundleCacheMiss}
         run: bun install --frozen-lockfile
 
-      - name: Setup Go for Linux Podman source build
-        if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
-
-      - name: Install Linux Podman source-build prerequisites
-        if: ${linuxRuntimeBundleCacheMiss}
+      - name: Derive ${label} runtime bundle cache key from its build context
+        id: runtime-bundle-key
         run: |
-          ${RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
-      - name: Assemble current-commit Linux x64 runtime bundle
+      - name: Restore assembled ${label} runtime bundle
+        id: runtime-bundle-cache
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
+          key: \${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit ${label} runtime bundle
         if: ${linuxRuntimeBundleCacheMiss}
-        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}
 
-      - name: Upload current-commit Linux x64 runtime bundle
+      - name: Upload current-commit ${label} runtime bundle
         uses: actions/upload-artifact@v6
         with:
-          name: runtime-bundle-linux-x64-current
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          name: runtime-bundle-${hostKey}-current
+          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
-${timingNoticeStep("runtime-bundle-linux-x64", 40)}
+${timingNoticeStep(`runtime-bundle-${hostKey}`, 40)}
 `;
+};
 
 const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
@@ -1058,7 +1049,8 @@ ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 ${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner")}
 ${guideScenarioJobs}
 ${buildJobs}
-${linuxRuntimeBundleJob}
+${linuxRuntimeBundleJob("linux-x64")}
+${linuxRuntimeBundleJob("linux-arm64")}
 ${windowsRuntimeBundleJob}
 ${perfBudgetJob}
 ${providerIntegrationJobs}`);

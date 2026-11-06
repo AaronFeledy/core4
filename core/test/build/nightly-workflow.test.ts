@@ -61,6 +61,9 @@ test("nightly jobs regenerate derived sources after frozen install and before th
         ...Object.keys(firstDerivedConsumer),
         "runtime-bundle-manifest-live",
         "runtime-bundle-linux-x64",
+        "runtime-bundle-linux-arm64",
+        "runtime-bundle-reproducibility-linux-x64",
+        "runtime-bundle-reproducibility-linux-arm64",
       ].sort(),
     );
 
@@ -87,6 +90,20 @@ test("nightly jobs regenerate derived sources after frozen install and before th
     }
 
     const armSteps = jobs["mysql-arm-client-linux-arm64"]?.steps ?? [];
+    expect(jobs["mysql-arm-client-linux-arm64"]?.needs).toContain("runtime-bundle-linux-arm64");
+    const bundleDownload = armSteps.findIndex(
+      (step) => step.name === "Download current-commit Linux arm64 runtime bundle",
+    );
+    expect(bundleDownload).toBeGreaterThanOrEqual(0);
+    expect(armSteps[bundleDownload]).toMatchObject({
+      uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+      with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
+    });
+    expect(
+      armSteps.some(
+        (step) => typeof step.run === "string" && step.run.includes("assemble-runtime-bundle.ts"),
+      ),
+    ).toBe(false);
     const localManifest = armSteps.findIndex(
       (step) =>
         step.name === "Build local runtime bundle manifest" &&
@@ -94,12 +111,45 @@ test("nightly jobs regenerate derived sources after frozen install and before th
         step.run.includes("bun run scripts/build-runtime-bundle.ts --local"),
     );
     expect(localManifest).toBeGreaterThanOrEqual(0);
+    expect(localManifest).toBeGreaterThan(bundleDownload);
     expect(localManifest).toBeLessThan(armSteps.findIndex((step) => step.run === "bun run codegen"));
 
     const pinSteps = jobs["runtime-bundle-manifest-live"]?.steps ?? [];
     expect(pinSteps.filter((step) => step.run === "bun run codegen")).toHaveLength(0);
   }
 });
+
+test.each([
+  ["linux-x64", "ubuntu-24.04"],
+  ["linux-arm64", "ubuntu-24.04-arm"],
+])(
+  "nightly rebuilds the CI %s runtime bundle on a fresh native runner and compares the archives",
+  (hostKey, runner) => {
+    const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+    const job = jobs[`runtime-bundle-reproducibility-${hostKey}`];
+    expect(job?.needs).toEqual([`runtime-bundle-${hostKey}`]);
+    expect(job?.["runs-on"]).toBe(runner);
+    const steps = (job?.steps ?? []) as ReadonlyArray<{
+      readonly run?: string;
+      readonly if?: string;
+      readonly with?: Readonly<Record<string, string>>;
+    }>;
+    const download = steps.findIndex((step) => step.with?.name === `runtime-bundle-${hostKey}-current`);
+    const rebuild = steps.findIndex((step) =>
+      step.run?.includes(`assemble-runtime-bundle.ts --platform ${hostKey} --engine docker`),
+    );
+    const compare = steps.findIndex((step) => step.run?.includes("check-runtime-bundle-reproducibility.ts"));
+    expect(download).toBeGreaterThanOrEqual(0);
+    expect(rebuild).toBeGreaterThan(download);
+    expect(compare).toBeGreaterThan(rebuild);
+    expect(steps[download]?.with?.path).toBe("dist/cache/runtime-bundle-reference");
+    expect(steps[rebuild]?.run).toContain("--out-dir dist/cache/runtime-bundle-rebuild");
+    expect(steps[rebuild]?.if).toBeUndefined();
+    expect(steps[compare]?.run).toContain(
+      `dist/cache/runtime-bundle-reference/lando-runtime-${hostKey}.tar.gz dist/cache/runtime-bundle-rebuild/lando-runtime-${hostKey}.tar.gz`,
+    );
+  },
+);
 
 test("nightly workflow regression stays in PR unit-test shards", () => {
   expect(isShardedUnitTest("core/test/build/nightly-workflow.test.ts")).toBe(true);

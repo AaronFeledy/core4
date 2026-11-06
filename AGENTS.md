@@ -40,6 +40,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
 - In a fresh worktree, run `bun install` and then `bun run codegen` from the repo root before tests or the source CLI (`bun core/bin/lando.ts`). The test preload rejects missing generated modules; the source CLI adds codegen guidance when a module-resolution error occurs and generated modules are missing.
 - The in-container helper (host-proxy `lando` client and `lando logs --source` reader) is static Go in `core/container-helper/`, built with Lando: `bun run build:container-helper` (`--test` runs `go vet`/`go test`) writes `core/container-helper/dist/`; never install Go on the host. Compiling `lando` refuses helpers older than their sources; tests that compile but never run the helper set `LANDO_CONTAINER_HELPER_DIR` to stubs (`core/test/build/fixtures/container-helper-stubs.ts`). `core/test/container-helper/helper.integration.test.ts` needs the real build.
+- Linux runtime bundles also compile in a container: `bun run scripts/assemble-runtime-bundle.ts --platform linux-<arch>` builds natively on Docker Buildx or the running Lando runtime (`--engine docker|lando`); never install Go, Rust, or APT build packages on the host. Assembly is byte-reproducible, so compare two archives with `scripts/check-runtime-bundle-reproducibility.ts` instead of trusting a rebuild.
 
 ## Generated Files
 

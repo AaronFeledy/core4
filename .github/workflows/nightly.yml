@@ -60,66 +60,26 @@ jobs:
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Restore assembled Linux x64 runtime bundle
-        id: runtime-bundle-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
-
       - name: Setup Bun
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
 
-      - name: Setup Go for Linux Podman source build
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4
-
-      - name: Install Linux Podman source-build prerequisites
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+      - name: Derive Linux x64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
         run: |
-          set -euo pipefail
-          UBUNTU_SNAPSHOT=20261019T000000Z
-          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-          # Prefer snapshot dependencies even when the runner has newer versions installed.
-          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
-          for DELAY in 0 5 15 45; do
-            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-            if sudo apt-get update --error-on=any; then break; fi
-            if [ "$DELAY" -eq 45 ]; then
-              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-              exit 1
-            fi
-          done
-          PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-          for PACKAGE in "${PACKAGES[@]}"; do
-            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-            POLICY="$(apt-cache policy "$PACKAGE")"
-            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-              $1 == "***" && $2 == candidate { candidate_block = 1; next }
-              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-              candidate_block { candidate_block = 0 }
-              END { exit found ? 0 : 1 }
-            ' <<< "$POLICY"; then
-              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-              exit 1
-            fi
-          done
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
 
       - name: Assemble current-commit Linux x64 runtime bundle
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
@@ -138,6 +98,107 @@ jobs:
         run: |
           echo "::notice title=ci-timing::runtime-bundle-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
 
+  runtime-bundle-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Derive Linux arm64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux arm64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit Linux arm64 runtime bundle
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+
+      - name: Upload current-commit Linux arm64 runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::runtime-bundle-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
+
+
+  runtime-bundle-reproducibility-linux-x64:
+    needs: [runtime-bundle-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download the Linux x64 runtime bundle CI assembled for this commit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle-reference
+
+      - name: Rebuild the Linux x64 runtime bundle on this runner
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --engine docker --out-dir dist/cache/runtime-bundle-rebuild
+
+      - name: Compare the rebuild with the CI archive
+        run: bun run scripts/check-runtime-bundle-reproducibility.ts dist/cache/runtime-bundle-reference/lando-runtime-linux-x64.tar.gz dist/cache/runtime-bundle-rebuild/lando-runtime-linux-x64.tar.gz
+
+  runtime-bundle-reproducibility-linux-arm64:
+    needs: [runtime-bundle-linux-arm64]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download the Linux arm64 runtime bundle CI assembled for this commit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle-reference
+
+      - name: Rebuild the Linux arm64 runtime bundle on this runner
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64 --engine docker --out-dir dist/cache/runtime-bundle-rebuild
+
+      - name: Compare the rebuild with the CI archive
+        run: bun run scripts/check-runtime-bundle-reproducibility.ts dist/cache/runtime-bundle-reference/lando-runtime-linux-arm64.tar.gz dist/cache/runtime-bundle-rebuild/lando-runtime-linux-arm64.tar.gz
 
   file-sync-contract-linux-x64:
     runs-on: ubuntu-26.04
@@ -1047,7 +1108,7 @@ jobs:
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
   mysql-arm-client-linux-arm64:
-    needs: [container-helper]
+    needs: [container-helper, runtime-bundle-linux-arm64]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
@@ -1098,49 +1159,11 @@ jobs:
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
-      - name: Setup Go for Linux Podman source build
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - name: Download current-commit Linux arm64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          set -euo pipefail
-          UBUNTU_SNAPSHOT=20261019T000000Z
-          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-          # Prefer snapshot dependencies even when the runner has newer versions installed.
-          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
-          for DELAY in 0 5 15 45; do
-            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-            if sudo apt-get update --error-on=any; then break; fi
-            if [ "$DELAY" -eq 45 ]; then
-              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-              exit 1
-            fi
-          done
-          PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-          for PACKAGE in "${PACKAGES[@]}"; do
-            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-            POLICY="$(apt-cache policy "$PACKAGE")"
-            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-              $1 == "***" && $2 == candidate { candidate_block = 1; next }
-              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-              candidate_block { candidate_block = 0 }
-              END { exit found ? 0 : 1 }
-            ' <<< "$POLICY"; then
-              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-              exit 1
-            fi
-          done
-
-      - name: Assemble current-commit linux-arm64 runtime bundle
-        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle
 
       - name: Report current-commit ARM runtime bundle fingerprints
         run: |
@@ -1150,14 +1173,6 @@ jobs:
           SIZE="$(wc -c < "$BUNDLE" | tr -d ' ')"
           echo "linux-arm64 sha256=$SHA size=$SIZE"
           echo "::notice title=runtime-bundle-candidate::linux-arm64 sha256=$SHA size=$SIZE"
-
-      - name: Upload current-commit linux-arm64 runtime bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: runtime-bundle-linux-arm64-current
-          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Build local runtime bundle manifest
         run: |

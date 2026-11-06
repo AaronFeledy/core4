@@ -308,6 +308,7 @@ describe("CI selection", () => {
       ];
       const runtime = [
         ...guides,
+        "runtime-bundle-linux-arm64",
         "unit-tests-linux-x64-shard",
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
@@ -320,6 +321,7 @@ describe("CI selection", () => {
         "provider-integration-linux-x64",
       ];
       const expected = { docs, guides, runtime, providers, broad: Object.keys(CI_JOB_TIERS) }[profile];
+      expect(Object.keys(jobs)).toEqual(expect.arrayContaining(expected));
       const needs = {
         ...Object.fromEntries(
           Object.keys(CI_JOB_TIERS).map((id) => [

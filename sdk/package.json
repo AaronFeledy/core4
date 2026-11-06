@@ -24,6 +24,7 @@
     "./command-result": "./src/command-result/index.ts",
     "./database-creds": "./src/database-creds/index.ts",
     "./digest": "./src/digest/index.ts",
+    "./errno": "./src/errors/errno.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/standard": "./src/schema/standard.ts",
     "./schema/services": "./src/schema/services/index.ts",

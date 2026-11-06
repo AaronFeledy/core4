@@ -21,10 +21,10 @@ import {
   CI_PLATFORMS,
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
+  LINUX_X64_PRIMARY_RUNNER,
   LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
 
 const linuxArm64 = CI_PLATFORMS.find((platform) => platform.id === "linux-arm64");
@@ -331,9 +331,35 @@ ${bunSetupStep}
       - name: Verify runtime bundle licenses and source links live
         run: bun run check:runtime-bundle-licenses --live`;
 
+// A fresh runner has no BuildKit cache, so this is an independent rebuild of the archive CI cached.
+const runtimeBundleReproducibilityJob = (hostKey: "linux-x64" | "linux-arm64"): string => {
+  const label = hostKey.replace("linux-", "Linux ");
+  const archive = `lando-runtime-${hostKey}.tar.gz`;
+  return `
+  runtime-bundle-reproducibility-${hostKey}:
+    needs: [runtime-bundle-${hostKey}]
+    runs-on: ${hostKey === "linux-x64" ? LINUX_X64_PRIMARY_RUNNER : linuxArm64.runsOn}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${bunSetupStep}
+
+      - name: Download the ${label} runtime bundle CI assembled for this commit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-${hostKey}-current
+          path: dist/cache/runtime-bundle-reference
+
+      - name: Rebuild the ${label} runtime bundle on this runner
+        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --engine docker --out-dir dist/cache/runtime-bundle-rebuild
+
+      - name: Compare the rebuild with the CI archive
+        run: bun run scripts/check-runtime-bundle-reproducibility.ts dist/cache/runtime-bundle-reference/${archive} dist/cache/runtime-bundle-rebuild/${archive}`;
+};
+
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
-    needs: [${CONTAINER_HELPER_JOB_ID}]
+    needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-arm64]
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
@@ -345,20 +371,11 @@ ${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
-      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
+      - name: Download current-commit Linux arm64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
-
-      - name: Assemble current-commit linux-arm64 runtime bundle
-        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle
 
       - name: Report current-commit ARM runtime bundle fingerprints
         run: |
@@ -368,14 +385,6 @@ ${landoRootlessPrereqSteps}
           SIZE="$(wc -c < "$BUNDLE" | tr -d ' ')"
           echo "linux-arm64 sha256=$SHA size=$SIZE"
           echo "::notice title=runtime-bundle-candidate::linux-arm64 sha256=$SHA size=$SIZE"
-
-      - name: Upload current-commit linux-arm64 runtime bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: runtime-bundle-linux-arm64-current
-          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Build local runtime bundle manifest
         run: |
@@ -570,7 +579,10 @@ const sourceStoreAcceptanceJobs = SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS.map((id) 
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
     renderContainerHelperJob(),
-    linuxRuntimeBundleJob,
+    linuxRuntimeBundleJob("linux-x64"),
+    linuxRuntimeBundleJob("linux-arm64"),
+    runtimeBundleReproducibilityJob("linux-x64"),
+    runtimeBundleReproducibilityJob("linux-arm64"),
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     serviceListenerNightlyJob,

@@ -4,6 +4,7 @@ import * as app from "@lando/sdk/app";
 import * as commandResult from "@lando/sdk/command-result";
 import * as databaseCreds from "@lando/sdk/database-creds";
 import * as digest from "@lando/sdk/digest";
+import * as errno from "@lando/sdk/errno";
 import * as errors from "@lando/sdk/errors";
 import * as events from "@lando/sdk/events";
 import * as expressions from "@lando/sdk/expressions";
@@ -62,6 +63,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk/command-result": commandResult,
   "@lando/sdk/database-creds": databaseCreds,
   "@lando/sdk/digest": digest,
+  "@lando/sdk/errno": errno,
   "@lando/sdk/errors": errors,
   "@lando/sdk/events": events,
   "@lando/sdk/expressions": expressions,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   RUNTIME_BUNDLE_SOURCES_PATH,
@@ -167,6 +167,10 @@ describe("Linux helper source builds", () => {
           expect(command).toContain("--offline");
           expect(command).toContain("SOURCE_DATE_EPOCH=0");
           if (cwd === undefined) throw new Error("source build requires cwd");
+          const cargoConfig = await readFile(join(cwd, ".cargo", "config.toml"), "utf8");
+          const rustflags = JSON.parse(/^rustflags = (.+)$/mu.exec(cargoConfig)?.[1] ?? "[]") as string[];
+          expect(rustflags).toContain(`${dirname(cwd)}=/build`);
+          expect(rustflags[rustflags.indexOf(`${dirname(cwd)}=/build`) - 1]).toBe("--remap-path-prefix");
           await mkdir(join(cwd, "target", "release"), { recursive: true });
           await writeFile(join(cwd, "target", "release", "netavark"), netavarkBytes);
           return;

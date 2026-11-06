@@ -13,7 +13,6 @@ import {
   LINUX_X64_TEST_RUNNER,
   type PlatformReadinessCell,
 } from "./ci-platforms.ts";
-import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { WORKFLOW_PERFORMANCE_CELLS } from "./workflow-performance-plan.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -37,18 +36,6 @@ const ciPlatformFor = (id: string): CiPlatform => {
   if (platform === undefined) throw new Error(`CI_PLATFORMS is missing ${id}`);
   return platform;
 };
-
-const renderSourceBuildPrerequisites = (): string => `      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain} # 1.88.0
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}`;
 
 const renderJob = (cell: PlatformReadinessCell): string => {
   const platform = ciPlatformFor(cell.id);
@@ -81,8 +68,6 @@ ${containerHelperDownloadStep}
           mkdir -p dist
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./${binary} --version "$VERSION" --minify --sourcemap=external
-
-${renderSourceBuildPrerequisites()}
 
       - name: Assemble current-commit ${cell.bundleKey} runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform ${cell.bundleKey}
