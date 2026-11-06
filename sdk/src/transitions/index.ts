@@ -3,8 +3,9 @@
  * a registry entry, a receipt, or an exclusive claim. Each operation names the
  * states it may leave and the state it enters, so every write consults one table
  * instead of re-deriving the rule at its call site. The helpers are pure and
- * Effect-free; callers run `step` inside the locked `StateBucket.modify` (or
- * `Ref.modify`) that persists the result, so the check and the write cannot race.
+ * Effect-free. Durable records apply them through `StateBucket.transition`, which
+ * checks and writes under the bucket's lock; in-memory state runs `planTransition`
+ * inside the `Ref.modify` that stores the result, so the check and the write cannot race.
  */
 
 /**
@@ -28,6 +29,11 @@ export type TransitionVerdict<State extends string> =
       readonly to: State | undefined;
       readonly accepts: ReadonlyArray<State>;
     };
+
+export type IllegalTransition<State extends string> = Extract<
+  TransitionVerdict<State>,
+  { readonly _tag: "Illegal" }
+>;
 
 export interface Transitions<State extends string, Operation extends string> {
   readonly edges: { readonly [K in Operation]: TransitionEdge<State> };
@@ -54,10 +60,37 @@ export const defineTransitions =
 export const illegalTransitionMessage = <State extends string>(
   subject: string,
   operation: string,
-  verdict: Extract<TransitionVerdict<State>, { readonly _tag: "Illegal" }>,
+  verdict: IllegalTransition<State>,
 ): string => {
   const accepts = verdict.accepts.join(" or ");
   return verdict.to === undefined
     ? `${subject} cannot ${operation} while ${verdict.from}; ${operation} only applies while ${accepts}.`
     : `${subject} cannot ${operation} while ${verdict.from}; ${operation} only moves ${accepts} to ${verdict.to}.`;
+};
+
+/**
+ * One operation applied to a stored record. A settled operation keeps the record,
+ * an advance writes the operation's next record (`null` removes it), and an
+ * illegal one carries the refused edge for the owner's error.
+ */
+export type TransitionPlan<State extends string, A> =
+  | { readonly _tag: "Keep" }
+  | { readonly _tag: "Write"; readonly to: State; readonly value: A | null }
+  | { readonly _tag: "Illegal"; readonly verdict: IllegalTransition<State> };
+
+export const planTransition = <State extends string, Operation extends string, A>(
+  transitions: Transitions<State, Operation>,
+  operation: Operation,
+  from: State,
+  next: (to: State) => A | null,
+): TransitionPlan<State, A> => {
+  const verdict = transitions.step(operation, from);
+  switch (verdict._tag) {
+    case "Settled":
+      return { _tag: "Keep" };
+    case "Illegal":
+      return { _tag: "Illegal", verdict };
+    case "Advance":
+      return { _tag: "Write", to: verdict.to, value: next(verdict.to) };
+  }
 };

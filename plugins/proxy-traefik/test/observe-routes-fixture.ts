@@ -159,6 +159,8 @@ export const makeAckStore = (mutations: string[]): PluginStateStore => {
             values.set(spec.key, value);
             return value;
           }),
+        mutate: () => Effect.die("this fixture does not support mutate"),
+        transition: () => Effect.die("this fixture does not support transition"),
         modify: (f) =>
           Effect.sync(() => {
             mutations.push("ack:modify");
