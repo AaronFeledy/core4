@@ -23,8 +23,10 @@ import {
   type RoutePlan,
   type ServicePlan,
   type StorageScope,
+  parseContainerDestination,
   selectHttpEndpoint,
   serviceAppMount,
+  validationIssue,
 } from "@lando/sdk/schema";
 
 import {
@@ -106,17 +108,35 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   const servicePolicies: Record<string, FileSyncPolicy["services"][string]> = {};
   let selectedEngine: SelectedFileSyncPolicy | undefined;
   const routeAccumulator = makeRouteAccumulator();
-  const seenStoreNames = new Set<string>();
+  const storeOwners = new Map<
+    string,
+    { readonly store: FinalizedServices["stores"][number]; readonly service: string }
+  >();
 
   const pushStore = (
-    name: string,
-    scope: StorageScope,
-    kind: "data" | "cache" = "data",
-    key?: string,
-  ): void => {
-    if (seenStoreNames.has(name)) return;
-    seenStoreNames.add(name);
-    stores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
+    store: FinalizedServices["stores"][number],
+    service: string,
+  ): LandofileValidationError | undefined => {
+    const previous = storeOwners.get(store.name);
+    if (previous !== undefined) {
+      if (
+        previous.store.scope !== store.scope ||
+        previous.store.kind !== store.kind ||
+        previous.store.key !== store.key
+      ) {
+        const message = `Store ${store.name} has conflicting scope, kind, or key definitions in services ${previous.service} and ${service}.`;
+        return new LandofileValidationError({
+          file: `${input.appRoot}/.lando.yml`,
+          message,
+          issues: [previous.service, service].map((name) => validationIssue(["services", name], message)),
+          remediation:
+            "Use the same scope, kind, and key for a shared store, or choose distinct store names.",
+        });
+      }
+      return;
+    }
+    storeOwners.set(store.name, { store, service });
+    stores.push(store);
   };
 
   for (const entry of input.plannedServiceDrafts) {
@@ -175,13 +195,15 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     if (preparedMounts instanceof LandofileValidationError || preparedMounts instanceof ServiceFeatureError)
       return yield* Effect.fail(servicePlanError(input.appRoot, name, preparedMounts));
     const volumeTargets = new Set<string>(
-      preparedMounts.mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target),
+      preparedMounts.servicePlan.mounts
+        .filter((mount) => mount.type === "volume")
+        .map((mount) => mount.target),
     );
     const storageOwnership = (draft.storageOwnership ?? []).filter((tree) => volumeTargets.has(tree.target));
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
     const shadowResult = yield* deriveMountOverlays({
       context,
-      servicePlan: preparedMounts,
+      servicePlan: preparedMounts.servicePlan,
       fileSystem: input.fileSystem,
     });
     shadowHostChecks.push(...shadowResult.shadowHostChecks);
@@ -358,13 +380,24 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
-      const authoredInfo = authored.byStore.get(mount.store);
-      pushStore(
-        mount.store,
-        authoredInfo?.scope ?? "service",
-        authoredInfo?.kind ?? "data",
-        authoredInfo?.key,
+      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
+        if (typeof entry === "string") return false;
+        const destination = parseContainerDestination(entry.target);
+        return destination.ok && destination.value === mount.target;
+      });
+      const authoredInfo =
+        preparedMounts.storageByTarget.get(mount.target) ??
+        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      const error = pushStore(
+        {
+          name: mount.store,
+          scope: authoredInfo?.scope ?? "service",
+          kind: authoredInfo?.kind ?? "data",
+          ...(authoredInfo?.key === undefined ? {} : { key: authoredInfo.key }),
+        },
+        name,
       );
+      if (error !== undefined) return yield* Effect.fail(error);
     }
     if (engine !== undefined) {
       fileSync.push(

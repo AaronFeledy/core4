@@ -117,5 +117,8 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
     storage: args.service.storage,
   });
   if (planned instanceof Error) throw planned;
-  return applyAuthoredHealthcheck({ ...planned, mounts: orderMounts(planned.mounts) }, args.service);
+  return applyAuthoredHealthcheck(
+    { ...planned.servicePlan, mounts: orderMounts(planned.servicePlan.mounts) },
+    args.service,
+  );
 };

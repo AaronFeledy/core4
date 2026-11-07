@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import type { ServiceConfig, ServicePlan } from "@lando/core/schema";
 import { ServiceName } from "@lando/core/schema";
+import { landoAppStoreName, landoServiceStorageName } from "@lando/sdk/schema";
 
 import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
@@ -24,7 +25,7 @@ import {
 } from "./compose-fixture-source-values.ts";
 
 type ServiceOutcomeContext = {
-  readonly appName: string;
+  readonly appSlug: string;
   readonly appRoot: string;
   readonly match: ComposeDispositionMatch;
   readonly planService: ServicePlan;
@@ -105,7 +106,7 @@ const assertArtifact = (
 };
 
 const assertVolumes = (context: ServiceOutcomeContext): void => {
-  const { appName, appRoot, planService, service } = context;
+  const { appSlug, appRoot, planService, service } = context;
   for (const volume of matchedVolumes(context.match, service)) {
     switch (volume.type) {
       case "bind": {
@@ -128,8 +129,8 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
           origin: "authored",
           store:
             volume.source === undefined
-              ? `${appName}-${String(planService.name)}-${volume.target.split("/").filter(Boolean).join("-")}`
-              : `${appName}-${volume.source}`,
+              ? landoServiceStorageName(appSlug, String(planService.name), volume.target)
+              : landoAppStoreName(appSlug, volume.source),
           target: volume.target,
           readOnly: volume.readOnly,
           ...(volume.subpath === undefined ? {} : { subpath: volume.subpath }),
@@ -183,7 +184,7 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
   if (planService === undefined)
     throw new ComposeFixtureOutcomeError(`Missing planned service ${match.service}`);
   const serviceContext: ServiceOutcomeContext = {
-    appName: context.plan.name,
+    appSlug: context.plan.slug,
     appRoot: context.appRoot,
     match,
     planService,

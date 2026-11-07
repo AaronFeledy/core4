@@ -8,10 +8,9 @@
  * the type nor the author names a home for the planned user, no home store is
  * planned rather than guessing a path.
  */
-import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig, ServiceHomePlan, ServicePlan } from "@lando/sdk/schema";
-import { AbsoluteContainerPath, sameImageReference } from "@lando/sdk/schema";
+import { AbsoluteContainerPath, landoServiceHomeStoreName, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 import { plannedContainerDestination } from "./storage.ts";
@@ -65,17 +64,6 @@ export const serviceHomeIntent = (input: {
 const userPrincipal = (user: string): string => {
   const separator = user.indexOf(":");
   return separator === -1 ? user : user.slice(0, separator);
-};
-
-export const homeStoreName = (appSlug: string, serviceName: string, principal?: string): string => {
-  const base = `lando-${appSlug}-${serviceName}-home`;
-  if (principal === undefined) return base;
-  const readable = principal
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, 32);
-  return `${base}-${readable}-${sha256Hex(`${serviceName}\0${principal}`).slice(0, 8)}`;
 };
 
 /**
@@ -156,7 +144,7 @@ export const applyServiceHome = (input: {
   if (occupied !== undefined)
     return { ...input.servicePlan, home: { state: "authored", target: homeTarget, mount: occupied } };
 
-  const store = homeStoreName(input.appSlug, input.serviceName, principal);
+  const store = landoServiceHomeStoreName(input.appSlug, input.serviceName, principal);
 
   return {
     ...input.servicePlan,
