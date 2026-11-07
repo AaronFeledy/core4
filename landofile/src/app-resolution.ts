@@ -1,10 +1,10 @@
 import { dirname } from "node:path";
 
-import { Context, Effect, Semaphore } from "effect";
+import { type Context, Effect } from "effect";
 
 import {
   AppIdReservedError,
-  LandofileParseError,
+  type LandofileParseError,
   type LandofileVersionConstraintError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, AppRef, LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
@@ -38,57 +38,10 @@ export const assertUserAppIdNotReserved = (
     : Effect.void;
 };
 
-const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
-  Effect.try({
-    try: () => {
-      const original = process.cwd();
-      process.chdir(root);
-      return original;
-    },
-    catch: (cause) =>
-      new LandofileParseError({
-        message: cause instanceof Error ? cause.message : `Unable to enter the app directory at ${root}.`,
-        filePath: root,
-        line: undefined,
-        column: undefined,
-        remediation: `Ensure the app directory ${root} exists and is accessible.`,
-        cause,
-      }),
-  });
-
-const cwdResolutionLock = Semaphore.makeUnsafe(1);
-const CwdResolutionOwner = Context.Reference<number | undefined>("@lando/landofile/CwdResolutionOwner", {
-  defaultValue: () => undefined,
-});
-
 export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | LandofileParseError, R> =>
-  withDiscoveryCwd(
-    root,
-    Effect.flatMap(Effect.fiberId, (fiberId) =>
-      CwdResolutionOwner.pipe(
-        Effect.flatMap((owner) => {
-          const useAtRoot = Effect.suspend(() =>
-            root === process.cwd()
-              ? use
-              : Effect.acquireUseRelease(
-                  enterDir(root),
-                  () => use,
-                  (original) => Effect.sync(() => process.chdir(original)),
-                ),
-          );
-          const ownsLock = owner === fiberId;
-          return ownsLock
-            ? useAtRoot
-            : cwdResolutionLock.withPermits(1)(
-                useAtRoot.pipe(Effect.provideService(CwdResolutionOwner, fiberId)),
-              );
-        }),
-      ),
-    ),
-  );
+): Effect.Effect<A, E | LandofileParseError, R> => withDiscoveryCwd(root, use);
 
 export interface UserAppResolutionOptions {
   readonly inputs?: LandofileRuntimeInputs;
