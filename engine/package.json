@@ -287,7 +287,7 @@
     "@lando/state-store": "workspace:*",
     "@lando/telemetry": "workspace:*",
     "effect": "catalog:",
-    "semver": "^7.8.5"
+    "semver": "^7.8.6"
   },
   "devDependencies": {
     "@lando/service-lando": "workspace:*",
