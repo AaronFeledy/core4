@@ -5,7 +5,7 @@
  * without requiring app bootstrap.
  */
 import { join } from "node:path";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { DateTime, Effect, Layer, Option } from "effect";
 

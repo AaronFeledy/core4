@@ -1,6 +1,6 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
-import { CliInvocation } from "../../../invocation-context";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { Flags } from "../../../spec/metadata";
 
 import {

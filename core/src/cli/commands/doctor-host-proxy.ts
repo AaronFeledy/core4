@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Clock, Duration, Effect, Option } from "effect";
 

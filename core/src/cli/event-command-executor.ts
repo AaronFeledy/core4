@@ -1,5 +1,5 @@
 import { Cause, Context, Effect, Layer } from "effect";
-import { CliInvocation } from "./invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { commandFailureCause } from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";

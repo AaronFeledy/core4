@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Effect, Schema } from "effect";
 

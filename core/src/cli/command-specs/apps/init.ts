@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { CliInvocationContext } from "../../invocation-context";
+import type { CliInvocationContext } from "../../../runtime/invocation-context";
 import { yesFlag } from "../../spec/confirmation-flag";
 import { Args, Flags } from "../../spec/metadata";
 

@@ -11,7 +11,7 @@ import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, HostProxyResponse } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Schema, Stream } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { HOST_PROXY_CALL_COMMAND, type HostProxyCall } from "./call-context";
 import type { WorkerInput } from "./worker-config";
 

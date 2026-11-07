@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { PluginManifestError, isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";

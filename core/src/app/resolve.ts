@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import { CliInvocation } from "../cli/invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { Effect, Schema, Scope } from "effect";
 

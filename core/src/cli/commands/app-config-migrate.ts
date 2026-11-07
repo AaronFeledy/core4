@@ -19,7 +19,7 @@ import { type InteractionError, InteractionService, ManagedFileTransactionGuard 
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Option, Result, Schema, type Scope } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
 import {

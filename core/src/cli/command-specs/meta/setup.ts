@@ -6,7 +6,7 @@ import { RedactionService } from "@lando/redaction/service";
  */
 import { Effect, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
-import { CliInvocation } from "../../invocation-context";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { AppPlacementError } from "@lando/sdk/errors";
 import {

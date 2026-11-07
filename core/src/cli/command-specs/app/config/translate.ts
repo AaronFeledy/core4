@@ -2,7 +2,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { Renderer } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
-import { CliInvocation } from "../../../invocation-context";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 
 import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
 import { Flags } from "../../../spec/metadata";

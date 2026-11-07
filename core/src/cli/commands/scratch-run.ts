@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import {
   type AppPlacementError,

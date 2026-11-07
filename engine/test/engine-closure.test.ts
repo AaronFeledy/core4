@@ -51,6 +51,8 @@ const coreRuntimeAllowlist = new Set([
   "runtime/generated",
   "runtime/bundled-plugins.ts",
   "runtime/engine-composition.ts",
+  // The host's cwd, env, IO, and runtime substitutions for one invocation, shared by the CLI and App API.
+  "runtime/invocation-context.ts",
   "runtime/layer.ts",
   "runtime/scratch-init-port.ts",
   "schema/index.ts",

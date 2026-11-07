@@ -16,9 +16,9 @@ import {
   failureOutcomeFromCause,
   normalizeDefect,
 } from "@lando/sdk/command-result";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
 import { collectOpenConnections } from "../commands/open-connections";
-import { CliInvocation } from "../invocation-context";
 import { parseOpenOptionsFromRunLandoArgv } from "./open-argv";
 
 const redactCommandEnvelope = (

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { RedactionService } from "@lando/redaction/service";
 import { Renderer } from "@lando/sdk/services";

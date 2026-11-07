@@ -1,7 +1,7 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";

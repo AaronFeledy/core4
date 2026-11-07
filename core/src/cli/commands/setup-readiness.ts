@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { causeMessage } from "@lando/sdk/errors";

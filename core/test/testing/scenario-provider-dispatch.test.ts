@@ -5,10 +5,12 @@ import { DateTime, Effect } from "effect";
 
 import { withScenarioContext } from "@lando/core/testing";
 import { resolveDesiredAppTarget } from "@lando/engine/landofile/app-resolution";
+import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { CliInvocation } from "../../src/runtime/invocation-context.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { withScenarioRuntimeOverride } from "../../src/runtime/scenario-override.ts";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 
 // Scenario commands run the real CLI, including real starts that wait out service readiness.
@@ -38,25 +40,21 @@ type ScenarioProvider = ReturnType<typeof makeScenarioProvider>;
 // Plans a fixture through the real planner and applies it, as `lando start` does.
 const planAndApply = async (provider: ScenarioProvider, root: string): Promise<AppPlan> => {
   await import("../../src/runtime/bundled-plugins.ts");
-  const previousCwd = process.cwd();
-  try {
-    process.chdir(root);
-    const target = await withScenarioRuntimeOverride(
-      { providerRegistry: provider.layer, hostServices: provider.hostServices, observeEvent: () => {} },
-      () =>
-        Effect.runPromise(
-          resolveDesiredAppTarget.pipe(
-            Effect.provide(
-              makeLandoRuntime({ bootstrap: "app", cwd: root, plugins: { policy: "bundled-only" } }),
-            ),
-          ),
-        ),
-    );
-    await Effect.runPromise(Effect.scoped(provider.provider.apply(target.plan, { reconcile: false })));
-    return target.plan;
-  } finally {
-    process.chdir(previousCwd);
-  }
+  const target = await Effect.runPromise(
+    withDiscoveryCwd(root, resolveDesiredAppTarget).pipe(
+      Effect.provide(makeLandoRuntime({ bootstrap: "app", cwd: root, plugins: { policy: "bundled-only" } })),
+      Effect.provideService(CliInvocation, {
+        cwd: root,
+        env: process.env,
+        io: createBufferedRendererIO(),
+        setExitCode: () => {},
+        providerRegistry: provider.layer,
+        serviceLayers: [provider.hostServices],
+      }),
+    ),
+  );
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(target.plan, { reconcile: false })));
+  return target.plan;
 };
 
 test.each([

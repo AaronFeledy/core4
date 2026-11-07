@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { type LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";

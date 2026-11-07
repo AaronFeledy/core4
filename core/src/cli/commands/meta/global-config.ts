@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import { ConfigDescribeResultSchema, describeConfigKey } from "@lando/engine/config-write/key-schema";
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
-import { CliInvocation } from "../../invocation-context";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { Effect, Schema } from "effect";
 

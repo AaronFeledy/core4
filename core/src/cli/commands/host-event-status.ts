@@ -1,6 +1,6 @@
 export { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
 import type { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
 import { ConfigService, PathsService } from "@lando/sdk/services";

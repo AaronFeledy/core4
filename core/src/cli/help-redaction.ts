@@ -1,6 +1,6 @@
 import { RedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
-import { CliInvocation, type CliInvocationContext } from "./invocation-context";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 
 export const helpRedactor = Effect.gen(function* () {
   const service = yield* RedactionService;

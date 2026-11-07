@@ -7,7 +7,7 @@ import { ConfigTranslateError } from "@lando/sdk/errors";
 import type { ConfigTranslateDiagnostic, ConfigTranslateDocument } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { DocumentSetShape } from "./app-config-translate-document-set.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 

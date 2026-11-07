@@ -1,5 +1,9 @@
 import { Effect } from "effect";
-import { CliInvocation, type CliInvocationContext, processInvocationContext } from "../../invocation-context";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../../../runtime/invocation-context";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
 

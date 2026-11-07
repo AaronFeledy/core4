@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CliInvocation } from "../../../invocation-context";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";

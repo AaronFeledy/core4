@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { HttpTrustError, HttpTrustErrorKind } from "@lando/sdk/errors";
 import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
