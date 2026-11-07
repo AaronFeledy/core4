@@ -35,6 +35,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import { PluginContributionGraph, loadedPluginImplementations } from "../plugins/contribution-graph.ts";
 import { FileSyncPolicy, fileSyncOrdinaryReason } from "../plugins/file-sync-policy.ts";
 import { applyPreparedAppFeatures } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
@@ -102,6 +103,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
   const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
   const pluginRegistry = yield* PluginRegistry;
+  const plugins = loadedPluginImplementations(
+    Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph)),
+  );
   const policyOwner = yield* FileSyncPolicy;
   const cacheService = Option.getOrUndefined(yield* Effect.serviceOption(CacheService));
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
@@ -359,6 +363,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
+    pluginImplementations: plugins.coordinates,
     appFeatureEnv: preparedApp.environment.bindings,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
@@ -405,7 +410,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       },
     },
   });
-  if (input.mode !== "validate" && cacheService !== undefined) {
+  // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
+  const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
+  if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
       cacheRoot,
       appName: appSlug,
@@ -571,11 +578,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);
-  if (
-    input.mode !== "validate" &&
-    cacheService !== undefined &&
-    !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
-  ) {
+  if (planCache !== undefined && !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) {
     yield* writeCachedAppPlan({
       cacheRoot,
       appName: appSlug,
@@ -586,7 +589,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       shadowHostChecks: finalized.shadowHostChecks,
       gitHostChecks: finalized.gitHostChecks,
     }).pipe(
-      Effect.provideService(CacheService, cacheService),
+      Effect.provideService(CacheService, planCache),
       Effect.catch(() => Effect.void),
     );
   }
