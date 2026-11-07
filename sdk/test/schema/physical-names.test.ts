@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { landoServiceContainerName, landoServiceStoreName } from "../../src/schema/physical-names.ts";
+import { sha256Hex } from "@lando/sdk/digest";
+import {
+  landoAppStoreName,
+  landoCacheStoreName,
+  landoServiceContainerName,
+  landoServiceHomeStoreName,
+  landoServiceShadowStoreName,
+  landoServiceStorageName,
+  landoServiceStoreName,
+} from "@lando/sdk/schema";
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 
@@ -85,5 +94,71 @@ describe("landoServiceStoreName", () => {
       roles.map((role) => landoServiceStoreName(slug, service, role)),
     );
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+describe("derived stores", () => {
+  const serviceOwners = [landoServiceHomeStoreName, landoServiceShadowStoreName, landoServiceStorageName];
+  test.each(serviceOwners)("keeps ambiguous app/service pairs distinct with %p", (owner) => {
+    expect(owner("foo", "bar-web", "/data")).not.toBe(owner("foo-bar", "web", "/data"));
+  });
+
+  test("keeps generated purposes separate from roles and fallback-container stores", () => {
+    const generated = pairs.flatMap(([slug, service]) =>
+      serviceOwners.map((owner) => owner(slug, service, "data")),
+    );
+    const catalog = new Set(
+      pairs.flatMap(([slug, service]) =>
+        ["home", "shadow", "storage", "data"].map((role) => landoServiceStoreName(slug, service, role)),
+      ),
+    );
+    expect(new Set(generated).size).toBe(generated.length);
+    expect(generated.filter((name) => catalog.has(name))).toEqual([]);
+  });
+
+  test.each([landoServiceShadowStoreName, landoServiceStorageName])(
+    "preserves exact destinations through lossy normalization with %p",
+    (owner) => {
+      expect(owner("app", "web", "/foo/bar")).not.toBe(owner("app", "web", "/foo-bar"));
+      expect(owner("app", "web", `/${"a".repeat(90)}x`)).not.toBe(owner("app", "web", `/${"a".repeat(90)}y`));
+      expect(owner("app", "web", `/${"a".repeat(47)}-/x`)).toMatch(/--[a-z]+--a{47}-[0-9a-f]{8}$/u);
+    },
+  );
+
+  test("encodes home principals with bounded words and the original identity digest", () => {
+    expect(landoServiceHomeStoreName("app", "web", "root")).toBe("lando-app--web--home--root-3177abf4");
+    expect(landoServiceHomeStoreName("app", "a-b", "c")).toBe("lando-app--a-b--home--c-695274f6");
+    expect(landoServiceHomeStoreName("app", "a", "b-c")).toBe("lando-app--a--home--b-c-02654a5c");
+    expect(landoServiceHomeStoreName("app", "web", "--User A--")).toMatch(/--home--user-a-[0-9a-f]{8}$/u);
+    expect(landoServiceHomeStoreName("app", "web", "a".repeat(40))).toMatch(/--home--a{32}-[0-9a-f]{8}$/u);
+    expect(landoServiceHomeStoreName("app", "web")).toBe("lando-app--web--home--default");
+    expect(landoServiceHomeStoreName("app", "web", "!!!")).toMatch(/--home--user-[0-9a-f]{8}$/u);
+    expect(landoServiceHomeStoreName("app", "web", `${"a".repeat(31)}._B`)).toMatch(
+      /--home--a{31}-[0-9a-f]{8}$/u,
+    );
+    expect(landoServiceHomeStoreName("app", "web", "Foo")).not.toBe(
+      landoServiceHomeStoreName("app", "web", "foo"),
+    );
+  });
+
+  test.each([landoCacheStoreName, (key: string) => landoAppStoreName("app", key)])(
+    "separates noncanonical keys from canonical literals and long inputs with %p",
+    (owner) => {
+      const hash = sha256Hex("Foo").slice(0, 8);
+      expect(owner("Foo")).not.toBe(owner(`foo-${hash}`));
+      expect(owner("Foo")).toEndWith(`foo--${hash}`);
+      expect(owner(`${"a".repeat(80)}x`)).not.toBe(owner(`${"a".repeat(80)}y`));
+      expect(owner(`${"a".repeat(47)}-!`)).toMatch(/a{47}--[0-9a-f]{8}$/u);
+    },
+  );
+
+  test("keeps canonical caches shared and app sources app-scoped", () => {
+    expect(["nuget", "composer"].map(landoCacheStoreName)).toEqual([
+      "lando-cache-nuget",
+      "lando-cache-composer",
+    ]);
+    expect(landoAppStoreName("foo", "bar-web")).toBe("lando-foo_bar-web");
+    expect(landoAppStoreName("foo", "bar-web")).not.toBe(landoAppStoreName("foo-bar", "web"));
+    expect(landoAppStoreName("foo", "web")).not.toBe(landoServiceStorageName("foo", "web", "/data"));
   });
 });

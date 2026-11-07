@@ -42,3 +42,35 @@ export const landoServiceContainerName = (slug: string, service: string): string
  */
 export const landoServiceStoreName = (slug: string, service: string, role: string): string =>
   `${landoServiceContainerName(slug, service)}--${segment(role, DNS_LABEL_MAX_LENGTH) || "data"}`;
+
+/** Shared app slug normalization, including a root-derived name when no words remain. */
+export const normalizeAppSlug = (name: string, appRoot: string): string =>
+  segment(name, 57) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
+
+const canonicalOrHashed = (value: string): string =>
+  CANONICAL.test(value) && value.length <= 64
+    ? value
+    : `${segment(value, 48) || "x"}--${sha256Hex(value).slice(0, HASH_LENGTH)}`;
+
+/** A persisted home is distinct from service-type roles, even when its user is unknown. */
+export const landoServiceHomeStoreName = (slug: string, service: string, principal?: string): string =>
+  `${landoServiceContainerName(slug, service)}--home--${
+    principal === undefined
+      ? "default"
+      : `${segment(principal, 32) || "user"}-${sha256Hex(`${service}\0${principal}`).slice(0, HASH_LENGTH)}`
+  }`;
+
+/** Excluded bind destinations get their own store; the digest preserves lossy path distinctions. */
+export const landoServiceShadowStoreName = (slug: string, service: string, target: string): string =>
+  `${landoServiceContainerName(slug, service)}--shadow--${segment(target, 48) || "shadow"}-${sha256Hex(target).slice(0, HASH_LENGTH)}`;
+
+/** Anonymous authored storage belongs to one service and one exact destination. */
+export const landoServiceStorageName = (slug: string, service: string, target: string): string =>
+  `${landoServiceContainerName(slug, service)}--storage--${segment(target, 48) || "x"}-${sha256Hex(target).slice(0, HASH_LENGTH)}`;
+
+/** Compose named sources share one app namespace, separate from container-derived stores. */
+export const landoAppStoreName = (slug: string, source: string): string =>
+  `${PREFIX}${slug}_${canonicalOrHashed(source)}`;
+
+/** Cache keys deliberately share a namespace across apps. */
+export const landoCacheStoreName = (key: string): string => `lando-cache-${canonicalOrHashed(key)}`;
