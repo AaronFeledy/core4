@@ -72,7 +72,7 @@ The php image ships `/var/www` owned by root. Lando creates it for `www-data` in
 
 ### One volume per user
 
-The store belongs to that one service in that one app, and to the user it was planned for. Its name is `lando-<app>-<service>-home-<user>-<8-hex digest>`; only an explicit `home.path` on a service with no known user drops the user part and gets `lando-<app>-<service>-home`. Planning the app again reuses the volume instead of stacking a second copy.
+The store belongs to that one service in that one app, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is the service's container name, usually `lando-<app slug>--<service>`. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
 
 Changing `user:` changes the home. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
 
@@ -80,7 +80,7 @@ When a service stops keeping its home, for example because you added your own `i
 
 ```text
 Service web will no longer keep its home at /home/node: its image now comes from your Landofile.
-Lando leaves lando-<app>-web-home-node-<digest> untouched. To mount it at its previous location, set storage: [{ store: "<that volume>", target: "/home/node" }] under services.web in your Landofile.
+Lando leaves lando-<app>--web--home--node-<digest> untouched. To mount it at its previous location, set storage: [{ store: "<that volume>", target: "/home/node" }] under services.web in your Landofile.
 ```
 
 When the home moved instead, say after a `user:` change, the warning names both volumes: `Service web will use home volume <new volume> at <target> (previously <old volume> at <old target>).` You get no warning for `home: false` or when you mount something at the home path yourself.
@@ -94,9 +94,11 @@ services:
     image: my-org/web:dev
     user: node
     storage:
-      - store: lando-<app>-web-home-node-<digest>
+      - store: lando-<app>--web--home--node-<digest>
         target: /home/node
 ```
+
+An explicit `store:` keeps the name you write verbatim, so use the complete volume name from the warning.
 
 To get rid of it instead, `lando destroy --volumes` removes the app's volumes, old homes included.
 
