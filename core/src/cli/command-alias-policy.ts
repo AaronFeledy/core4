@@ -84,7 +84,7 @@ export const commandAliasRegistrationError = (
       alias,
       claimedBy: `script ${entry.id}`,
       reservedFor,
-      remediation: `Rename the .bun.sh script that registers ${safeId}, then run \`lando app:cache:refresh\`.`,
+      remediation: `Rename the .bun.sh script that registers ${safeId}.`,
     });
   }
   if (policy?.enabled === false) return undefined;
@@ -129,7 +129,7 @@ export const commandAliasRegistrationError = (
         alias,
         target,
         closeMatches,
-        remediation: `Choose a registered canonical command${closeMatches.length === 0 ? "" : ` such as ${closeMatches.map(escapeDiagnosticText).join(", ")}`} or run \`lando app:cache:refresh\` after adding the target.`,
+        remediation: `Choose a registered canonical command${closeMatches.length === 0 ? "" : ` such as ${closeMatches.map(escapeDiagnosticText).join(", ")}`} or add the target.`,
       });
     }
   }

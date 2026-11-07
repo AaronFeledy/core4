@@ -146,10 +146,10 @@ If you are looking for a public surface or policy:
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
-| Tooling schemas, named-first binding, boolean projection, sensitivity, and retained input revisions | 08 | §8.5.1 |
+| Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
-| Tooling cache/help recovery and explicit refresh | 08 | §8.7 |
+| Automatic tooling metadata rebuild, failure reporting, and help recovery | 08 | §8.7 |
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |

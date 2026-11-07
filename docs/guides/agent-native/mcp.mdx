@@ -91,20 +91,20 @@ a shell:
 
 ## Send named tooling inputs
 
-To expose app tooling, refresh its command cache in the app directory, then
-inspect the opt-in catalog:
+To expose app tooling, inspect the opt-in catalog from the app directory:
 
 ```sh
-lando app:cache:refresh
 lando mcp --tooling --list --format=json
 ```
 
 Launch the client session with `lando mcp --tooling` from that same directory.
-The refresh rebuilds the full app plan and command index without starting
-services. It is explicit, not an automatic metadata-only repair.
+When the session starts, Lando reads your app's commands, rebuilding the index
+if the Landofile, an include, or a script changed since the last run, so the
+tool catalog matches the current Landofile. That rebuild plans the app without
+starting services or the provider.
 
 A `.bun.sh` script can accept sparse named arguments. For example, save this as
-`.lando/scripts/tag.bun.sh` before refreshing:
+`.lando/scripts/tag.bun.sh` before starting the session:
 
 ```sh
 # ---
@@ -161,21 +161,24 @@ types, defaults, choices, requiredness, sensitivity, or raw-argument policy reje
 the call with `ToolingInputError` before the body runs. Script-body and
 description-only edits keep the revision compatible.
 
-After changing metadata, run `lando app:cache:refresh`, reconnect the client,
-and inspect `tools/list` again. A running session does not atomically replace its
-catalog after a refresh, and rejected calls are not automatically replayed.
-Review the new declaration before retrying.
+After changing metadata, reconnect the client and inspect `tools/list` again.
+A running session keeps the catalog it started with; the next session reads the
+current commands on its own, so no refresh command is needed. Rejected calls are
+not automatically replayed. Review the new declaration before retrying.
 
-If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`:
-`stale-cache` or `invalid-cache` needs an explicit `lando app:cache:refresh`.
-On the host CLI, a missing index rebuilds once before dispatch or help when the
-app source is already resolved; a failed rebuild keeps the original
-`missing-cache` remediation. `unknown-command` means a fresh index has no
-matching command, so check the name and aliases. `lando help --format=json`
-exposes `result.toolingMetadata` with `status` and, when unavailable, `reason`
-and `remediation`. Host-proxy calls do not rebuild. Neither path starts a
-provider only to repair discovery. You do not need `lando start` or
-`lando rebuild` just for that. The same help JSON lists plugin commands as
+If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`.
+`unknown-command` means the app has no matching command, so check the name and
+aliases with `lando help`. `missing-cache`, `stale-cache`, and `invalid-cache`
+now appear only in a rare race where the app changed while Lando was reading
+it; run the command again. On the host CLI, every app tooling command and help
+rebuilds a missing, stale, or unreadable index before it runs; a rebuild that
+fails makes the command fail with the real error, such as
+`LandofileValidationError`. `lando help --format=json` exposes
+`result.toolingMetadata` with `status` and, after a failed rebuild,
+`reason: "rebuild-failed"`, `remediation`, and `error` as `{ _tag, message }`.
+Calls from inside a container through the host proxy do not rebuild. Neither
+path starts a provider only to repair discovery. You do not need `lando start`
+or `lando rebuild` just for that. The same help JSON lists plugin commands as
 `result.all[]` rows with `source: "plugin"` and reports plugin discovery in
 `result.pluginMetadata`. Plugin commands can be MCP tools too; see
 [Expose plugin commands](#expose-plugin-commands).

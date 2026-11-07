@@ -66,7 +66,6 @@ When both streams reach your terminal, Lando erases the live tree, writes each o
   <Scenario id="clean-script-stdout" render>
     <Step name="prepare-script">
       <UseFixture name="clean-output" />
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-script">
       <Verify command="lando gen" expect={{ stdout: "alpha\nbeta\ngamma", stderr: { regex: "complete" } }} />
@@ -78,7 +77,6 @@ When both streams reach your terminal, Lando erases the live tree, writes each o
   <Scenario id="clean-verbose-stdout" render={false} reason="Verbose event payloads must stay separate from script stdout">
     <Step name="prepare-verbose-script">
       <UseFixture name="clean-output" />
-      <Run command="lando app:cache:refresh" />
       <Verify command="lando gen --renderer=verbose" expect={{ stdout: "alpha\nbeta\ngamma", stderr: { regex: "task.tree.complete" } }} />
     </Step>
     <Step name="cleanup-verbose-script">
@@ -89,7 +87,6 @@ When both streams reach your terminal, Lando erases the live tree, writes each o
     <Step name="start-container">
       <UseFixture name="stream-container" />
       <Run command="lando start" />
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-gen">
       <Verify command="lando gen" expect={{ stdout: "alpha\nbeta\ngamma" }} />

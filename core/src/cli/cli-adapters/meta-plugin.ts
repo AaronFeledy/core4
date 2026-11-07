@@ -1,4 +1,4 @@
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import type { RedactionService } from "@lando/redaction/service";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -30,6 +30,7 @@ import {
   runCompiledCommand,
   setActiveCommandId,
 } from "../compiled-runtime";
+import { readCliAppCommandCache } from "../tooling-command-cache";
 
 export const runMetaUninstall = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:uninstall", argv)) return;
@@ -66,6 +67,11 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     retainedRuntime,
+    // Session start rebuilds a non-fresh index silently (stdout is the protocol); a failed
+    // rebuild keeps the registry's own fallback so the server still starts.
+    prepareTooling: Effect.ignore(
+      readCliAppCommandCache({ includeScriptInventory: true, rebuildNotice: false }),
+    ),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     invocation: getActiveCommandInvocation() ?? {

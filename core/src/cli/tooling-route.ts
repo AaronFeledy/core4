@@ -2,6 +2,7 @@ import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/ca
 import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
 import type { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import type { ToolingRebuildFailure } from "./tooling-cache-status";
 
 interface ToolingRouteMetadata {
   readonly commandId: string;
@@ -28,6 +29,14 @@ export type ToolingRoute =
       readonly commandId: string;
       readonly name: string;
       readonly remediation: string;
+    }
+  | {
+      readonly _tag: "cache-miss";
+      readonly reason: "rebuild-failed";
+      readonly sourcePath: string;
+      readonly commandId: string;
+      readonly name: string;
+      readonly error: ToolingRebuildFailure;
     }
   | {
       readonly _tag: "unknown-tooling";

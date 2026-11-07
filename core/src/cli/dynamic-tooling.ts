@@ -153,7 +153,7 @@ const runDynamicBunShellTooling = async (
                   new ToolingCompileError({
                     message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
                     tool: name,
-                    remediation: "Run `lando app:cache:refresh` and retry the command.",
+                    remediation: "Retry the command.",
                   }),
                 )
               : Effect.succeed(result),
@@ -222,7 +222,15 @@ export const routeResolvedTooling = async (
       return false;
     case "cache-miss":
     case "unknown-tooling":
-      await runDynamicToolingFailure(route.name, toolingRouteError(route));
+      if (route._tag === "cache-miss" && route.reason === "rebuild-failed") {
+        prepareDynamicToolingInvocation(route.name);
+        await renderPreCommandFailure({
+          commandId: route.commandId,
+          error: route.error,
+          rendererMode: activeRendererMode,
+          resultFormat: activeResultFormat,
+        });
+      } else await runDynamicToolingFailure(route.name, toolingRouteError(route));
       return true;
     case "bun-script":
       await import("../runtime/bundled-plugins");

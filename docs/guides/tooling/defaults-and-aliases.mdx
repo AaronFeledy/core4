@@ -29,7 +29,7 @@ tooling:
     cmd: bun run lint
 ```
 
-Save the Landofile, run `lando app:cache:refresh` from the app directory, and start the services before executing the tasks.
+Save the Landofile and start the services before executing the tasks. Lando reads the new tooling the first time you run one of them.
 
 Here, `build` uses every default. `lint` targets `worker`, runs from `/app/tools`, and replaces `APP_ENV`, while still inheriting `MODE`. A task's `dir` is the working directory inside its target service. Lando does not resolve it against the host app directory.
 
@@ -37,9 +37,6 @@ Here, `build` uses every default. `lint` targets `worker`, runs from `/app/tools
   <Scenario id="apply-and-override-tooling-defaults" render>
     <Step name="scaffold">
       <UseFixture name="tooling-defaults" />
-    </Step>
-    <Step name="compile-effective-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-inherited-task">
       <Verify command="lando build --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"build\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
@@ -72,7 +69,7 @@ commandAliases:
     hi: app:greet
 ```
 
-Run `lando app:cache:refresh` after changing aliases. Then both forms resolve to the same command:
+After you change aliases, both forms resolve to the same command on the next call:
 
 ```sh
 lando hi
@@ -93,9 +90,6 @@ commandAliases:
     <Step name="scaffold">
       <UseFixture name="command-aliases" />
     </Step>
-    <Step name="refresh-command-cache">
-      <Run command="lando app:cache:refresh" />
-    </Step>
     <Step name="run-custom-alias">
       <Verify command="lando hi --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:greet\"" } }} />
     </Step>
@@ -112,5 +106,5 @@ commandAliases:
 
 ## Plugin aliases
 
-A plugin can ship its own shortcuts in its manifest: colon-form `aliases` such as `db:dump`, or a `topLevelAlias` such as `export`. Both route to the plugin command without any Landofile change. A plugin alias loses to anything Lando already owns: a built-in command or alias, a core help topic such as `recipes`, a reserved token, or a tooling task in the current app. Lando drops the colliding alias, keeps the command reachable by its id, and lists the conflict in `lando help --format=json` under `result.pluginMetadata.diagnostics`; `lando help --all` lists the conflicts under `Plugin command conflicts`. When two plugins claim the same alias, the one found first in discovery precedence wins. A plugin can't shadow a built-in command, and installing one never makes `lando app:cache:refresh` fail. Inside an app, a bare plugin alias needs a current command cache, because a tooling task you just added could own the same name. After that kind of Landofile edit, run `lando app:cache:refresh` (or let `lando start` rebuild it). Until the index is fresh, Lando asks you to refresh and names the plugin command, such as `lando db:export`, that you can run directly. A missing index on the host CLI rebuilds once automatically when the app source is already resolved.
+A plugin can ship its own shortcuts in its manifest: colon-form `aliases` such as `db:dump`, or a `topLevelAlias` such as `export`. Both route to the plugin command without any Landofile change. A plugin alias loses to anything Lando already owns: a built-in command or alias, a core help topic such as `recipes`, a reserved token, or a tooling task in the current app. Lando drops the colliding alias, keeps the command reachable by its id, and lists the conflict in `lando help --format=json` under `result.pluginMetadata.diagnostics`; `lando help --all` lists the conflicts under `Plugin command conflicts`. When two plugins claim the same alias, the one found first in discovery precedence wins. A plugin can't shadow a built-in command, and installing one never makes `lando app:cache:refresh` fail. Inside an app, a bare plugin alias resolves against the current command index, because a tooling task you just added could own the same name. Right after a Landofile edit, Lando rebuilds the index first and then resolves the alias, so `lando export` works on the next call; a tooling task you added with the same name still wins.
 </Guide>

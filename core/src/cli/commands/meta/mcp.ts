@@ -75,12 +75,19 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
   };
 };
 
+/** The retained app runtime plus the host's session-start index rebuild (injected to stay out of the command-graph cycle). */
+interface McpToolingSource {
+  readonly runtimeLayer: Layer.Layer<unknown>;
+  readonly prepareTooling: Effect.Effect<void>;
+}
+
 const resolveToolingRegistry = (
   registry: McpCommandRegistry,
-  runtimeLayer: Layer.Layer<unknown>,
+  source: McpToolingSource,
 ): Effect.Effect<McpCommandRegistry, never, never> =>
   Effect.scoped(
-    Layer.build(runtimeLayer).pipe(
+    source.prepareTooling.pipe(
+      Effect.andThen(Layer.build(source.runtimeLayer)),
       Effect.orDie,
       Effect.flatMap((context) =>
         Effect.flatMap(CommandRegistry, (commandRegistry) => commandRegistry.list).pipe(
@@ -94,14 +101,14 @@ const resolveToolingRegistry = (
 const resolveRegistryForEffectiveOptions = (
   registry: McpCommandRegistry,
   options: ResolvedMcpOptions,
-  runtimeLayer: Layer.Layer<unknown>,
+  source: McpToolingSource,
 ): Effect.Effect<McpCommandRegistry, never, never> =>
   Effect.scoped(
-    Layer.build(runtimeLayer).pipe(
+    Layer.build(source.runtimeLayer).pipe(
       Effect.orDie,
       Effect.flatMap((context) => mcpRegistryWithPlugins(registry).pipe(Effect.provide(context))),
       Effect.flatMap((resolved) =>
-        options.tooling === true ? resolveToolingRegistry(resolved, runtimeLayer) : Effect.succeed(resolved),
+        options.tooling === true ? resolveToolingRegistry(resolved, source) : Effect.succeed(resolved),
       ),
     ),
   );
@@ -109,11 +116,11 @@ const resolveRegistryForEffectiveOptions = (
 const resolveRegistryForCommand = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-  runtimeLayer: Layer.Layer<unknown>,
+  source: McpToolingSource,
 ): Effect.fn.Return<McpCommandRegistry, McpToolInputError, ConfigService> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
-  return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
+  return yield* resolveRegistryForEffectiveOptions(registry, options, source);
 });
 
 /**
@@ -211,6 +218,8 @@ export const dispatchMcpCommand = async (params: {
     ConfigError | LandoRuntimeBootstrapError
   >;
   readonly retainedRuntime: Layer.Layer<unknown>;
+  /** Runs before the tooling catalog is listed; the host rebuilds a non-fresh command index here. */
+  readonly prepareTooling?: Effect.Effect<void>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
@@ -219,13 +228,14 @@ export const dispatchMcpCommand = async (params: {
     redactor: import("@lando/sdk/secrets").Redactor,
   ) => string;
 }): Promise<void> => {
+  const prepareTooling = params.prepareTooling ?? Effect.void;
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
       const catalog = yield* BuiltInCommandCatalog;
       const registry = yield* resolveRegistryForCommand(
         mcpRegistryFromBuiltIns(catalog.entries),
         params.flags,
-        params.retainedRuntime,
+        { runtimeLayer: params.retainedRuntime, prepareTooling },
       );
       return yield* mcpListResult(registry, params.flags);
     });
@@ -261,7 +271,7 @@ export const dispatchMcpCommand = async (params: {
           const registry = yield* resolveRegistryForCommand(
             mcpRegistryFromBuiltIns(catalog.entries),
             params.flags,
-            retainedRuntime,
+            { runtimeLayer: retainedRuntime, prepareTooling },
           );
           yield* serveMcp(registry, params.flags, retainedRuntime);
         }).pipe(Effect.scoped)
