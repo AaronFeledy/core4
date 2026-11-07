@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
-import { startStdioClient } from "@lando/mcp/testing";
+import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
@@ -28,7 +28,7 @@ const fixture = () => {
           McpRuntimeConfig.of({
             commandEntries: [{ spec }],
             defaultAllowlist: [spec.id],
-            runtimeLayer: Layer.empty,
+            apps: testAppGenerations(),
           }),
         ),
         RedactionService.layer,

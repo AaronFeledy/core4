@@ -39,9 +39,12 @@ const contents = Effect.fnUntraced(function* (uri: string, value: unknown, redac
   return McpSchema.ReadResourceResult.make({ contents: [{ uri, mimeType: "application/json", text }] });
 });
 
+/** Runs one resource read with the services of the app the session serves. */
+type McpResourceProvider = <A, E>(read: Effect.Effect<A, E, unknown>) => Effect.Effect<A, unknown, never>;
+
 export const registerResources = Effect.fn("McpService.registerResources")(function* (
   entries: ReadonlyArray<McpResourceEntry>,
-  context: Context.Context<unknown>,
+  provide: McpResourceProvider,
   redaction: Pick<McpDispatchDeps, "redactor" | "resultRedactor">,
 ) {
   const server = yield* McpServer;
@@ -49,7 +52,7 @@ export const registerResources = Effect.fn("McpService.registerResources")(funct
   for (const entry of entries) {
     const readResource = Effect.fn("McpService.readResource")(
       function* () {
-        const value = yield* entry.read;
+        const value = yield* provide(entry.read);
         const encoded = yield* Schema.encodeUnknownEffect(entry.resultSchema)(value);
         return yield* contents(
           entry.uri,
@@ -58,7 +61,6 @@ export const registerResources = Effect.fn("McpService.registerResources")(funct
         );
       },
       Effect.scoped,
-      Effect.provide(context),
       Effect.catch((error) => resourceError(error, redactor).pipe(Effect.flatMap(Effect.fail))),
     );
     yield* server.addResource({

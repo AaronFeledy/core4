@@ -60,6 +60,12 @@ export interface AppPlanCacheKeyInput {
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
+  readonly pluginImplementations?: readonly {
+    readonly name: string;
+    readonly source: string;
+    readonly realpath: string;
+    readonly identity: string;
+  }[];
   readonly sourceFingerprint?: AppPlanSourceFingerprint;
   readonly planningRuntime?: string;
   readonly hostHome?: string;
@@ -155,6 +161,7 @@ const compareManifests = (
   compareFingerprintText(a.name, b.name) || compareFingerprintText(a.version, b.version) || a.api - b.api;
 
 export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
+  const pluginImplementations = input.pluginImplementations ?? [];
   // Keep registry list order out of the cache key for equivalent manifests.
   const sortedManifests = input.pluginManifests.map(normalizeManifest).sort(compareManifests);
   return sha256(
@@ -185,6 +192,16 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       ].sort(),
       versionConstraints: input.versionConstraints ?? [],
       pluginManifests: sortedManifests,
+      ...(pluginImplementations.length === 0
+        ? {}
+        : {
+            pluginImplementations: [...pluginImplementations].sort(
+              (a, b) =>
+                compareFingerprintText(a.name, b.name) ||
+                compareFingerprintText(a.source, b.source) ||
+                compareFingerprintText(a.realpath, b.realpath),
+            ),
+          }),
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},
       appFeatureEnv: input.appFeatureEnv ?? {},

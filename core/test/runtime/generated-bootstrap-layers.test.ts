@@ -13,7 +13,11 @@ const countOccurrences = (source: string, target: string): number => source.spli
 describe("generated bootstrap layers", () => {
   test("commits one generated module for every BootstrapLevel", async () => {
     const files = await readdir(generatedLayersDir);
-    const expected = [...Object.keys(BOOTSTRAP_RANK).map((level) => `${level}.ts`), "index.ts"].sort();
+    const expected = [
+      ...Object.keys(BOOTSTRAP_RANK).map((level) => `${level}.ts`),
+      "generation.ts",
+      "index.ts",
+    ].sort();
 
     expect(files.toSorted()).toEqual(expected);
   });

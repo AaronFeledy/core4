@@ -66,6 +66,25 @@ export class Greeter extends Context.Service<Greeter, {
 
 Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and TypeScript 7.
 
+## Supply the service image
+
+If your plugin contributes a service type, its `resolve` method chooses the base,
+normalized configuration, and features. Every planned service needs an artifact:
+the container image reference or build definition that Lando can pull or build.
+You can let the app author supply `image:` or a Compose `build:` block. Core turns
+those into an artifact even when your type requests no artifact-setting feature.
+A versioned type's published image tag works the same way.
+
+To supply an image from your plugin, request a feature whose `apply` callback calls
+`ctx.setArtifact({ kind: "ref", ref: "nginx:alpine" })`. A feature's artifact wins
+over the `image:` fallback; an authored Compose `build:` replaces it. Lando
+`build.artifact` scripts only add steps and still need a base image or build.
+
+If none of these supplies an artifact, planning fails before provider work with
+`LandofileValidationError` at `services.<name>.type`. The message names the service,
+type, and contributing plugin when known. Set `image:` or Compose `build:` in the
+Landofile, or fix your type's requested features, then rerun `lando start`.
+
 ## Declare a feature's endpoints
 
 Put listener declarations in `declareEndpoints`, not `apply`. Config lint runs

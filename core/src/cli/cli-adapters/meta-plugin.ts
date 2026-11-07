@@ -10,7 +10,7 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
 import * as HostPrivilegeService from "@lando/engine/services/privilege";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { makeLandoRuntime } from "../../runtime/layer";
+import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
 import { uninstallOptionsFromInput } from "../command-specs/meta/uninstall";
@@ -59,14 +59,14 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
     ConfigService | RedactionService | BuiltInCommandCatalog,
     ConfigError | LandoRuntimeBootstrapError
   >;
-  const retainedRuntime = makeLandoRuntime(
+  const sessionRuntime = makeLandoGenerationRuntime(
     cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" }, interaction: "non-interactive" }),
-  ).pipe(Layer.orDie) as Layer.Layer<unknown>;
+  );
   return dispatchMcpCommand({
     flags,
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
-    retainedRuntime,
+    sessionRuntime,
     // Session start rebuilds a non-fresh index silently (stdout is the protocol); a failed
     // rebuild keeps the registry's own fallback so the server still starts.
     prepareTooling: Effect.ignore(
