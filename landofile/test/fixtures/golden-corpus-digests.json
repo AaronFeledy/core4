@@ -242,6 +242,10 @@
       "digest": "3e8128eab07e4ea4e2ab362a7e20ec84d7a3e85905b27cc56c740b77cc6a7f8b"
     },
     {
+      "fixture": "docs/guides/craft-workflow/fixtures/craft-demo",
+      "digest": "827f74f0ce7ebfb9af87f237370186c8a4800b096151040b252a484e7c484a6b"
+    },
+    {
       "fixture": "docs/guides/db-import-export/fixtures/one-db",
       "digest": "5e950dcb15d5873532fb2c02197ca467c762bb6406bf6fe5c4b95e2f6c9101db"
     },

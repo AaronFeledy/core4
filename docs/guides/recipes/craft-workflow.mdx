@@ -1,0 +1,219 @@
+---
+id: craft-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, craft, lamp, php, mariadb]
+---
+
+# Run a Craft CMS site on the LAMP recipe
+
+Run Craft CMS 5 with Composer and MariaDB on LAMP. Run these commands from your host terminal.
+
+```sh
+lando init --recipe lamp --name=craft-demo --answer=webroot=web --yes
+cd craft-demo
+```
+
+The named init creates `craft-demo/` and writes only `.lando.yml` there. `--answer=webroot=web` points Apache at the directory Craft serves. `--yes` keeps PHP 8.4, MariaDB 11.4, and Composer 2. Craft 5 needs PHP 8.2 or newer, so skip `--answer=php=8.1`.
+
+## Add the Craft pieces
+
+Merge these keys into the generated `.lando.yml`. Keep its `recipe:` block: `webroot`, `type`, and `composer` read their values from it.
+
+```yaml
+services:
+  appserver:
+    allowOverride: true
+    build:
+      artifact:
+        - "docker-php-ext-install -j\"$(nproc)\" bcmath"
+tooling:
+  craft:
+    service: appserver
+    user: www-data
+    cmds:
+      - php craft
+    description: Run the Craft CLI inside the appserver service.
+```
+
+- `allowOverride: true` lets Apache read the `web/.htaccess` Craft ships, so control-panel and front-end URLs rewrite to `index.php`.
+- The build step adds `bcmath` to Lando's stock PHP image. Craft requires it; Composer refuses to install `craftcms/cms` without it.
+- `lando craft` runs the CLI as `www-data`, the user Apache runs as. Caches and project config it writes stay writable by the site.
+
+Then start the app:
+
+```sh
+lando app:config:lint
+lando start
+```
+
+## Install Craft
+
+Run the commands in this section from a POSIX shell on your host (WSL on Windows). The password step also needs `openssl`.
+
+`create-project` wants an empty directory, and the app root already holds `.lando.yml`. Install into `tmp-app` with `--no-scripts` so Composer does not launch Craft's interactive installer, then copy it into the root:
+
+```sh
+lando composer create-project craftcms/craft tmp-app "^5" --no-scripts
+lando exec appserver -- sh -c "cp -a tmp-app/. . && rm -rf tmp-app && chown -R $(id -u):$(id -g) /app"
+```
+
+Composer runs as root in the container. Your host shell expands `$(id -u):$(id -g)` before the command runs, so the final `chown` hands the code back to your host user. Your editor and host `lando` commands keep write access. By default `vendor/` lives in a service volume, so the host project shows an empty `vendor/` stub; Composer still sees the packages inside the container. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+
+Finish the steps `--no-scripts` skipped, still as your host user:
+
+```sh
+lando exec --user "$(id -u):$(id -g)" appserver -- php -r "file_exists('.env') || copy('.env.example.dev', '.env');"
+lando exec --user "$(id -u):$(id -g)" appserver -- php -r "unlink('composer.json'); rename('composer.json.default', 'composer.json');"
+lando exec --user "$(id -u):$(id -g)" appserver -- php craft setup/keys
+lando exec --user "$(id -u):$(id -g)" appserver -- php craft setup/db-creds \
+  --driver=mysql \
+  --server=database \
+  --port=3306 \
+  --user=lando \
+  --password=lando \
+  --database=craft-demo \
+  --interactive=0
+```
+
+`--database` matches the app name (here `craft-demo`). Use the service key `database`, not `127.0.0.1` or `localhost`.
+
+Generate and save a random admin password, then install:
+
+```sh
+CRAFT_ADMIN_PASSWORD="Aa1-$(openssl rand -base64 18)"
+printf 'Save this Craft admin password: %s\n' "$CRAFT_ADMIN_PASSWORD"
+lando exec --user "$(id -u):$(id -g)" appserver -- php craft install \
+  --email=admin@example.com \
+  --username=admin \
+  --password="$CRAFT_ADMIN_PASSWORD" \
+  --site-name='Craft Demo' \
+  --site-url='https://craft-demo.lndo.site/' \
+  --language=en \
+  --interactive=0
+unset CRAFT_ADMIN_PASSWORD
+```
+
+`--site-url` takes a full URL. Use the HTTPS URL `lando info` prints, port included if the proxy picked a fallback. The password stays out of shell history, but it's on the command line, so process lists can see it while install runs.
+
+Give the web user the directories Craft writes to:
+
+```sh
+lando exec appserver -- mkdir -p /app/web/cpresources
+lando exec appserver -- chown -R www-data:www-data \
+  /app/config /app/storage /app/web/cpresources
+```
+
+Don't chown all of `/app` to `www-data`. Your code stays with your host user, so your editor and host `lando` commands keep write access. On a Linux host the bind mount shares owners, so these directories also belong to uid `33` on the host. Edit files under `config/` through `lando exec`, or chown them back while you edit.
+
+## Confirm the site
+
+```sh
+lando craft help
+lando mariadb -e 'SELECT username, email FROM users;'
+lando craft clear-caches/all
+```
+
+`lando craft help` prints the Craft version and the available CLI commands. Open the HTTPS URL `lando info` prints. A fresh install serves "Welcome to Craft CMS". Add `/admin/login` for the control panel and sign in as `admin` with the password you saved.
+
+## See what you built
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.4` with `bcmath`, Apache on port `80`, webroot `web`, `.htaccess` on, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando craft` as `www-data`, `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. On the `--answer=database=mysql:8.0` path, use `lando mysql` instead of `lando mariadb`.
+
+## Connect Craft to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `craft-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+| Driver | `mysql` |
+
+Setup saved these in `.env` as `CRAFT_DB_*`. Craft's MySQL driver talks to MariaDB on the LAMP recipe.
+
+## Export and load the database
+
+```sh
+lando db:export craft.sql.gz
+```
+
+`db:export` writes a gzipped dump into your current directory.
+
+Loading a dump executes its SQL and can replace existing data. Export a backup first. This direct-client path has no confirmation or automatic recovery snapshot. The client connects to the app's database, here `craft-demo`:
+
+```sh
+gunzip -c craft.sql.gz | lando mariadb
+lando craft clear-caches/all
+```
+
+For a plain `.sql` file, use `lando mariadb < craft.sql`. Run `lando craft clear-caches/all` after a load so Craft stops serving pages built from the old data.
+
+## Check the config
+
+`lando app:config --format=json` shows the planned config, not a running site. The first run checks the init answer. The second checks the keys from this page and resolves the plan:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="craft-demo" display="craft-demo" />
+      <Run command="lando init --recipe lamp --name={{appName}} --answer=webroot=web --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="craft-keys" render={false} reason="Regression for this guide's Apache, bcmath, and Craft CLI keys">
+    <Step name="scaffold">
+      <UseFixture name="craft-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"allowOverride\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bcmath" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"user\":\\s*\"www-data\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="resolve-plan">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Change a LAMP stack after init](./lamp-stack-variants.mdx)
+- [Customize PHP](../services/php-customization.mdx) for extra extensions and `build.artifact`
+- [Exclude paths from the app mount](../setup/file-sync-excludes.mdx) when you want `vendor/` on the host

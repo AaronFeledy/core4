@@ -1,0 +1,38 @@
+name: craft-demo
+runtime: 4
+services:
+  appserver:
+    type: php:8.4
+    framework: none
+    webroot: web
+    composer: "2"
+    allowOverride: true
+    build:
+      artifact:
+        - "docker-php-ext-install -j\"$(nproc)\" bcmath"
+    port: 80
+    primary: true
+    dependsOn:
+      - database
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: mariadb:11.4
+tooling:
+  composer:
+    service: appserver
+    cmds:
+      - composer
+    description: Run Composer inside the appserver service.
+  php:
+    service: appserver
+    cmds:
+      - php
+    description: Run the PHP CLI inside the appserver service.
+  craft:
+    service: appserver
+    user: www-data
+    cmds:
+      - php craft
+    description: Run the Craft CLI inside the appserver service.
