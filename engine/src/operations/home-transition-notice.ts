@@ -78,3 +78,17 @@ export const publishHomeTransitionNotices = Effect.fn("AppOperation.homeTransiti
     );
   }
 });
+
+export const publishPlacementHomeTransitionNotices = Effect.fn("AppOperation.placementHomeTransitionNotices")(
+  function* (
+    placement: { readonly plan: AppPlan | undefined; readonly superseded: readonly AppPlan[] },
+    desired: AppPlan,
+  ) {
+    for (const applied of [
+      ...(placement.plan === undefined ? [] : [placement.plan]),
+      ...placement.superseded,
+    ]) {
+      yield* publishHomeTransitionNotices(applied, desired);
+    }
+  },
+);

@@ -53,7 +53,11 @@ import { collectPlanConnections, startedServices } from "./connection-collector.
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
+import {
+  publishHomeTransitionNotices,
+  publishPlacementHomeTransitionNotices,
+  withHomeTransitionNotices,
+} from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
@@ -67,6 +71,7 @@ import {
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
+import { retireSupersededRealizations } from "./superseded-realizations.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
@@ -279,7 +284,6 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
-    const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
     const plan = resolvedTarget.plan;
     const scoped = options.services !== undefined && options.services.length > 0;
     const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
@@ -290,69 +294,76 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
     return yield* withAppMutationLock(
       appLockTarget(plan),
-      withLaunchVolumeCoordination({
-        plan,
-        provider,
-        stateStore,
-        body: Effect.fnUntraced(function* () {
-          const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
-          if (pending !== null)
-            yield* startApp(
-              options.signal === undefined ? {} : { signal: options.signal },
+      Effect.gen(function* () {
+        const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
+        const retired = yield* retireSupersededRealizations(resolvedTarget, placement.superseded, {
+          provider,
+          selectedServices: scoped,
+        });
+        return yield* withLaunchVolumeCoordination({
+          plan,
+          provider,
+          stateStore,
+          body: Effect.fnUntraced(function* () {
+            const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
+            if (pending !== null)
+              yield* startApp(
+                options.signal === undefined ? {} : { signal: options.signal },
+                resolvedTarget,
+                managed?.resume ?? managed,
+                { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+              );
+            const stopPreflight = yield* preflightStopApp(resolvedTarget);
+            yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
+            if (!retired) yield* ensureStartTransactionConsistent(resolvedTarget);
+            if (pending === null) yield* runAppInitEvents(plan);
+            if (scoped) {
+              return {
+                app: plan.name,
+                servicesStarted: yield* restartSelectedServices(selectedPlan, resolvedTarget, {
+                  ...options,
+                  provider,
+                  preparedOverlays,
+                }),
+              };
+            }
+            const preRestart = PreRestartEvent.make({
+              _tag: "pre-restart",
+              scope: "app",
+              app: resolvedTarget.app,
+              plan,
+              triggeredBy: "app:restart",
+              timestamp: DateTime.nowUnsafe(),
+            });
+            yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
+            yield* publishPlacementHomeTransitionNotices(placement, plan);
+            yield* markStartMutation(plan);
+            yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
+            yield* managed?.onStopped ?? Effect.void;
+            const result = yield* startApp(
+              {
+                reconcile: options.reconcile ?? false,
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
+              },
               resolvedTarget,
-              managed?.resume ?? managed,
-              { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+              managed,
+              {
+                skipInitEvents: true,
+                transactionPreflightDone: true,
+                ...(acquiredOverlays === undefined ? {} : { preparedOverlays: acquiredOverlays }),
+              },
             );
-          const stopPreflight = yield* preflightStopApp(resolvedTarget);
-          yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
-          yield* ensureStartTransactionConsistent(resolvedTarget);
-          if (pending === null) yield* runAppInitEvents(plan);
-          if (scoped) {
-            return {
-              app: plan.name,
-              servicesStarted: yield* restartSelectedServices(selectedPlan, resolvedTarget, {
-                ...options,
-                provider,
-                preparedOverlays,
-              }),
-            };
-          }
-          const preRestart = PreRestartEvent.make({
-            _tag: "pre-restart",
-            scope: "app",
-            app: resolvedTarget.app,
-            plan,
-            triggeredBy: "app:restart",
-            timestamp: DateTime.nowUnsafe(),
-          });
-          yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
-          yield* publishHomeTransitionNotices(placement.plan, plan);
-          yield* markStartMutation(plan);
-          yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
-          yield* managed?.onStopped ?? Effect.void;
-          const result = yield* startApp(
-            {
-              reconcile: options.reconcile ?? false,
-              ...(options.signal === undefined ? {} : { signal: options.signal }),
-            },
-            resolvedTarget,
-            managed,
-            {
-              skipInitEvents: true,
-              transactionPreflightDone: true,
-              ...(acquiredOverlays === undefined ? {} : { preparedOverlays: acquiredOverlays }),
-            },
-          );
-          const postRestart = PostRestartEvent.make({
-            _tag: "post-restart",
-            scope: "app",
-            app: resolvedTarget.app,
-            plan,
-            timestamp: DateTime.nowUnsafe(),
-          });
-          yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
-          return result;
-        }, Effect.provide(context)),
+            const postRestart = PostRestartEvent.make({
+              _tag: "post-restart",
+              scope: "app",
+              app: resolvedTarget.app,
+              plan,
+              timestamp: DateTime.nowUnsafe(),
+            });
+            yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
+            return result;
+          }, Effect.provide(context)),
+        });
       }),
     );
   },

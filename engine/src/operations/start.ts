@@ -10,7 +10,10 @@ import { selectPreparedProvider } from "../providers/prepared.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
-import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
+import {
+  publishPlacementHomeTransitionNotices,
+  withHomeTransitionNotices,
+} from "./home-transition-notice.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import {
@@ -19,6 +22,7 @@ import {
   startAppForTargetUnlocked,
 } from "./start-internal.ts";
 import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overlays.ts";
+import { retireSupersededRealizations } from "./superseded-realizations.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
@@ -52,6 +56,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         const stateStore = yield* StateStore;
         const plan = target.plan;
         const provider = yield* selectPreparedProvider(plan);
+        const retired = yield* retireSupersededRealizations(target, placement.superseded, { provider });
         yield* rotateChangedFileSync(target, provider);
         return yield* withLaunchVolumeCoordination({
           plan,
@@ -62,12 +67,12 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
               .pipe(
                 Effect.flatMap((preparedTargets) =>
                   Effect.gen(function* () {
-                    yield* execution.transactionPreflightDone === true
+                    yield* retired || execution.transactionPreflightDone === true
                       ? Effect.void
                       : ensureStartTransactionConsistent(target);
                     if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
                     yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
-                    yield* publishHomeTransitionNotices(placement.plan, plan);
+                    yield* publishPlacementHomeTransitionNotices(placement, plan);
                     return yield* startAppForTargetUnlocked(options, target, managed, {
                       ...execution,
                       provider,
