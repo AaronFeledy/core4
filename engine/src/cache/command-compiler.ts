@@ -40,6 +40,7 @@ export const compileToolingCommands = (
         ...(task.disabled ? { disabled: true as const } : {}),
         ...(service === undefined ? {} : { service }),
         input: task.input,
+        ...(task.wrapper ? { wrapper: true as const } : {}),
       };
     });
 };

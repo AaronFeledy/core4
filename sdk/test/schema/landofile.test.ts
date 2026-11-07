@@ -35,6 +35,7 @@ const SUPPORTED_TOOLING_FIELDS = [
   "flags",
   "args",
   "arguments",
+  "wrapper",
   "deprecated",
 ] as const;
 

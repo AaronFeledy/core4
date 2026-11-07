@@ -3,7 +3,7 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 import { decodeAppCommandIndex } from "../../src/cache/command-index.ts";
-import { abi6Bytes, app, encodedInput, entry } from "./fixtures/command-index-codec.ts";
+import { app, currentAbiBytes, encodedInput, entry } from "./fixtures/command-index-codec.ts";
 
 for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as const) {
   describe(`${magic} canonical input policy`, () => {
@@ -23,7 +23,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       const input = Schema.encodeSync(ToolingInputDeclaration)(declaration);
       const expected = { ...payload, entries: [{ ...entry, input: declaration }] };
       // When
-      const cached = decode(abi6Bytes(magic, { ...payload, entries: [{ ...entry, input }] }));
+      const cached = decode(currentAbiBytes(magic, { ...payload, entries: [{ ...entry, input }] }));
       // Then
       expect(cached).toEqual(expected);
     });
@@ -47,7 +47,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
           ...patch,
         })),
       };
-      const bytes = abi6Bytes(magic, { ...payload, entries: [{ ...entry, input }] });
+      const bytes = currentAbiBytes(magic, { ...payload, entries: [{ ...entry, input }] });
       // When
       const sdkResult = Schema.decodeUnknownResult(ToolingInputDeclaration)(input);
       const cached = decode(bytes);
@@ -68,7 +68,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         ...encodedInput,
         args: encodedInput.args.map(({ default: _, choices: __, ...arg }) => ({ ...arg, ...patch })),
       };
-      const bytes = abi6Bytes(magic, { ...payload, entries: [{ ...entry, input }] });
+      const bytes = currentAbiBytes(magic, { ...payload, entries: [{ ...entry, input }] });
       // When
       const sdkResult = Schema.decodeUnknownResult(ToolingInputDeclaration)(input);
       const cached = decode(bytes);
