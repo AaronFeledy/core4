@@ -839,7 +839,10 @@ describe("provider data plane", () => {
                   body: request.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
                 });
               },
-              stream: () => Stream.empty,
+              stream: (request) => {
+                request.onResponseHead?.();
+                return Stream.empty;
+              },
             },
           });
           const spec = { image: "alpine:3.20", command: ["true"], remove };
@@ -1076,8 +1079,10 @@ describe("provider data plane", () => {
             ? { status: 200, body: JSON.stringify({ State: { ExitCode: 1 } }) }
             : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
         ),
-      stream: () =>
-        Stream.make(multiplexedStdoutFrame(bytes("stdout")), multiplexedStderrFrame(bytes("stderr"))),
+      stream: (request) => {
+        request.onResponseHead?.();
+        return Stream.make(multiplexedStdoutFrame(bytes("stdout")), multiplexedStderrFrame(bytes("stderr")));
+      },
     };
     const provider = makeProviderDataPlane({
       providerId: "test",
@@ -1117,7 +1122,10 @@ describe("provider data plane", () => {
             : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
         );
       },
-      stream: () => Stream.make(multiplexedStdoutFrame(bytes("first"))),
+      stream: (request) => {
+        request.onResponseHead?.();
+        return Stream.make(multiplexedStdoutFrame(bytes("first")));
+      },
     };
     const provider = makeProviderDataPlane({
       providerId: "test",
@@ -1600,7 +1608,10 @@ test.each([
           : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
       );
     },
-    stream: () => Stream.empty,
+    stream: (request) => {
+      request.onResponseHead?.();
+      return Stream.empty;
+    },
   };
   const provider = makeProviderDataPlane({
     providerId: "test",
@@ -1653,7 +1664,10 @@ test.each(["http", "typed", "defect", "interrupt"] as const)(
         }
         return Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: "{}" });
       },
-      stream: () => Stream.empty,
+      stream: (request) => {
+        request.onResponseHead?.();
+        return Stream.empty;
+      },
     };
     const provider = makeProviderDataPlane({
       providerId: "test",

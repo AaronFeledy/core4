@@ -72,12 +72,14 @@ const recordedPlane = (
       }
       return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
     },
-    stream: () =>
-      Stream.fromIterable(
+    stream: (request) => {
+      request.onResponseHead?.();
+      return Stream.fromIterable(
         (script.stderrChunks ?? (script.stderr === undefined ? [] : [bytes(script.stderr)])).map(
           multiplexedStderr,
         ),
-      ),
+      );
+    },
   };
   return makeProviderDataPlane({
     providerId: "test",
