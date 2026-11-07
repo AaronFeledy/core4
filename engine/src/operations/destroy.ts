@@ -65,7 +65,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
           ? resolution.ownership[0]?.appIds[0]
           : undefined;
   return yield* withAppMutationLock(
-    { id: id ?? root, root },
+    { id: id ?? root, root, kind: resolution.kind === "applied" ? resolution.target.app.kind : "user" },
     Effect.gen(function* () {
       if (resolution.kind === "applied" && request.missingRoot !== true)
         yield* validateResolvedAppTarget(resolution.target);
