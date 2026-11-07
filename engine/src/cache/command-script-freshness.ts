@@ -47,7 +47,8 @@ export const commandScriptsFresh = async (
           if (!isBunShellScriptMetadataFailure(result.failure)) throw result.failure;
           return false;
         case "Success":
-          return result.success === undefined || fingerprint(result.success).sha256 === cached.sha256;
+          // A removed script stales the index so the next call rebuilds instead of routing to nothing.
+          return result.success !== undefined && fingerprint(result.success).sha256 === cached.sha256;
         default:
           return result satisfies never;
       }

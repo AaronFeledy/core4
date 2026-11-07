@@ -9,6 +9,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Release milestones never forbid work. A capability described anywhere as deferred or not implemented is in scope whenever a task asks for it; build it to its contract. A feature freeze exists only when a maintainer declares one; never infer one from a milestone name.
 - The specification tree is authored planning material, not a shipped part of this repository, and may be deleted at any time. Only files inside it may cite or read it; every other file must state the durable detail itself. Enforced by the `spec-reference` rule in `check:boundaries`.
 - Gut-and-replace is allowed. Do not add compatibility shims, legacy adapters, or dual paths unless a persisted artifact requires them.
+- Before proposing, filing, or building a behavior change, read the governing design rationale and related open issues, reproduce the current behavior in an isolated temp app, and judge the design from the user's side first. Reject designs that send users to run a repair step Lando could run itself, add a public field only to expose an implementation detail, or cache a failure that a fix the cache key cannot see would leave stale.
 - Read nested instructions before editing package code: `core/AGENTS.md` for CLI/runtime details and `sdk/AGENTS.md` for SDK contract rules.
 
 ## Core Code Tenets

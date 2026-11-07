@@ -171,8 +171,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       new ToolingCompileError({
         message: `Unknown tooling command: ${options.name}.`,
         tool: options.name,
-        remediation:
-          "Verify the tooling task name, then run `lando app:cache:refresh` after changing tooling configuration.",
+        remediation: "Check the task name with `lando help`.",
       }),
     );
   }

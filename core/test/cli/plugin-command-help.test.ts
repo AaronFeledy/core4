@@ -173,31 +173,25 @@ test.each(["fresh", "missing", "stale"])(
         if (path !== undefined) await rm(path);
         await rm(appToolingCompilationCachePath(f.env.LANDO_USER_CACHE_ROOT, f.root));
       }
-      if (state === "stale") await writeFile(join(f.root, ".lando.yml"), "name: changed-help\n");
-      // A missing index is rebuilt from the Landofile, whose `cmd` task forwards `--help` to the tool,
-      // so only `lando help db` is help there.
+      if (state === "stale")
+        await writeFile(
+          join(f.root, ".lando.yml"),
+          "name: plugin-help\ntooling:\n  db:\n    cmd: echo tooling\n    description: Edited tooling DB\n",
+        );
+      // A missing or stale index is rebuilt from the Landofile, whose `cmd` task forwards `--help` to
+      // the tool, so only `lando help db` is help there.
       const helpInvocations =
-        state === "missing"
-          ? [["help", "db"]]
-          : [
+        state === "fresh"
+          ? [
               ["help", "db"],
               ["db", "--help"],
-            ];
+            ]
+          : [["help", "db"]];
       for (const args of helpInvocations) {
         const result = await f.invoke(args);
         expect(result.exit, result.stderr).toBe(0);
-        expect(result.stdout).toContain(state === "stale" ? "db:export" : "Owned tooling DB");
-        if (state !== "stale") expect(result.stdout).not.toContain("db:export");
-      }
-      if (state === "stale") {
-        const bare = await f.invoke(["db", "--format", "json"]);
-        expect(bare.exit).toBe(1);
-        expect(JSON.parse(bare.stdout).error).toMatchObject({
-          _tag: "ToolingCommandUnavailableError",
-          remediation: expect.stringContaining("lando help db"),
-        });
-        const explicit = await f.invoke(["app:db", "--help", "--format", "json"]);
-        expect(JSON.parse(explicit.stdout).error._tag).toBe("ToolingCommandUnavailableError");
+        expect(result.stdout).toContain(state === "stale" ? "Edited tooling DB" : "Owned tooling DB");
+        expect(result.stdout).not.toContain("db:export");
       }
     } finally {
       await f.cleanup();

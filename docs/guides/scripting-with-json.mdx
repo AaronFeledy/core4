@@ -67,10 +67,9 @@ can have `ok: true`, `result.valid: false`, and shell exit status 1. Check the
 report's fields as well as `ok`. JSON and YAML preserve that exit status, just
 like text output.
 
-After adding the `stamp.bun.sh` example from that guide to your app, run these commands from its directory:
+After adding the `stamp.bun.sh` example from that guide to your app, run this from its directory:
 
 ```sh
-lando app:cache:refresh
 lando stamp abc1234 --format=json
 ```
 
@@ -170,7 +169,6 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
   <Scenario id="capture-project-script-output" render>
     <Step name="load-project-script">
       <UseFixture name="project-script" />
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="capture-script-json">
       <Run command="lando stamp abc1234 --format=json" />

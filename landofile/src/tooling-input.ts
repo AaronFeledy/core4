@@ -23,7 +23,7 @@ export const toolingInputError = (
     tool: subject.name,
     ...(field === undefined ? {} : { field }),
     ...(subject.source === undefined ? {} : { source: subject.source }),
-    remediation: `Check the declared inputs for lando ${subject.name}. If metadata changed, run lando app:cache:refresh and reconnect or re-resolve the command catalog.`,
+    remediation: `Check the declared inputs for lando ${subject.name}.`,
   });
 
 export const validateToolingInputRevision = (
@@ -33,7 +33,14 @@ export const validateToolingInputRevision = (
 ): Result.Result<void, ToolingInputError> =>
   expectedInputRevision === undefined || declaration.revision === expectedInputRevision
     ? Result.succeed(undefined)
-    : Result.fail(toolingInputError(subject, `Tooling input declarations changed for ${subject.name}.`));
+    : Result.fail(
+        new ToolingInputError({
+          message: `Tooling input declarations changed for ${subject.name}.`,
+          tool: subject.name,
+          ...(subject.source === undefined ? {} : { source: subject.source }),
+          remediation: "Reconnect the MCP client or re-resolve the command catalog, then retry.",
+        }),
+      );
 
 const ownValue = (values: Readonly<Record<string, unknown>>, name: string): unknown =>
   Object.hasOwn(values, name) ? values[name] : undefined;

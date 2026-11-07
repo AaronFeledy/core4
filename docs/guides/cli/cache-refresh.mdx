@@ -6,9 +6,9 @@ timeout: 60000
 tags: [docs, cli, cache]
 ---
 
-# Refresh a stale app cache
+# Check that your app plans without starting it
 
-`lando app:cache:refresh` rebuilds the app plan, tooling graph, and command index without starting services. Run it from your app directory after you edit the Landofile, tooling, or scripts and a command stops reflecting those edits.
+`lando app:cache:refresh` reads and plans the Landofile, compiles the tooling graph and command index, and stops there. No service or provider starts. Run it from your app directory when you want to know that an edit plans cleanly before `lando start`, to warm the caches ahead of time, or to read planner and command-index output.
 
 ```sh
 lando app:cache:refresh
@@ -16,21 +16,25 @@ lando app:cache:refresh
 
 There is no top-level `lando cache:refresh` alias. Use the `app:` form.
 
-A missing command index on the host CLI rebuilds once automatically before dispatch or help when Lando already resolved the app source. You do not need a first-use refresh or a manual cache clear for that case. Stale or invalid indexes still need an explicit refresh. If that automatic rebuild fails, you get the same missing-cache remediation as before. Host-proxy calls do not rebuild.
+You do not need this command to make your commands show up or update. Lando keeps the command index current on its own; see [Commands update themselves](#commands-update-themselves).
 
-To check an explicit refresh, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands.
+To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands. A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. The same run prints refresh warnings, such as `LANDO_HOST_SHELL_SYNTAX` for a host task written in POSIX-only syntax; `lando app:config:lint` reports those too.
 
-## When the cache goes stale
+## Commands update themselves
 
-Lando caches the planned app so later commands can skip a full plan. That cache is stale after you:
+Lando caches the planned app so later commands can skip a full plan. On the host CLI, any app tooling command or script, `lando --help`, `lando help`, `lando help <task>`, and `lando <task> --help` check that cache first and rebuild it when it is missing, unreadable, or out of date. The cache is out of date after you:
 
 - Edit `.lando.yml` or another merged Landofile layer
 - Change an `includes:` fragment or its lockfile
 - Change a file the Landofile `load()`s or `import()`s
-- Add, remove, or update a plugin
+- Add or remove a `.bun.sh` script, or edit a script's front matter
 - Upgrade Lando itself
 
-A tooling command that disappears or keeps old flags after one of those edits is the usual tell. Run `lando app:cache:refresh`. `lando start` and `lando rebuild` also rebuild the index as part of their work, but you do not need them only to repair discovery.
+The next command just works. A fast rebuild prints nothing. In a terminal, one that takes longer than about half a second prints one line that names the cause, such as `Updating this app's commands (Landofile changed)...`. The rebuild is the same work this command does: it plans the Landofile and may fetch and pin includes, but it never starts services or the provider.
+
+Built-in commands such as `lando start` and `lando info` never trigger that rebuild, and neither do `lando` calls made from inside a container through the host proxy.
+
+When the rebuild fails because of broken YAML, invalid config, a broken tooling definition or script front matter, or an include Lando cannot fetch, the command you ran fails with that real error. Fix it and rerun; Lando does not cache the failure. `lando --help` still lists built-in and plugin commands and shows `This app's commands are unavailable:` with the error and its remediation.
 
 ## When your home directory changes
 
@@ -43,11 +47,11 @@ lando start
 lando global:start
 ```
 
-`lando app:config` prints the authored Landofile. It does not rebuild the plan. Use `app:cache:refresh` when you need planner or command-index output, not just the YAML you wrote.
+`lando app:config` prints the authored Landofile. It does not plan the app. Use `app:cache:refresh` when you need planner or command-index output, not just the YAML you wrote.
 
-## Inspect, then refresh
+## Inspect, then plan
 
-Read the authored Landofile first, then rebuild the caches.
+Read the authored Landofile first, then plan it and compile its commands.
 
 ```yaml
 name: cache-refresh-demo

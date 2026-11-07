@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { ToolingInputError } from "@lando/sdk/errors";
 import { ToolingTaskShape } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 import { validateToolingInputRevision } from "../src/tooling-input.ts";
@@ -78,11 +79,11 @@ test.each(mismatchCases)("refuses $label without disclosing declaration values",
     failure: {
       _tag: "ToolingInputError",
       tool: "inspect",
-      source: task.source,
+      source: { path: "/app/.lando/scripts/inspect.bun.sh", task: "inspect" },
     },
   });
   if (Result.isFailure(result)) {
-    expect(result.failure.remediation).toContain("lando app:cache:refresh");
+    expect(Schema.is(ToolingInputError)(result.failure)).toBe(true);
     expect(JSON.stringify(result.failure)).not.toContain("secret-before");
     expect(JSON.stringify(result.failure)).not.toContain("secret-after");
   }
