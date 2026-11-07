@@ -82,18 +82,18 @@ test.each([
   },
   {
     fields: "mounts: [{target: /data, type: 'storage:volume'}]",
-    output: { storage: [{ store: "app-web-data", target: "/data" }] },
+    output: { storage: [{ store: "lando-app--web--storage--data-bd47413b", target: "/data" }] },
     diagnostics: [],
   },
   { fields: "mount: ['./a:/b']", output: { mounts: [{ source: "./a", target: "/b" }] }, diagnostics: [] },
   {
     fields: "storage: [{dest: /x}]",
-    output: { storage: [{ store: "app-web-x", target: "/x" }] },
+    output: { storage: [{ store: "lando-app--web--storage--x-b3d1db31", target: "/x" }] },
     diagnostics: [],
   },
   {
     fields: "storage: [{destination: /x, scope: project}]",
-    output: { storage: [{ store: "app-x", target: "/x", scope: "app" }] },
+    output: { storage: [{ store: "lando-app_x--b3d1db31", target: "/x", scope: "app" }] },
     diagnostics: [["rewritten", "storage", 0, "scope"]],
   },
   { fields: "endpoints: [8080/http]", output: {}, diagnostics: [["dropped", "endpoints"]] },
