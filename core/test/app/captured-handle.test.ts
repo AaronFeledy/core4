@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Stream } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -21,10 +21,10 @@ test("public captured handle reuses configuration until resolution while emergen
   process.env.CLAUDECODE = "1";
   Reflect.deleteProperty(process.env, "LANDO_AGENT_ENV");
   const provider = {
-    ...TestRuntimeProvider,
+    ...makeTestRuntimeProvider(),
     execStream: (
-      _target: Parameters<typeof TestRuntimeProvider.execStream>[0],
-      spec: Parameters<typeof TestRuntimeProvider.execStream>[1],
+      _target: Parameters<ReturnType<typeof makeTestRuntimeProvider>["execStream"]>[0],
+      spec: Parameters<ReturnType<typeof makeTestRuntimeProvider>["execStream"]>[1],
     ) => {
       forwarded.push(spec.env?.CLAUDECODE);
       return Stream.make({ exitCode: 0 });
@@ -69,6 +69,7 @@ test("public captured handle reuses configuration until resolution while emergen
             yield* Effect.gen(function* () {
               const selector = { root: AbsolutePath.make(root) };
               const app = yield* resolveApp(selector);
+              yield* provider.apply(yield* app.plan, { reconcile: true });
               expect(discoveries).toBe(1);
               yield* Effect.promise(() => writeFile(file, document(false)));
               yield* app.exec({ command: ["env"] });

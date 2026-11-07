@@ -3,12 +3,13 @@ import { DateTime, Effect, Layer, Option, References, Tracer } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 
 import { infoForPlan } from "../../src/operations/info.ts";
 
 test("nests provider inspection under the operation span when info runs against the test provider", async () => {
-  const providerId = ProviderId.make(TestRuntimeProvider.id);
+  const provider = makeTestRuntimeProvider();
+  const providerId = ProviderId.make(provider.id);
   const metadata = {
     resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
     source: "operation-spans",
@@ -51,7 +52,7 @@ test("nests provider inspection under the operation span when info runs against 
       return span;
     },
   });
-  const provider = TestRuntimeProvider;
+  await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({

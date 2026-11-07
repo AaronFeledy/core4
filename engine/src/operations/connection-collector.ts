@@ -74,9 +74,18 @@ export const collectPlanObservations = Effect.fn("Connections.observePlan")(func
 ) {
   const provider = selectedProvider ?? (yield* (yield* RuntimeProviderRegistry).select(plan));
   return yield* Effect.forEach(Object.values(plan.services), (service) =>
-    provider
-      .inspect({ app: plan.id, service: service.name, plan })
-      .pipe(Effect.map((runtime) => observeService(completionPlan, runtime))),
+    provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
+      Effect.catchTag("ServiceNotFoundError", () =>
+        Effect.succeed<ServiceRuntimeInfo>({
+          app: plan.id,
+          service: service.name,
+          providerId: plan.provider,
+          status: "absent",
+          publications: { status: "missing" },
+        }),
+      ),
+      Effect.map((runtime) => observeService(completionPlan, runtime)),
+    ),
   );
 });
 

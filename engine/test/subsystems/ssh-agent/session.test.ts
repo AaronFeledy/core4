@@ -226,6 +226,7 @@ test("omits bind-only fields when the socket uses a volume", () => {
 
 const runningProvider = {
   ...TestRuntimeProvider,
+  exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   inspect: () =>
     Effect.succeed({
       app: AppId.make("global"),
