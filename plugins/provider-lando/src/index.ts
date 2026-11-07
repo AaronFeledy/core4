@@ -355,6 +355,7 @@ export {
 } from "./smoke-probe.ts";
 export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe.ts";
 
+export { makePluginArtifactDownload } from "./plugin-runtime.ts";
 export {
   ProviderBundleChecksumError,
   RUNTIME_BUNDLE_MANIFEST,

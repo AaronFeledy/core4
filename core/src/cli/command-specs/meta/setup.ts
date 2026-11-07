@@ -81,6 +81,7 @@ export const setupSpec: LandoCommandSpec<
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
+  onlineAcquisition: true,
   helpGroup: "common",
   summary: "Run host setup (provider, CA, router, shell integration).",
   description: "Run provider, CA, router, and shell-integration setup.",

@@ -78,6 +78,7 @@ export const renderUpdateResult = (result: UpdateResult): string => {
 export const updateSpec: LandoCommandSpec<UpdateResult> = {
   resultSchema: UpdateResultSchema,
   id: "meta:update",
+  onlineAcquisition: true,
   summary: "Update Lando core and plugins.",
   description: "Update Lando core and plugins.",
   namespace: "meta",

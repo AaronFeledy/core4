@@ -283,6 +283,7 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `recipePostInitAllowed` | Generated recipe command allowlist membership |
 | `hostProxyAllowed` | Generated `host-proxy-allowlist` membership |
 | `mcpAllowed` | Generated `mcp-allowlist` membership |
+| `onlineAcquisition` | The command acquires artifacts on purpose; the command lifecycle sets `OnlineAcquisition` for its fiber so downloads retry transient failures (§10.3.3). Plugin commands are routine |
 | `docs`, `acceptance` | Required public documentation and acceptance metadata |
 | `resultSchema` | Required `Schema.Codec<A, unknown>` for the `run` success value `A`; result-consuming hooks accept that same type. Empty results use an empty struct |
 | `completion` | Optional format-independent policy over the returned value and normalized command input, yielding `CommandCompletion` |

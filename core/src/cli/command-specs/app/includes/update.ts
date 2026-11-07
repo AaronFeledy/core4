@@ -27,6 +27,7 @@ export const appIncludesUpdateSpec: LandoCommandSpec<
 > = {
   resultSchema: AppIncludesUpdateResultSchema,
   id: "app:includes:update",
+  onlineAcquisition: true,
   summary: "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",
   namespace: "app",
   bootstrap: "minimal",

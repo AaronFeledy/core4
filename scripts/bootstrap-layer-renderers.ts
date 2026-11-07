@@ -119,7 +119,7 @@ export const renderCommands = (): string =>
     "",
     "export const makeCommandsBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInputs) => {",
     "  const pluginsBase = makePluginsBootstrapBaseLayer(inputs);",
-    "  const landofileServiceLayer = Layer.unwrap(Effect.map(EngineLandofileServiceLayer.scopedLandofileRuntimeInputs, EngineLandofileServiceLayer.layer)).pipe(Layer.provide(pluginsBase));",
+    "  const landofileServiceLayer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(pluginsBase));",
     "  const commandRegistryLayer = CommandRegistryLayer.layerWith((policy, entries, pluginIds) =>",
     "    commandAliasRegistrationError(policy, entries.map((entry) => entry.id), entries, pluginIds),",
     "  ).pipe(",

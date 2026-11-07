@@ -32,6 +32,7 @@ const missingSpecError = (): NotImplementedError =>
 export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   resultSchema: PluginAddResultSchema,
   id: "meta:plugin:add",
+  onlineAcquisition: true,
   summary: "Install a plugin (npm source) with manifest validation and trust prompt.",
   namespace: "meta",
   topLevelAlias: true,

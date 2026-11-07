@@ -62,9 +62,13 @@ describe("generated bootstrap layers", () => {
     );
     expect(commands).toContain("EngineLandofileServiceLayer.layer");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
-    expect(commands).toContain("Effect.map(EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
-    expect(commands).toContain("const landofileServiceLayer = Layer.unwrap(");
-    expect(commands).toContain(").pipe(Layer.provide(pluginsBase));");
+    expect(
+      countOccurrences(
+        commands,
+        "const landofileServiceLayer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(pluginsBase));",
+      ),
+    ).toBe(1);
+    expect(commands).not.toContain("Effect.map(EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);
@@ -147,6 +151,6 @@ describe("generated bootstrap layers", () => {
     expect(combined).not.toContain("plugins/generated/bundled");
     expect(combined).not.toContain("coreLandofileRuntimeInputs");
     expect(combined).toContain("bundledPluginModules()");
-    expect(combined).toContain("EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
+    expect(combined).toContain("EngineLandofileServiceLayer.layerDefault");
   });
 });

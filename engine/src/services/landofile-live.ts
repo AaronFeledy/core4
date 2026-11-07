@@ -1,7 +1,7 @@
 import { NetworkTrust, resolveTrust } from "@lando/http-client/network-trust";
 import {
   Downloader,
-  type LandofileService,
+  LandofileService,
   type ManagedFileTransactionGuard,
   PathsService,
   ProcessRunner,
@@ -63,6 +63,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const trustEnv = readPolicy?.env ?? { ...process.env };
   const resolveNetworkTrust = () => Effect.runPromise(resolveTrust(requestContext, injectedTrust, trustEnv));
   const runtime = {
+    requestContext,
     ...(Option.isSome(processRunner) ? { processRunner: processRunner.value } : {}),
     ...(Option.isSome(redaction)
       ? {
@@ -199,7 +200,20 @@ export const layer = (
 ): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard | StateStore> =>
   LandofileServiceLayer.layer(inputs);
 
-/** Default layer: resolves scoped runtime inputs then builds the Landofile service. */
-export const layerDefault = Layer.unwrap(
-  Effect.map(scopedLandofileRuntimeInputs, LandofileServiceLayer.layer),
+/** Retains runtime services while resolving source ports in each discover caller's context. */
+export const layerDefault = Layer.effect(
+  LandofileService,
+  Effect.gen(function* () {
+    const runtime = yield* Effect.context<ManagedFileTransactionGuard | StateStore>();
+    return LandofileService.of({
+      discover: Effect.gen(function* () {
+        const caller = yield* Effect.context<never>();
+        return yield* Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+          Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+            Effect.provide(LandofileServiceLayer.layer(inputs)),
+          ),
+        ).pipe(Effect.provide(Context.merge(runtime, caller)));
+      }),
+    });
+  }),
 );

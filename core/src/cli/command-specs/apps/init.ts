@@ -97,6 +97,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
 export const initSpec: LandoCommandSpec<typeof InitAppResultSchema.Type> = {
   resultSchema: InitAppResultSchema,
   id: "apps:init",
+  onlineAcquisition: true,
   helpGroup: "common",
   summary: "Generate a new Lando app.",
   namespace: "apps",
