@@ -1,5 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
@@ -7,6 +6,7 @@ import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
 import { type Cause, Deferred, Duration, Effect, Fiber, Queue, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
+import { verifiedExecHelper } from "./exec-helper-artifact.ts";
 import { installExecHelper } from "./exec-helper-install.ts";
 import { type OwnedExecWatch, startExecWatch } from "./exec-watch.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
@@ -132,14 +132,7 @@ export const supervisedExecStream = (
       );
       if (helper.target.os !== helperTarget.os || helper.target.arch !== helperTarget.arch)
         return yield* Effect.fail(failure("helper-architecture"));
-      const bytes = yield* beforeOwnership(
-        Effect.tryPromise({
-          try: () => readFile(helper.path),
-          catch: () => failure("helper-read"),
-        }),
-      );
-      const digest = createHash("sha256").update(bytes).digest("hex");
-      if (digest !== helper.digest) return yield* Effect.fail(failure("helper-digest"));
+      const { bytes, digest } = yield* beforeOwnership(verifiedExecHelper(helper, failure));
       const helperPath = yield* beforeOwnership(
         installExecHelper(api, options.ctx, container, { bytes, digest }).pipe(
           Effect.mapError(

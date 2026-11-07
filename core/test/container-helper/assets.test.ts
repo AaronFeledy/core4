@@ -95,6 +95,19 @@ describe("resolveContainerHelper", () => {
     expect(error.remediation).toContain("build:container-helper");
   });
 
+  test("resolves replacement bytes at the same helper path after a successful resolution", async () => {
+    const root = await tempRoot();
+    const path = join(root, "linux-x64", "lando-container-helper");
+    await mkdir(join(root, "linux-x64"));
+    await writeFile(path, "first-helper");
+    const resolve = () =>
+      Effect.runPromise(resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }));
+    const first = await resolve();
+    expect((await resolve()).digest).toBe(first.digest);
+    await writeFile(path, "other-helper");
+    expect((await resolve()).digest).toBe(sha256Hex(new TextEncoder().encode("other-helper")));
+  });
+
   test("compiled mode extracts the embedded helper for the target arch", async () => {
     const bytes = new TextEncoder().encode("static-helper");
     const digest = sha256Hex(bytes);
