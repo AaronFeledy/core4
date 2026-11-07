@@ -7,7 +7,7 @@ import {
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { Renderer } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { CliInvocation } from "./invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 
 export const withRedactedRenderer = Effect.fnUntraced(function* <A, E, R>(
   effect: Effect.Effect<A, E, R>,

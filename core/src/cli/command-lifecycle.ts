@@ -12,7 +12,7 @@ import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
-import { CliInvocation } from "./invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary";
 
 export interface CliInvocationSnapshot {

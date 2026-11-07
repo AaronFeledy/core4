@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { GlobalConfigSources } from "@lando/engine/services/config";
 

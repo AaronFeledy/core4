@@ -5,8 +5,8 @@ import { InteractionCancelledError } from "@lando/sdk/errors";
 import { ConfigService, InteractionService, Renderer } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { RecipeInitReview } from "../../recipes/prepared-init";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
-import { CliInvocation } from "../invocation-context";
 import type { InitAppOptions } from "./init-options";
 import type { InitReviewRoutes } from "./init-review-routes";
 

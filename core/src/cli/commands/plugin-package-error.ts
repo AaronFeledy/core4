@@ -1,7 +1,7 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { PluginPackageOperationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { BunChildNetworkPolicyError } from "./bun-child-network-policy";
 
 export const redactPluginPackageError = Effect.fnUntraced(function* (

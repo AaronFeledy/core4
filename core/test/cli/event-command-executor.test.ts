@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
@@ -596,8 +597,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     let observedCwd = "";
     const spec = {
       ...testSpec(() =>
-        Effect.sync(() => {
-          observedCwd = process.cwd();
+        Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
           return "done";
         }),
       ),
@@ -647,8 +648,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     let observedCwd = "";
     const spec = {
       ...testSpec(() =>
-        Effect.sync(() => {
-          observedCwd = process.cwd();
+        Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
         }),
       ),
       namespace: "app" as const,

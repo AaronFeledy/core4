@@ -5,7 +5,7 @@ import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { CANONICAL_LANDOFILE } from "./app-config-recipe-analysis.ts";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 

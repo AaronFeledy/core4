@@ -36,8 +36,8 @@ import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { isStdioRendererIO } from "@lando/renderer/io";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { loadUserLandofile } from "../app-resolution";
-import { CliInvocation } from "../invocation-context";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 

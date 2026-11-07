@@ -1,5 +1,5 @@
 import { relative } from "node:path";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Effect, Result, Schema } from "effect";
 

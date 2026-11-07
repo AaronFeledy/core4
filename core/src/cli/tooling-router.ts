@@ -1,4 +1,6 @@
+import { resolveLandoRoots } from "@lando/paths";
 import { Effect } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import {
   type BunShellScriptEmptyError,
@@ -55,7 +57,7 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
   if (appRoot === undefined) return undefined;
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
-    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+    cacheRoot: options.cacheRoot ?? resolveLandoRoots({ env: (yield* CliInvocation).env }).userCacheRoot,
   }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
   if (cache === null) return undefined;
   const catalog = options.catalog ?? createPluginCommandCatalog();

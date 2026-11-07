@@ -22,8 +22,8 @@ import {
   type SshService,
 } from "@lando/sdk/services";
 import { type Context, Effect, Option, Result } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { loadUserLandofile } from "../app-resolution";
-import { CliInvocation } from "../invocation-context";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
 import { resolveSecretsRedactor } from "./secrets-redactor";

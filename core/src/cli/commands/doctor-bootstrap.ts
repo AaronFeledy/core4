@@ -11,7 +11,7 @@ import type { ConfigError } from "@lando/sdk/errors";
  * runtime-dependent sections and closes with the report.
  */
 import { Context, Effect, Layer, Option, type Scope } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { recordConfigWarning } from "@lando/engine/config/config-warnings";
 import { hostEventsShellConfigError } from "@lando/engine/config/global-config";

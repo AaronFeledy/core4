@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CliInvocation } from "../../../invocation-context";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { Args, Flags } from "../../../spec/metadata";
 
 import {

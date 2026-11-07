@@ -10,7 +10,7 @@ import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { renderConfigKeyDescription } from "./config-key-render";
 import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";

@@ -20,7 +20,7 @@
  * raw tool payload (including the canary secret) is ever placed in the check.
  */
 import { Effect, Fiber, Layer, Predicate, Schema } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";

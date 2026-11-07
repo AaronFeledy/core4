@@ -8,7 +8,7 @@
  * warn/info messages otherwise.
  */
 import { Effect, Option } from "effect";
-import { CliInvocation } from "./invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { DeprecationService, Renderer } from "@lando/sdk/services";

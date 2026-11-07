@@ -84,11 +84,13 @@ describe("withScenarioContext", () => {
         "transcript-green.json",
       );
       await Effect.runPromise(
-        withScenarioContext({ guideId: "node-postgres", scenarioId: "transcript-green" }, (context) =>
-          Effect.gen(function* () {
-            yield* context.runCli(["version"]);
-            return undefined;
-          }),
+        withScenarioContext(
+          { guideId: "node-postgres", scenarioId: "transcript-green", repositoryRoot: root },
+          (context) =>
+            Effect.gen(function* () {
+              yield* context.runCli(["version"]);
+              return undefined;
+            }),
         ),
       );
       return JSON.parse(await readFile(transcriptPath, "utf8")) as Record<string, unknown>;
@@ -116,14 +118,16 @@ describe("withScenarioContext", () => {
         "transcript-cleanup.json",
       );
       await Effect.runPromise(
-        withScenarioContext({ guideId: "node-postgres", scenarioId: "transcript-cleanup" }, (context) =>
-          Effect.gen(function* () {
-            yield* Effect.addFinalizer(() =>
-              context.transcript.append({ kind: "cleanup", command: [], exit: 0 }),
-            );
-            yield* context.runCli(["version"]);
-            return undefined;
-          }),
+        withScenarioContext(
+          { guideId: "node-postgres", scenarioId: "transcript-cleanup", repositoryRoot: root },
+          (context) =>
+            Effect.gen(function* () {
+              yield* Effect.addFinalizer(() =>
+                context.transcript.append({ kind: "cleanup", command: [], exit: 0 }),
+              );
+              yield* context.runCli(["version"]);
+              return undefined;
+            }),
         ),
       );
       return JSON.parse(await readFile(transcriptPath, "utf8")) as Record<string, unknown>;
@@ -139,30 +143,32 @@ describe("withScenarioContext", () => {
     const result = await withTempCwd(async (root) => {
       const transcriptPath = join(root, "dist", "transcripts", "guides", "static", "inspect-capture.json");
       const frames = await Effect.runPromise(
-        withScenarioContext({ guideId: "static", scenarioId: "inspect-capture" }, (context) =>
-          Effect.gen(function* () {
-            yield* Effect.promise(() => writeFile(join(context.testDir, "notes.txt"), "hello inspect\n"));
-            yield* Effect.promise(() =>
-              writeFile(join(context.testDir, "config.json"), JSON.stringify({ name: "demo" })),
-            );
-            yield* writeLandofile(context.testDir, [
-              "name: static-demo",
-              "services:",
-              "  web:",
-              "    type: static",
-              "    webroot: .",
-            ]);
+        withScenarioContext(
+          { guideId: "static", scenarioId: "inspect-capture", repositoryRoot: root },
+          (context) =>
+            Effect.gen(function* () {
+              yield* Effect.promise(() => writeFile(join(context.testDir, "notes.txt"), "hello inspect\n"));
+              yield* Effect.promise(() =>
+                writeFile(join(context.testDir, "config.json"), JSON.stringify({ name: "demo" })),
+              );
+              yield* writeLandofile(context.testDir, [
+                "name: static-demo",
+                "services:",
+                "  web:",
+                "    type: static",
+                "    webroot: .",
+              ]);
 
-            yield* context.runCli(["version"]);
-            yield* context.inspect({ output: true });
-            yield* context.runCli(["start"]);
-            yield* context.inspect({ events: true });
-            yield* context.inspect({ file: "notes.txt" });
-            yield* context.inspect({ json: "config.json" });
-            yield* context.inspect({ file: "missing.txt" });
+              yield* context.runCli(["version"]);
+              yield* context.inspect({ output: true });
+              yield* context.runCli(["start"]);
+              yield* context.inspect({ events: true });
+              yield* context.inspect({ file: "notes.txt" });
+              yield* context.inspect({ json: "config.json" });
+              yield* context.inspect({ file: "missing.txt" });
 
-            return context.transcript.frames;
-          }),
+              return context.transcript.frames;
+            }),
         ),
       );
       const transcript = JSON.parse(await readFile(transcriptPath, "utf8")) as Record<string, unknown>;
@@ -203,6 +209,7 @@ describe("withScenarioContext", () => {
           {
             guideId: "node-postgres",
             scenarioId: "transcript-red",
+            repositoryRoot: root,
             runCli: async (command) => ({
               command,
               stdout: `AUTH_TOKEN=secret ${new Date("2026-05-23T12:00:00.000Z").toISOString()}`,
@@ -299,56 +306,6 @@ describe("withScenarioContext", () => {
     } finally {
       process.exitCode = previousExitCode ?? 0;
     }
-  });
-
-  test.each(["dist", "./dist/", "/app/dist"])("serves static files when webroot is %s", async (webroot) => {
-    const result = await Effect.runPromise(
-      withScenarioContext({ guideId: "static", scenarioId: "fetch-known-file" }, (context) =>
-        Effect.gen(function* () {
-          yield* Effect.promise(() => mkdir(join(context.testDir, "dist"), { recursive: true }));
-          yield* writeLandofile(context.testDir, [
-            "name: static-demo",
-            "services:",
-            "  web:",
-            "    type: static",
-            `    webroot: ${webroot}`,
-          ]);
-          yield* Effect.promise(() =>
-            writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
-          );
-
-          yield* context.runCli(["start"]);
-          return yield* context.runCli(["curl", "index.html"]);
-        }),
-      ),
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("hello from lando static\n");
-    expect(result.command).toEqual(["curl", "index.html"]);
-  });
-
-  test.each([".", '"."', "/app"])("serves the app root when webroot is %s", async (webroot) => {
-    // Given
-    const result = await Effect.runPromise(
-      withScenarioContext({ guideId: "static", scenarioId: "fetch-app-root" }, (context) =>
-        Effect.gen(function* () {
-          yield* writeLandofile(context.testDir, [
-            "name: static-demo",
-            "services:",
-            "  web:",
-            "    type: static",
-            `    webroot: ${webroot}`,
-          ]);
-          yield* Effect.promise(() => writeFile(join(context.testDir, "index.html"), "app root\n"));
-          // When
-          return yield* context.runCli(["curl", "index.html"]);
-        }),
-      ),
-    );
-    // Then
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("app root\n");
   });
 
   test("forwards runCli options to custom overrides", async () => {
@@ -471,7 +428,7 @@ describe("withScenarioContext", () => {
   });
 
   test("fixtures.use deep-copies per-guide fixtures before mutation and does not re-copy", async () => {
-    const result = await withTempCwd(async () => {
+    const result = await withTempCwd(async (root) => {
       const guideFixture = join("docs", "guides", "node-postgres", "fixtures", "app");
       const sharedFixture = join("docs", "guides", "fixtures", "app");
       await mkdir(join(guideFixture, "nested"), { recursive: true });
@@ -480,23 +437,25 @@ describe("withScenarioContext", () => {
       await writeFile(join(sharedFixture, "config.txt"), "shared");
 
       return await Effect.runPromise(
-        withScenarioContext({ guideId: "node-postgres", scenarioId: "fixture-copy" }, (context) =>
-          Effect.promise(async () => {
-            const copied = await Effect.runPromise(context.fixtures.use("app"));
-            const copiedFile = join(copied, "nested", "config.txt");
-            const firstContent = await readFile(copiedFile, "utf8");
-            await writeFile(copiedFile, "mutated copy");
-            const secondCopied = await Effect.runPromise(context.fixtures.use("app"));
+        withScenarioContext(
+          { guideId: "node-postgres", scenarioId: "fixture-copy", repositoryRoot: root },
+          (context) =>
+            Effect.promise(async () => {
+              const copied = await Effect.runPromise(context.fixtures.use("app"));
+              const copiedFile = join(copied, "nested", "config.txt");
+              const firstContent = await readFile(copiedFile, "utf8");
+              await writeFile(copiedFile, "mutated copy");
+              const secondCopied = await Effect.runPromise(context.fixtures.use("app"));
 
-            return {
-              copied,
-              secondCopied,
-              firstContent,
-              copiedContent: await readFile(copiedFile, "utf8"),
-              sourceContent: await readFile(join(guideFixture, "nested", "config.txt"), "utf8"),
-              sharedContent: await readFile(join(sharedFixture, "config.txt"), "utf8"),
-            };
-          }),
+              return {
+                copied,
+                secondCopied,
+                firstContent,
+                copiedContent: await readFile(copiedFile, "utf8"),
+                sourceContent: await readFile(join(guideFixture, "nested", "config.txt"), "utf8"),
+                sharedContent: await readFile(join(sharedFixture, "config.txt"), "utf8"),
+              };
+            }),
         ),
       );
     });
@@ -511,8 +470,9 @@ describe("withScenarioContext", () => {
   test("fixtures.use fails missing fixtures with candidate paths", async () => {
     const exit = await withTempCwd(async (root) =>
       Effect.runPromiseExit(
-        withScenarioContext({ guideId: "node-postgres", scenarioId: "missing-fixture" }, (context) =>
-          context.fixtures.use("missing"),
+        withScenarioContext(
+          { guideId: "node-postgres", scenarioId: "missing-fixture", repositoryRoot: root },
+          (context) => context.fixtures.use("missing"),
         ),
       ).then((result) => ({ root, result })),
     );
@@ -533,7 +493,7 @@ describe("withScenarioContext", () => {
   });
 
   test("fixtures.use rejects non-directory fixture candidates without falling back to shared", async () => {
-    const exit = await withTempCwd(async () => {
+    const exit = await withTempCwd(async (root) => {
       const perGuideFixturesDir = join("docs", "guides", "node-postgres", "fixtures");
       const perGuideRegularFileAtAppName = join(perGuideFixturesDir, "app");
       const sharedFallbackDir = join("docs", "guides", "fixtures", "app");
@@ -543,8 +503,9 @@ describe("withScenarioContext", () => {
       await writeFile(join(sharedFallbackDir, "config.txt"), "shared");
 
       return await Effect.runPromiseExit(
-        withScenarioContext({ guideId: "node-postgres", scenarioId: "non-dir-fixture" }, (context) =>
-          context.fixtures.use("app"),
+        withScenarioContext(
+          { guideId: "node-postgres", scenarioId: "non-dir-fixture", repositoryRoot: root },
+          (context) => context.fixtures.use("app"),
         ),
       );
     });
@@ -557,15 +518,16 @@ describe("withScenarioContext", () => {
   });
 
   test("fixtures.use rejects symbolic links inside fixtures", async () => {
-    const exit = await withTempCwd(async () => {
+    const exit = await withTempCwd(async (root) => {
       const guideFixture = join("docs", "guides", "node-postgres", "fixtures", "symlinked");
       await mkdir(guideFixture, { recursive: true });
       await writeFile(join(guideFixture, "target.txt"), "target");
       await symlink("target.txt", join(guideFixture, "link.txt"));
 
       return await Effect.runPromiseExit(
-        withScenarioContext({ guideId: "node-postgres", scenarioId: "symlink-fixture" }, (context) =>
-          context.fixtures.use("symlinked"),
+        withScenarioContext(
+          { guideId: "node-postgres", scenarioId: "symlink-fixture", repositoryRoot: root },
+          (context) => context.fixtures.use("symlinked"),
         ),
       );
     });
@@ -585,7 +547,7 @@ describe("withScenarioContext", () => {
 });
 
 describe("ScenarioContextFactory", () => {
-  test("testOnlyFake starts for real and answers static curl from the webroot", async () => {
+  test("testOnlyFake starts for real and observes its applied static service", async () => {
     const result = await Effect.runPromise(
       ScenarioContextFactory.testOnlyFake({ guideId: "static", scenarioId: "fake-shim" }, (context) =>
         Effect.gen(function* () {
@@ -603,7 +565,7 @@ describe("ScenarioContextFactory", () => {
           );
 
           const started = yield* context.runCli(["start"]);
-          const fetched = yield* context.runCli(["curl", "index.html"]);
+          const fetched = yield* context.runCli(["info", "--format=json"]);
           return { started, fetched };
         }),
       ),
@@ -612,7 +574,7 @@ describe("ScenarioContextFactory", () => {
     expect(result.started.exitCode).toBe(0);
     expect(result.started.stdout).toContain("ready: static-demo - web");
     expect(result.started.events.map((event) => event._tag)).toContain("post-start");
-    expect(result.fetched.stdout).toBe("hello from lando static\n");
+    expect(JSON.parse(result.fetched.stdout)).toMatchObject({ ok: true, result: { app: "static-demo" } });
     expect(result.fetched.exitCode).toBe(0);
   });
 
@@ -636,7 +598,7 @@ describe("ScenarioContextFactory", () => {
     expect(result.created).toBe(true);
   });
 
-  test("scenario layer refuses commands outside the in-process allowlist instead of exiting", async () => {
+  test("scenario layer renders a real missing-app failure instead of exiting", async () => {
     const result = await Effect.runPromise(
       ScenarioContextFactory.scenario({ guideId: "node-postgres", scenarioId: "guarded" }, (context) =>
         context.runCli(["start"]),
@@ -645,7 +607,7 @@ describe("ScenarioContextFactory", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("ScenarioContextFactory.e2e");
+    expect(result.stderr).toContain("LandofileNotFoundError");
     expect(result.command).toEqual(["start"]);
   });
 
@@ -794,6 +756,26 @@ describe("ScenarioContextFactory", () => {
 });
 
 describe("in-process lifecycle", () => {
+  test("two scenarios do not share materialized global-app state (#2113)", async () => {
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "static", scenarioId: "global-owner" }, (first) =>
+        Effect.gen(function* () {
+          yield* first.fixtures.use("static-demo");
+          const started = yield* first.runCli(["start", "--format=json"]);
+          expect(started.exitCode, started.stdout).toBe(0);
+          const other = yield* withScenarioContext(
+            { guideId: "static", scenarioId: "global-isolated" },
+            (second) => second.runCli(["meta:global:status", "--format=json"]),
+          );
+          return { other, owner: yield* first.runCli(["meta:global:status", "--format=json"]) };
+        }),
+      ),
+    );
+    expect(result.owner.exitCode).toBe(0);
+    expect(result.other.exitCode).toBe(0);
+    expect(JSON.parse(result.owner.stdout)).toMatchObject({ ok: true, result: { materialized: true } });
+    expect(JSON.parse(result.other.stdout)).toMatchObject({ ok: true, result: { materialized: false } });
+  });
   const eventsDemo = (preStop: string) => [
     "name: lifecycle-demo",
     "services:",

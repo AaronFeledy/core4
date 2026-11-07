@@ -1,5 +1,5 @@
 import { type Context, Effect, Layer, Scope } from "effect";
-import { CliInvocation } from "../cli/invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import type { App, AppSelector, LandoRuntime, ScratchAcquireError } from "@lando/sdk/app";
 import {

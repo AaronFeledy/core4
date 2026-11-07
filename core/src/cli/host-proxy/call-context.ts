@@ -8,8 +8,8 @@ import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "@lando/sdk/events
 import { AppRef } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { Clock, DateTime, Effect, Exit, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
-import { CliInvocation } from "../invocation-context";
 
 export const HOST_PROXY_CALL_COMMAND = "__internal:host-proxy-call";
 const callFields = {

@@ -1,5 +1,5 @@
 import { DateTime, Effect, Exit, Schema } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { InfoAppError } from "@lando/sdk/app";
 import type {

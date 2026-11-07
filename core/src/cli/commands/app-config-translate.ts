@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import type { TransactionOptions } from "@lando/managed-file/transaction";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 import { Effect, Option } from "effect";

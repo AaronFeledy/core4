@@ -1,5 +1,5 @@
 import { Effect, Option, Result } from "effect";
-import { CliInvocation } from "../invocation-context";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";

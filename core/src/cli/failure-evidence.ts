@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CliInvocation } from "./invocation-context";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { writeDiagnosticLine } from "@lando/renderer/output";
 import { FAILURE_EVIDENCE_PREFIX, failureEvidenceFor } from "./failure-diagnostic";

@@ -10,6 +10,7 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
 import * as HostPrivilegeService from "@lando/engine/services/privilege";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
@@ -32,9 +33,13 @@ import {
 } from "../compiled-runtime";
 import { readCliAppCommandCache } from "../tooling-command-cache";
 
-export const runMetaUninstall = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:uninstall", argv)) return;
-  const input = compiledCommandInputFromArgv("meta:uninstall", argv);
+export const runMetaUninstall = async (
+  argv: ReadonlyArray<string>,
+  signal?: AbortSignal,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
+  if (await rejectInvalidInvocation("meta:uninstall", argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:uninstall", argv, { context });
   return runCompiledCommand(
     uninstall(uninstallOptionsFromInput(input)),
     Layer.mergeAll(
@@ -42,27 +47,37 @@ export const runMetaUninstall = async (argv: ReadonlyArray<string>, signal?: Abo
       HostPrivilegeService.layer,
       makeHostMaintenanceRegistryLayer(bundledPluginModules()),
     ),
-    renderUninstallResult,
-    signal === undefined ? {} : { signal },
+    (value, renderContext) => renderUninstallResult(value, renderContext, context.setExitCode),
+    { context, ...(signal === undefined ? {} : { signal }) },
   );
 };
 
-export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:mcp", argv)) return;
-  const input = compiledCommandInputFromArgv("meta:mcp", argv);
+export const runMetaMcp = async (
+  argv: ReadonlyArray<string>,
+  signal?: AbortSignal,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
+  if (await rejectInvalidInvocation("meta:mcp", argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:mcp", argv, { context });
   const flags = mcpFlagsFromParsed(input.flags);
   const commandRuntime = resolveCompiledCommandRuntime(
     "meta:mcp",
     "plugins",
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(
+      cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } }, context.env),
+    ),
   ) as Layer.Layer<
     ConfigService | RedactionService | BuiltInCommandCatalog,
     ConfigError | LandoRuntimeBootstrapError
   >;
   const retainedRuntime = makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" }, interaction: "non-interactive" }),
+    cliRuntimeOptions(
+      { bootstrap: "app", plugins: { policy: "discovery" }, interaction: "non-interactive" },
+      context.env,
+    ),
   ).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
+    context,
     flags,
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
@@ -79,16 +94,18 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
       argv: input.argv,
       args: input.args,
       flags: input.flags,
-      cwd: process.cwd(),
+      cwd: context.cwd,
     },
-    formatError: (failure, redactor) => commandErrorMessage(failure, "meta:mcp", redactor),
+    formatError: (failure, redactor) => commandErrorMessage(failure, "meta:mcp", redactor, context.env),
   });
 };
 
-export const runMetaVersion = async (): Promise<void> => {
+export const runMetaVersion = async (context?: CliInvocationContext): Promise<void> => {
   setActiveCommandId("meta:version");
-  resetActiveCommandInvocation("meta:version", []);
-  await runCompiledCommand(versionOperation, Layer.empty, (result) => result.core);
+  resetActiveCommandInvocation("meta:version", [], { ...(context === undefined ? {} : { context }) });
+  await runCompiledCommand(versionOperation, Layer.empty, (result) => result.core, {
+    ...(context === undefined ? {} : { context }),
+  });
 };
 
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
@@ -96,24 +113,23 @@ const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 export const runMetaShellenv = async (
   argv: ReadonlyArray<string> = [],
   signal?: AbortSignal,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:shellenv", argv)) return;
-  const input = compiledCommandInputFromArgv("meta:shellenv", argv);
+  if (await rejectInvalidInvocation("meta:shellenv", argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:shellenv", argv, { context });
   const shell = input.flags.shell;
   if (argv.includes("--shell") && shell === undefined) {
-    await emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh");
-    process.exitCode = 2;
+    await emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh", context);
+    context.setExitCode(2);
     return;
   }
   if (shell !== undefined && !SHELLENV_SHELLS.includes(shell as (typeof SHELLENV_SHELLS)[number])) {
-    await emitDiagnosticLine(`Expected --shell=${shell} to be one of: posix, powershell, pwsh`);
-    process.exitCode = 2;
+    await emitDiagnosticLine(`Expected --shell=${shell} to be one of: posix, powershell, pwsh`, context);
+    context.setExitCode(2);
     return;
   }
-  await runCompiledCommand(
-    shellenvSpec.run(input),
-    Layer.empty,
-    (value) => value,
-    signal === undefined ? {} : { signal },
-  );
+  await runCompiledCommand(shellenvSpec.run(input), Layer.empty, (value) => value, {
+    context,
+    ...(signal === undefined ? {} : { signal }),
+  });
 };

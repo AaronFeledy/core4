@@ -43,15 +43,19 @@ export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}
   const listeners = new Set<(raw: string) => void>();
   return {
     stdinIsTTY: options.stdinIsTTY === true,
-    stdin: new ReadableStream<Uint8Array>({
-      start(controller) {
-        if (options.stdin !== undefined)
-          controller.enqueue(
-            typeof options.stdin === "string" ? new TextEncoder().encode(options.stdin) : options.stdin,
-          );
-        controller.close();
-      },
-    }),
+    // Only an explicit stdin replaces the host's; buffering output alone leaves stdin inherited.
+    ...(options.stdin === undefined
+      ? {}
+      : {
+          stdin: new ReadableStream<Uint8Array>({
+            start(controller) {
+              const input = options.stdin;
+              if (input !== undefined)
+                controller.enqueue(typeof input === "string" ? new TextEncoder().encode(input) : input);
+              controller.close();
+            },
+          }),
+        }),
     writeStdout: (chunk) => {
       stdoutChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
       return true;

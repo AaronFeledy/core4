@@ -1,4 +1,3 @@
-import { writeStdioLine } from "@lando/renderer/io";
 import { Effect, Layer, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
@@ -83,7 +82,12 @@ import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-serv
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
 import "./engine-composition";
-import { getScenarioRuntimeOverride } from "./scenario-override";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+  processInvocationDefaults,
+} from "./invocation-context";
 
 export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
 
@@ -156,6 +160,7 @@ export type AppRuntimeServices =
   | RuntimeCwd
   | EventCommandExecutor;
 type RuntimeLayer =
+  | Layer.Layer<never, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<never>
   | Layer.Layer<never, LandoRuntimeBootstrapError>
   | Layer.Layer<NoneRuntimeServices>
@@ -187,16 +192,19 @@ const runtimeLayerFor = (
   pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
   cwd: string,
   configInputs: GlobalConfigSources["Service"],
+  invocation: CliInvocationContext,
 ): RuntimeLayer => {
-  const runtimeProviderRegistry = getScenarioRuntimeOverride()?.providerRegistry;
+  const runtimeProviderRegistry = invocation.providerRegistry;
   return makeGeneratedBootstrapLayer(bootstrap, {
     runtimeLayerFactory: { make: makeLandoRuntime },
     lifecycle,
     loggerMode,
     logLevel,
     structured,
-    writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
-    stderrIsTTY: process.stderr.isTTY === true,
+    writeDiagnosticLine: (line) => {
+      invocation.io.writeStderr(`${line}\n`);
+    },
+    stderrIsTTY: invocation.io.isTTY === true,
     rendererMode,
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,
@@ -246,6 +254,19 @@ export function makeLandoRuntime(
 export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapshot["Service"]): RuntimeLayer {
+  const host = processInvocationContext();
+  return Layer.unwrap(
+    Effect.map(CliInvocation, (invocation) =>
+      buildLandoRuntime(options, snapshot, invocation === processInvocationDefaults ? host : invocation),
+    ),
+  );
+}
+
+function buildLandoRuntime(
+  options: unknown,
+  snapshot: GlobalConfigSnapshot["Service"] | undefined,
+  invocation: CliInvocationContext,
+): RuntimeLayer {
   const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
 
   if (Result.isFailure(decoded)) {
@@ -268,14 +289,12 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
       ),
     );
   }
-  const capturedCwd = decoded.success.cwd ?? process.cwd();
+  const capturedCwd = decoded.success.cwd ?? invocation.cwd;
   const lifecycle = makeBootstrapLifecycleTracker();
-  const scenarioOverride = getScenarioRuntimeOverride();
-  const hostLayersResult = collectEmbeddingPluginLayers(
-    scenarioOverride === undefined
-      ? pluginPolicy.layers
-      : [...pluginPolicy.layers, scenarioOverride.hostServices],
-  );
+  const hostLayersResult = collectEmbeddingPluginLayers([
+    ...pluginPolicy.layers,
+    ...(invocation.serviceLayers ?? []),
+  ]);
 
   if (Result.isFailure(hostLayersResult)) {
     return Layer.effectDiscard(Effect.fail(hostLayersResult.failure));
@@ -294,7 +313,7 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
     hostLayersResult.success,
     capturedCwd,
     {
-      env: { ...process.env },
+      env: { ...invocation.env },
       host: decoded.success.config,
       sources: {
         user: decoded.success.configSources?.user ?? true,
@@ -303,6 +322,7 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
       rootOverrides: rootOverridesFromConfig(decoded.success.config),
       ...(snapshot === undefined ? {} : { ...snapshot.inputs, snapshot }),
     },
+    invocation,
   );
 
   // Library mode defaults prompts to non-interactive; the option overrides the

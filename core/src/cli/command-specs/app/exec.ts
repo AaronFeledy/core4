@@ -10,10 +10,10 @@ import {
 } from "@lando/engine/operations/exec";
 import { isStdioRendererIO } from "@lando/renderer/io";
 import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { CliInvocation } from "../../invocation-context";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";

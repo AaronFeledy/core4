@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { setupSpec } from "../command-specs/meta/setup";
 import {
@@ -23,10 +24,14 @@ import {
 } from "../compiled-runtime";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
-export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:setup", argv)) return;
+export const runSetup = async (
+  argv: ReadonlyArray<string>,
+  signal?: AbortSignal,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
+  if (await rejectInvalidInvocation("meta:setup", argv, context)) return;
   const installDir = dirname(process.execPath);
-  const input = compiledCommandInputFromArgv("meta:setup", argv);
+  const input = compiledCommandInputFromArgv("meta:setup", argv, { context });
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
   await runWithRendererHandling(
@@ -35,8 +40,9 @@ export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal
       flags: input.flags,
     }),
     {
+      context,
       runtime: makeLandoRuntime(
-        cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
+        cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }, context.env),
       ),
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,
@@ -49,13 +55,13 @@ export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal
         argv: input.argv,
         args: input.args,
         flags: input.flags,
-        cwd: process.cwd(),
+        cwd: context.cwd,
       },
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
       formatError: (failure, redactor) => {
-        const message = commandErrorMessage(failure, activeCommandId, redactor);
+        const message = commandErrorMessage(failure, activeCommandId, redactor, context.env);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
       },
     },
