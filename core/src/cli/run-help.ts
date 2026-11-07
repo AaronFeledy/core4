@@ -1,6 +1,10 @@
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
-import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationDefaults,
+} from "../runtime/invocation-context";
 import { resolveBuiltInCommand } from "./built-in-command-registry";
 import {
   type HelpTopic,
@@ -187,7 +191,7 @@ export const dispatchHelpTarget = async (
   if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand, catalog.context);
   const resolutionExit = await Effect.runPromiseExit(
     interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal).pipe(
-      Effect.provideService(CliInvocation, catalog.context ?? Effect.runSync(CliInvocation)),
+      Effect.provideService(CliInvocation, catalog.context ?? processInvocationDefaults),
     ),
   );
   if (Exit.isFailure(resolutionExit)) throw resolutionExit.cause;

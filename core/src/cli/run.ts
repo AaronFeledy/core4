@@ -590,11 +590,10 @@ export interface RunCliOptions {
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   if (options.signal?.aborted) return;
   // A caller that names only a discovery cwd still runs the invocation there.
-  const supplied =
-    options.context ??
-    (options.discovery === undefined
-      ? processInvocationContext()
-      : { ...processInvocationContext(), cwd: options.discovery.cwd });
+  const supplied = options.context ?? {
+    ...processInvocationContext(),
+    ...(options.discovery === undefined ? {} : { cwd: options.discovery.cwd }),
+  };
   const context =
     options.hostProxy === undefined
       ? supplied

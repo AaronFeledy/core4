@@ -319,9 +319,6 @@ const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
   return sanitize(redacted);
 };
 
-const transcriptPath = (guideId: string, scenarioId: string, repositoryRoot: string): string =>
-  join(repositoryRoot, "dist", "transcripts", "guides", guideId, `${scenarioId}.json`);
-
 const persistTranscript = Effect.fnUntraced(function* (
   context: ScenarioContext,
   startedAt: string,
@@ -345,7 +342,14 @@ const persistTranscript = Effect.fnUntraced(function* (
       frames: context.transcript.frames,
     });
     const sanitized = sanitizeTranscriptValue(transcript, context.testDir);
-    const output = transcriptPath(context.guideId, context.scenarioId, repositoryRoot);
+    const output = join(
+      repositoryRoot,
+      "dist",
+      "transcripts",
+      "guides",
+      context.guideId,
+      `${context.scenarioId}.json`,
+    );
     await mkdir(dirname(output), { recursive: true });
     await writeFile(output, `${JSON.stringify(stable(sanitized), null, 2)}\n`);
   });

@@ -40,11 +40,12 @@ export const guideScenarioTestArgs = (
   const e2e =
     env.LANDO_GUIDE_E2E === "1" ||
     args.some((arg, index) => {
-      const pattern = arg.startsWith("--test-name-pattern=")
-        ? arg.slice("--test-name-pattern=".length)
-        : arg === "--test-name-pattern" || arg === "-t"
-          ? args[index + 1]
-          : undefined;
+      let pattern: string | undefined;
+      if (arg.startsWith("--test-name-pattern=")) {
+        pattern = arg.slice("--test-name-pattern=".length);
+      } else if (arg === "--test-name-pattern" || arg === "-t") {
+        pattern = args[index + 1];
+      }
       return pattern?.replaceAll("\\", "").includes("[e2e]") === true;
     });
   const serialArgs = args.some((arg) => arg === "--max-concurrency" || arg.startsWith("--max-concurrency="))

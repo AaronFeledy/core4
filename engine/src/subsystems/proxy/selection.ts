@@ -21,12 +21,8 @@ export const selectRouterContribution = <
     const defaults = options.contributions.filter((entry) =>
       entry.defaultFor?.platform?.includes(hostPlatformFamily(options.platform)),
     );
-    const candidate =
-      defaults.length === 1
-        ? defaults[0]
-        : options.contributions.length === 1
-          ? options.contributions[0]
-          : undefined;
+    const candidates = defaults.length === 1 ? defaults : options.contributions;
+    const candidate = candidates.length === 1 ? candidates[0] : undefined;
     if (candidate !== undefined) return Effect.succeed(candidate);
   }
   return Effect.fail(
