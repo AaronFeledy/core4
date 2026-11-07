@@ -93,7 +93,7 @@ const fixture = () => {
 const rejected = (effect: ReturnType<typeof installExecHelper>) => Effect.runPromise(Effect.flip(effect));
 
 describe("container exec helper installation", () => {
-  test("installs once per container and version, then verifies actual bytes on every reuse", async () => {
+  test("installs once per container and version, then freshly validates the protected path on reuse", async () => {
     const f = fixture();
     const a = artifact();
     expect(await Effect.runPromise(f.install())).toBe(
@@ -120,14 +120,31 @@ describe("container exec helper installation", () => {
     expect([f.state.tmpGets, f.state.gets, f.state.puts]).toEqual([3, 4, 1]);
   });
 
-  test("detects corruption after a successful installation without replacing it", async () => {
+  test("rejects changed ownership after a successful installation without replacing it", async () => {
     const f = fixture();
     await Effect.runPromise(f.install());
     const changed = archiveLogFileHelper(artifact().bytes, directoryFor(artifact().digest));
-    changed[1024] = (changed[1024] ?? 0) ^ 1;
+    changed.set(
+      encodeUstarHeader({
+        name: `${directoryFor(artifact().digest)}/${CONTAINER_HELPER_FILE}`,
+        size: artifact().bytes.length,
+        mode: 0o755,
+        uid: 1000,
+        typeflag: "0",
+      }),
+      512,
+    );
     f.seed(changed);
     expect((await rejected(f.install())).message).toContain("untrusted-existing-helper");
     expect([f.state.gets, f.state.puts]).toEqual([3, 1]);
+  });
+
+  test("reinstalls when the same container loses its temporary filesystem", async () => {
+    const f = fixture();
+    await Effect.runPromise(f.install());
+    f.archives.clear();
+    await Effect.runPromise(f.install());
+    expect(f.state.puts).toBe(2);
   });
 
   test.each([

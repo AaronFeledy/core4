@@ -15,8 +15,10 @@ interface HelperArtifact {
 
 const decoder = new TextDecoder();
 const missingArchive = Schema.Struct({ status: Schema.Literal(404) });
-// Serialize only installation, never execution. Every caller still verifies the container bytes.
-const locks = new WeakMap<EngineHttpApi, Semaphore.Semaphore>();
+// Serialize installation per artifact; exec-prepare verifies the digest after each fresh metadata check.
+const locks = new WeakMap<EngineHttpApi, Map<string, Semaphore.Semaphore>>();
+const verified = new WeakMap<EngineHttpApi, Set<string>>();
+const digests = new WeakMap<Uint8Array, string>();
 const text = (header: Uint8Array, start: number, length: number): string =>
   decoder.decode(header.subarray(start, start + length)).replace(/\0.*$/su, "");
 
@@ -98,10 +100,16 @@ export const installExecHelper = (
   artifact: HelperArtifact,
 ): Effect.Effect<string, ProviderError> =>
   Effect.suspend(() => {
-    let lock = locks.get(api);
+    const key = `${containerId}:${artifact.digest}`;
+    let apiLocks = locks.get(api);
+    if (apiLocks === undefined) {
+      apiLocks = new Map();
+      locks.set(api, apiLocks);
+    }
+    let lock = apiLocks.get(key);
     if (lock === undefined) {
       lock = Semaphore.makeUnsafe(1);
-      locks.set(api, lock);
+      apiLocks.set(key, lock);
     }
     return lock.withPermits(1)(
       Effect.gen(function* () {
@@ -116,10 +124,15 @@ export const installExecHelper = (
         const stream = api.stream;
         if (request === undefined || stream === undefined)
           return yield* Effect.fail(missingApi(ctx, "exec.installHelper"));
+        let digest = digests.get(artifact.bytes);
+        if (digest === undefined) {
+          digest = createHash("sha256").update(artifact.bytes).digest("hex");
+          digests.set(artifact.bytes, digest);
+        }
         if (
           !/^[a-f0-9]{64}$/u.test(artifact.digest) ||
           artifact.bytes.length === 0 ||
-          createHash("sha256").update(artifact.bytes).digest("hex") !== artifact.digest
+          digest !== artifact.digest
         ) {
           return yield* Effect.fail(failure("artifact-digest"));
         }
@@ -156,7 +169,13 @@ export const installExecHelper = (
         )
           return yield* Effect.fail(failure("unsafe-tmp-directory"));
 
+        let observations = verified.get(api);
+        if (observations === undefined) {
+          observations = new Set();
+          verified.set(api, observations);
+        }
         const verify = Effect.gen(function* () {
+          const cached = observations.has(key);
           let length = 0;
           const chunks: Uint8Array[] = [];
           // Two headers, alignment, end markers, and bounded provider record padding.
@@ -165,6 +184,8 @@ export const installExecHelper = (
             method: "GET",
             path: `/containers/${container}/archive?path=${encodeURIComponent(path)}`,
           }).pipe(
+            Stream.map((chunk) => (cached ? chunk.subarray(0, 1024 - length) : chunk)),
+            Stream.takeUntil((chunk) => cached && length + chunk.length >= 1024),
             Stream.runForEach((chunk) =>
               Effect.gen(function* () {
                 length += chunk.length;
@@ -188,11 +209,27 @@ export const installExecHelper = (
             archive.set(chunk, offset);
             offset += chunk.length;
           }
-          if (!trustedArchive(archive, directory, artifact))
-            return yield* Effect.fail(failure("untrusted-existing-helper"));
+          const dir = headerMetadata(archive.subarray(0, 512));
+          const file = headerMetadata(archive.subarray(512, 1024));
+          const trusted = cached
+            ? dir.valid &&
+              dir.name === `${directory}/` &&
+              dir.uid === 0 &&
+              dir.mode === 0o755 &&
+              dir.type === 53 &&
+              dir.size === 0 &&
+              file.valid &&
+              file.name === `${directory}/${CONTAINER_HELPER_FILE}` &&
+              file.uid === 0 &&
+              file.mode === 0o755 &&
+              file.type === 48 &&
+              file.size === artifact.bytes.length
+            : trustedArchive(archive, directory, artifact);
+          if (!trusted) return yield* Effect.fail(failure("untrusted-existing-helper"));
           return true;
         });
         if (!(yield* verify)) {
+          observations.delete(key);
           const response = yield* request({
             method: "PUT",
             path: `/containers/${container}/archive?path=/tmp&noOverwriteDirNonDir=true`,
@@ -210,6 +247,7 @@ export const installExecHelper = (
             );
           if (!(yield* verify)) return yield* Effect.fail(failure("installed-helper-missing"));
         }
+        observations.add(key);
         return `${path}/${CONTAINER_HELPER_FILE}`;
       }),
     );
