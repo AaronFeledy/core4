@@ -131,10 +131,12 @@ export const startExecWatch = (
     const heartbeat = Effect.gen(function* () {
       yield* Deferred.await(started);
       let first = true;
+      let launched = false;
       for (;;) {
         if (!first) {
           yield* Deferred.await(resume);
-          yield* Effect.sleep("500 millis");
+          if (launched) yield* Effect.sleep("500 millis");
+          launched = true;
         }
         first = false;
         pending = yield* Deferred.make<ExecWatchReceipt, ProviderError>();

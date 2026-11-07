@@ -225,7 +225,8 @@ export const supervisedExecStream = (
             return yield* Effect.fail(failure("control-receipt"));
           }
         }).pipe(
-          Effect.timeout("2 seconds"),
+          // The helper can spend five seconds joining a cancelled tree, plus transport overhead.
+          Effect.timeout("7 seconds"),
           Effect.mapError((error) =>
             error instanceof ServiceExecError
               ? error
@@ -312,7 +313,7 @@ export const supervisedExecStream = (
                     ? undefined
                     : yield* Effect.exit(
                         owned.watch.finished.pipe(
-                          Effect.timeout("3 seconds"),
+                          Effect.timeout("7 seconds"),
                           Effect.mapError((cause) =>
                             failure("watch-observation-unconfirmed", undefined, cause),
                           ),
@@ -358,7 +359,7 @@ export const supervisedExecStream = (
               yield* cleanupSession;
             }).pipe(
               Effect.interruptible,
-              Effect.timeout("8 seconds"),
+              Effect.timeout("20 seconds"),
               Effect.mapError((error) => failure("cleanup-unconfirmed", undefined, error)),
             );
             const result = yield* Effect.exit(cleanup);

@@ -5,7 +5,7 @@ import type { CommandSpec, ExecChunk } from "@lando/sdk/services";
 import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { execStream } from "../src/podman/exec.ts";
+import { supervisedExecStream as execStream } from "../src/exec-supervision.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
@@ -243,7 +243,6 @@ const fixture = (hooks: Hooks = {}) => {
       target,
       {
         command: ["test-command"],
-        raw: true,
         tty: false,
         ...(controller === undefined ? {} : { signal: controller.signal }),
         ...extra,
@@ -286,6 +285,7 @@ const fixture = (hooks: Hooks = {}) => {
 const failureText = (exit: Exit.Exit<unknown, unknown>) =>
   Exit.isFailure(exit) ? Cause.pretty(exit.cause) : "";
 const terminalChunks = (chunks: readonly ExecChunk[]) => chunks.filter((chunk) => "exitCode" in chunk);
+const flushWatchReply = Effect.promise<void>(() => new Promise((resolve) => setImmediate(resolve)));
 
 describe("non-TTY exec supervision lifecycle", () => {
   test.each([0, 7, 143])(
@@ -424,6 +424,31 @@ describe("non-TTY exec supervision lifecycle", () => {
     expect(f.events).toContain("cleanup");
   });
 
+  test("successful cancellation can join beyond the former two-second control deadline", async () => {
+    const controller = new AbortController();
+    const f = fixture({
+      before: (stage) => {
+        if (stage === "launch") return Effect.sync(() => controller.abort("SIGTERM"));
+        if (stage === "cancel") return Effect.sleep("4 seconds");
+        return Effect.void;
+      },
+    });
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(f.runEffect(controller));
+        yield* Effect.promise(() => f.waitForEvent("ready"));
+        yield* TestClock.adjust(Duration.millis(100));
+        yield* Effect.promise(() => f.waitForEvent("cancel"));
+        yield* flushWatchReply;
+        yield* TestClock.adjust(Duration.seconds(4));
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+    expect(Exit.isFailure(result.exit) && Cause.hasInterruptsOnly(result.exit.cause)).toBe(true);
+    expect(f.events).toContain("cleanup");
+    expect(terminalChunks(result.chunks)).toEqual([]);
+  });
+
   test("a missing completion receipt cannot produce terminal success", async () => {
     let missing = false;
     const f = fixture({
@@ -481,15 +506,17 @@ describe("non-TTY exec supervision lifecycle", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(f.runEffect());
         yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* TestClock.adjust(Duration.millis(100));
         yield* Effect.promise(() => f.waitForPulses(1));
-        yield* TestClock.adjust(Duration.millis(500));
+        yield* flushWatchReply;
         yield* Effect.promise(() => f.waitForPulses(2));
+        yield* flushWatchReply;
         expect(f.pulseCount()).toBe(2);
         const steadyCreates = countCreates();
         for (let pulse = 3; pulse <= 201; pulse++) {
           yield* TestClock.adjust(Duration.millis(500));
           yield* Effect.promise(() => f.waitForPulses(pulse));
+          yield* flushWatchReply;
           expect(f.pulseCount()).toBe(pulse);
           expect(countCreates()).toBe(steadyCreates);
         }
@@ -532,9 +559,10 @@ describe("non-TTY exec supervision lifecycle", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(f.runEffect());
         yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* TestClock.adjust(Duration.millis(100));
         yield* Effect.promise(() => f.waitForEvent("watch"));
-        yield* TestClock.adjust(Duration.seconds(15));
+        yield* flushWatchReply;
+        yield* TestClock.adjust(Duration.seconds(30));
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(TestClock.layer())),
     );
@@ -585,11 +613,12 @@ describe("non-TTY exec supervision lifecycle", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(f.runEffect());
         yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* TestClock.adjust(Duration.millis(100));
         yield* Effect.promise(() => f.waitForEvent("watch"));
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* flushWatchReply;
         yield* Effect.promise(() => running);
-        yield* TestClock.adjust(Duration.seconds(15));
+        yield* flushWatchReply;
+        yield* TestClock.adjust(Duration.seconds(30));
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(TestClock.layer())),
     );
@@ -674,7 +703,7 @@ describe("non-TTY exec supervision lifecycle", () => {
   test("missing helper capabilities fail closed before issuing a process", async () => {
     const f = fixture();
     const exit = await Effect.runPromiseExit(
-      execStream(plan, target, { command: ["test-command"], raw: true }, { api: f.api, ctx }).pipe(
+      execStream(plan, target, { command: ["test-command"] }, { api: f.api, ctx }).pipe(
         Stream.runDrain,
         Effect.scoped,
       ),
@@ -689,7 +718,7 @@ describe("non-TTY exec supervision lifecycle", () => {
       execStream(
         plan,
         target,
-        { command: ["test-command"], raw: true },
+        { command: ["test-command"] },
         {
           api: f.api,
           ctx,
