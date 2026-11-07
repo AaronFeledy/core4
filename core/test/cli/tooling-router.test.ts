@@ -24,6 +24,7 @@ import {
   toolingHelpRequested,
   toolingName,
   toolingRouteError,
+  toolingVersionRequested,
 } from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
@@ -37,6 +38,33 @@ const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>):
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 };
+
+test.each([
+  { argv: ["--version"], wrapper: false, versionFlag: false, expected: true },
+  { argv: ["--version"], wrapper: true, versionFlag: false, expected: false },
+  { argv: ["--version"], wrapper: false, versionFlag: true, expected: false },
+  { argv: ["--version", "2.0"], wrapper: false, versionFlag: false, expected: false },
+  { argv: ["--", "--version"], wrapper: false, versionFlag: false, expected: false },
+  { argv: ["-v"], wrapper: false, versionFlag: false, expected: false },
+  { argv: ["-V"], wrapper: false, versionFlag: false, expected: false },
+])(
+  "Given version input $argv with wrapper=$wrapper and versionFlag=$versionFlag, when routed, then refusal is $expected",
+  ({ argv, wrapper, versionFlag, expected }) => {
+    const input = Result.getOrThrow(
+      normalizeToolingInput("wipe", versionFlag ? { flags: { version: { boolean: true } } } : {}),
+    );
+    const route: ToolingRoute = {
+      _tag: "tooling",
+      commandId: "app:wipe",
+      name: "wipe",
+      summary: "Record input",
+      hidden: false,
+      input,
+      ...(wrapper ? { wrapper: true } : {}),
+    };
+    expect(toolingVersionRequested(route, argv)).toBe(expected);
+  },
+);
 
 for (const [token, commandId] of [
   ["stop", "app:stop"],
@@ -573,16 +601,19 @@ test("Given a declared-input task, when help follows the argument terminator, th
   expect(requests).toEqual([false, false]);
 });
 
-test("Given a task with no declared input, when argv asks for help, then the option passes through to the command", () => {
-  // Given — raw argv passthrough is what lets `lando composer --help` show the tool's own help
-  const { input: _input, ...route } = declaredInputRoute();
+test.each([true, false] as const)(
+  "Given a raw task with wrapper=%s, help follows its ownership",
+  (wrapper) => {
+    // Given
+    const { input: _input, ...route } = declaredInputRoute();
 
-  // When
-  const requested = toolingHelpRequested(route, ["--help"]);
+    // When
+    const requested = toolingHelpRequested({ ...route, ...(wrapper ? { wrapper } : {}) }, ["--help"]);
 
-  // Then
-  expect(requested).toBe(false);
-});
+    // Then
+    expect(requested).toBe(!wrapper);
+  },
+);
 
 test("Given a hidden declared-input task, when argv asks for help, then it routes to pre-execution refusal", () => {
   // Given — a disabled task is indexed hidden and must still fail with its tagged error
@@ -617,7 +648,7 @@ test("Given a task that declares its own help flag, when argv asks for help, the
   expect(requests).toEqual([false, false]);
 });
 
-test("Given a route that is not a normalized tooling task, when argv asks for help, then no help is requested", () => {
+test("Given mixed route kinds, help is requested only for the raw script", () => {
   // Given
   const routes: ReadonlyArray<ToolingRoute> = [
     { _tag: "not-tooling" },
@@ -636,7 +667,7 @@ test("Given a route that is not a normalized tooling task, when argv asks for he
   const requests = routes.map((route) => toolingHelpRequested(route, ["--help"]));
 
   // Then
-  expect(requests).toEqual([false, false, false]);
+  expect(requests).toEqual([false, true, false]);
 });
 
 const countingCatalog = () => {

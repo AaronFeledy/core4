@@ -8,6 +8,7 @@ import {
   LogLevelSelectionError,
   NotImplementedError,
   RendererSelectionError,
+  ToolingInputError,
 } from "@lando/sdk/errors";
 
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
@@ -59,6 +60,7 @@ import {
 } from "./format-flags";
 import { install as installCompiledDecoders } from "./generated/compiled-decoders.mjs";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./generated/host-proxy-allowlist";
+import { typeableName } from "./help-names";
 import {
   HOST_PROXY_CALL_COMMAND,
   type HostProxyLandoCall,
@@ -86,7 +88,12 @@ import {
 } from "./run-help";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { resolveToolingRoute, toolingHelpRequested, toolingRouteFailure } from "./tooling-router";
+import {
+  resolveToolingRoute,
+  toolingHelpRequested,
+  toolingRouteFailure,
+  toolingVersionRequested,
+} from "./tooling-router";
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -418,9 +425,45 @@ const runCompiledCli = async (
       setActiveCommandId("cli:unknown-command");
       await failUnknownCommand(route.token, catalog, false);
       return;
-    } else if (toolingHelpRequested(route, argvTail)) {
+    } else if (
+      (route._tag === "tooling" || route._tag === "bun-script") &&
+      toolingHelpRequested(route, argvTail)
+    ) {
       if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
-      else await printToolingHelp({ ...route, id: route.commandId }, route.aliasPolicy);
+      else
+        await printToolingHelp(
+          {
+            ...route,
+            id: route.commandId,
+            ...(route._tag === "bun-script" ? { source: route._tag } : {}),
+          },
+          route.aliasPolicy,
+        );
+      return;
+    } else if (
+      (route._tag === "tooling" || route._tag === "bun-script") &&
+      toolingVersionRequested(route, argvTail)
+    ) {
+      if (route.disabled) await routeResolvedTooling(route, argvTail, signal);
+      else {
+        const name = typeableName({
+          canonicalId: route.commandId,
+          builtInAliases: [],
+          implicitNamespaceStrip: true,
+          ...(route.aliasPolicy === undefined ? {} : { aliasPolicy: route.aliasPolicy }),
+        }).primary;
+        await renderPreCommandFailure({
+          commandId: route.commandId,
+          error: new ToolingInputError({
+            tool: route.commandId,
+            field: "version",
+            message: `\`lando ${name}\` is a project task and has no version of its own.`,
+            remediation: `Run \`lando version\` for Lando's version, or \`lando ${name} -- --version\` to pass --version to the task.`,
+          }),
+          rendererMode: activeRendererMode,
+          resultFormat: activeResultFormat,
+        });
+      }
       return;
     } else if (await routeResolvedTooling(route, argvTail, signal)) {
       return;

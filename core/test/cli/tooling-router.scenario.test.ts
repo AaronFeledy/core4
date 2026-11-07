@@ -319,33 +319,49 @@ test.each(["lando", "plain"])(
   30_000,
 );
 
-test("Given a cached custom task, when compiled dispatch receives version, then it routes the task before global version", async () => {
-  const compiled = await makeFixture("compiled-version-argv");
-  try {
-    // Given
-    await writeTask(compiled, "inspect-argv", ["echo -n dynamic-version-ok"]);
-    await writeFreshCache(compiled, "inspect-argv");
+test.each([true, false])(
+  "Given a cached task with wrapper=%s, when compiled dispatch receives version, then ownership applies before global version",
+  async (wrapper) => {
+    const compiled = await makeFixture("compiled-version-argv");
+    try {
+      // Given
+      await writeFile(
+        join(compiled.root, ".lando.yml"),
+        `name: version-task\ntooling:\n  inspect-argv:\n    service: ":host"\n    cmd: echo dynamic-version-ok\n    wrapper: ${wrapper}\n`,
+      );
 
-    // When
-    const compiledResult = await runCompiledDispatcher(compiled, [
-      "inspect-argv",
-      "--version",
-      "--format=json",
-    ]);
+      // When
+      const compiledResult = await runCompiledDispatcher(compiled, [
+        "inspect-argv",
+        "--version",
+        "--format=json",
+      ]);
 
-    // Then
-    expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
-    expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
-      command: "app:inspect-argv",
-      ok: true,
-      result: { stdout: "dynamic-version-ok" },
-    });
-  } finally {
-    await compiled.cleanup();
-  }
-}, 30_000);
+      // Then
+      expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(
+        wrapper ? 0 : 1,
+      );
+      expect(lastEnvelope(compiledResult.stdout)).toMatchObject(
+        wrapper
+          ? {
+              command: "app:inspect-argv",
+              ok: true,
+              result: { stdout: "dynamic-version-ok --version\n" },
+            }
+          : {
+              command: "app:inspect-argv",
+              ok: false,
+              error: { _tag: "ToolingInputError", field: "version", tool: "app:inspect-argv" },
+            },
+      );
+    } finally {
+      await compiled.cleanup();
+    }
+  },
+  30_000,
+);
 
-test("Given a cached custom task, when help is in its tail, then native dispatch runs the task", async () => {
+test("Given a cached raw script, when help is in its tail, then native dispatch answers help", async () => {
   const compiled = await makeFixture("compiled-help-argv");
   try {
     // Given
@@ -358,10 +374,11 @@ test("Given a cached custom task, when help is in its tail, then native dispatch
     // Then
     expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
     expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
-      command: "app:inspect-argv",
+      command: "cli:help",
       ok: true,
-      result: { stdout: "dynamic-help-ok" },
+      result: { target: { canonicalId: "app:inspect-argv", source: "tooling" } },
     });
+    expect(compiledResult.stdout).not.toContain("dynamic-help-ok");
   } finally {
     await compiled.cleanup();
   }

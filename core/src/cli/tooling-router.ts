@@ -28,7 +28,12 @@ import { toolingCacheRecovery } from "./tooling-cache-status";
 import { readCliAppCommandCache } from "./tooling-command-cache";
 import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
-export { type ToolingRoute, type NormalizedToolingRoute, toolingHelpRequested } from "./tooling-route";
+export {
+  type ToolingRoute,
+  type NormalizedToolingRoute,
+  toolingHelpRequested,
+  toolingVersionRequested,
+} from "./tooling-route";
 
 const UNKNOWN_REMEDIATION = "Check the task name with `lando help` or inspect the app's tooling definitions.";
 

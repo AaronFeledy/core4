@@ -13,6 +13,7 @@ interface ToolingRouteMetadata {
   readonly sourcePath?: string;
   readonly service?: string;
   readonly input?: NonNullable<CommandIndexEntry["input"]>;
+  readonly wrapper?: true;
   readonly aliasPolicy?: NonNullable<AppCommandIndexPayload["aliasPolicy"]>;
 }
 
@@ -67,6 +68,7 @@ export const normalizedToolingRoute = (
   ...(entry.hidden && sourcePath !== undefined ? { sourcePath } : {}),
   ...(entry.service === undefined ? {} : { service: entry.service }),
   ...(entry.input === undefined ? {} : { input: entry.input }),
+  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
   ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
 });
 
@@ -86,24 +88,40 @@ export const bunScriptRoute = (
   };
 };
 
-export const toolingHelpRequested = (
-  route: ToolingRoute,
-  argv: ReadonlyArray<string>,
-): route is NormalizedToolingRoute => {
+export const toolingHelpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
   switch (route._tag) {
     case "tooling":
     case "bun-script":
       if (!route.disabled) {
-        if (route.input === undefined) return false;
-        if (route.input.acceptsArguments && route.input.flags.length === 0 && route.input.args.length === 0)
-          return false;
-        if (route.input.flags.some((flag) => flag.name === "help" || flag.alias === "h")) return false;
+        if (route.input?.flags.some((flag) => flag.name === "help" || flag.alias === "h")) return false;
+        if (route.wrapper) return false;
       }
       for (const token of argv) {
         if (token === "--") return false;
         if (token === "--help" || token === "-h") return true;
       }
       return false;
+    case "not-tooling":
+    case "built-in":
+    case "plugin":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
+
+export const toolingVersionRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      if (argv.length !== 1 || argv[0] !== "--version") return false;
+      return (
+        route.disabled === true ||
+        (!route.wrapper && !route.input?.flags.some((flag) => flag.name === "version"))
+      );
     case "not-tooling":
     case "built-in":
     case "plugin":

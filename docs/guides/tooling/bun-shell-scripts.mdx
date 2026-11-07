@@ -172,7 +172,9 @@ lando help --format=json
 
 Read `result.toolingMetadata.status`: `fresh`, `not-app`, or `unavailable`. After a failed rebuild, `status` is `unavailable` with `reason: "rebuild-failed"`, a `remediation`, and the underlying `error` as `{ _tag, message }`; human help prints `This app's commands are unavailable:` with the same message while still listing built-in and plugin commands. Fix the reported problem and run help again. `toolingMetadata` covers only scripts and Landofile tooling; plugin commands report through the separate `result.pluginMetadata` and don't depend on this cache.
 
-For a newly added script with declared inputs, `lando <name> --help` shows those inputs right away. Scripts without input declarations receive `--help` as a raw argument. If any declared flag is named `help` or aliased to `h`, Lando leaves both help spellings to the script's input parser instead of showing its own help.
+`lando <name> --help` and `lando <name> -h` show Lando's help without running the script. Either spelling works anywhere before the first `--`. To pass help to the script, run `lando <name> -- --help`: Lando consumes that first `--` and the script receives `--help`. If any declared flag is named `help` or aliased to `h`, Lando leaves both help spellings to the script's input parser instead of showing its own help.
+
+A lone `lando <name> --version` fails with `ToolingInputError` before the body runs, unless a declared flag is named `version`. Run `lando version` for Lando's version, or `lando <name> -- --version` to pass the option to the script. With other tokens, such as `lando <name> --version 2.0`, it is ordinary script input. `wrapper` is not a front-matter key; a thin CLI wrapper belongs in a Landofile task with [`wrapper: true`](../flags-and-args/#forward-undeclared-input).
 
 ## List your commands
 
@@ -446,6 +448,28 @@ lando stamp abc1234
 ## Build, stamp, and seed an env file
 
 <Guide>
+  <Scenario id="raw-script-help-does-not-run" render={false} reason="Both help spellings on an undeclared script must leave its marker absent">
+    <Step name="prepare-raw-script">
+      <UseFixture name="raw-help" />
+    </Step>
+    <Step name="show-raw-script-help">
+      <Verify command="lando wipe --help" expect={{ stdout: { regex: "lando wipe" } }} />
+      <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
+      <Verify command="lando wipe -h" expect={{ stdout: { regex: "lando wipe" } }} />
+      <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
+    </Step>
+    <Step name="refuse-lone-script-version">
+      <Verify command="lando wipe --version --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingInputError[\\s\\S]*\"field\":\\s*\"version\"" } }} />
+      <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
+    </Step>
+    <Step name="forward-help-after-separator">
+      <Run command="lando wipe -- --help" />
+      <Verify file="raw-help/marker" expect={{ regex: "^--help\n$" }} />
+    </Step>
+    <Step name="cleanup-raw-script">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="scripts-demo" />

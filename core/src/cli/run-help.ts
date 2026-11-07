@@ -171,7 +171,15 @@ export const dispatchHelpTarget = async (
       switch (route._tag) {
         case "tooling":
         case "bun-script":
-          if (!route.disabled) return printToolingHelp({ ...route, id: route.commandId }, route.aliasPolicy);
+          if (!route.disabled)
+            return printToolingHelp(
+              {
+                ...route,
+                id: route.commandId,
+                ...(route._tag === "bun-script" ? { source: route._tag } : {}),
+              },
+              route.aliasPolicy,
+            );
           return renderPreCommandFailure({
             commandId: route.commandId,
             error: new ToolingDisabledError({

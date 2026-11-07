@@ -73,6 +73,8 @@ const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): T
   hidden: entry.hidden,
   ...(entry.service === undefined ? {} : { service: entry.service }),
   ...(entry.input === undefined ? {} : { input: entry.input }),
+  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
+  ...(entry.source === undefined ? {} : { source: entry.source }),
 });
 
 export const toolingHelpEntryForToken = (
