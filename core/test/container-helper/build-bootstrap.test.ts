@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { END_OF_ARCHIVE, encodeUstarHeader, padToBlock } from "@lando/container-runtime/tar";
+import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
 import type { ExecChunk } from "@lando/sdk/services";
-import { Effect, Stream } from "effect";
+import { Cause, Effect, Stream } from "effect";
 import {
   containerHelperBuildArtifacts,
   containerHelperBuildSpec,
@@ -162,6 +163,37 @@ test("bootstrap preserves a provider cleanup failure after command success", () 
     await expect(
       Effect.runPromise(writeContainerHelperBuildArchive(output, join(root, "artifact.tar"))),
     ).rejects.toThrow("remove failed");
+  }));
+
+test("bootstrap retains complete artifacts for publication when only container removal fails", () =>
+  withRoot(async (root) => {
+    const bytes = archive(entries);
+    const output = Stream.scoped(
+      Stream.fromEffect(
+        Effect.acquireRelease(Effect.void, () =>
+          Effect.failCause(
+            failureDefectCause(annotateFailureRole(Cause.fail(new Error("remove failed")), "cleanup")),
+          ),
+        ),
+      ),
+    ).pipe(
+      Stream.flatMap(() =>
+        Stream.fromIterable<ExecChunk>([
+          { kind: "stdout", chunk: encoder.encode(bytes.toString("base64")) },
+          { exitCode: 0 },
+        ]),
+      ),
+    );
+    let failure: unknown;
+    const path = join(root, "artifact.tar");
+    await Effect.runPromise(
+      writeContainerHelperBuildArchive(output, path, (cause) => {
+        failure = Cause.squash(cause);
+      }),
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(await readFile(path)).toEqual(bytes);
+    expect(containerHelperBuildArtifacts(await readFile(path)).get(entries[0][0])).toEqual(entries[0][1]);
   }));
 
 test.each(["../escape", "/absolute", "licenses/go/extra", "linux-x64/../escape"])(

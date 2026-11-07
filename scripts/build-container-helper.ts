@@ -2,7 +2,8 @@
 /** Build the helper through Lando's scoped ephemeral-container lifecycle, without needing a helper first. */
 import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { Effect, type Scope, Stream } from "effect";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, type Scope, Stream } from "effect";
 
 import {
   CONTAINER_HELPER_ARCHES,
@@ -97,10 +98,11 @@ export const containerHelperBuildSpec = (options: {
   remove: true,
 });
 
-/** Decode ASCII base64 so daemon log drivers cannot corrupt binary tar bytes; a terminal status and successful scope cleanup are required before the caller publishes it. */
+/** Decode the ASCII transport; only a completed build can survive an explicitly reported cleanup failure. */
 export const writeContainerHelperBuildArchive = (
   output: Stream.Stream<ExecChunk, ProviderError, Scope.Scope>,
   path: string,
+  onCleanupFailure?: (cause: Cause.Cause<ProviderError | Error>) => void,
 ): Effect.Effect<void, ProviderError | Error> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -122,31 +124,43 @@ export const writeContainerHelperBuildArchive = (
         await sink.write(bytes);
       };
       let terminal: number | undefined;
-      yield* Stream.runForEach(output, (chunk) =>
-        Effect.tryPromise(async () => {
-          if (terminal !== undefined) throw new Error("Helper build emitted data after its terminal status.");
-          if ("exitCode" in chunk) terminal = chunk.exitCode;
-          else if (chunk.kind === "stderr") process.stderr.write(chunk.chunk);
-          else {
-            encodedSize += chunk.chunk.length;
-            if (encodedSize > MAX_ARCHIVE_BYTES * 1.5)
-              throw new Error("Helper build base64 exceeded its size limit.");
-            if (!chunk.chunk.every((byte) => byte < 128))
-              throw new Error("Helper build emitted non-ASCII base64.");
-            const encoded = new TextDecoder().decode(chunk.chunk);
-            if (!/^[A-Za-z0-9+/=\r\n]*$/u.test(encoded))
-              throw new Error("Helper build emitted invalid base64.");
-            pending += encoded.replace(/[\r\n]/gu, "");
-            const complete = Math.max(0, Math.floor(pending.length / 4) * 4 - 4);
-            if (complete > 0) {
-              const prefix = pending.slice(0, complete);
-              if (prefix.includes("=")) throw new Error("Helper build emitted premature base64 padding.");
-              await writeDecoded(prefix);
-              pending = pending.slice(complete);
+      const outcome = yield* Effect.exit(
+        Stream.runForEach(output, (chunk) =>
+          Effect.tryPromise(async () => {
+            if (terminal !== undefined)
+              throw new Error("Helper build emitted data after its terminal status.");
+            if ("exitCode" in chunk) terminal = chunk.exitCode;
+            else if (chunk.kind === "stderr") process.stderr.write(chunk.chunk);
+            else {
+              encodedSize += chunk.chunk.length;
+              if (encodedSize > MAX_ARCHIVE_BYTES * 1.5)
+                throw new Error("Helper build base64 exceeded its size limit.");
+              if (!chunk.chunk.every((byte) => byte < 128))
+                throw new Error("Helper build emitted non-ASCII base64.");
+              const encoded = new TextDecoder().decode(chunk.chunk);
+              if (!/^[A-Za-z0-9+/=\r\n]*$/u.test(encoded))
+                throw new Error("Helper build emitted invalid base64.");
+              pending += encoded.replace(/[\r\n]/gu, "");
+              const complete = Math.max(0, Math.floor(pending.length / 4) * 4 - 4);
+              if (complete > 0) {
+                const prefix = pending.slice(0, complete);
+                if (prefix.includes("=")) throw new Error("Helper build emitted premature base64 padding.");
+                await writeDecoded(prefix);
+                pending = pending.slice(complete);
+              }
             }
-          }
-        }).pipe(Effect.mapError((error) => (error.cause instanceof Error ? error.cause : error))),
+          }).pipe(Effect.mapError((error) => (error.cause instanceof Error ? error.cause : error))),
+        ),
       );
+      if (
+        outcome._tag === "Failure" &&
+        !outcome.cause.reasons.every(
+          (reason) =>
+            !Cause.isInterruptReason(reason) &&
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === "cleanup",
+        )
+      )
+        return yield* Effect.failCause(outcome.cause);
       if (terminal !== 0)
         return yield* Effect.fail(
           new Error(`Helper build did not complete successfully (exit ${terminal ?? "unobserved"}).`),
@@ -154,6 +168,10 @@ export const writeContainerHelperBuildArchive = (
       yield* Effect.tryPromise(() => writeDecoded(pending)).pipe(
         Effect.mapError((error) => (error.cause instanceof Error ? error.cause : error)),
       );
+      if (outcome._tag === "Failure") {
+        if (onCleanupFailure === undefined) return yield* Effect.failCause(outcome.cause);
+        onCleanupFailure(outcome.cause);
+      }
     }),
   );
 
@@ -215,12 +233,15 @@ if (import.meta.main) {
       source: await containerHelperSourceArchive(CONTAINER_HELPER_SOURCE_ROOT),
     });
     const archive = join(temporary, "artifacts.tar");
+    let cleanupFailure: Cause.Cause<ProviderError | Error> | undefined;
     await Effect.runPromise(
       Effect.gen(function* () {
         const registry = yield* RuntimeProviderRegistry;
         const provider = yield* registry.select(yield* hostProviderId);
         yield* provider.pullArtifact({ ref: image, policy: "missing" });
-        yield* writeContainerHelperBuildArchive(provider.runStream(spec), archive);
+        yield* writeContainerHelperBuildArchive(provider.runStream(spec), archive, (cause) => {
+          cleanupFailure = cause;
+        });
       }).pipe(
         Effect.provide(
           makeLandoRuntime({
@@ -250,6 +271,7 @@ if (import.meta.main) {
       await rename(path, join(dist, name));
     }
     await writeFile(CONTAINER_HELPER_SOURCE_DIGEST_PATH, `${digest}\n`);
+    if (cleanupFailure !== undefined) throw Cause.squash(cleanupFailure);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
