@@ -1,5 +1,4 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { HttpTrustError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
 import { REDACTED } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
@@ -20,6 +19,7 @@ import {
 import { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 import { requestBody } from "./request-body.ts";
 import { failureDetail, observeResponse } from "./response-events.ts";
+import { trustFailure } from "./trust-failure.ts";
 
 export { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 
@@ -44,39 +44,6 @@ const redactedUrl = (url: URL, policy: RequestPolicyShape): string => {
 
 const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unknown) =>
   new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
-
-const isProxyTunnelError = (cause: unknown): cause is Error & { code: "ERR_PROXY_TUNNEL"; status: number } =>
-  cause instanceof Error &&
-  "code" in cause &&
-  cause.code === "ERR_PROXY_TUNNEL" &&
-  "status" in cause &&
-  typeof cause.status === "number";
-
-const trustFailure = (url: URL, cause: unknown, redact: (value: string) => string): unknown => {
-  if (isProxyTunnelError(cause)) {
-    return new HttpTrustError({
-      message: redact(cause.message),
-      urlOrigin: url.origin,
-      kind: "proxy-tunnel-refused",
-      remediation: `Proxy answered ${cause.status}; check network.proxy / HTTPS_PROXY credentials or add the host to network.proxy.noProxy / NO_PROXY.`,
-      cause,
-    });
-  }
-  if (
-    url.protocol === "https:" &&
-    cause instanceof Error &&
-    /cert|tls|ssl|self.signed|issuer/i.test(cause.message)
-  ) {
-    return new HttpTrustError({
-      message: "TLS trust verification failed",
-      urlOrigin: url.origin,
-      kind: "missing-custom-ca",
-      remediation: "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS.",
-      cause,
-    });
-  }
-  return cause;
-};
 
 export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.HttpClient> => {
   const env = { ...(options.env ?? process.env) };

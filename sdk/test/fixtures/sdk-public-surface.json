@@ -702,6 +702,7 @@
       "HostProxySocketStaleError",
       "HostProxyTransportUnavailableError",
       "HttpTrustError",
+      "HttpTrustErrorKind",
       "InitTargetExistsError",
       "InteractionCancelledError",
       "InteractionRequiredError",
@@ -2184,6 +2185,7 @@
       "runStateStoreContract",
       "runToolingEngineContractSuite",
       "runTunnelServiceContract",
+      "testCaPem",
       "yamlRoundTripCorpus",
       "yamlRoundTripRecord"
     ],

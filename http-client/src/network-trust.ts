@@ -19,6 +19,7 @@
  * from `core/src/services/index.ts`: it is the in-process injection mechanism,
  * not a public contract.
  */
+import { X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import tls from "node:tls";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -55,6 +56,24 @@ export interface LoadedCaPem {
   readonly digest: string;
 }
 
+const PEM_CERTIFICATE = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/gu;
+
+/** True when the text holds at least one PEM certificate and every certificate block parses. */
+const containsCertificate = (pem: string): boolean => {
+  const blocks = pem.match(PEM_CERTIFICATE) ?? [];
+  return (
+    blocks.length > 0 &&
+    blocks.every((block) => {
+      try {
+        new X509Certificate(block);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+  );
+};
+
 export const loadCaPems = (
   paths: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyArray<LoadedCaPem>, CaPemLoadError> =>
@@ -71,11 +90,18 @@ export const loadCaPems = (
             cause,
           }),
       }).pipe(
-        Effect.map((pem) => ({
-          path,
-          pem,
-          digest: sha256Hex(pem),
-        })),
+        Effect.flatMap((pem) =>
+          containsCertificate(pem)
+            ? Effect.succeed({ path, pem, digest: sha256Hex(pem) })
+            : Effect.fail(
+                new CaPemLoadError({
+                  message: `CA certificate file does not contain a valid PEM certificate: ${path}`,
+                  path,
+                  remediation:
+                    "Point network.ca.certs or LANDO_NETWORK_CA_CERTS at PEM files with at least one -----BEGIN CERTIFICATE----- block (convert DER with `openssl x509 -inform der -in <file> -out <file>.pem`), or fix the Landofile security.ca path.",
+                }),
+              ),
+        ),
       ),
     ),
     { concurrency: "unbounded" },
