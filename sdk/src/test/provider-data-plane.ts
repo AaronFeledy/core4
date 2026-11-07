@@ -496,14 +496,12 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         ),
       ),
     waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, _options) =>
-      containers.destroy(target, _options).pipe(
-        Effect.flatMap((outcome) =>
-          Effect.sync(() => {
-            const applied = testAppliedEnvironments.delete(target.app);
-            return applied ? { kind: "destroyed" as const } : outcome;
-          }),
-        ),
+    destroy: (target, options) =>
+      containers.destroy(target, options).pipe(
+        Effect.map((outcome) => {
+          const applied = testAppliedEnvironments.delete(target.app);
+          return applied ? { kind: "destroyed" as const } : outcome;
+        }),
       ),
 
     readAppEnvironment: (target, names) =>

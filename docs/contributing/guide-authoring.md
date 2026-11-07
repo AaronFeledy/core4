@@ -195,8 +195,8 @@ buffered renderer IO, and exit-status sink. Scenarios have separate Lando data,
 cache, configuration, and system-plugin roots, so global-app state stays within
 one scenario. Fixture paths resolve from the repository root captured by the
 harness. Commands never change the host process directory or replace its streams.
-The harness does not answer container commands itself: a static-site fetch belongs
-in an e2e scenario, with `<Cleanup />` and `lando destroy -y`.
+For a static-site fetch, use an e2e scenario with `<Cleanup />` and
+`lando destroy -y`.
 
 `<Verify event="post-start" />` passes when the most recent CLI command in
 the scenario published that event, so put it right after the command:
