@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
-import { startStdioClient } from "@lando/mcp/testing";
+import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
@@ -19,7 +19,7 @@ const fixture = (spec: ExecutableCommandSpec) =>
             Layer.succeed(McpRuntimeConfig, {
               commandEntries: registry.commandEntries,
               defaultAllowlist: [],
-              runtimeLayer: Layer.empty,
+              apps: testAppGenerations(),
             }),
           ),
         ),

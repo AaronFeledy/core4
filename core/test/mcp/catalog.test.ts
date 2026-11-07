@@ -5,7 +5,12 @@ import { McpToolInputError } from "@lando/sdk/errors";
 import { ToolingInputRevision } from "@lando/sdk/schema";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
-import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
+import {
+  type McpCommandEntry,
+  appPathInputSchema,
+  deriveToolInputSchema,
+  validateToolInput,
+} from "@lando/mcp/registry";
 import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/describe.ts";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
@@ -91,6 +96,7 @@ describe("deriveToolInputSchema", () => {
           type: "object",
           properties: { name: { type: "string" } },
         },
+        appPath: { type: "string", description: expect.stringContaining("App directory") },
       },
     });
   });
@@ -257,6 +263,7 @@ describe("buildCatalog", () => {
           properties: { target: { type: "string" } },
           required: ["target"],
         },
+        appPath: appPathInputSchema(),
       },
     });
   });

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
-import { startStdioClient } from "@lando/mcp/testing";
+import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { PrivilegeService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -86,7 +86,7 @@ const withResourceSession = async <A, E>(
               commandEntries: [],
               defaultAllowlist: [],
               resources,
-              runtimeLayer: Layer.succeedContext(retained),
+              apps: testAppGenerations(Layer.succeedContext(retained)),
             });
             const host = serviceLayer.pipe(
               Layer.provide(Layer.succeedContext(retained)),

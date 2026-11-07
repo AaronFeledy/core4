@@ -1,11 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { writeStdioLine } from "@lando/renderer/io";
-import { Effect, Layer, Result, Schema } from "effect";
+import { type Context, Effect, Layer, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import type { LogLevel } from "@lando/sdk/schema";
 import type {
   AppPlanSanitizer,
   AppPlanner,
@@ -44,11 +43,11 @@ import type {
 } from "@lando/sdk/services";
 
 import { bundledPluginModules } from "@lando/engine/composition";
-import type { LoggerMode } from "@lando/engine/logging/service";
 import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import type { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
+import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";
 import {
   type BootstrapLifecycleTracker,
   makeBootstrapLifecycleTracker,
@@ -62,7 +61,6 @@ import type {
 } from "@lando/engine/runtime/runtime-layer-factory";
 import {
   LandoRuntimeOptions,
-  type LibraryRendererMode,
   type NormalizedPluginPolicy,
   bootstrapError,
   collectEmbeddingPluginLayers,
@@ -83,10 +81,44 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
+import {
+  makeGenerationAppBootstrapLayer,
+  makeGenerationHostBootstrapLayer,
+} from "./generated/layers/generation";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
+import type { MinimalBootstrapServices } from "./generated/layers/minimal";
 import "./engine-composition";
 
 export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
+
+type HostLayer = ReturnType<typeof makeGenerationHostBootstrapLayer>;
+type GenerationLayer = ReturnType<typeof makeGenerationAppBootstrapLayer>;
+export type GenerationHostServices = Layer.Success<HostLayer>;
+export type AppGenerationServices = Layer.Success<GenerationLayer>;
+
+export interface LandoGenerationRuntime {
+  readonly host: HostLayer;
+  readonly generation: (input: {
+    readonly cwd: string;
+    readonly host: Context.Context<MinimalBootstrapServices>;
+  }) => GenerationLayer;
+  readonly pluginPolicy: NormalizedPluginPolicy;
+}
+
+export const makeLandoGenerationRuntime = (
+  options: LandoRuntimeOptions,
+): Result.Result<LandoGenerationRuntime, LandoRuntimeBootstrapError> =>
+  Result.map(prepareRuntime({ ...options, bootstrap: "app" }, undefined), (prepared) => ({
+    host: makeGenerationHostBootstrapLayer(prepared.inputs, interactionServiceFor(prepared.options)),
+    generation: ({ cwd, host }) =>
+      makeGenerationAppBootstrapLayer({
+        ...prepared.inputs,
+        cwd,
+        lifecycle: makeBootstrapLifecycleTracker(),
+        minimalContext: host,
+      }),
+    pluginPolicy: prepared.pluginPolicy,
+  }));
 
 type RuntimeProviderRegistryLayer = Layer.Layer<RuntimeProviderRegistry, never, never>;
 
@@ -188,36 +220,98 @@ type RuntimeLayer =
   | Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
 
-const runtimeLayerFor = (
-  bootstrap: BootstrapLevel,
-  loggerMode: LoggerMode,
-  logLevel: LogLevel | undefined,
-  structured: boolean,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-  pluginPolicy: NormalizedPluginPolicy,
-  lifecycle: BootstrapLifecycleTracker,
-  pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
-  cwd: string,
-  configInputs: GlobalConfigSources["Service"],
-): RuntimeLayer =>
-  makeGeneratedBootstrapLayer(bootstrap, {
-    runtimeLayerFactory: { make: makeLandoRuntime },
+export interface PreparedRuntime {
+  readonly options: LandoRuntimeOptions;
+  readonly bootstrap: BootstrapLevel;
+  readonly capturedCwd: string;
+  readonly pluginPolicy: NormalizedPluginPolicy;
+  readonly lifecycle: BootstrapLifecycleTracker;
+  readonly embeddingLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
+  readonly inputs: BootstrapLayerInputs;
+}
+
+/** Decode runtime options into the generated bootstrap inputs shared by every runtime factory. */
+export const prepareRuntime = (
+  options: unknown,
+  snapshot: GlobalConfigSnapshot["Service"] | undefined,
+): Result.Result<PreparedRuntime, LandoRuntimeBootstrapError> => {
+  const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
+
+  if (Result.isFailure(decoded)) {
+    return Result.fail(bootstrapError("Invalid Lando runtime options.", decoded.failure));
+  }
+
+  const pluginPolicy = normalizePluginPolicy(decoded.success.plugins);
+  if (pluginPolicy.discovery.bundled && bundledPluginModules().length === 0) {
+    return Result.fail(
+      new LandoRuntimeBootstrapError({
+        message:
+          "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
+        stage: "plugins",
+        remediation:
+          "Import `@lando/core/bundled-plugins` before constructing the runtime (or use the CLI entrypoint that loads bundled plugins).",
+      }),
+    );
+  }
+  const capturedCwd = decoded.success.cwd ?? process.cwd();
+  const lifecycle = makeBootstrapLifecycleTracker();
+  const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
+  const hostLayersResult = collectEmbeddingPluginLayers(
+    runtimeProviderRegistryOverride === undefined
+      ? pluginPolicy.layers
+      : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
+  );
+
+  if (Result.isFailure(hostLayersResult)) {
+    return Result.fail(hostLayersResult.failure);
+  }
+  const logging = resolveRuntimeLogging(decoded.success);
+  return Result.succeed({
+    options: decoded.success,
+    bootstrap: decoded.success.bootstrap ?? "app",
+    capturedCwd,
+    pluginPolicy,
     lifecycle,
-    loggerMode,
-    logLevel,
-    structured,
-    writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
-    stderrIsTTY: process.stderr.isTTY === true,
-    rendererMode,
-    telemetryEnabled,
-    pluginDiscovery: pluginPolicy.discovery,
-    pluginLayers,
-    pluginManifests: pluginPolicy.manifests,
-    externalImports: pluginPolicy.externalImports,
-    cwd,
-    configInputs,
-  }) as RuntimeLayer;
+    embeddingLayers: hostLayersResult.success,
+    inputs: {
+      runtimeLayerFactory: { make: makeLandoRuntime },
+      lifecycle,
+      loggerMode: logging.loggerMode,
+      logLevel: logging.logLevel,
+      structured: logging.structured,
+      writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
+      stderrIsTTY: process.stderr.isTTY === true,
+      rendererMode: normalizeLibraryRendererMode(
+        decoded.success.renderer ?? decoded.success.config?.renderer,
+      ),
+      telemetryEnabled: decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
+      pluginDiscovery: pluginPolicy.discovery,
+      pluginLayers: hostLayersResult.success,
+      pluginManifests: pluginPolicy.manifests,
+      externalImports: pluginPolicy.externalImports,
+      cwd: capturedCwd,
+      configInputs: {
+        env: { ...process.env },
+        host: decoded.success.config,
+        sources: {
+          user: decoded.success.configSources?.user ?? true,
+          env: decoded.success.configSources?.env ?? true,
+        },
+        rootOverrides: rootOverridesFromConfig(decoded.success.config),
+        ...(snapshot === undefined ? {} : { ...snapshot.inputs, snapshot }),
+      },
+    },
+  });
+};
+
+export const interactionServiceFor = (options: LandoRuntimeOptions) =>
+  Layer.succeed(
+    InteractionServiceTag,
+    makeInteractionService({
+      defaultMode: options.interaction ?? "non-interactive",
+      resolveDriver: makeDefaultResolveInteractionDriver(),
+    }),
+  );
 
 const signalHandlersLayer = Layer.effectDiscard(
   Effect.withFiber((fiber) => installSignalHandlers({ fiber })),
@@ -256,84 +350,27 @@ export function makeLandoRuntime(
 export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapshot["Service"]): RuntimeLayer {
-  const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
-
-  if (Result.isFailure(decoded)) {
-    return Layer.effectDiscard(
-      Effect.fail(bootstrapError("Invalid Lando runtime options.", decoded.failure)),
-    );
-  }
-
-  const pluginPolicy = normalizePluginPolicy(decoded.success.plugins);
-  if (pluginPolicy.discovery.bundled && bundledPluginModules().length === 0) {
-    return Layer.effectDiscard(
-      Effect.fail(
-        new LandoRuntimeBootstrapError({
-          message:
-            "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
-          stage: "plugins",
-          remediation:
-            "Import `@lando/core/bundled-plugins` before constructing the runtime (or use the CLI entrypoint that loads bundled plugins).",
-        }),
-      ),
-    );
-  }
-  const capturedCwd = decoded.success.cwd ?? process.cwd();
-  const lifecycle = makeBootstrapLifecycleTracker();
-  const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
-  const hostLayersResult = collectEmbeddingPluginLayers(
-    runtimeProviderRegistryOverride === undefined
-      ? pluginPolicy.layers
-      : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
-  );
-
-  if (Result.isFailure(hostLayersResult)) {
-    return Layer.effectDiscard(Effect.fail(hostLayersResult.failure));
-  }
-  const bootstrap = decoded.success.bootstrap ?? "app";
-  const logging = resolveRuntimeLogging(decoded.success);
-  const baseLayer = runtimeLayerFor(
-    bootstrap,
-    logging.loggerMode,
-    logging.logLevel,
-    logging.structured,
-    normalizeLibraryRendererMode(decoded.success.renderer ?? decoded.success.config?.renderer),
-    decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
-    pluginPolicy,
-    lifecycle,
-    hostLayersResult.success,
-    capturedCwd,
-    {
-      env: { ...process.env },
-      host: decoded.success.config,
-      sources: {
-        user: decoded.success.configSources?.user ?? true,
-        env: decoded.success.configSources?.env ?? true,
-      },
-      rootOverrides: rootOverridesFromConfig(decoded.success.config),
-      ...(snapshot === undefined ? {} : { ...snapshot.inputs, snapshot }),
-    },
-  );
+  const prepared = prepareRuntime(options, snapshot);
+  if (Result.isFailure(prepared)) return Layer.effectDiscard(Effect.fail(prepared.failure));
+  const { options: decoded, bootstrap, capturedCwd, lifecycle, embeddingLayers, inputs } = prepared.success;
+  const baseLayer = makeGeneratedBootstrapLayer(bootstrap, inputs) as RuntimeLayer;
 
   // Library mode defaults prompts to non-interactive; the option overrides the
   // bootstrap default mode and is itself overridden by an explicit host
   // InteractionService in plugins.layers (merged last, so it wins).
-  const interactionMode = decoded.success.interaction ?? "non-interactive";
-  const interactionOverride = Layer.succeed(
-    InteractionServiceTag,
-    makeInteractionService({
-      defaultMode: interactionMode,
-      resolveDriver: makeDefaultResolveInteractionDriver(),
-    }),
-  ) as unknown as Layer.Layer<unknown, unknown, unknown>;
+  const interactionOverride = interactionServiceFor(decoded) as unknown as Layer.Layer<
+    unknown,
+    unknown,
+    unknown
+  >;
 
   const baseHostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> = [
     Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
     interactionOverride,
-    ...(bootstrap === "none" || bootstrap === "minimal" ? hostLayersResult.success : []),
+    ...(bootstrap === "none" || bootstrap === "minimal" ? embeddingLayers : []),
   ];
   const hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =
-    decoded.success.installSignalHandlers === true
+    decoded.installSignalHandlers === true
       ? [...baseHostLayers, signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>]
       : baseHostLayers;
   return mergeRuntimeWithHostLayers(

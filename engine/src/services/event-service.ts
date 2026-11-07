@@ -71,6 +71,39 @@ export class EventDispatchControl extends Context.Service<
     Layer.succeed(this, this.of(service));
 }
 
+/**
+ * The subscriber registration of the publishing fiber's app generation. Fibers outside a generation
+ * request leave it unset and dispatch through the session registration installed on the service.
+ */
+export const EventDispatchScope = Context.Reference<EventDispatchRegistration | undefined>(
+  "@lando/engine/EventDispatchScope",
+  { defaultValue: () => undefined },
+);
+
+/**
+ * A generation-local dispatch control: subscriber layers built inside one app generation install
+ * here instead of replacing the shared service's session registration. Provide `registration`
+ * as {@link EventDispatchScope} around requests that run in that generation.
+ */
+export const makeScopedEventDispatch = (): {
+  readonly control: Context.Service.Shape<typeof EventDispatchControl>;
+  readonly registration: EventDispatchRegistration;
+} => {
+  let installed: EventDispatchRegistration = { hasSubscribers: () => false, dispatch: () => Effect.void };
+  return {
+    control: EventDispatchControl.of({
+      install: (next) =>
+        Effect.sync(() => {
+          installed = next;
+        }),
+    }),
+    registration: {
+      hasSubscribers: (eventName) => installed.hasSubscribers(eventName),
+      dispatch: (event) => installed.dispatch(event),
+    },
+  };
+};
+
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
 const historyRedactionOptions = (): RedactionForProfileOptions => ({ sourceEnv: process.env });
@@ -138,8 +171,8 @@ const makeEventService = (
     publish: (event) =>
       readEventName(event).pipe(
         Effect.flatMap((eventName) =>
-          Effect.suspend(() => {
-            const registration = getDispatch();
+          Effect.flatMap(EventDispatchScope, (scoped) => {
+            const registration = scoped ?? getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
             return redactForHistory(redaction, event).pipe(
               Effect.flatMap((safe) =>

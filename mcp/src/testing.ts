@@ -1,7 +1,32 @@
-import { type Cause, Deferred, Effect, Layer, Predicate, Queue, Schema, Sink, Stdio, Stream } from "effect";
+import {
+  type Cause,
+  Context,
+  Deferred,
+  Effect,
+  Layer,
+  Predicate,
+  Queue,
+  Schema,
+  Sink,
+  Stdio,
+  Stream,
+} from "effect";
+import { type McpAppGenerationsSource, singleAppGenerations } from "./apps";
 import type { McpToolCallRequest } from "./dispatch";
 
 type JsonRpcMessage = Schema.JsonObject;
+
+/**
+ * Session generations for tests: one generation per acquisition directory over `runtime`, which
+ * each session builds when it opens and releases when it closes. Without `runtime` the
+ * generations share one empty context for the life of the returned value.
+ */
+export const testAppGenerations = (
+  runtime?: Layer.Layer<unknown> | Layer.Layer<never>,
+): McpAppGenerationsSource => {
+  if (runtime === undefined) return Effect.succeed(singleAppGenerations(Context.empty()));
+  return Effect.map(Layer.build(runtime), singleAppGenerations);
+};
 
 export const startStdioClient = Effect.fnUntraced(function* (
   serve: Effect.Effect<void, import("@lando/sdk/errors").McpTransportError, Stdio.Stdio>,
@@ -101,11 +126,7 @@ export const makeStdioClient = Effect.fnUntraced(function* () {
             ok: true,
             result: { ok: Predicate.isObject(envelope) && envelope.ok === true, envelope },
           };
-        const content = result.content;
-        const first = Array.isArray(content) ? content[0] : undefined;
-        const error: unknown =
-          Predicate.isObject(first) && typeof first.text === "string" ? JSON.parse(first.text) : undefined;
-        return { id: message.id, ok: false, error };
+        return { id: message.id, ok: false, error: message.error };
       }),
   );
   return {

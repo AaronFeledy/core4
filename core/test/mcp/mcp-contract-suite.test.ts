@@ -26,7 +26,7 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
-import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
+import { type McpDispatchDeps, type McpExecute, dispatchTool } from "@lando/mcp/dispatch";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import {
   type McpCommandEntry,
@@ -35,7 +35,7 @@ import {
   validateToolInput,
 } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
-import { makeStdioClient } from "@lando/mcp/testing";
+import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
@@ -61,11 +61,11 @@ const spec = (
   ...extra,
 });
 
-const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
+const directExecute = (): McpExecute => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) as const),
     Effect.catch((error) => Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const)),
-  ) as ReturnType<McpDispatchDeps["execute"]>;
+  ) as ReturnType<McpExecute>;
 
 interface Harness {
   readonly deps: McpDispatchDeps;
@@ -303,7 +303,7 @@ describe("MCP contract suite — cancellation mid-call", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: blocking }],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
     const program = Effect.gen(function* () {
       const inmem = yield* makeStdioClient();
@@ -348,7 +348,7 @@ describe("MCP contract suite — concurrency cap", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: blocking }],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
     const program = Effect.gen(function* () {
       const inmem = yield* makeStdioClient();
