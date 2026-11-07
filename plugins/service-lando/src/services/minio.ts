@@ -158,6 +158,6 @@ export const minioServiceType: ServiceType = {
       features: [
         { id: MINIO_FEATURE_ID, config: { consolePort: input.service.consolePort ?? DEFAULT_CONSOLE_PORT } },
       ],
-      tooling: { mc: { service: input.name, cmd: "mc" } },
+      tooling: { mc: { service: input.name, cmd: "mc", wrapper: true } },
     }),
 };

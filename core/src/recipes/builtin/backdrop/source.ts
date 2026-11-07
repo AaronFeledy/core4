@@ -19,7 +19,12 @@ export const source = {
       },
     },
     tooling: {
-      bee: { service: "appserver", description: "Run Bee inside the appserver service.", cmds: ["bee"] },
+      bee: {
+        service: "appserver",
+        description: "Run Bee inside the appserver service.",
+        cmds: ["bee"],
+        wrapper: true,
+      },
     },
   },
   postInit: [

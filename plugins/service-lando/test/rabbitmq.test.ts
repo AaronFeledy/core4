@@ -147,8 +147,9 @@ describe("rabbitmq ServiceType", () => {
         const resolution = await resolveRabbitMQService(serviceType, { type: id });
 
         expect(resolution.tooling).toEqual({
-          rabbitmqctl: { service: "queue", cmd: "rabbitmqctl" },
+          rabbitmqctl: { service: "queue", cmd: "rabbitmqctl", wrapper: true },
           rabbitmqadmin: {
+            wrapper: true,
             service: "queue",
             cmd: ["rabbitmqadmin", "--username", "lando", "--password", "lando"],
           },
@@ -165,6 +166,7 @@ describe("rabbitmq ServiceType", () => {
         });
 
         expect(resolution.tooling?.rabbitmqadmin).toEqual({
+          wrapper: true,
           service: "queue",
           cmd: ["rabbitmqadmin", "--username", "user name", "--password", "pa'ss; rm -rf /"],
         });

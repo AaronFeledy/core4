@@ -152,6 +152,7 @@ describe("mysql ServiceType", () => {
     const resolution = await resolveMysqlService({ type: "mysql", creds });
 
     expect(resolution.tooling?.mysql).toEqual({
+      wrapper: true,
       description: "Open the MySQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",

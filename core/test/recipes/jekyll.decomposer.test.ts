@@ -78,11 +78,13 @@ describe("jekyll decomposition", () => {
           service: "builder",
           description: "Run the Jekyll CLI inside the builder service.",
           cmds: ["bundle exec jekyll"],
+          wrapper: true,
         },
         bundle: {
           service: "builder",
           description: "Run Bundler inside the builder service.",
           cmds: ["bundle"],
+          wrapper: true,
         },
       },
     });

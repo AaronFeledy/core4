@@ -70,11 +70,17 @@ describe("wordpress decomposition", () => {
           ...(options.redis ? { cache: { type: "redis" } } : {}),
         },
         tooling: {
-          wp: { service: "appserver", description: "Run WP-CLI inside the appserver service.", cmds: ["wp"] },
+          wp: {
+            service: "appserver",
+            description: "Run WP-CLI inside the appserver service.",
+            cmds: ["wp"],
+            wrapper: true,
+          },
           composer: {
             service: "appserver",
             description: "Run Composer inside the appserver service.",
             cmds: ["composer"],
+            wrapper: true,
           },
         },
       },

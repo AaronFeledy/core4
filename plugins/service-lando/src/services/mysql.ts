@@ -163,6 +163,7 @@ const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
             connection.creds.user,
             connection.creds.database,
           ],
+          wrapper: true,
           env: { MYSQL_PWD: connection.creds.password },
         },
       };
