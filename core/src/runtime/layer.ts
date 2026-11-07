@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
 import { writeStdioLine } from "@lando/renderer/io";
 import { Effect, Layer, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
@@ -85,20 +83,9 @@ import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-serv
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
 import "./engine-composition";
+import { getScenarioRuntimeOverride } from "./scenario-override";
 
 export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
-
-type RuntimeProviderRegistryLayer = Layer.Layer<RuntimeProviderRegistry, never, never>;
-
-const runtimeProviderRegistryOverrideStorage = new AsyncLocalStorage<RuntimeProviderRegistryLayer>();
-
-export const getRuntimeProviderRegistryOverride = (): RuntimeProviderRegistryLayer | undefined =>
-  runtimeProviderRegistryOverrideStorage.getStore();
-
-export const withRuntimeProviderRegistryOverride = <A>(
-  layer: RuntimeProviderRegistryLayer,
-  thunk: () => Promise<A>,
-): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
 type NoneRuntimeServices = RuntimeLayerFactory | GlobalConfigSources;
 type MinimalRuntimeServices =
@@ -200,8 +187,9 @@ const runtimeLayerFor = (
   pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
   cwd: string,
   configInputs: GlobalConfigSources["Service"],
-): RuntimeLayer =>
-  makeGeneratedBootstrapLayer(bootstrap, {
+): RuntimeLayer => {
+  const runtimeProviderRegistry = getScenarioRuntimeOverride()?.providerRegistry;
+  return makeGeneratedBootstrapLayer(bootstrap, {
     runtimeLayerFactory: { make: makeLandoRuntime },
     lifecycle,
     loggerMode,
@@ -213,11 +201,13 @@ const runtimeLayerFor = (
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,
     pluginLayers,
+    ...(runtimeProviderRegistry === undefined ? {} : { runtimeProviderRegistry }),
     pluginManifests: pluginPolicy.manifests,
     externalImports: pluginPolicy.externalImports,
     cwd,
     configInputs,
   }) as RuntimeLayer;
+};
 
 const signalHandlersLayer = Layer.effectDiscard(
   Effect.withFiber((fiber) => installSignalHandlers({ fiber })),
@@ -280,11 +270,11 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
   }
   const capturedCwd = decoded.success.cwd ?? process.cwd();
   const lifecycle = makeBootstrapLifecycleTracker();
-  const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
+  const scenarioOverride = getScenarioRuntimeOverride();
   const hostLayersResult = collectEmbeddingPluginLayers(
-    runtimeProviderRegistryOverride === undefined
+    scenarioOverride === undefined
       ? pluginPolicy.layers
-      : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
+      : [...pluginPolicy.layers, scenarioOverride.hostServices],
   );
 
   if (Result.isFailure(hostLayersResult)) {

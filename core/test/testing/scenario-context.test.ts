@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,6 +8,9 @@ import { Cause, Effect, Schema } from "effect";
 import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
 import { ScenarioContext, ScenarioContextFactory, withScenarioContext } from "@lando/core/testing";
 import { Transcript } from "@lando/sdk/docs/components";
+
+// Scenario commands run the real CLI, including real starts that wait out service readiness.
+setDefaultTimeout(30_000);
 
 const withTempCwd = async <A>(body: (root: string) => Promise<A>): Promise<A> => {
   const root = await mkdtemp(join(tmpdir(), "lando-fixtures-"));
@@ -169,7 +172,11 @@ describe("withScenarioContext", () => {
     const inspectFrames = result.frames.filter((frame) => frame.kind === "inspect");
     expect(inspectFrames).toEqual([
       { kind: "inspect", target: "output", value: "0.0.0\n" },
-      { kind: "inspect", target: "events", value: [{ _tag: "post-start" }] },
+      {
+        kind: "inspect",
+        target: "events",
+        value: expect.arrayContaining([expect.objectContaining({ _tag: "post-start" })]),
+      },
       { kind: "inspect", target: "file", value: "hello inspect\n" },
       { kind: "inspect", target: "json", value: { name: "demo" } },
       { kind: "inspect", target: "file", value: null },
@@ -578,7 +585,7 @@ describe("withScenarioContext", () => {
 });
 
 describe("ScenarioContextFactory", () => {
-  test("testOnlyFake preserves the canned start/curl scenario shim", async () => {
+  test("testOnlyFake starts for real and answers static curl from the webroot", async () => {
     const result = await Effect.runPromise(
       ScenarioContextFactory.testOnlyFake({ guideId: "static", scenarioId: "fake-shim" }, (context) =>
         Effect.gen(function* () {
@@ -597,13 +604,14 @@ describe("ScenarioContextFactory", () => {
 
           const started = yield* context.runCli(["start"]);
           const fetched = yield* context.runCli(["curl", "index.html"]);
-          return { started, fetched, events: context.events };
+          return { started, fetched };
         }),
       ),
     );
 
-    expect(result.started.stdout).toBe("ready\n");
-    expect(result.events).toContainEqual({ _tag: "post-start" });
+    expect(result.started.exitCode).toBe(0);
+    expect(result.started.stdout).toContain("ready: static-demo - web");
+    expect(result.started.events.map((event) => event._tag)).toContain("post-start");
     expect(result.fetched.stdout).toBe("hello from lando static\n");
     expect(result.fetched.exitCode).toBe(0);
   });
@@ -728,7 +736,7 @@ describe("ScenarioContextFactory", () => {
     }
   });
 
-  test("withScenarioContext stays on the scenario layer with fake behavior for generated guides", async () => {
+  test("withScenarioContext stays on the in-process scenario layer for generated guides", async () => {
     const layer = await Effect.runPromise(
       withScenarioContext({ guideId: "node-postgres", scenarioId: "compat" }, (context) =>
         Effect.succeed(context.layer),
@@ -782,5 +790,115 @@ describe("ScenarioContextFactory", () => {
     );
 
     expect(frames).toEqual(["run"]);
+  });
+});
+
+describe("in-process lifecycle", () => {
+  const eventsDemo = (preStop: string) => [
+    "name: lifecycle-demo",
+    "services:",
+    "  web:",
+    "    type: compose",
+    "    image: alpine:3.21",
+    "    command: [sleep, infinity]",
+    "events:",
+    "  pre-stop:",
+    `    - cmd: echo ${preStop}`,
+    "      service: web",
+  ];
+
+  test("stop and destroy run against the recorded applied plan and publish their events", async () => {
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "events", scenarioId: "applied-lifecycle" }, (context) =>
+        Effect.gen(function* () {
+          // Given: a started app whose stop hook is then edited.
+          yield* writeLandofile(context.testDir, eventsDemo("first-hook"));
+          const started = yield* context.runCli("lando start");
+          yield* writeLandofile(context.testDir, eventsDemo("edited-hook"));
+
+          // When: the app is stopped, destroyed, and destroyed again.
+          const stopped = yield* context.runCli("lando stop");
+          const destroyed = yield* context.runCli("lando destroy -y --format=json");
+          const again = yield* context.runCli("lando destroy -y --format=json");
+          return { started, stopped, destroyed, again, events: context.events };
+        }),
+      ),
+    );
+
+    // Then: each run reports its own events, and the context keeps them all in order.
+    const tags = (events: ReadonlyArray<{ readonly _tag: string }>) => events.map((event) => event._tag);
+    expect(result.started.exitCode).toBe(0);
+    expect(tags(result.started.events)).toContain("post-start");
+    expect(tags(result.started.events)).not.toContain("pre-stop");
+    expect(result.stopped.exitCode).toBe(0);
+    expect(tags(result.stopped.events)).toEqual(
+      expect.arrayContaining(["pre-stop", "pre-service-stop", "post-service-stop", "post-stop"]),
+    );
+    expect(tags(result.stopped.events)).not.toContain("post-start");
+    // The stop hook comes from the current Landofile, not the one the app started with.
+    expect(`${result.stopped.stdout}${result.stopped.stderr}`).toContain("edited-hook");
+    expect(`${result.stopped.stdout}${result.stopped.stderr}`).not.toContain("first-hook");
+    expect(result.destroyed.exitCode).toBe(0);
+    expect(tags(result.destroyed.events)).toEqual(expect.arrayContaining(["pre-destroy", "post-destroy"]));
+    expect(JSON.parse(result.destroyed.stdout)).toMatchObject({ result: { outcome: "destroyed" } });
+    expect(result.again.exitCode).toBe(0);
+    expect(JSON.parse(result.again.stdout)).toMatchObject({ result: { outcome: "unchanged" } });
+    expect(result.events).toEqual([
+      ...result.started.events,
+      ...result.stopped.events,
+      ...result.destroyed.events,
+      ...result.again.events,
+    ]);
+    const all = tags(result.events);
+    expect(all.indexOf("post-start")).toBeLessThan(all.indexOf("pre-stop"));
+    expect(all.indexOf("post-stop")).toBeLessThan(all.indexOf("pre-destroy"));
+  });
+
+  test("start reports the planner's own rejection of an unknown service type", async () => {
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "node-postgres", scenarioId: "unknown-type" }, (context) =>
+        Effect.gen(function* () {
+          yield* writeLandofile(context.testDir, [
+            "name: unknown-type",
+            "services:",
+            "  cache:",
+            "    type: not-a-real-service-type",
+          ]);
+          return yield* context.runCli("lando start");
+        }),
+      ),
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result._tag).toBe("LandofileValidationError");
+    expect(result.stderr).toContain("not-a-real-service-type");
+  });
+
+  test("string commands run as the argv a shell gives them", async () => {
+    const seen: string[][] = [];
+    const failure = await Effect.runPromise(
+      withScenarioContext(
+        {
+          guideId: "node-postgres",
+          scenarioId: "shell-words",
+          runCli: async (command) => {
+            seen.push([...command]);
+            return { command, stdout: "", stderr: "", exitCode: 0, events: [] };
+          },
+        },
+        (context) =>
+          Effect.gen(function* () {
+            yield* context.runCli(`lando init --name 'My App' --answer=greeting="hello world" ''`);
+            return yield* Effect.flip(context.runCli("lando info | jq ."));
+          }),
+      ),
+    );
+
+    expect(seen).toEqual([["init", "--name", "My App", "--answer=greeting=hello world", ""]]);
+    expect(failure).toMatchObject({
+      _tag: "GuideCommandSyntaxError",
+      reason: "shell-syntax",
+      character: "|",
+    });
   });
 });

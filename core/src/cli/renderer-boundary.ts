@@ -41,6 +41,7 @@ import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { makePlainRenderer } from "@lando/renderer/runtime";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import { getScenarioRuntimeOverride } from "../runtime/scenario-override.ts";
 import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
 import {
   type CliInvocationSnapshot,
@@ -550,6 +551,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         );
       }),
     );
+    const observeScenarioEvent = getScenarioRuntimeOverride()?.observeEvent;
     const commandOutcome = yield* Effect.exit(
       Effect.scoped(
         Effect.gen(function* () {
@@ -568,9 +570,12 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         }),
       ).pipe(
         Effect.provideService(EventPublicationObserver, (event) =>
-          envelopeFormat && isMessageWarnEvent(event)
-            ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
-            : Effect.void,
+          Effect.andThen(
+            observeScenarioEvent === undefined ? Effect.void : Effect.sync(() => observeScenarioEvent(event)),
+            envelopeFormat && isMessageWarnEvent(event)
+              ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
+              : Effect.void,
+          ),
         ),
         Effect.withErrorReporting({ defectsOnly: true }),
       ),

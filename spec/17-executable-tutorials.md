@@ -66,6 +66,10 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 
 `<Run command>` and `<Verify command>` accept an optional integer `expectExit`, defaulting to zero. Command verification MUST enforce that exit code before checking output matchers; `expectExit` is invalid on other verification targets. A negative lint report therefore uses explicit exit 1 in every format while retaining its report assertions, without a shell wrapper that hides the status.
 
+A CLI `command` on `<Run>` or `<Verify>` is one POSIX shell command line, and it executes as the argument vector a POSIX shell would produce for it, without invoking a shell. Single quotes are literal; double quotes honor backslash escapes of `$`, backtick, `"`, `\`, and newline; an unquoted backslash escapes the next character and a backslash-newline is removed; a quoted empty string is an argument. Text a shell would interpret instead of passing through (command separators including an unquoted newline, operators, redirections, `$` and backtick substitution, globs, brace and history expansion, and a word-initial `~` or `#`) MUST be quoted or escaped, and a command MUST NOT be empty or begin with a `NAME=value` environment assignment. A command without exactly one such reading fails generation and lint with `guide.command.syntax` at the component's source line. The check applies after interpolation (§19.5) to both the execution and the display projection, and its diagnostic names the reason and offending character, never the command or a bound value. The compiler carries the parsed argument vector on the resolved execution projection, and every runner executes that vector.
+
+`<Verify event>` matches the events published by the scenario's most recent CLI invocation, whether a `<Run command>` or a `<Verify command>`. Only in-process scenario invocations publish to the scenario, so a `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
+
 `<Hidden>` MUST NOT define distinct product behavior. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
 
 Component placement is fail-closed. `<Guide>` is a root-level element. `<Scenario>` is a direct child of `<Guide>`. `<Step>`, `<Hidden>`, `<Skip>`, and `<Tabs>` are direct children of `<Scenario>`; `<Tab>` is a direct child of `<Tabs>`; `<Hidden>`, `<Skip>`, and `<Tab>` contain only `<Step>`. Leaf actions (`<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>`) are direct children of `<Step>`. Markdown prose MAY appear inside any wrapper. An executable component anywhere else, including a wrapper nested in another wrapper or an executable component written inline within a paragraph, MUST be rejected with its source path and line rather than silently ignored.
@@ -77,6 +81,8 @@ Every generated scenario acquires an Effect `Scope` and one `ScenarioContext`. T
 The context is the execution-time view of one resolved scenario (§19.7). It receives bindings already validated and resolved for its scenario and variant; it MUST NOT re-interpolate, re-declare, or mutate them. Hidden and visible bindings are both available to execution; visibility only governs public output (§19.9).
 
 `ScenarioContext` is stable across providers, layers, and variants, and is part of `@lando/core/testing` (§16.8). Scope finalization removes temporary state unless an explicit author/debug option preserves it.
+
+The default scenario layer dispatches the real CLI in process against the scenario's own in-memory provider registry, supplied to every provider-level runtime consumer. Lifecycle commands take their real code paths: an apply persists the applied plan through the applied-state store that real providers use, later commands resolve applied state and teardown evidence from that record, and destroy removes it. Provider observation reports only containers the scenario created. Container execution, routing, and post-start URL scanning use in-memory test doubles. Every event an invocation publishes is recorded, redacted, on the context and on that invocation's result. A harness MAY answer a command whose only effect is container output it cannot produce, such as fetching a static file from a fixture webroot, but it MUST NOT synthesize lifecycle results or events in place of the command that produces them.
 
 ### 19.5 Display vs. execute
 
@@ -139,6 +145,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - No raw shell fence inside a scenario; executable shell uses `<Run>` or justified `<Inline>`.
 - Binding semantics from §19.5 and §19.7: every binding is referenced, every reference resolves, no name is declared twice in one scenario, and no visible component references a hidden-only binding. These are machine-enforced by the shared compiler; display literal quality remains an authoring requirement.
 - Every scenario contains an action or assertion.
+- Every CLI command has exactly one POSIX shell-word reading, and no `e2e` scenario verifies an event (§19.3).
 - Markdown remains the dominant reader surface.
 - Event assertions reference the canonical event registry.
 - Tabs do not nest and every tab or per-cell override resolves to a declared axis value.

@@ -29,8 +29,9 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { redactDetails } from "../cli/redact";
+import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
-import { withRuntimeProviderRegistryOverride } from "../runtime/layer";
+import { type ScenarioRuntimeOverride, withScenarioRuntimeOverride } from "../runtime/scenario-override";
 import { makeTestInteractionService } from "./interaction";
 import { makeScenarioProvider } from "./scenario-provider.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime";
@@ -69,7 +70,7 @@ export interface ScenarioRunResult {
   readonly stderr: string;
   /** Process exit code or in-process command status. */
   readonly exitCode: number;
-  /** Events recorded for the run. */
+  /** Redacted events this invocation published; empty for the compiled e2e runner. */
   readonly events: ReadonlyArray<LandoEvent>;
 }
 
@@ -183,8 +184,8 @@ export interface ScenarioContext {
    */
   readonly hidden: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
   /**
-   * Events captured by the scenario context.
-   * Only the `testOnlyFake` runner records events here, since the other runners don't bridge the real event service.
+   * Redacted events published by every in-process CLI invocation in this scenario, in order.
+   * Compiled e2e invocations run in a child process and contribute none.
    */
   readonly events: ReadonlyArray<LandoEvent>;
   /** Transcript buffer for this scenario. */
@@ -226,10 +227,16 @@ export interface WithScenarioContextOptions {
   ) => Promise<ScenarioRunResult>;
 }
 
-const parseCommand = (command: string | ReadonlyArray<string>): ReadonlyArray<string> => {
-  const parsed = typeof command === "string" ? command.trim().split(/\s+/).filter(Boolean) : command;
-  return parsed[0] === "lando" || parsed[0] === "lando4" ? parsed.slice(1) : parsed;
+// A string command means the argv a POSIX shell gives it, the same reading the guide compiler emits.
+const parseCommand = (
+  command: string | ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<string>, GuideCommandSyntaxError> => {
+  if (typeof command !== "string") return Effect.succeed(withoutLandoPrefix(command));
+  return Effect.fromResult(guideCommandArgv(command)).pipe(Effect.map(withoutLandoPrefix));
 };
+
+const withoutLandoPrefix = (argv: ReadonlyArray<string>): ReadonlyArray<string> =>
+  argv[0] === "lando" || argv[0] === "lando4" ? argv.slice(1) : argv;
 
 const stringFlagValue = (args: ReadonlyArray<string>, name: string): string | undefined => {
   const equalsPrefix = `--${name}=`;
@@ -533,85 +540,45 @@ const staticRootFromLandofile = (content: string): string | undefined => {
   return resolved.startsWith("/app/") ? resolved.slice("/app/".length) : undefined;
 };
 
-const runScenarioLayerCommand = async (
+// `lando curl` in a static-site fixture is a tooling exec into the web container, which the
+// in-memory provider cannot serve, so the scenario answers it from the webroot on the host.
+const serveStaticCurl = async (
   args: ReadonlyArray<string>,
   cwd: string,
-  events: LandoEvent[],
-): Promise<ScenarioRunResult | undefined> => {
-  if (args[0] === "destroy" || args[0] === "app:destroy") {
-    return { command: args, stdout: "destroyed\n", stderr: "", exitCode: 0, events: [...events] };
-  }
-  if (args[0] === "curl") {
-    const landofile = Bun.file(join(cwd, ".lando.yml"));
-    if (!(await landofile.exists())) return undefined;
-
-    const root = staticRootFromLandofile(await landofile.text());
-    if (root === undefined) return undefined;
-
-    const requestPath = (args[1] ?? "index.html").replace(/^\/+/, "");
-    if (requestPath.split("/").includes("..")) {
-      return {
-        command: args,
-        stdout: "",
-        stderr: "path traversal is not allowed\n",
-        exitCode: 1,
-        events: [...events],
-      };
-    }
-
-    const file = Bun.file(join(cwd, root, requestPath));
-    if (!(await file.exists())) {
-      return {
-        command: args,
-        stdout: "",
-        stderr: `not found: ${requestPath}\n`,
-        exitCode: 1,
-        events: [...events],
-      };
-    }
-
-    return { command: args, stdout: await file.text(), stderr: "", exitCode: 0, events: [...events] };
-  }
-  if (args[0] !== "start" && args[0] !== "app:start") return undefined;
-
+): Promise<Omit<ScenarioRunResult, "events"> | undefined> => {
+  if (args[0] !== "curl") return undefined;
   const landofile = Bun.file(join(cwd, ".lando.yml"));
-  if (!(await landofile.exists())) {
-    return {
-      _tag: "LandofileNotFoundError",
-      command: args,
-      stdout: "",
-      stderr: "code: LandofileNotFoundError\nNo .lando.yml or .lando.ts found.\n",
-      exitCode: 1,
-      events: [...events],
-    };
+  if (!(await landofile.exists())) return undefined;
+
+  const root = staticRootFromLandofile(await landofile.text());
+  if (root === undefined) return undefined;
+
+  const requestPath = (args[1] ?? "index.html").replace(/^\/+/, "");
+  if (requestPath.split("/").includes("..")) {
+    return { command: args, stdout: "", stderr: "path traversal is not allowed\n", exitCode: 1 };
   }
 
-  const content = await landofile.text();
-  if (content.includes("totally-not-a-service")) {
-    return {
-      _tag: "LandofileValidationError",
-      command: args,
-      stdout: "",
-      stderr:
-        "code: LandofileValidationError\nUnsupported service type totally-not-a-service for service cache. Registered service types: node:lts, postgres.\n",
-      exitCode: 1,
-      events: [...events],
-    };
+  const file = Bun.file(join(cwd, root, requestPath));
+  if (!(await file.exists())) {
+    return { command: args, stdout: "", stderr: `not found: ${requestPath}\n`, exitCode: 1 };
   }
-
-  events.push({ _tag: "post-start" } as LandoEvent);
-  return { command: args, stdout: "ready\n", stderr: "", exitCode: 0, events: [...events] };
+  return { command: args, stdout: await file.text(), stderr: "", exitCode: 0 };
 };
+
+type ArgvRunner = (
+  args: ReadonlyArray<string>,
+  options?: ScenarioRunOptions,
+) => Effect.Effect<ScenarioRunResult, unknown>;
 
 const isVersionCommand = (args: ReadonlyArray<string>): boolean =>
   args.length === 1 && (args[0] === "version" || args[0] === "--version" || args[0] === "-v");
 
-const versionResult = (args: ReadonlyArray<string>, events: LandoEvent[]): ScenarioRunResult => ({
+const versionResult = (args: ReadonlyArray<string>): ScenarioRunResult => ({
   command: args,
   stdout: `${CORE_VERSION}\n`,
   stderr: "",
   exitCode: 0,
-  events: [...events],
+  events: [],
 });
 
 // `init` creates the app under a `<name>` subdirectory; advance the scenario cwd
@@ -649,15 +616,24 @@ const invokeRealCli = async (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
   events: LandoEvent[],
+  provider: ReturnType<typeof makeScenarioProvider>,
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
-  providerRegistryLayer = makeScenarioProvider().layer,
 ): Promise<ScenarioRunResult> => {
   const previousCwd = process.cwd();
   const previousExitCode = process.exitCode;
   const stdout = captureWrite(process.stdout);
   const stderr = captureWrite(process.stderr);
   const cwd = getWorkingDirectory();
+  const runEvents: LandoEvent[] = [];
+  const override: ScenarioRuntimeOverride = {
+    providerRegistry: provider.layer,
+    hostServices: provider.hostServices,
+    observeEvent: (event) => {
+      runEvents.push(event);
+      events.push(event);
+    },
+  };
 
   try {
     process.chdir(cwd);
@@ -666,7 +642,7 @@ const invokeRealCli = async (
     const cli = await import("../cli/index");
     const runDispatch = () =>
       cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
-    await withRuntimeProviderRegistryOverride(providerRegistryLayer, () =>
+    await withScenarioRuntimeOverride(override, () =>
       runInitDispatchWithSeededAnswers(args, options, runDispatch),
     );
     const stdoutText = stdout.content();
@@ -679,7 +655,7 @@ const invokeRealCli = async (
       stdout: stdoutText,
       stderr: stderrText,
       exitCode,
-      events: [...events],
+      events: runEvents,
     } satisfies Omit<ScenarioRunResult, "_tag">;
     const errorTag = errorTagFromStderr(stderrText);
     return errorTag === undefined ? result : { ...result, _tag: errorTag };
@@ -695,35 +671,14 @@ const createTestOnlyFakeRunCli = (
   events: LandoEvent[],
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
-): ScenarioContext["runCli"] => {
+): ArgvRunner => {
   const provider = makeScenarioProvider();
   return (command, options) =>
     Effect.tryPromise(async () => {
-      const args = appendInitAnswers(parseCommand(command), options?.answers);
-      if (isVersionCommand(args)) return versionResult(args, events);
-      if (args[0] === "poweroff" || args[0] === "apps:poweroff") {
-        const started = events.some((event) => event._tag === "post-start");
-        const poweredOff = events.some((event) => event._tag === "post-global-stop");
-        if (started && !poweredOff) events.push({ _tag: "post-global-stop" } as LandoEvent);
-        return {
-          command: args,
-          stdout: started && !poweredOff ? "Powered off: test app\n" : "No Lando apps to power off.\n",
-          stderr: "",
-          exitCode: 0,
-          events: [...events],
-        };
-      }
-
-      const scenarioLayerResult = await runScenarioLayerCommand(args, getWorkingDirectory(), events);
-      if (scenarioLayerResult !== undefined) {
-        if (scenarioLayerResult.exitCode === 0 && (args[0] === "start" || args[0] === "app:start")) {
-          await provider.remember(getWorkingDirectory());
-        }
-        if (args[0] === "destroy" || args[0] === "app:destroy") await provider.forget(getWorkingDirectory());
-        return scenarioLayerResult;
-      }
-
-      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory, provider.layer);
+      const args = appendInitAnswers(command, options?.answers);
+      const curl = await serveStaticCurl(args, getWorkingDirectory());
+      if (curl !== undefined) return { ...curl, events: [] };
+      return invokeRealCli(args, options, events, provider, getWorkingDirectory, setWorkingDirectory);
     });
 };
 
@@ -732,46 +687,40 @@ const createTestOnlyFakeRunCli = (
 // through the compiled binary via `ScenarioContextFactory.e2e`.
 const SCENARIO_INPROCESS_COMMANDS: ReadonlySet<string> = new Set(["init", "apps:init"]);
 
-const unsupportedInProcessResult = (
-  args: ReadonlyArray<string>,
-  events: LandoEvent[],
-): ScenarioRunResult => ({
+const unsupportedInProcessResult = (args: ReadonlyArray<string>): ScenarioRunResult => ({
   command: args,
   stdout: "",
   stderr: `command "${args[0] ?? ""}" is not supported by the in-process scenario runner because only init commands support seeded answers and scenario working-directory transitions; use ScenarioContextFactory.e2e to run it against the compiled binary\n`,
   exitCode: 1,
-  events: [...events],
+  events: [],
 });
 
-const createScenarioRunCli =
-  (
-    events: LandoEvent[],
-    getWorkingDirectory: () => string,
-    setWorkingDirectory: (path: string) => void,
-  ): ScenarioContext["runCli"] =>
-  (command, options) =>
+const createScenarioRunCli = (
+  events: LandoEvent[],
+  getWorkingDirectory: () => string,
+  setWorkingDirectory: (path: string) => void,
+): ArgvRunner => {
+  const provider = makeScenarioProvider();
+  return (command, options) =>
     Effect.tryPromise(async () => {
-      const args = appendInitAnswers(parseCommand(command), options?.answers);
-      if (isVersionCommand(args)) return versionResult(args, events);
+      const args = appendInitAnswers(command, options?.answers);
+      if (isVersionCommand(args)) return versionResult(args);
       if (args[0] === undefined || !SCENARIO_INPROCESS_COMMANDS.has(args[0])) {
-        return unsupportedInProcessResult(args, events);
+        return unsupportedInProcessResult(args);
       }
 
-      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory);
+      return invokeRealCli(args, options, events, provider, getWorkingDirectory, setWorkingDirectory);
     });
+};
 
 const compiledBinaryPath = (): string =>
   process.env.LANDO_SCENARIO_E2E_BINARY ?? fileURLToPath(new URL("../../dist/lando", import.meta.url));
 
 const createE2eRunCli =
-  (
-    events: LandoEvent[],
-    getWorkingDirectory: () => string,
-    setWorkingDirectory: (path: string) => void,
-  ): ScenarioContext["runCli"] =>
+  (getWorkingDirectory: () => string, setWorkingDirectory: (path: string) => void): ArgvRunner =>
   (command, options) =>
     Effect.tryPromise(async () => {
-      const args = appendInitAnswers(parseCommand(command), options?.answers);
+      const args = appendInitAnswers(command, options?.answers);
       const binary = compiledBinaryPath();
       if (!(await Bun.file(binary).exists())) {
         return {
@@ -779,7 +728,7 @@ const createE2eRunCli =
           stdout: "",
           stderr: `compiled lando binary not found: ${binary}\n`,
           exitCode: 127,
-          events: [...events],
+          events: [],
         } satisfies ScenarioRunResult;
       }
 
@@ -807,7 +756,7 @@ const createE2eRunCli =
         stdout,
         stderr,
         exitCode,
-        events: [...events],
+        events: [],
       } satisfies Omit<ScenarioRunResult, "_tag">;
       const errorTag = errorTagFromStderr(stderr);
       return errorTag === undefined ? result : { ...result, _tag: errorTag };
@@ -818,8 +767,8 @@ const selectRunner = (
   events: LandoEvent[],
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
-): ScenarioContext["runCli"] => {
-  if (runnerKind === "e2e") return createE2eRunCli(events, getWorkingDirectory, setWorkingDirectory);
+): ArgvRunner => {
+  if (runnerKind === "e2e") return createE2eRunCli(getWorkingDirectory, setWorkingDirectory);
   if (runnerKind === "scenario")
     return createScenarioRunCli(events, getWorkingDirectory, setWorkingDirectory);
   return createTestOnlyFakeRunCli(events, getWorkingDirectory, setWorkingDirectory);
@@ -833,15 +782,14 @@ const createRunCli = (
   runnerKind: ScenarioRunnerKind,
   override?: (command: ReadonlyArray<string>, options?: ScenarioRunOptions) => Promise<ScenarioRunResult>,
 ): ScenarioContext["runCli"] => {
-  const runner =
+  const runner: ArgvRunner =
     override === undefined
       ? selectRunner(runnerKind, events, getWorkingDirectory, setWorkingDirectory)
-      : (command: string | ReadonlyArray<string>, options?: ScenarioRunOptions) =>
-          Effect.tryPromise(() => override(parseCommand(command), options));
+      : (args, options) => Effect.tryPromise(() => override(args, options));
 
   return Effect.fn("ScenarioContext.runCli")(function* (command, options) {
     const started = yield* Clock.currentTimeMillis;
-    const result = yield* runner(command, options);
+    const result = yield* runner(yield* parseCommand(command), options);
     const durationMs = Math.max(0, (yield* Clock.currentTimeMillis) - started);
     yield* Effect.sync(() => {
       appendFrame({
@@ -953,7 +901,8 @@ const withScenarioContextInternal = <A, E, R>(
   );
 
 /**
- * Runs a scenario body with a temporary context backed by the test-only fake runner.
+ * Runs a scenario body with a temporary context that dispatches the real CLI in process against
+ * the scenario's own in-memory provider.
  * The temp directory is cleaned up unless scenario preservation environment variables are set, and a transcript is persisted after the body exits.
  * @param options Context creation options for the guide scenario.
  * @param body Effectful scenario body that receives the created context.
@@ -993,7 +942,7 @@ export const ScenarioContextFactory = {
   ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "e2e", body),
   /**
-   * Runs with the deterministic fake runner used by unit tests.
+   * Runs the real CLI in process against the scenario's in-memory provider, as generated guides do.
    * @param options Context creation options for the guide scenario.
    * @param body Effectful scenario body that receives the created context.
    * @returns The body effect with fake scenario CLI behavior.

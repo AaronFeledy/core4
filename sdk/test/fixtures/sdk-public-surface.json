@@ -2145,6 +2145,7 @@
       "makeTestCertificateAuthority",
       "makeTestHealthcheckRunner",
       "makeTestRouterService",
+      "makeTestRuntimeProvider",
       "makeTestSshService",
       "makeTestUrlScanner",
       "makeToolingEngineContractSuite",
