@@ -9,6 +9,7 @@ import {
   type PublicationUnsupportedError,
   type RouteInputError,
   ServiceFeatureError,
+  ServiceTypeError,
 } from "@lando/sdk/errors";
 import {
   type AppId,
@@ -16,6 +17,7 @@ import {
   type FileSyncPolicy,
   type FileSyncPolicyReason,
   type LandofileShape,
+  type PluginManifest,
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
@@ -50,6 +52,7 @@ import {
   serviceResourceCapabilityErrors,
 } from "./resource-capabilities.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
+import { resolveServiceArtifact } from "./service-artifact.ts";
 import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
 export { resolveRoute } from "./endpoint-routes.ts";
@@ -72,6 +75,7 @@ export interface FinalizedServices {
 
 export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(function* (input: {
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
+  readonly manifests: readonly PluginManifest[];
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
@@ -115,18 +119,18 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     stores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
   };
 
-  for (const {
-    name,
-    hostnames,
-    authoredArtifact,
-    authored,
-    authoredStorage,
-    draft,
-    homeIntent,
-    logSources,
-    routes: authoredRoutes,
-    extensions,
-  } of input.plannedServiceDrafts) {
+  for (const entry of input.plannedServiceDrafts) {
+    const {
+      name,
+      hostnames,
+      authored,
+      authoredStorage,
+      draft,
+      homeIntent,
+      logSources,
+      routes: authoredRoutes,
+      extensions,
+    } = entry;
     const followLogSources = runtimeFollowLogSources(logSources);
     const providerSupportsLogSources = input.providerCapabilities.serviceLogSources === true;
     const requiredFollowSource = followLogSources.find((source) => source.required === true);
@@ -279,8 +283,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...(logSources.length === 0 ? {} : { logSources }),
     };
 
-    const withArtifact =
-      authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
+    const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);
+    if (withArtifact instanceof ServiceTypeError)
+      return yield* Effect.fail(servicePlanError(input.appRoot, name, withArtifact));
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
       artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,

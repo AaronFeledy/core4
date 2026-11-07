@@ -71,7 +71,7 @@ test.each([
     try {
       await writeFile(
         join(root, ".lando.yml"),
-        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n${tooling}`,
+        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n${tooling}`,
       );
       // When
       const result = await Effect.runPromise(
@@ -106,7 +106,7 @@ test.each(["false", "\n    disabled: true"])(
     try {
       await writeFile(
         join(root, ".lando.yml"),
-        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n`,
+        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n`,
       );
       await writeFile(join(root, ".lando.local.yml"), `tooling:\n  run: ${task}\n`);
       // When

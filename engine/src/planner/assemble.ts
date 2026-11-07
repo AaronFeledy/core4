@@ -85,6 +85,7 @@ import {
 } from "./resource-capabilities.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
+import { hasServiceArtifacts } from "./service-artifact.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
 import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
@@ -420,7 +421,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       key: cacheKey,
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
-    if (cached !== null) {
+    if (cached !== null && hasServiceArtifacts(cached)) {
       yield* assertRoutesCertificateCoverable(appRoot, cached.routes);
       yield* validateServiceProbes(cached);
       if (cached.fileSync.length > 0) yield* selectFileSyncEngine;
@@ -464,6 +465,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
 
   const finalized = yield* finalizeServices({
+    manifests,
     configs: landofile.configs,
     plannedServiceDrafts,
     appId,

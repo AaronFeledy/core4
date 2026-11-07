@@ -47,7 +47,7 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
   await writeFile(join(root, "payload.txt"), "{{ env.CANARY }} ${secret:CANARY}");
   await writeFile(
     file,
-    `name: event-literals\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n${source}`,
+    `name: event-literals\nservices:\n  web:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n${source}`,
   );
   const loaded = await Effect.runPromise(
     loadLandofileFile(file, {

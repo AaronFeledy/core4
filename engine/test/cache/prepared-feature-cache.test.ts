@@ -174,7 +174,9 @@ test("cache hits prepare declarations but skip apply and application-only decodi
               landofile: yield* compileTestLandofile(
                 {
                   name: "prepared-cache",
-                  services: { web: { type: type.id, home: false, routes: ["prepared.lndo.site"] } },
+                  services: {
+                    web: { type: type.id, image: "alpine:3.22", home: false, routes: ["prepared.lndo.site"] },
+                  },
                 },
                 root,
               ),

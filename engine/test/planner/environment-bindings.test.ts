@@ -91,6 +91,7 @@ test("preserves raw file, appEnv and plugin bytes below authored environment", a
         "services:",
         "  web:",
         "    type: binding-test",
+        "    image: alpine:3.22",
         "    home: false",
         "    env_file: service.env",
         "    environment:",
@@ -131,6 +132,7 @@ test.each(["${secret:TEST}", "plugin-replacement"])(
           "services:",
           "  web:",
           "    type: binding-test",
+          "    image: alpine:3.22",
           "    home: false",
           "    environment:",
           '      TOKEN: "${secret:TEST}"',
@@ -170,7 +172,7 @@ test.each(['TOKEN: "$${secret:TEST}"', 'TOKEN: !reset "$${secret:TEST}"', "envir
       const file = join(root, ".lando.yml");
       await writeFile(
         file,
-        'name: bindings\nservices:\n  web:\n    type: binding-test\n    home: false\n    environment:\n      TOKEN: "${secret:TEST}"\n',
+        'name: bindings\nservices:\n  web:\n    type: binding-test\n    image: alpine:3.22\n    home: false\n    environment:\n      TOKEN: "${secret:TEST}"\n',
       );
       await writeFile(
         join(root, ".lando.local.yml"),

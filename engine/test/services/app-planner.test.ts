@@ -377,6 +377,7 @@ const socketOnlyServiceType = makeLegacyServiceTypeFake({
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "socket-only",
+      artifact: { kind: "ref", ref: "alpine:3.22" },
       provider,
       primary,
       ...(service.user === undefined ? {} : { user: service.user }),
@@ -404,6 +405,7 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "published-endpoint",
+      artifact: { kind: "ref", ref: "alpine:3.22" },
       provider,
       primary,
       environment: {},
@@ -704,7 +706,7 @@ describe("AppPlannerLayer.layer", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "scanner-type-plan",
       runtime: 4,
-      services: { worker: { type: serviceType.id, home: false } },
+      services: { worker: { type: serviceType.id, image: "alpine:3.22", home: false } },
     });
     // When
     const appPlan = await Effect.runPromise(
@@ -1366,7 +1368,7 @@ describe("AppPlannerLayer.layer", () => {
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
-              services: { worker: { type: serviceType.id, home: false } },
+              services: { worker: { type: serviceType.id, image: "alpine:3.22", home: false } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
@@ -1400,7 +1402,7 @@ describe("AppPlannerLayer.layer", () => {
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
-              services: { worker: { type: serviceType.id, home: false } },
+              services: { worker: { type: serviceType.id, image: "alpine:3.22", home: false } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
@@ -2444,7 +2446,11 @@ describe("AppPlannerLayer.layer", () => {
       const serviceFeature: ServiceFeatureDefinition = {
         id: "test.service-feature",
         priority: 100,
-        apply: (ctx) => Effect.sync(() => ctx.addEnv("SERVICE_FEATURE_COMPOSED", "1")),
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.setArtifact({ kind: "ref", ref: "alpine:3.22" });
+            ctx.addEnv("SERVICE_FEATURE_COMPOSED", "1");
+          }),
       };
       const serviceType: ServiceType = {
         id: "feature-backed",
@@ -2540,6 +2546,7 @@ describe("AppPlannerLayer.layer", () => {
           Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "build-step-backed",
+            artifact: { kind: "ref", ref: "alpine:3.22" },
             provider,
             primary,
             environment: {},
@@ -4320,7 +4327,11 @@ describe("AppPlannerLayer.layer", () => {
       const resolutionFeature: ServiceFeatureDefinition = {
         id: "test.resolution-feature",
         priority: 700,
-        apply: (ctx) => Effect.sync(() => ctx.addEnv("RESOLUTION_FEATURE_APPLIED", "1")),
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.setArtifact({ kind: "ref", ref: "alpine:3.22" });
+            ctx.addEnv("RESOLUTION_FEATURE_APPLIED", "1");
+          }),
       };
       const serviceType: ServiceType = {
         id: "base-default-backed",
@@ -4490,7 +4501,12 @@ describe("AppPlannerLayer.layer", () => {
               name: "myapp",
               runtime: 4,
               services: {
-                [ServiceName.make("api")]: { type: serviceType.id, primary: true, home: false },
+                [ServiceName.make("api")]: {
+                  type: serviceType.id,
+                  image: "alpine:3.22",
+                  primary: true,
+                  home: false,
+                },
               },
             },
             providerLandoCapabilities,
@@ -4527,7 +4543,11 @@ describe("AppPlannerLayer.layer", () => {
       const compositionGateFeature: ServiceFeatureDefinition = {
         id: "test.composition-gate",
         priority: 900,
-        apply: (ctx) => Effect.sync(() => ctx.addEnv("COMPOSITION_GATE", "1")),
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.setArtifact({ kind: "ref", ref: "alpine:3.22" });
+            ctx.addEnv("COMPOSITION_GATE", "1");
+          }),
       };
       const serviceType: ServiceType = {
         id: "base-default-ids-only",
@@ -4700,7 +4720,7 @@ describe("AppPlannerLayer.layer", () => {
       const landofile: LandofileShape = {
         name: "feature-flip-app",
         runtime: 4,
-        services: { [ServiceName.make("web")]: { type: serviceType.id, home: false } },
+        services: { [ServiceName.make("web")]: { type: serviceType.id, image: "alpine:3.22", home: false } },
       };
 
       try {
@@ -5550,6 +5570,7 @@ describe("Compose runtime knobs", () => {
       Schema.decodeUnknownSync(ServicePlan)({
         name: ServiceName.make(name),
         type: "knob-injecting",
+        artifact: { kind: "ref", ref: "alpine:3.22" },
         provider,
         primary,
         environment: {},
