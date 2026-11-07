@@ -41,7 +41,7 @@ git worktree add ../shop-feature -b feature
 cd ../shop-feature
 ```
 
-The worktree has the same `.lando.yml`, so it also claims `name: shop`. Start it like that and Lando stops with a `VolumeOperationError` that says the two apps share an app name. Two checkouts don't get to fight over one database.
+The worktree has the same `.lando.yml`, so it also claims `name: shop`. Start it like that and Lando stops with a `VolumeOperationError`: the main checkout's folder already owns the volumes for that name. Two checkouts don't get to fight over one database.
 
 ## Rename the worktree in `.lando.local.yml`
 
