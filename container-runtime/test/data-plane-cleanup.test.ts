@@ -508,7 +508,11 @@ describe("ephemeral cleanup", () => {
 });
 
 type FailedCreateMode = "buffered" | "streamed" | "snapshot";
-type FailedCreateKind = { readonly kind: "http"; readonly status: number } | { readonly kind: "transport" };
+type FailedCreateKind =
+  | { readonly kind: "http"; readonly status: number }
+  | { readonly kind: "transport" }
+  | { readonly kind: "defect"; readonly defect: unknown }
+  | { readonly kind: "cause"; readonly cause: Cause.Cause<ProviderError> };
 type FailedCleanupKind =
   | { readonly kind: "status"; readonly status: number }
   | { readonly kind: "transport" }
@@ -544,7 +548,7 @@ const invokeFailedCreate = (provider: ReturnType<typeof makeProviderDataPlane>, 
 const failedCreatePlane = (
   requests: Array<{ method: string; path: string }>,
   script: {
-    readonly create: FailedCreateKind | { readonly kind: "defect"; readonly defect: unknown };
+    readonly create: FailedCreateKind;
     readonly cleanup: FailedCleanupKind;
     readonly created?: Set<string>;
   },
@@ -571,7 +575,7 @@ const failedCreatePlane = (
         script.created?.add(name);
         if (script.create.kind === "transport") return Effect.fail(transport);
         if (script.create.kind === "defect") return Effect.die(script.create.defect);
-        if (script.create.status === 409) script.created?.delete(name);
+        if (script.create.kind === "cause") return Effect.failCause(script.create.cause);
         return Effect.succeed({ status: script.create.status, body: "create failed" });
       }
       return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
@@ -633,7 +637,7 @@ describe("failed-create compensation", () => {
 
   test.each(acquireModes)("%s leaves a 409 name conflict untouched", async (mode) => {
     const requests: Array<{ method: string; path: string }> = [];
-    const created = new Set<string>(["foreign-helper"]);
+    const created = new Set<string>();
     const exit = await Effect.runPromiseExit(
       invokeFailedCreate(
         failedCreatePlane(requests, {
@@ -646,9 +650,9 @@ describe("failed-create compensation", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
+    const name = createQueryName(requests);
     expect(deletes(requests)).toEqual([]);
-    expect(created.has("foreign-helper")).toBe(true);
-    expect(created.has(createQueryName(requests))).toBe(false);
+    expect(created.has(name)).toBe(true);
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.additionalErrors).toEqual([]);
     const createError =
@@ -664,18 +668,21 @@ describe("failed-create compensation", () => {
 
   test.each(acquireModes)("%s compensates a typed create transport failure exactly once", async (mode) => {
     const requests: Array<{ method: string; path: string }> = [];
+    const created = new Set<string>();
     const exit = await Effect.runPromiseExit(
       invokeFailedCreate(
         failedCreatePlane(requests, {
           create: { kind: "transport" },
           cleanup: { kind: "status", status: 204 },
+          created,
         }),
         mode,
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    expectRemovedOnce(requests);
+    const name = expectRemovedOnce(requests);
+    expect(created.has(name)).toBe(false);
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.additionalErrors).toEqual([]);
     const createError =
@@ -761,6 +768,129 @@ describe("failed-create compensation", () => {
       error: { _tag: "VolumeOperationError", operation: "run.create" },
       additionalErrors: [{ role: "cleanup", error: { message: "socket down" } }],
     });
+  });
+
+  const annotatedCreateCause = () => {
+    const typed = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "transport",
+      message: "socket down",
+      remediation: "retry",
+    });
+    const defect = { tag: "create-defect" };
+    const typedReason = Cause.makeFailReason(typed).annotate(Context.make(FailureRoleAnnotation, "peer"));
+    const defectReason = Cause.makeDieReason(defect).annotate(
+      Context.make(FailureRoleAnnotation, "rollback"),
+    );
+    return {
+      typed,
+      defect,
+      typedReason,
+      defectReason,
+      cause: Cause.fromReasons([typedReason, defectReason]),
+    };
+  };
+
+  const createReasons = (cause: Cause.Cause<unknown>) =>
+    cause.reasons.filter(
+      (reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) !== "cleanup",
+    );
+
+  const expectWrappedCreateCause = (
+    cause: Cause.Cause<unknown>,
+    original: ReturnType<typeof annotatedCreateCause>,
+  ) => {
+    expect(original.cause.reasons).toEqual([original.typedReason, original.defectReason]);
+    expect(Context.getOrUndefined(Cause.reasonAnnotations(original.typedReason), FailureRoleAnnotation)).toBe(
+      "peer",
+    );
+    expect(
+      Context.getOrUndefined(Cause.reasonAnnotations(original.defectReason), FailureRoleAnnotation),
+    ).toBe("rollback");
+    expect(original.typedReason.error).toBe(original.typed);
+    expect(original.defectReason.defect).toBe(original.defect);
+    const preserved = createReasons(cause);
+    expect(preserved).toHaveLength(1);
+    expect(cause.reasons[0]).toBe(preserved[0]);
+    const fail = preserved[0];
+    expect(fail?._tag).toBe("Fail");
+    if (fail === undefined || !Cause.isFailReason(fail)) return;
+    expect(Context.getOrUndefined(Cause.reasonAnnotations(fail), FailureRoleAnnotation)).toBeUndefined();
+    expect(fail.error).toBeInstanceOf(VolumeOperationError);
+    expect(fail.error).toMatchObject({
+      _tag: "VolumeOperationError",
+      operation: "run.create",
+      message: "Provider API request failed.",
+    });
+    expect(fail.error instanceof VolumeOperationError ? fail.error.cause : undefined).toBe(original.typed);
+  };
+
+  test.each(publicModes.flatMap((mode) => [204, 404].map((status) => [mode, status] as const)))(
+    "%s preserves an annotated compound create Cause when DELETE returns %s",
+    async (mode, status) => {
+      const original = annotatedCreateCause();
+      const requests: Array<{ method: string; path: string }> = [];
+      const created = new Set<string>();
+      const exit = await Effect.runPromiseExit(
+        invokeFailedCreate(
+          failedCreatePlane(requests, {
+            create: { kind: "cause", cause: original.cause },
+            cleanup: { kind: "status", status },
+            created,
+          }),
+          mode,
+        ),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) return;
+      const name = expectRemovedOnce(requests);
+      expect(created.has(name)).toBe(false);
+      expectWrappedCreateCause(exit.cause, original);
+      expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+        error: {
+          _tag: "VolumeOperationError",
+          operation: "run.create",
+          message: "Provider API request failed.",
+          cause: original.typed,
+        },
+        additionalErrors: [],
+      });
+      expect(roles(exit.cause)).toEqual(["unscoped"]);
+    },
+  );
+
+  test.each(publicModes)("%s keeps a compound create Cause primary when DELETE returns 500", async (mode) => {
+    const original = annotatedCreateCause();
+    const requests: Array<{ method: string; path: string }> = [];
+    const created = new Set<string>();
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "cause", cause: original.cause },
+          cleanup: { kind: "status", status: 500 },
+          created,
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const name = expectRemovedOnce(requests);
+    expect(created.has(name)).toBe(false);
+    expectWrappedCreateCause(exit.cause, original);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      error: {
+        _tag: "VolumeOperationError",
+        operation: "run.create",
+        message: "Provider API request failed.",
+        cause: original.typed,
+      },
+      additionalErrors: [
+        { role: "cleanup", error: { _tag: "ProviderUnavailableError", operation: "run.create.remove" } },
+      ],
+    });
+    expect(roles(exit.cause)).toEqual(["unscoped", "cleanup"]);
   });
 
   test.each(publicModes)("%s re-fails the original create defect when DELETE returns 404", async (mode) => {
