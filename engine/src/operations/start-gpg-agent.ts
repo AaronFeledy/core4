@@ -134,6 +134,7 @@ const prepareGpgHome = (plan: AppPlan, exec: RuntimeProviderShape["exec"]) =>
             "-c",
             'set -e; command -v gpg >/dev/null 2>&1 || { echo "lando.gpg-agent needs gpg in the service image" >&2; exit 1; }; mkdir -p -m 700 "$GNUPGHOME"; cp "$LANDO_GPG_KEYRING/pubring.gpg" "$GNUPGHOME/pubring.gpg"; gpg --batch --import-ownertrust "$LANDO_GPG_KEYRING/otrust.txt"; ln -sf "$LANDO_GPG_AGENT_SOCKET" "$GNUPGHOME/S.gpg-agent"',
           ],
+          raw: true,
         },
       ).pipe(
         Effect.mapError(failure),

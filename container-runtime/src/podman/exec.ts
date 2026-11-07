@@ -35,7 +35,8 @@ export const execStream = (
     if (plan.services[target.service] === undefined)
       return Stream.fail(missingService(options.ctx, target, "exec"));
     if (options.api === undefined) return Stream.fail(missingApi(options.ctx, "exec"));
-    if (command.tty === true) return transportExecStream(plan, target, command, options);
+    if (command.tty === true || command.raw === true || options.raw === true)
+      return transportExecStream(plan, target, command, options);
     return Stream.unwrap(
       Effect.raceFirst(prepareExecCommand(plan, target, command, options), interrupted(command.signal)).pipe(
         Effect.map((prepared) => supervisedExecStream(plan, target, prepared, options)),

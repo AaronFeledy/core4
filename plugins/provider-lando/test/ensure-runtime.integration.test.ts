@@ -407,7 +407,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const events: string[] = [];
-      const api = makeFakePodmanApi(events);
+      const api = makeFakePodmanApi(events, 1, 1, serviceContainerName(plan, serviceName));
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,

@@ -310,22 +310,18 @@ test("starts a service_healthy dependency and probes it before starting the depe
   expect(dbStart).toBeGreaterThanOrEqual(0);
   expect(dbExec).toBeGreaterThan(dbStart);
   expect(webStart).toBeGreaterThan(dbExec);
-  const supervisor = execCommands.find((command) => command[1] === "exec-supervisor");
-  expect(supervisor?.[0]).toStartWith("/tmp/lando-exec-");
-  expect(supervisor?.slice(4)).toEqual(["--", "pg_isready"]);
-  expect(execCommands.some((command) => command[0] === "pg_isready")).toBe(false);
+  expect(execCommands).toEqual([["pg_isready"]]);
 });
 
-test("rejects an authored health command when supervision assets are unavailable", async () => {
+test("internal health probes work without supervision assets", async () => {
   const plan = planWithDependency(dependentNames.web, true);
   const { api, requests, execCommands } = makePodmanApi(0);
 
-  const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+  const result = await Effect.runPromise(bringUp(plan, { api, ctx }));
 
-  expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
-  expect(error.message).toContain("db:healthy");
-  expect(execCommands.some((command) => command.includes("pg_isready"))).toBe(false);
-  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-web/start");
+  expect(result.changed).toBe(true);
+  expect(execCommands).toEqual([["pg_isready"]]);
+  expect(requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
 });
 
 test("selected apply accepts a fast exit-0 job identified by the full completion plan", async () => {

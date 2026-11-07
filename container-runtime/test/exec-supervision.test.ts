@@ -6,6 +6,7 @@ import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Stream } from "
 import { TestClock } from "effect/testing";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { supervisedExecStream as execStream } from "../src/exec-supervision.ts";
+import { execStream as dispatchExecStream } from "../src/podman/exec.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
@@ -288,6 +289,28 @@ const terminalChunks = (chunks: readonly ExecChunk[]) => chunks.filter((chunk) =
 const flushWatchReply = Effect.promise<void>(() => new Promise((resolve) => setImmediate(resolve)));
 
 describe("non-TTY exec supervision lifecycle", () => {
+  test.each(["command", "options"] as const)("raw %s operations use the plain transport", async (rawAt) => {
+    const f = fixture();
+    const chunks = await Effect.runPromise(
+      dispatchExecStream(
+        plan,
+        target,
+        {
+          command: ["echo", "hi"],
+          ...(rawAt === "command" ? { raw: true } : {}),
+        },
+        {
+          api: f.api,
+          ctx,
+          ...supervisedExecFixtureOptions(f.api),
+          ...(rawAt === "options" ? { raw: true } : {}),
+        },
+      ).pipe(Stream.runCollect, Effect.scoped),
+    );
+    expect(terminalChunks(chunks)).toEqual([{ exitCode: 0 }]);
+    expect(f.events).toEqual([]);
+    expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
+  });
   test.each([0, 7, 143])(
     "preserves immediate command exit %s only after joining and cleanup",
     async (exitCode) => {

@@ -69,6 +69,7 @@ export const runtimeSshAgentCheck = Effect.gen(function* () {
   const result = yield* provider.exec(target, {
     command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
     stdin: "ignore",
+    raw: true,
   });
   return result.exitCode === 0
     ? { state: "ready" as const }
