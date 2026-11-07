@@ -200,3 +200,122 @@ test.each(cases)(
   },
   5000,
 );
+
+const createFailures = ["http", "transport"] as const;
+const failedCreateCases = modes.flatMap((mode) => createFailures.map((create) => [mode, create] as const));
+
+test.each(failedCreateCases)(
+  "%s bounds a DELETE after failed create (%s) under masked acquisition",
+  async (mode: Mode, create: (typeof createFailures)[number]) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const teardown = Promise.withResolvers<void>();
+    const settled = Promise.withResolvers<{
+      readonly elapsed: number;
+      readonly exit: Exit.Exit<void, unknown>;
+    }>();
+    const root = Effect.runFork(
+      Effect.gen(function* () {
+        const deleting = yield* Deferred.make<void>();
+        const api: DataPlaneApiClient = {
+          request: (request) => {
+            requests.push({ method: request.method, path: request.path });
+            if (request.path.startsWith("/containers/create?name=")) {
+              return create === "transport"
+                ? Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: "test",
+                      operation: "transport",
+                      message: "socket down",
+                      remediation: "retry",
+                    }),
+                  )
+                : Effect.succeed({ status: 500, body: "create failed" });
+            }
+            if (request.method === "DELETE") {
+              return Deferred.succeed(deleting, undefined).pipe(
+                Effect.andThen(Effect.promise(() => teardown.promise)),
+                Effect.as({ status: 204, body: "" }),
+              );
+            }
+            return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
+          },
+          stream: () => Stream.empty,
+        };
+        const provider = makeProviderDataPlane({
+          providerId: "test",
+          api,
+          capabilities: { volumeSnapshot: "none" },
+          redactor: passthroughRedactor,
+        });
+        const work =
+          mode === "buffered"
+            ? provider.run(spec).pipe(Effect.asVoid)
+            : provider.runStream(spec).pipe(Stream.runDrain);
+        const child = yield* Effect.forkChild(
+          Effect.gen(function* () {
+            const start = yield* Clock.currentTimeMillis;
+            const inner = yield* Effect.forkChild(Effect.scoped(work));
+            const exit = yield* Fiber.await(inner);
+            return { elapsed: (yield* Clock.currentTimeMillis) - start, exit };
+          }),
+        );
+        yield* Deferred.await(deleting);
+        yield* TestClock.adjust("30 seconds");
+        return yield* Fiber.join(child);
+      }).pipe(
+        Effect.provide(TestClock.layer()),
+        Effect.matchCause({
+          onFailure: (cause) => {
+            settled.reject(cause);
+          },
+          onSuccess: (value) => {
+            settled.resolve(value);
+          },
+        }),
+      ),
+    );
+    const watchdog = setTimeout(() => {
+      settled.reject(new Error(`${mode} ${create} failed-create cleanup deadline did not settle`));
+    }, 2000);
+    try {
+      const result = await settled.promise;
+      expect(result.elapsed).toBe(10_000);
+      expect(requests.filter((request) => request.method === "DELETE")).toEqual([
+        expect.objectContaining({ method: "DELETE", path: expect.stringContaining("?force=true&v=true") }),
+      ]);
+      expect(Exit.isFailure(result.exit)).toBe(true);
+      if (!Exit.isFailure(result.exit)) return;
+      const projected = failureOutcomeFromCause(result.exit.cause);
+      expect(cleanupErrors(result.exit.cause)).toEqual([
+        expect.objectContaining({
+          _tag: "ProviderUnavailableError",
+          operation: "run.create.remove",
+          message: "Provider ephemeral container cleanup timed out.",
+        }),
+      ]);
+      expect(projected.error).toMatchObject({
+        _tag: "VolumeOperationError",
+        operation: "run.create",
+        message:
+          create === "transport"
+            ? "Provider API request failed."
+            : "Provider data-plane API returned HTTP 500.",
+      });
+      expect(projected.additionalErrors).toEqual([
+        {
+          role: "cleanup",
+          error: expect.objectContaining({
+            _tag: "ProviderUnavailableError",
+            operation: "run.create.remove",
+          }),
+        },
+      ]);
+      expect(roles(result.exit.cause)).toEqual(["unscoped", "cleanup"]);
+    } finally {
+      clearTimeout(watchdog);
+      teardown.resolve();
+      await Effect.runPromise(Fiber.interrupt(root));
+    }
+  },
+  5000,
+);

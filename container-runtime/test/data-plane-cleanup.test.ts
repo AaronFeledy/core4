@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, VolumeOperationError } from "@lando/sdk/errors";
+import { AppId } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import type { ProviderError } from "@lando/sdk/services";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect";
+import { echoHelperPull } from "./helper-pull-support.ts";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 
@@ -501,5 +504,405 @@ describe("ephemeral cleanup", () => {
     expect(Cause.hasInterrupts(inner.cause)).toBe(true);
     expect(roles(inner.cause)).toContain("cleanup");
     expect(deletes(requests)).toHaveLength(1);
+  });
+});
+
+type FailedCreateMode = "buffered" | "streamed" | "snapshot";
+type FailedCreateKind = { readonly kind: "http"; readonly status: number } | { readonly kind: "transport" };
+type FailedCleanupKind =
+  | { readonly kind: "status"; readonly status: number }
+  | { readonly kind: "transport" }
+  | { readonly kind: "defect"; readonly defect: unknown }
+  | { readonly kind: "cause"; readonly cause: Cause.Cause<ProviderError> };
+
+const publicModes = ["buffered", "streamed"] as const;
+const acquireModes = ["buffered", "streamed", "snapshot"] as const;
+const snapshotSpec = { volume: { app: AppId.make("app"), store: "data" }, snapshotId: "snap" } as const;
+
+const createQueryName = (requests: ReadonlyArray<{ method: string; path: string }>): string => {
+  const create = requests.find(
+    (request) => request.method === "POST" && request.path.startsWith("/containers/create?name="),
+  );
+  if (create === undefined) throw new Error("missing create request");
+  return decodeURIComponent(create.path.slice("/containers/create?name=".length));
+};
+
+const expectRemovedOnce = (requests: ReadonlyArray<{ method: string; path: string }>) => {
+  const name = createQueryName(requests);
+  expect(deletes(requests)).toEqual([
+    { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true&v=true` },
+  ]);
+  return name;
+};
+
+const invokeFailedCreate = (provider: ReturnType<typeof makeProviderDataPlane>, mode: FailedCreateMode) => {
+  if (mode === "buffered") return Effect.scoped(provider.run(spec).pipe(Effect.asVoid));
+  if (mode === "streamed") return Effect.scoped(provider.runStream(spec).pipe(Stream.runDrain));
+  return Effect.scoped(provider.snapshotVolume(snapshotSpec).pipe(Effect.asVoid));
+};
+
+const failedCreatePlane = (
+  requests: Array<{ method: string; path: string }>,
+  script: {
+    readonly create: FailedCreateKind | { readonly kind: "defect"; readonly defect: unknown };
+    readonly cleanup: FailedCleanupKind;
+    readonly created?: Set<string>;
+  },
+) => {
+  const transport = new ProviderUnavailableError({
+    providerId: "test",
+    operation: "transport",
+    message: "socket down",
+    remediation: "retry",
+  });
+  const api: DataPlaneApiClient = {
+    request: (request) => {
+      requests.push({ method: request.method, path: request.path });
+      if (request.method === "DELETE") {
+        const name = decodeURIComponent(request.path.slice("/containers/".length).split("?")[0] ?? "");
+        script.created?.delete(name);
+        if (script.cleanup.kind === "transport") return Effect.fail(transport);
+        if (script.cleanup.kind === "defect") return Effect.die(script.cleanup.defect);
+        if (script.cleanup.kind === "cause") return Effect.failCause(script.cleanup.cause);
+        return Effect.succeed({ status: script.cleanup.status, body: "" });
+      }
+      if (request.path.startsWith("/containers/create?name=")) {
+        const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
+        script.created?.add(name);
+        if (script.create.kind === "transport") return Effect.fail(transport);
+        if (script.create.kind === "defect") return Effect.die(script.create.defect);
+        if (script.create.status === 409) script.created?.delete(name);
+        return Effect.succeed({ status: script.create.status, body: "create failed" });
+      }
+      return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
+    },
+    stream: () => Stream.empty,
+  };
+  return makeProviderDataPlane({
+    providerId: "test",
+    api,
+    capabilities: { volumeSnapshot: "native" },
+    redactor: scriptRedactor((value) => value),
+    pullHelperImage: echoHelperPull(),
+  });
+};
+
+describe("failed-create compensation", () => {
+  test.each(acquireModes.flatMap((mode) => [204, 404].map((status) => [mode, status] as const)))(
+    "%s removes the create-query name once when create returns 500 and DELETE returns %s",
+    async (mode, status) => {
+      const requests: Array<{ method: string; path: string }> = [];
+      const created = new Set<string>();
+      const exit = await Effect.runPromiseExit(
+        invokeFailedCreate(
+          failedCreatePlane(requests, {
+            create: { kind: "http", status: 500 },
+            cleanup: { kind: "status", status },
+            created,
+          }),
+          mode,
+        ),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) return;
+      const name = expectRemovedOnce(requests);
+      expect(created.has(name)).toBe(false);
+      const outcome = failureOutcomeFromCause(exit.cause);
+      expect(outcome.additionalErrors).toEqual([]);
+      if (mode === "snapshot") {
+        expect(outcome.error).toMatchObject({
+          _tag: "VolumeOperationError",
+          operation: "snapshotVolume",
+          message: "Provider volume snapshot failed.",
+          cause: {
+            _tag: "VolumeOperationError",
+            operation: "run.create",
+            message: "Provider data-plane API returned HTTP 500.",
+          },
+        });
+        return;
+      }
+      expect(outcome.error).toMatchObject({
+        _tag: "VolumeOperationError",
+        operation: "run.create",
+        message: "Provider data-plane API returned HTTP 500.",
+      });
+      expect(roles(exit.cause)).toEqual(["unscoped"]);
+    },
+  );
+
+  test.each(acquireModes)("%s leaves a 409 name conflict untouched", async (mode) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const created = new Set<string>(["foreign-helper"]);
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "http", status: 409 },
+          cleanup: { kind: "status", status: 204 },
+          created,
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expect(deletes(requests)).toEqual([]);
+    expect(created.has("foreign-helper")).toBe(true);
+    expect(created.has(createQueryName(requests))).toBe(false);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.additionalErrors).toEqual([]);
+    const createError =
+      mode === "snapshot" && outcome.error instanceof VolumeOperationError
+        ? outcome.error.cause
+        : outcome.error;
+    expect(createError).toMatchObject({
+      _tag: "VolumeOperationError",
+      operation: "run.create",
+      message: "Provider data-plane API returned HTTP 409.",
+    });
+  });
+
+  test.each(acquireModes)("%s compensates a typed create transport failure exactly once", async (mode) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "transport" },
+          cleanup: { kind: "status", status: 204 },
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expectRemovedOnce(requests);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.additionalErrors).toEqual([]);
+    const createError =
+      mode === "snapshot" && outcome.error instanceof VolumeOperationError
+        ? outcome.error.cause
+        : outcome.error;
+    expect(createError).toMatchObject({
+      _tag: "VolumeOperationError",
+      operation: "run.create",
+      message: "Provider API request failed.",
+      cause: { _tag: "ProviderUnavailableError", message: "socket down" },
+    });
+  });
+
+  test.each(publicModes)("%s does not DELETE when create fails and remove is false", async (mode) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        mode === "buffered"
+          ? failedCreatePlane(requests, {
+              create: { kind: "http", status: 500 },
+              cleanup: { kind: "status", status: 204 },
+            }).run({ ...spec, remove: false })
+          : failedCreatePlane(requests, {
+              create: { kind: "http", status: 500 },
+              cleanup: { kind: "status", status: 204 },
+            })
+              .runStream({ ...spec, remove: false })
+              .pipe(Stream.runDrain),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expect(deletes(requests)).toEqual([]);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      error: { _tag: "VolumeOperationError", operation: "run.create" },
+      additionalErrors: [],
+    });
+  });
+
+  test.each(publicModes)("%s keeps create HTTP 500 primary when DELETE returns 500", async (mode) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "http", status: 500 },
+          cleanup: { kind: "status", status: 500 },
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expectRemovedOnce(requests);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      error: {
+        _tag: "VolumeOperationError",
+        operation: "run.create",
+        message: "Provider data-plane API returned HTTP 500.",
+      },
+      additionalErrors: [
+        { role: "cleanup", error: { _tag: "ProviderUnavailableError", operation: "run.create.remove" } },
+      ],
+    });
+    expect(roles(exit.cause)).toEqual(["unscoped", "cleanup"]);
+  });
+
+  test.each(publicModes)("%s keeps create HTTP 500 primary when DELETE transport fails", async (mode) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "http", status: 500 },
+          cleanup: { kind: "transport" },
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expectRemovedOnce(requests);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      error: { _tag: "VolumeOperationError", operation: "run.create" },
+      additionalErrors: [{ role: "cleanup", error: { message: "socket down" } }],
+    });
+  });
+
+  test.each(publicModes)("%s re-fails the original create defect when DELETE returns 404", async (mode) => {
+    const defect = { tag: "create-defect" };
+    const requests: Array<{ method: string; path: string }> = [];
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "defect", defect },
+          cleanup: { kind: "status", status: 404 },
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expectRemovedOnce(requests);
+    expect(Cause.hasFails(exit.cause)).toBe(false);
+    expect(exit.cause.reasons.find(Cause.isDieReason)?.defect).toBe(defect);
+    expect(failureOutcomeFromCause(exit.cause).additionalErrors).toEqual([]);
+  });
+
+  test.each(publicModes)("%s retains create error and appends annotated cleanup defects", async (mode) => {
+    const cleanupError = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "cleanup.original",
+      message: "cleanup failed",
+      remediation: "retry",
+    });
+    const defect = { tag: "cleanup-defect" };
+    const requests: Array<{ method: string; path: string }> = [];
+    const exit = await Effect.runPromiseExit(
+      invokeFailedCreate(
+        failedCreatePlane(requests, {
+          create: { kind: "http", status: 500 },
+          cleanup: {
+            kind: "cause",
+            cause: Cause.fromReasons([
+              Cause.makeFailReason(cleanupError).annotate(Context.make(FailureRoleAnnotation, "rollback")),
+              Cause.makeDieReason(defect),
+            ]),
+          },
+        }),
+        mode,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    expectRemovedOnce(requests);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      error: { _tag: "VolumeOperationError", operation: "run.create" },
+      additionalErrors: [
+        { role: "rollback", error: cleanupError },
+        { role: "cleanup", error: defect },
+      ],
+    });
+    expect(exit.cause.reasons.find(Cause.isDieReason)?.defect).toBe(defect);
+    expect(roles(exit.cause)).toEqual(["unscoped", "rollback", "cleanup"]);
+  });
+
+  test.each(publicModes)(
+    "%s cancels a pending create that later succeeds and still removes",
+    async (mode) => {
+      const requests: Array<{ method: string; path: string }> = [];
+      const pending = await Effect.runPromise(Deferred.make<void>());
+      const complete = await Effect.runPromise(
+        Deferred.make<{ readonly status: number; readonly body: string }>(),
+      );
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        capabilities: { volumeSnapshot: "none" },
+        redactor: scriptRedactor((value) => value),
+        api: {
+          request: (request) => {
+            requests.push({ method: request.method, path: request.path });
+            if (request.path.startsWith("/containers/create?name=")) {
+              return Deferred.succeed(pending, undefined).pipe(Effect.andThen(Deferred.await(complete)));
+            }
+            if (request.method === "DELETE") return Effect.succeed({ status: 204, body: "" });
+            if (request.path.endsWith("/wait")) return Effect.never;
+            if (request.path.endsWith("/json")) {
+              return Effect.succeed({ status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) });
+            }
+            return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
+          },
+          stream: () => Stream.empty,
+        },
+      });
+      const inner = await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(invokeFailedCreate(provider, mode));
+          yield* Deferred.await(pending);
+          yield* Effect.forkChild(Fiber.interrupt(fiber));
+          yield* Deferred.succeed(complete, { status: 201, body: "{}" });
+          return yield* Fiber.await(fiber);
+        }),
+      );
+      expect(Exit.isFailure(inner)).toBe(true);
+      if (!Exit.isFailure(inner)) return;
+      expect(Cause.hasInterrupts(inner.cause)).toBe(true);
+      expectRemovedOnce(requests);
+    },
+  );
+
+  test.each(publicModes)("%s cancels a pending create that later fails and still removes", async (mode) => {
+    const requests: Array<{ method: string; path: string }> = [];
+    const pending = await Effect.runPromise(Deferred.make<void>());
+    const complete = await Effect.runPromise(
+      Deferred.make<{ readonly status: number; readonly body: string }>(),
+    );
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "none" },
+      redactor: scriptRedactor((value) => value),
+      api: {
+        request: (request) => {
+          requests.push({ method: request.method, path: request.path });
+          if (request.path.startsWith("/containers/create?name=")) {
+            return Deferred.succeed(pending, undefined).pipe(Effect.andThen(Deferred.await(complete)));
+          }
+          if (request.method === "DELETE") return Effect.succeed({ status: 204, body: "" });
+          return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
+        },
+        stream: () => Stream.empty,
+      },
+    });
+    const inner = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(invokeFailedCreate(provider, mode));
+        yield* Deferred.await(pending);
+        yield* Effect.forkChild(Fiber.interrupt(fiber));
+        yield* Deferred.succeed(complete, { status: 500, body: "create failed" });
+        return yield* Fiber.await(fiber);
+      }),
+    );
+    expect(Exit.isFailure(inner)).toBe(true);
+    if (!Exit.isFailure(inner)) return;
+    expectRemovedOnce(requests);
+    expect(failureOutcomeFromCause(inner.cause).error).toMatchObject({
+      _tag: "VolumeOperationError",
+      operation: "run.create",
+      message: "Provider data-plane API returned HTTP 500.",
+    });
   });
 });

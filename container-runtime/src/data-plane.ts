@@ -641,8 +641,17 @@ const createEphemeralContainer = (
       AttachStderr: true,
     },
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.create", response, mount?.store)),
-    Effect.as(name),
+    Effect.catchCause((cause) => compensateFailedCreate(options, spec, name, cause)),
+    Effect.flatMap((response) => {
+      if (response.status === 409) {
+        // Conflict; ownership unproven. Skip compensating DELETE.
+        return ensure2xx(options, "run.create", response, mount?.store).pipe(Effect.as(name));
+      }
+      return ensure2xx(options, "run.create", response, mount?.store).pipe(
+        Effect.as(name),
+        Effect.catchCause((cause) => compensateFailedCreate(options, spec, name, cause)),
+      );
+    }),
   );
 };
 
@@ -701,13 +710,11 @@ interface EphemeralRelease {
 /** Fixed bound so a hung engine DELETE cannot hold scope close open. */
 const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
 
-const releaseEphemeralContainer = (release: EphemeralRelease) => {
-  const { options, name, remove, exit, operation, observed } = release;
-  if (!remove) return Effect.void;
-  // Finalizers are uninterruptible. The removal stays interruptible so this
-  // deadline can stop it; the finalizer stays masked so parent cancellation
-  // still waits for that bounded attempt instead of abandoning cleanup.
-  const removal = Effect.interruptible(
+const boundedEphemeralRemoval = (options: ProviderDataPlaneOptions, name: string, operation: string) =>
+  // Finalizers and masked acquire are uninterruptible. The removal stays
+  // interruptible so this deadline can stop it; the caller stays masked so
+  // parent cancellation waits for that bounded attempt instead of abandoning it.
+  Effect.interruptible(
     removeRuntimeContainer(options.api, name, {
       providerId: options.providerId,
       operation: `${operation}.remove`,
@@ -732,7 +739,26 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
         ),
     }),
   );
-  return removal.pipe(
+
+const compensateFailedCreate = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  name: string,
+  cause: Cause.Cause<ProviderError>,
+): Effect.Effect<never, ProviderError> => {
+  if (spec.remove === false) return Effect.failCause(cause);
+  return boundedEphemeralRemoval(options, name, "run.create").pipe(
+    Effect.matchCauseEffect({
+      onSuccess: () => Effect.failCause(cause),
+      onFailure: (cleanup) => Effect.failCause(mergeFailure(cause, cleanup, "cleanup")),
+    }),
+  );
+};
+
+const releaseEphemeralContainer = (release: EphemeralRelease) => {
+  const { options, name, remove, exit, operation, observed } = release;
+  if (!remove) return Effect.void;
+  return boundedEphemeralRemoval(options, name, operation).pipe(
     Effect.asVoid,
     Effect.catchCause((cause) => {
       const failedCommand = completedCommandFailure(exit, observed);
@@ -1231,8 +1257,19 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             ),
           ),
         ),
-        Effect.mapError((cause) =>
-          volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
+        Effect.catchCause((cause) =>
+          Effect.failCause(
+            mapFailureCause(cause, (error) =>
+              volumeError(
+                options,
+                "snapshotVolume",
+                "Provider volume snapshot failed.",
+                undefined,
+                error,
+                store,
+              ),
+            ),
+          ),
         ),
         Effect.scoped,
       );
