@@ -11,6 +11,7 @@ import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, HostProxyResponse } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Schema, Stream } from "effect";
+import { CliInvocation } from "../invocation-context";
 import { HOST_PROXY_CALL_COMMAND, type HostProxyCall } from "./call-context";
 import type { WorkerInput } from "./worker-config";
 
@@ -40,9 +41,9 @@ const childExecutor = (
   input: typeof WorkerInput.Type,
   prefix: readonly string[] = hostProxyWorkerArgv(hostProxyWorkerEntry()).slice(0, -1),
 ) => {
-  const startup = { ...process.env };
   return Effect.fnUntraced(
     function* (envelope: HostProxyCall, output?: HostProxyRunLandoExecutorInput["output"]) {
+      const startup = (yield* CliInvocation).env;
       const runner = yield* ProcessRunner;
       const stdinStream: AsyncIterable<Uint8Array> = {
         async *[Symbol.asyncIterator]() {

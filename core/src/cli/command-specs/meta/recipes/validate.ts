@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../invocation-context";
 import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -39,7 +40,7 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
         }),
       );
     }
-    return recipesValidate(path, { cwd: process.cwd() });
+    return Effect.flatMap(CliInvocation, ({ cwd }) => recipesValidate(path, { cwd }));
   },
   render: (result) => renderRecipesValidateResult(result),
 };

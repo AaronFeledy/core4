@@ -6,6 +6,7 @@ import { ConfigService, InteractionService, Renderer } from "@lando/sdk/services
 import { Effect, Option } from "effect";
 import type { RecipeInitReview } from "../../recipes/prepared-init";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
+import { CliInvocation } from "../invocation-context";
 import type { InitAppOptions } from "./init-options";
 import type { InitReviewRoutes } from "./init-review-routes";
 
@@ -111,7 +112,7 @@ export const makeInitReview = Effect.fnUntraced(function* (input: {
   const interaction = yield* InteractionService;
   if (!(yield* interaction.isInteractive)) return undefined;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const config = yield* Effect.serviceOption(ConfigService);
   const onPrepared: NonNullable<InitAppOptions["onPrepared"]> = async (review, context) => {
     if (context.signal?.aborted) throw cancelled();

@@ -14,6 +14,7 @@ import { Effect, Option, Schema } from "effect";
 import { escapeDiagnosticText } from "../../diagnostic-text";
 import { validateEventCommandInput } from "../../event-command-input";
 import { type ResolvedPluginCommandSpec, loadPluginSpec } from "../../event-command-target";
+import { CliInvocation } from "../../invocation-context";
 import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
 import { requireConfirmation } from "../../require-confirmation";
 import type { McpCommandRegistry } from "./mcp-registry";
@@ -190,7 +191,7 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
   const available = yield* Effect.serviceOption(PluginContributionGraph);
   if (Option.isNone(available)) return registry;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const projection = yield* projectMcpPluginCommands(
     available.value,
     new Set(registry.commandEntries.map((entry) => entry.spec.id)),

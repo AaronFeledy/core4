@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { CliInvocation } from "../invocation-context";
 
 import { Clock, Duration, Effect, Option } from "effect";
 
@@ -54,7 +55,7 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
   const fileSystem = yield* HostProxyDoctorFileSystem;
   const paths = yield* PathsService;
   const { redactor } = yield* resolveSecretsRedactor({
-    sourceEnv: { ...(options.sourceEnv ?? process.env) },
+    sourceEnv: { ...(options.sourceEnv ?? (yield* CliInvocation).env) },
   });
   const freshness = currentHostProxyAllowlistFreshness();
   const checks: DoctorCheck[] = [];

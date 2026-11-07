@@ -34,8 +34,10 @@ import {
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
+import { isStdioRendererIO } from "@lando/renderer/io";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
+import { CliInvocation } from "../invocation-context";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 
@@ -243,6 +245,8 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   options: ShellAppOptions = {},
 ): Effect.fn.Return<ShellAppResult, ShellAppError, ShellAppServices> {
   yield* recordHostFlagDeprecation(options.host === true);
+  const invocation = yield* CliInvocation;
+  const sourceEnv = invocation.env;
 
   if (options.noInteractive === true) {
     return yield* Effect.fail(shellRequiresTtyError());
@@ -257,7 +261,16 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const plan = yield* planner.plan(landofile, capabilities);
 
   if (options.service !== undefined && options.service.length > 0) {
-    const io = options.io ?? processShellIO;
+    const io =
+      options.io ??
+      (isStdioRendererIO(invocation.io)
+        ? processShellIO
+        : {
+            writeStdout: invocation.io.writeStdout,
+            writeStderr: invocation.io.writeStderr,
+            ...(invocation.io.stdin === undefined ? {} : { stdin: invocation.io.stdin }),
+            stdinIsTTY: () => invocation.io.stdinIsTTY === true,
+          });
     const service = yield* resolveService(options.service, plan);
     const provider = yield* registry.select(plan);
     const redaction = yield* Effect.serviceOption(RedactionService);
@@ -272,8 +285,8 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       ...(options.user === undefined ? {} : { user: options.user }),
     };
     const terminalSize = currentTerminalSize(io);
-    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
-    const forwardedEnv = withAgentContextEnv(options.env, process.env, {
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, sourceEnv);
+    const forwardedEnv = withAgentContextEnv(options.env, sourceEnv, {
       allowlist,
       lowerThanEnv: service.environment,
     });
@@ -328,16 +341,16 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const paths = yield* PathsService;
   const secretStore = yield* SecretStore;
   const interactive =
-    options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
+    options.isInteractive?.() ?? (invocation.io.stdinIsTTY === true && invocation.io.stdoutIsTTY === true);
   if (!interactive) return yield* Effect.fail(shellRequiresTtyError());
 
   const cwd = options.cwd ?? String(plan.root);
-  const hostUser = process.env.USER ?? process.env.USERNAME;
-  const hostHome = process.env.HOME ?? process.env.USERPROFILE;
+  const hostUser = sourceEnv.USER ?? sourceEnv.USERNAME;
+  const hostHome = sourceEnv.HOME ?? sourceEnv.USERPROFILE;
   const env: Record<string, string> = {
     ...(options.env ?? {}),
     LANDO: "ON",
-    LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",
+    LANDO_DEBUG: sourceEnv.LANDO_DEBUG === "1" ? "1" : "",
     LANDO_HOST_IP: "127.0.0.1",
     LANDO_HOST_OS: process.platform,
     LANDO_APP_NAME: plan.name,

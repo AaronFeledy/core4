@@ -19,6 +19,7 @@ import { type InteractionError, InteractionService, ManagedFileTransactionGuard 
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Option, Result, Schema, type Scope } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
+import { CliInvocation } from "../invocation-context";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
 import {
@@ -80,7 +81,7 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
     | InteractionError,
     Scope.Scope
   > {
-    const cwd = options.cwd ?? process.cwd();
+    const cwd = options.cwd ?? (yield* CliInvocation).cwd;
     const { appRoot, dualForm } = yield* discoverRecipeAnalysisRoot(cwd);
     const guard = yield* Effect.serviceOption(ManagedFileTransactionGuard);
     if (Option.isSome(guard)) yield* honorMigrationJournal(guard.value, appRoot, options.dryRun === true);

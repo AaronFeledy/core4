@@ -1,4 +1,5 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
+import { Effect } from "effect";
 import { Args, Flags } from "../../spec/metadata";
 
 import {
@@ -7,10 +8,12 @@ import {
   execApp,
   execAppRedactionTokens,
 } from "@lando/engine/operations/exec";
+import { isStdioRendererIO } from "@lando/renderer/io";
 import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
+import { CliInvocation } from "../../invocation-context";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
@@ -48,7 +51,8 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   },
   streaming: StreamFrame,
   streamingMode: "live",
-  run: (input) => {
+  run: Effect.fn("ExecCommand.run")(function* (input: unknown) {
+    const invocation = yield* CliInvocation;
     const flags = specFlagsOf(input);
     const format = stringFlag(flags, "format");
     const user = stringFlag(flags, "user");
@@ -73,12 +77,19 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
       "interaction" in input &&
       input.interaction === "non-interactive";
     if (!execInputUsesCliHostIo(input) || nonInteractive)
-      return execApp({ ...base, tty: false, interactive: false });
-    if (envelope) return execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
+      return yield* execApp({ ...base, tty: false, interactive: false });
+    if (!isStdioRendererIO(invocation.io))
+      return yield* execApp({
+        ...base,
+        tty: !envelope && invocation.io.stdoutIsTTY === true,
+        interactive: !envelope && booleanFlag(flags, "interactive"),
+        ...(invocation.io.stdin === undefined ? {} : { stdinStream: invocation.io.stdin }),
+      });
+    if (envelope) return yield* execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
     const interactive = booleanFlag(flags, "interactive");
-    const attached = attachExecHostIo({ ...base, tty: process.stdout.isTTY === true, interactive });
-    return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
-  },
+    const attached = attachExecHostIo({ ...base, tty: invocation.io.stdoutIsTTY === true, interactive });
+    return yield* withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
+  }),
   streamFrames: (value) => {
     const result = value;
     const frames = [];

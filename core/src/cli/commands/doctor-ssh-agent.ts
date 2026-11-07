@@ -23,6 +23,7 @@ import {
 } from "@lando/sdk/services";
 import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
+import { CliInvocation } from "../invocation-context";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
 import { resolveSecretsRedactor } from "./secrets-redactor";
@@ -112,7 +113,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       case "host": {
         const discovered = yield* discoverHostSshAgent({
           platform: input.platform ?? process.platform,
-          env: input.env ?? process.env,
+          env: input.env ?? (yield* CliInvocation).env,
           home: input.discovery?.home ?? homedir(),
           ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
           ...(input.discovery?.exists === undefined ? {} : { exists: input.discovery.exists }),
@@ -165,7 +166,9 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         fixContext.fixCommand = "ssh.setup";
         fixContext.fixExitCode = recovered ? "0" : "1";
         if (!recovered) {
-          const { redact } = yield* resolveSecretsRedactor({ sourceEnv: input.env ?? process.env });
+          const { redact } = yield* resolveSecretsRedactor({
+            sourceEnv: input.env ?? (yield* CliInvocation).env,
+          });
           fixContext.fixError = redact(
             Result.isFailure(setup)
               ? setup.failure.message

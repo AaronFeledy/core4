@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+import { CliInvocation } from "../../../invocation-context";
 import { Args, Flags } from "../../../spec/metadata";
 
 import {
@@ -11,7 +13,7 @@ import { resolveNonInteractive } from "../../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 
-const extractInput = (input: unknown) => {
+const extractInput = (input: unknown, isTTY: boolean) => {
   const args = specArgsOf(input);
   const flags = specFlagsOf(input);
   const arrayFlag = (name: string): ReadonlyArray<string> | undefined =>
@@ -28,7 +30,7 @@ const extractInput = (input: unknown) => {
     answersFile: stringFlag(flags, "answers"),
     nonInteractive: resolveNonInteractive({
       noInteractive: flags["no-interactive"] === true,
-      isTTY: process.stdin.isTTY,
+      isTTY,
     }),
   };
 };
@@ -58,6 +60,9 @@ export const pluginNewSpec: LandoCommandSpec<PluginNewResult> = {
       default: false,
     }),
   },
-  run: (input) => pluginNew(extractInput(input)),
+  run: (input) =>
+    Effect.flatMap(CliInvocation, (invocation) =>
+      pluginNew(extractInput(input, invocation.io.stdinIsTTY === true)),
+    ),
   render: (result) => renderPluginNewResult(result),
 };

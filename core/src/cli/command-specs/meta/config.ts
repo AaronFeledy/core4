@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+import { CliInvocation, type CliInvocationContext, processInvocationContext } from "../../invocation-context";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
 
@@ -15,7 +17,10 @@ import type { LandoCommandSpec } from "../../spec/command-base";
 import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../config-flags";
 import { configWriteOptionsFromInput } from "../config-write-input";
 
-export const metaConfigOptionsFromInput = (input: unknown): MetaConfigOptions => {
+export const metaConfigOptionsFromInput = (
+  input: unknown,
+  context: CliInvocationContext = processInvocationContext(),
+): MetaConfigOptions => {
   if (typeof input !== "object" || input === null) return {};
   const parsed = configWriteOptionsFromInput(input, { formats: ["json", "yaml", "table"] });
   const source = stringFlag(specFlagsOf(input), "source");
@@ -24,9 +29,9 @@ export const metaConfigOptionsFromInput = (input: unknown): MetaConfigOptions =>
     ...(source === "raw" || source === "resolved" ? { source } : {}),
     editorRunner:
       parsed.editor === undefined
-        ? createDefaultEditorRunner()
+        ? createDefaultEditorRunner({ env: context.env })
         : createDefaultEditorRunner({
-            env: { ...process.env, EDITOR: parsed.editor, VISUAL: parsed.editor },
+            env: { ...context.env, EDITOR: parsed.editor, VISUAL: parsed.editor },
           }),
   };
   return opts as MetaConfigOptions;
@@ -62,6 +67,8 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
     editor: editorFlag,
     "dry-run": dryRunFlag,
   },
-  run: (input) => runConfig(metaConfigOptionsFromInput(input)),
+  run: Effect.fn("ConfigCommand.run")(function* (input: unknown) {
+    return yield* runConfig(metaConfigOptionsFromInput(input, yield* CliInvocation));
+  }),
   render: (result) => renderConfigResult(result),
 };

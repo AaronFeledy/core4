@@ -10,6 +10,7 @@ import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
+import { CliInvocation } from "../invocation-context";
 import { renderConfigKeyDescription } from "./config-key-render";
 import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";
@@ -42,16 +43,18 @@ export const appConfigSet = (options: AppConfigOptions) => Writes.appConfigSet(o
 export const appConfigUnset = (options: AppConfigOptions) => Writes.appConfigUnset(options);
 export const appConfigValidate = (options: AppConfigOptions) => Writes.appConfigValidate(options);
 export const appConfigEdit = (options: AppConfigOptions) =>
-  Writes.appConfigEdit({
-    ...options,
-    editorRunner:
-      options.editorRunner ??
-      createDefaultEditorRunner(
-        options.editor === undefined
-          ? {}
-          : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
-      ),
-  });
+  Effect.flatMap(CliInvocation, ({ env }) =>
+    Writes.appConfigEdit({
+      ...options,
+      editorRunner:
+        options.editorRunner ??
+        createDefaultEditorRunner(
+          options.editor === undefined
+            ? { env }
+            : { env: { ...env, EDITOR: options.editor, VISUAL: options.editor } },
+        ),
+    }),
+  );
 
 export const appConfigGet = (options: AppConfigOptions) =>
   appConfigView({ ...options, subcommand: "get" }).pipe(
