@@ -251,6 +251,9 @@ other requests. Closing stdin cancels every active call and releases its
 provider reads, including idle log followers. Either way, a cancelled call gets
 no fabricated result, and a change the command had already applied to the app
 stays applied. Progress notifications you already received remain valid.
+Cancelling an exec or tooling call also stops the command inside the container
+and everything it started, so a port it held is free for your next call; you
+don't need to kill leftover processes yourself.
 
 ## Confirm changes to an app
 
