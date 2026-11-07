@@ -261,12 +261,19 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     selected !== undefined &&
     matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)
   ) {
+    const sameRoot = matches.filter((plan) => plan.identity?.appRoot === selectedRoot);
+    const providerIds = [...new Set(sameRoot.map((plan) => plan.provider))];
+    const renamed = app.kind === "user" && providerIds.length === 1;
     return yield* Effect.fail(
       new AppResolveError({
-        message: `Multiple providers claim applied state for ${selectedRoot}.`,
+        message: renamed
+          ? `App folder ${selectedRoot} has multiple applied app names: ${sameRoot.map((plan) => plan.name).join(", ")}.`
+          : `Multiple providers claim applied state for ${selectedRoot}: ${providerIds.join(", ")}.`,
         reason: "ambiguous",
         detail: "applied-state",
-        remediation: `From ${selectedRoot}, remove unwanted realizations with ${[...new Set(matches.map((plan) => plan.provider))].map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
+        remediation: renamed
+          ? `Run \`lando start\` in ${selectedRoot} to retire the app names its Landofile no longer selects, then retry.`
+          : `From ${selectedRoot}, remove unwanted realizations with ${providerIds.map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
       }),
     );
   }
