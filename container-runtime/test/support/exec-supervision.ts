@@ -82,7 +82,7 @@ interface Session {
 /** Extend an existing daemon fake, preserving its user-command behavior and inspecting its actual command result. */
 export const installSupervisedExecFixture = (
   api: EngineHttpApi,
-  options: { readonly installError?: ProviderError } = {},
+  options: { readonly installError?: ProviderError; readonly launchExitCode?: number } = {},
 ): void => {
   if (installed.has(api)) return;
   const request = api.request;
@@ -296,6 +296,8 @@ export const installSupervisedExecFixture = (
               });
             if (operation === "launch") {
               if (!session.cancelled) session.launched = true;
+              if (!session.cancelled && options.launchExitCode !== undefined)
+                return frame({ ok: true, state: "finished", exitCode: options.launchExitCode, joined: true });
               return frame({ ok: true, state: session.cancelled ? "cancelled" : "running" });
             }
             if (operation === "cancel") session.cancelled = true;

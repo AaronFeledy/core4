@@ -421,15 +421,50 @@ func TestExecLaunchGateExpiresWithoutSpawning(t *testing.T) {
 	}
 }
 
-func TestExecLaunchFailureDoesNotInventPayloadExit(t *testing.T) {
-	f := execTestSupervisor(t, "/definitely-no-such-executable")
-	r := execTestControl(t, f, "launch")
-	if r.OK || r.Error != "launch-failed" || r.ExitCode != nil || r.Joined {
-		t.Fatalf("launch failure: %+v", r)
-	}
-	r = execTestControl(t, f, "collect")
-	if r.OK || r.Error != "launch-failed" {
-		t.Fatalf("failure collection: %+v", r)
+func TestExecLaunchFailureCompletesAndCleansSession(t *testing.T) {
+	for _, scenario := range []struct {
+		name, program, content, message string
+		mode                           os.FileMode
+		code                           int
+	}{
+		{name: "missing-path", program: "/definitely-no-such-executable", code: 127, message: "command not found"},
+		{name: "missing-PATH", program: "lando-no-such-command", code: 127, message: "command not found"},
+		{name: "permission", content: "not executable\n", mode: 0600, code: 126, message: "cannot execute"},
+		{name: "format", content: "not an executable format\n", mode: 0700, code: 126, message: "cannot execute"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			program := scenario.program
+			if program == "" {
+				program = filepath.Join(t.TempDir(), "payload")
+				if err := os.WriteFile(program, []byte(scenario.content), scenario.mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f := execTestSupervisor(t, program, "arg")
+			r := execTestControl(t, f, "launch")
+			if !r.OK || r.State != "finished" || !r.Joined || r.ExitCode == nil || *r.ExitCode != scenario.code {
+				t.Fatalf("launch completion: %+v", r)
+			}
+			if r = execTestControl(t, f, "collect"); !r.OK || !r.Joined {
+				t.Fatalf("collect: %+v", r)
+			}
+			select {
+			case err := <-f.done:
+				if e, ok := err.(*exec.ExitError); !ok || e.ExitCode() != scenario.code {
+					t.Fatalf("exit: %v", err)
+				}
+				f.done <- err
+			case <-time.After(2 * time.Second):
+				t.Fatal("collect did not release supervisor")
+			}
+			if f.stdout.Len() != 0 || f.stderr.String() != "lando: "+program+": "+scenario.message+"\n" {
+				t.Fatalf("payload output: %q %q", f.stdout.String(), f.stderr.String())
+			}
+			var out bytes.Buffer
+			if code := runExecCleanup([]string{f.dir, f.nonce}, helperIO{stdout: &out}); code != 0 {
+				t.Fatalf("cleanup: %d %s", code, out.String())
+			}
+		})
 	}
 }
 func TestExecLostControlLeaseKillsAndJoinsPayload(t *testing.T) {

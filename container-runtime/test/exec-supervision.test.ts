@@ -54,10 +54,10 @@ const plan: AppPlan = {
 const target = { app, service, user: "1000:1000" };
 const providerFailure = (message: string) =>
   new ProviderUnavailableError({ ...ctx, operation: "exec", message });
-const frame = (value: string) => {
+const frame = (value: string, stream = 1) => {
   const payload = new TextEncoder().encode(value);
   const result = new Uint8Array(payload.length + 8);
-  result[0] = 1;
+  result[0] = stream;
   new DataView(result.buffer).setUint32(4, payload.length);
   result.set(payload, 8);
   return result;
@@ -77,6 +77,8 @@ type Stage =
   | "collect"
   | "cleanup";
 interface Hooks {
+  readonly launchExitCode?: number;
+  readonly stderr?: string;
   readonly installError?: ProviderError;
   readonly before?: (stage: Stage, input: EngineHttpRequest) => Effect.Effect<void, ProviderUnavailableError>;
   readonly replaceStream?: (
@@ -128,7 +130,7 @@ const fixture = (hooks: Hooks = {}) => {
         return hooks.mainError === undefined
           ? hooks.noOutput === true
             ? Stream.empty
-            : Stream.make(frame("command output\n"))
+            : Stream.make(frame(hooks.stderr ?? "command output\n", hooks.stderr === undefined ? 1 : 2))
           : Stream.fail(hooks.mainError);
       }),
   };
@@ -294,6 +296,19 @@ const terminalChunks = (chunks: readonly ExecChunk[]) => chunks.filter((chunk) =
 const flushWatchReply = Effect.promise<void>(() => new Promise((resolve) => setImmediate(resolve)));
 
 describe("non-TTY exec supervision lifecycle", () => {
+  test.each([127, 126])("launch failure %s completes with stderr and cleans up", async (exitCode) => {
+    const stderr = `lando: test-command: ${exitCode === 127 ? "command not found" : "cannot execute"}\n`;
+    const f = fixture({ exitCode, launchExitCode: exitCode, stderr });
+    const { exit, chunks } = await f.run();
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(terminalChunks(chunks)).toEqual([{ exitCode }]);
+    expect(chunks.filter((chunk) => "kind" in chunk)).toEqual([
+      { kind: "stderr", chunk: new TextEncoder().encode(stderr) },
+    ]);
+    expect(f.events).toContain("collect");
+    expect(f.events).toContain("cleanup");
+    expect(f.events).not.toContain("cancel");
+  });
   test.each(["command", "options"] as const)("raw %s operations use the plain transport", async (rawAt) => {
     const f = fixture();
     const chunks = await Effect.runPromise(

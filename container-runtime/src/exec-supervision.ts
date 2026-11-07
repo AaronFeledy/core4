@@ -434,7 +434,11 @@ export const supervisedExecStream = (
         );
         if (command.signal?.aborted) return yield* Effect.interrupt;
         const launched = yield* control("launch");
-        if (launched.state !== "running") return yield* Effect.fail(failure("launch-not-confirmed"));
+        if (
+          launched.state !== "running" &&
+          !(launched.state === "finished" && launched.joined === true && launched.exitCode !== undefined)
+        )
+          return yield* Effect.fail(failure("launch-not-confirmed"));
         yield* watch.resumeAfterLaunch;
         const finished = yield* watch.finished;
         if (finished.exitCode === undefined) return yield* Effect.fail(failure("root-status-missing"));

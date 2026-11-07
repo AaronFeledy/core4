@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -563,12 +564,33 @@ func runExecSupervisorWithScan(args []string, streams helperIO, scan func() ([]i
 					break
 				}
 				e = execMark(dir, "launched")
-				if e == nil {
-					process, e = execStart(args[3:], streams)
+				if e != nil {
+					execUnlock(lock)
+					failure = "session-write-failed"
+					joined = true
+					complete()
+					call.reply <- state
+					break
 				}
+				process, e = execStart(args[3:], streams)
 				execUnlock(lock)
 				if e != nil {
-					failure = "launch-failed"
+					message := "cannot execute"
+					switch {
+					case errors.Is(e, exec.ErrNotFound), errors.Is(e, syscall.ENOENT):
+						code, message = 127, "command not found"
+					case errors.Is(e, syscall.EACCES), errors.Is(e, syscall.ENOEXEC):
+						code = 126
+					default:
+						failure = "launch-failed"
+					}
+					if failure == "" {
+						// A failed payload launch completes the command without a child to reap.
+						started = true
+						if _, err := fmt.Fprintf(streams.stderr, "lando: %s: %s\n", args[3], message); err != nil {
+							failure = "payload-stderr-failed"
+						}
+					}
 					joined = true
 					complete()
 					call.reply <- state
