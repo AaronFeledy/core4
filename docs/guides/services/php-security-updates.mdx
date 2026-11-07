@@ -1,0 +1,105 @@
+---
+id: php-security-updates
+provider: test
+timeout: 90000
+tags: [beta, docs, php, service, runtime, security]
+---
+
+# Pick up a PHP security release
+
+When PHP ships a security release, the official images publish the fix under the same tag your service already uses, such as `php:8.4-apache-bookworm`. `lando start` and `lando restart` reuse the copy already on your machine, so your app keeps serving the old build. `lando rebuild` pulls the tag again and rebuilds the service on top of it.
+
+The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host:
+
+```yaml
+name: php-patch-demo
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+```
+
+## Check what the web server runs
+
+`php -v` reports the CLI binary. Apache serves requests from its own long-running processes, so ask it too. Save `version.php` in your webroot, which is the app root unless you set `webroot:`:
+
+```php
+<?php echo PHP_VERSION, PHP_EOL;
+```
+
+Then run both checks:
+
+```sh
+lando exec appserver -- php -v
+lando exec appserver -- curl -fsS localhost/version.php
+```
+
+The first line of `php -v` shows the version and a `built:` date. The second command asks Apache inside the container, so it needs no hostname or certificate, and prints the version Apache is serving. With `via: fpm`, run the curl check in your nginx service instead, for example `lando exec web -- curl -fsS localhost/version.php` when the service is named `web` as in the LEMP recipe. Note both values. The images are also republished for operating system fixes, so the `built:` date can change while the version stays the same.
+
+## Check the Landofile
+
+Confirm `appserver` still plans `php:8.4` before you rebuild:
+
+```sh
+lando app:config:lint
+lando app:config --format=json
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="php-patch-demo" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Rebuild
+
+```sh
+lando rebuild -y
+```
+
+Rebuild pulls every image the app references, reruns the image builds, and recreates the containers. Named volumes, such as database data, stay. `-y` skips the confirmation prompt.
+
+To refresh only PHP, name the service. Lando also rebuilds any service it depends on:
+
+```sh
+lando rebuild -s appserver -y
+```
+
+## Check again
+
+```sh
+lando exec appserver -- php -v
+lando exec appserver -- curl -fsS localhost/version.php
+```
+
+The `php -v` version or `built:` date changes when the registry had a newer image. The HTTP check should print the same version as `php -v`. Rebuild replaces the container, so no Apache process from the old image keeps serving.
+
+Remove the check file when you're done:
+
+```sh
+rm version.php
+```
+
+## If the version didn't change
+
+- If rebuild warned that it couldn't refresh an image and used the local copy, the registry wasn't reachable. Fix the network, then run `lando rebuild -y` again. With `--format=json` the warning has code `LANDO_ARTIFACT_REFRESH_FAILED`. See [Work offline](../config/offline-dev.mdx).
+- If there was no warning, the registry doesn't have the new build under that tag yet. Lando can only pull what is published. Check the image's tag page on Docker Hub for a newer push, then rebuild.
+- A patch-level tag in `image:` never moves to a newer PHP release. Change the tag, or remove `image:` to go back to the stock tag.
+- A new minor version, such as 8.4 to 8.5, is a `type:` change, not a rebuild. See [Pin a PHP version](./php-version-matrix.mdx).
+
+## Next
+
+- [Pin a PHP version](./php-version-matrix.mdx)
+- [Customize PHP](./php-customization.mdx)
+- [Work offline](../config/offline-dev.mdx)
+- [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx)
