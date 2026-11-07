@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import type { TransactionOptions } from "@lando/managed-file/transaction";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 import { Effect, Option } from "effect";
@@ -190,7 +191,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
         { outputs, currentLowerV4Fragments, ...(expectations === undefined ? {} : { expectations }) },
         target.encode,
       );
-  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
   const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
   const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
   const diagnostics = orderTranslateDiagnostics([...encodingDiagnostics, ...includeDiagnostics], files).map(

@@ -1023,6 +1023,7 @@ describe("hostEvents runtime", () => {
           ),
       };
       const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+      await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(plan, { reconcile: true })));
       const notices = await Effect.runPromise(
         Effect.gen(function* () {
           const events = yield* EventService;
@@ -1126,6 +1127,7 @@ describe("hostEvents runtime", () => {
   test("does not set LANDO_HOST_EVENT on a hostEvents container step", async () => {
     const invocations: ToolingInvocation[] = [];
     const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+    await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(plan, { reconcile: true })));
     await Effect.runPromise(runAppEvent(plan, "post-start").pipe(Effect.provide(eventRuntime(invocations))));
     expect(invocations).toHaveLength(1);
     expect(invocations[0]?.env?.[LANDO_HOST_EVENT_ENV]).toBeUndefined();

@@ -4,7 +4,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { LandofileValidationError, RouteProviderMismatchError, causeMessage } from "@lando/sdk/errors";
+import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -83,6 +83,7 @@ import {
   assertRouteNetworkingSupported,
   assertServiceInitSupported,
 } from "./resource-capabilities.ts";
+import { resolvePlanRouter } from "./router-plan.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { hasServiceArtifacts } from "./service-artifact.ts";
@@ -157,6 +158,12 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     resolvedAt: DateTime.makeUnsafe(encodedMetadata.resolvedAt),
   };
   const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
+  const router = yield* resolvePlanRouter({
+    enabled: routerEnabled,
+    manifests,
+    configured: globalConfig?.defaultRouterService,
+    platform: policyOwner.platform,
+  });
   const networkPlan = yield* Effect.try({
     try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
     catch: (cause) =>
@@ -375,6 +382,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
     versionConstraints,
     serviceInputs: {
+      router: router.selected ?? null,
       fileSyncPolicy: {
         ...fileSyncPolicy,
         bindMounts: providerCapabilities.bindMounts,
@@ -483,16 +491,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     }),
     fileSystem,
   });
-  if (routerEnabled && finalized.routes.length > 0 && provider !== hostProvider) {
-    return yield* Effect.fail(
-      new RouteProviderMismatchError({
-        message: `App provider ${provider} differs from host router provider ${hostProvider}.`,
-        providerId: provider,
-        hostProviderId: hostProvider,
-        remediation: `Run lando setup --provider=${provider} to move the global app and router there; remove provider: from the Landofile so the app follows the host provider; or set router.enabled: false and use published host ports.`,
-      }),
-    );
-  }
+  yield* router.requireRoutable(finalized.routes.length, provider, hostProvider);
   yield* assertRouteNetworkingSupported(
     provider,
     providerCapabilities,
@@ -530,7 +529,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   };
   const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
   const requiredGlobalServices = [
-    ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
+    ...router.globalServices(finalized.routes.length),
     ...appFeatureResult.requires.globalServices,
   ];
   const plan = attachCompiledInvocationPlan(
@@ -542,7 +541,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         slug: appSlug,
         root: AbsolutePath.make(appRoot),
         provider,
-        router: { enabled: routerEnabled },
+        router: router.field(finalized.routes.length),
         services: finalized.services,
         routes: finalized.routes,
         ...(networking !== undefined ? { networking } : {}),

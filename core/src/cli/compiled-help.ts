@@ -9,6 +9,11 @@ import type { ToolingMetadataStatus } from "./tooling-cache-status";
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../runtime/invocation-context";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
@@ -192,6 +197,7 @@ export const printHelpCatalogJson = (
   format: CommandResultEnvelopeFormat = "json",
   metadata?: ToolingMetadataStatus,
   plugins?: PluginCommandListing,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -203,8 +209,8 @@ export const printHelpCatalogJson = (
         redactor,
         format,
       });
-      yield* Effect.promise(() => emitResultLine(line));
-    }),
+      yield* Effect.promise(() => emitResultLine(line, context));
+    }).pipe(Effect.provideService(CliInvocation, context)),
   );
 
 const rendererModeFrom = (
@@ -221,7 +227,10 @@ const rendererModeFrom = (
   return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
 };
 
-export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
+export const printCommandHelp = (
+  entry: BuiltInCommandEntry,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) {
     return printMachineHelpTarget(
       {
@@ -233,22 +242,28 @@ export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
         input: commandHelpInput(entry.spec),
       },
       activeResultFormat,
+      context,
     );
   }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderCommandHelp(entry, {
       styled: shouldStyleHelp({
-        isTTY: process.stdout.isTTY === true,
-        env: process.env,
+        isTTY: context.io.stdoutIsTTY === true,
+        env: context.env,
         argv,
-        rendererMode: rendererModeFrom(argv, process.env),
+        rendererMode: rendererModeFrom(argv, context.env),
       }),
     }),
+    context,
   );
 };
 
-export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): Promise<void> => {
+export const printToolingHelp = (
+  entry: ToolingHelpEntry,
+  aliasPolicy?: HelpAliasPolicy,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) {
     const names = typeableName({
       canonicalId: entry.id,
@@ -266,18 +281,20 @@ export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAlia
         ...(entry.input === undefined ? {} : { input: entry.input }),
       },
       activeResultFormat,
+      context,
     );
   }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
-        isTTY: process.stdout.isTTY === true,
-        env: process.env,
+        isTTY: context.io.stdoutIsTTY === true,
+        env: context.env,
         argv,
-        rendererMode: rendererModeFrom(argv, process.env),
+        rendererMode: rendererModeFrom(argv, context.env),
       }),
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),
+    context,
   );
 };

@@ -13,6 +13,11 @@
  * import cycle.
  */
 import { Effect, Exit, type Layer, Option, type Result } from "effect";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationDefaults,
+} from "../../../runtime/invocation-context";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { McpToolInputError, McpTransportError } from "@lando/sdk/errors";
@@ -174,7 +179,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
     yield* service
       .serve({
         transport: "stdio",
-        cwd: process.cwd(),
+        cwd: (yield* CliInvocation).cwd,
         ...catalogOptions,
         ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
       })
@@ -187,6 +192,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
 });
 
 export const dispatchMcpCommand = async (params: {
+  readonly context?: CliInvocationContext;
   readonly flags: McpCommandFlags;
   readonly signal?: AbortSignal;
   readonly commandRuntime: Layer.Layer<
@@ -205,6 +211,11 @@ export const dispatchMcpCommand = async (params: {
     redactor: import("@lando/sdk/secrets").Redactor,
   ) => string;
 }): Promise<void> => {
+  let exitCode = params.context === undefined ? process.exitCode : undefined;
+  const setExitCode = (code: number): void => {
+    exitCode = code;
+    (params.context?.setExitCode ?? processInvocationDefaults.setExitCode)(code);
+  };
   const prepareTooling = params.prepareTooling ?? Effect.void;
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
@@ -221,6 +232,8 @@ export const dispatchMcpCommand = async (params: {
     const projectResultKeys = activeProjectResultKeys();
     const jqExpression = activeJq;
     return runWithRendererHandling(listEffect, {
+      setExitCode,
+      ...(params.context === undefined ? {} : { context: params.context }),
       runtime: params.commandRuntime,
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
@@ -262,6 +275,8 @@ export const dispatchMcpCommand = async (params: {
           return Effect.sync(() => signal.removeEventListener("abort", abort));
         });
   await runWithRendererHandling(Effect.raceFirst(interrupted, serveEffect), {
+    setExitCode,
+    ...(params.context === undefined ? {} : { context: params.context }),
     runtime: params.commandRuntime,
     rendererMode: params.rendererMode,
     resultFormat: "text",
@@ -272,7 +287,7 @@ export const dispatchMcpCommand = async (params: {
     render: () => undefined,
     formatError: params.formatError,
   });
-  if (signal?.aborted && (process.exitCode === undefined || process.exitCode === 0)) {
-    process.exitCode = signal.reason === "SIGTERM" ? 143 : 130;
+  if (signal?.aborted && (exitCode === undefined || exitCode === 0)) {
+    setExitCode(signal.reason === "SIGTERM" ? 143 : 130);
   }
 };

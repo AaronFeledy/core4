@@ -4,7 +4,10 @@ import { ProcessRunner, type ShellCommandOptions, type ShellScriptOptions } from
 import { Effect, Option } from "effect";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
-import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
+import {
+  type CapturedHostExecutionContext,
+  captureScopedHostExecutionContext,
+} from "./host-execution-context.ts";
 import * as BunProcessRunner from "./process-runner.ts";
 import type { ProcessRedactionCarrier } from "./process-runner.ts";
 import { runnerEnvRedaction } from "./runner-redaction.ts";
@@ -32,7 +35,7 @@ export const streamArgvCommand = Effect.fnUntraced(function* (
     ...(options.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
-  const context = captureHostExecutionContext(input);
+  const context = yield* captureScopedHostExecutionContext(input);
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
   if (processRunner._tag === "None")
     return yield* Effect.fail(

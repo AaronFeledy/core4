@@ -17,7 +17,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
@@ -76,12 +76,13 @@ const fixture = () => {
   let global = Schema.decodeUnknownSync(GlobalConfig)({});
   const calls: CommandSpec[] = [];
   const provider = {
-    ...TestRuntimeProvider,
+    ...makeTestRuntimeProvider(),
     execStream: (_target: ExecTarget, spec: CommandSpec) => {
       calls.push(spec);
       return Stream.make({ exitCode: 0 });
     },
   };
+  Effect.runSync(Effect.scoped(provider.apply(plan, { reconcile: true })));
   const layer = Layer.mergeAll(
     BunProcessRunner.layer,
     testEnvironmentResolverLayer,

@@ -1456,6 +1456,7 @@ describe("AppPlannerLayer.layer", () => {
           capabilities,
         );
         const inspected: string[] = [];
+        await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(appPlan, { reconcile: true })));
         const provider = {
           ...TestRuntimeProvider,
           capabilities,

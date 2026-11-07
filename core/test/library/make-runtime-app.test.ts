@@ -62,7 +62,7 @@ describe("library makeLandoRuntime app bootstrap", () => {
 
       expect(result.providerId).toBe(TestRuntimeProvider.id);
       expect(result.planProvider).toBe(TestRuntimeProvider.id);
-      expect(result.apply).toEqual({ changed: false });
-      expect(result.exec).toEqual({ exitCode: 0, stdout: "echo ok", stderr: "" });
+      expect(result.apply).toEqual({ changed: true });
+      expect(result.exec).toEqual({ exitCode: 0, stdout: "echo ok\n", stderr: "" });
     }));
 });

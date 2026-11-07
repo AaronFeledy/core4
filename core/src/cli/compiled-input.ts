@@ -1,3 +1,4 @@
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import type { RendererMode } from "./bug-report";
 import { normalizeScratchStartArgv } from "./commands/scratch";
 import {
@@ -51,6 +52,7 @@ export const compiledCommandInputFromArgv = (
     readonly rendererMode?: RendererMode;
     readonly resultFormat?: ResultFormat;
     readonly signal?: AbortSignal;
+    readonly context?: CliInvocationContext;
   } = {},
 ): CompiledCommandInput => {
   const command = commandSpecForId(commandId);

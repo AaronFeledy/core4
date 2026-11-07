@@ -53,6 +53,7 @@ import {
   testCapabilities,
   utf8,
 } from "./_shared.ts";
+import { makeTestProviderContainers } from "./provider-containers.ts";
 
 export interface ProviderDataPlaneContractInput {
   readonly providerName?: string;
@@ -339,12 +340,6 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   );
 }, Effect.scoped);
 
-const testVolumeBytes = new Map<string, Uint8Array>();
-const testSnapshotBytes = new Map<string, Uint8Array>();
-const testServicePathBytes = new Map<string, Uint8Array>();
-const testArtifactBytes = new Map<string, Uint8Array>();
-let testArtifactImportCount = 0;
-
 const volumeKey = (ref: {
   readonly app: AppId;
   readonly store: string;
@@ -392,7 +387,10 @@ const mountedVolumeKeyForSpec = (spec: Parameters<RuntimeProviderShape["run"]>[0
   return mount === undefined ? undefined : volumeKey({ app: TEST_APP_ID, store: mount.store });
 };
 
-const runTestEphemeral = Effect.fnUntraced(function* (spec: Parameters<RuntimeProviderShape["run"]>[0]) {
+const runTestEphemeral = Effect.fnUntraced(function* (
+  testVolumeBytes: Map<string, Uint8Array>,
+  spec: Parameters<RuntimeProviderShape["run"]>[0],
+) {
   const command = spec.command.join(" ");
   const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
 
@@ -418,267 +416,276 @@ const runTestEphemeral = Effect.fnUntraced(function* (spec: Parameters<RuntimePr
 });
 
 /**
- * In-memory `RuntimeProvider` reference implementation for SDK contract tests.
+ * Creates an in-memory `RuntimeProvider` reference implementation with its own volumes,
+ * artifacts, and applied environments, so independent tests do not share provider state.
  */
-/** Observed containers this double has already removed, so a second removal is honestly absent. */
-const testRemovedObservations = new Set<string>();
-const testAppliedEnvironments = new Map<string, ReadonlyMap<string, Readonly<Record<string, string>>>>();
+export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
+  const containers = makeTestProviderContainers();
+  const testVolumeBytes = new Map<string, Uint8Array>();
+  const testSnapshotBytes = new Map<string, Uint8Array>();
+  const testServicePathBytes = new Map<string, Uint8Array>();
+  const testArtifactBytes = new Map<string, Uint8Array>();
+  let testArtifactImportCount = 0;
+  const testAppliedEnvironments = new Map<string, ReadonlyMap<string, Readonly<Record<string, string>>>>();
 
-export const TestRuntimeProvider: RuntimeProviderShape = {
-  id: TEST_PROVIDER_ID,
-  displayName: "Test Runtime Provider",
-  version: "0.0.0-test",
-  platform: "linux",
-  capabilities: testCapabilities,
+  const provider: RuntimeProviderShape = {
+    ...containers,
+    id: TEST_PROVIDER_ID,
+    displayName: "Test Runtime Provider",
+    version: "0.0.0-test",
+    platform: "linux",
+    capabilities: testCapabilities,
 
-  isAvailable: Effect.succeed(true),
-  planSetup: (_options) => Effect.succeed({ providerId: TEST_PROVIDER_ID, changes: [] }),
-  setup: (_plan, _options) => Effect.void,
-  getStatus: Effect.succeed({ running: true, message: "ready" }),
-  getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
+    isAvailable: Effect.succeed(true),
+    planSetup: (_options) => Effect.succeed({ providerId: TEST_PROVIDER_ID, changes: [] }),
+    setup: (_plan, _options) => Effect.void,
+    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
-  buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),
-  pullArtifact: (spec) => {
-    const digest = spec.ref.includes("@") ? spec.ref.slice(spec.ref.lastIndexOf("@") + 1) : undefined;
-    return Effect.succeed({
-      providerId: TEST_PROVIDER_ID,
-      ref: spec.ref,
-      ...(digest === undefined ? {} : { digest }),
-    });
-  },
-  removeArtifact: (_ref) => Effect.void,
+    buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),
+    pullArtifact: (spec) => {
+      const digest = spec.ref.includes("@") ? spec.ref.slice(spec.ref.lastIndexOf("@") + 1) : undefined;
+      return Effect.succeed({
+        providerId: TEST_PROVIDER_ID,
+        ref: spec.ref,
+        ...(digest === undefined ? {} : { digest }),
+      });
+    },
+    removeArtifact: (_ref) => Effect.void,
 
-  apply: (plan, options) =>
-    Effect.forEach(Object.values(plan.services), (service) =>
-      (options.resolveServiceEnvironment === undefined
-        ? Effect.forEach(Object.entries(service.environment), ([key, value]) =>
-            typeof value === "string"
-              ? Effect.succeed([key, value] as const)
-              : Effect.fail(
-                  new EnvironmentValueResolutionError({
-                    message: "Environment requires resolution.",
-                    variable: key,
-                    reason: "unresolved-binding",
-                    remediation: "Supply an operation-scoped environment resolver.",
-                  }),
-                ),
-          ).pipe(Effect.map(Object.fromEntries))
-        : options.resolveServiceEnvironment(service)
-      ).pipe(Effect.map((environment) => [service.name, environment] as const)),
-    ).pipe(
-      Effect.flatMap((environments) =>
-        Effect.sync(() => {
-          if (plan == null || plan.extensions == null || plan.services == null) {
-            return { changed: false };
-          }
-          testAppliedEnvironments.set(plan.id, new Map(environments));
-          let changed = false;
-          // Planned file binds (Compose config grants compile to read-only binds) expose their bytes.
-          for (const service of Object.values(plan.services)) {
-            for (const mount of service.mounts) {
-              if (mount.type !== "bind" || mount.fileMode === undefined) continue;
-              testServicePathBytes.set(
-                servicePathKey({ app: plan.id, service: service.name }, mount.target),
-                cloneBytes(readFileSync(mount.source)),
-              );
-              changed = true;
+    apply: (plan, options) =>
+      Effect.forEach(Object.values(plan.services), (service) =>
+        (options.resolveServiceEnvironment === undefined
+          ? Effect.forEach(Object.entries(service.environment), ([key, value]) =>
+              typeof value === "string"
+                ? Effect.succeed([key, value] as const)
+                : Effect.fail(
+                    new EnvironmentValueResolutionError({
+                      message: "Environment requires resolution.",
+                      variable: key,
+                      reason: "unresolved-binding",
+                      remediation: "Supply an operation-scoped environment resolver.",
+                    }),
+                  ),
+            ).pipe(Effect.map(Object.fromEntries))
+          : options.resolveServiceEnvironment(service)
+        ).pipe(Effect.map((environment) => [service.name, environment] as const)),
+      ).pipe(
+        Effect.flatMap((environments) =>
+          Effect.sync(() => {
+            testAppliedEnvironments.set(plan.id, new Map(environments));
+            let changed = false;
+            // Planned file binds (Compose config grants compile to read-only binds) expose their bytes.
+            for (const service of Object.values(plan.services)) {
+              for (const mount of service.mounts) {
+                if (mount.type !== "bind" || mount.fileMode === undefined) continue;
+                testServicePathBytes.set(
+                  servicePathKey({ app: plan.id, service: service.name }, mount.target),
+                  cloneBytes(readFileSync(mount.source)),
+                );
+                changed = true;
+              }
             }
-          }
-          return { changed };
+            return { changed };
+          }),
+        ),
+        Effect.flatMap((result) =>
+          containers
+            .apply(plan, options)
+            .pipe(Effect.map((applied) => ({ changed: result.changed || applied.changed }))),
+        ),
+      ),
+    waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
+    destroy: (target, options) =>
+      containers.destroy(target, options).pipe(
+        Effect.map((outcome) => {
+          const applied = testAppliedEnvironments.delete(target.app);
+          return applied ? { kind: "destroyed" as const } : outcome;
         }),
       ),
-    ),
-  start: (_target) => Effect.void,
-  stop: (_target) => Effect.void,
-  restart: (_target) => Effect.void,
-  waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
-  destroy: (target, _options) =>
-    Effect.sync(() => {
-      const removed = testAppliedEnvironments.delete(target.app);
-      return removed || target.plan !== undefined
-        ? { kind: "destroyed" }
-        : { kind: "no-op", reason: "no-applied-plan" };
-    }),
-  removeObservedService: (observed) =>
-    Effect.sync(() => {
-      if (observed.containerId === undefined) return { kind: "absent" };
-      const key = `${observed.app}\u0000${observed.service}\u0000${observed.containerId}`;
-      if (testRemovedObservations.has(key)) return { kind: "absent" };
-      testRemovedObservations.add(key);
-      return { kind: "removed" };
-    }),
 
-  readAppEnvironment: (target, names) =>
-    Effect.sync(() => {
-      const applied = testAppliedEnvironments.get(target.app);
-      const values = new Set<string>();
-      for (const [service, keys] of Object.entries(names)) {
-        const environment = applied?.get(service);
-        for (const key of keys) {
-          const value = environment?.[key];
-          if (value !== undefined && value.length > 0) values.add(value);
+    readAppEnvironment: (target, names) =>
+      Effect.gen(function* () {
+        const observed = yield* containers.list({ app: target.app });
+        const applied = testAppliedEnvironments.get(target.app);
+        const values = new Set<string>();
+        for (const [service, keys] of Object.entries(names)) {
+          if (!observed.some((container) => container.service === service)) continue;
+          const environment = applied?.get(service);
+          for (const key of keys) {
+            const value = environment?.[key];
+            if (value !== undefined && value.length > 0) values.add(value);
+          }
         }
-      }
-      return [...values].map((value) => Redacted.make(value));
-    }),
-  exec: (_target, command) =>
-    Effect.succeed({
-      exitCode: 0,
-      stdout: command.command.join(" "),
-      stderr: "",
-    }),
-  execStream: (_target, command) => {
-    const stdoutChunk: ExecChunk = {
-      kind: "stdout",
-      chunk: new TextEncoder().encode(`${command.command.join(" ")}\n`),
-    };
-    const exitChunk: ExecChunk = { exitCode: 0 };
-
-    return Stream.make(stdoutChunk, exitChunk);
-  },
-  run: (spec) => runTestEphemeral(spec),
-  runStream: (spec) => {
-    const command = spec.command.join(" ");
-    const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
-    if (mountedVolumeKey !== undefined && command === "sh -c cat /data/payload") {
+        return [...values].map((value) => Redacted.make(value));
+      }),
+    exec: (target, command) =>
+      Effect.scoped(
+        provider.execStream(target, command).pipe(
+          Stream.runCollect,
+          Effect.map((chunks) => {
+            const stdout: Uint8Array[] = [];
+            const stderr: Uint8Array[] = [];
+            let exitCode = 0;
+            for (const chunk of chunks) {
+              if ("exitCode" in chunk) exitCode = chunk.exitCode;
+              else (chunk.kind === "stdout" ? stdout : stderr).push(chunk.chunk);
+            }
+            return {
+              exitCode,
+              stdout: decodeUtf8(concatBytes(stdout)),
+              stderr: decodeUtf8(concatBytes(stderr)),
+            };
+          }),
+        ),
+      ),
+    execStream: (target, command) => {
       const stdoutChunk: ExecChunk = {
         kind: "stdout",
-        chunk: cloneBytes(testVolumeBytes.get(mountedVolumeKey) ?? utf8("")),
+        chunk: new TextEncoder().encode(`${command.command.join(" ")}\n`),
       };
       const exitChunk: ExecChunk = { exitCode: 0 };
 
-      return Stream.make(stdoutChunk, exitChunk);
-    }
-
-    return Stream.unwrap(
-      runTestEphemeral(spec).pipe(
-        Effect.map((result) => {
-          const stdoutChunk: ExecChunk = {
-            kind: "stdout",
-            chunk: utf8(result.stdout),
-          };
-          const exitChunk: ExecChunk = { exitCode: result.exitCode };
-
-          return Stream.make(stdoutChunk, exitChunk);
-        }),
-      ),
-    );
-  },
-  logs: (target, options) => {
-    const lines = runsContractServiceScript(target.plan?.services[target.service])
-      ? ["ready", CONTRACT_SPLIT_LINE, CONTRACT_LONG_LINE]
-      : ["ready"];
-    const consoleChunks: LogChunk[] = lines.map((line) => ({
-      service: target.service,
-      stream: "stdout",
-      line,
-    }));
-
-    const sources = options.sources ?? [];
-    const followSources = sources.filter((source) => source.strategy === "follow");
-    if (followSources.length === 0) return Stream.fromIterable(consoleChunks);
-
-    const fs = makeMemoryLogFileAccess();
-    for (const source of followSources) {
-      fs.writeFile(String(source.path), `follow:${String(source.id)}\n`);
-    }
-
-    const followers = logFollowLineChunks(
-      followLogSources({
-        service: target.service,
-        sources,
-        follow: options.follow,
-        access: fs.access,
-        ...(options.tail === undefined ? {} : { tail: options.tail }),
-        ...(options.source === undefined ? {} : { source: options.source }),
-      }),
-    );
-
-    return Stream.concat(Stream.fromIterable(consoleChunks), followers);
-  },
-  inspect: Effect.fn("RuntimeProvider.inspect")(function* (target) {
-    return yield* Effect.succeed({
-      app: target.app,
-      service: target.service,
-      providerId: TEST_PROVIDER_ID,
-      status: "running" as const,
-      publications: { status: "unknown" as const },
-    });
-  }),
-  list: (filter) =>
-    Effect.succeed([
-      {
-        app: filter.app ?? TEST_APP_ID,
-        service: TEST_SERVICE_NAME,
-        providerId: TEST_PROVIDER_ID,
-        status: "running",
-        publications: { status: "unknown" as const },
-      },
-    ]),
-  snapshotVolume: (spec) =>
-    Effect.sync(() => {
-      const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
-      const payload = cloneBytes(testVolumeBytes.get(volumeKey(spec.volume)) ?? utf8(""));
-      testSnapshotBytes.set(id, payload);
-      return {
-        provider: TEST_PROVIDER_ID,
-        id,
-        digest: createHash("sha256").update(payload).digest("hex"),
-        sizeBytes: payload.byteLength,
-        format: "native",
-      };
-    }),
-  removeVolumeSnapshot: (snapshot: VolumeSnapshotRef) =>
-    Effect.sync(() => {
-      testSnapshotBytes.delete(snapshot.id);
-    }),
-  restoreVolume: (spec) =>
-    Effect.sync(() => {
-      testVolumeBytes.set(
-        volumeKey(spec.target),
-        cloneBytes(testSnapshotBytes.get(spec.snapshot.id) ?? utf8("")),
+      return Stream.unwrap(
+        containers.inspect(target, "exec").pipe(Effect.as(Stream.make(stdoutChunk, exitChunk))),
       );
-    }),
-  listVolumes: (filter) =>
-    Effect.sync(() => {
-      const volumes = Array.from(testVolumeBytes.keys()).map((key) => {
-        const [app, store, scope] = key.split(":");
-        return volumeInfo(
-          volumeRef(AppId.make(app ?? String(TEST_APP_ID)), store ?? "data", storageScopeFromKey(scope)),
-          filter.labels,
+    },
+    run: (spec) => runTestEphemeral(testVolumeBytes, spec),
+    runStream: (spec) => {
+      const command = spec.command.join(" ");
+      const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
+      if (mountedVolumeKey !== undefined && command === "sh -c cat /data/payload") {
+        const stdoutChunk: ExecChunk = {
+          kind: "stdout",
+          chunk: cloneBytes(testVolumeBytes.get(mountedVolumeKey) ?? utf8("")),
+        };
+        const exitChunk: ExecChunk = { exitCode: 0 };
+
+        return Stream.make(stdoutChunk, exitChunk);
+      }
+
+      return Stream.unwrap(
+        runTestEphemeral(testVolumeBytes, spec).pipe(
+          Effect.map((result) => {
+            const stdoutChunk: ExecChunk = {
+              kind: "stdout",
+              chunk: utf8(result.stdout),
+            };
+            const exitChunk: ExecChunk = { exitCode: result.exitCode };
+
+            return Stream.make(stdoutChunk, exitChunk);
+          }),
+        ),
+      );
+    },
+    logs: (target, options) => {
+      const lines = runsContractServiceScript(target.plan?.services[target.service])
+        ? ["ready", CONTRACT_SPLIT_LINE, CONTRACT_LONG_LINE]
+        : ["ready"];
+      const consoleChunks: LogChunk[] = lines.map((line) => ({
+        service: target.service,
+        stream: "stdout",
+        line,
+      }));
+
+      const sources = options.sources ?? [];
+      const followSources = sources.filter((source) => source.strategy === "follow");
+      if (followSources.length === 0)
+        return Stream.unwrap(
+          containers.inspect(target, "logs").pipe(Effect.as(Stream.fromIterable(consoleChunks))),
         );
-      });
-      return volumes.length > 0
-        ? volumes
-        : [
-            volumeInfo(
-              volumeRef(filter.app ?? TEST_APP_ID, filter.store ?? "data", filter.scope),
-              filter.labels,
-            ),
-          ];
+
+      const fs = makeMemoryLogFileAccess();
+      for (const source of followSources) {
+        fs.writeFile(String(source.path), `follow:${String(source.id)}\n`);
+      }
+
+      const followers = logFollowLineChunks(
+        followLogSources({
+          service: target.service,
+          sources,
+          follow: options.follow,
+          access: fs.access,
+          ...(options.tail === undefined ? {} : { tail: options.tail }),
+          ...(options.source === undefined ? {} : { source: options.source }),
+        }),
+      );
+
+      return Stream.unwrap(
+        containers
+          .inspect(target, "logs")
+          .pipe(Effect.as(Stream.concat(Stream.fromIterable(consoleChunks), followers))),
+      );
+    },
+    snapshotVolume: (spec) =>
+      Effect.sync(() => {
+        const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
+        const payload = cloneBytes(testVolumeBytes.get(volumeKey(spec.volume)) ?? utf8(""));
+        testSnapshotBytes.set(id, payload);
+        return {
+          provider: TEST_PROVIDER_ID,
+          id,
+          digest: createHash("sha256").update(payload).digest("hex"),
+          sizeBytes: payload.byteLength,
+          format: "native",
+        };
+      }),
+    removeVolumeSnapshot: (snapshot: VolumeSnapshotRef) =>
+      Effect.sync(() => {
+        testSnapshotBytes.delete(snapshot.id);
+      }),
+    restoreVolume: (spec) =>
+      Effect.sync(() => {
+        testVolumeBytes.set(
+          volumeKey(spec.target),
+          cloneBytes(testSnapshotBytes.get(spec.snapshot.id) ?? utf8("")),
+        );
+      }),
+    listVolumes: (filter) =>
+      Effect.sync(() => {
+        const volumes = Array.from(testVolumeBytes.keys()).map((key) => {
+          const [app, store, scope] = key.split(":");
+          return volumeInfo(
+            volumeRef(AppId.make(app ?? String(TEST_APP_ID)), store ?? "data", storageScopeFromKey(scope)),
+            filter.labels,
+          );
+        });
+        return volumes.length > 0
+          ? volumes
+          : [
+              volumeInfo(
+                volumeRef(filter.app ?? TEST_APP_ID, filter.store ?? "data", filter.scope),
+                filter.labels,
+              ),
+            ];
+      }),
+    locateVolume: (ref) =>
+      Effect.succeed({
+        coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+        nativeName: ref.store,
+      }),
+    removeVolume: (ref) =>
+      Effect.sync(() => {
+        testVolumeBytes.delete(volumeKey(ref));
+      }),
+    copyToService: (target, spec) =>
+      Effect.promise(async () => {
+        const payload = await readFile(spec.sourcePath);
+        testServicePathBytes.set(servicePathKey(target, spec.targetPath), cloneBytes(payload));
+      }),
+    copyFromService: (target, spec) =>
+      Stream.make(cloneBytes(testServicePathBytes.get(servicePathKey(target, spec.sourcePath)) ?? utf8(""))),
+    exportArtifact: (ref) => Stream.make(cloneBytes(testArtifactBytes.get(ref.ref) ?? utf8(ref.ref))),
+    importArtifact: Effect.fnUntraced(function* (data) {
+      const payload = yield* collectByteStream(data);
+      testArtifactImportCount += 1;
+      const ref = `imported:${testArtifactImportCount}`;
+      testArtifactBytes.set(ref, cloneBytes(payload));
+      return { providerId: TEST_PROVIDER_ID, ref };
     }),
-  locateVolume: (ref) =>
-    Effect.succeed({
-      coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
-      nativeName: ref.store,
-    }),
-  removeVolume: (ref) =>
-    Effect.sync(() => {
-      testVolumeBytes.delete(volumeKey(ref));
-    }),
-  copyToService: (target, spec) =>
-    Effect.promise(async () => {
-      const payload = await readFile(spec.sourcePath);
-      testServicePathBytes.set(servicePathKey(target, spec.targetPath), cloneBytes(payload));
-    }),
-  copyFromService: (target, spec) =>
-    Stream.make(cloneBytes(testServicePathBytes.get(servicePathKey(target, spec.sourcePath)) ?? utf8(""))),
-  exportArtifact: (ref) => Stream.make(cloneBytes(testArtifactBytes.get(ref.ref) ?? utf8(ref.ref))),
-  importArtifact: Effect.fnUntraced(function* (data) {
-    const payload = yield* collectByteStream(data);
-    testArtifactImportCount += 1;
-    const ref = `imported:${testArtifactImportCount}`;
-    testArtifactBytes.set(ref, cloneBytes(payload));
-    return { providerId: TEST_PROVIDER_ID, ref };
-  }),
+  };
+  return provider;
 };
+
+/** Shared in-memory `RuntimeProvider` reference implementation for SDK contract tests. */
+export const TestRuntimeProvider: RuntimeProviderShape = makeTestRuntimeProvider();
