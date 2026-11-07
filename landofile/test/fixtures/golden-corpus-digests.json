@@ -1219,6 +1219,10 @@
       "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
     },
     {
+      "fixture": "docs/guides/typo3-workflow/fixtures/typo3-demo",
+      "digest": "4c51abdaebab975cf60a0f2340066ba8c7d143eae940a51c9ff93fcd83b2b46f"
+    },
+    {
       "fixture": "docs/guides/valkey/fixtures/valkey-demo",
       "digest": "a8d914d0169c21885170d31067f200410b9dec6fb3c973badd5246df77ca8a95"
     },
