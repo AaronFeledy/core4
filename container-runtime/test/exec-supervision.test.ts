@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { ContainerHelperUnavailableError, ProviderUnavailableError } from "@lando/sdk/errors";
+import {
+  ContainerHelperUnavailableError,
+  ProviderInternalError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { CommandSpec, ExecChunk } from "@lando/sdk/services";
+import type { CommandSpec, ExecChunk, ProviderError } from "@lando/sdk/services";
 import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
@@ -73,6 +77,7 @@ type Stage =
   | "collect"
   | "cleanup";
 interface Hooks {
+  readonly installError?: ProviderError;
   readonly before?: (stage: Stage, input: EngineHttpRequest) => Effect.Effect<void, ProviderUnavailableError>;
   readonly replaceStream?: (
     stage: Stage,
@@ -127,7 +132,7 @@ const fixture = (hooks: Hooks = {}) => {
           : Stream.fail(hooks.mainError);
       }),
   };
-  installSupervisedExecFixture(api);
+  installSupervisedExecFixture(api, hooks);
   const request = api.request;
   const stream = api.stream;
   if (request === undefined || stream === undefined) throw new TypeError("Missing fixture transport.");
@@ -493,15 +498,36 @@ describe("non-TTY exec supervision lifecycle", () => {
     expect(f.events).toContain("cancel");
   });
 
-  test("a provider error before START preserves failure and blocks the child", async () => {
-    const error = providerFailure("distinct-init-control-failure");
-    const f = fixture({ before: (stage) => (stage === "init-create" ? Effect.fail(error) : Effect.void) });
+  test.each(["init-create", "init-start"] as const)(
+    "a provider error at %s preserves failure and blocks the child",
+    async (failedStage) => {
+      const error = providerFailure("distinct-init-control-failure");
+      const f = fixture({ before: (stage) => (stage === failedStage ? Effect.fail(error) : Effect.void) });
+      const { exit, chunks } = await f.run();
+      expect(failureText(exit)).toContain(error.message);
+      if (Exit.isSuccess(exit)) throw new Error("Provider failure unexpectedly succeeded.");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(error);
+      expect(terminalChunks(chunks)).toHaveLength(0);
+      expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
+      expect(f.events).toContain("cancel");
+      expect(f.events).toContain("cleanup");
+    },
+  );
+
+  test.each([
+    providerFailure("Helper installation transport unavailable."),
+    new ProviderInternalError({
+      ...ctx,
+      operation: "exec.installHelper",
+      message: "Unsafe helper installation.",
+    }),
+  ])("helper installation preserves $_tag provider failures", async (error) => {
+    const f = fixture({ installError: error });
     const { exit, chunks } = await f.run();
-    expect(failureText(exit)).toContain(error.message);
+    if (Exit.isSuccess(exit)) throw new Error("Helper installation unexpectedly succeeded.");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(error);
     expect(terminalChunks(chunks)).toHaveLength(0);
     expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
-    expect(f.events).toContain("cancel");
-    expect(f.events).toContain("cleanup");
   });
 
   test("an unconfirmed cleanup remains an explicit failure beside the primary failure", async () => {
@@ -516,7 +542,7 @@ describe("non-TTY exec supervision lifecycle", () => {
     const { exit, chunks } = await f.run();
     const text = failureText(exit);
     expect(text).toContain("primary-error-before-uncertain-cleanup");
-    expect(text).toContain("cleanup-unconfirmed");
+    expect(text).toContain("ProviderUnavailableError: cleanup-channel-down");
     expect(terminalChunks(chunks)).toHaveLength(0);
     expect(f.events).not.toContain("cleanup");
   }, 25_000);
@@ -742,6 +768,11 @@ describe("non-TTY exec supervision lifecycle", () => {
 
   test("unsupported helper resolution retains its actionable error and never starts a process", async () => {
     const f = fixture();
+    const error = new ContainerHelperUnavailableError({
+      target: { os: "linux", arch: "x64" },
+      message: "Helper architecture unsupported.",
+      remediation: "Select a supported architecture.",
+    });
     const exit = await Effect.runPromiseExit(
       execStream(
         plan,
@@ -751,14 +782,7 @@ describe("non-TTY exec supervision lifecycle", () => {
           api: f.api,
           ctx,
           helperTarget: { os: "linux", arch: "x64" },
-          resolveContainerHelper: (helperTarget) =>
-            Effect.fail(
-              new ContainerHelperUnavailableError({
-                target: helperTarget,
-                message: "Helper architecture unsupported.",
-                remediation: "Select a supported architecture.",
-              }),
-            ),
+          resolveContainerHelper: () => Effect.fail(error),
         },
       ).pipe(Stream.runDrain, Effect.scoped),
     );
@@ -767,6 +791,10 @@ describe("non-TTY exec supervision lifecycle", () => {
     expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).remediation).toBe(
       "Select a supported architecture.",
     );
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+      _tag: "ServiceExecError",
+      cause: error,
+    });
     expect(f.events).toHaveLength(0);
     expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0);
   });

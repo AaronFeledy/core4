@@ -126,6 +126,7 @@ export const supervisedExecStream = (
                 message: error.message,
                 remediation: error.remediation,
                 details: { category: error._tag },
+                cause: error,
               }),
           ),
         ),
@@ -134,20 +135,7 @@ export const supervisedExecStream = (
         return yield* Effect.fail(failure("helper-architecture"));
       const { bytes, digest } = yield* beforeOwnership(verifiedExecHelper(helper, failure));
       const helperPath = yield* beforeOwnership(
-        installExecHelper(api, options.ctx, container, { bytes, digest }).pipe(
-          Effect.mapError(
-            (error) =>
-              new ServiceExecError({
-                providerId: options.ctx.providerId,
-                operation: "exec",
-                service: target.service,
-                message: error.message,
-                remediation:
-                  "Permit root control execs and writable temporary storage in the service container's security settings, then retry.",
-                details: { category: error._tag },
-              }),
-          ),
-        ),
+        installExecHelper(api, options.ctx, container, { bytes, digest }),
       );
       const nonce = randomBytes(16).toString("hex");
       const directory = `/tmp/lando-exec-session-${nonce}`;
@@ -238,10 +226,8 @@ export const supervisedExecStream = (
         }).pipe(
           // The helper can spend five seconds joining a cancelled tree, plus transport overhead.
           Effect.timeout("7 seconds"),
-          Effect.mapError((error) =>
-            error instanceof ServiceExecError
-              ? error
-              : failure("control-unavailable", { category: error._tag }, error),
+          Effect.catchTag("TimeoutError", (error) =>
+            Effect.fail(failure("control-unavailable", { category: error._tag }, error)),
           ),
         );
       const control = (op: string, signal?: string) =>
@@ -285,7 +271,7 @@ export const supervisedExecStream = (
           if (result.outcome !== "green" || observed === undefined || !done(observed))
             return yield* Effect.fail(lastFailure ?? failure(id));
           return observed;
-        }).pipe(Effect.mapError((error) => failure(id, undefined, error)));
+        }).pipe(Effect.catchTag("ProbeError", (error) => Effect.fail(failure(id, undefined, error))));
       let completed = false;
       let mainStarted = false;
       let mainExecId: string | undefined;
@@ -325,8 +311,8 @@ export const supervisedExecStream = (
                     : yield* Effect.exit(
                         owned.watch.finished.pipe(
                           Effect.timeout("7 seconds"),
-                          Effect.mapError((cause) =>
-                            failure("watch-observation-unconfirmed", undefined, cause),
+                          Effect.catchTag("TimeoutError", (cause) =>
+                            Effect.fail(failure("watch-observation-unconfirmed", undefined, cause)),
                           ),
                         ),
                       );
@@ -371,7 +357,9 @@ export const supervisedExecStream = (
             }).pipe(
               Effect.interruptible,
               Effect.timeout("20 seconds"),
-              Effect.mapError((error) => failure("cleanup-unconfirmed", undefined, error)),
+              Effect.catchTag("TimeoutError", (error) =>
+                Effect.fail(failure("cleanup-unconfirmed", undefined, error)),
+              ),
             );
             const result = yield* Effect.exit(cleanup);
             yield* Effect.sync(() => {
@@ -440,7 +428,9 @@ export const supervisedExecStream = (
         });
         yield* watch.ready.pipe(
           Effect.timeout("6 seconds"),
-          Effect.mapError((cause) => failure("watch-not-ready", undefined, cause)),
+          Effect.catchTag("TimeoutError", (cause) =>
+            Effect.fail(failure("watch-not-ready", undefined, cause)),
+          ),
         );
         if (command.signal?.aborted) return yield* Effect.interrupt;
         const launched = yield* control("launch");

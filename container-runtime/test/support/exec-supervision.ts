@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ContainerHelperUnavailableError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperTarget } from "@lando/sdk/schema";
+import type { ProviderError } from "@lando/sdk/services";
 import { Effect, Stream } from "effect";
 import { engineInfoArchitecture, hostProxyContainerTargets } from "../../src/capabilities.ts";
 import type { EngineHttpApi, EngineHttpRequest } from "../../src/engine-api.ts";
@@ -79,7 +80,10 @@ interface Session {
 }
 
 /** Extend an existing daemon fake, preserving its user-command behavior and inspecting its actual command result. */
-export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
+export const installSupervisedExecFixture = (
+  api: EngineHttpApi,
+  options: { readonly installError?: ProviderError } = {},
+): void => {
   if (installed.has(api)) return;
   const request = api.request;
   const stream = api.stream;
@@ -200,7 +204,9 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
       if (input.method === "GET" && archive !== null) {
         const archivePath = decodeURIComponent(archive[1] ?? "");
         if (archivePath === "/tmp")
-          return Stream.make(encodeUstarHeader({ name: "tmp/", size: 0, mode: 0o1777, typeflag: "5" }));
+          return options.installError === undefined
+            ? Stream.make(encodeUstarHeader({ name: "tmp/", size: 0, mode: 0o1777, typeflag: "5" }))
+            : Stream.fail(options.installError);
         const directory = archivePath.replace(/^\/tmp\//u, "");
         if (directory.startsWith("lando-exec-")) {
           const tar = archives.get(directory);
