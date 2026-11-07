@@ -30,11 +30,18 @@ import {
   upgradeMacOSPodmanMachine,
   upgradeWindowsPodmanMachine,
 } from "@lando/provider-lando";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
 import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
 
 const podmanCommand = (version: string) => ({ version: Effect.succeed(version) });
+const nftDeb = {
+  url: "https://deb.debian.org/debian/pool/main/n/nftables/nftables_1.1.3-1_amd64.deb",
+  expectedSha256: "a".repeat(64),
+  directory: "/tmp/nft-downloads",
+  filename: "nftables_1.1.3-1_amd64.deb",
+  allowFileSource: false,
+} as const;
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const withoutRuntimeBundleManifestEnv = async <A>(run: () => Promise<A>): Promise<A> => {
@@ -509,8 +516,24 @@ describe("provider-lando setup", () => {
     expect(treeComplete?.failed).toBe(0);
   });
 
-  test("settles provisioning, launch, and readiness children when provisioning fails", async () => {
-    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+  type CapturedEvent = { readonly _tag: string; readonly [key: string]: unknown };
+  const captureEvents = () => {
+    const captured: CapturedEvent[] = [];
+    return {
+      captured,
+      eventService: {
+        publish: (event: CapturedEvent) =>
+          Effect.sync(() => {
+            captured.push(event);
+          }),
+      },
+      ids: (tag: string) => captured.filter((event) => event._tag === tag).map((event) => event.taskId),
+      treeComplete: () => captured.find((event) => event._tag === "task.tree.complete"),
+    };
+  };
+
+  test("fails only the provisioning step when provisioning fails; later steps stay pending", async () => {
+    const events = captureEvents();
     const failure = new ProviderUnavailableError({
       providerId: "lando",
       operation: "setup",
@@ -524,55 +547,31 @@ describe("provider-lando setup", () => {
         podmanCommand: podmanCommand("podman version 6.0.2"),
         skipSocketProbe: true,
         managedRuntimeSetup: (progress) => progress.run("prerequisites", Effect.fail(failure)),
-        eventService: {
-          publish: (event) =>
-            Effect.sync(() => {
-              captured.push(event);
-            }),
-        },
+        eventService: events.eventService,
       }),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
+    expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
       "podman",
       "prerequisites",
       "launch",
       "readiness",
     ]);
-    expect(captured.filter((event) => event._tag === "task.fail").map((event) => event.taskId)).toEqual([
-      "prerequisites",
-      "launch",
-      "readiness",
-    ]);
-    const startedIds = captured.filter((event) => event._tag === "task.start").map((event) => event.taskId);
-    expect(startedIds).toEqual(["podman", "prerequisites"]);
-    expect(startedIds).not.toContain("launch");
-    expect(startedIds).not.toContain("readiness");
-    const prerequisiteFail = captured.find(
-      (event) => event._tag === "task.fail" && event.taskId === "prerequisites",
-    );
+    expect(events.ids("task.start")).toEqual(["podman", "prerequisites"]);
+    expect(events.ids("task.fail")).toEqual(["prerequisites"]);
+    const prerequisiteFail = events.captured.find((event) => event._tag === "task.fail");
     expect(prerequisiteFail?.summary).toBe("uidmap provisioning failed");
     expect(prerequisiteFail?.remediation).toBe("Install uidmap manually.");
-    const remainingFails = captured.filter(
-      (event) => event._tag === "task.fail" && (event.taskId === "launch" || event.taskId === "readiness"),
-    );
-    expect(remainingFails.map((event) => event.summary)).toEqual([
-      "uidmap provisioning failed",
-      "uidmap provisioning failed",
-    ]);
-    expect(remainingFails.map((event) => event.remediation)).toEqual([
-      "Install uidmap manually.",
-      "Install uidmap manually.",
-    ]);
-    const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
-    expect(treeComplete?.parentId).toBe("provider-setup");
-    expect(treeComplete?.summary).toBe("Lando runtime setup failed");
-    expect(treeComplete?.failed).toBe(3);
+    expect(events.treeComplete()).toMatchObject({
+      parentId: "provider-setup",
+      summary: "Lando runtime setup failed",
+      failed: 1,
+    });
   });
 
-  test("settles the task tree when a managed runtime child is interrupted", async () => {
-    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+  test("an interrupted managed runtime child fails only that child", async () => {
+    const events = captureEvents();
 
     const exit = await Effect.runPromiseExit(
       setupProviderLando({
@@ -580,39 +579,126 @@ describe("provider-lando setup", () => {
         podmanCommand: podmanCommand("podman version 6.0.2"),
         skipSocketProbe: true,
         managedRuntimeSetup: (progress) => progress.run("launch", Effect.interrupt),
-        eventService: {
-          publish: (event) =>
-            Effect.sync(() => {
-              captured.push(event);
-            }),
-        },
+        eventService: events.eventService,
       }),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(captured.filter((event) => event._tag === "task.fail").map((event) => event.taskId)).toEqual([
-      "launch",
-      "prerequisites",
-      "readiness",
-    ]);
-    const startedIds = captured.filter((event) => event._tag === "task.start").map((event) => event.taskId);
-    expect(startedIds).toEqual(["podman", "launch"]);
-    expect(startedIds).not.toContain("prerequisites");
-    expect(startedIds).not.toContain("readiness");
-    const launchFail = captured.find((event) => event._tag === "task.fail" && event.taskId === "launch");
-    expect(launchFail?.summary).toBe("Setup interrupted.");
-    const remainingFails = captured.filter(
-      (event) =>
-        event._tag === "task.fail" && (event.taskId === "prerequisites" || event.taskId === "readiness"),
+    expect(events.ids("task.start")).toEqual(["podman", "launch"]);
+    expect(events.ids("task.fail")).toEqual(["launch"]);
+    expect(events.captured.find((event) => event._tag === "task.fail")?.summary).toBe("Setup interrupted.");
+    expect(events.treeComplete()).toMatchObject({
+      summary: "Lando runtime setup interrupted",
+      failed: 1,
+      outcome: "interrupted",
+    });
+  });
+
+  const nftDownloadFailure = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "setup",
+    message: "Failed to download nftables_1.1.3-1_amd64.deb from https://deb.debian.org: connection reset",
+    remediation: "Check connectivity to https://deb.debian.org, then retry.",
+  });
+  const failingNftDownload: ArtifactDownload = () => Effect.fail(nftDownloadFailure);
+
+  test("an nft download failure on the direct path fails only the helper step", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-setup-helpers-direct-"));
+    const events = captureEvents();
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          arch: "x64",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          skipSocketProbe: true,
+          runtimeBinDir,
+          nftArtifactDownload: failingNftDownload,
+          nftCacheDir: join(runtimeBinDir, "nft-downloads"),
+          eventService: events.eventService,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
+        "podman",
+        "helpers",
+      ]);
+      expect(events.ids("task.complete")).toEqual(["podman"]);
+      expect(events.ids("task.fail")).toEqual(["helpers"]);
+      expect(events.captured.find((event) => event._tag === "task.fail")).toMatchObject({
+        summary: nftDownloadFailure.message,
+        remediation: nftDownloadFailure.remediation,
+      });
+      expect(events.treeComplete()).toMatchObject({ failed: 1 });
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("an nft download failure inside the managed ensure path fails only the helper step", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-setup-helpers-managed-"));
+    const events = captureEvents();
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          skipSocketProbe: true,
+          runtimeBinDir,
+          // The ensure path runs its helper repair under the setup-provided helpers phase.
+          managedRuntimeSetup: (progress) =>
+            progress
+              .run("prerequisites", Effect.void)
+              .pipe(Effect.andThen(progress.run("helpers", failingNftDownload(nftDeb)))),
+          eventService: events.eventService,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
+        "podman",
+        "prerequisites",
+        "helpers",
+        "launch",
+        "readiness",
+      ]);
+      expect(events.ids("task.start")).toEqual(["podman", "prerequisites", "helpers"]);
+      expect(events.ids("task.fail")).toEqual(["helpers"]);
+      expect(events.treeComplete()).toMatchObject({ succeeded: 2, failed: 1 });
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a failure outside every step fails no step and marks the tree failed", async () => {
+    const events = captureEvents();
+    const lockFailure = new StateStoreError({
+      reason: "lock",
+      operation: "lock",
+      remediation: "Wait for the lock holder to finish.",
+    });
+
+    const exit = await Effect.runPromiseExit(
+      setupProviderLando({
+        platform: "linux",
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        skipSocketProbe: true,
+        withRuntimeLock: () => Effect.fail(lockFailure),
+        managedRuntimeSetup: () => Effect.void,
+        eventService: events.eventService,
+      }),
     );
-    expect(remainingFails.map((event) => event.summary)).toEqual([
-      "Setup interrupted.",
-      "Setup interrupted.",
-    ]);
-    const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
-    expect(treeComplete?.parentId).toBe("provider-setup");
-    expect(treeComplete?.summary).toBe("Lando runtime setup failed");
-    expect(treeComplete?.failed).toBe(3);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    // Nothing ran, so every declared step stays pending; the tree outcome carries the failure.
+    expect(events.ids("task.start")).toEqual([]);
+    expect(events.ids("task.fail")).toEqual([]);
+    expect(events.treeComplete()).toMatchObject({
+      summary: "Lando runtime setup failed",
+      failed: 0,
+      outcome: "failure",
+    });
   });
 
   test("runs readiness before persisting setup state or reporting the setup tree ready", async () => {
@@ -650,7 +736,9 @@ describe("provider-lando setup", () => {
 
       const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
       expect(treeComplete?.summary).toBe("Lando runtime setup failed");
-      expect(treeComplete?.failed).toBe(1);
+      // The fallback readiness check runs outside every step; no step is blamed for it.
+      expect(treeComplete?.failed).toBe(0);
+      expect(treeComplete?.outcome).toBe("failure");
       expect(captured.some((event) => event.summary === "Lando runtime ready")).toBe(false);
     } finally {
       await rm(stateDir, { recursive: true, force: true });

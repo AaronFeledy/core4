@@ -727,6 +727,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             ? {}
             : {
                 setupProgress: {
+                  helpers: (body) => progress.run("helpers", body),
                   launch: (body) => progress.run("launch", body),
                   readiness: (body) => progress.run("readiness", body),
                 },
