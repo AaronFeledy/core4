@@ -131,7 +131,7 @@ const fixture = (hooks: Hooks = {}) => {
   const stream = api.stream;
   if (request === undefined || stream === undefined) throw new TypeError("Missing fixture transport.");
   const stageFor = (cmd: readonly string[] | undefined, starting: boolean): Stage | undefined => {
-    if (cmd?.[1] === "exec-init") return starting ? "init-start" : "init-create";
+    if (cmd?.[1] === "exec-prepare") return starting ? "init-start" : "init-create";
     if (cmd?.[1] === "exec-supervisor") return starting ? "primary-start" : "primary-create";
     if (cmd?.[1] === "exec-cleanup") return starting ? "cleanup" : undefined;
     if (cmd?.[1] === "exec-control" && cmd[4] === "watch" && !starting) return "watch-create";
@@ -306,7 +306,12 @@ describe("non-TTY exec supervision lifecycle", () => {
         true,
       );
       const creates = actions.filter((request) => request.path.endsWith("/exec"));
-      expect(creates.every((request) => (request.body as { User?: string }).User === target.user)).toBe(true);
+      expect(
+        creates.every((request) => {
+          const body = request.body as { User?: string; Cmd?: readonly string[] };
+          return body.User === (body.Cmd?.[1] === "exec-prepare" ? "0" : target.user);
+        }),
+      ).toBe(true);
       const watch = creates.find(
         (request) => (request.body as { Cmd?: readonly string[] }).Cmd?.[4] === "watch",
       );

@@ -102,11 +102,16 @@ export const supervisedExecStream = (
         }),
       );
       let container: string;
+      let configuredUser: string | undefined;
       try {
-        const value = JSON.parse(inspect.body) as { Id?: unknown };
+        const value = JSON.parse(inspect.body) as { Id?: unknown; Config?: { User?: unknown } };
         if (typeof value.Id !== "string" || value.Id.length === 0)
           return yield* Effect.fail(failure("container-identity"));
         container = value.Id;
+        const user = value.Config?.User;
+        if (user !== undefined && typeof user !== "string")
+          return yield* Effect.fail(failure("container-user"));
+        configuredUser = user;
       } catch {
         return yield* Effect.fail(failure("container-identity"));
       }
@@ -136,7 +141,20 @@ export const supervisedExecStream = (
       const digest = createHash("sha256").update(bytes).digest("hex");
       if (digest !== helper.digest) return yield* Effect.fail(failure("helper-digest"));
       const helperPath = yield* beforeOwnership(
-        installExecHelper(api, options.ctx, container, { bytes, digest }),
+        installExecHelper(api, options.ctx, container, { bytes, digest }).pipe(
+          Effect.mapError(
+            (error) =>
+              new ServiceExecError({
+                providerId: options.ctx.providerId,
+                operation: "exec",
+                service: target.service,
+                message: error.message,
+                remediation:
+                  "Permit root control execs and writable temporary storage in the service container's security settings, then retry.",
+                details: { category: error._tag },
+              }),
+          ),
+        ),
       );
       const nonce = randomBytes(16).toString("hex");
       const directory = `/tmp/lando-exec-session-${nonce}`;
@@ -155,7 +173,7 @@ export const supervisedExecStream = (
             }
           }),
         );
-      const runControl = (argv: ReadonlyArray<string>) =>
+      const runControl = (argv: ReadonlyArray<string>, user = target.user) =>
         Effect.gen(function* () {
           const created = yield* request({
             method: "POST",
@@ -166,7 +184,7 @@ export const supervisedExecStream = (
               AttachStderr: false,
               AttachStdin: false,
               Tty: false,
-              ...(target.user === undefined ? {} : { User: target.user }),
+              ...(user === undefined ? {} : { User: user }),
             },
           });
           let id: string;
@@ -405,7 +423,7 @@ export const supervisedExecStream = (
         Effect.asVoid,
         Effect.forkDetach,
       );
-      yield* runControl(["exec-init", directory, nonce, digest]);
+      yield* runControl(["exec-prepare", directory, nonce, target.user ?? configuredUser ?? "", digest], "0");
       if (command.signal?.aborted) return yield* Effect.interrupt;
       const supervise = Effect.gen(function* () {
         const ready = yield* poll(

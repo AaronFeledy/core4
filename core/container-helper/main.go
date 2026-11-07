@@ -36,6 +36,8 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 	}
 	if len(args) > 0 {
 		switch args[0] {
+		case "exec-prepare":
+			return runExecPrepare(args[1:], streams)
 		case "exec-cleanup":
 			return runExecCleanup(args[1:], streams)
 		case "exec-init":

@@ -281,7 +281,7 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
             input.onResponseHead?.();
             const session = sessionFor(cmd[2] ?? "");
             const operation = cmd[1] === "exec-control" ? cmd[4] : cmd[1];
-            if (operation === "exec-init" || operation === "exec-cleanup")
+            if (operation === "exec-prepare" || operation === "exec-init" || operation === "exec-cleanup")
               return frame({ ok: true, state: "initialized" });
             if (operation === "ready")
               return frame({
