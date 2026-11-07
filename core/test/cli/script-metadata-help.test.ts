@@ -19,9 +19,9 @@ test.each([
   { argv: ["--help"], marker: null, exit: 0 },
   { argv: ["-h"], marker: null, exit: 0 },
   { argv: ["value", "--help"], marker: null, exit: 0 },
-  { argv: ["--", "--help"], marker: "--help\n", exit: 0 },
+  { argv: ["--", "--help"], marker: "first=--help\nsecond=\n", exit: 0 },
   { argv: ["--version", "--format=json"], marker: null, exit: 1 },
-  { argv: ["--version", "2.0"], marker: "--version\n2.0\n", exit: 0 },
+  { argv: ["--version", "2.0"], marker: "first=--version\nsecond=2.0\n", exit: 0 },
 ])(
   "answers raw script help without executing except after --: $argv",
   async ({ argv, marker, exit }) => {
@@ -32,7 +32,7 @@ test.each([
       await writeFile(join(root, ".lando.yml"), "name: raw-script-help\n");
       await writeFile(
         join(root, ".lando/scripts/wipe.bun.sh"),
-        '# ---\n# desc: Record arguments\n# ---\nprintf "%s\\n" "$1" "$2" > marker\n',
+        '# ---\n# desc: Record arguments\n# ---\nprintf "%s\\n" "first=$1" "second=$2" > marker\n',
       );
       // When
       const child = Bun.spawn([process.execPath, cli, "wipe", ...argv], {

@@ -464,7 +464,7 @@ lando stamp abc1234
     </Step>
     <Step name="forward-help-after-separator">
       <Run command="lando wipe -- --help" />
-      <Verify file="raw-help/marker" expect={{ regex: "^--help\n$" }} />
+      <Verify file="raw-help/marker" expect={{ regex: "^first=--help\nsecond=\n$" }} />
     </Step>
     <Step name="cleanup-raw-script">
       <Cleanup />
