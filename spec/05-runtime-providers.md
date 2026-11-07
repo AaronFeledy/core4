@@ -73,6 +73,10 @@ Provider apply retains container creation, resource ownership, service-start/dep
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
+Ordinary non-TTY `exec` and `execStream` commands MUST be supervised under invocation ownership established before payload launch. Cancellation MUST stop and join the owned process tree within a bounded cleanup budget; closing the output transport alone is insufficient. Providers MUST NOT use a daemon-namespace exec PID as a container-namespace signal target or signal unrelated processes. Normal completion MUST preserve the main command's observed exit status and leave intentionally backgrounded descendants running without waiting for their exit. If supervision cannot be established, execution MUST fail closed before payload launch with `ServiceExecError`; existing provider failures retain their tag and remediation (§5.7). Unconfirmed cleanup MUST remain a tagged failure with its cleanup role (§8.11.1), never a successful cancellation receipt.
+
+TTY commands use the native terminal transport. `CommandSpec.raw: true` identifies internal operations that bypass both umask wrapping and process supervision, including readiness/healthcheck and umask probes, listener observation, and SSH/GPG agent preparation. Callers MUST NOT set it for user payloads or infer it from argv. These exemptions do not remove scoped transport cleanup. The managed Windows stdin path has the known supervision limitation in §5.8.1.
+
 `ApplyOptions.onVolumeCreated` is an optional effectful callback receiving the same verified `VolumeCreationFact` reported in `ApplyResult.createdVolumes`. Providers MUST await it for each volume immediately after verified creation and before starting any service container. A callback failure MUST fail apply before service startup. Existing or adopted volumes MUST NOT trigger the callback; ownership labels alone are not creation evidence. Receipts already persisted survive a later apply failure, and the volumes they describe are retained with them.
 
 #### 5.3.1 Teardown resolution and orphaned resources
@@ -306,7 +310,7 @@ The runtime provider registry MUST enforce redaction on failures from every Effe
 
 ### 5.8 Bundled providers
 
-All bundled providers implement the complete `RuntimeProvider` contract.
+Bundled providers MUST implement the complete `RuntimeProvider` contract; the known managed Windows exec limitation below remains tracked in #1888.
 
 #### 5.8.1 Default: Lando-managed runtime (`@lando/provider-lando`)
 
@@ -338,6 +342,8 @@ Podman-backed providers require Podman 6 or newer. Supported managed hosts are A
 Intel macOS is unsupported by the managed provider. Setup, bundle resolution, runtime readiness, and status MUST fail closed with remediation naming `lando setup --provider=docker` or `LANDO_PROVIDER=docker`; the provider remains discoverable so dependent capability selection does not silently skip it.
 
 On Windows, the Lando-owned machine exposes HTTP over the named pipe `\\.\pipe\podman-lando`. The provider MUST use named-pipe transport, MUST NOT invoke Unix-socket tooling, and MUST NOT probe the Linux managed-service socket.
+
+Known limitation (#1888): managed Windows non-TTY exec with streamed stdin still uses `podman.exe` over the machine connection. It does not yet supervise or join the container process tree on cancellation and therefore does not satisfy §5.3's owned-tree cancellation contract.
 
 Podman’s published machine-OS update command spelling is unresolved; this specification does not normatively require one spelling.
 

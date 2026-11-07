@@ -83,6 +83,7 @@ If you are looking for a public surface or policy:
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
 | `RuntimeProvider` service and capability schema | 05 | §5.3 + §5.4 |
+| Non-TTY exec ownership, bounded cancellation/join, normal background descendants, `CommandSpec.raw`, and managed Windows limitation | 05 + 08 + 20 | §5.3 + §5.8.1 + §8.4.1 + §22.5 |
 | Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |

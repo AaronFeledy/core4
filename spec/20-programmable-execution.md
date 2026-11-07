@@ -63,6 +63,8 @@ Every variant uses captured or explicit cwd (§22.6.1) and environment descripto
 
 `ExecutionProcessResult` is the await value for an observed exit (real exit code, bounded stdout/stderr capture, capture metadata), nonzero included. Terminal observations distinguish `exited`, `failed`, `timed-out`, and `cancelled` and never turn failure or interruption into successful awaits; a missing exit raises `ExecutionProcessStateError`, never a fabricated code. The output stream is lossy by design; the CLI unified sink (§3.7, §8.2), `app:exec` passthrough, and `DataMover` (§10.11) remain the exact-byte paths. One process scope has one idempotent release owner: caller scope and session both hold release access, whichever closes first releases the child exactly once, and one request starts at most one child.
 
+Service-process cancellation uses the shared provider ownership contract (§5.3, #1600), including its TTY/raw exemptions and known managed Windows limitation (§5.8.1, #1888); sessions MUST NOT implement a second supervision path or claim stronger cancellation guarantees.
+
 ### 22.6 Admission and credentials
 
 `ExecutionSessionOptions` requires an explicit `workspaceRoot` and `ExecutionPolicy`; a nonsecret label and finite limits are optional. `ExecutionPolicy` constrains:
