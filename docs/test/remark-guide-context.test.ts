@@ -81,12 +81,12 @@ describe("canonical guide presentation", () => {
     const source = document(
       scenario(
         step(
-          '<Variable name="target" value="execution" display="{{literal}}" /><Run command="echo {{target}}" />',
+          '<Variable name="target" value="execution" display="{{literal}}" /><Run command="echo &apos;{{target}}&apos;" />',
         ),
       ),
     );
-    expect(serializeDocsPage(source, { file })).toContain("echo {{literal}}");
-    expect(attr(elements(transform(source), "Run")[0], "command")).toBe("echo {{literal}}");
+    expect(serializeDocsPage(source, { file })).toContain("echo '{{literal}}'");
+    expect(attr(elements(transform(source), "Run")[0], "command")).toBe("echo '{{literal}}'");
   });
 
   test("drops private shell answers from the site tree and public Markdown", () => {

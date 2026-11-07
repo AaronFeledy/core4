@@ -639,11 +639,11 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     ...processInvocationContext(),
     ...(options.discovery === undefined ? {} : { cwd: options.discovery.cwd }),
   };
-  const context =
-    options.hostProxy === undefined
-      ? supplied
-      : { ...supplied, cwd: await hostProxyCallCwd(options.hostProxy) };
+  let context = supplied;
   try {
+    if (options.hostProxy !== undefined) {
+      context = { ...supplied, cwd: await hostProxyCallCwd(options.hostProxy) };
+    }
     await runDiscoveryOperation(
       options.discovery ?? { cwd: context.cwd, resolver: makeAppDiscoveryResolver() },
       () => runCompiledCli(options.argv, options.signal, options.hostProxy, context),

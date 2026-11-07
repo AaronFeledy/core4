@@ -271,7 +271,9 @@ export const prepareRuntime = (
       loggerMode: logging.loggerMode,
       logLevel: logging.logLevel,
       structured: logging.structured,
-      writeDiagnosticLine: (line) => { invocation.io.writeStderr(`${line}\n`); },
+      writeDiagnosticLine: (line) => {
+        invocation.io.writeStderr(`${line}\n`);
+      },
       stderrIsTTY: invocation.io.isTTY === true,
       rendererMode: normalizeLibraryRendererMode(
         decoded.success.renderer ?? decoded.success.config?.renderer,
@@ -279,7 +281,9 @@ export const prepareRuntime = (
       telemetryEnabled: decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
       pluginDiscovery: pluginPolicy.discovery,
       pluginLayers: hostLayersResult.success,
-      ...(invocation.providerRegistry === undefined ? {} : { runtimeProviderRegistry: invocation.providerRegistry }),
+      ...(invocation.providerRegistry === undefined
+        ? {}
+        : { runtimeProviderRegistry: invocation.providerRegistry }),
       pluginManifests: pluginPolicy.manifests,
       externalImports: pluginPolicy.externalImports,
       cwd: capturedCwd,
