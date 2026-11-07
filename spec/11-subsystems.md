@@ -15,6 +15,8 @@ Each subsystem exposes a focused Effect service or fixed core primitive. Remote 
 
 Core defines network intent; `RuntimeProvider` realizes it.
 
+The SDK physical-name owner also derives service-type stores and generated home, shadow, storage, app-shared, and cache volumes with the distinct grammars in §6.5. Explicit data `store` names stay verbatim; file-sync volume names retain their separate persisted contract (§6.4).
+
 `NetworkingPlan.perAppBridge` names the private bridge to create, or is explicitly `null` when none is intended. The global planner emits `null` plus shared membership on `lando_bridge_network`, with `<service>.global.internal` aliases. User apps retain their per-app bridge and, when supported, shared membership. Providers MUST derive creation, attachment, recreation checks, and teardown from this intent, never from an app-id special case. Shared-only plans MUST NOT invent a private bridge during teardown or physical network-name translation.
 
 - Services resolve peers by service name when app networking is supported. `<service>.<app>.internal` resolves inside the app on every provider: it is a shared-network alias when `sharedCrossAppNetwork` is supported and a per-app bridge alias when it is not. Other apps can use it only through the shared network.
