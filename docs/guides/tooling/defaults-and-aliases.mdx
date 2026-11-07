@@ -37,6 +37,7 @@ Here, `build` uses every default. `lint` targets `worker`, runs from `/app/tools
   <Scenario id="apply-and-override-tooling-defaults" render>
     <Step name="scaffold">
       <UseFixture name="tooling-defaults" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-inherited-task">
       <Verify command="lando build --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"build\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
@@ -89,6 +90,7 @@ commandAliases:
   <Scenario id="remap-command-alias" render>
     <Step name="scaffold">
       <UseFixture name="command-aliases" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-custom-alias">
       <Verify command="lando hi --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:greet\"" } }} />
