@@ -658,7 +658,12 @@ func runExecSupervisorWithScan(args []string, streams helperIO, scan func() ([]i
 						mainReaped = true
 						group = false
 						code = execStatusCode(status)
-						beginCancel(syscall.SIGTERM)
+						if !cancelling {
+							// Like docker exec, normal completion releases background children.
+							joined = true
+							complete()
+							break
+						}
 					}
 				}
 			}

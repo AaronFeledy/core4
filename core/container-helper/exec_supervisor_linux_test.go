@@ -372,7 +372,7 @@ func TestExecSupervisorForwardsRequestedSignal(t *testing.T) {
 		})
 	}
 }
-func TestExecNaturalExitJoinsEscapeesAndPreservesUnrelatedProcess(t *testing.T) {
+func TestExecNaturalExitPreservesBackgroundAndUnrelatedProcesses(t *testing.T) {
 	setsid, err := exec.LookPath("setsid")
 	if err != nil {
 		t.Skip("setsid unavailable")
@@ -392,8 +392,9 @@ func TestExecNaturalExitJoinsEscapeesAndPreservesUnrelatedProcess(t *testing.T) 
 	if r.ExitCode == nil || *r.ExitCode != 7 || !r.Joined {
 		t.Fatalf("natural result: %+v", r)
 	}
-	if err = syscall.Kill(pid, 0); err != syscall.ESRCH {
-		t.Fatalf("escapee remains: %v", err)
+	defer syscall.Kill(pid, syscall.SIGKILL)
+	if err = syscall.Kill(pid, 0); err != nil {
+		t.Fatalf("background process was terminated: %v", err)
 	}
 	if err = syscall.Kill(sentinel.Process.Pid, 0); err != nil {
 		t.Fatalf("unrelated process affected: %v", err)
