@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import type { ServiceExecError } from "@lando/sdk/errors";
 import type { ContainerHelperArtifact } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -15,7 +14,7 @@ export const verifiedExecHelper = (
     const cached = artifacts.get(key);
     if (cached !== undefined) return cached;
     const bytes = yield* Effect.tryPromise({
-      try: () => readFile(helper.path),
+      try: () => Bun.file(helper.path).bytes(),
       catch: () => failure("helper-read"),
     });
     const digest = createHash("sha256").update(bytes).digest("hex");
