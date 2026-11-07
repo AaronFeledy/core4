@@ -1,4 +1,5 @@
 import { Clock, Effect, Option } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 
 import type { ToolingResult } from "@lando/sdk/app";
 import { ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
@@ -59,7 +60,11 @@ const executePreparedBunShellScript = Effect.fnUntraced(function* (
   const cwd = options.cwd ?? appRoot;
   const session = yield* (yield* EnvironmentValueResolver).openSession();
   const resolved = options.env === undefined ? {} : yield* session.resolveEnvironment(options.env);
-  const env = bunShellScriptEnvironment(prepared, process.env, resolved);
+  const env = bunShellScriptEnvironment(
+    prepared,
+    (yield* HostExecutionDefaults)?.env ?? process.env,
+    resolved,
+  );
   const shell = yield* Effect.serviceOption(ShellRunner);
   if (Option.isNone(shell))
     return yield* Effect.fail(

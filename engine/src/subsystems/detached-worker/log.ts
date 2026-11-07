@@ -84,24 +84,29 @@ export const stderrTailFromLog = async (logPath: string, redactor: Redactor): Pr
     .join("\n");
 };
 
-export const writeWorkerDiagnostic = (entry: {
-  readonly callId: string;
-  readonly operation: string;
-  readonly outcome: string;
-  readonly durationMs: number;
-  readonly exitCode?: number;
-}): void => {
+export const writeWorkerDiagnostic = (
+  entry: {
+    readonly callId: string;
+    readonly operation: string;
+    readonly outcome: string;
+    readonly durationMs: number;
+    readonly exitCode?: number;
+  },
+  write?: (line: string) => void,
+): void => {
+  const line = `${JSON.stringify({
+    callId: entry.callId.slice(0, 80),
+    operation: entry.operation.slice(0, 16),
+    outcome: entry.outcome.slice(0, 80),
+    durationMs: entry.durationMs,
+    ...(entry.exitCode === undefined ? {} : { exitCode: entry.exitCode }),
+  })}\n`;
+  if (write !== undefined) {
+    write(line);
+    return;
+  }
   const metadata = fstatSync(2);
   if (!metadata.isFile()) return;
   if (metadata.size > 1024 * 1024) ftruncateSync(2, 0);
-  writeSync(
-    2,
-    `${JSON.stringify({
-      callId: entry.callId.slice(0, 80),
-      operation: entry.operation.slice(0, 16),
-      outcome: entry.outcome.slice(0, 80),
-      durationMs: entry.durationMs,
-      ...(entry.exitCode === undefined ? {} : { exitCode: entry.exitCode }),
-    })}\n`,
-  );
+  writeSync(2, line);
 };
