@@ -192,8 +192,13 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/proxy-traefik": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client"],
     devDependencies: [],
-    // Diagnostic regressions register process-global canaries; runtime imports remain forbidden.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client", "@lando/redaction"],
+    // Diagnostics use redaction canaries; global-service plans exercise engine layers, never core.
+    testTargets: [
+      ...PLUGIN_RUNTIME_TARGETS,
+      ...PLUGIN_TEST_TARGETS,
+      "@lando/http-client",
+      "@lando/redaction",
+    ],
   },
   "@lando/renderer-lando": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],
