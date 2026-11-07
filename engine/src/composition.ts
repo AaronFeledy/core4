@@ -4,7 +4,7 @@ import type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { ContainerHelperArtifact, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { Downloader, ProcessRunner } from "@lando/sdk/services";
-import type { Effect } from "effect";
+import type { Context, Effect } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type { HostConfigReadPolicy } from "./services/config.ts";
 
@@ -26,6 +26,7 @@ export interface EngineCompositionInputs {
 
 /** Runtime capabilities that host-side source acquisition must honor. */
 export interface LandofileSourcePortRuntime {
+  readonly requestContext?: Context.Context<never>;
   readonly processRunner?: typeof ProcessRunner.Service;
   readonly registerSecrets?: (values: ReadonlyArray<string>) => Promise<void>;
   readonly readPolicy?: HostConfigReadPolicy;

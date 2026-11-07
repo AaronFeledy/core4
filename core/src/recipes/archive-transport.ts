@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
@@ -27,6 +27,7 @@ export interface AuthenticatedArchiveTransport extends ArchiveTransport {
 
 export const makeArchiveTransport = (
   retainedDownloader?: typeof Downloader.Service,
+  requestContext: Context.Context<never> = Context.empty(),
 ): AuthenticatedArchiveTransport => ({
   fetch: (url, options) =>
     Effect.runPromise(
@@ -55,6 +56,7 @@ export const makeArchiveTransport = (
                 )
               : Layer.succeed(Downloader, retainedDownloader),
           ),
+          Effect.provide(requestContext),
         ),
       ),
       options?.signal === undefined ? undefined : { signal: options.signal },

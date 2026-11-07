@@ -119,11 +119,24 @@ export const buildBugReport = (input: {
   ).map(([key, value]) => [key, redactor.redactString(value)] as const);
   const issues = diagnostics.flatMap((item) => item.issues ?? []);
   const failures = Array.isArray(error.failures) ? redactor.redactValue(error.failures) : undefined;
+  const text: Record<"message" | "remediation", string[]> = { message: [], remediation: [] };
+  const sentences = (value: string): ReadonlyArray<string> =>
+    value
+      .split(/\n|(?<=[.!?])\s+/u)
+      .map((sentence) => sentence.trim().replace(/\s+/gu, " "))
+      .filter((sentence) => sentence.length > 0);
+  for (const diagnostic of diagnostics) {
+    for (const key of ["message", "remediation"] as const) {
+      const value = diagnostic[key];
+      const keptSentences = new Set(text[key].flatMap(sentences));
+      if (!sentences(value).every((sentence) => keptSentences.has(sentence))) text[key].push(value);
+    }
+  }
   return {
     code: redactor.redactString(error._tag),
     commandId: ctx.commandId,
-    body: redactor.redactString([...new Set(diagnostics.map((item) => item.message))].join("\n")),
-    remediation: redactor.redactString([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
+    body: redactor.redactString(text.message.join("\n")),
+    remediation: redactor.redactString(text.remediation.join(" ")),
     appId,
     providerId,
     logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,

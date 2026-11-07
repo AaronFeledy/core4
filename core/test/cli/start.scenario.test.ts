@@ -3284,7 +3284,8 @@ describe("lando start", () => {
     ).toMatchObject({
       summary: "test-start file-sync failed",
       succeeded: 0,
-      failed: 2,
+      failed: 1,
+      outcome: "failure",
     });
   });
 

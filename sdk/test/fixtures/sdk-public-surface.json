@@ -702,6 +702,7 @@
       "HostProxySocketStaleError",
       "HostProxyTransportUnavailableError",
       "HttpTrustError",
+      "HttpTrustErrorKind",
       "InitTargetExistsError",
       "InteractionCancelledError",
       "InteractionRequiredError",
@@ -2053,6 +2054,7 @@
       "Logger",
       "ManagedFileService",
       "ManagedFileTransactionGuard",
+      "OnlineAcquisition",
       "PathsService",
       "PluginRegistry",
       "PluginSource",
@@ -2084,6 +2086,7 @@
       "physicalVolumeLockKey"
     ],
     "./task-progress": [
+      "CurrentTaskDetail",
       "makeTaskTree",
       "publishTaskComplete",
       "publishTaskDetail",
@@ -2092,7 +2095,8 @@
       "publishTreeComplete",
       "publishTreeStart",
       "runWithTaskTree",
-      "startChildTaskId"
+      "startChildTaskId",
+      "withCurrentTaskDetail"
     ],
     "./template": ["TemplateCompileError", "TemplateEngineUnresolvedError", "TemplateRenderError"],
     "./test": [
@@ -2184,6 +2188,7 @@
       "runStateStoreContract",
       "runToolingEngineContractSuite",
       "runTunnelServiceContract",
+      "testCaPem",
       "yamlRoundTripCorpus",
       "yamlRoundTripRecord"
     ],

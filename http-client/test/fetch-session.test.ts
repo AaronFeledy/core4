@@ -110,7 +110,7 @@ test("proxy CONNECT refusal becomes a tagged trust failure without exposing head
     const reason = failure.value.reason;
     if (reason._tag !== "TransportError" || !(reason.cause instanceof HttpTrustError))
       throw new Error("expected trust cause");
-    expect(reason.cause.kind).toBe("proxy-tunnel-refused");
+    expect(reason.cause.kind).toBe("proxy-authentication");
     expect(reason.cause.urlOrigin).toBe("https://remote.invalid");
     expect(reason.cause.remediation).toContain("407");
     expect(reason.cause.message).not.toContain(secret);
