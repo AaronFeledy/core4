@@ -1338,12 +1338,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
       { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
-    // Supervision polls completion; assert the ordered lifecycle independently of poll timing.
-    expect(
-      fake.calls
-        .map((call) => `${call.method} ${call.path}`)
-        .filter((call, index, calls) => !call.startsWith("GET /exec/") || call !== calls[index - 1]),
-    ).toEqual([
+    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
       "GET /containers/lando-myapp--web/json",
       "GET /networks/lando-myapp",
@@ -1363,6 +1358,8 @@ describe("provider-docker RuntimeProvider contract", () => {
       "GET /containers/lando-myapp--web/json",
       "POST /containers/lando-myapp--web/exec",
       "POST /exec/lando-myapp--web-exec/start",
+      "GET /exec/lando-myapp--web-exec/json",
+      "GET /exec/lando-myapp--web-exec/json",
       "GET /exec/lando-myapp--web-exec/json",
       "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
@@ -1888,12 +1885,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       })),
     );
-    // Supervision polls completion; assert the ordered lifecycle independently of poll timing.
-    expect(
-      fake.calls
-        .map((call) => `${call.method} ${call.path}`)
-        .filter((call, index, calls) => !call.startsWith("GET /exec/") || call !== calls[index - 1]),
-    ).toEqual([
+    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
       "GET /containers/lando-myapp--web/json",
       "GET /networks/lando-myapp",
@@ -1913,6 +1905,8 @@ describe("provider-docker RuntimeProvider contract", () => {
       "GET /containers/lando-myapp--web/json",
       "POST /containers/lando-myapp--web/exec",
       "POST /exec/lando-myapp--web-exec/start",
+      "GET /exec/lando-myapp--web-exec/json",
+      "GET /exec/lando-myapp--web-exec/json",
       "GET /exec/lando-myapp--web-exec/json",
       "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",

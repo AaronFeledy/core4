@@ -28,7 +28,7 @@ interface Receipt {
 const decoder = new TextDecoder();
 const signalName = (signal: AbortSignal | undefined) => (signal?.reason === "SIGINT" ? "SIGINT" : "SIGTERM");
 
-/** Owns the helper and its attach until the selected user's entire command tree joins. */
+/** Owns the attach through main completion, or through tree termination on cancellation. */
 export const supervisedExecStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -366,7 +366,7 @@ export const supervisedExecStream = (
               }
               if (!mainStarted || mainExecId === undefined)
                 return yield* Effect.fail(failure("primary-start-uncertain"));
-              yield* inspectExit(mainExecId);
+              if (!completed) yield* inspectExit(mainExecId);
               yield* cleanupSession;
             }).pipe(
               Effect.interruptible,
@@ -482,7 +482,6 @@ export const supervisedExecStream = (
                 if (!mainStarted || final.exitCode !== chunk.exitCode || final.joined !== true)
                   return yield* Effect.fail(failure("terminal-status-mismatch"));
                 if (mainExecId === undefined) return yield* Effect.fail(failure("primary-start-uncertain"));
-                yield* inspectExit(mainExecId);
                 completed = true;
                 if (!cancelling) yield* cleanupSession;
               }
