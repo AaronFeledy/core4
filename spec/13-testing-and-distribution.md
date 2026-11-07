@@ -68,7 +68,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Plugin SDK contract | Type and runtime tests protect the public plugin-author surface. |
 | Machine-output conformance | Every non-interactive canonical command emits schema-valid envelopes or streams with correct ids, status, and redaction. |
 | Agent command completion | Prove one-time completion policy resolution across CLI, lifecycle, and MCP; nonzero process failure with retained typed result/diagnostics; successful negative reports with format-independent exit codes; bounded final output with and without progress tokens; stream owner finalization; and quiet-read cancellation through real local transport and the relocated compiled CLI against an explicitly selected live provider. |
-| Scenario | Public library APIs run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
+| Scenario | Public library APIs and in-process CLI commands run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
 | Recipe | Every canonical recipe scaffolds with defaults and representative branches into schema-valid output. |
 | Executable guides | §19 MDX generates source-mapped scenario tests and visibility-separated transcripts for every applicable variant. |
 | Deprecation | Every notice records use, publishes `deprecation-used`, warns once, appears in doctor, and obeys `removeIn`. |

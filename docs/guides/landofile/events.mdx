@@ -56,11 +56,15 @@ recursion checks.
     </Step>
     <Step name="stop">
       <Run command="lando stop --format=json" />
+      <Verify event="pre-stop" />
+      <Verify event="post-stop" />
       <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
       <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"landofileEvents\":\\s*\\{\"status\":\"ran\"\\}" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
+      <Run command="lando destroy -y" />
+      <Verify event="post-destroy" />
     </Step>
   </Scenario>
 

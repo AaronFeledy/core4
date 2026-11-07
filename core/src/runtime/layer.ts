@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
 import { writeStdioLine } from "@lando/renderer/io";
 import { type Context, Effect, Layer, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
@@ -88,6 +86,7 @@ import {
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
 import type { MinimalBootstrapServices } from "./generated/layers/minimal";
 import "./engine-composition";
+import { getScenarioRuntimeOverride } from "./scenario-override";
 
 export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
 
@@ -119,18 +118,6 @@ export const makeLandoGenerationRuntime = (
       }),
     pluginPolicy: prepared.pluginPolicy,
   }));
-
-type RuntimeProviderRegistryLayer = Layer.Layer<RuntimeProviderRegistry, never, never>;
-
-const runtimeProviderRegistryOverrideStorage = new AsyncLocalStorage<RuntimeProviderRegistryLayer>();
-
-export const getRuntimeProviderRegistryOverride = (): RuntimeProviderRegistryLayer | undefined =>
-  runtimeProviderRegistryOverrideStorage.getStore();
-
-export const withRuntimeProviderRegistryOverride = <A>(
-  layer: RuntimeProviderRegistryLayer,
-  thunk: () => Promise<A>,
-): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
 type NoneRuntimeServices = RuntimeLayerFactory | GlobalConfigSources;
 type MinimalRuntimeServices =
@@ -255,11 +242,11 @@ export const prepareRuntime = (
   }
   const capturedCwd = decoded.success.cwd ?? process.cwd();
   const lifecycle = makeBootstrapLifecycleTracker();
-  const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
+  const scenarioOverride = getScenarioRuntimeOverride();
   const hostLayersResult = collectEmbeddingPluginLayers(
-    runtimeProviderRegistryOverride === undefined
+    scenarioOverride === undefined
       ? pluginPolicy.layers
-      : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
+      : [...pluginPolicy.layers, scenarioOverride.hostServices],
   );
 
   if (Result.isFailure(hostLayersResult)) {
@@ -287,6 +274,7 @@ export const prepareRuntime = (
       telemetryEnabled: decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
       pluginDiscovery: pluginPolicy.discovery,
       pluginLayers: hostLayersResult.success,
+      ...(scenarioOverride === undefined ? {} : { runtimeProviderRegistry: scenarioOverride.providerRegistry }),
       pluginManifests: pluginPolicy.manifests,
       externalImports: pluginPolicy.externalImports,
       cwd: capturedCwd,

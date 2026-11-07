@@ -2,7 +2,7 @@ import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogLevel, ProviderCapabilities, type ResolvedPluginInput } from "@lando/sdk/schema";
-import { Renderer, RuntimeProvider } from "@lando/sdk/services";
+import { Renderer, RuntimeProvider, type RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -30,6 +30,8 @@ export interface BootstrapLayerInputs {
   readonly telemetryEnabled: boolean;
   readonly pluginDiscovery: BootstrapLayerPluginDiscovery;
   readonly pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
+  /** Replaces the bundled provider registry for every provider-level consumer (test hosts). */
+  readonly runtimeProviderRegistry?: Layer.Layer<RuntimeProviderRegistry>;
   readonly pluginManifests: ReadonlyArray<ResolvedPluginInput>;
   readonly externalImports: boolean;
   readonly cwd: string;
