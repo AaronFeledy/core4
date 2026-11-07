@@ -216,7 +216,7 @@ describe("localstack ServiceType", () => {
 
     expect(resolution.base).toBe("lando");
     expect(resolution.features).toEqual([{ id: LOCALSTACK_FEATURE_ID }]);
-    expect(resolution.tooling?.awslocal).toEqual({ service: "cloud", cmd: "awslocal" });
+    expect(resolution.tooling?.awslocal).toEqual({ service: "cloud", cmd: "awslocal", wrapper: true });
   });
 
   test("publishes the LocalStack authoring schema", () => {

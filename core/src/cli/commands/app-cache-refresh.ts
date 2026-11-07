@@ -88,7 +88,13 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const entries = yield* Effect.try({
     try: () => compileAppCommands(landofile.document, scripts, effectiveToolingForPlan(plan)),
     catch: (cause) => {
-      if (cause instanceof ToolingCompileError) return cause;
+      if (cause instanceof ToolingCompileError)
+        return new ToolingCompileError({
+          message: cause.message,
+          tool: cause.tool,
+          source: cause.source ?? { path: plan.metadata.source, task: cause.tool },
+          remediation: cause.remediation,
+        });
       throw cause;
     },
   });

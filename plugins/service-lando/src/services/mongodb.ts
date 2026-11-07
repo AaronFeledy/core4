@@ -143,6 +143,7 @@ const mongodbToolingForConnection: NonNullable<ServiceType["toolingForConnection
             `for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval '${connectMongo}' "$@";; esac; done; exec mongosh --nodb --eval '${connectMongo}' --shell "$@"`,
             "mongosh",
           ],
+          wrapper: true,
           env: { MONGO_URI: mongoUri(connection.creds, connection.port) },
         },
       };

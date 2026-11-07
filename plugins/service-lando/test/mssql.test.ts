@@ -192,6 +192,7 @@ describe("mssql ServiceType", () => {
         });
         expect(resolution.tooling).toEqual({
           sqlcmd: {
+            wrapper: true,
             service: "database",
             cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
             env: { SQLCMDPASSWORD: rootPassword },
@@ -220,6 +221,7 @@ describe("mssql ServiceType", () => {
         expect(plan.environment.LANDO_DB_ROOT_PASSWORD).toBe(creds.rootPassword);
         expect(resolution.normalizedConfig.creds).toEqual(creds);
         expect(resolution.tooling?.sqlcmd).toEqual({
+          wrapper: true,
           service: "database",
           cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
           env: { SQLCMDPASSWORD: creds.rootPassword },
@@ -242,6 +244,7 @@ describe("mssql ServiceType", () => {
         expect(plan.environment.SA_PASSWORD).toBe(saPassword);
         expect(resolution.normalizedConfig.creds?.rootPassword).toBe(saPassword);
         expect(resolution.tooling?.sqlcmd).toEqual({
+          wrapper: true,
           service: "database",
           cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
           env: { SQLCMDPASSWORD: saPassword },

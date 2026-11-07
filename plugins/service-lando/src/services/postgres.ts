@@ -132,6 +132,7 @@ const postgresToolingForConnection: NonNullable<ServiceType["toolingForConnectio
             "-d",
             connection.creds.database,
           ],
+          wrapper: true,
           env: { PGPASSWORD: connection.creds.password },
         },
       };

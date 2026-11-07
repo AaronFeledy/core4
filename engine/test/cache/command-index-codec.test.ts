@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { Result } from "effect";
 import { decodeAppCommandIndex, encodeAppCommandIndex } from "../../src/cache/command-index.ts";
-import { abi6Bytes, app, encodedInput, entry, input, without } from "./fixtures/command-index-codec.ts";
+import { app, currentAbiBytes, encodedInput, entry, input, without } from "./fixtures/command-index-codec.ts";
 
 const withFlag = (patch: object) => ({
   ...encodedInput,
@@ -19,19 +19,19 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       "rejects non-record payloads %#",
       ({ value }) => {
         // Given / When / Then
-        expect(decode(abi6Bytes(magic, value))).toBeNull();
+        expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n])("rejects old header %s with a current body", (version) => {
+    test.each([1n, 2n, 3n, 4n, 5n, 6n])("rejects old header %s with a current body", (version) => {
       // Given
-      const bytes = abi6Bytes(magic, payload);
+      const bytes = currentAbiBytes(magic, payload);
       new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
     test("rejects a truncated v8 body under the current header", () => {
       // Given
-      const bytes = abi6Bytes(magic, payload).subarray(0, 15);
+      const bytes = currentAbiBytes(magic, payload).subarray(0, 15);
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
@@ -39,7 +39,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       "rejects missing required field %s",
       (key) => {
         // Given
-        const bytes = abi6Bytes(magic, without(payload, key));
+        const bytes = currentAbiBytes(magic, without(payload, key));
         // When / Then
         expect(decode(bytes)).toBeNull();
       },
@@ -58,10 +58,11 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         (patch) => ({ entries: [{ ...entry, ...patch }] }),
       ),
       ...[false, "true", null, 1].map((disabled) => ({ entries: [{ ...entry, hidden: true, disabled }] })),
+      ...[false, "true", null, 1, undefined].map((wrapper) => ({ entries: [{ ...entry, wrapper }] })),
       { entries: [{ ...entry, hidden: false, disabled: true }] },
     ])("rejects malformed common fields %#", (patch) => {
       // Given
-      const bytes = abi6Bytes(magic, { ...payload, ...patch });
+      const bytes = currentAbiBytes(magic, { ...payload, ...patch });
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
@@ -123,7 +124,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       ].map((malformedInput) => ({ malformedInput })),
     )("rejects malformed canonical input %#", ({ malformedInput }) => {
       // Given
-      const bytes = abi6Bytes(magic, { ...payload, entries: [{ ...entry, input: malformedInput }] });
+      const bytes = currentAbiBytes(magic, { ...payload, entries: [{ ...entry, input: malformedInput }] });
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
@@ -131,9 +132,15 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       // Given
       const payloadWithEncodedInput = { ...payload, entries: [{ ...entry, input: encodedInput }] };
       // When
-      const decoded = decode(abi6Bytes(magic, payloadWithEncodedInput));
+      const decoded = decode(currentAbiBytes(magic, payloadWithEncodedInput));
       // Then
       expect(decoded).toEqual({ ...payload, entries: [entry] });
+    });
+    test("roundtrips help forwarding metadata", () => {
+      // Given
+      const expected = { ...payload, entries: [{ ...entry, wrapper: true as const }] };
+      // When / Then
+      expect(decode(currentAbiBytes(magic, expected))).toEqual(expected);
     });
     test("roundtrips disabled metadata separately from internal visibility", () => {
       // Given
@@ -145,7 +152,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         ],
       };
       // When / Then
-      expect(decode(abi6Bytes(magic, expected))).toEqual(expected);
+      expect(decode(currentAbiBytes(magic, expected))).toEqual(expected);
     });
     test.each([true, false])("roundtrips empty input with argument policy %s", (acceptsArguments) => {
       // Given
@@ -155,7 +162,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       );
       const expected = { ...payload, entries: [{ ...entry, input: emptyInput }] };
       // When / Then
-      expect(decode(abi6Bytes(magic, expected))).toEqual(expected);
+      expect(decode(currentAbiBytes(magic, expected))).toEqual(expected);
     });
   });
 }
@@ -222,7 +229,7 @@ test.each([
   ].map((patch) => ({ ...app, ...patch })),
 ])("rejects malformed app metadata %#", (payload) => {
   // Given
-  const bytes = abi6Bytes("LCAC", payload);
+  const bytes = currentAbiBytes("LCAC", payload);
   // When / Then
   expect(decodeAppCommandIndex(bytes)).toBeNull();
 });

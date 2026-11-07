@@ -31,9 +31,13 @@ const failures = {
   unknown: { _tag: "ToolingCommandUnavailableError", reason: "unknown-command" },
 } as const;
 
-test.each([true, false])(
-  "uses argument policy for empty declarations (acceptsArguments=%s)",
-  (acceptsArguments) => {
+test.each([
+  { acceptsArguments: true, wrapper: true, expected: false },
+  { acceptsArguments: true, wrapper: false, expected: true },
+  { acceptsArguments: false, wrapper: false, expected: true },
+])(
+  "routes help for empty declarations by wrapper policy ($acceptsArguments, wrapper=$wrapper)",
+  ({ acceptsArguments, wrapper, expected }) => {
     // Given
     const input = Result.getOrThrowWith(
       normalizeToolingInput("empty", acceptsArguments ? {} : { arguments: false }),
@@ -41,11 +45,19 @@ test.each([true, false])(
     );
     // When
     const requested = toolingHelpRequested(
-      { _tag: "tooling", commandId: "app:empty", name: "empty", summary: "", hidden: false, input },
+      {
+        _tag: "tooling",
+        commandId: "app:empty",
+        name: "empty",
+        summary: "",
+        hidden: false,
+        input,
+        ...(wrapper ? { wrapper: true as const } : {}),
+      },
       ["--help"],
     );
     // Then
-    expect(requested).toBe(!acceptsArguments);
+    expect(requested).toBe(expected);
   },
 );
 

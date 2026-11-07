@@ -17,6 +17,26 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
+  test("indexes only resolved forwarding decisions as literal true", () => {
+    // Given
+    const source = landofile({
+      auto: { cmd: "wp" },
+      compound: { cmd: "cd web && drush" },
+      explicit: { cmd: "cd web && drush", wrapper: true },
+      owned: { cmd: "wp", wrapper: false },
+    });
+    // When
+    const entries = compileToolingCommands(source);
+    // Then
+    expect(entries.map(({ id, wrapper }) => [id, wrapper])).toEqual([
+      ["app:auto", undefined],
+      ["app:compound", undefined],
+      ["app:explicit", true],
+      ["app:owned", undefined],
+    ]);
+    for (const entry of entries.filter((entry) => entry.id !== "app:explicit"))
+      expect(entry).not.toHaveProperty("wrapper");
+  });
   test.each([false, { cmd: "echo retired", disabled: true }])(
     "indexes disabled task %j as hidden so the router can refuse it",
     (task) => {
@@ -195,6 +215,7 @@ describe("compileBunShellScriptCommands", () => {
     const entries = compileBunShellScriptCommands(scripts);
 
     // Then
+    expect(entries[0]).not.toHaveProperty("wrapper");
     expect(entries).toMatchObject([
       {
         id: "app:quality",

@@ -102,6 +102,7 @@ const mssqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
         sqlcmd: {
           service: name,
           cmd: [...sqlcmdToolingArgv(connection.port)],
+          wrapper: true,
           env: { SQLCMDPASSWORD: connection.creds.password },
         },
       };

@@ -25,7 +25,12 @@ export const source = {
       database: { type: "mariadb" },
     },
     tooling: {
-      wp: { service: "appserver", description: "Run WP-CLI inside the appserver service.", cmds: ["wp"] },
+      wp: {
+        service: "appserver",
+        description: "Run WP-CLI inside the appserver service.",
+        cmds: ["wp"],
+        wrapper: true,
+      },
       composer: composerTool,
     },
   },

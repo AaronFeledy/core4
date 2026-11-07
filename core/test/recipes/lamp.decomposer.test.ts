@@ -34,6 +34,7 @@ const phpTool = {
   service: "appserver",
   description: "Run the PHP CLI inside the appserver service.",
   cmds: ["php"],
+  wrapper: true,
 };
 
 describe("lamp decomposition", () => {
@@ -68,6 +69,7 @@ describe("lamp decomposition", () => {
             service: "appserver",
             description: "Run Composer inside the appserver service.",
             cmds: ["composer"],
+            wrapper: true,
           },
           php: phpTool,
         },

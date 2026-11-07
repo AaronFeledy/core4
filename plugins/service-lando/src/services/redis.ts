@@ -126,6 +126,7 @@ export const redisServiceType: ServiceType = {
               ? []
               : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
           ],
+          wrapper: true,
           ...(password === undefined ? {} : { env: auth }),
         },
       },

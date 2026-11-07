@@ -100,11 +100,13 @@ describe("drupal-cms decomposition", () => {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
           cmds: [DRUSH_TOOLING_COMMAND],
+          wrapper: true,
         },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         "drupal-cms-scaffold": {
           service: "appserver",

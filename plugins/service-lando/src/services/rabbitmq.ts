@@ -148,7 +148,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
         },
         features: [{ id: RABBITMQ_FEATURE_ID }],
         tooling: {
-          rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
+          rabbitmqctl: { service: input.name, cmd: "rabbitmqctl", wrapper: true },
           rabbitmqadmin: {
             service: input.name,
             cmd: [
@@ -158,6 +158,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
               "--password",
               literalEnvironmentValue(managementPass, ["environment", "RABBITMQ_DEFAULT_PASS"]),
             ],
+            wrapper: true,
           },
         },
       };
