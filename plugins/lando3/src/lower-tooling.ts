@@ -202,7 +202,7 @@ const lowerTask = (
   if (entry.cmd === undefined) {
     report(
       "generated",
-      path,
+      [...path, "cmd"],
       `Lando 3 ran the task name as its command, so the task runs ${name}.`,
       "Review the generated cmd.",
     );
@@ -245,6 +245,15 @@ const lowerTask = (
   const args = lowerPositionals(positionalTokens, entry.positionals, path, report);
   if (args === "invalid") return undefined;
   if (args !== undefined) task.args = args;
+  if (commands.length === 1 && flags === undefined && args === undefined) {
+    task.wrapper = true;
+    report(
+      "generated",
+      path,
+      "Lando 3 passed -h and --help to this task's command, so the converted task sets wrapper: true.",
+      "Remove wrapper: true if the command is a script that does not handle --help.",
+    );
+  }
   for (const [key, [message, remediation]] of Object.entries(DROPPED_TASK_KEYS)) {
     if (Object.hasOwn(entry, key)) report("dropped", [...path, key], message, remediation);
   }
