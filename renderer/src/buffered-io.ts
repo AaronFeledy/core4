@@ -12,6 +12,8 @@ export interface BufferedRendererIO extends RendererIO {
 }
 
 export interface BufferedRendererIOOptions {
+  readonly stdin?: string | Uint8Array;
+  readonly stdinIsTTY?: boolean;
   readonly noColor?: boolean;
   readonly stdoutIsTTY?: boolean;
   readonly stdoutColumns?: number | undefined;
@@ -40,6 +42,16 @@ export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}
   const stderrChunks: Uint8Array[] = [];
   const listeners = new Set<(raw: string) => void>();
   return {
+    stdinIsTTY: options.stdinIsTTY === true,
+    stdin: new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (options.stdin !== undefined)
+          controller.enqueue(
+            typeof options.stdin === "string" ? new TextEncoder().encode(options.stdin) : options.stdin,
+          );
+        controller.close();
+      },
+    }),
     writeStdout: (chunk) => {
       stdoutChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
       return true;

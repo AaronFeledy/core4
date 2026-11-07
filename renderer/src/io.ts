@@ -1,5 +1,9 @@
 import { fstatSync } from "node:fs";
-import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
+import {
+  type RendererIO as RendererContractIO,
+  type RendererNarrationIO,
+  narrationIO,
+} from "@lando/sdk/renderer";
 import { hostDisablesColor, isDumbTerminal } from "./color.ts";
 import { guardedWrite, isOutputBlocked, isOutputBroken } from "./native-stdio.ts";
 import { outputStreams } from "./output-streams.ts";
@@ -13,7 +17,12 @@ export {
   writeStdioLine,
 } from "./native-stdio.ts";
 
-export type { RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
+export type { RendererNarrationIO } from "@lando/sdk/renderer";
+export interface RendererIO extends RendererContractIO {
+  readonly stdin?: ReadableStream<Uint8Array>;
+  readonly stdinIsTTY?: boolean;
+}
+export { RendererHost } from "./host.ts";
 
 const processEvents: NodeJS.EventEmitter = process;
 
@@ -36,6 +45,7 @@ export interface StdioRendererIOOptions {
 }
 
 const stdioFactories = new WeakMap<RendererNarrationIO, (terminalNewlines: boolean) => RendererIO>();
+export const isStdioRendererIO = (io: RendererNarrationIO): boolean => stdioFactories.has(io);
 const narrationFactories = new WeakMap<
   RendererNarrationIO,
   (terminalNewlines: boolean) => RendererNarrationIO
@@ -123,6 +133,8 @@ export const createStdioRendererIO = (
     },
   });
   const io: RendererIO = {
+    stdinIsTTY: stdin.isTTY === true,
+    ...(stdin === process.stdin ? { stdin: Bun.stdin.stream() } : {}),
     writeStdout: (chunk) =>
       guardedWrite("stdout", stdout, typeof chunk === "string" ? stdoutNewlines(chunk) : chunk),
     writeStderr: (chunk) =>
