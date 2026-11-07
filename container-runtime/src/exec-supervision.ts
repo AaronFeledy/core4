@@ -304,7 +304,7 @@ export const supervisedExecStream = (
               if (!completed) {
                 // Persist the requested signal before permitting a paused watch to renew.
                 if (owned.watch !== undefined) yield* owned.watch.prepareCancel;
-                yield* control("cancel", signalName(command.signal));
+                const cancelled = yield* control("cancel", signalName(command.signal));
                 if (owned.watch !== undefined) yield* owned.watch.resumeAfterCancel;
                 const noWatchStarted = owned.watch === undefined ? true : yield* owned.watch.stopBeforeStart;
                 const observed =
@@ -324,12 +324,16 @@ export const supervisedExecStream = (
                   if (observed?._tag === "Failure") watchFailure = observed.cause;
                   if (owned.watch !== undefined) yield* owned.watch.stopInput;
                   // Recovery is finite and used only when observation was absent or failed.
-                  final = yield* poll(
-                    "cleanup-unconfirmed",
-                    control("status"),
-                    (state) =>
-                      state.joined === true && (state.state === "finished" || state.state === "cancelled"),
-                  );
+                  final =
+                    cancelled.joined === true
+                      ? cancelled
+                      : yield* poll(
+                          "cleanup-unconfirmed",
+                          control("status"),
+                          (state) =>
+                            state.joined === true &&
+                            (state.state === "finished" || state.state === "cancelled"),
+                        );
                 }
                 if (final.state === "finished" && final.exitCode === undefined)
                   return yield* Effect.fail(failure("cleanup-status-missing"));

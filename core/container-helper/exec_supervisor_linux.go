@@ -208,11 +208,15 @@ func runExecControl(args []string, streams helperIO) int {
 			err = execMark(dir, "cancelled")
 		}
 		launched := execExists(dir, "launched")
+		supervised := execExists(dir, "supervisor")
+		if err == nil && !launched && !supervised {
+			err = execSave(dir, execReply{OK: true, State: "cancelled", Joined: true})
+		}
 		execUnlock(lock)
 		if err != nil {
 			return execEmit(streams.stdout, execFailure("session-write-failed"))
 		}
-		if !launched {
+		if !launched && !supervised {
 			return execEmit(streams.stdout, execReply{OK: true, State: "cancelled", Joined: true})
 		}
 	}
@@ -412,7 +416,7 @@ func runExecSupervisorWithScan(args []string, streams helperIO, scan func() ([]i
 		return 125
 	}
 	dir := args[0]
-	if execPrivateDirectory(dir) != nil {
+	if execCheckPrivateDirectory(dir) != nil {
 		return 125
 	}
 	lock, err := execLock(dir)

@@ -293,6 +293,13 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
               return frame({ ok: true, state: session.cancelled ? "cancelled" : "running" });
             }
             if (operation === "cancel") session.cancelled = true;
+            if (session.cancelled && !session.launched) {
+              if (operation === "collect") {
+                session.collected = true;
+                session.finish();
+              }
+              return frame({ ok: true, state: "cancelled", joined: true });
+            }
             const exitCode = yield* observedExit(session);
             if (operation === "collect") {
               session.collected = true;
