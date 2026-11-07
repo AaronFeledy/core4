@@ -40,7 +40,22 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
   slug: "output-boundary",
   root: "/tmp/output-boundary",
   provider: "test",
-  services: {},
+  services: {
+    web: {
+      name: "web",
+      type: "node",
+      provider: "test",
+      primary: true,
+      environment: {},
+      mounts: [],
+      endpoints: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata: { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 },
+      extensions: {},
+    },
+  },
   routes: [],
   stores: [],
   fileSync: [],
@@ -232,12 +247,12 @@ test("metadata and lifecycle members never read app environment", async () => {
         yield* selected.isAvailable;
         yield* selected.getStatus;
         yield* selected.getVersions;
+        yield* selected.apply(plan, { reconcile: true });
         yield* selected.list({});
         yield* selected.inspect(target);
         yield* selected.start(target);
         yield* selected.stop(target);
         yield* selected.restart(target);
-        yield* selected.apply(plan, { reconcile: true });
         yield* selected.run({ image: "test", command: ["true"] });
         yield* Stream.runDrain(selected.runStream({ image: "test", command: ["true"] }));
       }),

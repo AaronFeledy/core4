@@ -33,6 +33,7 @@ test.each([false, true])(
       ...plan,
       services: { [web.name]: { ...web, ...(healthcheck ? { healthcheck: check } : {}) } },
     };
+    await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(planned, { reconcile: true })));
     await Effect.runPromise(
       waitForServiceReadiness({
         provider: { ...TestRuntimeProvider, inspect: running },

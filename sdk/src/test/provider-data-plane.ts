@@ -53,6 +53,7 @@ import {
   testCapabilities,
   utf8,
 } from "./_shared.ts";
+import { makeTestProviderContainers } from "./provider-containers.ts";
 
 export interface ProviderDataPlaneContractInput {
   readonly providerName?: string;
@@ -419,16 +420,16 @@ const runTestEphemeral = Effect.fnUntraced(function* (
  * artifacts, and applied environments, so independent tests do not share provider state.
  */
 export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
+  const containers = makeTestProviderContainers();
   const testVolumeBytes = new Map<string, Uint8Array>();
   const testSnapshotBytes = new Map<string, Uint8Array>();
   const testServicePathBytes = new Map<string, Uint8Array>();
   const testArtifactBytes = new Map<string, Uint8Array>();
   let testArtifactImportCount = 0;
-  /** Observed containers this double has already removed, so a second removal is honestly absent. */
-  const testRemovedObservations = new Set<string>();
   const testAppliedEnvironments = new Map<string, ReadonlyMap<string, Readonly<Record<string, string>>>>();
 
-  return {
+  const provider: RuntimeProviderShape = {
+    ...containers,
     id: TEST_PROVIDER_ID,
     displayName: "Test Runtime Provider",
     version: "0.0.0-test",
@@ -472,9 +473,6 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       ).pipe(
         Effect.flatMap((environments) =>
           Effect.sync(() => {
-            if (plan == null || plan.extensions == null || plan.services == null) {
-              return { changed: false };
-            }
             testAppliedEnvironments.set(plan.id, new Map(environments));
             let changed = false;
             // Planned file binds (Compose config grants compile to read-only binds) expose their bytes.
@@ -491,32 +489,30 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
             return { changed };
           }),
         ),
+        Effect.flatMap((result) =>
+          containers
+            .apply(plan, options)
+            .pipe(Effect.map((applied) => ({ changed: result.changed || applied.changed }))),
+        ),
       ),
-    start: (_target) => Effect.void,
-    stop: (_target) => Effect.void,
-    restart: (_target) => Effect.void,
     waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
     destroy: (target, _options) =>
-      Effect.sync(() => {
-        const removed = testAppliedEnvironments.delete(target.app);
-        return removed || target.plan !== undefined
-          ? { kind: "destroyed" }
-          : { kind: "no-op", reason: "no-applied-plan" };
-      }),
-    removeObservedService: (observed) =>
-      Effect.sync(() => {
-        if (observed.containerId === undefined) return { kind: "absent" };
-        const key = `${observed.app}\u0000${observed.service}\u0000${observed.containerId}`;
-        if (testRemovedObservations.has(key)) return { kind: "absent" };
-        testRemovedObservations.add(key);
-        return { kind: "removed" };
-      }),
+      containers.destroy(target, _options).pipe(
+        Effect.flatMap((outcome) =>
+          Effect.sync(() => {
+            const applied = testAppliedEnvironments.delete(target.app);
+            return applied ? { kind: "destroyed" as const } : outcome;
+          }),
+        ),
+      ),
 
     readAppEnvironment: (target, names) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
+        const observed = yield* containers.list({ app: target.app });
         const applied = testAppliedEnvironments.get(target.app);
         const values = new Set<string>();
         for (const [service, keys] of Object.entries(names)) {
+          if (!observed.some((container) => container.service === service)) continue;
           const environment = applied?.get(service);
           for (const key of keys) {
             const value = environment?.[key];
@@ -525,20 +521,36 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         }
         return [...values].map((value) => Redacted.make(value));
       }),
-    exec: (_target, command) =>
-      Effect.succeed({
-        exitCode: 0,
-        stdout: command.command.join(" "),
-        stderr: "",
-      }),
-    execStream: (_target, command) => {
+    exec: (target, command) =>
+      Effect.scoped(
+        provider.execStream(target, command).pipe(
+          Stream.runCollect,
+          Effect.map((chunks) => {
+            const stdout: Uint8Array[] = [];
+            const stderr: Uint8Array[] = [];
+            let exitCode = 0;
+            for (const chunk of chunks) {
+              if ("exitCode" in chunk) exitCode = chunk.exitCode;
+              else (chunk.kind === "stdout" ? stdout : stderr).push(chunk.chunk);
+            }
+            return {
+              exitCode,
+              stdout: decodeUtf8(concatBytes(stdout)),
+              stderr: decodeUtf8(concatBytes(stderr)),
+            };
+          }),
+        ),
+      ),
+    execStream: (target, command) => {
       const stdoutChunk: ExecChunk = {
         kind: "stdout",
         chunk: new TextEncoder().encode(`${command.command.join(" ")}\n`),
       };
       const exitChunk: ExecChunk = { exitCode: 0 };
 
-      return Stream.make(stdoutChunk, exitChunk);
+      return Stream.unwrap(
+        containers.inspect(target, "exec").pipe(Effect.as(Stream.make(stdoutChunk, exitChunk))),
+      );
     },
     run: (spec) => runTestEphemeral(testVolumeBytes, spec),
     runStream: (spec) => {
@@ -580,7 +592,10 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
 
       const sources = options.sources ?? [];
       const followSources = sources.filter((source) => source.strategy === "follow");
-      if (followSources.length === 0) return Stream.fromIterable(consoleChunks);
+      if (followSources.length === 0)
+        return Stream.unwrap(
+          containers.inspect(target, "logs").pipe(Effect.as(Stream.fromIterable(consoleChunks))),
+        );
 
       const fs = makeMemoryLogFileAccess();
       for (const source of followSources) {
@@ -598,27 +613,12 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         }),
       );
 
-      return Stream.concat(Stream.fromIterable(consoleChunks), followers);
+      return Stream.unwrap(
+        containers
+          .inspect(target, "logs")
+          .pipe(Effect.as(Stream.concat(Stream.fromIterable(consoleChunks), followers))),
+      );
     },
-    inspect: Effect.fn("RuntimeProvider.inspect")(function* (target) {
-      return yield* Effect.succeed({
-        app: target.app,
-        service: target.service,
-        providerId: TEST_PROVIDER_ID,
-        status: "running" as const,
-        publications: { status: "unknown" as const },
-      });
-    }),
-    list: (filter) =>
-      Effect.succeed([
-        {
-          app: filter.app ?? TEST_APP_ID,
-          service: TEST_SERVICE_NAME,
-          providerId: TEST_PROVIDER_ID,
-          status: "running",
-          publications: { status: "unknown" as const },
-        },
-      ]),
     snapshotVolume: (spec) =>
       Effect.sync(() => {
         const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
@@ -686,6 +686,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       return { providerId: TEST_PROVIDER_ID, ref };
     }),
   };
+  return provider;
 };
 
 /** Shared in-memory `RuntimeProvider` reference implementation for SDK contract tests. */

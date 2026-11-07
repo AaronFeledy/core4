@@ -3,17 +3,15 @@ import { isAbsolute, relative } from "node:path";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import {
-  type ListFilter,
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-  type ServiceRuntimeInfo,
   UrlScanner,
 } from "@lando/sdk/services";
 import { makeTestRouterService, makeTestRuntimeProvider, makeTestUrlScanner } from "@lando/sdk/test";
-import { Clock, DateTime, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 const canonicalPath = (path: string): Effect.Effect<string> =>
   Effect.tryPromise(() => realpath(path)).pipe(
@@ -64,102 +62,22 @@ export const makeScenarioProvider = () => {
     Effect.all([canonicalPath(root), appliedPlans]).pipe(
       Effect.map(([canonical, plans]) => plans.find((plan) => planAppRoot(plan) === canonical)),
     );
-  // Containers this scenario has created, so observation reports what apply, stop, and destroy did.
-  const containers = new Map<string, { readonly status: "running" | "exited"; readonly startedAt: number }>();
-  const containerKey = (app: string, service: string) => `${app}/${service}`;
-  const setRunState = (app: string, service: string, status: "running" | "exited") =>
-    Clock.currentTimeMillis.pipe(
-      Effect.map((now) => {
-        const key = containerKey(app, service);
-        const current = containers.get(key);
-        if (current === undefined) return;
-        containers.set(key, { status, startedAt: status === "running" ? now : current.startedAt });
-      }),
-    );
-  const observe = (filter: ListFilter) =>
-    appliedPlans.pipe(
-      Effect.map((plans) =>
-        plans
-          .filter((plan) => filter.app === undefined || plan.id === filter.app)
-          .flatMap((plan) =>
-            Object.keys(plan.services).flatMap((service): ReadonlyArray<ServiceRuntimeInfo> => {
-              const key = containerKey(plan.id, service);
-              const container = containers.get(key);
-              if (container === undefined) return [];
-              return [
-                {
-                  app: plan.id,
-                  appRoot: AbsolutePath.make(planAppRoot(plan)),
-                  service: ServiceName.make(service),
-                  providerId: plan.provider,
-                  containerId: key,
-                  status: container.status,
-                  lastStartedAt: DateTime.toDateUtc(DateTime.makeUnsafe(container.startedAt)),
-                  publications: { status: "unknown" },
-                },
-              ];
-            }),
-          ),
-      ),
-    );
   const provider: RuntimeProviderShape = {
     ...testProvider,
     capabilities: { ...testProvider.capabilities, artifactBuild: true },
     appliedPlans,
     apply: (plan, options) =>
-      testProvider.apply(plan, options).pipe(
-        Effect.tap(() => store.persistAppliedPlan(appliedState, options.recordedPlan ?? plan)),
-        Effect.tap(() =>
-          Clock.currentTimeMillis.pipe(
-            Effect.map((startedAt) => {
-              // An apply leaves an already running container running, as reconciling an unchanged one does.
-              for (const service of Object.keys(plan.services)) {
-                const key = containerKey(plan.id, service);
-                const current = containers.get(key);
-                containers.set(key, {
-                  status: "running",
-                  startedAt: current?.status === "running" ? current.startedAt : startedAt,
-                });
-              }
-            }),
+      testProvider
+        .apply(plan, options)
+        .pipe(Effect.tap(() => store.persistAppliedPlan(appliedState, options.recordedPlan ?? plan))),
+    destroy: (target, options) =>
+      testProvider
+        .destroy(target, options)
+        .pipe(
+          Effect.tap(() =>
+            options.removeState === false ? Effect.void : store.removeAppliedPlan(appliedState, target.app),
           ),
         ),
-      ),
-    start: (target) => setRunState(target.app, target.service, "running"),
-    restart: (target) => setRunState(target.app, target.service, "running"),
-    stop: (target) => setRunState(target.app, target.service, "exited"),
-    list: observe,
-    removeObservedService: (observed) =>
-      Effect.sync(() => {
-        const key = containerKey(observed.app, observed.service);
-        if (observed.containerId !== key || !containers.has(key)) return { kind: "absent" as const };
-        containers.delete(key);
-        return { kind: "removed" as const };
-      }),
-    inspect: (target) =>
-      observe({ app: target.app }).pipe(
-        Effect.map(
-          (services): ServiceRuntimeInfo =>
-            services.find((service) => service.service === target.service) ?? {
-              app: target.app,
-              service: target.service,
-              providerId: ProviderId.make(testProvider.id),
-              status: "absent",
-              publications: { status: "unknown" },
-            },
-        ),
-      ),
-    destroy: (target, options) =>
-      testProvider.destroy(target, options).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            for (const key of containers.keys()) if (key.startsWith(`${target.app}/`)) containers.delete(key);
-          }),
-        ),
-        Effect.tap(() =>
-          options.removeState === false ? Effect.void : store.removeAppliedPlan(appliedState, target.app),
-        ),
-      ),
   };
   const registry = RuntimeProviderRegistry.of({
     appliedPlansFor: (root) =>
