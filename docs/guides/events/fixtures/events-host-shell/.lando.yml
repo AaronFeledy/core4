@@ -1,0 +1,9 @@
+name: events-host-shell
+services:
+  web:
+    type: "node:22"
+    primary: true
+events:
+  pre-start:
+    - cmd: 'echo "preparing $${HOME}" >&2'
+      service: ":host"

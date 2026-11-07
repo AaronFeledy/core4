@@ -115,7 +115,19 @@ export const dedupeDiagnostics = (
   diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>,
 ): ReadonlyArray<ConfigTranslateDiagnostic> => {
   const seen = new Set<string>();
+  const priority = (diagnostic: ConfigTranslateDiagnostic): number => {
+    if (diagnostic.message.startsWith("Unclaimed Lando 3 setting ")) return 0;
+    if (diagnostic.message.includes("is not a Lando 3 key")) return 1;
+    return 2;
+  };
+  const maxPriorities = new Map<string, number>();
+  for (const diagnostic of diagnostics) {
+    const location = JSON.stringify([diagnostic.sourceId, diagnostic.keyPath]);
+    maxPriorities.set(location, Math.max(maxPriorities.get(location) ?? 0, priority(diagnostic)));
+  }
   return diagnostics.filter((diagnostic) => {
+    const location = JSON.stringify([diagnostic.sourceId, diagnostic.keyPath]);
+    if (priority(diagnostic) !== maxPriorities.get(location)) return false;
     const key = JSON.stringify([diagnostic.kind, diagnostic.sourceId, diagnostic.keyPath]);
     if (seen.has(key)) return false;
     seen.add(key);

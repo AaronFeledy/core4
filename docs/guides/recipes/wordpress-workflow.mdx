@@ -2,7 +2,7 @@
 id: wordpress-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, wordpress, php, mariadb]
+tags: [docs, recipes, wordpress, php, mariadb]
 ---
 
 # Run the WordPress recipe
@@ -68,6 +68,8 @@ lando mariadb -e 'SHOW TABLES;'
 Open the HTTPS URL. A fresh install serves the site title you passed to `core install`.
 
 ## See what the recipe writes
+
+The appserver sets `uploadDirs: [wp-content/uploads]` to keep PHP out of uploaded files.
 
 | Piece | What you get |
 | --- | --- |

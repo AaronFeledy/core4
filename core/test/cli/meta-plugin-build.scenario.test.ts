@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import { ProcessExecError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { withProcess } from "../_support/process-runner.ts";
 
 import { pluginBuild, renderPluginBuildResult } from "../../src/cli/commands/plugin-build.ts";
 import { listTree } from "./_util/fs-tree.ts";
@@ -97,16 +99,15 @@ describe("meta:plugin:build command", () => {
         pluginBuild({
           cwd: root,
           execPath: "/opt/bun",
-          spawner: {
-            spawn: async ({ cmd }) => {
-              if (cmd.includes("build"))
-                await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
-              if (cmd.includes("tsc"))
-                await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
-              return { exitCode: 0 };
-            },
-          },
-        }),
+        }).pipe(
+          withProcess(async ({ cmd }) => {
+            if (cmd.includes("build"))
+              await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
+            if (cmd.includes("tsc"))
+              await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
+            return { exitCode: 0 };
+          }),
+        ),
       );
       expect(result.outputs).toContain("dist/index.js");
     } finally {
@@ -126,17 +127,17 @@ describe("meta:plugin:build command", () => {
       pluginBuild({
         cwd: root,
         execPath: "/opt/bun",
-        spawner: {
-          spawn: async ({ cmd, cwd }) => {
-            spawns.push({ cmd, cwd });
-            if (cmd.includes("build"))
-              await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
-            if (cmd.includes("tsc"))
-              await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
-            return { exitCode: 0 };
-          },
-        },
-      }).pipe(Effect.provide(recordingEventLayer(events))),
+      }).pipe(
+        withProcess(async ({ cmd, cwd }) => {
+          spawns.push({ cmd, cwd });
+          if (cmd.includes("build"))
+            await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
+          if (cmd.includes("tsc"))
+            await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
+          return { exitCode: 0 };
+        }),
+        Effect.provide(recordingEventLayer(events)),
+      ),
     );
 
     expect(result.pluginName).toBe("@acme/lando-plugin-build-events");
@@ -200,17 +201,16 @@ describe("meta:plugin:build command", () => {
         pluginBuild({
           cwd: root,
           execPath: "/opt/bun",
-          spawner: {
-            spawn: async ({ cmd, signal }) => {
-              if (cmd.includes("build")) return { exitCode: 0 };
-              configPath = declarationConfigPath(cmd);
-              if (cleanupFails) await replaceConfigWithDirectory(configPath);
-              signal?.addEventListener("abort", () => declarationAborted.resolve(), { once: true });
-              declarationStarted.resolve();
-              return declarationSettled.promise;
-            },
-          },
-        }),
+        }).pipe(
+          withProcess(async ({ cmd, signal }) => {
+            if (cmd.includes("build")) return { exitCode: 0 };
+            configPath = declarationConfigPath(cmd);
+            if (cleanupFails) await replaceConfigWithDirectory(configPath);
+            signal?.addEventListener("abort", () => declarationAborted.resolve(), { once: true });
+            declarationStarted.resolve();
+            return declarationSettled.promise;
+          }),
+        ),
         { signal: controller.signal },
       );
 
@@ -246,13 +246,12 @@ describe("meta:plugin:build command", () => {
     const result = await Effect.runPromise(
       pluginBuild({
         cwd: root,
-        spawner: {
-          spawn: async ({ cmd }) => {
-            spawns.push([...cmd]);
-            return { exitCode: 7 };
-          },
-        },
-      }),
+      }).pipe(
+        withProcess(async ({ cmd }) => {
+          spawns.push([...cmd]);
+          return { exitCode: 7 };
+        }),
+      ),
     );
     expect(result.exitCode).toBe(7);
     expect(spawns).toHaveLength(1);
@@ -265,15 +264,14 @@ describe("meta:plugin:build command", () => {
     const result = await Effect.runPromise(
       pluginBuild({
         cwd: root,
-        spawner: {
-          spawn: async ({ cmd }) => {
-            if (cmd.includes("build")) return { exitCode: 0 };
-            configPath = declarationConfigPath(cmd);
-            expect(await exists(configPath)).toBe(true);
-            return { exitCode: 9 };
-          },
-        },
-      }),
+      }).pipe(
+        withProcess(async ({ cmd }) => {
+          if (cmd.includes("build")) return { exitCode: 0 };
+          configPath = declarationConfigPath(cmd);
+          expect(await exists(configPath)).toBe(true);
+          return { exitCode: 9 };
+        }),
+      ),
     );
     expect(result.exitCode).toBe(9);
     expect(await exists(configPath)).toBe(false);
@@ -281,7 +279,7 @@ describe("meta:plugin:build command", () => {
   });
 
   test.each([false, true])(
-    "removes the declaration config after a declaration spawner defect (cleanup fails: %p)",
+    "removes the declaration config after a tagged declaration spawn failure (cleanup fails: %p)",
     async (cleanupFails) => {
       await writePlugin(root);
       const defect = new Error("declaration spawn failed");
@@ -289,19 +287,23 @@ describe("meta:plugin:build command", () => {
       const exit = await Effect.runPromiseExit(
         pluginBuild({
           cwd: root,
-          spawner: {
-            spawn: async ({ cmd }) => {
-              if (cmd.includes("build")) return { exitCode: 0 };
-              configPath = declarationConfigPath(cmd);
-              if (cleanupFails) await replaceConfigWithDirectory(configPath);
-              throw defect;
-            },
-          },
-        }),
+        }).pipe(
+          withProcess(async ({ cmd }) => {
+            if (cmd.includes("build")) return { exitCode: 0 };
+            configPath = declarationConfigPath(cmd);
+            if (cleanupFails) await replaceConfigWithDirectory(configPath);
+            throw defect;
+          }),
+        ),
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isSuccess(exit)) throw new Error("Expected declaration build to fail");
-      expect(failureOutcomeFromCause(exit.cause).error).toBe(defect);
+      const error = failureOutcomeFromCause(exit.cause).error;
+      expect(error).toBeInstanceOf(ProcessExecError);
+      if (error instanceof ProcessExecError) {
+        expect(error.cause).toMatchObject({ message: defect.message });
+        expect(error.cmd).toBe(process.execPath);
+      }
       if (cleanupFails) {
         expect(failureOutcomeFromCause(exit.cause).additionalErrors).toMatchObject([
           { role: "cleanup", error: { _tag: "FileIoError" } },
@@ -321,8 +323,7 @@ describe("meta:plugin:build command", () => {
     const result = await Effect.runPromise(
       pluginBuild({
         cwd: root,
-        spawner: { spawn: async () => ({ exitCode: 0 }) },
-      }),
+      }).pipe(withProcess(async () => ({ exitCode: 0 }))),
     );
     expect(result.exitCode).toBe(0);
     expect(await readFile(authoredPath, "utf8")).toBe(authoredContents);
@@ -348,11 +349,11 @@ describe("meta:plugin:build command", () => {
         return secondSettled.promise;
       },
     };
-    const first = Effect.runPromise(pluginBuild({ cwd: root, spawner }));
+    const first = Effect.runPromise(pluginBuild({ cwd: root }).pipe(withProcess(spawner.spawn)));
     let second: Promise<Awaited<typeof first>> | undefined;
     try {
       await firstStarted.promise;
-      second = Effect.runPromise(pluginBuild({ cwd: root, spawner }));
+      second = Effect.runPromise(pluginBuild({ cwd: root }).pipe(withProcess(spawner.spawn)));
       await secondStarted.promise;
       expect(paths).toHaveLength(2);
       expect(paths[0]).not.toBe(paths[1]);
@@ -377,15 +378,14 @@ describe("meta:plugin:build command", () => {
     const exit = await Effect.runPromiseExit(
       pluginBuild({
         cwd: root,
-        spawner: {
-          spawn: async ({ cmd }) => {
-            if (cmd.includes("build")) return { exitCode: 0 };
-            configPath = declarationConfigPath(cmd);
-            await replaceConfigWithDirectory(configPath);
-            return { exitCode };
-          },
-        },
-      }),
+      }).pipe(
+        withProcess(async ({ cmd }) => {
+          if (cmd.includes("build")) return { exitCode: 0 };
+          configPath = declarationConfigPath(cmd);
+          await replaceConfigWithDirectory(configPath);
+          return { exitCode };
+        }),
+      ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isSuccess(exit)) throw new Error("Expected cleanup to fail");
@@ -434,23 +434,22 @@ describe("meta:plugin:build command", () => {
       pluginBuild({
         cwd: root,
         execPath: "/opt/bun",
-        spawner: {
-          spawn: async ({ cmd }) => {
-            if (cmd.includes("build")) {
-              await mkdir(join(root, "dist", "src"), { recursive: true });
-              await mkdir(join(root, "dist", "lib"), { recursive: true });
-              await writeFile(join(root, "dist", "src", "index.js"), "export const ok = true;\n");
-              await writeFile(join(root, "dist", "lib", "tools.js"), "export const tool = true;\n");
-            }
-            if (cmd.includes("tsc")) {
-              declarationConfig = JSON.parse(await readFile(declarationConfigPath(cmd), "utf8")) as unknown;
-              await writeFile(join(root, "dist", "src", "index.d.ts"), "export declare const ok: true;\n");
-              await writeFile(join(root, "dist", "lib", "tools.d.ts"), "export declare const tool: true;\n");
-            }
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        withProcess(async ({ cmd }) => {
+          if (cmd.includes("build")) {
+            await mkdir(join(root, "dist", "src"), { recursive: true });
+            await mkdir(join(root, "dist", "lib"), { recursive: true });
+            await writeFile(join(root, "dist", "src", "index.js"), "export const ok = true;\n");
+            await writeFile(join(root, "dist", "lib", "tools.js"), "export const tool = true;\n");
+          }
+          if (cmd.includes("tsc")) {
+            declarationConfig = JSON.parse(await readFile(declarationConfigPath(cmd), "utf8")) as unknown;
+            await writeFile(join(root, "dist", "src", "index.d.ts"), "export declare const ok: true;\n");
+            await writeFile(join(root, "dist", "lib", "tools.d.ts"), "export declare const tool: true;\n");
+          }
+          return { exitCode: 0 };
+        }),
+      ),
     );
 
     expect(result.outputs).toEqual([
@@ -497,13 +496,12 @@ describe("meta:plugin:build command", () => {
     const exit = await Effect.runPromiseExit(
       pluginBuild({
         cwd: root,
-        spawner: {
-          spawn: async ({ cmd }) => {
-            spawns.push(cmd);
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        withProcess(async ({ cmd }) => {
+          spawns.push(cmd);
+          return { exitCode: 0 };
+        }),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -543,13 +541,12 @@ describe("meta:plugin:build command", () => {
     const exit = await Effect.runPromiseExit(
       pluginBuild({
         cwd: root,
-        spawner: {
-          spawn: async ({ cmd }) => {
-            spawns.push(cmd);
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        withProcess(async ({ cmd }) => {
+          spawns.push(cmd);
+          return { exitCode: 0 };
+        }),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");

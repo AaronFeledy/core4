@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { SqlCommandFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/execute.ts";
-import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps, sqlResult } from "./support/fakes.ts";
 
 afterEach(cleanupSqlTestDeps);
 
@@ -16,7 +16,7 @@ test.each([true, false])("preserves version failure diagnostics (running=%s)", a
     ...harness.deps,
     exec: (...args: Parameters<typeof harness.deps.exec>) =>
       args[1].includes("SELECT VERSION()")
-        ? Effect.succeed({
+        ? sqlResult({
             exitCode: 7,
             stdout: "PRIVATE PAYLOAD",
             stderr: "version denied for private-password\n",
@@ -87,7 +87,7 @@ test("rejects a replaced container after the lock-held version query", async () 
     ...harness.deps,
     exec: (service: string, command: ReadonlyArray<string>, env?: Readonly<Record<string, string>>) =>
       harness.deps.exec(service, command, env).pipe(
-        Effect.tap(() =>
+        Stream.tap(() =>
           Effect.sync(() => {
             if (command.includes("SELECT VERSION()")) replaced = true;
           }),

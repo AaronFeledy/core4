@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
-import { LandofileValidationError, ServiceTypeError } from "@lando/sdk/errors";
-import { appFeatureError, servicePlanError } from "../../src/planner/service-types.ts";
+import { taggedErrorJson } from "@lando/sdk/command-result";
+import {
+  AppFeatureMutationConflictError,
+  LandofileValidationError,
+  MailpitMsmtpBaseFamilyError,
+  ServiceTypeError,
+} from "@lando/sdk/errors";
+import { appFeatureError } from "../../src/planner/app-feature-error.ts";
+import { servicePlanError } from "../../src/planner/service-types.ts";
 
 const wrappers = [
   {
@@ -19,6 +26,38 @@ const wrappers = [
   },
 ];
 
+test.each([
+  new MailpitMsmtpBaseFamilyError({
+    feature: "service-lando.mailpit.wire",
+    service: "web",
+    reason: "replacement-build",
+    message: "The replacement build controls the sender filesystem.",
+    remediation: "Exclude web with mailFrom: false, or use a known image without a replacement build.",
+  }),
+  new AppFeatureMutationConflictError({
+    feature: "synthetic",
+    service: "web",
+    field: "resolutionMetadata",
+    existing: "old-private-value",
+    incoming: "new-private-value",
+    message: "Resolved policy is invalid.",
+    remediation: "Preserve the service type's resolution metadata.",
+  }),
+])("preserves a tagged app-feature failure and its recovery across planning: %j", (cause) => {
+  // Given / When: a declared app-feature failure crosses the planner boundary.
+  const result = appFeatureError("/app", cause);
+  // Then: the outer classification does not discard the tagged cause or its recovery.
+  expect(result.cause).toBe(cause);
+  expect(result.remediation).toBe(cause.remediation);
+  expect(result.issues[0]?.suggestion).toBe(cause.remediation);
+  expect(JSON.parse(JSON.stringify(result)).cause).toMatchObject({ _tag: cause._tag, service: "web" });
+  expect(taggedErrorJson(result).context).toMatchObject({ _tag: cause._tag, service: "web" });
+  const diagnostic = taggedErrorJson(result);
+  expect(diagnostic.cause).toBeUndefined();
+  expect(JSON.stringify(diagnostic)).not.toContain("old-private-value");
+  expect(JSON.stringify(diagnostic)).not.toContain("new-private-value");
+});
+
 test("service type field issues are prefixed without losing their suggestions", () => {
   const error = new ServiceTypeError({
     serviceType: "synthetic",
@@ -31,7 +70,7 @@ test("service type field issues are prefixed without losing their suggestions", 
   });
   expect(servicePlanError("/app", "db", error).issues).toEqual([
     { path: ["services", "db", "environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
-    { path: ["services", "db", "port"], message: "Reserved port" },
+    { path: ["services", "db", "port"], message: "Reserved port", suggestion: "Set port: 5433" },
   ]);
 });
 
@@ -46,7 +85,12 @@ test.each([{ issues: undefined }, { issues: [] }])(
         "Correct the `synthetic` service configuration in the Landofile (see the reported field path), then re-run.",
     });
     expect(servicePlanError("/app", "db", error).issues).toEqual([
-      { path: ["services", "db"], message: "Bad service" },
+      {
+        path: ["services", "db"],
+        message: "Bad service",
+        suggestion:
+          "Correct the `synthetic` service configuration in the Landofile (see the reported field path), then re-run.",
+      },
     ]);
   },
 );

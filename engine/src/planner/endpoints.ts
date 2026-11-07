@@ -1,33 +1,43 @@
 import type { FileSystem } from "@lando/sdk/services";
-import { type Context, Effect, Predicate, Schema } from "effect";
+import { type Context, Effect, Predicate } from "effect";
 
 import {
   type CapabilityError,
   DataTreeOwnershipCapabilityError,
+  type FileSyncSelectionError,
   LandofileValidationError,
   type PublicationUnsupportedError,
   type RouteInputError,
   ServiceFeatureError,
+  ServiceTypeError,
 } from "@lando/sdk/errors";
 import {
   type AppId,
   type FileSyncPlan,
+  type FileSyncPolicy,
+  type FileSyncPolicyReason,
   type LandofileShape,
+  type PluginManifest,
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
-  ServicePlan,
+  type ServicePlan,
   type StorageScope,
   selectHttpEndpoint,
   serviceAppMount,
 } from "@lando/sdk/schema";
 
+import {
+  type SelectedFileSyncPolicy,
+  recordFileSyncPolicy,
+  serviceFileSyncPolicy,
+} from "../plugins/file-sync-policy.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
-import { bindRealization, missingCapability } from "./compose-capabilities.ts";
+import { missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
@@ -35,12 +45,14 @@ import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
 import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
+import { encodeServicePlan } from "./plan-decode.ts";
 import {
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
   serviceResourceCapabilityErrors,
 } from "./resource-capabilities.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
+import { resolveServiceArtifact } from "./service-artifact.ts";
 import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
 export { resolveRoute } from "./endpoint-routes.ts";
@@ -57,24 +69,29 @@ export interface FinalizedServices {
     readonly key?: string;
   }>;
   readonly fileSync: ReadonlyArray<FileSyncPlan>;
+  readonly fileSyncPolicy: FileSyncPolicy;
   readonly routes: ReadonlyArray<RoutePlan>;
 }
 
 export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(function* (input: {
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
+  readonly manifests: readonly PluginManifest[];
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly appName: string;
   readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
-  readonly fileSyncEngineId: string | undefined;
+  readonly ordinaryFileSyncReason: FileSyncPolicyReason;
+  readonly selectFileSyncEngine: Effect.Effect<SelectedFileSyncPolicy | undefined, FileSyncSelectionError>;
   readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.fn.Return<
   FinalizedServices,
   | LandofileValidationError
+  | FileSyncSelectionError
   | CapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
@@ -86,6 +103,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
   const stores: Array<FinalizedServices["stores"][number]> = [];
   const fileSync: Array<FileSyncPlan> = [];
+  const servicePolicies: Record<string, FileSyncPolicy["services"][string]> = {};
+  let selectedEngine: SelectedFileSyncPolicy | undefined;
   const routeAccumulator = makeRouteAccumulator();
   const seenStoreNames = new Set<string>();
 
@@ -100,18 +119,18 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     stores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
   };
 
-  for (const {
-    name,
-    hostnames,
-    authoredArtifact,
-    authored,
-    authoredStorage,
-    draft,
-    homeIntent,
-    logSources,
-    routes: authoredRoutes,
-    extensions,
-  } of input.plannedServiceDrafts) {
+  for (const entry of input.plannedServiceDrafts) {
+    const {
+      name,
+      hostnames,
+      authored,
+      authoredStorage,
+      draft,
+      homeIntent,
+      logSources,
+      routes: authoredRoutes,
+      extensions,
+    } = entry;
     const followLogSources = runtimeFollowLogSources(logSources);
     const providerSupportsLogSources = input.providerCapabilities.serviceLogSources === true;
     const requiredFollowSource = followLogSources.find((source) => source.required === true);
@@ -168,8 +187,26 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     shadowHostChecks.push(...shadowResult.shadowHostChecks);
     const planWithShadows = shadowResult.servicePlan;
     const appMount = serviceAppMount(planWithShadows);
+    const engine =
+      appMount !== undefined &&
+      input.providerCapabilities.bindMountPerformance === "slow" &&
+      draft.normalizedConfig.appMount !== false &&
+      draft.normalizedConfig.appMount?.accelerate !== false
+        ? yield* input.selectFileSyncEngine
+        : undefined;
+    const accelerate = engine !== undefined;
+    if (engine !== undefined) {
+      selectedEngine = engine;
+    }
+    servicePolicies[name] = serviceFileSyncPolicy({
+      mounted: appMount !== undefined,
+      optedOut:
+        draft.normalizedConfig.appMount !== false && draft.normalizedConfig.appMount?.accelerate === false,
+      selected: engine,
+      ordinaryReason: input.ordinaryFileSyncReason,
+    });
     let gitDirectories: GitHostCheck["directories"] = null;
-    if (bindRealization(input.providerCapabilities) === "passthrough" && appMount !== undefined) {
+    if (!accelerate && appMount !== undefined) {
       const gitPath = `${appMount.source}/.git`;
       gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
       gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
@@ -246,8 +283,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...(logSources.length === 0 ? {} : { logSources }),
     };
 
-    const withArtifact =
-      authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
+    const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);
+    if (withArtifact instanceof ServiceTypeError)
+      return yield* Effect.fail(servicePlanError(input.appRoot, name, withArtifact));
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
       artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,
@@ -260,7 +298,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       persistentStorage: withArtifact.mounts.some((mount) => mount.type === "volume"),
     }))
       yield* Effect.fail(error);
-    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities);
+    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities, accelerate);
 
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
@@ -317,7 +355,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
 
     serviceHostnames[name] = hostnames;
-    services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithRoutes);
+    services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
       const authoredInfo = authored.byStore.get(mount.store);
@@ -328,15 +366,15 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         authoredInfo?.key,
       );
     }
-    if (input.fileSyncEngineId !== undefined) {
+    if (engine !== undefined) {
       fileSync.push(
         ...collectFileSyncEntries({
           appId: input.appId,
           appRoot: input.appRoot,
-          appName: input.appSlug,
+          appName: input.appName,
           serviceName: name,
           servicePlan: servicePlanWithRoutes,
-          engineId: input.fileSyncEngineId,
+          engineId: engine.id,
         }),
       );
     }
@@ -350,6 +388,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     serviceHostnames,
     stores,
     fileSync,
+    fileSyncPolicy: recordFileSyncPolicy({
+      selected: selectedEngine,
+      services: servicePolicies,
+      ordinaryReason: input.ordinaryFileSyncReason,
+    }),
     routes: prioritizeRoutes(routeAccumulator.routes),
   };
 });

@@ -4,6 +4,7 @@ import { FileSyncEngine } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import { readJournal } from "../../src/operations/accelerated-start-journal.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 
 test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
@@ -32,7 +33,7 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
           return yield* Effect.die(new TypeError("Expected durable engine"));
         const { bindPreparedTargets: _, ...unboundEngine } = engine;
         return yield* startApp({}, target).pipe(
-          Effect.provideService(FileSyncEngine, {
+          provideFileSyncEngine({
             ...unboundEngine,
             appLifecycle: { ...engine.appLifecycle, drain: () => Effect.fail(secondary) },
           }),

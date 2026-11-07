@@ -1,12 +1,33 @@
 import { Effect, Schema } from "effect";
 
+import { HttpTrustErrorKind } from "./http-client.ts";
+
 export class DownloadFetchError extends Schema.TaggedError<DownloadFetchError>()("DownloadFetchError", {
   message: Schema.String,
   urlOrigin: Schema.String,
-  status: Schema.optional(Schema.Number),
-  trustCause: Schema.optional(
-    Schema.Literals(["proxy-authentication", "tls-interception", "missing-custom-ca", "blocked-endpoint"]),
+  reason: Schema.optional(
+    Schema.Literals([
+      "connection-reset",
+      "connection-refused",
+      "timeout",
+      "dns-temporary",
+      "host-not-found",
+      "network-unreachable",
+      "tls-handshake",
+      "trust",
+      "http-status",
+      "transport",
+    ]).annotate({ description: "Observed download failure category; absent means transport." }),
   ),
+  transportCode: Schema.optional(
+    Schema.String.annotate({
+      description: "Raw transport error code observed before redaction, such as ECONNRESET.",
+    }),
+  ),
+  status: Schema.optional(Schema.Number),
+  trustCause: Schema.optional(HttpTrustErrorKind),
+  /** Transfer attempts begun through HttpClient, including client-side rejections; redirects add none. Absent when no transfer began. */
+  attempts: Schema.optional(Schema.Int),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

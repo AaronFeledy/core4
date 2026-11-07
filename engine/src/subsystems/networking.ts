@@ -23,22 +23,21 @@
  * provider creates `lando_bridge_network` as an implementation detail.
  */
 
+import { HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
+
 export const HOST_INTERNAL_ALIAS = "host.lando.internal" as const;
 export const DEFAULT_BIND_ADDRESS = "127.0.0.1" as const;
 
-/**
- * The gateway sentinel a runtime resolves to the host's address when it creates
- * the container. Using it keeps core from guessing a numeric address.
- */
-export const HOST_GATEWAY_TARGET = "host-gateway" as const;
+export { HOST_GATEWAY_TARGET };
 
 /** Container variable naming the host alias; omitted when the host is unreachable. */
 export const HOST_IP_ENV_KEY = "LANDO_HOST_IP" as const;
 
 /**
- * Applies host reachability to a finalized service plan. The alias and its
+ * Applies host reachability to a finalized service plan. The host alias and its
  * variable exist only when the provider declares it can reach the host; a
- * provider that cannot is not an error, it simply produces neither.
+ * provider that cannot is not an error, it simply produces neither — and drops
+ * every host-gateway sentinel alias, including the debugger alias.
  */
 export const applyHostReachability = <
   T extends {
@@ -49,14 +48,20 @@ export const applyHostReachability = <
   servicePlan: T,
   hostReachability: "native" | "emulated" | "none",
 ): T => {
-  const others = servicePlan.hostAliases.filter((alias) => alias.hostname !== HOST_INTERNAL_ALIAS);
+  const withoutHostInternal = servicePlan.hostAliases.filter(
+    (alias) => alias.hostname !== HOST_INTERNAL_ALIAS,
+  );
   const { [HOST_IP_ENV_KEY]: _existing, ...environment } = servicePlan.environment;
   if (hostReachability === "none") {
-    return { ...servicePlan, environment, hostAliases: others };
+    return {
+      ...servicePlan,
+      environment,
+      hostAliases: withoutHostInternal.filter((alias) => alias.ip !== HOST_GATEWAY_TARGET),
+    };
   }
   return {
     ...servicePlan,
     environment: { ...environment, [HOST_IP_ENV_KEY]: HOST_INTERNAL_ALIAS },
-    hostAliases: [...others, { hostname: HOST_INTERNAL_ALIAS, ip: HOST_GATEWAY_TARGET }],
+    hostAliases: [...withoutHostInternal, { hostname: HOST_INTERNAL_ALIAS, ip: HOST_GATEWAY_TARGET }],
   };
 };

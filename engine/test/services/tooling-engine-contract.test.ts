@@ -24,7 +24,10 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
 const providerId = ProviderId.make("lando");
 const metadata = {
@@ -40,6 +43,7 @@ const stubCapabilities = {
   buildSsh: false,
   multiServiceApply: false,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: false,
   serviceLogSources: false,
   serviceHealth: "none" as const,
@@ -163,11 +167,28 @@ const inertProvider: RuntimeProviderShape = {
   exec: () => Effect.die("host engine must not call provider exec"),
 };
 
-const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
+const hostShellLayer = BunShellRunner.layerWithPrivateFileAccess(() => {
+  throw new TypeError("Interactive host tooling is unavailable in tests.");
+}).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
+
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
+  Layer.provide(Layer.merge(hostShellLayer, BunProcessRunner.layer)),
+);
+
+const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer | typeof hostToolingEngineLayer) =>
   Effect.runPromise(
     ToolingEngine.pipe(Effect.provide(live.pipe(Layer.provide(testEnvironmentResolverLayer)))),
   );
-const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
+
+const captureOutput: NonNullable<ToolingEngineContractHarness["captureOutput"]> = (run) =>
+  withToolingOutput(run).pipe(
+    Effect.map((result) => {
+      const { stdout, stderr } = result;
+      if (stdout === undefined || stderr === undefined)
+        throw new Error("Expected both captured output channels.");
+      return { ...result, stdout, stderr };
+    }),
+  );
 
 describe("ToolingEngine contract — built-in engines", () => {
   test("the built-in providerExec engine passes the contract", async () => {
@@ -175,7 +196,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "providerExec",
       engine,
-      captureOutput: withToolingOutput,
+      captureOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -244,7 +265,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "host",
       engine,
-      captureOutput: withToolingOutput,
+      captureOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -295,4 +316,3 @@ describe("ToolingEngine contract — built-in engines", () => {
     expect(exit._tag).toBe("Success");
   });
 });
-import { testEnvironmentResolverLayer } from "../environment-values.ts";

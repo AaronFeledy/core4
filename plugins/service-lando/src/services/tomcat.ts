@@ -4,18 +4,36 @@ import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
-  loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  assertListenerConfig,
+  imageAuthority,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { TOMCAT_CATALOG } from "./generated/tomcat-catalog.ts";
 
-const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
+export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
+export const TOMCAT_LISTENER = {
+  port: DEFAULT_PORT,
+  daemon: "Tomcat",
+  when: "All Tomcat services; catalog images own server.xml, custom images/builds own their listener",
+  reserved: [{ port: 8005, use: "shutdown listener" }],
+  image: {
+    setting: (port: number) => `<Connector port="${port}">`,
+    file: "server.xml",
+  },
+} as const satisfies ListenerContract;
+export const APP_MOUNT_TARGET = "/app";
 const TomcatFeatureConfig = Schema.Struct({
   webroot: Schema.String,
   ownsImageConfig: Schema.Boolean,
@@ -30,13 +48,17 @@ const ARTIFACTS = {
 
 export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
 
+const tomcatListener = (ownsImageConfig: boolean): ListenerContract =>
+  ownsImageConfig ? TOMCAT_LISTENER : { port: TOMCAT_LISTENER.port, daemon: TOMCAT_LISTENER.daemon };
+
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = Schema.decodeUnknownSync(PortNumber)(service.port ?? DEFAULT_PORT);
   const { webroot, ownsImageConfig, major } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
+  assertListenerConfig(service, tomcatListener(ownsImageConfig));
+  const port = plannedPort(service, TOMCAT_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
+  ctx.setHealthcheck(tcpProbe(port, 20));
   if (ownsImageConfig) {
     ctx.addBuildStep({
       id: "service-lando.tomcat:server-config",
@@ -60,6 +82,8 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
         `set -eu; context_dir="\${CATALINA_HOME:-/usr/local/tomcat}/conf/Catalina/localhost"; mkdir -p "$context_dir"; printf '%s\\n' '<Context docBase="${webroot}"/>' > "$context_dir/ROOT.xml"`,
       ],
     });
+  } else {
+    ctx.setListenerAuthority(imageAuthority(TOMCAT_LISTENER, port));
   }
 
   applyAuthoredProcessFields(ctx);
@@ -69,10 +93,15 @@ export const tomcatServiceFeature: ServiceFeatureDefinition = {
   id: TOMCAT_FEATURE_ID,
   schema: TomcatFeatureConfig,
   priority: 600,
+  validateEffective: serviceFeatureValidateEffective(TOMCAT_FEATURE_ID, (ctx) => {
+    const { ownsImageConfig } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
+    assertListenerConfig(ctx.normalizedConfig, tomcatListener(ownsImageConfig));
+    return { handledServiceFields: ownsImageConfig ? ["webroot"] : [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: Schema.decodeUnknownSync(PortNumber)(ctx.normalizedConfig.port ?? DEFAULT_PORT),
+        port: plannedPort(ctx.normalizedConfig, TOMCAT_LISTENER),
         protocol: "http",
       }),
     ),
@@ -110,7 +139,7 @@ const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): Se
             },
           },
           { id: "lando.env", config: { webroot } },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
       };
     });

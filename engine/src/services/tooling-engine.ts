@@ -30,7 +30,7 @@ export const noCommandsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Tooling task ${tool} has no commands to run.`,
     tool,
-    remediation: `Add at least one command under tooling.${tool}, then run \`lando app:cache:refresh\`.`,
+    remediation: `Add at least one command under tooling.${tool}.`,
   });
 
 const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
@@ -187,8 +187,8 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
       ),
       sink,
     );
-    stdout += result.stdout;
-    stderr += result.stderr;
+    stdout += result.stdout ?? "";
+    stderr += result.stderr ?? "";
     exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
     if (exitCode !== 0) break;
   }

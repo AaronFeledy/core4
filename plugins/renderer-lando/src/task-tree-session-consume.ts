@@ -11,6 +11,7 @@ import {
 } from "./task-tree-session.ts";
 
 export type SessionSubstrate = {
+  readonly color: boolean;
   readonly consume: (event: LandoEvent) => Effect.Effect<void>;
   readonly openSession: (commandId: string) => void;
   readonly closeSession: () => ReadonlyArray<string>;
@@ -54,7 +55,7 @@ const paintProvisional = Effect.fnUntraced(function* (
   if (session.kind !== "armed" || !isProvisionalStartupCommand(session.commandId)) return;
   const substrate = active ?? (yield* acquire);
   if (substrate === undefined) return;
-  substrate.controller.setFooter(provisionalTitleFrame(session.commandId));
+  substrate.controller.setFooter(provisionalTitleFrame(session.commandId, substrate.color));
 });
 
 const consumeActive = Effect.fnUntraced(function* (

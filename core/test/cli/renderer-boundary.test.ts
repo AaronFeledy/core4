@@ -310,10 +310,10 @@ describe("runWithRendererHandling", () => {
     expect(io.stderr()).toBe("");
     expect(io.stdout()).not.toContain(secret);
     const frames = io.stdoutLines().map(decodeFrame);
-    expect(frames.map((frame) => frame._tag)).toEqual(["stdout", "stderr", "event", "result"]);
-    expect(frames[0]).toEqual({ _tag: "stdout", service: "web", chunk: "stdout [redacted]\n" });
-    expect(frames[1]).toEqual({ _tag: "stderr", service: "web", chunk: "stderr [redacted]\n" });
-    const event = frames[2];
+    expect(frames.map((frame) => frame._tag)).toEqual(["event", "stdout", "stderr", "result"]);
+    expect(frames[1]).toEqual({ _tag: "stdout", service: "web", chunk: "stdout [redacted]\n" });
+    expect(frames[2]).toEqual({ _tag: "stderr", service: "web", chunk: "stderr [redacted]\n" });
+    const event = frames[0];
     if (event?._tag !== "event") throw new Error("expected event frame");
     expect(event.event).toBe("task.detail");
     expect(JSON.stringify(event.payload)).toContain("[redacted]");

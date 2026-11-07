@@ -62,6 +62,7 @@ describe("backdrop decomposition", () => {
           type: "php:{{ recipe.php }}",
           primary: true,
           framework: "backdrop",
+          uploadDirs: ["files"],
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
@@ -73,16 +74,23 @@ describe("backdrop decomposition", () => {
         database: { type: "{{ recipe.database }}" },
       },
       tooling: {
-        bee: { service: "appserver", description: "Run Bee inside the appserver service.", cmds: ["bee"] },
+        bee: {
+          service: "appserver",
+          description: "Run Bee inside the appserver service.",
+          cmds: ["bee"],
+          wrapper: true,
+        },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         php: {
           service: "appserver",
           description: "Run the PHP CLI inside the appserver service.",
           cmds: ["php"],
+          wrapper: true,
         },
       },
     });

@@ -3,12 +3,12 @@ id: share-target
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 60000
-tags: [beta, docs, cli, share]
+tags: [docs, cli, share]
 ---
 
 # Share a service or extra port
 
-Install a TunnelService plugin before you share. Bundled tunnel connectors ship in Lando 4.1.
+Install a TunnelService plugin before you share. Lando bundles no tunnel plugin.
 
 ```sh
 lando plugin:add <tunnel-service-plugin>
@@ -72,7 +72,7 @@ lando share:list
 lando share:stop <session>
 ```
 
-`lando share list` and `lando share stop <session>` are the same commands. `--session` is the flag form of the session id. `--force` asks the provider to force-stop when it supports that.
+`lando share list` and `lando share stop <session>` are the same commands. `--session` is the flag form of the session id. `--force` asks the provider to force-stop when it supports that. With `--format=json`, a successful stop returns a [`ShareStopAppResult`](../../reference/schemas/share-stop-app-result.mdx): the session id and the provider when known. Successful command completion acknowledges the stop; the result has no separate status field.
 
 `--detach` records a tunnel as a detached session. `--provider` selects a TunnelService plugin id. `--yes` answers confirmation prompts.
 
@@ -102,7 +102,7 @@ lando share:stop <session>
     </Step>
     <Step name="share-service-port">
       <Run command="lando share --target storybook:6006 --format=json" expectExit={1} />
-      <Verify errorTag="TunnelProviderUnavailableError" expect={{ regex: "Bundled tunnel connectors ship in Lando 4\\.1" }} />
+      <Verify errorTag="TunnelProviderUnavailableError" expect={{ regex: "Install a TunnelService plugin" }} />
     </Step>
     <Step name="share-list">
       <Run command="lando share:list --format=json" expectExit={1} />

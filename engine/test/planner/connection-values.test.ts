@@ -37,6 +37,7 @@ const compose = () =>
     },
     baseKind: "lando",
     appRoot: "/tmp/connection",
+    appSlug: "connection",
     normalizedConfig: {},
     features: [
       {

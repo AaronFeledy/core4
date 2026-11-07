@@ -15,6 +15,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,
   id: "meta:recipes:validate",
+  onlineAcquisition: true,
   mcpAllowed: true,
   summary: "Validate a recipe.yml against the published schema.",
   namespace: "meta",
@@ -40,5 +41,5 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
     }
     return recipesValidate(path, { cwd: process.cwd() });
   },
-  render: (result) => renderRecipesValidateResult(result as RecipesValidateResult),
+  render: (result) => renderRecipesValidateResult(result),
 };

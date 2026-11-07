@@ -8,10 +8,11 @@ import {
   PreparedFileSyncTarget,
   type PreparedFileSyncTarget as PreparedFileSyncTargetType,
 } from "@lando/sdk/schema";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 
-const mismatch = (plan: AppPlan, message: string) =>
+const mismatch = (engineId: string, message: string) =>
   new FileSyncStartError({
-    engineId: plan.fileSync[0]?.engineId ?? "unknown",
+    engineId,
     message,
     remediation:
       "Inspect the provider's prepared sync targets and retry with the complete planned session set.",
@@ -22,16 +23,18 @@ export const verifyPreparedFileSyncTargets = Effect.fnUntraced(function* (
   plan: AppPlan,
   targets: ReadonlyArray<PreparedFileSyncTargetType>,
 ): Effect.fn.Return<void, FileSyncStartError> {
-  if (plan.fileSync.length === 0 || !Array.isArray(targets) || targets.length !== plan.fileSync.length) {
+  const bundle = yield* fileSyncBundle(plan);
+  const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";
+  if (bundle.kind === "ordinary" || !Array.isArray(targets) || targets.length !== bundle.sessions.length) {
     return yield* Effect.fail(
-      mismatch(plan, "The provider did not prepare one target for every planned file-sync session."),
+      mismatch(engineId, "The provider did not prepare one target for every planned file-sync session."),
     );
   }
   const keys = new Set<string>();
-  for (const { session } of plan.fileSync) {
+  for (const session of bundle.sessions) {
     const key = JSON.stringify([session.service, session.mountKey]);
     if (keys.has(key)) {
-      return yield* Effect.fail(mismatch(plan, "The file-sync plan has duplicate session identities."));
+      return yield* Effect.fail(mismatch(engineId, "The file-sync plan has duplicate session identities."));
     }
     keys.add(key);
   }
@@ -40,12 +43,12 @@ export const verifyPreparedFileSyncTargets = Effect.fnUntraced(function* (
   const volumeNames = new Set<string>();
   for (const target of targets) {
     if (!Schema.is(PreparedFileSyncTarget)(target)) {
-      return yield* Effect.fail(mismatch(plan, "The provider returned an invalid file-sync endpoint."));
+      return yield* Effect.fail(mismatch(engineId, "The provider returned an invalid file-sync endpoint."));
     }
     const endpointKey = JSON.stringify([target.endpoint.containerId, target.endpoint.path]);
     if (endpointKeys.has(endpointKey) || volumeNames.has(target.endpoint.volumeName)) {
       return yield* Effect.fail(
-        mismatch(plan, "The provider returned duplicate file-sync endpoint identities."),
+        mismatch(engineId, "The provider returned duplicate file-sync endpoint identities."),
       );
     }
     endpointKeys.add(endpointKey);
@@ -53,10 +56,12 @@ export const verifyPreparedFileSyncTargets = Effect.fnUntraced(function* (
   }
 
   const remaining = [...targets];
-  for (const { session } of plan.fileSync) {
+  for (const session of bundle.sessions) {
     const match = remaining.findIndex((target) => isDeepStrictEqual(target.session, session));
     if (match < 0) {
-      return yield* Effect.fail(mismatch(plan, "A planned file-sync session has no exact prepared target."));
+      return yield* Effect.fail(
+        mismatch(engineId, "A planned file-sync session has no exact prepared target."),
+      );
     }
     const [prepared] = remaining.splice(match, 1);
     if (
@@ -66,11 +71,11 @@ export const verifyPreparedFileSyncTargets = Effect.fnUntraced(function* (
       prepared.endpoint.volumeName !== session.target.name
     ) {
       return yield* Effect.fail(
-        mismatch(plan, "A prepared file-sync endpoint does not match its planned volume."),
+        mismatch(engineId, "A prepared file-sync endpoint does not match its planned volume."),
       );
     }
   }
   if (remaining.length !== 0) {
-    return yield* Effect.fail(mismatch(plan, "The provider returned an unplanned file-sync target."));
+    return yield* Effect.fail(mismatch(engineId, "The provider returned an unplanned file-sync target."));
   }
 });

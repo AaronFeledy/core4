@@ -6,6 +6,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import * as LandoConfigService from "@lando/engine/services/config";
+import { globalPlanAt, globalTeardownHarness } from "@lando/engine/testing/global-teardown";
 import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
@@ -16,7 +17,7 @@ import { type PoweroffOptions, poweroff } from "../../src/cli/commands/poweroff"
 
 const withPoweroff = async (
   run: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
-  failure?: "provider" | "no-plan" | "scratch",
+  failure?: "provider" | "no-plan" | "scratch" | "routes",
 ) => {
   const fixture = await makeFixture(failure);
   try {
@@ -26,8 +27,10 @@ const withPoweroff = async (
   }
 };
 
-const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
+const makeFixture = async (failure?: "provider" | "no-plan" | "scratch" | "routes") => {
   const root = await mkdtemp(join(tmpdir(), "poweroff-production-"));
+  const globalPlan = { ...globalPlanAt(AbsolutePath.make(root)), provider: ProviderId.make("docker") };
+  const teardown = await globalTeardownHarness(root, { routeFailure: failure === "routes" });
   const calls: string[] = [];
   const events: string[] = [];
   const unavailable = new ProviderUnavailableError({
@@ -48,12 +51,13 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
         Effect.succeed({
           ...TestRuntimeProvider,
           id: (typeof plan === "string" ? plan : plan?.provider) ?? ProviderId.make("docker"),
+          appliedPlans: Effect.succeed([globalPlan]),
           destroy: Effect.fnUntraced(function* (target, options) {
             calls.push(`${typeof plan === "string" ? plan : plan?.provider}:${target.app}`);
             if (failure === "provider") return yield* Effect.fail(unavailable);
             if (failure === "no-plan") return { kind: "no-op" as const, reason: "no-applied-plan" as const };
             expect(options).toEqual({ volumes: false, removeState: false });
-            expect(target.plan).toBeUndefined();
+            expect(target.plan).toEqual(target.app === "global" ? globalPlan : undefined);
             return { kind: "destroyed" as const };
           }),
         }),
@@ -122,11 +126,13 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<LandoEvent>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     }),
   );
   const layer = Layer.mergeAll(
+    teardown.layer,
     LandoConfigService.layer,
     providerLayer,
     scratchLayer,
@@ -289,7 +295,7 @@ test("omits the global post event when its provider fails", async () => {
       poweroff({
         ...options,
         discoverContainers: async () => [
-          { appId: "global", appName: "global", providerId: "lando", appRoot: root, services: [] },
+          { appId: "global", appName: "global", providerId: "docker", appRoot: root, services: [] },
         ],
       }).pipe(Effect.result, Effect.provide(layer)),
     );
@@ -297,4 +303,16 @@ test("omits the global post event when its provider fails", async () => {
     expect(result._tag).toBe("Failure");
     expect(events).toEqual(["pre-global-stop"]);
   }, "provider");
+});
+
+test("retains the runtime when shared global route withdrawal fails", async () => {
+  await withPoweroff(async ({ options, layer, events, calls }) => {
+    const result = await Effect.runPromise(poweroff(options).pipe(Effect.result, Effect.provide(layer)));
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "PoweroffStopError", appId: "global" },
+    });
+    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "docker:global"]);
+    expect(events).toEqual(["pre-global-stop"]);
+  }, "routes");
 });

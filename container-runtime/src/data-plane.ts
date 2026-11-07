@@ -51,7 +51,13 @@ export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
 import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect";
 
-import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
+import {
+  annotateFailureRole,
+  commandFailureCause,
+  failureDefectCause,
+  mapFailureCause,
+  mergeFailure,
+} from "@lando/sdk/command-result";
 
 import {
   ArtifactTransferError,
@@ -779,11 +785,50 @@ const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: strin
     path: `/containers/${encodeURIComponent(name)}/json`,
   }).pipe(
     Effect.tap((response) => ensure2xx(options, "run.inspect", response, spec.mounts?.[0]?.store)),
-    Effect.map((response) => {
-      const parsed =
-        response.body.length === 0 ? {} : (JSON.parse(response.body) as { State?: { ExitCode?: number } });
-      return parsed.State?.ExitCode ?? 0;
+    Effect.flatMap((response) =>
+      tryParseJson(response.body, () =>
+        volumeError(
+          options,
+          "run.inspect",
+          "Provider returned an invalid ephemeral command inspection.",
+          undefined,
+          undefined,
+          spec.mounts?.[0]?.store,
+        ),
+      ),
+    ),
+    Effect.flatMap((parsed) => {
+      const state =
+        typeof parsed === "object" && parsed !== null && "State" in parsed ? parsed.State : undefined;
+      const exitCode =
+        typeof state === "object" && state !== null && "ExitCode" in state ? state.ExitCode : undefined;
+      return typeof exitCode === "number" && Number.isFinite(exitCode) && Number.isInteger(exitCode)
+        ? Effect.succeed(exitCode)
+        : Effect.fail(
+            volumeError(
+              options,
+              "run.inspect",
+              "Provider did not return a valid ephemeral command exit code.",
+              undefined,
+              undefined,
+              spec.mounts?.[0]?.store,
+            ),
+          );
     }),
+    Effect.catchCause((cause) =>
+      Effect.failCause(
+        mapFailureCause(commandFailureCause(cause), () =>
+          volumeError(
+            options,
+            "run.inspect",
+            "Provider could not prove ephemeral command completion.",
+            undefined,
+            undefined,
+            spec.mounts?.[0]?.store,
+          ),
+        ),
+      ),
+    ),
   );
 
 const runBytes = (

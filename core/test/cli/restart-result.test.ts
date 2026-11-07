@@ -55,7 +55,7 @@ const decorated = (columns: number): RenderContext => ({
   format: "text",
   columns,
   isTTY: true,
-  env: { TERM: "xterm-256color" },
+  noColor: false,
 });
 
 const plainLine =

@@ -4,6 +4,7 @@ import { lowerBuildHooks } from "../src/build-hooks.ts";
 import { type ServiceLoweringContext, emptyPatch } from "../src/lowering-contract.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: {},
   serviceName: "appserver",
   keyPath: ["services", "appserver"],
   fallbackSourceId: "canonical",

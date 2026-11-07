@@ -1,0 +1,5 @@
+name: localstack-dns-collision
+services:
+  aws:
+    type: localstack
+    port: 53

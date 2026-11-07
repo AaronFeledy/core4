@@ -33,7 +33,7 @@ const artifactsFrom = (result: unknown): Map<unknown, unknown> => {
 };
 
 describe("isolated schema compatibility baseline regeneration", () => {
-  test("regenerates both artifact families with the base generator and cleans its worktree", async () => {
+  test("regenerates published families and skips internal stores when their base generator is missing", async () => {
     // Given: alpha at the base commit and a beta generator in the head checkout.
     const fixture = await makeRepository();
 
@@ -44,7 +44,7 @@ describe("isolated schema compatibility baseline regeneration", () => {
     const artifacts = artifactsFrom(result);
     expect(field(field(artifacts.get("schema:Fixture"), "schema"), "const")).toBe("alpha");
     expect(field(field(artifacts.get("command:fixture"), "schema"), "const")).toBe("alpha");
-    expect(unavailableFamilies(result)).toEqual([]);
+    expect(unavailableFamilies(result)).toEqual(["persisted"]);
     expect(await worktreeCount(fixture)).toBe(1);
   }, 30_000);
 
@@ -90,12 +90,16 @@ describe("isolated schema compatibility baseline regeneration", () => {
     expect(await worktreeCount(fixture)).toBe(1);
   }, 30_000);
 
-  test("skips both families exactly when history predates the generator without a worktree", async () => {
+  test("skips all families exactly when history predates their generators without a worktree", async () => {
     // Given: a historical base with no schema snapshot generator and one current surface per family.
     const fixture = await makeRepository();
     const current = new Map([
       ["schema:Fixture", { surface: "schema:Fixture", polarity: "strict" as const, schema: {} }],
       ["command:fixture", { surface: "command:fixture", polarity: "output" as const, schema: {} }],
+      [
+        "persisted:scratch-registry",
+        { surface: "persisted:scratch-registry", polarity: "input" as const, schema: {} },
+      ],
     ]);
     const countBefore = await worktreeCount(fixture);
 
@@ -110,7 +114,7 @@ describe("isolated schema compatibility baseline regeneration", () => {
     const artifacts = artifactsFrom(result);
     expect(artifacts.size).toBe(0);
     const families = unavailableFamilies(result);
-    expect(families).toEqual(["sdk", "command"]);
+    expect(families).toEqual(["sdk", "command", "persisted"]);
     const notices = await callExport(CHECK_MODULE_PATH, "skippedFamilyNotices", [
       current,
       fixture.historicalRef,
@@ -127,6 +131,12 @@ describe("isolated schema compatibility baseline regeneration", () => {
         family: "command",
         count: 1,
         generatorPath: "scripts/build-schema-snapshot.ts",
+        baseRef: fixture.historicalRef,
+      },
+      {
+        family: "persisted",
+        count: 1,
+        generatorPath: "scripts/build-persisted-schema-snapshot.ts",
         baseRef: fixture.historicalRef,
       },
     ]);
@@ -169,7 +179,7 @@ describe("isolated schema compatibility baseline regeneration", () => {
     expect(field(field(artifacts.get("schema:Fixture"), "schema"), "const")).toBe("alpha");
     const commands = (await Bun.file(shim.logPath).text()).trim().split("\n");
     expect(commands).toContain(
-      `ls-tree -z --full-tree --name-only ${fixture.baseRef} -- scripts/build-schema-snapshot.ts`,
+      `ls-tree -z --full-tree --name-only ${fixture.baseRef} -- scripts/build-schema-snapshot.ts scripts/build-persisted-schema-snapshot.ts`,
     );
     expect(
       commands.some(

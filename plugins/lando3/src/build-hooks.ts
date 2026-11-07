@@ -1,4 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import type { Lando3Path } from "./contract.ts";
 import {
   type LoweringPatch,
@@ -31,6 +32,7 @@ export const lowerBuildHooks = (
   ctx: ServiceLoweringContext,
   options: BuildHookOptions,
 ): LoweringPatch => {
+  const cursor = serviceCursor(service, ctx);
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   const steps: { readonly artifact: HookStep[]; readonly app: HookStep[] } = { artifact: [], app: [] };
   const meUser = options.meUser === "" ? undefined : options.meUser;
@@ -38,9 +40,11 @@ export const lowerBuildHooks = (
 
   const lowerCommands = (value: unknown, relative: Lando3Path, user: string | undefined): HookStep[] => {
     if (value === undefined) return [];
+    cursor.take(relative);
     const commands: readonly unknown[] = Array.isArray(value) ? value : [value];
     return commands.flatMap((command, index): HookStep[] => {
       if (typeof command === "string") {
+        cursor.take(Array.isArray(value) ? [...relative, index] : relative);
         return [user === undefined ? { run: command } : { run: command, user }];
       }
       blocked = true;
@@ -66,6 +70,7 @@ export const lowerBuildHooks = (
     }
   }
   if (api4Build !== undefined) {
+    cursor.take(["build"]);
     steps.app.push(...lowerCommands(api4Build.app, ["build", "app"], meUser));
     if (Object.hasOwn(api4Build, "dockerfile")) {
       diagnostics.push(
@@ -82,23 +87,30 @@ export const lowerBuildHooks = (
 
   const hasSteps = steps.artifact.length > 0 || steps.app.length > 0;
   if (hasSteps) {
-    diagnostics.push(
-      rewrittenServiceKey({
-        ctx,
-        relative: ["build"],
-        message:
-          "Build and run phases collapsed into ordered artifact and app steps: root before user, internal before authored commands.",
-        remediation: "Review the ordered steps and their users before building the app.",
-      }),
-    );
-    if (options.hasComposeBuild === true) {
+    const image = service.image;
+    const hasApi4ImageBuild =
+      service.api === 4 &&
+      hasPlainObjectPrototype(image) &&
+      (typeof image.imagefile === "string" || typeof image.dockerfile === "string");
+    if (options.hasComposeBuild === true || hasApi4ImageBuild) {
       blocked = true;
       diagnostics.push(
         unsupportedServiceKey({
           ctx,
           relative: ["build"],
           message: "Lando artifact/app hooks cannot share a build block with Compose build intent.",
-          remediation: "Choose one build family or move the Compose build into a separate service or image.",
+          remediation:
+            "Build the Dockerfile/imagefile separately, reference that image with image:, and keep the artifact/app hooks in build. Lando 4 has no same-service build block for both families.",
+        }),
+      );
+    } else {
+      diagnostics.push(
+        rewrittenServiceKey({
+          ctx,
+          relative: ["build"],
+          message:
+            "Build and run phases collapsed into ordered artifact and app steps: root before user, internal before authored commands.",
+          remediation: "Review the ordered steps and their users before building the app.",
         }),
       );
     }
@@ -114,6 +126,7 @@ export const lowerBuildHooks = (
         }
       : {},
     diagnostics,
+    claims: cursor.claims,
     ...(blocked ? { blocked: true } : {}),
   };
 };

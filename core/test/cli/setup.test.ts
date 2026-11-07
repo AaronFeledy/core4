@@ -2,11 +2,15 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import { makeLandoPaths } from "@lando/paths";
+import { PathsService } from "@lando/sdk/services";
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import {
   CertificateAuthority,
@@ -15,7 +19,6 @@ import {
   EventService,
   FileSyncEngine,
   GlobalAppService,
-  HostProxyService,
   InteractionService,
   type InteractionServiceShape,
   PrivilegeService,
@@ -27,7 +30,6 @@ import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } f
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { hostProviderId } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
-import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
@@ -58,18 +60,19 @@ import {
   makeTestRouterService,
   makeTestSshService,
 } from "@lando/sdk/test";
+import { testCaPem } from "@lando/sdk/test";
+import { buildBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
   SetupResultSchema,
   SetupStepFailedError,
   maybeSelectSetupProvider,
-  setupDeferredFileSyncPath,
   setupSpec,
-  shouldDisableHostProxyForSetup,
 } from "../../src/cli/command-specs/meta/setup.ts";
 import {
   type ResolvedSetupNetworkTrust,
+  SetupNetworkTrustError,
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
@@ -78,7 +81,9 @@ import { validateUnknownCliFlags } from "../../src/cli/flag-value-validation.ts"
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import { buildRuntimeTarGz, nativeInitBridgeFixture } from "../_support/runtime-bundle.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
+import { stubContainerHelperDir } from "../build/fixtures/container-helper-stubs.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
@@ -108,6 +113,7 @@ const buildSetupLayers = (
   Layer.mergeAll(
     Layer.succeed(GlobalConfigSources, { env: { ...process.env }, sources: { user: false, env: true } }),
     Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
     Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
     Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
@@ -138,7 +144,9 @@ const buildSetupLayersWithHostIntegrations = (
     Layer.succeed(CertificateAuthority, CertificateAuthority.of(services.ca)),
     Layer.succeed(RouterService, RouterService.of(services.proxy)),
     Layer.succeed(SshService, SshService.of(services.ssh)),
-    Layer.succeed(FileSyncEngine, FileSyncEngine.of(services.fileSync)),
+    FileSyncResolver.layerWithEngine(FileSyncEngine.of(services.fileSync), {
+      platform: ["linux", "darwin", "win32"],
+    }),
   );
 
 const buildSetupLayersWithPrivilege = (
@@ -179,35 +187,6 @@ const runCommand = async (
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-const tarOctal = (value: number, length: number): string =>
-  `${value.toString(8).padStart(length - 1, "0")}\0`;
-
-const buildRuntimeTarGz = (
-  entries: ReadonlyArray<{ readonly path: string; readonly bytes: Uint8Array }>,
-): Uint8Array => {
-  const chunks: Uint8Array[] = [];
-  for (const entry of entries) {
-    const header = new Uint8Array(512);
-    header.set(Buffer.from(entry.path, "latin1"), 0);
-    header.set(Buffer.from(tarOctal(0o644, 8), "ascii"), 100);
-    header.set(Buffer.from(tarOctal(0, 8), "ascii"), 108);
-    header.set(Buffer.from(tarOctal(0, 8), "ascii"), 116);
-    header.set(Buffer.from(tarOctal(entry.bytes.byteLength, 12), "ascii"), 124);
-    header.set(Buffer.from(tarOctal(0, 12), "ascii"), 136);
-    header.fill(0x20, 148, 156);
-    header[156] = "0".charCodeAt(0);
-    header.set(Buffer.from("ustar\0", "ascii"), 257);
-    header.set(Buffer.from("00", "ascii"), 263);
-    const checksum = header.reduce((sum, byte) => sum + byte, 0);
-    header.set(Buffer.from(tarOctal(checksum, 8), "ascii"), 148);
-    chunks.push(header, entry.bytes);
-    const padding = (512 - (entry.bytes.byteLength % 512)) % 512;
-    if (padding > 0) chunks.push(new Uint8Array(padding));
-  }
-  chunks.push(new Uint8Array(1024));
-  return gzipSync(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
-};
-
 const stripAnsi = (value: string): string => {
   let output = "";
   for (let index = 0; index < value.length; index += 1) {
@@ -228,7 +207,7 @@ const normalizeSetupFailure = (stderr: string): string =>
     .filter((line) => line.includes("Podman") || line.includes("Install Podman"))
     .join("\n");
 
-const fileSyncSatisfiedLine = "file-sync: already satisfied (native bind mounts)";
+const fileSyncSatisfiedLine = "file-sync: already satisfied (ordinary bind mounts)";
 const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, "setup", "readiness.json");
 
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
@@ -522,7 +501,11 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        bindMountPerformance: "slow" as const,
+        fileSyncTargets: "prepared-volume" as const,
+      },
       setup: () =>
         Effect.sync(() => {
           calls.push("provider");
@@ -647,7 +630,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: providerId,
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
       };
@@ -667,6 +654,7 @@ describe("meta:setup command", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused subscription queue"),
         waitFor: () => Effect.die("unused event wait"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("unused event wait"),
         query: () => Effect.succeed([]),
       });
@@ -1326,11 +1314,12 @@ describe("meta:setup command", () => {
       setupSpec.render?.({
         providerId: "docker",
         installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
         networkCaInjectionConfigured: false,
         providerSwitch: {
           fromProviderId: "lando",
           toProviderId: "docker",
-          remainingApps: [{ kind: "user", id: "demo", root: "/apps/demo" }],
+          remainingApps: [{ kind: "user", id: "demo", root: AbsolutePath.make("/apps/demo") }],
         },
       }) ?? "";
     const commands = [...output.matchAll(/`lando ([^`]+)`/gu)].map((match) => match[1] ?? "");
@@ -1681,7 +1670,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: (_plan: ProviderSetupPlan, options: { readonly network?: unknown }) =>
           Effect.sync(() => {
             observedProviderNetworks.push(options.network);
@@ -1763,7 +1756,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: () =>
           Effect.sync(() => {
             calls.push("provider");
@@ -1822,7 +1819,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: () => Effect.void,
       };
       const fileSync = {
@@ -1872,7 +1873,9 @@ describe("meta:setup command", () => {
       expect(readiness.status).toBe("ready");
       expect(readiness.steps.find((step) => step.id === "file-sync")).toMatchObject({
         status: "skipped",
-        evidence: "Mutagen binaries are installed, but this build has no live file-sync session client.",
+        evidence: expect.stringMatching(
+          /File-sync engine .+ is installed, but this build has no live file-sync session client\./,
+        ),
         remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
       });
     } finally {
@@ -1884,8 +1887,8 @@ describe("meta:setup command", () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-"));
     const configCert = join(tempRoot, "config.pem");
     const envCert = join(tempRoot, "env.pem");
-    await Bun.write(configCert, "-----BEGIN CERTIFICATE-----\nconfig\n-----END CERTIFICATE-----\n");
-    await Bun.write(envCert, "-----BEGIN CERTIFICATE-----\nenv\n-----END CERTIFICATE-----\n");
+    await Bun.write(configCert, testCaPem(0));
+    await Bun.write(envCert, testCaPem(1));
     const previous = process.env.LANDO_NETWORK_CA_CERTS;
     process.env.LANDO_NETWORK_CA_CERTS = JSON.stringify([envCert]);
     const calls: string[] = [];
@@ -1938,7 +1941,7 @@ describe("meta:setup command", () => {
   test("reports service injection when setup resolves configured CAs", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
-    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    await Bun.write(corporateCert, testCaPem(2));
     try {
       const result = await Effect.runPromise(
         setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -1964,8 +1967,8 @@ describe("meta:setup command", () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-many-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
     const partnerCert = join(tempRoot, "partner-root.pem");
-    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
-    await Bun.write(partnerCert, "-----BEGIN CERTIFICATE-----\npartner\n-----END CERTIFICATE-----\n");
+    await Bun.write(corporateCert, testCaPem(2));
+    await Bun.write(partnerCert, testCaPem(3));
     try {
       const result = await Effect.runPromise(
         setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -1989,7 +1992,7 @@ describe("meta:setup command", () => {
   test("does not report service injection when CA injection is disabled", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-off-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
-    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    await Bun.write(corporateCert, testCaPem(2));
     try {
       const result = await Effect.runPromise(
         setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -2067,15 +2070,32 @@ describe("meta:setup command", () => {
     }
   });
 
-  test("classifies setup network probe failures with actionable remediation", () => {
+  test("classifies unclassified probe failures by HTTP status, never by message text", () => {
+    // Given: raw transport failures whose text merely mentions TLS or a proxy status.
+    const request = HttpClientRequest.get("https://github.com/");
+    const statusFailure = (status: number) =>
+      new HttpClientError.HttpClientError({
+        reason: new HttpClientError.StatusCodeError({
+          request,
+          response: HttpClientResponse.fromWeb(request, new Response(null, { status })),
+        }),
+      });
+    const transport = (cause: unknown) =>
+      new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
     const cases = [
-      ["HTTP 407 Proxy Authentication Required", "proxy-authentication", "HTTP_PROXY"],
-      ["self signed certificate in certificate chain", "tls-interception", "LANDO_NETWORK_CA_CERTS"],
-      ["connect ETIMEDOUT github.com", "blocked-registry", "network.proxy"],
+      [statusFailure(407), "proxy-authentication", "HTTP_PROXY"],
+      [transport(new Error("HTTP 407 Proxy Authentication Required")), "blocked-endpoint", "network.proxy"],
+      [
+        transport(Object.assign(new TypeError("The TLS handshake failed"), { code: "EPROTO" })),
+        "blocked-endpoint",
+        "network.proxy",
+      ],
+      [new Error("self signed certificate in certificate chain"), "blocked-endpoint", "network.proxy"],
     ] as const;
 
-    for (const [message, kind, remediationNeedle] of cases) {
-      const error = classifySetupNetworkFailure(new Error(message));
+    // When / Then
+    for (const [failure, kind, remediationNeedle] of cases) {
+      const error = classifySetupNetworkFailure(failure);
       expect(error.kind).toBe(kind);
       expect(error.remediation).toContain(remediationNeedle);
     }
@@ -2093,7 +2113,7 @@ describe("meta:setup command", () => {
       });
     const cases = [
       [tunnel(407), "proxy-authentication", "proxy credentials"],
-      [tunnel(403), "blocked-registry", "network.proxy"],
+      [tunnel(403), "proxy-tunnel-refused", "proxy credentials"],
       [
         new HttpTrustError({
           message: "TLS trust verification failed",
@@ -2101,8 +2121,18 @@ describe("meta:setup command", () => {
           kind: "missing-custom-ca",
           remediation: "Supply the issuer CA and retry.",
         }),
-        "tls-interception",
+        "missing-custom-ca",
         "LANDO_NETWORK_CA_CERTS",
+      ],
+      [
+        new HttpTrustError({
+          message: "certificate has expired",
+          urlOrigin: "https://github.com",
+          kind: "certificate-invalid",
+          remediation: "Check the server certificate and retry.",
+        }),
+        "certificate-invalid",
+        "host clock",
       ],
       [
         new HttpTrustError({
@@ -2111,7 +2141,7 @@ describe("meta:setup command", () => {
           kind: "blocked-endpoint",
           remediation: "Allow the registry endpoint and retry.",
         }),
-        "blocked-registry",
+        "blocked-endpoint",
         "network.proxy",
       ],
     ] as const;
@@ -2123,7 +2153,11 @@ describe("meta:setup command", () => {
       expect(error.remediation).toContain(remediationNeedle);
       expect(error.cause).toBe(trust);
     }
-    expect(classifySetupNetworkFailure(tunnel(403)).message).toContain("HTTP 403");
+    expect(classifySetupNetworkFailure(cases[1][0]).message).toBe(cases[1][0].message);
+    // An invalid certificate is not fixed by a CA, so its remediation never points at CA settings.
+    const invalid = classifySetupNetworkFailure(cases[3][0]);
+    expect(invalid.remediation).not.toContain("network.ca.certs");
+    expect(invalid.remediation).not.toContain("LANDO_NETWORK_CA_CERTS");
   });
 
   test("default network trust probe uses resolved proxy and CA settings before setup downloads", async () => {
@@ -2224,7 +2258,7 @@ describe("meta:setup command", () => {
       readonly remediation?: string;
     };
     expect(error._tag).toBe("SetupNetworkTrustError");
-    expect(error.kind).toBe("blocked-registry");
+    expect(error.kind).toBe("blocked-endpoint");
     expect(error.remediation ?? "").toContain("network.proxy");
     expect(setupCalls).toBe(0);
   });
@@ -2377,7 +2411,7 @@ describe("meta:setup command", () => {
     expect(setupCalls).toBe(0);
   });
 
-  test("fails with missing custom CA remediation before long-download setup starts", async () => {
+  test("#2112 renders missing custom CA remediation once before long-download setup starts", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-missing-"));
     const missingCert = join(tempRoot, "missing.pem");
     let setupCalls = 0;
@@ -2414,15 +2448,18 @@ describe("meta:setup command", () => {
       const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected a typed failure");
-      const error = failure.value as {
-        readonly _tag?: string;
-        readonly kind?: string;
-        readonly remediation?: string;
-      };
+      const error = failure.value;
+      if (!Schema.is(SetupNetworkTrustError)(error))
+        throw new TypeError("expected setup network trust error");
       expect(error._tag).toBe("SetupNetworkTrustError");
       expect(error.kind).toBe("missing-custom-ca");
-      expect(error.remediation ?? "").toContain("network.ca.certs");
-      expect(error.remediation ?? "").toContain("LANDO_NETWORK_CA_CERTS");
+      expect(error.remediation).toContain("network.ca.certs");
+      expect(error.remediation).toContain("LANDO_NETWORK_CA_CERTS");
+      const report = buildBugReport({ error: failure.value, context: { commandId: "meta:setup" } });
+      expect(report.remediation).toBe(error.remediation);
+      expect(report.remediation).not.toContain("network.proxy");
+      const rendered = renderPlainBugReport(report);
+      expect(rendered.split(error.remediation).length - 1).toBe(1);
       expect(setupCalls).toBe(0);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -2470,17 +2507,22 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toContain(fileSyncSatisfiedLine);
   });
 
-  test("--skip-file-sync skips Mutagen download until setup is rerun", async () => {
+  test("--skip-file-sync records deferred readiness without installing the configured engine", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-deferred-"));
     try {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: () => Effect.void,
       };
       const fileSync = {
         ...TestFileSyncEngine,
+        id: "custom-sync",
         setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
       };
       const registry = {
@@ -2503,24 +2545,17 @@ describe("meta:setup command", () => {
                 ssh: makeTestSshService(),
                 fileSync,
               },
-              { userDataRoot },
+              { userDataRoot, defaultFileSyncEngine: "custom-sync" },
             ),
           ),
         ),
       );
 
-      const marker = JSON.parse(await readFile(setupDeferredFileSyncPath(userDataRoot), "utf-8")) as {
-        readonly status: string;
-        readonly engineId: string;
-        readonly resumeCommand: string;
-      };
-      expect(marker).toEqual({
-        status: "deferred",
-        engineId: "mutagen",
-        resumeCommand: "lando setup",
-      });
+      const readiness = await Effect.runPromise(readSetupReadiness(userDataRoot));
+      expect(readiness?.status).toBe("deferred");
+      expect(readiness?.steps.find((step) => step.id === "file-sync")?.status).toBe("deferred");
       expect(setupSpec.render?.(result)).toContain(
-        "file-sync: Mutagen download skipped (run lando setup to install later)",
+        "file-sync: engine installation skipped (run lando setup to install later)",
       );
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
@@ -2533,7 +2568,11 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        bindMountPerformance: "slow" as const,
+        fileSyncTargets: "prepared-volume" as const,
+      },
       setup: () =>
         Effect.sync(() => {
           calls.push("provider");
@@ -2766,55 +2805,6 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("podman"));
   });
 
-  test("host-proxy none remains honored when proxy setup is skipped", () => {
-    expect(shouldDisableHostProxyForSetup({ flags: { "skip-proxy": true, "host-proxy": "none" } })).toBe(
-      true,
-    );
-  });
-
-  test("host-proxy none uses the disabled no-op layer", async () => {
-    let setupCalls = 0;
-    const provider = {
-      ...TestRuntimeProvider,
-      id: "lando",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
-    };
-    const registry = {
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    };
-
-    const result = await Effect.runPromise(
-      setupSpec
-        .run({ installDir: "/opt/lando", flags: { "host-proxy": "none" } })
-        .pipe(Effect.provide(buildSetupLayers(registry))),
-    );
-    const status = await Effect.runPromise(
-      Effect.gen(function* () {
-        const hostProxy = yield* HostProxyService;
-        yield* hostProxy.setup({ mode: "none" });
-        return yield* hostProxy.status();
-      }).pipe(Effect.provide(HostProxyServiceLayer.layerDisabled)),
-    );
-
-    expect(setupCalls).toBe(1);
-    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
-    expect(status).toEqual({
-      active: false,
-      mode: "none",
-      mechanism: "skipped",
-      baseDomain: "lndo.site",
-      loopback: "127.0.0.1",
-    });
-  });
-
   test("invokes provider-lando setup with fake bundle and Podman API clients", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-"));
     const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
@@ -2822,6 +2812,7 @@ describe("meta:setup command", () => {
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
+        providerSocketPath: join(stateDir, "podman.sock"),
         podmanApi: {
           info: Effect.succeed({ version: { Version: "6.0.2" } }),
           ping: Effect.void,
@@ -2856,6 +2847,7 @@ describe("meta:setup command", () => {
         podmanVersion: "6.0.2",
         runtimeBundleVersion: "0.0.0-test",
         runtimeBundleSha256: sha256(bundleBytes),
+        socketPath: join(stateDir, "podman.sock"),
       });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
@@ -2866,6 +2858,7 @@ describe("meta:setup command", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-state-"));
     const runtimeRoot = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-runtime-"));
     const runtimeBinDir = join(runtimeRoot, "runtime", "bin");
+    const helper = nativeInitBridgeFixture();
     const encoder = new TextEncoder();
     const bundleBytes = buildRuntimeTarGz([
       { path: "podman", bytes: encoder.encode("podman") },
@@ -2875,6 +2868,30 @@ describe("meta:setup command", () => {
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
+        arch: "x64",
+        providerSocketPath: join(runtimeRoot, "run", "podman.sock"),
+        providerPidPath: join(runtimeRoot, "run", "podman.pid"),
+        runtimeStorageDir: join(runtimeRoot, "storage"),
+        runtimeRunDir: join(runtimeRoot, "run"),
+        runtimeConfigDir: join(runtimeRoot, "config"),
+        artifactDownload: helper.download,
+        _catatonitPackage: helper.pkg,
+        podmanService: {
+          launch: () => Effect.succeed(4567),
+          isAlive: () => Effect.succeed(true),
+          isServiceProcess: () => Effect.succeed(true),
+          terminate: () => Effect.void,
+        },
+        rootlessProbes: {
+          probe: () => ({
+            subidConfigured: true,
+            subidRangeSufficient: true,
+            subidRangesDisjoint: true,
+            hasUidmapTools: true,
+            cgroupsV2Delegated: true,
+            hasXdgRuntimeDir: true,
+          }),
+        },
         podmanApi: {
           info: Effect.succeed({ version: { Version: "6.0.2" } }),
           ping: Effect.void,
@@ -2882,7 +2899,7 @@ describe("meta:setup command", () => {
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
           download: Effect.succeed({
-            version: "0.0.0-test",
+            version: helper.version,
             bytes: bundleBytes,
             sha256: sha256(bundleBytes),
           }),
@@ -2908,11 +2925,18 @@ describe("meta:setup command", () => {
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
       expect((await stat(join(runtimeBinDir, "podman"))).mode & 0o111).not.toBe(0);
       expect((await stat(join(runtimeBinDir, "gvproxy"))).mode & 0o111).not.toBe(0);
+      expect(new Uint8Array(await readFile(join(runtimeBinDir, "catatonit")))).toEqual(
+        new Uint8Array(helper.elf),
+      );
+      expect(new Uint8Array(await readFile(join(runtimeBinDir, "licenses/catatonit/COPYING")))).toEqual(
+        helper.licenseBytes,
+      );
       expect(JSON.parse(await readFile(providerStatePath(stateDir), "utf8"))).toEqual({
         podmanVersion: "6.0.2",
-        runtimeBundleVersion: "0.0.0-test",
+        runtimeBundleVersion: helper.version,
         runtimeBundleSha256: sha256(bundleBytes),
         runtimeBinDir,
+        socketPath: join(runtimeRoot, "run", "podman.sock"),
       });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
@@ -2940,7 +2964,11 @@ describe("meta:setup command", () => {
           ...TestRuntimeProvider,
           id: "docker",
           isAvailable: Effect.succeed(true),
-          capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+          capabilities: {
+            ...TestRuntimeProvider.capabilities,
+            bindMountPerformance: "slow" as const,
+            fileSyncTargets: "prepared-volume" as const,
+          },
         };
         const { registry } = buildRegistryThatCapturesPlan(provider);
         await Effect.runPromise(
@@ -3560,8 +3588,17 @@ describe("meta:setup command", () => {
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled setup install dir", () => {
+  let helperDir = "";
+  beforeAll(async () => {
+    helperDir = await stubContainerHelperDir();
+  });
+  afterAll(async () => {
+    await rm(helperDir, { recursive: true, force: true });
+  });
   test("matches source setup failure output and points shellenv at the compiled binary", async () => {
-    const build = await runCommand([process.execPath, "run", "build"]);
+    const build = await runCommand([process.execPath, "run", "build"], coreRoot, {
+      LANDO_CONTAINER_HELPER_DIR: helperDir,
+    });
     expect(build.exitCode).toBe(0);
 
     const commandEnv = {
@@ -3598,3 +3635,4 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";

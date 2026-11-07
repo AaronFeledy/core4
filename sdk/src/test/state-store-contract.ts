@@ -5,7 +5,7 @@ import { Cause, Effect, Option, Result, Schema } from "effect";
 import { StateStoreError } from "../errors/index.ts";
 
 import { AbsolutePath } from "../schema/index.ts";
-import type { StateBucketSpec, StateStoreShape } from "../services/index.ts";
+import type { DurableStateBucketSpec, StateBucketSpec, StateStoreShape } from "../services/index.ts";
 import { ContractFailure, bytesEqual, decodeUtf8, utf8 } from "./_shared.ts";
 const stateStoreContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `StateStore contract failed: ${assertion}`, assertion, details });
@@ -48,8 +48,8 @@ type StateStoreContractMigratedDoc = typeof StateStoreContractMigratedDoc.Type;
 const stateStoreDocSpec = (
   harness: StateStoreContractHarness,
   key: string,
-  overrides: Partial<StateBucketSpec<StateStoreContractDoc, StateStoreContractDoc>> = {},
-): StateBucketSpec<StateStoreContractDoc, StateStoreContractDoc> => ({
+  overrides: Partial<DurableStateBucketSpec<StateStoreContractDoc, StateStoreContractDoc>> = {},
+): DurableStateBucketSpec<StateStoreContractDoc, StateStoreContractDoc> => ({
   root: { path: harness.root },
   key,
   schema: StateStoreContractDoc,
@@ -60,8 +60,10 @@ const stateStoreDocSpec = (
 const stateStoreMigratedDocSpec = (
   harness: StateStoreContractHarness,
   key: string,
-  overrides: Partial<StateBucketSpec<StateStoreContractMigratedDoc, StateStoreContractMigratedDoc>> = {},
-): StateBucketSpec<StateStoreContractMigratedDoc, StateStoreContractMigratedDoc> => ({
+  overrides: Partial<
+    DurableStateBucketSpec<StateStoreContractMigratedDoc, StateStoreContractMigratedDoc>
+  > = {},
+): DurableStateBucketSpec<StateStoreContractMigratedDoc, StateStoreContractMigratedDoc> => ({
   root: { path: harness.root },
   key,
   schema: StateStoreContractMigratedDoc,

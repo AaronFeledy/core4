@@ -6,7 +6,7 @@ your choice as an environment hint; you still install and configure that helper.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Init contract
 
@@ -38,10 +38,10 @@ your choice as an environment hint; you still install and configure that helper.
   path. If `npm install` fails, generated sources stay; fix the npm error and
   run `lando npm install`.
 
-## Alpha limitations
+## Limitations
 
 - Auth picker (`nextauth`, `clerk`, `none`) sets only the
   `NEXTAUTH_PROVIDER` environment hint. Install and configure the chosen helper
   through the generated tooling.
-- A dedicated Next.js service type with first-class build presets is deferred
-  to Beta.
+- There is no dedicated Next.js service type; the recipe uses the bundled
+  `node:<lts|22>` service type with no build presets.

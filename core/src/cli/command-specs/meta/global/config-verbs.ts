@@ -26,8 +26,7 @@ const makeSpec = (
   bootstrap: "plugins",
   ...metadata,
   run: (input) => runGlobalConfig({ ...globalConfigOptionsFromInput(input), subcommand }),
-  render: (result, input) =>
-    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+  render: (result, input) => renderGlobalConfigResult(result, globalConfigFormatFromInput(input)),
 });
 
 export const metaGlobalConfigSetSpec = makeSpec("set", "Set a value in the global app's Landofile.", {

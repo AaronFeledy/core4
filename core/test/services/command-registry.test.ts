@@ -2,33 +2,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Layer, Result } from "effect";
+import { Effect, Layer } from "effect";
 
 import { CommandRegistry, type RegisteredCommand } from "@lando/core/services";
-import { CacheError } from "@lando/sdk/errors";
-import type { PluginManifest } from "@lando/sdk/schema";
-
+import { decodeAppCommandIndex, encodeAppCommandIndex } from "@lando/engine/cache/command-index";
 import {
-  COMMAND_INDEX_SCHEMA_VERSION,
-  decodeAppCommandIndex,
-  decodePluginCommandIndex,
-  encodeAppCommandIndex,
-  encodePluginCommandIndex,
-} from "@lando/engine/cache/command-index";
-import {
-  invalidatePluginCommandCache,
   readAppCommandCache,
   readFreshAppCommandCacheForCwd,
-  readPluginCommandCache,
   writeAppCommandCache,
   writeAppCommandCacheStrict,
-  writePluginCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
-import {
-  appCommandCachePath,
-  appToolingCompilationCachePath,
-  pluginCommandCachePath,
-} from "@lando/engine/cache/paths";
+import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import * as CommandRegistryLayer from "@lando/engine/services/command-registry";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -77,29 +61,6 @@ const listFromBootstrap = () =>
       Effect.provide(makeLandoRuntime({ bootstrap: "tooling", plugins: { policy: "discovery" } })),
     ) as Effect.Effect<ReadonlyArray<RegisteredCommand>, never, never>,
   );
-
-const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
-  name: name as PluginManifest["name"],
-  version,
-  api: 4,
-  bootstrap: "app",
-  contributes: { commands },
-});
-
-const writeInstalledPlugin = async (pluginsRoot: string, plugin: PluginManifest): Promise<void> => {
-  const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
-  await mkdir(packageRoot, { recursive: true });
-  await writeFile(
-    join(packageRoot, "package.json"),
-    `${JSON.stringify({ name: plugin.name, version: plugin.version, landoPlugin: plugin })}\n`,
-  );
-  await writeFile(
-    join(pluginsRoot, "registry.json"),
-    `${JSON.stringify({
-      [plugin.name]: { name: plugin.name, version: plugin.version, path: packageRoot },
-    })}\n`,
-  );
-};
 
 describe("CommandRegistryLayer.layer", () => {
   test("lists parsed tooling tasks as RegisteredCommand entries under the app: namespace", async () => {
@@ -300,47 +261,6 @@ describe("CommandRegistryLayer.layer", () => {
       const commands = await listFromBootstrap();
       expect(commands.map((c) => c.id)).toEqual(["app:build"]);
       expect(commands[0]?.summary).toBe("Build assets");
-    });
-  });
-
-  test("makeLandoRuntime({ bootstrap: 'tooling' }) writes plugin commands from discovered user plugins", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      await withTempCwd(async (dir) => {
-        const dataRoot = await mkdtemp(join(tmpdir(), "lando-command-registry-data-"));
-        const confRoot = await mkdtemp(join(tmpdir(), "lando-command-registry-conf-"));
-        const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
-        const previousConfRoot = process.env.LANDO_USER_CONF_ROOT;
-        try {
-          process.env.LANDO_USER_DATA_ROOT = dataRoot;
-          process.env.LANDO_USER_CONF_ROOT = confRoot;
-          await writeFile(
-            join(dir, ".lando.yml"),
-            ["name: plugin-cache-app", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
-          );
-          await writeInstalledPlugin(
-            join(dataRoot, "plugins"),
-            manifest("@lando/plugin-extra", ["extra:doctor"], "1.2.3"),
-          );
-          process.chdir(dir);
-
-          await listFromBootstrap();
-
-          const decoded = decodePluginCommandIndex(
-            new Uint8Array(await readFile(pluginCommandCachePath(cacheRoot))),
-          );
-          expect(decoded?.pluginNames).toContain("@lando/plugin-extra");
-          expect(decoded?.commandsByPlugin?.["@lando/plugin-extra"]).toEqual(["extra:doctor"]);
-        } finally {
-          // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
-          if (previousDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
-          else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
-          // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
-          if (previousConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
-          else process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
-          await rm(dataRoot, { recursive: true, force: true });
-          await rm(confRoot, { recursive: true, force: true });
-        }
-      });
     });
   });
 });
@@ -855,126 +775,6 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
     });
   });
 
-  test("writes the plugin-command cache regardless of Landofile presence", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      await withTempCwd(async (dir) => {
-        process.chdir(dir);
-
-        const commands = await listFromLive();
-        expect(commands).toEqual([]);
-
-        const cachePath = pluginCommandCachePath(cacheRoot);
-        const bytes = new Uint8Array(await readFile(cachePath));
-        const decoded = decodePluginCommandIndex(bytes);
-        expect(decoded).not.toBeNull();
-        if (decoded === null) return;
-        expect(decoded.schemaVersion).toBe(Number(COMMAND_INDEX_SCHEMA_VERSION));
-        expect(decoded.pluginNames.length).toBeGreaterThan(0);
-        expect(Array.isArray(decoded.entries)).toBe(true);
-      });
-    });
-  });
-
-  test("reuses a fresh plugin-command cache and invalidates it when plugin manifests change", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      const firstManifests = [manifest("@lando/a", ["a:one"])] as const;
-      const secondManifests = [manifest("@lando/a", ["a:two"])] as const;
-
-      const firstPath = await Effect.runPromise(
-        writePluginCommandCacheStrict({ manifests: firstManifests, cacheRoot, now: () => 100 }),
-      );
-      const first = await Effect.runPromise(readPluginCommandCache({ manifests: firstManifests, cacheRoot }));
-      expect(first?.entries.map((entry) => entry.id)).toEqual(["a:one"]);
-
-      await Effect.runPromise(
-        writePluginCommandCacheStrict({ manifests: firstManifests, cacheRoot, now: () => 200 }),
-      );
-      const reused = decodePluginCommandIndex(new Uint8Array(await readFile(firstPath)));
-      expect(reused?.generatedAtMs).toBe(100);
-
-      const stale = await Effect.runPromise(
-        readPluginCommandCache({ manifests: secondManifests, cacheRoot }),
-      );
-      expect(stale).toBeNull();
-
-      await Effect.runPromise(
-        writePluginCommandCacheStrict({ manifests: secondManifests, cacheRoot, now: () => 300 }),
-      );
-      const refreshed = decodePluginCommandIndex(new Uint8Array(await readFile(firstPath)));
-      expect(refreshed?.generatedAtMs).toBe(300);
-      expect(refreshed?.entries.map((entry) => entry.id)).toEqual(["a:two"]);
-    });
-  });
-
-  test("writes plugin-list SHA and per-plugin command ids into the plugin-command cache", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      const manifests = [
-        manifest("@lando/a", ["a:one", "a:two"], "1.0.0"),
-        manifest("@lando/b", []),
-      ] as const;
-
-      const cachePath = await Effect.runPromise(
-        writePluginCommandCacheStrict({ manifests, cacheRoot, now: () => 100 }),
-      );
-      const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
-
-      expect(decoded?.pluginNames).toEqual(["@lando/a", "@lando/b"]);
-      expect(decoded?.pluginListSha).toMatch(/^[a-f0-9]{64}$/u);
-      expect(decoded?.commandsByPlugin).toEqual({
-        "@lando/a": ["a:one", "a:two"],
-        "@lando/b": [],
-      });
-    });
-  });
-
-  test("rewrites an old plugin-command cache that lacks plugin-list metadata", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      const manifests = [manifest("@lando/a", ["a:one"])] as const;
-      const cachePath = await Effect.runPromise(
-        writePluginCommandCacheStrict({ manifests, cacheRoot, now: () => 100 }),
-      );
-      const oldPayload = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
-      expect(oldPayload?.manifestFingerprint).toBeString();
-      if (oldPayload?.manifestFingerprint === undefined) throw new Error("expected manifest fingerprint");
-      await writeFile(
-        cachePath,
-        encodePluginCommandIndex({
-          schemaVersion: 1,
-          landoVersion: oldPayload.landoVersion,
-          pluginNames: ["@lando/a"],
-          manifestFingerprint: oldPayload.manifestFingerprint,
-          generatedAtMs: 100,
-          entries: [{ id: "a:one", summary: "", hidden: false }],
-        }),
-      );
-
-      await Effect.runPromise(writePluginCommandCacheStrict({ manifests, cacheRoot, now: () => 200 }));
-      const rewritten = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
-
-      expect(rewritten?.generatedAtMs).toBe(200);
-      expect(rewritten?.pluginListSha).toMatch(/^[a-f0-9]{64}$/u);
-      expect(rewritten?.commandsByPlugin).toEqual({ "@lando/a": ["a:one"] });
-    });
-  });
-
-  test("invalidates the plugin-command cache by removing the cache file", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      const cachePath = await Effect.runPromise(
-        writePluginCommandCacheStrict({ manifests: [manifest("@lando/a", ["a:one"])], cacheRoot }),
-      );
-
-      await Effect.runPromise(invalidatePluginCommandCache({ cacheRoot }));
-
-      let readFailure: unknown;
-      try {
-        await readFile(cachePath);
-      } catch (cause) {
-        readFailure = cause;
-      }
-      expect(readFailure).toMatchObject({ code: "ENOENT" });
-    });
-  });
-
   test("invalidates app-command cache when Landofile tooling changes", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
@@ -1054,24 +854,6 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         expect(refreshed?.generatedAtMs).toBe(200);
         expect(refreshed?.entries.map((entry) => entry.id).sort()).toEqual(["app:composer", "app:db:wait"]);
       });
-    });
-  });
-
-  test("reports a tagged error when required bundled plugin manifests are missing", async () => {
-    await withTempCacheRoot(async (cacheRoot) => {
-      const exit = await Effect.runPromiseExit(
-        writePluginCommandCacheStrict({
-          manifests: [manifest("@lando/present", ["present:cmd"])],
-          pluginNames: ["@lando/present", "@lando/missing"],
-          cacheRoot,
-        }),
-      );
-
-      expect(exit._tag).toBe("Failure");
-      if (exit._tag !== "Failure") return;
-      const failure = Result.getOrThrow(Cause.findError(exit.cause));
-      expect(failure).toBeInstanceOf(CacheError);
-      expect(failure?.message).toContain("@lando/missing");
     });
   });
 

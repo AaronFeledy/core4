@@ -207,9 +207,10 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 const provisionError = (cause: ToolError): FileSyncStartError =>
   new FileSyncStartError({
     engineId: ENGINE_ID,
-    message: `Failed to provision Mutagen ${MUTAGEN_TOOL_VERSION}.`,
-    remediation:
-      "Re-run `lando setup` after confirming the Mutagen tool manifest entry for this host is present and the download cache is writable.",
+    message: cause.message,
+    remediation: cause._tag.startsWith("Download")
+      ? `${cause.remediation} Then run \`lando setup\`.`
+      : "Re-run `lando setup` after confirming the Mutagen tool manifest entry for this host is present and the download cache is writable.",
     cause,
   });
 
@@ -414,7 +415,16 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   requires: { "@lando/core": "^4.0.0" },
   description: "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers.",
   enabled: true,
-  contributes: { fileSyncEngines: [ENGINE_ID] },
+  contributes: {
+    fileSyncEngines: [
+      {
+        id: ENGINE_ID,
+        supports: { platform: ["win32"] },
+        capabilities: mutagenCapabilities,
+        defaultFor: { platform: ["win32"], bindMountPerformance: ["slow"] },
+      },
+    ],
+  },
   entry: "./src/index.ts",
 });
 

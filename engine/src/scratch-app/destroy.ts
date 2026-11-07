@@ -8,9 +8,10 @@ import {
   PreScratchDestroyEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
 import { DataMover, EventService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
+import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
 import { ScratchRegistry } from "./registry.ts";
@@ -96,7 +97,7 @@ export const makeScratchReaper = Effect.gen(function* () {
                   { volumes: !keepVolumes, removeState: true },
                 )).kind === "destroyed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
-          if (Option.isSome(router)) yield* router.value.removeRoutes(AppId.make(app.id));
+          if (Option.isSome(router)) yield* router.value.removeRoutes(routeOwnerFromScratch(input.id));
           return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
         });
         const outcome = yield* reason === "gc"
@@ -126,20 +127,20 @@ export const makeScratchReaper = Effect.gen(function* () {
             }),
         });
         yield* registry.remove(input.id);
-        yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
       }).pipe(
         Effect.onError(() =>
           entry === undefined
             ? Effect.void
             : registry
-                .upsert({
+                .upsert("mark-pending-cleanup", {
                   ...entry,
-                  status: "destroyed-pending-cleanup",
                   updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
                 })
                 .pipe(Effect.exit, Effect.asVoid),
         ),
       );
+      // Outside the guard: once the entry is removed, a failed post-event must not bring it back.
+      yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
     },
     Effect.mapError((cause) =>
       cause instanceof ScratchAppError

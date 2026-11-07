@@ -149,7 +149,7 @@ test("reports evaluation failures with their exact value path", async () => {
   if (Result.isFailure(result))
     expect(result.failure).toMatchObject({
       _tag: "ConfigExpressionError",
-      path: "services.database.database",
+      path: ["services", "database", "database"],
       filePath: "/app/.lando.yml",
     });
 });
@@ -179,5 +179,5 @@ test("keeps loader rejection of recipe defaults without recorded options", async
   );
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result))
-    expect(result.failure).toMatchObject({ _tag: "ConfigExpressionError", path: "x-value" });
+    expect(result.failure).toMatchObject({ _tag: "ConfigExpressionError", path: ["x-value"] });
 });

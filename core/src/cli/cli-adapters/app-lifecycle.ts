@@ -18,7 +18,6 @@ import {
   activeRendererMode,
   activeResultFormat,
   commandErrorMessage,
-  emitDiagnosticLine,
   getActiveCommandInvocation,
   rejectInvalidInvocation,
 } from "../compiled-runtime";
@@ -28,12 +27,6 @@ export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal
   if (await rejectInvalidInvocation("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
-  const hostProxy = input.flags["host-proxy"];
-  if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
-    await emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
-    process.exitCode = 2;
-    return;
-  }
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
   await runWithRendererHandling(

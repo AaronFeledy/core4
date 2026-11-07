@@ -1,13 +1,29 @@
 import { expect, test } from "bun:test";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { ConfigExpressionError } from "@lando/sdk/errors";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import {
+  configExpressionIssuePath,
+  deferredSiteKey,
   materializeLandofileScopes,
   materializeServiceScopeSites,
   serviceCredsScopeForPlan,
   serviceScopeContext,
 } from "../../src/planner/landofile-scopes.ts";
+
+test("keeps literal dots and numeric string keys in planner lint paths", () => {
+  const error = new ConfigExpressionError({
+    message: "Missing value.",
+    expression: "{{ app.missing }}",
+    filePath: "/app/.lando.yml",
+    path: ["services", "web.v2", "environment", "0"],
+    remediation: "Fix the expression.",
+  });
+  const path = configExpressionIssuePath(error);
+  expect(path).toEqual(["services", "web.v2", "environment", "0"]);
+  expect(deferredSiteKey(path)).not.toBe(deferredSiteKey(["services", "web", "v2", "environment", 0]));
+});
 
 test("advances recorded identity and connection sites without rescanning produced strings", async () => {
   const before = process.env.LANE_B_ENGINE_DATA;
@@ -150,7 +166,7 @@ test("locates canonical decode failures without rendering scope values into erro
   );
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result)) {
-    expect(result.failure.path).toStartWith("services.web.environment.BAD");
+    expect(result.failure.path).toEqual(["services", "web", "environment", "BAD"]);
     expect(result.failure.filePath).toBe("/app/.lando.local.yml");
     expect(result.failure.message).not.toContain("DO_NOT_RENDER_SCOPE_BYTES");
   }
@@ -199,7 +215,7 @@ test("locates forbidden binding helpers at the canonical destination", async () 
   if (Result.isFailure(result))
     expect(result.failure).toMatchObject({
       _tag: "ConfigExpressionError",
-      path: "services.web.environment.BAD",
+      path: ["services", "web", "environment", "BAD"],
       filePath: "/app/.lando.yml",
     });
 });

@@ -1,5 +1,17 @@
-export const UNIT_MARKER = "# lando-proxy-socket-helper" as const;
-export const POLKIT_RULE_PATH = "/etc/polkit-1/rules.d/10-lando-proxy.rules" as const;
+import {
+  SOCKET_PROXY_POLKIT_PATH as POLKIT_RULE_PATH,
+  SOCKET_PROXY_UNIT_PATHS as SOCKET_UNIT_PATHS,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "./socket-proxy-helper.ts";
+import {
+  type SocketProxyPriorDigests,
+  shQuote,
+  socketProxyArtifactRecheck,
+  socketProxyLockPreamble,
+} from "./socket-proxy-script.ts";
+
+export { POLKIT_RULE_PATH, SOCKET_UNIT_PATHS };
 const SYSTEMD_UNIT_DIR = "/etc/systemd/system" as const;
 
 export const PROXYD_CANDIDATES = [
@@ -14,14 +26,16 @@ const SOCKET_UNIT_NAMES = [
   "lando-proxy-https.service",
 ] as const;
 
-export const SOCKET_UNIT_PATHS = SOCKET_UNIT_NAMES.map((name) => `${SYSTEMD_UNIT_DIR}/${name}`);
-
 export type SocketProxyServiceType = "notify" | "simple";
 
 const UNIT_REGEX_SOURCE = "/^lando-proxy-[a-z0-9_-]+\\.(socket|service)$/";
 const VERB_REGEX_SOURCE = "/^(start|stop|restart|try-restart|reload|reload-or-restart)$/";
 
-export const renderPolkitRule = (user: string): string => `polkit.addRule(function (action, subject) {
+export const renderPolkitRule = (
+  user: string,
+  userDataRoot: string,
+): string => `${socketProxyPolkitHeader(userDataRoot)}
+polkit.addRule(function (action, subject) {
   if (action.id !== "org.freedesktop.systemd1.manage-units") {
     return polkit.Result.NOT_HANDLED;
   }
@@ -47,7 +61,8 @@ const renderSocketUnit = (input: {
   readonly description: string;
   readonly listen: string;
   readonly user: string;
-}): string => `${UNIT_MARKER}
+  readonly userDataRoot: string;
+}): string => `${socketProxyUnitHeader(input.userDataRoot)}
 [Unit]
 Description=${input.description}
 
@@ -65,7 +80,8 @@ const renderServiceUnit = (input: {
   readonly target: string;
   readonly user: string;
   readonly serviceType: SocketProxyServiceType;
-}): string => `${UNIT_MARKER}
+  readonly userDataRoot: string;
+}): string => `${socketProxyUnitHeader(input.userDataRoot)}
 [Unit]
 Description=${input.description}
 Requires=${input.socket}
@@ -84,6 +100,7 @@ Restart=on-failure
 
 const renderSocketProxyUnits = (input: {
   readonly user: string;
+  readonly userDataRoot: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
   readonly httpTarget: number;
@@ -93,6 +110,7 @@ const renderSocketProxyUnits = (input: {
     description: "Lando proxy HTTP socket",
     listen: "127.0.0.1:80",
     user: input.user,
+    userDataRoot: input.userDataRoot,
   }),
   "lando-proxy-http.service": renderServiceUnit({
     description: "Lando proxy HTTP forwarder",
@@ -100,12 +118,14 @@ const renderSocketProxyUnits = (input: {
     binary: input.binary,
     target: `127.0.0.1:${input.httpTarget}`,
     user: input.user,
+    userDataRoot: input.userDataRoot,
     serviceType: input.serviceType,
   }),
   "lando-proxy-https.socket": renderSocketUnit({
     description: "Lando proxy HTTPS socket",
     listen: "127.0.0.1:443",
     user: input.user,
+    userDataRoot: input.userDataRoot,
   }),
   "lando-proxy-https.service": renderServiceUnit({
     description: "Lando proxy HTTPS forwarder",
@@ -113,6 +133,7 @@ const renderSocketProxyUnits = (input: {
     binary: input.binary,
     target: `127.0.0.1:${input.httpsTarget}`,
     user: input.user,
+    userDataRoot: input.userDataRoot,
     serviceType: input.serviceType,
   }),
 });
@@ -122,23 +143,87 @@ const heredoc = (path: string, body: string): string =>
 
 export const buildInstallScript = (input: {
   readonly user: string;
+  readonly userDataRoot: string;
   readonly binary: string;
   readonly serviceType: SocketProxyServiceType;
   readonly httpTarget: number;
   readonly httpsTarget: number;
+  /** Digests of unit/polkit content observed before elevate; pins the classified prior state. */
+  readonly priorDigests?: SocketProxyPriorDigests;
+  /** When true, existing foreign stamps matching prior digests may be replaced. */
+  readonly replaceForeign?: boolean;
+  readonly priorOwnerRoot?: string;
 }): string => {
   const units = renderSocketProxyUnits(input);
   const writes = SOCKET_UNIT_NAMES.map((name) => heredoc(`${SYSTEMD_UNIT_DIR}/${name}`, units[name]));
+  const priorRoot = input.priorOwnerRoot ?? input.userDataRoot;
+  const unitHeader = socketProxyUnitHeader(priorRoot);
+  const polkitHeader = socketProxyPolkitHeader(priorRoot);
+  const prior = input.priorDigests ?? {};
+  const checks = [...SOCKET_UNIT_PATHS, POLKIT_RULE_PATH].map((path) => {
+    const header = path === POLKIT_RULE_PATH ? polkitHeader : unitHeader;
+    return socketProxyArtifactRecheck({
+      path,
+      header,
+      priorDigest: prior[path],
+      allowUnknownDigest: path === POLKIT_RULE_PATH,
+      allowUnattributed: input.replaceForeign === true && input.priorOwnerRoot === undefined,
+    });
+  });
   return [
-    "set -eu",
+    ...socketProxyLockPreamble,
+    ...(input.replaceForeign === true && input.priorOwnerRoot !== undefined
+      ? [`[ ! -e ${shQuote(input.priorOwnerRoot)} ] && [ ! -L ${shQuote(input.priorOwnerRoot)} ] || exit 3`]
+      : []),
+    ...checks,
+    ...(input.replaceForeign === true
+      ? [
+          "systemctl stop lando-proxy-http.socket lando-proxy-https.socket lando-proxy-http.service lando-proxy-https.service",
+        ]
+      : []),
     `mkdir -p ${SYSTEMD_UNIT_DIR} /etc/polkit-1/rules.d`,
     ...writes,
-    heredoc(POLKIT_RULE_PATH, renderPolkitRule(input.user)),
+    heredoc(POLKIT_RULE_PATH, renderPolkitRule(input.user, input.userDataRoot)),
     `if getent group polkitd >/dev/null 2>&1; then chown root:polkitd ${POLKIT_RULE_PATH}; else chown root:root ${POLKIT_RULE_PATH}; fi`,
     `chmod 0644 ${POLKIT_RULE_PATH}`,
     `chown root:root ${SOCKET_UNIT_PATHS.join(" ")}`,
     `chmod 0644 ${SOCKET_UNIT_PATHS.join(" ")}`,
     "systemctl daemon-reload",
     "systemctl try-restart lando-proxy-http.service lando-proxy-https.service",
+    "systemctl start lando-proxy-http.socket lando-proxy-https.socket",
+  ].join("\n");
+};
+
+export const buildUninstallScript = (input: {
+  readonly unitPaths: ReadonlyArray<string>;
+  readonly polkitPath: string;
+  readonly canonicalUserDataRoot: string;
+  readonly priorDigests?: SocketProxyPriorDigests;
+}): string => {
+  const unitHeader = socketProxyUnitHeader(input.canonicalUserDataRoot);
+  const polkitHeader = socketProxyPolkitHeader(input.canonicalUserDataRoot);
+  const candidates = [...input.unitPaths, input.polkitPath];
+  const prior = input.priorDigests ?? {};
+  const checks = candidates.map((path) => {
+    const header = path === input.polkitPath ? polkitHeader : unitHeader;
+    return socketProxyArtifactRecheck({
+      path,
+      header,
+      priorDigest: prior[path],
+      allowUnknownDigest: path === input.polkitPath,
+      allowUnattributed: false,
+    });
+  });
+  return [
+    ...socketProxyLockPreamble,
+    ...checks,
+    ...SOCKET_UNIT_NAMES.flatMap((name, index) => {
+      const path = input.unitPaths[index];
+      return path === undefined
+        ? []
+        : [`if [ -e ${shQuote(path)} ]; then systemctl stop ${shQuote(name)}; fi`];
+    }),
+    ...candidates.map((path) => `rm -f -- ${shQuote(path)}`),
+    "systemctl daemon-reload",
   ].join("\n");
 };

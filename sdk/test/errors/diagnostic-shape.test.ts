@@ -54,7 +54,12 @@ describe("public diagnostic contracts", () => {
         properties: { remediation: { type: "string", minLength: 1, pattern: "\\S" } },
         required: ["remediation"],
       });
-      expect("suggestion" in fields).toBe(false);
+      expect("suggestion" in fields).toBe(name === "ConfigKeyNotFoundError");
+      if ("suggestion" in fields) {
+        expect(Schema.is(fields.suggestion)(undefined)).toBe(true);
+        expect(Schema.is(fields.suggestion)('Did you mean "httpPort"?')).toBe(true);
+        expect(Schema.is(fields.suggestion)(42)).toBe(false);
+      }
     });
 
     if ("detail" in fields) {

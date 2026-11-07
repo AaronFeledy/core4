@@ -1173,7 +1173,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     expect(
-      fake.calls.some((call) => call.path.startsWith("/containers/lando-custom-slug-web/archive?")),
+      fake.calls.some((call) => call.path.startsWith("/containers/lando-custom-slug--web/archive?")),
     ).toBe(true);
   });
 
@@ -1306,9 +1306,9 @@ describe("provider-docker RuntimeProvider contract", () => {
       })),
     );
     expect(
-      fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
+      fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp--web")?.body,
     ).toMatchObject({
-      Cmd: ["sh", "-lc", "npm start"],
+      Cmd: ["sh", "-c", "npm start"],
       Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
         Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-cace0001:/cache:ro"],
@@ -1321,7 +1321,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     });
     expect(fake.calls.find((call) => call.path === "/networks/lando_bridge_network/connect")?.body).toEqual({
-      Container: "lando-myapp-web",
+      Container: "lando-myapp--web",
       EndpointConfig: { Aliases: ["web.myapp.internal"] },
     });
     expect(fake.calls.filter((call) => call.path === "/networks/create").map((call) => call.body)).toEqual([
@@ -1343,29 +1343,32 @@ describe("provider-docker RuntimeProvider contract", () => {
         .map((call) => `${call.method} ${call.path}`)
         .filter((call, index, calls) => !call.startsWith("GET /exec/") || call !== calls[index - 1]),
     ).toEqual([
-      "GET /containers/lando-myapp-web/json",
+      "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
+      "GET /containers/lando-myapp--web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
       "GET /networks/lando_bridge_network",
       "POST /networks/create",
-      "GET /containers/lando-myapp-web/json",
+      "GET /containers/lando-myapp--web/json",
       "GET /images/node%3A22-alpine/json",
       "POST /images/create?fromImage=node&tag=22-alpine",
       "GET /images/node%3A22-alpine/json",
-      "POST /containers/create?name=lando-myapp-web",
+      "POST /containers/create?name=lando-myapp--web",
       "POST /networks/lando_bridge_network/connect",
-      "POST /containers/lando-myapp-web/start",
-      "GET /containers/lando-myapp-web/json",
-      "GET /containers/lando-myapp-web/json",
-      "GET /containers/lando-myapp-web/json",
-      "GET /containers/lando-myapp-web/json",
-      "POST /containers/lando-myapp-web/exec",
-      "POST /exec/lando-myapp-web-exec/start",
-      "GET /exec/lando-myapp-web-exec/json",
-      "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
-      "GET /containers/lando-myapp-web/json",
-      "POST /containers/lando-myapp-web-id/stop",
-      "DELETE /containers/lando-myapp-web-id?force=true&v=true",
+      "POST /containers/lando-myapp--web/start",
+      "GET /containers/lando-myapp--web/json",
+      "GET /containers/lando-myapp--web/json",
+      "GET /containers/lando-myapp--web/json",
+      "GET /containers/lando-myapp--web/json",
+      "POST /containers/lando-myapp--web/exec",
+      "POST /exec/lando-myapp--web-exec/start",
+      "GET /exec/lando-myapp--web-exec/json",
+      "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
+      "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
+      "GET /containers/lando-myapp--web/json",
+      "POST /containers/lando-myapp--web-id/stop",
+      "GET /containers/lando-myapp--web-id/json",
+      "DELETE /containers/lando-myapp--web-id?force=true&v=true",
       "GET /networks/lando-myapp",
       "DELETE /networks/lando-myapp",
     ]);
@@ -1388,8 +1391,8 @@ describe("provider-docker RuntimeProvider contract", () => {
         .pipe(Stream.runCollect, Effect.scoped),
     );
 
-    const create = fake.calls.find((call) => call.path === "/containers/lando-myapp-web/exec");
-    const start = fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start");
+    const create = fake.calls.find((call) => call.path === "/containers/lando-myapp--web/exec");
+    const start = fake.calls.find((call) => call.path === "/exec/lando-myapp--web-exec/start");
     expect(create?.body).toMatchObject({ AttachStdin: true, Tty: true });
     expect(start?.body).toMatchObject({ Tty: true });
   });
@@ -1439,13 +1442,13 @@ describe("provider-docker RuntimeProvider contract", () => {
       .map((chunk) => ("chunk" in chunk ? textDecoder.decode(chunk.chunk) : ""))
       .join("");
     expect(stdout).toBe("raw-tty\n");
-    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.stdin).toBe(
+    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp--web-exec/start")?.stdin).toBe(
       stdinStream,
     );
-    expect(fake.calls.some((call) => call.path === "/exec/lando-myapp-web-exec/resize?h=43&w=132")).toBe(
+    expect(fake.calls.some((call) => call.path === "/exec/lando-myapp--web-exec/resize?h=43&w=132")).toBe(
       true,
     );
-    expect(fake.calls.some((call) => call.path === "/exec/lando-myapp-web-exec/resize?h=20&w=100")).toBe(
+    expect(fake.calls.some((call) => call.path === "/exec/lando-myapp--web-exec/resize?h=20&w=100")).toBe(
       true,
     );
   });
@@ -1461,7 +1464,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
       request: DockerHttpRequest,
     ) => {
-      if (request.path === "/exec/lando-myapp-web-exec/start") {
+      if (request.path === "/exec/lando-myapp--web-exec/start") {
         fake.calls.push(request);
         markStarted();
         return Stream.never;
@@ -1491,9 +1494,9 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     expect(Array.from(chunks)).toEqual([]);
-    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.signal?.aborted).toBe(
-      true,
-    );
+    expect(
+      fake.calls.find((call) => call.path === "/exec/lando-myapp--web-exec/start")?.signal?.aborted,
+    ).toBe(true);
   });
 
   test("forwards the since cursor to the Docker logs query", async () => {
@@ -1890,29 +1893,32 @@ describe("provider-docker RuntimeProvider contract", () => {
         .map((call) => `${call.method} ${call.path}`)
         .filter((call, index, calls) => !call.startsWith("GET /exec/") || call !== calls[index - 1]),
     ).toEqual([
-      "GET /containers/lando-myapp-web/json",
+      "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
+      "GET /containers/lando-myapp--web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
       "GET /networks/lando_bridge_network",
       "POST /networks/create",
-      "GET /containers/lando-myapp-web/json",
+      "GET /containers/lando-myapp--web/json",
       "GET /images/node%3A22-alpine/json",
       "POST /images/create?fromImage=node&tag=22-alpine",
       "GET /images/node%3A22-alpine/json",
-      "POST /containers/create?name=lando-myapp-web",
+      "POST /containers/create?name=lando-myapp--web",
       "POST /networks/lando_bridge_network/connect",
-      "POST /containers/lando-myapp-web/start",
-      "GET /containers/lando-myapp-web/json",
-      "GET /containers/lando-myapp-web/json",
-      "GET /containers/lando-myapp-web/json",
-      "GET /containers/lando-myapp-web/json",
-      "POST /containers/lando-myapp-web/exec",
-      "POST /exec/lando-myapp-web-exec/start",
-      "GET /exec/lando-myapp-web-exec/json",
-      "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
-      "GET /containers/lando-myapp-web/json",
-      "POST /containers/lando-myapp-web-id/stop",
-      "DELETE /containers/lando-myapp-web-id?force=true&v=true",
+      "POST /containers/lando-myapp--web/start",
+      "GET /containers/lando-myapp--web/json",
+      "GET /containers/lando-myapp--web/json",
+      "GET /containers/lando-myapp--web/json",
+      "GET /containers/lando-myapp--web/json",
+      "POST /containers/lando-myapp--web/exec",
+      "POST /exec/lando-myapp--web-exec/start",
+      "GET /exec/lando-myapp--web-exec/json",
+      "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
+      "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
+      "GET /containers/lando-myapp--web/json",
+      "POST /containers/lando-myapp--web-id/stop",
+      "GET /containers/lando-myapp--web-id/json",
+      "DELETE /containers/lando-myapp--web-id?force=true&v=true",
       "GET /networks/lando-myapp",
       "DELETE /networks/lando-myapp",
     ]);
@@ -2019,7 +2025,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   });
 
   test.each(["db", "web"])("retains containers and networks when %s start fails", async (failedService) => {
-    const fake = makeFakeApiWithHooks({ failStartFor: new Set([`lando-myapp-${failedService}`]) });
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set([`lando-myapp--${failedService}`]) });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
@@ -2028,8 +2034,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: false })));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.has("lando-myapp-db")).toBe(true);
-    expect(fake.existing.has("lando-myapp-web")).toBe(failedService === "web");
+    expect(fake.existing.has("lando-myapp--db")).toBe(true);
+    expect(fake.existing.has("lando-myapp--web")).toBe(failedService === "web");
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
       false,
     );
@@ -2067,7 +2073,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   });
 
   test("failure errors include providerId, operation, remediation, and redacted details", async () => {
-    const fake = makeFakeApiWithHooks({ failCreateFor: new Set(["lando-myapp-db"]) });
+    const fake = makeFakeApiWithHooks({ failCreateFor: new Set(["lando-myapp--db"]) });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
@@ -2128,7 +2134,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("a non-404 missing-image create failure keeps image remediation after its retry", async () => {
     const fake = makeFakeApiWithHooks({
-      failCreateFor: new Set(["lando-myapp-web"]),
+      failCreateFor: new Set(["lando-myapp--web"]),
       createFailureResponse: { status: 500, body: '{"message":"No such image: node:22-alpine"}' },
     });
     const provider = await Effect.runPromise(
@@ -2152,14 +2158,14 @@ describe("provider-docker RuntimeProvider contract", () => {
     ) as ServiceStartError | undefined;
     expect(startError?.operation).toBe("bringUp.create");
     expect(startError?.remediation).toContain("The image is not present");
-    expect(fake.calls.filter((call) => call.path === "/containers/create?name=lando-myapp-web")).toHaveLength(
-      2,
-    );
+    expect(
+      fake.calls.filter((call) => call.path === "/containers/create?name=lando-myapp--web"),
+    ).toHaveLength(2);
   });
 
   test("surfaces the Docker API failure reason in the error message", async () => {
     const fake = makeFakeApiWithHooks({
-      failStartFor: new Set(["lando-myapp-db"]),
+      failStartFor: new Set(["lando-myapp--db"]),
       startFailureBody: JSON.stringify({
         message:
           "driver failed programming external connectivity: bind 0.0.0.0:80: address already in use; APP_TOKEN=hunter2",

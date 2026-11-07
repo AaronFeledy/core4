@@ -21,5 +21,5 @@ export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
     id: Args.string({ description: "Scratch app id.", required: false }),
   },
   run: (input) => scratchLogs(scratchIdFromInput(input)),
-  render: (result) => renderScratchLogsResult(result as ScratchLogsResult),
+  render: (result) => renderScratchLogsResult(result),
 };

@@ -1,93 +1,66 @@
-import { createHash } from "node:crypto";
-import { readFile, readdir, realpath, rm, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { DateTime, Effect } from "effect";
-
-import { isPathWithin } from "@lando/paths";
-import { CacheError, type LandofileFormConflictError } from "@lando/sdk/errors";
-import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
-
-import { findLandofilePath } from "@lando/landofile/discovery";
+import { readFile, readdir, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
-import { presentLandofileLayers } from "@lando/landofile/layers";
+import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
-  type LandofileReferencedFile,
-  getLandofileReferencedFiles,
-} from "@lando/landofile/load-expression-provenance";
-import {
-  type VersionConstraintEntry,
-  evaluateVersionConstraints,
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
-  isVersionConstraintEntryArray,
-  isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
-import { bundledPluginModules } from "../composition.ts";
+import { CacheError, type LandofileFormConflictError } from "@lando/sdk/errors";
+import type { LandofileShape } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
-import { compilePluginCommands } from "./command-compiler.ts";
+import {
+  type AppCommandCacheSource,
+  isMissingFile,
+  localIncludePathsForLandofile,
+  resolveAppCommandCacheSource,
+  sourceContentHash,
+} from "./command-index-source.ts";
 import {
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   type CommandIndexEntry,
-  type PluginCommandIndexPayload,
   decodeAppCommandIndex,
-  decodePluginCommandIndex,
   deriveAppCommandEntriesFingerprint,
   deriveAppCommandToolingFingerprint,
-  derivePluginCommandIdsByPlugin,
-  derivePluginCommandManifestFingerprint,
-  derivePluginCommandPluginListSha,
   encodeAppCommandIndex,
-  encodePluginCommandIndex,
   normalizeAppCommandAliasPolicy,
 } from "./command-index.ts";
-import { commandScriptFingerprints, commandScriptsFresh } from "./command-script-freshness.ts";
-import {
-  appCommandCachePath,
-  appToolingCompilationCachePath,
-  pluginCommandCachePath,
-  resolveUserCacheRoot,
-} from "./paths.ts";
+import { commandScriptFingerprints } from "./command-script-freshness.ts";
+import { appCommandCachePath, appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
 
-const isMissingFile = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT";
-
-const versionConstraintsEqual = (
-  left: ReadonlyArray<VersionConstraintEntry> | undefined,
-  right: ReadonlyArray<VersionConstraintEntry>,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
-
-const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry> | undefined): boolean => {
-  if (!isVersionConstraintEntryArray(entries)) return false;
-  const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
-  if (evaluation.invalid.length > 0) return false;
-  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
-};
-
-const referencedFilesEqual = (
-  left: ReadonlyArray<LandofileReferencedFile> | undefined,
-  right: ReadonlyArray<LandofileReferencedFile>,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
-
-const referencedFilesFresh = async (
-  files: ReadonlyArray<LandofileReferencedFile> | undefined,
-): Promise<boolean> => {
-  if (!Array.isArray(files)) return false;
-  const results = await Promise.all(
-    files.map(async (file) => {
-      try {
-        const bytes = await readFile(file.absolutePath);
-        return bytes.byteLength === file.size && sha256Hex(bytes) === file.sha256;
-      } catch {
-        return false;
-      }
-    }),
-  );
-  return results.every(Boolean);
-};
+export {
+  type AppCommandCacheReadResult,
+  type ReadAppCommandCacheOptions,
+  readAppCommandCacheForCwdDetailed,
+  readFreshAppCommandCacheForCwd,
+} from "./command-index-reader.ts";
+/**
+ * Drop app tooling-compilation caches under `<userCacheRoot>/apps/tooling-*`.
+ * Plugin-set changes (install/link/unlink/remove/trust) call this so the next
+ * tooling path rebuilds against the current contribution set.
+ */
+export const invalidateAppToolingCaches = (
+  options: { readonly cacheRoot?: string } = {},
+): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+      const appsRoot = join(cacheRoot, "apps");
+      const entries = await readdir(appsRoot, { withFileTypes: true }).catch((cause) => {
+        if (isMissingFile(cause)) return [];
+        throw cause;
+      });
+      await Promise.all(
+        entries
+          .filter((entry) => entry.isDirectory() && entry.name.startsWith("tooling-"))
+          .map((entry) => rm(join(appsRoot, entry.name), { recursive: true, force: true })),
+      );
+    },
+    catch: () => undefined,
+  }).pipe(Effect.ignore);
 
 export interface WriteAppCommandCacheOptions {
   readonly landofile: LandofileShape;
@@ -97,171 +70,65 @@ export interface WriteAppCommandCacheOptions {
   readonly now?: () => number;
 }
 
-interface AppCommandCacheSource {
-  readonly filePath: string;
-  readonly stats: {
-    readonly mtimeMs: number;
-    readonly size: number;
-  };
-  readonly landofileSources: ReadonlyArray<{ readonly relativePath: string; readonly bytes: Uint8Array }>;
-  readonly includeLockfileBytes: Uint8Array | null;
+interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
+  readonly toolingFingerprint?: string;
+  readonly entriesFingerprint?: string;
+  readonly source?: AppCommandCacheSource;
 }
 
-const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
+const readAppCommandCacheTask = async (
+  options: ReadAppCommandCacheTaskOptions,
+): Promise<AppCommandIndexPayload | null> => {
+  const source = options.source;
+  if (source === undefined) return null;
+  const { filePath, stats } = source;
+  const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+  const appName = options.landofile.name ?? "unnamed";
+  const cachePath = appCommandCachePath(cacheRoot, appName, dirname(filePath));
   try {
-    return await readFile(path);
+    const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
+    if (payload === null) return null;
+    if (payload.landoVersion !== CORE_VERSION) return null;
+    if (payload.sourceFile !== filePath) return null;
+    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+    if (JSON.stringify(payload.sourceLocalIncludePaths) !== JSON.stringify(sourceLocalIncludePaths))
+      return null;
+    if (
+      JSON.stringify(payload.sourceReferencedFiles) !==
+      JSON.stringify(getLandofileReferencedFiles(options.landofile))
+    )
+      return null;
+    if (
+      payload.sourceContentHash !==
+      (await sourceContentHash(
+        source,
+        sourceLocalIncludePaths,
+        getLocalIncludePaths(options.landofile).length > 0,
+      ))
+    )
+      return null;
+    if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
+    if (
+      payload.toolingFingerprint !==
+      (options.toolingFingerprint ?? deriveAppCommandToolingFingerprint(options.landofile))
+    )
+      return null;
+    if (
+      JSON.stringify(payload.versionConstraints) !==
+      JSON.stringify(getVersionConstraintEntries(options.landofile, filePath))
+    )
+      return null;
+    if (
+      (payload.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(payload.entries)) !==
+      (options.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(options.entries))
+    )
+      return null;
+    return payload;
   } catch (cause) {
     if (isMissingFile(cause)) return null;
     throw cause;
   }
 };
-
-interface LocalIncludeSource {
-  readonly relativePath: string;
-  readonly bytes: Uint8Array | null;
-}
-
-const isRemoteInclude = (source: string): boolean =>
-  source.startsWith("npm:") ||
-  source.startsWith("git@") ||
-  source.startsWith("github:") ||
-  /^https?:\/\//u.test(source);
-
-const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray<string> => {
-  const remembered = getLocalIncludePaths(landofile);
-  if (remembered.length > 0) return remembered;
-  return (landofile.includes ?? [])
-    .map((entry) => (typeof entry === "string" ? entry : entry.source))
-    .filter((source) => !isRemoteInclude(source));
-};
-
-const realpathIfPresent = async (path: string): Promise<string | undefined> => {
-  try {
-    return await realpath(path);
-  } catch (cause) {
-    if (isMissingFile(cause)) return undefined;
-    throw cause;
-  }
-};
-
-const localIncludePath = async (
-  appRoot: string,
-  source: string,
-  allowOutsideRoot: boolean,
-): Promise<{ readonly filePath: string; readonly relativePath: string } | undefined> => {
-  if (isRemoteInclude(source)) return undefined;
-  const candidate = isAbsolute(source) ? source : resolve(appRoot, source);
-  if (!isPathWithin(appRoot, candidate)) {
-    if (!allowOutsideRoot || !isAbsolute(source)) return undefined;
-    const realCandidate = await realpathIfPresent(candidate);
-    return {
-      filePath: realCandidate ?? candidate,
-      relativePath: `external:${sha256Hex(candidate)}`,
-    };
-  }
-
-  const realRoot = await realpath(appRoot);
-  const realCandidate = await realpathIfPresent(candidate);
-  if (realCandidate === undefined) {
-    return { filePath: candidate, relativePath: relative(appRoot, candidate).split(sep).join("/") };
-  }
-  if (!isPathWithin(realRoot, realCandidate)) {
-    throw new CacheError({
-      message: `Local include ${source} resolves outside the app root.`,
-      key: "app-command",
-      path: candidate,
-      remediation: "Update the local include path or symlink so its target stays inside the app root.",
-    });
-  }
-  return { filePath: realCandidate, relativePath: relative(realRoot, realCandidate).split(sep).join("/") };
-};
-
-const localIncludeSourcesFor = async (
-  appRoot: string,
-  paths: ReadonlyArray<string>,
-  allowOutsideRoot: boolean,
-): Promise<ReadonlyArray<LocalIncludeSource>> => {
-  const sources: LocalIncludeSource[] = [];
-  for (const source of [...new Set(paths)].sort()) {
-    const includePath = await localIncludePath(appRoot, source, allowOutsideRoot);
-    if (includePath === undefined) continue;
-    sources.push({
-      relativePath: includePath.relativePath,
-      bytes: await readOptionalFile(includePath.filePath),
-    });
-  }
-  return sources;
-};
-
-const sourceHashFor = (
-  landofileSources: ReadonlyArray<{ readonly relativePath: string; readonly bytes: Uint8Array }>,
-  includeLockfileBytes: Uint8Array | null,
-  localIncludes: ReadonlyArray<LocalIncludeSource>,
-): string => {
-  const hash = createHash("sha256");
-  hash.update("landofiles\0");
-  for (const source of landofileSources) {
-    hash.update(source.relativePath);
-    hash.update("\0");
-    hash.update(source.bytes);
-    hash.update("\0");
-  }
-  hash.update("\0include-lock\0");
-  if (includeLockfileBytes !== null) hash.update(includeLockfileBytes);
-  hash.update("\0local-includes\0");
-  for (const include of localIncludes) {
-    hash.update(include.relativePath);
-    hash.update("\0");
-    if (include.bytes === null) hash.update("<missing>");
-    else hash.update(include.bytes);
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-};
-
-const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: string) {
-  const filePath = yield* findLandofilePath(cwd);
-  if (filePath === undefined) return undefined;
-
-  const appRoot = dirname(filePath);
-  const layers = yield* presentLandofileLayers(appRoot);
-  const [stats, landofileSources, includeLockfileBytes] = yield* Effect.tryPromise({
-    try: () =>
-      Promise.all([
-        stat(filePath),
-        Promise.all(
-          layers.map(async (layer) => ({
-            relativePath: relative(appRoot, layer.filePath).split(sep).join("/"),
-            bytes: await readFile(layer.filePath),
-          })),
-        ),
-        readOptionalFile(join(appRoot, ".lando.lock.yml")),
-      ]),
-    catch: (cause) =>
-      new CacheError({
-        message: "Failed to read app-command sources.",
-        key: "app-command",
-        cause,
-        remediation: "Ensure the app's Landofile layers and any .lando.lock.yml file exist and are readable.",
-      }),
-  });
-  return { filePath, stats, landofileSources, includeLockfileBytes };
-});
-
-const sourceContentHash = async (
-  source: AppCommandCacheSource,
-  appRoot: string,
-  localIncludePaths: ReadonlyArray<string>,
-  allowOutsideRoot = false,
-): Promise<string> =>
-  sourceHashFor(
-    source.landofileSources,
-    source.includeLockfileBytes,
-    await localIncludeSourcesFor(appRoot, localIncludePaths, allowOutsideRoot),
-  );
-
-const pathsEqual = (left: ReadonlyArray<string> | undefined, right: ReadonlyArray<string>): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
 
 const writeAppCommandCacheTask = async (
   options: WriteAppCommandCacheOptions,
@@ -283,7 +150,6 @@ const writeAppCommandCacheTask = async (
   const sourceScripts = await commandScriptFingerprints(appRoot);
   const contentHash = await sourceContentHash(
     source,
-    appRoot,
     sourceLocalIncludePaths,
     getLocalIncludePaths(options.landofile).length > 0,
   );
@@ -312,7 +178,6 @@ const writeAppCommandCacheTask = async (
     await writeFileAtomicViaRename(toolingCompilationCachePath, encodeAppCommandIndex(payload));
     return cachePath;
   }
-
   const payload: AppCommandIndexPayload = {
     schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
     landoVersion: CORE_VERSION,
@@ -331,200 +196,9 @@ const writeAppCommandCacheTask = async (
     generatedAtMs: options.now === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : options.now(),
     entries: options.entries,
   };
-
   await writeFileAtomicViaRename(cachePath, encodeAppCommandIndex(payload));
   await writeFileAtomicViaRename(toolingCompilationCachePath, encodeAppCommandIndex(payload));
   return cachePath;
-};
-
-export const writeAppCommandCache = (
-  options: WriteAppCommandCacheOptions,
-): Effect.Effect<string | undefined, never> =>
-  writeAppCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
-
-export interface WritePluginCommandCacheOptions {
-  readonly manifests?: ReadonlyArray<PluginManifest>;
-  readonly modules?: ReadonlyArray<{ readonly manifest: PluginManifest }>;
-  readonly pluginNames?: ReadonlyArray<string>;
-  readonly cacheRoot?: string;
-  readonly now?: () => number;
-}
-
-const resolvePluginManifests = (options: WritePluginCommandCacheOptions): ReadonlyArray<PluginManifest> =>
-  options.manifests ?? (options.modules ?? bundledPluginModules()).map((module) => module.manifest);
-
-const missingPluginNames = (
-  manifests: ReadonlyArray<PluginManifest>,
-  pluginNames: ReadonlyArray<string>,
-): ReadonlyArray<string> => {
-  const present = new Set(manifests.map((manifest) => String(manifest.name)));
-  return pluginNames.filter((name) => !present.has(name));
-};
-
-const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptions): Promise<string> => {
-  const manifests = resolvePluginManifests(options);
-  const pluginNames = options.pluginNames ?? manifests.map((manifest) => manifest.name);
-  const missing = missingPluginNames(manifests, pluginNames);
-  if (missing.length > 0) {
-    throw new CacheError({
-      message: `Cannot write plugin-command cache because bundled plugin manifests are missing: ${missing.join(", ")}.`,
-      key: "plugin-command",
-      cause: { missing },
-      remediation: "Restore the missing bundled plugin manifests by reinstalling Lando, then retry.",
-    });
-  }
-
-  const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-  const cachePath = pluginCommandCachePath(cacheRoot);
-  const manifestFingerprint = derivePluginCommandManifestFingerprint(manifests);
-  const pluginListSha = derivePluginCommandPluginListSha(manifests);
-  const commandsByPlugin = derivePluginCommandIdsByPlugin(manifests);
-
-  const cached = await readPluginCommandCacheTask({ ...options, cacheRoot, manifestFingerprint });
-  if (cached !== null) return cachePath;
-
-  const payload: PluginCommandIndexPayload = {
-    schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
-    landoVersion: CORE_VERSION,
-    pluginNames,
-    manifestFingerprint,
-    pluginListSha,
-    commandsByPlugin,
-    generatedAtMs: options.now === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : options.now(),
-    entries: compilePluginCommands(manifests),
-  };
-
-  await writeFileAtomicViaRename(cachePath, encodePluginCommandIndex(payload));
-  return cachePath;
-};
-
-interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
-  readonly toolingFingerprint?: string;
-  readonly entriesFingerprint?: string;
-  readonly source?: AppCommandCacheSource;
-}
-
-const readAppCommandCacheTask = async (
-  options: ReadAppCommandCacheTaskOptions,
-): Promise<AppCommandIndexPayload | null> => {
-  const source = options.source;
-  if (source === undefined) return null;
-
-  const { filePath, stats } = source;
-  const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-  const appName = options.landofile.name ?? "unnamed";
-  const appRoot = dirname(filePath);
-  const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
-
-  try {
-    const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
-    if (payload === null) return null;
-    if (payload.landoVersion !== CORE_VERSION) return null;
-    if (payload.sourceFile !== filePath) return null;
-    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
-    if (!pathsEqual(payload.sourceLocalIncludePaths, sourceLocalIncludePaths)) return null;
-    if (!referencedFilesEqual(payload.sourceReferencedFiles, getLandofileReferencedFiles(options.landofile)))
-      return null;
-    if (
-      payload.sourceContentHash !==
-      (await sourceContentHash(
-        source,
-        appRoot,
-        sourceLocalIncludePaths,
-        getLocalIncludePaths(options.landofile).length > 0,
-      ))
-    )
-      return null;
-    if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
-    if (
-      payload.toolingFingerprint !==
-      (options.toolingFingerprint ?? deriveAppCommandToolingFingerprint(options.landofile))
-    ) {
-      return null;
-    }
-    const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
-    if (!versionConstraintsEqual(payload.versionConstraints, versionConstraints)) return null;
-    if (
-      (payload.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(payload.entries)) !==
-      (options.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(options.entries))
-    ) {
-      return null;
-    }
-    return payload;
-  } catch (cause) {
-    if (isMissingFile(cause)) return null;
-    throw cause;
-  }
-};
-
-const readFreshAppCommandCacheForCwdTask = async (
-  options: {
-    readonly cwd?: string;
-    readonly cacheRoot?: string;
-    readonly includeScriptInventory?: boolean;
-  },
-  source: AppCommandCacheSource,
-): Promise<AppCommandIndexPayload | null> => {
-  const appRoot = dirname(source.filePath);
-  const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-  const cachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
-
-  try {
-    const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
-    if (payload === null) return null;
-    if (payload.landoVersion !== CORE_VERSION) return null;
-    if (payload.sourceFile !== source.filePath) return null;
-    if (!Array.isArray(payload.sourceLocalIncludePaths)) return null;
-    if (!(await referencedFilesFresh(payload.sourceReferencedFiles))) return null;
-    if (!(await commandScriptsFresh(appRoot, payload.sourceScripts, options.includeScriptInventory)))
-      return null;
-    if (
-      payload.sourceContentHash !==
-      (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths, true))
-    )
-      return null;
-    if (payload.sourceMtimeMs !== source.stats.mtimeMs || payload.sourceSize !== source.stats.size)
-      return null;
-    if (!versionConstraintsUsable(payload.versionConstraints)) return null;
-    return payload;
-  } catch (cause) {
-    if (isMissingFile(cause)) return null;
-    throw cause;
-  }
-};
-
-interface ReadPluginCommandCacheTaskOptions extends WritePluginCommandCacheOptions {
-  readonly manifestFingerprint?: string;
-}
-
-const readPluginCommandCacheTask = async (
-  options: ReadPluginCommandCacheTaskOptions = {},
-): Promise<PluginCommandIndexPayload | null> => {
-  const manifests = resolvePluginManifests(options);
-  const pluginNames = options.pluginNames ?? manifests.map((manifest) => manifest.name);
-  const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-  const cachePath = pluginCommandCachePath(cacheRoot);
-  const pluginListSha = derivePluginCommandPluginListSha(manifests);
-  const commandsByPlugin = derivePluginCommandIdsByPlugin(manifests);
-
-  try {
-    const payload = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
-    if (payload === null) return null;
-    if (payload.landoVersion !== CORE_VERSION) return null;
-    if (
-      payload.manifestFingerprint !==
-      (options.manifestFingerprint ?? derivePluginCommandManifestFingerprint(manifests))
-    ) {
-      return null;
-    }
-    if (payload.pluginListSha !== pluginListSha) return null;
-    if (JSON.stringify(payload.commandsByPlugin) !== JSON.stringify(commandsByPlugin)) return null;
-    if (!pathsEqual(payload.pluginNames, pluginNames)) return null;
-    return payload;
-  } catch (cause) {
-    if (isMissingFile(cause)) return null;
-    throw cause;
-  }
 };
 
 export const readAppCommandCache = (
@@ -536,30 +210,6 @@ export const readAppCommandCache = (
         ? Effect.succeed(null)
         : Effect.tryPromise({
             try: () => readAppCommandCacheTask({ ...options, source }),
-            catch: (cause) =>
-              new CacheError({
-                message: "Failed to read app-command cache.",
-                key: "app-command",
-                cause,
-                remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
-              }),
-          }),
-    ),
-  );
-
-export const readFreshAppCommandCacheForCwd = (
-  options: {
-    readonly cwd?: string;
-    readonly cacheRoot?: string;
-    readonly includeScriptInventory?: boolean;
-  } = {},
-): Effect.Effect<AppCommandIndexPayload | null, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd).pipe(
-    Effect.flatMap((source) =>
-      source === undefined
-        ? Effect.succeed(null)
-        : Effect.tryPromise({
-            try: () => readFreshAppCommandCacheForCwdTask(options, source),
             catch: (cause) =>
               new CacheError({
                 message: "Failed to read app-command cache.",
@@ -593,58 +243,7 @@ export const writeAppCommandCacheStrict = (
     ),
   );
 
-export const readPluginCommandCache = (
-  options: WritePluginCommandCacheOptions = {},
-): Effect.Effect<PluginCommandIndexPayload | null, CacheError> =>
-  Effect.tryPromise({
-    try: () => readPluginCommandCacheTask(options),
-    catch: (cause) =>
-      new CacheError({
-        message: "Failed to read plugin-command cache.",
-        key: "plugin-command",
-        cause,
-        remediation: "Delete the Lando cache entry `plugin-command` and re-run the command.",
-      }),
-  });
-
-export const writePluginCommandCacheStrict = (
-  options: WritePluginCommandCacheOptions = {},
-): Effect.Effect<string, CacheError> =>
-  Effect.tryPromise({
-    try: () => writePluginCommandCacheTask(options),
-    catch: (cause) =>
-      cause instanceof CacheError
-        ? cause
-        : new CacheError({
-            message: "Failed to write plugin-command cache.",
-            key: "plugin-command",
-            cause,
-            remediation: "Delete the Lando cache entry `plugin-command` and re-run the command.",
-          }),
-  });
-
-export const writePluginCommandCache = (
-  options: WritePluginCommandCacheOptions = {},
+export const writeAppCommandCache = (
+  options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, never> =>
-  writePluginCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
-
-export const invalidatePluginCommandCache = (
-  options: { readonly cacheRoot?: string } = {},
-): Effect.Effect<void, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
-      await rm(pluginCommandCachePath(cacheRoot), { force: true });
-      const appsRoot = join(cacheRoot, "apps");
-      const entries = await readdir(appsRoot, { withFileTypes: true }).catch((cause) => {
-        if (isMissingFile(cause)) return [];
-        throw cause;
-      });
-      await Promise.all(
-        entries
-          .filter((entry) => entry.isDirectory() && entry.name.startsWith("tooling-"))
-          .map((entry) => rm(join(appsRoot, entry.name), { recursive: true, force: true })),
-      );
-    },
-    catch: () => undefined,
-  }).pipe(Effect.ignore);
+  writeAppCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));

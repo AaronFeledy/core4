@@ -50,7 +50,7 @@ lando pip install -r requirements.txt
 
 `web` (and `worker`, if you added it) starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. Parse `DATABASE_URL` with `dj-database-url` or `urllib.parse` in `settings.py`; nothing there needs to name the host or password. `lando info` shows the user and database name and redacts the rest.
 
-The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit either value if your project uses another module. Port `8000` is editable on `web`; keep the server bind in sync.
+The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit either value if your project uses another module. `port:` on `web` sets the endpoint and `PORT` (default `8000`). Django `runserver` does not read `PORT`, so keep the `0.0.0.0:8000` argument aligned with `port:`. An authored `environment.PORT` must equal the planned port or planning fails; change `port:` instead.
 
 `lando start` keeps the web container running for project setup; it does not start Django's server. The route from `lando info` reaches your app only while the server is running.
 

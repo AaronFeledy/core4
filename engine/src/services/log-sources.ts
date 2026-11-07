@@ -34,7 +34,7 @@ const validateSourceShape = (
   if (!Schema.is(LogSource)(source)) {
     return validationError(input, `Service ${input.serviceName} declares an invalid log source.`, issue);
   }
-  if (!source.path.startsWith("/")) {
+  if (source.path !== undefined && !source.path.startsWith("/")) {
     return validationError(
       input,
       `Service ${input.serviceName} log source ${String(source.id)} must use an absolute in-container path.`,

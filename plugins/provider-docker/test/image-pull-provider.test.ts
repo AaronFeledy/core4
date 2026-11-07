@@ -145,6 +145,19 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     }
     if (path.endsWith("/stop")) return { status: 204, body: "" };
     if (method === "DELETE") return { status: 204, body: "" };
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      return {
+        status: 200,
+        body: JSON.stringify(
+          Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: { "dev.lando.app": "mailpit-app" },
+          })),
+        ),
+      };
+    }
     return { status: 500, body: '{"message":"unexpected request"}' };
   };
   const api = {
@@ -302,7 +315,7 @@ describe("provider-docker apply image pull", () => {
 
     const inspect = fake.requests.indexOf(`GET /images/${encodeURIComponent(mailpitRef)}/json`);
     const pull = fake.requests.indexOf(`POST ${buildImagePullRequest(mailpitRef, dockerPullDialect).path}`);
-    const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app-mailpit");
+    const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app--mailpit");
     expect(inspect).toBeGreaterThan(-1);
     expect(pull).toBeGreaterThan(inspect);
     expect(create).toBeGreaterThan(pull);

@@ -19,11 +19,11 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { LogsAppResult } from "@lando/engine/operations/logs";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 const SECRET_VALUE = "supersecret-log-canary-9f3a";
 
@@ -36,6 +36,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -159,7 +160,6 @@ const makeLayer = (rawLine: string) => {
         service: ServiceName.make("database"),
         providerId,
         status: "running",
-        state: "running",
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
@@ -229,7 +229,7 @@ describe("lando logs redaction boundary", () => {
           rendererMode: "plain",
           resultFormat: "text",
           command: "app:logs",
-          resultSchema: EmptyResultSchema,
+          resultSchema: LogsAppResult,
           streaming: StreamFrame,
           streamingMode: "live",
           io: textIo,
@@ -250,7 +250,7 @@ describe("lando logs redaction boundary", () => {
           rendererMode: "json",
           resultFormat: "json",
           command: "app:logs",
-          resultSchema: EmptyResultSchema,
+          resultSchema: LogsAppResult,
           streaming: StreamFrame,
           streamingMode: "live",
           io: jsonIo,
@@ -291,7 +291,7 @@ describe("lando logs redaction boundary", () => {
         rendererMode: "plain",
         resultFormat: "text",
         command: "app:logs",
-        resultSchema: EmptyResultSchema,
+        resultSchema: LogsAppResult,
         streaming: StreamFrame,
         streamingMode: "live",
         formatError: ({ error }) => String(error),

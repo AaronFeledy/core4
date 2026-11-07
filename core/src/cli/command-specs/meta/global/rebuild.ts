@@ -2,8 +2,8 @@ import {
   type GlobalRebuildResult,
   GlobalRebuildResultSchema,
   globalRebuild,
-  renderGlobalRebuildResult,
-} from "../../../commands/meta/global-rebuild";
+} from "@lando/engine/operations/global-rebuild";
+import { renderGlobalRebuildResult } from "../../../commands/meta/global-rebuild";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
 import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 
@@ -20,5 +20,5 @@ export const metaGlobalRebuildSpec: LandoCommandSpec<GlobalRebuildResult> = {
     const signal = extractSpecAbortSignal(input);
     return globalRebuild(signal === undefined ? {} : { signal });
   },
-  render: (result) => renderGlobalRebuildResult(result as GlobalRebuildResult),
+  render: (result) => renderGlobalRebuildResult(result),
 };

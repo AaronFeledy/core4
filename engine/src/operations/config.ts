@@ -18,11 +18,11 @@ import { validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import type { EditorRunner } from "../config-write/editor.ts";
+import { ConfigDescribeResultSchema, describeConfigKey } from "../config-write/key-schema.ts";
 import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import type { ValueType } from "../config-write/write-core";
 import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
 import { recordConfigWarning } from "../config/config-warnings.ts";
-import type { CliTelemetrySource } from "../runtime/cli-options";
 import { GlobalConfigSources } from "../services/config.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.
@@ -43,29 +43,12 @@ export interface ConfigOptions {
   readonly editorRunner?: EditorRunner;
 }
 
-export interface ConfigResult {
-  readonly raw?: unknown;
-  readonly config?: GlobalConfigView;
-  readonly subcommand?: string;
-  readonly key?: string;
-  readonly value?: unknown;
-  readonly path?: string;
-  readonly format: "json" | "yaml" | "table";
-  readonly telemetry?: {
-    readonly enabled: boolean;
-    readonly source: CliTelemetrySource;
-  };
-  readonly changed?: boolean;
-  readonly dryRun?: boolean;
-  readonly valid?: boolean;
-  readonly issues?: ReadonlyArray<string>;
-  readonly configPath?: string;
-}
-
-export const ConfigResultSchema = Schema.Struct({
+const ConfigValueResultSchema = Schema.Struct({
   raw: Schema.optionalKey(Schema.Unknown),
   config: Schema.optionalKey(GlobalConfigView),
-  subcommand: Schema.optionalKey(Schema.String),
+  subcommand: Schema.optionalKey(
+    Schema.Literals(["view", "get", "set", "unset", "edit", "validate", "translate", "telemetry"]),
+  ),
   key: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
   path: Schema.optionalKey(Schema.String),
@@ -87,6 +70,11 @@ export const ConfigResultSchema = Schema.Struct({
   issues: Schema.optionalKey(Schema.Array(Schema.String)),
   configPath: Schema.optionalKey(Schema.String),
 });
+export const ConfigResultSchema = Schema.Union([
+  ConfigValueResultSchema,
+  Schema.Struct({ ...ConfigDescribeResultSchema.fields, format: ConfigValueResultSchema.fields.format }),
+]);
+export type ConfigResult = typeof ConfigResultSchema.Type;
 
 const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
@@ -150,6 +138,7 @@ const installationDocument = (path: string) => ({
   readText: readConfigText(path),
   parse: parseConfigText(path),
   editCommand: "lando config edit",
+  schema: "GlobalConfig" as const,
   decode: (input: unknown) => decodeConfigCandidate(input, path),
   decodeBaseline: (input: unknown) => decodeConfigCandidate(input, path, false),
   writeText: writeConfigAtomic,
@@ -173,7 +162,11 @@ const hostEventsWriteError = (key: string, file: string): LandofileWriteValidati
 
 const metaConfigSet = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const key = options.key ?? options.path;
   const raw = options.value;
   if (key !== undefined && isHostEventsConfigPath(key)) {
@@ -210,7 +203,11 @@ const metaConfigSet = Effect.fnUntraced(function* (
 
 const metaConfigUnset = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const key = options.key ?? options.path;
   if (key !== undefined && isHostEventsConfigPath(key)) {
     return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
@@ -243,7 +240,11 @@ const metaConfigUnset = Effect.fnUntraced(function* (
 
 const metaConfigValidate = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const path = resolveConfigWritePath(options);
   const stack = yield* configSourceStack(path);
   const decoded = yield* decodeConfigStack(stack, "error");
@@ -259,7 +260,11 @@ const metaConfigValidate = Effect.fnUntraced(function* (
 
 const metaConfigEdit = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const path = resolveConfigWritePath(options);
   const runner = options.editorRunner;
   const outcome = yield* runEditVerb({
@@ -289,10 +294,26 @@ const metaConfigEdit = Effect.fnUntraced(function* (
   };
 });
 
+/** `meta:config` input: every {@link ConfigOptions} subcommand plus the schema-only `describe`. */
+export type MetaConfigOptions = Omit<ConfigOptions, "subcommand"> & {
+  readonly subcommand?: ConfigOptions["subcommand"] | "describe";
+};
+
+/** Describes a `config.yml` key from the GlobalConfig schema; reads no config source. */
+export const describeConfig = Effect.fn("AppOperation.configDescribe")(function* (
+  options: Pick<ConfigOptions, "key" | "path" | "format">,
+) {
+  return {
+    subcommand: "describe" as const,
+    format: options.format ?? "table",
+    ...(yield* describeConfigKey("installation", options.key ?? options.path)),
+  };
+});
+
 export const config = Effect.fn("AppOperation.config")(function* (
   inputOptions: ConfigOptions = {},
 ): Effect.fn.Return<
-  ConfigResult,
+  typeof ConfigValueResultSchema.Type,
   ConfigError | LandoCommandError | LandofileWriteValidationError | NotImplementedError,
   GlobalConfigSources
 > {
@@ -409,3 +430,9 @@ export const config = Effect.fn("AppOperation.config")(function* (
     format: options.format ?? "table",
   };
 });
+
+/** Every `meta:config` subcommand, including the schema-only `describe`. */
+export const runConfig = ({ subcommand, ...options }: MetaConfigOptions = {}) =>
+  subcommand === "describe"
+    ? describeConfig(options)
+    : config(subcommand === undefined ? options : { ...options, subcommand });

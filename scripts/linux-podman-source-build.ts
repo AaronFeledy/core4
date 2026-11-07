@@ -33,7 +33,9 @@ export const NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH = join(
 );
 /** Repo patch the source build applies to `component`, if any; notices link the same file. */
 export const sourcePatchFor = (component: RuntimeBundleComponent): string | undefined =>
-  component.sourceBuild === LinuxNetavarkSourceBuild && component.version === "2.0.0"
+  "sourceBuild" in component &&
+  component.sourceBuild === LinuxNetavarkSourceBuild &&
+  component.version === "2.0.0"
     ? NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH
     : undefined;
 const NETAVARK_AARDVARK_SOURCE_SHA256 = "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823";
@@ -127,9 +129,11 @@ export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuild
     ) {
       await options.execute(["tar", "-xzf", inputPath(options.artifactPaths, "vendor"), "-C", sourceDir]);
       await mkdir(join(sourceDir, ".cargo"), { recursive: true });
+      // rustc embeds absolute source paths; remap the random work dir so rebuilds are byte-identical.
+      const rustflags = ["-C", "link-arg=-Wl,--build-id=none", "--remap-path-prefix", `${workDir}=/build`];
       await writeFile(
         join(sourceDir, ".cargo", "config.toml"),
-        `[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n\n[build]\nrustflags = ["-C", "link-arg=-Wl,--build-id=none"]\n`,
+        `[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n\n[build]\nrustflags = ${JSON.stringify(rustflags)}\n`,
       );
       await options.execute(
         ["env", "SOURCE_DATE_EPOCH=0", "cargo", "build", "--release", "--locked", "--offline"],

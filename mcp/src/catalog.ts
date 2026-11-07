@@ -8,7 +8,7 @@
  */
 import type { McpCatalog, McpCatalogOptions, McpToolDescriptor } from "@lando/sdk/schema";
 
-import { isMcpAllowlistForbidden } from "./allowlist";
+import { filterMcpDefaultAllowlist, isMcpDestructiveCommand, isMcpNeverAllowed } from "./allowlist";
 import type { McpCommandSpec } from "./registry";
 import { type McpCommandEntry, deriveToolInputSchema } from "./registry";
 
@@ -26,25 +26,54 @@ export interface EffectiveAllowlist {
 
 /**
  * Compute the effective tool allowlist: defaults ∪ allow, minus deny. Deny wins
- * over allow, so an id in both is excluded.
+ * over allow, so an id in both is excluded; never-allowed ids are always excluded.
  */
 export const computeEffectiveAllowlist = (input: EffectiveAllowlistInput): EffectiveAllowlist => {
   const deny = new Set(input.deny ?? []);
   const ids = new Set<string>();
-  for (const id of input.defaults) if (!deny.has(id)) ids.add(id);
-  for (const id of input.allow ?? []) if (!deny.has(id)) ids.add(id);
+  for (const id of [...input.defaults, ...(input.allow ?? [])])
+    if (!deny.has(id) && !isMcpNeverAllowed(id)) ids.add(id);
   const parts = ["defaults"];
   if ((input.allow ?? []).length > 0) parts.push("allow");
   if (deny.size > 0) parts.push("deny");
   return { ids, source: parts.join("+") };
 };
 
-const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
+/**
+ * Session allow policy. `defaults` is the reviewed default allowlist before any owner is known;
+ * `allow` and `deny` come from global config and CLI options, never from an app's files.
+ */
+export interface McpAllowPolicy {
+  readonly defaults: ReadonlySet<string>;
+  readonly allow: ReadonlySet<string>;
+  readonly deny: ReadonlySet<string>;
+}
+
+export const makeMcpAllowPolicy = (input: EffectiveAllowlistInput): McpAllowPolicy => ({
+  defaults: new Set(input.defaults),
+  allow: new Set(input.allow ?? []),
+  deny: new Set(input.deny ?? []),
+});
+
+/** Whether some owner of `id` could be authorized: deny wins and never-allowed ids stay excluded. */
+export const isMcpIdAuthorizable = (policy: McpAllowPolicy, id: string): boolean =>
+  !policy.deny.has(id) && !isMcpNeverAllowed(id) && (policy.allow.has(id) || policy.defaults.has(id));
+
+/**
+ * Authorize the selected owner of a tool. An explicit allowance covers any owner; a default
+ * allowance covers only built-ins and reviewed bundled contributions, so an external plugin that
+ * replaces a default-allowed bundled id does not inherit it.
+ */
+export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandEntry): boolean =>
+  isMcpIdAuthorizable(policy, entry.spec.id) &&
+  (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1);
+
+export const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   toolId: spec.id,
   commandId: spec.id,
   title: spec.summary,
   description: spec.description ?? spec.summary,
-  destructive: isMcpAllowlistForbidden(spec.id),
+  destructive: isMcpDestructiveCommand(spec),
   inputSchema: deriveToolInputSchema(spec),
 });
 

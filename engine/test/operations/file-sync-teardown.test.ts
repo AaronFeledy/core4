@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 
 import { FileSyncStopError } from "@lando/sdk/errors";
 import {
@@ -11,7 +12,6 @@ import {
   PortablePath,
   ServiceName,
 } from "@lando/sdk/schema";
-import { FileSyncEngine } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import { terminateFileSyncSessions } from "../../src/operations/file-sync.ts";
@@ -62,7 +62,7 @@ describe("file-sync teardown", () => {
         }),
     };
     const error = await Effect.runPromise(
-      terminateFileSyncSessions(app).pipe(Effect.provideService(FileSyncEngine, engine), Effect.flip),
+      terminateFileSyncSessions(app).pipe(provideFileSyncEngine(engine), Effect.flip),
     );
     expect(error).toBe(failure);
     expect(terminated).toBe(false);
@@ -84,10 +84,7 @@ describe("file-sync teardown", () => {
         }),
     };
     const error = await Effect.runPromise(
-      terminateFileSyncSessions(app, [session]).pipe(
-        Effect.provideService(FileSyncEngine, engine),
-        Effect.flip,
-      ),
+      terminateFileSyncSessions(app, [session]).pipe(provideFileSyncEngine(engine), Effect.flip),
     );
     expect(error._tag).toBe("FileSyncStopError");
     expect(calls).toEqual([]);
@@ -108,7 +105,7 @@ describe("file-sync teardown", () => {
         }),
     };
     const error = await Effect.runPromise(
-      terminateFileSyncSessions(app).pipe(Effect.provideService(FileSyncEngine, engine), Effect.flip),
+      terminateFileSyncSessions(app).pipe(provideFileSyncEngine(engine), Effect.flip),
     );
     expect(error._tag).toBe("FileSyncStopError");
     expect(calls).toEqual([]);

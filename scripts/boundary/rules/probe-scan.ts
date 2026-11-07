@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { FORBIDDEN_EFFECT_MEMBERS, type ModuleProbeBindings } from "./probe-bindings.ts";
 

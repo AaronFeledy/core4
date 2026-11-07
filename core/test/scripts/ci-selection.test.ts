@@ -308,6 +308,7 @@ describe("CI selection", () => {
       ];
       const runtime = [
         ...guides,
+        "runtime-bundle-linux-arm64",
         "unit-tests-linux-x64-shard",
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
@@ -320,6 +321,7 @@ describe("CI selection", () => {
         "provider-integration-linux-x64",
       ];
       const expected = { docs, guides, runtime, providers, broad: Object.keys(CI_JOB_TIERS) }[profile];
+      expect(Object.keys(jobs)).toEqual(expect.arrayContaining(expected));
       const needs = {
         ...Object.fromEntries(
           Object.keys(CI_JOB_TIERS).map((id) => [
@@ -353,7 +355,7 @@ describe("CI selection", () => {
     },
   );
 
-  test("typechecks docs-only PRs in the Linux static cell instead of repeating it in guide jobs", () => {
+  test("typechecks docs-only PRs in the static cells instead of repeating it in guide jobs", () => {
     const jobs = Schema.decodeUnknownSync(
       Schema.Struct({
         jobs: Schema.Record(
@@ -372,7 +374,6 @@ describe("CI selection", () => {
     )(Bun.YAML.parse(renderCiWorkflow())).jobs;
     expect(jobs["static-checks-platform"]?.steps.find((step) => step.run === "bun run typecheck")).toEqual({
       name: "Typecheck",
-      if: "matrix.platform == 'linux-x64'",
       run: "bun run typecheck",
     });
     expect(
@@ -380,5 +381,46 @@ describe("CI selection", () => {
         .flatMap((job) => job.steps)
         .filter((step) => step.run === "bun run typecheck"),
     ).toHaveLength(1);
+  });
+});
+
+describe("platform build path selection", () => {
+  test.each([
+    "engine/src/runtime/libc.ts",
+    "core/test/build/host-execution-compiled.test.ts",
+    "core/test/build/opentui-compiled-acceptance.test.ts",
+    "core/test/build/support/fixture.ts",
+    "scripts/codegen.ts",
+    "scripts/build-command-registry-manifest.ts",
+    "scripts/build-compiled-binary.ts",
+    "scripts/sanitize-compiled-binary.ts",
+    "scripts/smoke-windows-binary.ts",
+    "scripts/check-compiled-binary-notices.ts",
+  ])("selects every platform build for %s", (path) => {
+    // Given / When: classify a platform job's script or compiled-test input.
+    const selection = selectPaths([path]);
+    // Then: no platform build can be skipped for this PR.
+    expect(selection).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
+    for (const { id } of CI_PLATFORMS) {
+      const tier = CI_JOB_TIERS[`build-${id}`];
+      expect(tier).toBeDefined();
+      expect(tier && jobSelected(tier, selection)).toBe(true);
+      expect(resultFailures(selection, { [`build-${id}`]: { result: "skipped" } })).toEqual([
+        `build-${id}: skipped`,
+      ]);
+    }
+  });
+
+  test.each([
+    ["docs/page.md", "docs"],
+    ["plugins/provider-lando/src/provider.ts", "providers"],
+  ])("keeps %s non-broad", (path, profile) => {
+    expect(selectPaths([path])).toMatchObject({ profile, broad: false });
+  });
+
+  test("platform build selection precedes provider selection in a mixed diff", () => {
+    expect(
+      selectPaths(["plugins/provider-lando/src/provider.ts", "core/test/build/fixture.test.ts"]),
+    ).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
   });
 });

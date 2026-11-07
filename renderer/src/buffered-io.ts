@@ -12,6 +12,7 @@ export interface BufferedRendererIO extends RendererIO {
 }
 
 export interface BufferedRendererIOOptions {
+  readonly noColor?: boolean;
   readonly stdoutIsTTY?: boolean;
   readonly stdoutColumns?: number | undefined;
   readonly isTTY?: boolean;
@@ -54,6 +55,7 @@ export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}
     stdoutLines: () => splitLines(new TextDecoder().decode(concatBytes(stdoutChunks))),
     stderrLines: () => splitLines(new TextDecoder().decode(concatBytes(stderrChunks))),
     ...(options.isTTY === undefined ? {} : { isTTY: options.isTTY }),
+    ...(options.noColor === undefined ? {} : { noColor: options.noColor }),
     ...(options.stdoutIsTTY === undefined ? {} : { stdoutIsTTY: options.stdoutIsTTY }),
     stdoutColumns: options.stdoutColumns,
     terminalColumns: options.terminalColumns,

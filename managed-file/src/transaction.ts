@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { join, resolve } from "node:path";
-import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
+import { resolve } from "node:path";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import { applyCommittedEntry } from "./transaction-create-link.ts";
@@ -18,8 +17,9 @@ import {
 import {
   type Entry,
   type Journal,
+  type JournalStore,
   type Stage,
-  journalDirectory,
+  type TransactionLock,
   openJournal,
 } from "./transaction-journal.ts";
 import { TransactionRequest, planTransaction, verifyTransactionConditions } from "./transaction-plan.ts";
@@ -67,7 +67,8 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
     PreparedTransaction,
     {
       readonly journal: Journal;
-      readonly store: Effect.Success<ReturnType<typeof openJournal>>;
+      readonly store: JournalStore;
+      readonly lock: TransactionLock;
       readonly readConditions: TransactionRequest["readConditions"];
     }
   >();
@@ -88,15 +89,10 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       Effect.mapError(() => transactionError("path", "prepare")),
     );
     const root = yield* transactionIO("prepare", () => canonicalRoot(request.appRoot));
-    const dir = journalDirectory(root, options.journalRoot());
-    const store = yield* openJournal(root, dir, { privateFileAccess: options.privateFileAccess });
-    yield* Effect.acquireRelease(
-      acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
-        expireLiveOwner: false,
-        privateFileAccess: options.privateFileAccess,
-      }).pipe(Effect.mapError(() => transactionError("lock", "prepare"))),
-      (lock) => lock.release,
-    );
+    const store = yield* openJournal(root, options.journalRoot(), {
+      privateFileAccess: options.privateFileAccess,
+    });
+    const lock = yield* store.acquireLock("prepare");
     if ((yield* store.read) !== null) return yield* Effect.fail(transactionError("journal", "prepare"));
     const id = randomUUID();
     const planned = yield* transactionIO("prepare", () => planTransaction(root, request, id));
@@ -157,18 +153,17 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
             yield* checkpoint("stage-created", index);
           } else entries.push(plan.entry);
         }
-        const journal: Journal = {
+        const journal = {
           id,
           root,
-          state: "prepared",
           entries,
           directoryPolicy: planned.directoryPolicy,
         };
-        yield* store.write(journal);
+        yield* store.prepare(lock, journal);
         retained = true;
         const durable = yield* store.read;
         if (durable === null) return yield* Effect.fail(transactionError("journal", "prepare"));
-        leases.set(prepared, { journal: durable, store, readConditions: request.readConditions });
+        leases.set(prepared, { journal: durable, store, lock, readConditions: request.readConditions });
         yield* checkpoint("prepared");
         return prepared;
       }),
@@ -178,7 +173,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
   const commit = Effect.fn("ManagedFileTransactions.commit")(function* (prepared: PreparedTransaction) {
     const lease = leases.get(prepared);
     if (lease === undefined) return yield* Effect.fail(transactionError("journal", "commit"));
-    const { journal, store, readConditions } = lease;
+    const { journal, store, lock, readConditions } = lease;
     leases.delete(prepared);
     const current = yield* store.read;
     if (JSON.stringify(current) !== JSON.stringify(journal))
@@ -192,7 +187,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       yield* transactionIO("commit", () => verifyBackup(journal.root, entry, options.privateFileAccess));
     }
     yield* transactionIO("commit", () => verifyTransactionConditions(journal.root, readConditions, "commit"));
-    yield* store.write({ ...journal, state: "committing" });
+    yield* store.beginCommit(lock);
     yield* checkpoint("committing");
     yield* transactionIO("commit", () => verifyTransactionConditions(journal.root, readConditions, "commit"));
     yield* transactionIO("commit", () =>
@@ -210,14 +205,14 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       ).pipe(Effect.uninterruptible);
       yield* checkpoint("after-mutation", index);
     }
-    yield* store.write({ ...journal, state: "committed" });
+    yield* store.finishCommit(lock);
     yield* checkpoint("committed");
     yield* transactionIO("cleanup", async () => {
       for (const entry of journal.entries)
         if (entry.stage !== undefined && entry.after.present)
           await removeRecordedStage(entry.stage, entry.after.digest, options.privateFileAccess);
     }).pipe(Effect.uninterruptible);
-    yield* store.removeCommitted;
+    yield* store.removeCommitted(lock);
     return {
       id: journal.id,
       written: journal.entries
@@ -234,7 +229,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
   });
   const readJournal = Effect.fn("ManagedFileTransactions.readJournal")(function* (appRoot: string) {
     const root = yield* transactionIO("inspect", () => canonicalRoot(appRoot));
-    const store = yield* openJournal(root, journalDirectory(root, options.journalRoot()), {
+    const store = yield* openJournal(root, options.journalRoot(), {
       privateFileAccess: options.privateFileAccess,
     });
     return yield* store.read;

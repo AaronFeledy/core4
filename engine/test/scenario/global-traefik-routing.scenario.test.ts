@@ -49,6 +49,7 @@ const baseCapabilities = (overrides: Partial<ProviderCapabilities>): ProviderCap
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",

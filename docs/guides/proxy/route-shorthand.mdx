@@ -2,7 +2,7 @@
 id: route-shorthand
 provider: test
 timeout: 60000
-tags: [beta, docs, proxy, landofile, routes]
+tags: [docs, proxy, landofile, routes]
 ---
 
 # Write routes as shorthand strings and add filters
@@ -26,8 +26,12 @@ services:
       - app.lndo.site
       - "*.app.lndo.site"
       - "*-app.lndo.site"
-      - "wild.*.app.lndo.site"
-      - "lets.combine.*.lndo.site:8080/everything/for-real"
+      - hostname: "wild.*.app.lndo.site"
+        scheme: http
+      - hostname: "lets.combine.*.lndo.site"
+        scheme: http
+        endpoint: 8080
+        pathPrefix: /everything/for-real
 ```
 
 Save the Landofile in your app directory, then lint it before starting containers.
@@ -48,24 +52,28 @@ lando app:config:lint
 | `:port` | Numeric, 1 through 65535. Becomes the route's `endpoint` | `app.lndo.site:8080` |
 | `/path` | Starts with `/`. Becomes the route's `pathPrefix` | `app.lndo.site/admin` |
 
-Wildcards go anywhere inside a label, and you can mix all three pieces:
+Routing accepts a `*` anywhere inside a label. HTTPS (the default scheme) is stricter: every wildcard character on an HTTPS or `both` route must sit in the **leftmost** label, so Lando can issue a certificate for it. A wildcard in any lower label is a deep wildcard. Deep wildcards are HTTP-only; write them as object routes with `scheme: http`.
 
-| Shorthand | Matches |
-| --- | --- |
-| `*.app.lndo.site` | Any single subdomain of `app.lndo.site` |
-| `*-app.lndo.site` | `foo-app.lndo.site`, `bar-app.lndo.site` |
-| `wild.*.app.lndo.site` | A wildcard in the middle label |
-| `lets.combine.*.lndo.site:8080/everything/for-real` | Wildcard host, port 8080, path prefix `/everything/for-real` |
+| Pattern | Matches | HTTPS? |
+| --- | --- | --- |
+| `*.app.lndo.site` | Any single subdomain of `app.lndo.site` | Yes. The leaf SAN is `*.app.lndo.site`. |
+| `*-app.lndo.site` | `foo-app.lndo.site`, `bar-app.lndo.site` | Yes. The leaf SAN is the broader `*.lndo.site` (see trust note below). |
+| `wild.*.app.lndo.site` | A wildcard in a middle label | No. Use an object route with `scheme: http`. |
+| `lets.combine.*.lndo.site` with port and path | Wildcard host, endpoint 8080, path prefix `/everything/for-real` | No. Same object form with `scheme: http`. |
+
+Partial leftmost wildcards such as `*-app.lndo.site` and `api*.app.lndo.site` are certificate-coverable. The issued SAN is always `*.` plus the rest of the hostname after the leftmost label (`*.lndo.site` and `*.app.lndo.site` in those examples). That certificate identity is broader than the route match: any single label under that rest satisfies the cert, even names the route does not select. Prefer an exact hostname or a full leftmost `*.rest` when you want the SAN to match the route tightly. See [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
 
 Quote any string that contains `*` so YAML does not read it as an alias.
 
 Three things a shorthand cannot say:
 
-- A scheme. `https://app.lndo.site` is rejected; the grammar has no scheme slot.
+- A scheme. `https://app.lndo.site` is rejected; the grammar has no scheme slot. Shorthand therefore inherits the default `https` scheme, so deep wildcards cannot be written as shorthand.
 - A query string or fragment. `?` and `#` are rejected.
 - Filters. A string is host, port, path, and nothing else.
 
-Write an object route for a scheme or filters. Neither form matches on a query string or fragment.
+Write an object route for a scheme (including HTTP-only deep wildcards) or filters. Neither form matches on a query string or fragment.
+
+`lando app:config:lint` and `lando start` report `landofile.route` when an HTTPS or `both` route cannot be covered by a certificate name, including routes a plugin generates. The finding names the nearest pattern a certificate can cover, such as `*.app.lndo.site` for `wild.*.app.lndo.site`. Use that pattern, or keep yours and set `scheme: http` on the object form.
 
 ## Object form
 
@@ -95,7 +103,7 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
-Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. An expression that cannot resolve still stops materialization at its first error.
+Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. Load-time expression failures are reported together; effective route checks wait until the load stage succeeds.
 
 Layer merging matches routes by the same scheme, case-insensitive hostname, and path-prefix identity used for conflict detection, regardless of spelling. Omitted scheme means HTTPS and omitted path prefix means `/`. Backend ports do not change that identity. `both` participates in both schemes; overlaying only HTTPS keeps the inherited HTTP entry.
 
@@ -380,8 +388,10 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
     <Step name="inspect-shorthand">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lets\\.combine\\.\\*\\.lndo\\.site:8080/everything/for-real\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wild\\.\\*\\.app\\.lndo\\.site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"lets\\.combine\\.\\*\\.lndo\\.site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pathPrefix\":\\s*\"/everything/for-real\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"wild\\.\\*\\.app\\.lndo\\.site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"scheme\":\\s*\"http\"" } }} />
     </Step>
     <Step name="inspect-filters">
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pathPrefix\":\\s*\"/v1\"" } }} />
@@ -461,4 +471,4 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
 ## Next
 
 - How the proxy itself is wired: [ProxyService and Traefik](../subsystems/proxy-traefik.mdx)
-- Where `lndo.site` hostnames resolve: [Host proxy](../subsystems/host-proxy.mdx)
+- Where `lndo.site` hostnames resolve: [Resolve lndo.site on this machine](../subsystems/host-dns.mdx)

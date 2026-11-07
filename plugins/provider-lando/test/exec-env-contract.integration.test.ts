@@ -20,6 +20,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { nodeLtsServiceType, serviceFeatures } from "@lando/service-lando";
@@ -79,8 +80,7 @@ const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
   extensions: {},
 });
 
-const containerName = (slug: string, service: string) =>
-  `lando-${slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (slug: string, service: string) => landoServiceContainerName(slug, service);
 
 const makeFakeApi = () => {
   const calls: EngineHttpRequest[] = [];
@@ -146,6 +146,9 @@ const makeFakeApi = () => {
         }
         if (request.method === "POST" && request.path.endsWith("/start")) {
           return { status: 204, body: "" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),

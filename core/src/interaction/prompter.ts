@@ -17,6 +17,7 @@
 
 import { Cause, Effect, Exit, Layer, Option, type Scope } from "effect";
 
+import { InteractionCancelledError } from "@lando/sdk/errors";
 import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
 import {
   type ConfirmSpec,
@@ -45,17 +46,32 @@ export interface InteractionPrompter {
  * `makeInteractionService` and wrap it here so prompt batches share that one
  * service instance — and therefore its single persistent stdin reader.
  */
-export const makePromiseInteractionPrompter = (service: InteractionServiceShape): InteractionPrompter => ({
-  promptAll: (specs, options) => runPromiseUnwrapped(Effect.scoped(service.promptAll(specs, options))),
-  confirm: (spec) => runPromiseUnwrapped(Effect.scoped(service.confirm(spec))),
-  select: (spec) => runPromiseUnwrapped(Effect.scoped(service.select(spec))),
+export const makePromiseInteractionPrompter = (
+  service: InteractionServiceShape,
+  signal?: AbortSignal,
+): InteractionPrompter => ({
+  promptAll: (specs, options) =>
+    runPromiseUnwrapped(Effect.scoped(service.promptAll(specs, options)), signal),
+  confirm: (spec) => runPromiseUnwrapped(Effect.scoped(service.confirm(spec)), signal),
+  select: (spec) => runPromiseUnwrapped(Effect.scoped(service.select(spec)), signal),
 });
 
-const runPromiseUnwrapped = <A>(effect: Effect.Effect<A, InteractionError, never>): Promise<A> =>
-  Effect.runPromiseExit(effect).then((exit) => {
+const runPromiseUnwrapped = <A>(
+  effect: Effect.Effect<A, InteractionError, never>,
+  signal?: AbortSignal,
+): Promise<A> =>
+  Effect.runPromiseExit(effect, signal === undefined ? undefined : { signal }).then((exit) => {
     if (Exit.isSuccess(exit)) return exit.value;
     const failure = Cause.findErrorOption(exit.cause);
     if (Option.isSome(failure)) return Promise.reject(failure.value);
+    if (Cause.hasInterrupts(exit.cause)) {
+      return Promise.reject(
+        new InteractionCancelledError({
+          message: "Prompt cancelled.",
+          remediation: "Re-run the command when ready, or provide answers without prompting.",
+        }),
+      );
+    }
     return Promise.reject(new Error(Cause.pretty(exit.cause)));
   });
 
@@ -67,24 +83,25 @@ const runPromiseUnwrapped = <A>(effect: Effect.Effect<A, InteractionError, never
  * tagged {@link InteractionError}, so async callers can `instanceof`-narrow them
  * (or let them propagate to the command's bug-report formatter).
  */
-export const makeInteractionPrompter: Effect.Effect<InteractionPrompter, never, InteractionService> =
-  Effect.gen(function* () {
-    const interaction = yield* InteractionService;
-    const rendererOption = yield* Effect.serviceOption(Renderer);
+export const makeInteractionPrompter = Effect.fnUntraced(function* (
+  signal?: AbortSignal,
+): Effect.fn.Return<InteractionPrompter, never, InteractionService> {
+  const interaction = yield* InteractionService;
+  const rendererOption = yield* Effect.serviceOption(Renderer);
 
-    const run = <A>(effect: Effect.Effect<A, InteractionError, Scope.Scope>): Promise<A> =>
-      runPromiseUnwrapped(Effect.scoped(effect));
+  const run = <A>(effect: Effect.Effect<A, InteractionError, Scope.Scope>): Promise<A> =>
+    runPromiseUnwrapped(Effect.scoped(effect), signal);
 
-    const withRenderer = <A, R>(
-      effect: Effect.Effect<A, InteractionError, R>,
-    ): Effect.Effect<A, InteractionError, Exclude<R, Renderer>> =>
-      Option.isNone(rendererOption)
-        ? (effect as Effect.Effect<A, InteractionError, Exclude<R, Renderer>>)
-        : Effect.provide(effect, Layer.succeed(Renderer, rendererOption.value));
+  const withRenderer = <A, R>(
+    effect: Effect.Effect<A, InteractionError, R>,
+  ): Effect.Effect<A, InteractionError, Exclude<R, Renderer>> =>
+    Option.isNone(rendererOption)
+      ? (effect as Effect.Effect<A, InteractionError, Exclude<R, Renderer>>)
+      : Effect.provide(effect, Layer.succeed(Renderer, rendererOption.value));
 
-    return {
-      promptAll: (specs, options) => run(withRenderer(interaction.promptAll(specs, options))),
-      confirm: (spec) => run(withRenderer(interaction.confirm(spec))),
-      select: (spec) => run(withRenderer(interaction.select(spec))),
-    };
-  });
+  return {
+    promptAll: (specs, options) => run(withRenderer(interaction.promptAll(specs, options))),
+    confirm: (spec) => run(withRenderer(interaction.confirm(spec))),
+    select: (spec) => run(withRenderer(interaction.select(spec))),
+  };
+});

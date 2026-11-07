@@ -15,7 +15,7 @@ import {
   type PluginDescriptorMismatchError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
-import { ConfigTranslateSourceId } from "@lando/sdk/schema";
+import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
@@ -67,6 +67,8 @@ export interface AppConfigTranslateOptions {
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
   readonly privateFileAccess?: PrivateFileAccess;
   readonly transactionCheckpoint?: TransactionOptions["checkpoint"];
+  /** CLI-only presentation hook; the tagged failure and machine payload stay unchanged. */
+  readonly onWriteBlocked?: (diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>) => Effect.Effect<void>;
 }
 
 export type AppConfigTranslateError =
@@ -232,5 +234,6 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     documents,
     privateFileAccess: options.privateFileAccess,
     transactionCheckpoint: options.transactionCheckpoint,
+    ...(options.onWriteBlocked === undefined ? {} : { onWriteBlocked: options.onWriteBlocked }),
   });
 });

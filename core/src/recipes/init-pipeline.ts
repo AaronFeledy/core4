@@ -1,5 +1,6 @@
-import { mkdir } from "node:fs/promises";
+import { lstat, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { canonicalMissingAppRoot } from "@lando/engine/operations/app-mutation-lock";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { ConfigTranslateDiagnostic, RecipeManifest } from "@lando/sdk/schema";
@@ -13,6 +14,7 @@ import {
 } from "./init-pipeline/errors.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
+import { type RecipeInitReview, recipeInitReview } from "./prepared-init-types.ts";
 import type { PreparedRecipeInit } from "./prepared-init.ts";
 
 export {
@@ -55,8 +57,9 @@ export const previewRecipeLandofile = (
 ): Effect.Effect<RecipeLandofilePreview, RecipeInitBlockedError> =>
   Effect.map(encodeRecipeLandofile(request), ({ text, diagnostics }) => ({ text, diagnostics }));
 
-export const runRecipeInitPipeline = Effect.fn("RecipeInitPipeline.run")(function* (
+export const runRecipeInitPipeline = Effect.fn("RecipeInitPipeline.run")(function* <E = never, R = never>(
   request: RecipeInitPipelineRequest,
+  onPrepared?: (review: RecipeInitReview) => Effect.Effect<void, E, R>,
 ) {
   const plan = request.prepared;
   const landofilePath = join(plan.appRoot, ".lando.yml");
@@ -69,6 +72,27 @@ export const runRecipeInitPipeline = Effect.fn("RecipeInitPipeline.run")(functio
         remediation: "Remove the existing Landofile or choose a different directory.",
       }),
     );
+  if (onPrepared !== undefined) yield* onPrepared(recipeInitReview(plan));
+  yield* Effect.yieldNow;
+  const destinationChanged = new RecipeInitCommitError({
+    phase: "prepare",
+    reason: "path",
+    message: "The initialization destination changed during preparation.",
+    remediation: "Restore the destination parent and retry initialization.",
+  });
+  const anchor = yield* Effect.tryPromise({
+    try: () => lstat(plan.destinationAnchor.path),
+    catch: () => destinationChanged,
+  });
+  if (
+    !anchor.isDirectory() ||
+    anchor.isSymbolicLink() ||
+    anchor.dev !== plan.destinationAnchor.dev ||
+    anchor.ino !== plan.destinationAnchor.ino
+  )
+    return yield* Effect.fail(destinationChanged);
+  const root = yield* canonicalMissingAppRoot(plan.appRoot).pipe(Effect.mapError(() => destinationChanged));
+  if (root !== plan.appRoot) return yield* Effect.fail(destinationChanged);
   yield* Effect.tryPromise({
     try: () => mkdir(plan.appRoot, { recursive: true }),
     catch: () =>

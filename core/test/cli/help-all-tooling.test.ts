@@ -6,6 +6,7 @@ import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import { HelpCatalogResult } from "../../src/cli/compiled-help.ts";
 import type { HelpAliasPolicy } from "../../src/cli/help-names.ts";
 
@@ -46,7 +47,7 @@ const runCli = async (argv: readonly string[], cwd: string, env: NodeJS.ProcessE
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
-  expect(exitCode).toBe(0);
+  expect(exitCode, stderr).toBe(0);
   expect(stderr).toBe("");
   return stdout;
 };
@@ -95,7 +96,7 @@ test.each([...policies])(
       expect(flagHelp).toBe(all);
       const catalog = decodeCatalog(JSON.parse(json)).result;
       const tooling = catalog.all.filter((row) => row.source === "tooling");
-      expect(tooling).toEqual([...catalog.sections.thisApp]);
+      expect([...catalog.sections.thisApp]).toEqual(tooling);
       expect(tooling.map((row) => row.canonicalId).sort()).toEqual(["app:known", "app:other"]);
       expect(tooling.find((row) => row.canonicalId === "app:known")).toMatchObject({
         typeable: primary,
@@ -116,13 +117,25 @@ test.each([...policies])(
       expect(outside).not.toContain("THIS APP");
       expect(outside).not.toContain("app:known");
 
-      // A stale index, then a missing index, preserve the built-in-only catalog.
-      await writeFile(landofile, "name: changed-all-help\n");
-      expect(await runCli(["help", "--all"], root, env)).toBe(outside);
+      // A Landofile edit rebuilds the index, so help lists the edited tooling.
+      await writeFile(
+        landofile,
+        'name: changed-all-help\ntooling:\n  rebuilt:\n    service: ":host"\n    cmd: echo rebuilt\n',
+      );
+      const stale = await runCli(["help", "--all"], root, env);
+      expect(stale).not.toContain("stale-cache");
+      expect(stale).not.toContain("app:known");
+      expect(stale.split("\nTHIS APP\n")[1]).toMatch(/^[ \t]+app:rebuilt(?:[ \t]|$)/mu);
+      expect(stale).toContain("app:start");
       expect(cachePath).toBeDefined();
       if (cachePath === undefined) throw new Error("Fixture command index was not written");
       await rm(cachePath);
-      expect(await runCli(["help", "--all"], root, env)).toBe(outside);
+      await rm(appToolingCompilationCachePath(cacheRoot, root));
+      const missing = await runCli(["help", "--all"], root, env);
+      expect(missing).not.toContain("missing-cache");
+      expect(missing).not.toContain("app:known");
+      expect(missing.split("\nTHIS APP\n")[1]).toMatch(/^[ \t]+app:rebuilt(?:[ \t]|$)/mu);
+      expect(missing).toContain("app:start");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

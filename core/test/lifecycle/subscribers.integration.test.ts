@@ -12,18 +12,20 @@ import { EventService, PluginRegistry } from "@lando/sdk/services";
 
 import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
-import { makeStdioClient } from "@lando/mcp/testing";
+import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { Stdio } from "effect";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
-import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
+import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const roots: string[] = [];
+const versionSpec: LandoCommandSpec = typedVersionSpec;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -110,7 +112,7 @@ const writeCommandSubscriberPlugin = async (
         version: plugin.version,
         api: 4,
         entry: "index.js",
-        contributes: { commands: [plugin.commandId] },
+        contributes: { commands: [{ id: plugin.commandId, summary: "Release plugin." }] },
         subscribers: [
           {
             id: "terminal-marker",
@@ -420,7 +422,7 @@ describe("subscriber runtime integration", () => {
     // Then: app behavior wins selector expansion, while only the global command remains notify-valid.
     expect(observed.effectiveManifest).toMatchObject({
       version: "2.0.0",
-      contributes: { commands: [appCommandId] },
+      contributes: { commands: [{ id: appCommandId, summary: "Release plugin." }] },
     });
     expect(observed.markerValue).toBe("app");
     expect(Exit.isFailure(observed.invalidExit)).toBe(true);
@@ -655,7 +657,7 @@ describe("subscriber runtime integration", () => {
           const config: McpRuntimeConfigShape = McpRuntimeConfig.of({
             commandEntries: [{ spec: versionSpec }],
             defaultAllowlist: [versionSpec.id],
-            runtimeLayer: Layer.succeed(EventService, events),
+            apps: testAppGenerations(Layer.succeed(EventService, events)),
           });
           const mcpLayer = mcpServiceLayer.pipe(
             Layer.provide(

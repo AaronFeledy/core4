@@ -106,6 +106,19 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return {
+            status: 200,
+            body: JSON.stringify(
+              [...existing].map((name) => ({
+                Id: `${name}-id`,
+                Names: [name],
+                Labels: labels.get(name),
+                State: running.has(name) ? "running" : "stopped",
+              })),
+            ),
+          };
+        }
         if (
           request.method === "GET" &&
           request.path.startsWith("/libpod/images/") &&
@@ -302,7 +315,7 @@ describe.each([
 
     const snapshot = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
     expect(String(snapshot.providerId)).toBe("podman");
-    expect(snapshot.state).toBeTruthy();
+    expect(snapshot.status).toBe("running");
   });
 
   test("exec routes through the Podman REST API", async () => {

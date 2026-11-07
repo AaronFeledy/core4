@@ -3,8 +3,8 @@ import { mergeLandofiles } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 /**
  * An authoring fragment is a recursive partial whose value sites may also hold

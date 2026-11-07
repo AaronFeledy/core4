@@ -39,8 +39,9 @@ export const MYSQL_ARTIFACTS = {
 const DEFAULT_IMAGE = MYSQL_ARTIFACTS["8.0"];
 export const MYSQL_LISTENER = {
   port: 3306,
-  variable: "MYSQL_TCP_PORT",
+  variables: ["MYSQL_TCP_PORT"],
   daemon: "MySQL",
+  when: "All MySQL services",
   reserved: [{ port: 33060, use: "X Protocol listener" }],
 } as const;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
@@ -100,7 +101,6 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
 
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -108,7 +108,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   addEnvRecord(ctx, landoDbEnvFor(creds, port));
   ctx.addEnv("MYSQL_TCP_PORT", String(port));
   ctx.addStorage({
-    store: `${appName}-${ctx.serviceName}-mysql-data`,
+    store: ctx.serviceStoreName("mysql-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -163,6 +163,7 @@ const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
             connection.creds.user,
             connection.creds.database,
           ],
+          wrapper: true,
           env: { MYSQL_PWD: connection.creds.password },
         },
       };

@@ -28,6 +28,7 @@ import {
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { applyJqToRedactedJsonLine } from "../../src/cli/jq/eval.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 
 const config = Schema.decodeUnknownSync(GlobalConfig)({});
 
@@ -271,7 +272,8 @@ test("apps:list --status extractor accepts repeatable declared values only", () 
 });
 
 test("MCP apps:list rejects unknown --status values and advertises the enum", () => {
-  expect(deriveToolInputSchema(listSpec)).toMatchObject({
+  const spec: LandoCommandSpec = listSpec;
+  expect(deriveToolInputSchema(spec)).toMatchObject({
     properties: {
       flags: {
         properties: {
@@ -283,12 +285,12 @@ test("MCP apps:list rejects unknown --status values and advertises the enum", ()
       },
     },
   });
-  expect(() => validateToolInput(listSpec, { flags: { status: ["running"] } })).toThrow(McpToolInputError);
-  expect(() => validateToolInput(listSpec, { flags: { status: ["active", "RUNNING"] } })).toThrow(
+  expect(() => validateToolInput(spec, { flags: { status: ["running"] } })).toThrow(McpToolInputError);
+  expect(() => validateToolInput(spec, { flags: { status: ["active", "RUNNING"] } })).toThrow(
     McpToolInputError,
   );
   try {
-    validateToolInput(listSpec, { flags: { status: ["running"] } });
+    validateToolInput(spec, { flags: { status: ["running"] } });
     expect.unreachable("expected McpToolInputError");
   } catch (error) {
     expect(error).toBeInstanceOf(McpToolInputError);
@@ -300,7 +302,7 @@ test("MCP apps:list rejects unknown --status values and advertises the enum", ()
     expect((error as McpToolInputError).message).toContain("active, stopped, unknown");
     expect(JSON.stringify(error)).not.toContain("running");
   }
-  expect(validateToolInput(listSpec, { flags: { status: ["active"] } }).flags.status).toEqual(["active"]);
+  expect(validateToolInput(spec, { flags: { status: ["active"] } }).flags.status).toEqual(["active"]);
 });
 
 test("documented --jq app-root path reads the real command envelope", async () => {

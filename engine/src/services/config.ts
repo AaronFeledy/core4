@@ -1,9 +1,14 @@
-import { makeLandoPathsFromRoots, normalizeHostPlatform, resolveLandoRootsFromSources } from "@lando/paths";
+import {
+  makeLandoPathsFromRoots,
+  normalizeHostPlatform,
+  resolveHostHome,
+  resolveLandoRootsFromSources,
+} from "@lando/paths";
 import * as ConfigSources from "@lando/paths/config-sources";
 import { ConfigError } from "@lando/sdk/errors";
 import type { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, type LandoPaths, PathsService } from "@lando/sdk/services";
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Effect, Layer, Option, Result } from "effect";
 import { type ConfigDecoderInputs, configCommandIds } from "../config/config-command-ids.ts";
 import { decodeGlobalConfigSources } from "../config/global-config.ts";
 
@@ -21,6 +26,26 @@ export class GlobalConfigSnapshot extends Context.Service<
     readonly takeWarnings: Effect.Effect<readonly string[]>;
   }
 >()("@lando/engine/GlobalConfigSnapshot") {}
+
+export interface HostConfigReadPolicy {
+  /** Environment for overrides and `${VAR}` expansion; empty when the runtime disables environment sources. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly home: string;
+  /** False when the runtime disables user configuration files. */
+  readonly user: boolean;
+}
+
+/** How host-side readers of user tool configuration honor this runtime's configuration-source policy. */
+export const hostConfigReadPolicy: Effect.Effect<HostConfigReadPolicy | undefined> = Effect.gen(function* () {
+  const captured = yield* Effect.serviceOption(GlobalConfigSources);
+  if (Option.isNone(captured)) return undefined;
+  const { env, sources, rootOverrides } = captured.value;
+  return {
+    env: sources.env ? env : {},
+    home: resolveHostHome({ ...rootOverrides, env: rootOverrides?.env ?? env }),
+    user: sources.user,
+  };
+});
 
 const snapshotContext = (snapshot: typeof GlobalConfigSnapshot.Service) =>
   Context.make(

@@ -81,6 +81,8 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const drupalVersion = drupalDefaults.drupal;
       if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
       expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand(drupalVersion));
+      expect(tooling.drush?.wrapper).toBe(true);
+      expect(tooling.composer?.wrapper).toBe(true);
       expect(services.appserver?.type).toBe(`php:${drupalDefaults.php}`);
       expect(services.appserver?.webroot).toBe(drupalDefaults.webroot);
       expect(services.database?.type).toBe(drupalDefaults.database);
@@ -111,6 +113,8 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
         const services = landofile.document.services as Record<string, Record<string, unknown>>;
         expect(tooling["drupal-cms-scaffold"]?.cmd).toBe(DRUPAL_CMS_SCAFFOLD_COMMAND);
+        expect(tooling.drush?.wrapper).toBe(true);
+        expect(tooling.composer?.wrapper).toBe(true);
         expect(services.appserver?.type).toBe(`php:${drupalCmsDefaults.php}`);
         expect(services.appserver?.webroot).toBe(drupalCmsDefaults.webroot);
         expect(services.database?.type).toBe(drupalCmsDefaults.database);

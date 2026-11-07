@@ -8,7 +8,8 @@ import { importAuthorModule } from "@lando/landofile/author-modules";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
-import { defaultBunSelfSpawner } from "../../src/cli/commands/bun-self-runner.ts";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import { ProcessRunner } from "@lando/sdk/services";
 import { pluginBuild } from "../../src/cli/commands/plugin-build.ts";
 
 const temporaryDeclarationArtifacts = async (source: string): Promise<ReadonlyArray<string>> =>
@@ -57,7 +58,10 @@ test("repeated real builds leave no per-invocation config or build-info files", 
   try {
     const tsconfig = await writeIncrementalPlugin(source);
     for (let iteration = 0; iteration < 2; iteration++) {
-      expect((await Effect.runPromise(pluginBuild({ cwd: source }))).exitCode).toBe(0);
+      expect(
+        (await Effect.runPromise(pluginBuild({ cwd: source }).pipe(Effect.provide(BunProcessRunner.layer))))
+          .exitCode,
+      ).toBe(0);
       expect(await temporaryDeclarationArtifacts(source)).toEqual([]);
       if (iteration === 0) await writeFile(join(source, "src/index.ts"), "export const value = 2;\n");
     }
@@ -76,18 +80,25 @@ test("overlapping real declaration builds leave no per-invocation build-info fil
   let declarationsStarted = 0;
   try {
     const tsconfig = await writeIncrementalPlugin(source);
-    const spawner = {
-      spawn: async (options: Parameters<typeof defaultBunSelfSpawner.spawn>[0]) => {
-        if (options.cmd.includes("tsc")) {
-          declarationsStarted++;
-          if (declarationsStarted === 2) bothReady.resolve();
-          await release.promise;
-        }
-        return defaultBunSelfSpawner.spawn(options);
-      },
-    };
-    const first = Effect.runPromise(pluginBuild({ cwd: source, spawner }));
-    const second = Effect.runPromise(pluginBuild({ cwd: source, spawner }));
+    const host = await Effect.runPromise(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer)));
+    const runner = ProcessRunner.of({
+      ...host,
+      run: (options) =>
+        Effect.gen(function* () {
+          if (options.args.includes("tsc")) {
+            declarationsStarted++;
+            if (declarationsStarted === 2) bothReady.resolve();
+            yield* Effect.promise(() => release.promise);
+          }
+          return yield* host.run(options);
+        }),
+    });
+    const first = Effect.runPromise(
+      pluginBuild({ cwd: source }).pipe(Effect.provideService(ProcessRunner, runner)),
+    );
+    const second = Effect.runPromise(
+      pluginBuild({ cwd: source }).pipe(Effect.provideService(ProcessRunner, runner)),
+    );
     const deadline = setTimeout(() => {
       release.resolve();
       bothReady.reject(new Error("Both declaration builds did not become ready"));
@@ -120,7 +131,10 @@ test("real declaration build preserves an authored tsBuildInfoFile", async () =>
     const authoredPath = join(source, "author.tsbuildinfo");
     const authoredBytes = "author-owned build info\n";
     await writeFile(authoredPath, authoredBytes);
-    expect((await Effect.runPromise(pluginBuild({ cwd: source }))).exitCode).toBe(0);
+    expect(
+      (await Effect.runPromise(pluginBuild({ cwd: source }).pipe(Effect.provide(BunProcessRunner.layer))))
+        .exitCode,
+    ).toBe(0);
     expect(await readFile(authoredPath, "utf8")).toBe(authoredBytes);
     expect(await temporaryDeclarationArtifacts(source)).toEqual([]);
     expect(await readFile(join(source, "tsconfig.json"), "utf8")).toBe(tsconfig);
@@ -197,7 +211,9 @@ test("builds a standalone split artifact with lazy private dependencies and host
     await writeFile(join(source, "src/operations.ts"), 'export { inspect } from "./implementation.ts";\n');
 
     // When the shared builder emits an artifact relocated away from source and node_modules.
-    const result = await Effect.runPromise(pluginBuild({ cwd: source }));
+    const result = await Effect.runPromise(
+      pluginBuild({ cwd: source }).pipe(Effect.provide(BunProcessRunner.layer)),
+    );
     expect(result.exitCode).toBe(0);
     const artifact = join(root, "installed");
     await cp(join(source, "dist"), artifact, { recursive: true });

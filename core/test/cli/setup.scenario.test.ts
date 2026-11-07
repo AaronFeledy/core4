@@ -56,6 +56,7 @@ const makeEventServiceLayer = (sink: EventSink) =>
       subscribe: () => Stream.die("not used in setup scenario test"),
       subscribeQueue: Effect.die("not used in setup scenario test"),
       waitFor: () => Effect.die("not used in setup scenario test"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("not used in setup scenario test"),
       query: () => Effect.succeed([]),
     }),
@@ -67,6 +68,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     makeRuntimeProvider({
       sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "linux",
+      providerSocketPath: join(stateDir, "podman.sock"),
       podmanApi: {
         info: Effect.succeed({ version: { Version: "6.0.2" } }),
         ping: Effect.void,
@@ -210,6 +212,7 @@ describe("meta:setup task tree progress", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
+          providerSocketPath: join(stateDir, "podman.sock"),
           podmanApi,
           podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
           runtimeBundleDownloader: {
@@ -257,7 +260,9 @@ describe("meta:setup task tree progress", () => {
       if (treeComplete?._tag !== "task.tree.complete") {
         throw new Error("expected task.tree.complete as last event");
       }
-      expect(treeComplete.failed).toBe(2);
+      // Only the step that ran fails; never-started steps stay pending.
+      expect(treeComplete.failed).toBe(1);
+      expect(treeComplete.outcome).toBe("failure");
       expect(treeComplete.succeeded).toBeGreaterThanOrEqual(1);
     } finally {
       await rm(stateDir, { recursive: true, force: true });

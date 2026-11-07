@@ -1,10 +1,64 @@
 import { describe, expect, test } from "bun:test";
-import { REDACTED, createPayloadRedactor } from "@lando/sdk/secrets";
+import { REDACTED, type TieredRedactionValues, createPayloadRedactor } from "@lando/sdk/secrets";
 
 const encoder = new TextEncoder();
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 describe("payload byte redaction", () => {
+  test("whole-token output is invariant across every two- and three-chunk split", () => {
+    const values = { substring: [], wholeToken: ["wordpress"] };
+    const input = encoder.encode("PASSWORD=wordpress\nwordpress-seo\n");
+    for (let first = 0; first <= input.length; first += 1) {
+      for (let second = first; second <= input.length; second += 1) {
+        const redactor = createPayloadRedactor(() => values);
+        const chunks = [
+          redactor.write(input.subarray(0, first)),
+          redactor.write(input.subarray(first, second)),
+          redactor.write(input.subarray(second)),
+          redactor.flush(),
+        ];
+        expect(decode(new Uint8Array(chunks.flatMap((chunk) => [...chunk])))).toBe(
+          "PASSWORD=[redacted]\nwordpress-seo\n",
+        );
+      }
+    }
+  });
+
+  test.each(["x", "\u00a0", "/", "[redacted]"])(
+    "raw left context survives empty writes and registrations: %s",
+    (prefix) => {
+      let values: TieredRedactionValues = { substring: [], wholeToken: [] };
+      const redactor = createPayloadRedactor(() => values);
+      const first = redactor.write(encoder.encode(prefix));
+      redactor.write(new Uint8Array(0));
+      values = { substring: [], wholeToken: ["foo"] };
+      const output = redactor.write(encoder.encode("foo!"));
+      expect(decode(first)).toBe(prefix);
+      expect(decode(output)).toBe(prefix === "[redacted]" ? "[redacted]!" : "foo!");
+    },
+  );
+
+  test("whole-token values await lookahead and upgrade held tails to substring", () => {
+    let values: TieredRedactionValues = { substring: [], wholeToken: ["foo"] };
+    const redactor = createPayloadRedactor(() => values);
+    const first = redactor.write(encoder.encode("foo"));
+    values = { substring: ["foo"], wholeToken: ["foo"] };
+    const output = redactor.write(encoder.encode("bar!"));
+    expect(first.length).toBe(0);
+    expect(decode(output)).toBe("[redacted]bar!");
+  });
+
+  test("whole-token EOF and covered overlaps use raw neighbours", () => {
+    const values = { substring: ["ab"], wholeToken: ["bc", "foo"] };
+    const redactor = createPayloadRedactor(() => values);
+    const chunks = [
+      redactor.write(encoder.encode("ab")),
+      redactor.write(encoder.encode("c foo")),
+      redactor.flush(),
+    ];
+    expect(chunks.map(decode).join("")).toBe("[redacted]c [redacted]");
+  });
+
   test("masks a secret amid invalid bytes at every split position", () => {
     // Given
     const values = ["hunter22"];

@@ -574,8 +574,6 @@ describe("@lando/sdk package exports", () => {
     expect(services.StateStore).toBeDefined();
     expect(services.RouterService).toBeDefined();
     expect(services.RouterService.key).toBe("@lando/core/RouterService");
-    expect(services.HostProxyService).toBeDefined();
-    expect(services.HostProxyService.key).toBe("@lando/core/HostProxyService");
   });
 
   test("secrets entry point exports the canonical redaction primitive", async () => {
@@ -745,6 +743,11 @@ describe("@lando/sdk package exports", () => {
     const sdkTest = await import("@lando/sdk/test");
 
     expect(sdkTest.runStateStoreContract).toBeDefined();
+  });
+
+  test("test entry point exports the file-sync app lifecycle contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+    expect(sdkTest.makeFileSyncAppLifecycleContractSuite).toBe(sdkTest.runFileSyncAppLifecycleContract);
   });
 
   test("test entry point exports the secret store contract suite", async () => {

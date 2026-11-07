@@ -10,7 +10,7 @@ const subsystems: readonly {
   readonly targets: readonly string[];
   readonly strip: (plan: AppPlan) => AppPlan;
 }[] = [
-  { name: "ssh", targets: ["/run/lando/ssh-agent"], strip: stripSshAgentOverlay },
+  { name: "ssh", targets: ["/run/lando/ssh-agent", "/etc/ssh/ssh_known_hosts"], strip: stripSshAgentOverlay },
   {
     name: "gpg",
     targets: ["/run/lando/gpg-agent", "/run/lando/gpg-agent-keys"],

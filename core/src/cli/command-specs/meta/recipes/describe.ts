@@ -15,6 +15,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = {
   resultSchema: RecipesDescribeResultSchema,
   id: "meta:recipes:describe",
+  onlineAcquisition: true,
   mcpAllowed: true,
   summary: "Print a recipe's prompts and metadata without running it.",
   namespace: "meta",
@@ -37,5 +38,5 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
     }
     return recipesDescribe(ref, { cwd: process.cwd() });
   },
-  render: (result) => renderRecipesDescribeResult(result as RecipesDescribeResult),
+  render: (result) => renderRecipesDescribeResult(result),
 };

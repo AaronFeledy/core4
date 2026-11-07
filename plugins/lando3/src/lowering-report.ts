@@ -24,7 +24,7 @@ export const makeReport =
     diagnostics.push({
       kind,
       sourceId: occurrence?.sourceId ?? ConfigTranslateSourceId.make(ctx.fallbackSourceId),
-      keyPath: [...keyPath],
+      keyPath: [...(occurrence?.keyPath ?? keyPath)],
       ...spanOf(occurrence),
       message,
       remediation,

@@ -6,6 +6,12 @@ import { join } from "node:path";
 import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
 
 import { causeMessage } from "@lando/sdk/errors";
+import {
+  type HostUninstallOutcomeStatus,
+  type HostUninstallStepStatus,
+  UninstallPlanStep as UninstallPlanStepSchema,
+  UninstallStepResult,
+} from "@lando/sdk/schema";
 import { PrivilegeService } from "@lando/sdk/services";
 
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
@@ -15,7 +21,11 @@ import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
 import { inspectOwnedExecutable } from "../install/owned-executable";
 import { decodeInstallRecord } from "../install/record";
-import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance";
+import {
+  HostMaintenanceRegistry,
+  type HostMaintenanceRegistryShape,
+  teardownHostMaintainers,
+} from "../runtime/host-maintenance";
 import {
   type ManagedProviderMachineClassification,
   classifyManagedProviderMachine,
@@ -23,18 +33,22 @@ import {
 } from "../runtime/managed-provider-machine";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { TerminableAgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-protocol.ts";
+import {
+  type ContributionBinding,
+  type ElevateCapability,
+  UninstallContributionConflictError,
+  conflictResultStep,
+  contributionBlocksUserDataRoot,
+  executeHostUninstallContribution,
+  planHostUninstallContributions,
+} from "./uninstall-contributions";
 import { defaultRemoveRuntimeDir, defaultTerminateRuntimeBinProcesses } from "./uninstall-runtime-dir";
 import {
   UninstallRuntimeDirError,
   formatUninstallRuntimeDirStepError,
   leftoverUninstallRuntimeDirError,
 } from "./uninstall-runtime-error";
-import {
-  DEFAULT_SOCKET_PROXY_POLKIT_PATH,
-  DEFAULT_SOCKET_PROXY_UNIT_PATHS,
-  executeSocketProxyHelperStep,
-  socketProxyHelperStep,
-} from "./uninstall-socket-proxy";
+import { inspectShellenvBlocks } from "./uninstall-shell-entries";
 
 export {
   chmodTreeUserWritable,
@@ -51,34 +65,15 @@ export {
   preferLeftoverRuntimePath,
   uninstallRuntimeDirRemediation,
 } from "./uninstall-runtime-error";
+export { contributedStepId } from "./uninstall-contributions";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one uninstall operation on one engine seam.
 
-export type UninstallStepStatus = "owned" | "user-owned" | "skipped" | "manual";
-export type UninstallStepOutcome = "completed" | "failed" | "manual" | "skipped";
+export type UninstallStepStatus = typeof HostUninstallStepStatus.Type;
+export type UninstallStepOutcome = typeof HostUninstallOutcomeStatus.Type;
 export type UninstallMode = "keep-data" | "purge";
 
-export interface UninstallPlanStep {
-  readonly id: string;
-  readonly label: string;
-  readonly target: string;
-  readonly destructive: boolean;
-  readonly status: UninstallStepStatus;
-  readonly detail: string;
-  readonly outcome?: UninstallStepOutcome;
-  readonly error?: string;
-}
-
-export const UninstallPlanStepSchema = Schema.Struct({
-  id: Schema.String,
-  label: Schema.String,
-  target: Schema.String,
-  destructive: Schema.Boolean,
-  status: Schema.Literals(["owned", "user-owned", "skipped", "manual"]),
-  detail: Schema.String,
-  outcome: Schema.optionalKey(Schema.Literals(["completed", "failed", "manual", "skipped"])),
-  error: Schema.optionalKey(Schema.String),
-});
+export type UninstallPlanStep = typeof UninstallPlanStepSchema.Type;
 
 export interface DiscoveredApp {
   readonly appId: string;
@@ -114,8 +109,7 @@ export interface UninstallOptions {
   readonly reportFallbackDir?: string;
   readonly cgroupsDelegatePath?: string;
   readonly shellProfilePath?: string;
-  readonly socketProxyUnitPaths?: ReadonlyArray<string>;
-  readonly socketProxyPolkitPath?: string;
+  /** Test override; production uses PrivilegeService.elevate when present. */
   readonly elevate?: (
     command: ReadonlyArray<string>,
   ) => Promise<{ readonly exitCode: number; readonly stdout?: string; readonly stderr?: string }>;
@@ -124,29 +118,21 @@ export interface UninstallOptions {
   readonly terminateRuntimeBinProcesses?: (runtimeDir: string) => Promise<void>;
 }
 
-export interface UninstallResult {
-  readonly dryRun: boolean;
-  readonly refused: boolean;
-  readonly mode: UninstallMode;
-  readonly failed: boolean;
-  readonly reportPath?: string;
-  readonly steps: ReadonlyArray<UninstallPlanStep>;
-}
-
 export const UninstallResultSchema = Schema.Struct({
   dryRun: Schema.Boolean,
   refused: Schema.Boolean,
   mode: Schema.Literals(["keep-data", "purge"]),
   failed: Schema.Boolean,
   reportPath: Schema.optionalKey(Schema.String),
-  steps: Schema.Array(UninstallPlanStepSchema),
+  steps: Schema.Array(Schema.Union([UninstallPlanStepSchema, UninstallStepResult])),
 });
+export type UninstallResult = typeof UninstallResultSchema.Type;
 
 export interface UninstallReport {
   readonly status: "completed" | "failed";
   readonly mode: UninstallMode;
   readonly updatedAt: string;
-  readonly steps: ReadonlyArray<UninstallPlanStep>;
+  readonly steps: ReadonlyArray<UninstallStepResult>;
 }
 
 const pathStatus = (path: string, exists: (path: string) => boolean): UninstallStepStatus =>
@@ -347,7 +333,7 @@ const defaultTeardownHostProxySessions = async (
 };
 
 const defaultTeardownRuntimeService = (
-  registry: Option.Option<Context.Service.Shape<typeof HostMaintenanceRegistry>>,
+  registry: Option.Option<HostMaintenanceRegistryShape>,
   userDataRoot: string,
 ): Promise<{ readonly terminated: boolean; readonly pid?: number }> => {
   const platform = normalizeHostPlatform();
@@ -440,7 +426,7 @@ const shellEntriesStep = (
   profilePath: string,
   exists: (path: string) => boolean,
   readText: (path: string) => string,
-  mode: UninstallMode | undefined,
+  ownership: { readonly mode: UninstallMode | undefined; readonly userDataRoot: string },
 ): UninstallPlanStep => {
   const base = {
     id: "shell-entries",
@@ -463,24 +449,51 @@ const shellEntriesStep = (
       detail: "Could not read the POSIX shell profile; not rewriting it.",
     };
   }
-  const { stripped } = stripLandoShellenvBlock(content);
-  if (!stripped) {
+  const blocks = inspectShellenvBlocks(content, ownership.userDataRoot);
+  if (!blocks.found) {
     return {
       ...base,
       status: "skipped",
       detail: "No delimited Lando shellenv block is present in the POSIX shell profile.",
     };
   }
+  if (ownership.mode !== "purge") {
+    return {
+      ...base,
+      status: "manual",
+      detail: "Strip the delimited Lando shellenv block from the POSIX shell profile.",
+    };
+  }
   return {
     ...base,
-    status: mode === "purge" ? "owned" : "manual",
-    detail: "Strip the delimited Lando shellenv block from the POSIX shell profile.",
+    status: blocks.manual ? "manual" : blocks.stripped ? "owned" : "user-owned",
+    detail: [
+      ...(blocks.stripped
+        ? ["Strip this install's delimited Lando shellenv blocks from the POSIX shell profile."]
+        : []),
+      ...blocks.foreignRoots.map((root) => `Leave the shellenv block for data root ${root} in place.`),
+      ...(blocks.manual
+        ? [
+            "A shellenv block has a missing or unparseable data root; remove it by hand if it belongs to this install.",
+          ]
+        : []),
+    ].join(" "),
   };
 };
 
-const outcomeForSkippedStep = (step: UninstallPlanStep): UninstallStepOutcome => {
-  if (step.status === "manual" || step.status === "user-owned") return "manual";
-  return "skipped";
+const skippedStepResult = (step: UninstallPlanStep): UninstallStepResult => {
+  switch (step.status) {
+    case "manual":
+    case "user-owned":
+      return { ...step, outcome: "manual" };
+    case "owned":
+    case "skipped":
+      return { ...step, outcome: "skipped" };
+    default: {
+      const exhaustive: never = step;
+      return exhaustive;
+    }
+  }
 };
 
 const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPlanStep => {
@@ -557,11 +570,27 @@ const buildRunningAppsStep = async (
   }
 };
 
+interface UninstallPlanBuild {
+  readonly steps: ReadonlyArray<UninstallPlanStep>;
+  readonly contributionBindings: ReadonlyMap<string, ContributionBinding>;
+}
+
 export const buildUninstallPlan = async (
   options: UninstallOptions = {},
   mode?: UninstallMode,
   platform: ReturnType<typeof normalizeHostPlatform> = normalizeHostPlatform(),
+  hostMaintenanceRegistry: Option.Option<HostMaintenanceRegistryShape> = Option.none(),
 ): Promise<ReadonlyArray<UninstallPlanStep>> => {
+  const built = await buildUninstallPlanWithContributions(options, mode, platform, hostMaintenanceRegistry);
+  return built.steps;
+};
+
+const buildUninstallPlanWithContributions = async (
+  options: UninstallOptions = {},
+  mode?: UninstallMode,
+  platform: ReturnType<typeof normalizeHostPlatform> = normalizeHostPlatform(),
+  hostMaintenanceRegistry: Option.Option<HostMaintenanceRegistryShape> = Option.none(),
+): Promise<UninstallPlanBuild> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const userConfRoot = options.userConfRoot ?? makeLandoPaths({ userDataRoot }).roots.userConfRoot;
@@ -577,7 +606,7 @@ export const buildUninstallPlan = async (
   const readText = options.readText ?? defaultReadText;
   const cgroupsDelegatePath = options.cgroupsDelegatePath ?? DEFAULT_CGROUPS_DELEGATE_PATH;
   const shellSteps = uninstallShellProfiles(options).map((path) =>
-    shellEntriesStep(path, exists, readText, mode),
+    shellEntriesStep(path, exists, readText, { mode, userDataRoot }),
   );
   const shellStep: UninstallPlanStep = {
     id: "shell-entries",
@@ -588,7 +617,9 @@ export const buildUninstallPlan = async (
       ? "manual"
       : shellSteps.some((step) => step.status === "owned")
         ? "owned"
-        : "skipped",
+        : shellSteps.some((step) => step.status === "user-owned")
+          ? "user-owned"
+          : "skipped",
     detail: shellSteps.map((step) => step.detail).join(" "),
   };
   const mutagenBinary = join(paths.binDir, paths.platform === "win32" ? "mutagen.exe" : "mutagen");
@@ -603,7 +634,7 @@ export const buildUninstallPlan = async (
     mode === "keep-data" ? undefined : options.listDiscoveredApps,
   );
 
-  const steps: ReadonlyArray<UninstallPlanStep> = [
+  const steps: UninstallPlanStep[] = [
     runningAppsStep,
     managedProviderMachineStep(machineClassification),
     ...(platform === "win32" && machineClassification.ownership !== "absent"
@@ -686,16 +717,7 @@ export const buildUninstallPlan = async (
     },
     binaryStep,
     ...(platform === "linux" || platform === "wsl"
-      ? [
-          cgroupsDelegateStep(cgroupsDelegatePath, exists, readText),
-          socketProxyHelperStep(
-            {
-              unitPaths: options.socketProxyUnitPaths ?? [...DEFAULT_SOCKET_PROXY_UNIT_PATHS],
-              polkitPath: options.socketProxyPolkitPath ?? DEFAULT_SOCKET_PROXY_POLKIT_PATH,
-            },
-            { exists, readText },
-          ),
-        ]
+      ? [cgroupsDelegateStep(cgroupsDelegatePath, exists, readText)]
       : []),
     platform === "win32"
       ? {
@@ -746,13 +768,32 @@ export const buildUninstallPlan = async (
         "Remove the install record last, only after executable and shell cleanup completed or were skipped.",
     },
   ];
-  return mode === undefined ? steps : steps.map((step) => stepWithMode(step, mode));
+
+  const contributionPlan = await Effect.runPromise(
+    Effect.result(
+      planHostUninstallContributions(Option.getOrUndefined(hostMaintenanceRegistry), {
+        platform,
+        userDataRoot,
+        ...(mode === undefined ? {} : { mode }),
+      }),
+    ),
+  );
+  if (Result.isFailure(contributionPlan)) {
+    throw contributionPlan.failure;
+  }
+  const { steps: contributedSteps, bindings } = contributionPlan.success;
+
+  const globalStateIndex = steps.findIndex((step) => step.id === "global-app-state");
+  const insertAt = globalStateIndex === -1 ? steps.length : globalStateIndex;
+  const merged = [...steps.slice(0, insertAt), ...contributedSteps, ...steps.slice(insertAt)];
+  const withMode = mode === undefined ? merged : merged.map((step) => stepWithMode(step, mode));
+  return { steps: withMode, contributionBindings: bindings };
 };
 
 const writeUninstallReport = async (
   reportPath: string,
   mode: UninstallMode,
-  steps: ReadonlyArray<UninstallPlanStep>,
+  steps: ReadonlyArray<UninstallStepResult>,
 ): Promise<string> => {
   const report: UninstallReport = {
     status: steps.some((step) => step.outcome === "failed") ? "failed" : "completed",
@@ -790,10 +831,12 @@ const binDirHoldsPreservedEntry = (binDir: string): boolean => {
 const executeUninstall = async (
   options: UninstallOptions,
   mode: UninstallMode,
-  hostMaintenanceRegistry: Option.Option<Context.Service.Shape<typeof HostMaintenanceRegistry>>,
+  hostMaintenanceRegistry: Option.Option<HostMaintenanceRegistryShape>,
+  elevateEffect?: ElevateCapability,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
+  const platform = normalizeHostPlatform();
   const remove = options.remove ?? defaultRemove;
   const exists = options.exists ?? ((path: string) => existsSync(path));
   const readText = options.readText ?? defaultReadText;
@@ -806,12 +849,72 @@ const executeUninstall = async (
   const teardownProviderMachines =
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
-  const steps = await buildUninstallPlan(options, mode);
+
+  let planBuild: UninstallPlanBuild;
+  try {
+    planBuild = await buildUninstallPlanWithContributions(options, mode, platform, hostMaintenanceRegistry);
+  } catch (cause) {
+    if (cause instanceof UninstallContributionConflictError) {
+      const step = conflictResultStep(cause);
+      const executed = [step];
+      const reportTarget = existsSync(userDataRoot)
+        ? uninstallReportPath(userDataRoot)
+        : await fallbackUninstallReportPath(options.reportFallbackDir);
+      let reportPath: string | undefined;
+      try {
+        reportPath = await writeUninstallReport(reportTarget, mode, executed);
+      } catch {
+        reportPath = undefined;
+      }
+      return {
+        dryRun: false,
+        refused: false,
+        mode,
+        failed: true,
+        ...(reportPath === undefined ? {} : { reportPath }),
+        steps: executed,
+      };
+    }
+    throw cause;
+  }
+
+  const { steps, contributionBindings } = planBuild;
   const shellProfiles = uninstallShellProfiles(options);
   const recordFile = makeLandoPaths({ userDataRoot }).installRecordFile;
-  const executed: UninstallPlanStep[] = [];
+  const executed: UninstallStepResult[] = [];
+  let blockUserDataRoot = false;
 
   for (const step of steps) {
+    const contribution = contributionBindings.get(step.id);
+    if (contribution !== undefined) {
+      // Contributed steps never fall through to generic remove(step.target), and
+      // only owned ones reach the maintainer's execute.
+      if (step.status !== "owned") {
+        executed.push(skippedStepResult(step));
+        continue;
+      }
+      try {
+        const result = await Effect.runPromise(
+          executeHostUninstallContribution(contribution, {
+            platform,
+            userDataRoot,
+            ...(elevateEffect === undefined ? {} : { elevate: elevateEffect }),
+          }),
+        );
+        if (contributionBlocksUserDataRoot(step.status, result.outcome)) {
+          blockUserDataRoot = true;
+        }
+        executed.push({
+          ...step,
+          ...result,
+          detail: result.detail ?? step.detail,
+        });
+      } catch (cause) {
+        blockUserDataRoot = true;
+        executed.push({ ...step, outcome: "failed", error: causeMessage(cause) });
+      }
+      continue;
+    }
     if (step.id === "running-apps") {
       // This step's target is a description, never a filesystem path; it must
       // not fall through to remove(step.target).
@@ -826,7 +929,7 @@ const executeUninstall = async (
         break;
       }
       if (step.status !== "owned") {
-        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+        executed.push(skippedStepResult(step));
         continue;
       }
       // Discovery succeeded: re-list for a fresh snapshot, then sweep leftover
@@ -858,33 +961,11 @@ const executeUninstall = async (
       }
       continue;
     }
-    if (step.id === "socket-proxy-helper") {
-      if (step.status !== "owned") {
-        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
-        continue;
-      }
-      try {
-        const outcome = await executeSocketProxyHelperStep({
-          paths: {
-            unitPaths: options.socketProxyUnitPaths ?? [...DEFAULT_SOCKET_PROXY_UNIT_PATHS],
-            polkitPath: options.socketProxyPolkitPath ?? DEFAULT_SOCKET_PROXY_POLKIT_PATH,
-          },
-          io: { exists, readText },
-          remove,
-          ...(options.elevate === undefined ? {} : { elevate: options.elevate }),
-        });
-        executed.push({ ...step, outcome });
-      } catch (cause) {
-        const error = causeMessage(cause);
-        executed.push({ ...step, outcome: "failed", error });
-      }
-      continue;
-    }
     if (step.id === "shell-entries") {
       // keep-data leaves every block. Purge still strips readable profiles when
       // one sibling is unreadable; that sibling stays manual and holds the record.
       if (step.status !== "owned" && !(mode === "purge" && step.status === "manual")) {
-        executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+        executed.push(skippedStepResult(step));
         continue;
       }
       try {
@@ -896,10 +977,11 @@ const executeUninstall = async (
             unresolved = true;
             continue;
           }
-          const { content: rewritten, stripped } = stripLandoShellenvBlock(content);
+          const { content: rewritten, stripped, manual } = inspectShellenvBlocks(content, userDataRoot);
+          unresolved ||= manual;
           if (stripped) await writeText(profile, rewritten);
         }
-        executed.push({ ...step, outcome: unresolved ? "manual" : "completed" });
+        executed.push(unresolved ? { ...step, outcome: "manual" } : { ...step, outcome: "completed" });
       } catch (cause) {
         const error = causeMessage(cause);
         executed.push({ ...step, outcome: "failed", error });
@@ -907,14 +989,18 @@ const executeUninstall = async (
       continue;
     }
     if (!step.destructive || step.status !== "owned") {
-      executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
+      executed.push(skippedStepResult(step));
       continue;
     }
     try {
       if (step.id === "installed-binary") {
         const current = installedBinaryStep(recordFile, step.target);
         if (current.status !== "owned") {
-          executed.push({ ...current, outcome: outcomeForSkippedStep(current) });
+          executed.push(
+            current.status === "skipped"
+              ? { ...step, outcome: "skipped", detail: current.detail }
+              : { ...step, outcome: "manual", detail: current.detail },
+          );
           continue;
         }
       }
@@ -932,9 +1018,22 @@ const executeUninstall = async (
       ) {
         executed.push({
           ...step,
-          status: "manual",
           outcome: "manual",
           detail: "Preserve the install record until executable and shell cleanup is resolved.",
+        });
+        continue;
+      }
+      if (step.id === "user-data-root" && blockUserDataRoot) {
+        // Owned contribution failure or ownership loss keeps the data root so the
+        // uninstall report and residual evidence remain for resume. outcome failed
+        // so the overall result writes a report and failed is true.
+        executed.push({
+          ...step,
+          outcome: "failed",
+          detail:
+            "Preserve the data root because a host-maintainer contribution failed or lost ownership; inspect the uninstall report and rerun after fixing the failure.",
+          error:
+            "Host-maintainer contribution did not complete; data root preserved for inspection and resume.",
         });
         continue;
       }
@@ -947,7 +1046,6 @@ const executeUninstall = async (
         // record there is nothing later to retire, so purge removes the root now.
         executed.push({
           ...step,
-          status: "manual",
           outcome: "manual",
           detail: existsSync(recordFile)
             ? "Preserve the data root until the install record is removed."
@@ -985,14 +1083,16 @@ const executeUninstall = async (
           (entry) =>
             entry.id === "installed-binary" && (entry.outcome === "completed" || entry.outcome === "skipped"),
         );
-        if (binaryResolved) {
+        // Never remove the data root after install-record when a contribution blocked
+        // it: that path previously bypassed the earlier user-data-root guard and
+        // destroyed residual evidence (report target, markers) needed for resume.
+        if (binaryResolved && !blockUserDataRoot) {
           await remove(userDataRoot);
           const deferred = executed.findIndex((entry) => entry.id === "user-data-root");
-          const deferredStep = deferred === -1 ? undefined : executed[deferred];
-          if (deferredStep?.outcome === "manual") {
+          const deferredStep = steps.find((entry) => entry.id === "user-data-root");
+          if (executed[deferred]?.outcome === "manual" && deferredStep?.status === "owned") {
             executed[deferred] = {
               ...deferredStep,
-              status: "owned",
               outcome: "completed",
               detail: "Removed the data root after the install record.",
             };
@@ -1040,17 +1140,49 @@ const executeUninstall = async (
   };
 };
 
+const toElevateCapability = (
+  options: UninstallOptions,
+  privilege: Option.Option<Context.Service.Shape<typeof PrivilegeService>>,
+): ElevateCapability | undefined => {
+  if (options.elevate !== undefined) {
+    const elevate = options.elevate;
+    return (command) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await elevate(command);
+          return {
+            exitCode: result.exitCode,
+            stdout: result.stdout ?? "",
+            stderr: result.stderr ?? "",
+          };
+        },
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.catch((cause) =>
+          Effect.succeed({
+            exitCode: 1,
+            stdout: "",
+            stderr: causeMessage(cause),
+          }),
+        ),
+      );
+  }
+  if (Option.isSome(privilege)) return privilege.value.elevate;
+  return undefined;
+};
+
 export const uninstall = Effect.fn("AppOperation.uninstall")(function* (
   options: UninstallOptions = {},
 ): Effect.fn.Return<UninstallResult, never, PrivateFileAccessService> {
   const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
   const privilege = yield* Effect.serviceOption(PrivilegeService);
   const privateFileAccess = yield* PrivateFileAccessService;
+  const elevateEffect = toElevateCapability(options, privilege);
   const elevate =
     options.elevate ??
-    (privilege._tag === "Some"
-      ? (command: ReadonlyArray<string>) => Effect.runPromise(privilege.value.elevate(command))
-      : undefined);
+    (elevateEffect === undefined
+      ? undefined
+      : (command: ReadonlyArray<string>) => Effect.runPromise(elevateEffect(command)));
   const teardownHostProxySessions =
     options.teardownHostProxySessions ??
     ((userDataRoot: string) => defaultTeardownHostProxySessions(userDataRoot, privateFileAccess));
@@ -1065,13 +1197,31 @@ export const uninstall = Effect.fn("AppOperation.uninstall")(function* (
     options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
   const mode = requestedMode ?? "keep-data";
   if (!dryRun && yes)
-    return yield* Effect.promise(() => executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry));
-  const steps = yield* Effect.promise(() => buildUninstallPlan(options, mode));
-  return {
-    dryRun,
-    refused: !dryRun && !yes,
-    mode,
-    failed: false,
-    steps,
-  };
+    return yield* Effect.promise(() =>
+      executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry, elevateEffect),
+    );
+
+  try {
+    const steps = yield* Effect.promise(() =>
+      buildUninstallPlan(options, mode, normalizeHostPlatform(), hostMaintenanceRegistry),
+    );
+    return {
+      dryRun,
+      refused: !dryRun && !yes,
+      mode,
+      failed: false,
+      steps,
+    };
+  } catch (cause) {
+    if (cause instanceof UninstallContributionConflictError) {
+      return {
+        dryRun,
+        refused: false,
+        mode,
+        failed: true,
+        steps: [conflictResultStep(cause)],
+      };
+    }
+    throw cause;
+  }
 });

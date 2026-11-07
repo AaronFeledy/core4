@@ -13,7 +13,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option } from "effect";
 
 import { ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import {
@@ -32,23 +32,30 @@ import type {
   ManagedFileResult,
   PortablePath,
 } from "@lando/sdk/schema";
-import { FileFormat as FileFormatSchema } from "@lando/sdk/schema";
 import {
   EventService,
   type LandoEvent,
   type ManagedFileApplyOptions,
   type ManagedFileSelector,
   ManagedFileService,
+  PathsService,
 } from "@lando/sdk/services";
 
 import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
-import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { findRealpathAncestor } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
+import {
+  LEDGER_VERSION,
+  type LedgerEntry,
+  LedgerStateSchema,
+  ledgerTransitions,
+  planLedgerStateWrite,
+  planLedgerWrite,
+} from "./ledger.ts";
 import {
   canCarryFileMarker,
   commentPrefix,
@@ -62,29 +69,7 @@ import {
   stripFileMarker,
 } from "./marker.ts";
 
-// ----- Ledger model -------------------------------------------------------
-
-const LedgerEntrySchema = Schema.Struct({
-  id: Schema.String,
-  owner: Schema.String,
-  path: Schema.String,
-  mode: Schema.Literals(["file", "block", "keys"]),
-  format: FileFormatSchema,
-  marker: Schema.String,
-  lastWrittenChecksum: Schema.String,
-  sourceHash: Schema.String,
-  state: Schema.Literals(["managed", "adopted"]),
-  base: Schema.optionalKey(Schema.String),
-  backup: Schema.optionalKey(Schema.String),
-  createdAt: Schema.String,
-  updatedAt: Schema.String,
-});
-export type LedgerEntry = typeof LedgerEntrySchema.Type;
-
-const LedgerStateSchema = Schema.Struct({ entries: Schema.Array(LedgerEntrySchema) });
-export type LedgerState = typeof LedgerStateSchema.Type;
-
-const LEDGER_VERSION = 1;
+export type { LedgerEntry, LedgerState } from "./ledger.ts";
 
 // ----- Backend seam (disk vs in-memory) -----------------------------------
 
@@ -228,7 +213,7 @@ interface Decision {
   /** Full file content to write (apply only). */
   readonly write?: string;
   /** Ledger entry to upsert (apply only). */
-  readonly ledgerNext?: LedgerEntry;
+  readonly ledgerNext?: LedgerEntry | undefined;
   /** Prior content to back up + relative backup path (overwrite only). */
   readonly backup?: { readonly content: string; readonly path: string };
   /** When set, apply must fail with this conflict error. */
@@ -248,26 +233,31 @@ const buildEntry = Effect.fnUntraced(function* (
   marker: string,
   lastWrittenChecksum: string,
   sourceHash: string,
-  state: "managed" | "adopted",
+  operation: "manage" | "detect-adoption",
   existing: LedgerEntry | undefined,
   backup?: string,
-): Effect.fn.Return<LedgerEntry> {
+): Effect.fn.Return<LedgerEntry | undefined, ManagedFileError> {
   const timestamp = yield* nowIso;
-  return {
-    id: mf.id,
-    owner: mf.owner,
-    path: relPath,
-    mode: mf.mode,
-    format: mf.format,
-    marker,
-    lastWrittenChecksum,
-    sourceHash,
-    state,
-    ...(mf.base === undefined ? {} : { base: mf.base }),
-    ...(backup === undefined ? {} : { backup }),
-    createdAt: existing?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-  };
+  return yield* planLedgerWrite(
+    {
+      operation,
+      body: {
+        id: mf.id,
+        owner: mf.owner,
+        path: relPath,
+        mode: mf.mode,
+        format: mf.format,
+        marker,
+        lastWrittenChecksum,
+        sourceHash,
+        ...(mf.base === undefined ? {} : { base: mf.base }),
+        ...(backup === undefined ? {} : { backup }),
+        createdAt: existing?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      },
+    },
+    existing,
+  );
 });
 
 const resolveConflict = (mf: ManagedFile, force: boolean): "overwrite" | "skip" | "fail" => {
@@ -294,19 +284,20 @@ const decideFile = (
 ): Effect.Effect<Decision, ManagedFileError> =>
   renderBody(mf, operation).pipe(
     Effect.flatMap(
-      Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision> {
+      Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision, ManagedFileError> {
         const sourceHash = sha256Hex(body);
         const desiredFile = composeFileContent(mf.format, marker, body);
         const desiredChecksum = sha256Hex(desiredFile);
 
-        if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
+        if (ledgerTransitions.step("manage", entry?.state ?? "absent")._tag === "Settled")
+          return { action: "skip-adopted", relPath, abs };
         if (disk === null) {
           return {
             action: "create",
             relPath,
             abs,
             write: desiredFile,
-            ledgerNext: yield* buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+            ledgerNext: yield* buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "manage", entry),
           };
         }
 
@@ -326,7 +317,7 @@ const decideFile = (
                     marker,
                     currentChecksum,
                     sourceHash,
-                    "managed",
+                    "manage",
                     entry,
                   ),
                 };
@@ -342,7 +333,7 @@ const decideFile = (
                   marker,
                   desiredChecksum,
                   sourceHash,
-                  "managed",
+                  "manage",
                   entry,
                 ),
               };
@@ -360,7 +351,7 @@ const decideFile = (
                   marker,
                   desiredChecksum,
                   sourceHash,
-                  "managed",
+                  "manage",
                   entry,
                 ),
                 backup: { content: disk, path: `${relPath}.lando-backup-${yield* Clock.currentTimeMillis}` },
@@ -374,7 +365,15 @@ const decideFile = (
             action,
             relPath,
             abs,
-            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256Hex(disk), sourceHash, "adopted", entry),
+            ledgerNext: yield* buildEntry(
+              mf,
+              relPath,
+              marker,
+              sha256Hex(disk),
+              sourceHash,
+              "detect-adoption",
+              entry,
+            ),
           };
         }
 
@@ -385,7 +384,7 @@ const decideFile = (
             action: "skip-unchanged",
             relPath,
             abs,
-            ledgerNext: yield* buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
+            ledgerNext: yield* buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "manage", entry),
           };
         }
         if (baseline === undefined || currentChecksum !== baseline) {
@@ -402,7 +401,7 @@ const decideFile = (
                 marker,
                 desiredChecksum,
                 sourceHash,
-                "managed",
+                "manage",
                 entry,
               ),
               backup: { content: disk, path: `${relPath}.lando-backup-${yield* Clock.currentTimeMillis}` },
@@ -415,7 +414,7 @@ const decideFile = (
           relPath,
           abs,
           write: desiredFile,
-          ledgerNext: yield* buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+          ledgerNext: yield* buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "manage", entry),
         };
       }),
     ),
@@ -440,7 +439,7 @@ const decideBlock = (
   }
   return renderBody(mf, operation).pipe(
     Effect.flatMap(
-      Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision> {
+      Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision, ManagedFileError> {
         const sourceHash = sha256Hex(body);
         const desiredBlock = composeBlock(prefix, marker, body);
         const desiredSliceHash = sha256Hex(desiredBlock);
@@ -449,7 +448,8 @@ const decideBlock = (
             ? { found: false, slice: "", before: "", after: "" }
             : findBlock(prefix, marker, disk);
 
-        if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
+        if (ledgerTransitions.step("manage", entry?.state ?? "absent")._tag === "Settled")
+          return { action: "skip-adopted", relPath, abs };
 
         if (disk === null) {
           const newContent = insertBlock(disk, desiredBlock);
@@ -458,15 +458,7 @@ const decideBlock = (
             relPath,
             abs,
             write: newContent,
-            ledgerNext: yield* buildEntry(
-              mf,
-              relPath,
-              marker,
-              desiredSliceHash,
-              sourceHash,
-              "managed",
-              entry,
-            ),
+            ledgerNext: yield* buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "manage", entry),
           };
         }
 
@@ -483,7 +475,7 @@ const decideBlock = (
                 marker,
                 entry.lastWrittenChecksum,
                 sourceHash,
-                "adopted",
+                "detect-adoption",
                 entry,
               ),
             };
@@ -492,7 +484,15 @@ const decideBlock = (
             action: "skip-adopted",
             relPath,
             abs,
-            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256Hex(disk), sourceHash, "adopted", entry),
+            ledgerNext: yield* buildEntry(
+              mf,
+              relPath,
+              marker,
+              sha256Hex(disk),
+              sourceHash,
+              "detect-adoption",
+              entry,
+            ),
           };
         }
 
@@ -503,15 +503,7 @@ const decideBlock = (
             action: "skip-unchanged",
             relPath,
             abs,
-            ledgerNext: yield* buildEntry(
-              mf,
-              relPath,
-              marker,
-              currentSliceHash,
-              sourceHash,
-              "managed",
-              entry,
-            ),
+            ledgerNext: yield* buildEntry(mf, relPath, marker, currentSliceHash, sourceHash, "manage", entry),
           };
         }
         if (baseline === undefined || currentSliceHash !== baseline) {
@@ -528,7 +520,7 @@ const decideBlock = (
                 marker,
                 desiredSliceHash,
                 sourceHash,
-                "managed",
+                "manage",
                 entry,
               ),
               backup: {
@@ -544,7 +536,7 @@ const decideBlock = (
           relPath,
           abs,
           write: replaceBlock(location, desiredBlock),
-          ledgerNext: yield* buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+          ledgerNext: yield* buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "manage", entry),
         };
       }),
     ),
@@ -563,7 +555,7 @@ const decideOne = Effect.fnUntraced(function* (
   if (mf.mode === "keys") {
     return yield* fail("format", operation, {
       path: mf.path,
-      remediation: "`keys`-mode structured merge is not implemented yet; use `file` or `block`.",
+      remediation: "`keys`-mode structured merge is not supported; use `file` or `block`.",
     });
   }
   const marker = mf.marker ?? mf.id;
@@ -832,8 +824,11 @@ export const makeManagedFileService = (
                 } else {
                   yield* backend.removeFile(abs, "remove");
                 }
-                if (action !== "conflict")
+                if (action !== "conflict") {
+                  // The removal edge only advances a present entry to absent, or fails.
+                  yield* planLedgerWrite({ operation: "remove" }, entry);
                   next = next.filter((candidate) => !sameLedgerTarget(candidate, entry, scope.defaultBase));
+                }
                 results.push({ id: entry.id, path: entry.path as PortablePath, action });
               }
               return [{ entries: results }, next] as const;
@@ -882,13 +877,14 @@ export const makeManagedFileService = (
                     : stripFileMarker(entry.format, disk, entry.marker);
                 if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
               }
-              const next = entry
-                ? upsertEntry(
-                    entries,
-                    { ...entry, state: "adopted", updatedAt: yield* nowIso },
-                    scope.defaultBase,
-                  )
-                : entries;
+              const ledgerNext = yield* planLedgerWrite(
+                { operation: "adopt", updatedAt: yield* nowIso },
+                entry,
+              );
+              const next =
+                ledgerNext !== undefined && ledgerNext !== entry
+                  ? upsertEntry(entries, ledgerNext, scope.defaultBase)
+                  : entries;
               return [undefined, next] as const;
             }),
           scope.ledgerBase,
@@ -903,14 +899,14 @@ export const makeManagedFileService = (
             const entry = entries.find((candidate) =>
               sameLedgerTarget(candidate, { path }, scope.defaultBase),
             );
+            const ledgerNext = yield* planLedgerWrite(
+              { operation: "release", updatedAt: yield* nowIso },
+              entry,
+            );
             return [
               undefined,
-              entry
-                ? upsertEntry(
-                    entries,
-                    { ...entry, state: "adopted", updatedAt: yield* nowIso },
-                    scope.defaultBase,
-                  )
+              ledgerNext !== undefined && ledgerNext !== entry
+                ? upsertEntry(entries, ledgerNext, scope.defaultBase)
                 : entries,
             ] as const;
           }),
@@ -1036,6 +1032,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
           schema: LedgerStateSchema,
           onCorrupt,
           default: { entries: [] },
+          lock: "advisory",
         }),
       ),
     );
@@ -1162,14 +1159,10 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
     mutateLedger: (operation, f, base) =>
       ledgerBucketFor(base ?? options.defaultBase(), "quarantine").pipe(
         Effect.flatMap((bucket) =>
-          withAdvisoryLockUsing(options.privateFileAccess)(
-            bucket.path,
-            operation,
-            bucket.get.pipe(
-              Effect.flatMap((state) => f(state?.entries ?? [])),
-              Effect.flatMap(([result, entries]) => bucket.set({ entries }).pipe(Effect.as(result))),
-            ),
-          ),
+          bucket.mutate((state) => {
+            const entries = state?.entries ?? [];
+            return f(entries).pipe(Effect.map((outcome) => planLedgerStateWrite(entries, outcome)));
+          }),
         ),
         Effect.mapError((cause) =>
           isManagedFileError(cause)
@@ -1213,9 +1206,12 @@ const makeManagedFileEvents = (
  * redactor so event payloads are never retained raw.
  */
 const dependenciesForPrivateFileAccess = Effect.fnUntraced(function* (privateFileAccess: PrivateFileAccess) {
+  const paths = yield* Effect.serviceOption(PathsService);
+  const ledgerRoot =
+    paths._tag === "Some" ? paths.value.roots.userDataRoot : resolveLandoRoots().userDataRoot;
   const backend = yield* makeDiskBackend({
     defaultBase: () => process.cwd(),
-    ledgerRoot: () => resolveLandoRoots().userDataRoot,
+    ledgerRoot: () => ledgerRoot,
     privateFileAccess,
   });
   const eventService = yield* Effect.serviceOption(EventService);

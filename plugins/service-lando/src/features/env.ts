@@ -5,7 +5,12 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
-import { ServiceConfigIssue, addEnvRecord, serviceFeatureApply } from "../services/_feature-helpers.ts";
+import {
+  ServiceConfigIssue,
+  addEnvRecord,
+  serviceFeatureApply,
+  serviceFeatureValidateEffective,
+} from "../services/_feature-helpers.ts";
 
 const GLOBAL_APP_NAME = "global" as const;
 
@@ -15,7 +20,6 @@ export const LANDO_ENV_FEATURE_PRIORITY = 700;
 const LandoEnvFeatureConfigSchema = Schema.Struct({
   webroot: Schema.optionalKey(Schema.String),
 });
-type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
 
 const slug = (input: string): string =>
   input
@@ -48,7 +52,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("LANDO_SERVICE_NAME", ctx.serviceName);
   ctx.addEnv("LANDO_SERVICE_TYPE", ctx.serviceType);
 
-  const { webroot } = ctx.config as LandoEnvFeatureConfig;
+  const { webroot } = Schema.decodeUnknownSync(LandoEnvFeatureConfigSchema)(ctx.config);
   if (ctx.normalizedConfig.appMount !== false && webroot !== undefined) ctx.addEnv("LANDO_WEBROOT", webroot);
 
   if (appKind !== "global") {
@@ -67,7 +71,16 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
 
 export const landoEnvFeature: ServiceFeatureDefinition = {
   id: LANDO_ENV_FEATURE_ID,
-  schema: LandoEnvFeatureConfigSchema as unknown as Schema.Codec<unknown>,
+  schema: LandoEnvFeatureConfigSchema,
   priority: LANDO_ENV_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(LANDO_ENV_FEATURE_ID, (ctx) => {
+    const { webroot } = Schema.decodeUnknownSync(LandoEnvFeatureConfigSchema)(ctx.config);
+    return {
+      handledServiceFields:
+        ctx.normalizedConfig.appMount !== false && webroot !== undefined && webroot.trim().length > 0
+          ? ["webroot"]
+          : [],
+    };
+  }),
   apply: serviceFeatureApply(LANDO_ENV_FEATURE_ID, "lando.env failed to apply", applyEnv),
 };

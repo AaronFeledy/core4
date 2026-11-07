@@ -13,6 +13,7 @@ import {
 
 export const pullSpec: LandoCommandSpec<SyncResultType> = {
   id: "app:pull",
+  onlineAcquisition: true,
   summary: "Pull remote datasets into the current app.",
   namespace: "app",
   topLevelAlias: true,
@@ -21,6 +22,5 @@ export const pullSpec: LandoCommandSpec<SyncResultType> = {
   args: { env: remoteEnvArg },
   resultSchema: SyncResult,
   run: (input) => appPull(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
-  render: (result, input, ctx) =>
-    renderSyncResult(result as SyncResultType, remoteFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderSyncResult(result, remoteFormatFromInput(input), ctx),
 };

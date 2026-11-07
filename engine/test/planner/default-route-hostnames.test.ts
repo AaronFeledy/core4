@@ -31,6 +31,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
     name: ServiceName.make("appserver"),
     serviceName: "appserver",
     type: "php",
+    artifact: { kind: "ref", ref: "php:8.4-cli" },
     serviceType: "php",
     provider: PROVIDER,
     primary: true,
@@ -62,15 +63,18 @@ describe("finalizeServices auto-generated hostnames", () => {
     const draft = phpishDraft(undefined);
     const result = await Effect.runPromise(
       finalizeServices({
+        manifests: [],
         plannedServiceDrafts: [{ ...draft, draft: { ...draft.draft, provider } }],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider,
         providerCapabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
     const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
@@ -94,15 +98,18 @@ describe("finalizeServices auto-generated hostnames", () => {
     // When
     const finalized = await Effect.runPromise(
       finalizeServices({
+        manifests: [],
         plannedServiceDrafts: [plannedServiceDraft],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: "lando.test",
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
 
@@ -120,15 +127,18 @@ describe("finalizeServices auto-generated hostnames", () => {
     // Given / When
     const finalized = await Effect.runPromise(
       finalizeServices({
+        manifests: [],
         plannedServiceDrafts: [phpishDraft(undefined)],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
 

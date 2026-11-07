@@ -64,6 +64,7 @@ for (const contextual of [false, true]) {
           : [
               expect.objectContaining({
                 rule: "landofile.load",
+                reason: "ManagedFileTransactionError",
                 severity: "error",
                 suggestion: failure.remediation,
               }),

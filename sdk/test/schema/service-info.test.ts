@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { ServiceInfo, ServiceState, StartedService } from "@lando/sdk/schema";
+import {
+  CertificatePlan,
+  ServiceInfo,
+  ServiceInfoConsistent,
+  ServiceState,
+  StartedService,
+} from "@lando/sdk/schema";
+import type { ServiceFeatureContext } from "@lando/sdk/services";
 import { Schema } from "effect";
 
 const service = {
@@ -56,6 +63,113 @@ test("preserves connection addresses when info crosses the SDK boundary", () => 
   const encoded = Schema.encodeSync(ServiceInfo)(decoded);
   // Then
   expect(encoded).toEqual(service);
+});
+
+test("preserves the historical certificate struct and typed generated consumer", () => {
+  expect(Object.keys(CertificatePlan.fields)).toEqual(["cn", "sans", "caId"]);
+  const mapped = CertificatePlan.mapFields((fields) => ({ ...fields }));
+  expect(Object.keys(mapped.fields)).toEqual(["cn", "sans", "caId"]);
+  const certificate: Parameters<ServiceFeatureContext["setCerts"]>[0] = CertificatePlan.make({
+    cn: "web.internal",
+    sans: ["web.internal"],
+    caId: "test",
+  });
+  expect(certificate.cn).toBe("web.internal");
+  const input = { cn: "web.internal", sans: ["web.internal"], caId: "test" };
+  const HistoricalCertificatePlan = Schema.Struct({
+    cn: Schema.String,
+    sans: Schema.Array(Schema.String),
+    caId: Schema.String,
+  });
+  const historical = Schema.decodeUnknownSync(HistoricalCertificatePlan)(input, {
+    onExcessProperty: "error",
+  });
+  expect(Schema.encodeSync(CertificatePlan)(historical)).toEqual(input);
+  const decoded = Schema.decodeUnknownSync(CertificatePlan)(input, { onExcessProperty: "error" });
+  const encoded = Schema.encodeSync(CertificatePlan)(decoded);
+  expect(encoded).toEqual(input);
+  expect(Schema.decodeUnknownSync(HistoricalCertificatePlan)(encoded, { onExcessProperty: "error" })).toEqual(
+    input,
+  );
+});
+
+test.each([
+  { state: "none" },
+  { state: "custom" },
+  { state: "none", cn: "web" },
+  { state: "custom", sans: ["web"] },
+  { state: "generated", cn: "web", sans: [], caId: "test" },
+])("rejects marker-only, mixed, or fabricated certificate-plan forms %j", (input) => {
+  expect(() => Schema.decodeUnknownSync(CertificatePlan)(input, { onExcessProperty: "error" })).toThrow();
+});
+
+test("round trips safe service metadata and JSON provider details", () => {
+  const input = {
+    ...service,
+    artifact: { kind: "ref", ref: "node:22-alpine", digest: "sha256:example" },
+    user: "node",
+    workingDirectory: "/app",
+    hostnames: ["web", "web.demo.internal"],
+    certs: { state: "custom" },
+    health: {
+      check: {
+        kind: "tcp",
+        intervalSeconds: 10,
+        timeoutSeconds: 2,
+        retries: 3,
+        target: "service",
+        userSource: "service",
+        user: "node",
+        commandConfigured: false,
+        configPath: ["services", "web", "healthcheck"],
+      },
+      state: "unhealthy",
+    },
+    providerInfo: { observation: "limited", retries: 2, labels: ["safe"] },
+  } as const;
+  expect(Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input))).toEqual(input);
+});
+
+test.each([
+  ["running", "healthy", true],
+  ["running", "starting", true],
+  ["running", "unhealthy", true],
+  ["healthy", "healthy", true],
+  ["unhealthy", "unhealthy", true],
+  ["stopped", "unknown", true],
+  ["stopped", "not-monitored", true],
+  ["stopped", "healthy", false],
+  ["error", "unhealthy", false],
+  ["paused", "starting", false],
+  ["healthy", "unhealthy", false],
+  ["healthy", "starting", false],
+  ["unhealthy", "healthy", false],
+  ["unhealthy", "starting", false],
+  ["starting", "healthy", false],
+  ["starting", "unhealthy", false],
+  ["ready", "unhealthy", false],
+  ["ready", "starting", false],
+  ["ready", "healthy", true],
+] as const)("status %s with health.state %s is consistent=%s", (status, healthState, consistent) => {
+  const input = { ...service, status, health: { state: healthState } };
+  expect(Schema.decodeUnknownResult(ServiceInfoConsistent)(input)._tag === "Success").toBe(consistent);
+  if (consistent) {
+    expect(ServiceInfoConsistent.make(input)).toEqual(input);
+  } else {
+    expect(() => ServiceInfoConsistent.make(input)).toThrow();
+  }
+});
+
+test("the published ServiceInfo struct stays free of the cross-field check", () => {
+  const input = { ...service, status: "stopped", health: { state: "healthy" } };
+  expect(Schema.decodeUnknownResult(ServiceInfo)(input)._tag).toBe("Success");
+  expect(Schema.decodeUnknownResult(ServiceInfoConsistent)(input)._tag).toBe("Failure");
+});
+
+test("rejects non-JSON provider details", () => {
+  expect(() =>
+    Schema.decodeUnknownSync(ServiceInfo)({ ...service, providerInfo: { invalid: () => 1 } }),
+  ).toThrow();
 });
 
 test("round trips storage lifetime and the full resolved application mount", () => {

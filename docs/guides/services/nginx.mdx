@@ -2,7 +2,7 @@
 id: nginx
 provider: test
 timeout: 90000
-tags: [beta, docs, nginx, service, webserver]
+tags: [docs, nginx, service, webserver]
 ---
 
 # Add nginx
@@ -51,6 +51,64 @@ services:
     via: fpm
 ```
 
+## Stop PHP in upload directories
+
+Set `uploadDirs:` on the nginx service in front of PHP-FPM, not on the FPM service. Lando's generated PHP location blocks execution from these webroot-relative directories:
+
+```yaml
+services:
+  web:
+    type: nginx
+    backend: app
+    uploadDirs:
+      - sites/*/files
+      - uploads
+  app:
+    type: "php:8.3"
+    via: fpm
+```
+
+The nginx service needs a non-empty `backend` and Lando's generated launcher, with no authored `command:` or `entrypoint:`. See [Keep PHP out of upload directories](./php.mdx#keep-php-out-of-upload-directories) for syntax, recipe defaults, Apache support, and how to check or clear the setting.
+
+  <Scenario id="authored-upload-dirs" render>
+    <Step name="scaffold">
+      <UseFixture name="nginx-upload-dirs" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"sites/\\*/files\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-upload-dirs-injection" render={false} reason="Regression for uploadDirs allowlist">
+    <Step name="scaffold">
+      <UseFixture name="nginx-upload-dirs-inject" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"uploadDirs\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unsupported-upload-dirs" render={false} reason="Reject protection that nginx cannot generate">
+    <Step name="lint">
+      <UseFixture name="nginx-upload-dirs-unsupported" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"uploadDirs\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
 ## Serve a subdirectory
 
 Set `webroot:` to a path relative to the app mount at `/app`. For example, `public` serves `/app/public`. Omit it or use `.` to serve the app root. An absolute container path is allowed when you need a very specific location outside the usual app layout. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path. Set `port:` to move nginx's listener, endpoint, and healthcheck together:
@@ -91,7 +149,12 @@ services:
 
 Lando plans no home store for the `nginx` account, whose home on this image is its cache directory; set `home.path:` when you want a directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
 
-If you set your own `command:` or `entrypoint:`, your startup owns nginx's configuration. Lando does not generate a launcher or remove the image's default site.
+If you set your own `command:` or `entrypoint:`, your startup owns nginx's
+configuration. Lando never appends listen directives or flags to an authored
+launcher, and it does not generate a config or remove the image's default site.
+Match the daemon to `port:` yourself.
+If startup fails with this override, Lando includes a hint naming the required
+`listen <port>;` directive with your planned port number.
 
 ## Pin a version
 

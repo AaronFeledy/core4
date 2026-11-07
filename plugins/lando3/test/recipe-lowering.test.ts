@@ -7,6 +7,7 @@ import { foldToTargetLayers, legacyPrefixViews } from "../src/effective-views.ts
 import { toMergedValue } from "../src/legacy-merge.ts";
 import { lowerRecipeViews, recipeLayerOutputs } from "../src/recipe-lowering.ts";
 import { document, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { serviceFacts } from "./fixtures/service-facts.ts";
 
 const views = async (entries: ReadonlyArray<readonly [Lando3SourceLayer, string]>) => {
   const sources = await Promise.all(
@@ -85,7 +86,7 @@ test("decomposes changed options with provenance and only redactor ports", async
     ["local", "config: {redis: false}\n"],
   ]);
   // When lowering without any host IO ports.
-  const result = await Effect.runPromise(lowerRecipeViews({ ...fake, redactor }, folded));
+  const result = await Effect.runPromise(lowerRecipeViews({ ...fake, redactor, serviceFacts }, folded));
   // Then only the pure decomposer ran, once per option set.
   expect(result.decomposeCalls).toBe(2);
   expect(fake.calls.map(({ secrets }) => secrets)).toEqual([{}, {}]);
@@ -104,7 +105,7 @@ test("does not decompose a name-only later layer", async () => {
     ["local", "name: other\n"],
   ]);
   const result = await Effect.runPromise(
-    lowerRecipeViews({ ...fake, redactor: createRedactor("secrets") }, folded),
+    lowerRecipeViews({ ...fake, redactor: createRedactor("secrets"), serviceFacts }, folded),
   );
   expect(result.decomposeCalls).toBe(1);
   expect(fake.calls).toHaveLength(1);
@@ -116,7 +117,9 @@ test.each([
 ])("fails closed for %s", async (content, reason) => {
   const folded = await views([["dist", content]]);
   const result = await Effect.runPromise(
-    Effect.result(lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets") }, folded)),
+    Effect.result(
+      lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets"), serviceFacts }, folded),
+    ),
   );
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure")
@@ -130,7 +133,7 @@ test.each([
 test("reports an unmapped option with its authored span", async () => {
   const folded = await views([["dist", "recipe: wordpress\nconfig: {xdebug: true}\n"]]);
   const result = await Effect.runPromise(
-    lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets") }, folded),
+    lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets"), serviceFacts }, folded),
   );
   expect(result.diagnostics.find(({ kind }) => kind === "dropped")).toMatchObject({
     keyPath: ["config", "xdebug"],

@@ -5,6 +5,8 @@ import { Duration, Effect, Schema } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
 import { AppPlan } from "@lando/sdk/schema";
+import type { WorkerClaim } from "../detached-worker/claim.ts";
+import { terminateWorker } from "../detached-worker/lifecycle.ts";
 
 import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
 import {
@@ -100,7 +102,7 @@ const identifyWorker = (record: ControlRecord) =>
 
 export const probeWorker = (
   record: ControlRecord,
-  options: { readonly requireSessionIdentity?: boolean } = {},
+  options: { readonly requireSessionIdentity?: boolean; readonly requireHealthyBridge?: boolean } = {},
 ): Effect.Effect<ProbeWorkerResult> =>
   runProbe(
     {
@@ -109,7 +111,10 @@ export const probeWorker = (
       classify: {
         success: (value) => {
           const identity = value as HostProxyWorkerIdentity;
-          return identity.appId === record.appId &&
+          return (options.requireHealthyBridge === false ||
+            identity.bridge === "none" ||
+            identity.bridge === "alive") &&
+            identity.appId === record.appId &&
             identity.protocolVersion === record.protocolVersion &&
             identity.pid === record.pid &&
             (options.requireSessionIdentity !== true ||
@@ -215,7 +220,7 @@ const terminateWorkerProcess = Effect.fnUntraced(function* (
 
 export const terminateControlRecord = (
   record: HostProxyControlRecord,
-  options: WorkerControlTerminationOptions,
+  options: WorkerControlTerminationOptions & { readonly claim: WorkerClaim },
   removeDir: Effect.Effect<void>,
 ): Effect.Effect<void> => {
   const control: HostProxyControlRecord = {
@@ -227,20 +232,21 @@ export const terminateControlRecord = (
     ...(record.socketPath === undefined ? {} : { socketPath: record.socketPath }),
     ...(record.url === undefined ? {} : { url: record.url }),
   };
-  return probeWorker(record).pipe(
-    Effect.flatMap((status) => (status === "live" ? Effect.succeed(status) : probeWorker(control))),
+  const owned = probeWorker(record, { requireHealthyBridge: false }).pipe(
     Effect.flatMap((status) =>
-      status === "dead"
-        ? removeDir
-        : shutdownWorker(record).pipe(
-            Effect.flatMap((accepted) =>
-              accepted ? Effect.void : shutdownWorker(control).pipe(Effect.asVoid),
-            ),
-            Effect.andThen(awaitWorkerDisconnect(control)),
-            Effect.andThen(awaitWorkerProcessExit(record)),
-            Effect.flatMap((stopped) => (stopped ? Effect.void : terminateWorkerProcess(record, options))),
-            Effect.andThen(removeDir),
-          ),
+      status === "live" ? Effect.succeed(status) : probeWorker(control, { requireHealthyBridge: false }),
     ),
+    Effect.map((status) => status === "live"),
   );
+  return terminateWorker({
+    claim: options.claim,
+    owned,
+    shutdown: shutdownWorker(record).pipe(
+      Effect.flatMap((accepted) => (accepted ? Effect.void : shutdownWorker(control).pipe(Effect.asVoid))),
+      Effect.andThen(awaitWorkerDisconnect(control)),
+      Effect.andThen(awaitWorkerProcessExit(record)),
+      Effect.flatMap((stopped) => (stopped ? Effect.void : terminateWorkerProcess(record, options))),
+    ),
+    remove: removeDir,
+  }).pipe(Effect.orDie);
 };

@@ -1,0 +1,7 @@
+name: php-upload-dirs-fpm
+services:
+  appserver:
+    type: php:8.3
+    via: fpm
+    uploadDirs:
+      - uploads

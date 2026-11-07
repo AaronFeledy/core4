@@ -35,6 +35,7 @@ const expected = {
       type: "php:{{ recipe.php }}",
       primary: true,
       framework: "laravel",
+      uploadDirs: ["storage"],
       webroot: "{{ recipe.webroot }}",
       composer: "{{ recipe.composer }}",
       allowOverride: true,
@@ -51,13 +52,15 @@ const expected = {
       service: "appserver",
       description: "Run a Laravel Artisan command inside the appserver service.",
       cmds: ["php artisan"],
+      wrapper: true,
     },
     composer: {
       service: "appserver",
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
+      wrapper: true,
     },
-    npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"] },
+    npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"], wrapper: true },
   },
 };
 

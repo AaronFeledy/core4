@@ -1,30 +1,29 @@
 import { Effect } from "effect";
 
-import type { InfoAppError, InfoAppResult } from "@lando/sdk/app";
+import type { InfoAppError } from "@lando/sdk/app";
 import type {
   ComposeKeyRejectedError,
   LandofileLoadExpressionError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import type { AppPlan, InfoAppResult } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { selectGlobalServices } from "@lando/engine/operations/global-common";
 import {
   type LoadGlobalPlanServices,
   type LoadObservedGlobalPlanError,
   loadObservedGlobalPlan,
 } from "@lando/engine/operations/global-plan";
-import { AppInfoResultSchema, infoForPlan } from "@lando/engine/operations/info";
+import { infoForPlan } from "@lando/engine/operations/info";
 import type { RenderContext } from "../../renderer-boundary";
 import { renderInfoAppResult } from "../info-render";
-import { selectGlobalServices } from "./global-common";
 
 export interface GlobalInfoOptions {
   readonly services?: ReadonlyArray<string>;
 }
 
 export type GlobalInfoResult = InfoAppResult;
-export const GlobalInfoResultSchema = AppInfoResultSchema;
 
 export type GlobalInfoError =
   | ComposeKeyRejectedError

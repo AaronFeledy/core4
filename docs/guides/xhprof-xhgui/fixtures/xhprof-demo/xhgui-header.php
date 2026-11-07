@@ -8,7 +8,10 @@ require_once $autoload;
 try {
     $profiler = new \Xhgui\Profiler\Profiler([
         'save.handler' => \Xhgui\Profiler\Profiler::SAVER_UPLOAD,
-        'save.handler.upload' => ['url' => 'http://xhgui/run/import'],
+        'save.handler.upload' => [
+            'url' => 'http://xhgui/run/import',
+            'timeout' => 30,
+        ],
     ]);
     $profiler->start();
 } catch (\Throwable $e) {

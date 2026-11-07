@@ -4,6 +4,40 @@ import { Result } from "effect";
 import { normalizeToolingTask, requiresProvider } from "../src/tooling-normalize.ts";
 
 describe("normalizeToolingTask", () => {
+  test.each([
+    [{ cmd: "sh reset.sh" }, false],
+    [{ cmd: "wp", wrapper: true }, true],
+    [{ cmd: ["echo", "$1", "&&"], wrapper: true }, true],
+    [{ cmds: ["echo hi"], wrapper: true }, true],
+    [{ cmd: "cd x && y" }, false],
+    [{ cmd: "echo $1" }, false],
+    [{ cmd: 'echo "$@"' }, false],
+    [{ cmd: "echo ${1}" }, false],
+    [{ cmd: "echo hi\necho bye" }, false],
+    [{ cmds: ["echo a", "echo b"] }, false],
+    [{ cmd: "echo a; echo b" }, false],
+    [{ cmd: "echo a | cat" }, false],
+    [{ cmd: "echo a > marker" }, false],
+    [{ cmd: "cat < input" }, false],
+    [{ cmd: "(echo a)" }, false],
+    [{ cmd: "echo `pwd`" }, false],
+    [{ cmd: "echo a &" }, false],
+    [{ cmd: "echo hi", flags: { loud: { boolean: true } } }, false],
+    [{ cmd: "echo hi", arguments: false }, false],
+    [{ cmd: "echo hi", wrapper: false }, false],
+    [{ cmds: ["a", "b"], flags: { loud: { boolean: true } }, args: { target: {} }, wrapper: false }, false],
+    [{ cmd: "a", arguments: false, wrapper: false }, false],
+    [{}, false],
+  ] satisfies readonly (readonly [ToolingTaskShape, boolean])[])(
+    "Given %j, when normalized, then wrapper is %s",
+    (task, expected) => {
+      // Given / When
+      const normalized = Result.getOrThrow(normalizeToolingTask("run", task));
+      // Then
+      expect(normalized.wrapper).toBe(expected);
+    },
+  );
+
   test("preserves mixed steps and independently inherits execution settings", () => {
     // Given
     const task: ToolingTaskShape = {
@@ -81,6 +115,11 @@ describe("normalizeToolingTask", () => {
     ["required arg after optional", { args: { a: {}, b: { required: true } } }],
     ["empty object command", { cmds: [{ cmd: " " }] }],
     ["cmd and cmds together", { cmd: "a", cmds: ["b"] }],
+    ["wrapper with two commands", { cmds: ["a", "b"], wrapper: true }],
+    ["wrapper without a command", { wrapper: true }],
+    ["wrapper with flags", { cmd: "a", wrapper: true, flags: { loud: { boolean: true } } }],
+    ["wrapper with args", { cmd: "a", wrapper: true, args: { target: {} } }],
+    ["wrapper with arguments disabled", { cmd: "a", wrapper: true, arguments: false }],
   ];
   test.each(invalid)("rejects %s", (_label, task) => {
     // Given / When
@@ -102,7 +141,6 @@ describe("normalizeToolingTask", () => {
     const task: ToolingTaskShape = {
       description: "preferred",
       summary: "fallback",
-      arguments: false,
       disabled: true,
       flags: { count: { default: 2 } },
       args: { b: { order: 2, default: false }, a: { order: 1, required: true } },
@@ -113,13 +151,14 @@ describe("normalizeToolingTask", () => {
     expect(result).toMatchObject({
       summary: "preferred",
       disabled: true,
-      hasInput: true,
-      acceptsArguments: false,
-      flags: [{ name: "count", default: "2", boolean: false, required: false }],
-      args: [
-        { name: "a", order: 1 },
-        { name: "b", order: 2, default: "false" },
-      ],
+      input: {
+        acceptsArguments: true,
+        flags: [{ name: "count", default: "2", boolean: false, required: false }],
+        args: [
+          { name: "a", order: 1 },
+          { name: "b", order: 2, default: "false" },
+        ],
+      },
     });
   });
 
@@ -127,7 +166,7 @@ describe("normalizeToolingTask", () => {
     // Given / When
     const result = Result.getOrThrow(normalizeToolingTask("run", {}));
     // Then
-    expect(result).toMatchObject({ disabled: false, hasInput: false, acceptsArguments: true });
+    expect(result).toMatchObject({ disabled: false, input: { flags: [], args: [], acceptsArguments: true } });
   });
 
   test.each([

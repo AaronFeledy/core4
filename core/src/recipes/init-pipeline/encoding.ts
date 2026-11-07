@@ -9,6 +9,7 @@ import { containsReservedBinding } from "@lando/sdk/expressions";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import { validateRecipeSecretPrompts } from "@lando/sdk/recipes";
 import {
+  type ConfigTranslateDiagnostic,
   ConfigTranslateRecipeRequestInput,
   LandofileAuthoringFragment,
   LandofileAuthoringFragmentNative,
@@ -18,13 +19,23 @@ import { ConfigTranslatorRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result, Schema } from "effect";
 import { RECIPE_TRANSLATOR_ID } from "../config-translator.ts";
 import type { RecipeLandofilePreviewRequest } from "../init-pipeline.ts";
+import { snapshotRecipeInitData } from "../prepared-init-types.ts";
 import { makeRecipeTranslatorModule } from "../translator-module.ts";
 import { RecipeInitBlockedError, blocked } from "./errors.ts";
 import { containsSecretValue, secretReference } from "./secrets.ts";
 
 export const encodeRecipeLandofile = Effect.fnUntraced(function* (
   request: RecipeLandofilePreviewRequest & { readonly landofileBasename?: string },
-) {
+): Effect.fn.Return<
+  {
+    readonly source: typeof LandofileAuthoringFragment.Type;
+    readonly text: string;
+    readonly diagnostics: readonly ConfigTranslateDiagnostic[];
+    readonly redact: (text: string) => string;
+    readonly containsSecret: (value: unknown) => boolean;
+  },
+  RecipeInitBlockedError
+> {
   const validated = validateRecipeSecretPrompts(request.manifest);
   if (Result.isFailure(validated)) return yield* Effect.fail(blocked("secret-prompts"));
   const raw = validated.success
@@ -102,8 +113,11 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
     Effect.mapError(() => blocked("validate")),
   );
   if (containsReservedBinding(mapping)) return yield* Effect.fail(blocked("validate"));
-  const context = mergeLandofiles([mapping, { name: request.appName }]);
-  yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, { onExcessProperty: "error" }).pipe(
+  const context = snapshotRecipeInitData(mergeLandofiles([mapping, { name: request.appName }]));
+  const source = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
+    onExcessProperty: "error",
+  }).pipe(
+    Effect.map(snapshotRecipeInitData),
     Effect.mapError(() => blocked("validate")),
   );
   if (containsSecret(context)) return yield* Effect.fail(blocked("validate"));
@@ -112,9 +126,11 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
     Effect.catch(() => Effect.fail(blocked("encode"))),
   );
+  const text = encoded.text;
+  const encoderDiagnostics = snapshotRecipeInitData(encoded.diagnostics);
   const assessmentDiagnostics = yield* assessTranslateExpectations(translated.expectations, context);
   const diagnostics = orderTranslateDiagnostics(
-    [...translated.diagnostics, ...encoded.diagnostics, ...assessmentDiagnostics],
+    [...translated.diagnostics, ...encoderDiagnostics, ...assessmentDiagnostics],
     [input.sourceId],
   ).map((diagnostic) => ({
     ...diagnostic,
@@ -126,6 +142,6 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
     containsSecret(diagnostics)
   )
     return yield* Effect.fail(blocked("diagnostics"));
-  if (containsSecret(encoded.text)) return yield* Effect.fail(blocked("encode"));
-  return { text: encoded.text, diagnostics, redact, containsSecret };
+  if (containsSecret(text)) return yield* Effect.fail(blocked("encode"));
+  return { source, text, diagnostics: snapshotRecipeInitData(diagnostics), redact, containsSecret };
 });

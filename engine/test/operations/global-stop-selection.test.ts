@@ -29,6 +29,34 @@ test("sequential selections and repeats never resurrect stopped sibling routes",
   expect(h.published).toEqual([["database", "sibling"], ["sibling"], ["sibling"]]);
 });
 
+test("selected stop cannot restore explicitly disabled sibling routes from applied state", async () => {
+  const h = harness({ disabled: ["database"] });
+  await h.run(["mail"]);
+  expect(h.published).toEqual([["sibling"]]);
+  expect(h.states.get("database")).toBe("running");
+});
+
+test("selected stop retains active intent-enabled routes when their modules cannot load", async () => {
+  const h = harness();
+  await h.run(["mail"]);
+  expect(h.published).toEqual([["database", "sibling"]]);
+});
+
+test("unreadable route policy does not block exact container removal or publish stale routes", async () => {
+  const h = harness({ inventoryFailure: true });
+  await expect(h.run(["mail"])).rejects.toThrow("Plugin inventory unavailable.");
+  expect(h.removed.map((service) => String(service.service))).toEqual(["mail"]);
+  expect(h.states.get("database")).toBe("running");
+  expect(h.published).toEqual([]);
+});
+
+test("selecting all active routes does not need desired policy evidence", async () => {
+  const h = harness({ inventoryFailure: true });
+  await h.run(["mail", "database", "sibling"]);
+  expect(h.published).toEqual([[]]);
+  expect(h.states.size).toBe(0);
+});
+
 for (const options of [{ online: false }, { missing: true }]) {
   test(`selected stop reports no removal when ${JSON.stringify(options)}`, async () => {
     // Given offline runtime or an applied service without a container.
@@ -47,7 +75,7 @@ test("unknown selection rejects the entire request before mutation", async () =>
   const h = harness();
   // When selection resolves.
   const result = await Effect.runPromise(
-    resolveGlobalStopSelection(h.resolved, ["mail", "typo"]).pipe(Effect.result),
+    resolveGlobalStopSelection(h.resolved, ["mail", "typo"]).pipe(Effect.provide(h.layer), Effect.result),
   );
   // Then the existing tagged error includes available services and remediation.
   expect(result).toMatchObject({
@@ -89,7 +117,10 @@ for (const requested of ["mail", "unknown"]) {
     };
     // When a known or unknown orphan is selected.
     const result = await Effect.runPromise(
-      resolveGlobalStopSelection({ ...h.resolved, evidence }, [requested]).pipe(Effect.result),
+      resolveGlobalStopSelection({ ...h.resolved, evidence }, [requested]).pipe(
+        Effect.provide(h.layer),
+        Effect.result,
+      ),
     );
     // Then neither an unsafe stop nor whole-app teardown is attempted.
     expect(result).toMatchObject({

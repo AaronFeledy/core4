@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import type { ServiceHomePlan } from "@lando/sdk/schema";
+import { type ServiceHomePlan, ServiceInfo } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { AppInfoServiceSchema } from "../../src/operations/info.ts";
 import { runInfo, service } from "./info-storage-fixture.ts";
 
 const homes = [
@@ -21,7 +20,7 @@ test.each([...homes])("projects home unchanged without extra provider calls: %j"
   // Then preserve the contract and the existing observation budget.
   expect(row?.home).toEqual(home);
   if (row === undefined) throw new Error("Expected a service info row");
-  expect(JSON.parse(JSON.stringify(Schema.encodeSync(AppInfoServiceSchema)(row))).home).toEqual(home);
+  expect(JSON.parse(JSON.stringify(Schema.encodeSync(ServiceInfo)(row))).home).toEqual(home);
   expect(calls).toEqual(["select", "inspect:web"]);
 });
 
@@ -37,7 +36,7 @@ test("keeps home after status so scripts matching a service's leading fields kee
   const { row } = await runInfo({ ...service, home: homes[0] });
   if (row === undefined) throw new Error("Expected a service info row");
   // When the row is encoded to its JSON wire form.
-  const json = JSON.stringify(Schema.encodeSync(AppInfoServiceSchema)(row));
+  const json = JSON.stringify(Schema.encodeSync(ServiceInfo)(row));
   // Then no object closes between the service name and its status.
   expect(json).toMatch(/"service":"web"[^}]*"status":"/u);
   expect(json.indexOf('"status"')).toBeLessThan(json.indexOf('"home"'));

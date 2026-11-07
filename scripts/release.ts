@@ -1254,7 +1254,7 @@ const skipStage =
     )
       return;
     if (requirement !== undefined && !context.localRehearsal) {
-      throw new Error(`Release stage ${stage.id} is not implemented yet; local rehearsal may skip it.`);
+      throw new Error(`Release stage ${stage.id} is not implemented; local rehearsal may skip it.`);
     }
     const { logger } = context;
     logger(reason);
@@ -1564,7 +1564,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     kind: "skip",
     commandSummary: "strip release binaries",
     remediation: "Wire platform-specific strip commands before making this stage required.",
-    command: "[release] skip 9-strip (platform-specific stripping not yet wired)",
+    command: "[release] skip 9-strip (platform-specific stripping not wired)",
   }),
   platformSignStage,
   defineStage({

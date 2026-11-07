@@ -20,6 +20,7 @@ import type {
   BunShellScriptFrontMatterError,
   CacheError,
   CommandAliasConflictError,
+  DebuggerHostUnavailableError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -38,6 +39,7 @@ import type {
   LandofileEventsSkippedError,
   LandofileFormConflictError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLockMismatchError,
   LandofileNotFoundError as LandofileMissingError,
   LandofileParseError,
@@ -85,25 +87,50 @@ import type {
   AbsolutePath,
   AppPlan,
   AppRef,
-  CheckResult,
+  AppRemoteEntry,
+  AppRemoteMutationResult,
   ConfigLintResult,
   DatasetKind,
+  DestroyAppResult,
   Environment,
+  ExecAppResult,
+  InfoAppResult,
   LandofileShape,
   ProviderId,
+  RebuildAppResult,
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
+  RestartAppResult,
   ServiceInfo,
   ServiceInfoLogSource,
   ServiceName,
-  StartedService,
+  ShareStopAppResult,
+  StartAppResult,
+  StopAppResult,
   SyncResult,
+  ToolingResult,
   TunnelSession,
   TunnelTarget,
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
 export type { EndpointRef, ServiceConnection, ServiceState, StartedService } from "../schema/index.ts";
+export type {
+  AppRemoteEntry,
+  AppRemoteMutationResult,
+  DestroyAppResult,
+  ExecAppResult,
+  InfoAppAgentEnv,
+  InfoAppHostProxy,
+  InfoAppResult,
+  LandofileEventsOutcome,
+  RebuildAppResult,
+  RestartAppResult,
+  ShareStopAppResult,
+  StartAppResult,
+  StopAppResult,
+  ToolingResult,
+} from "../schema/index.ts";
 import type {
   AppPlanner,
   CacheService,
@@ -204,12 +231,6 @@ export interface StartAppOptions {
   readonly detached?: boolean;
 }
 
-export interface StartAppResult {
-  readonly checks?: ReadonlyArray<CheckResult>;
-  readonly app: string;
-  readonly servicesStarted: readonly StartedService[];
-}
-
 export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
 
 export type StartAppError =
@@ -235,6 +256,7 @@ export type StartAppError =
   | SshAgentTransportError
   | GpgAgentUnavailableError
   | GpgAgentTransportError
+  | DebuggerHostUnavailableError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
@@ -250,23 +272,6 @@ export type StartAppError =
 
 // biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
 export type StopAppOptions = {};
-
-/**
- * Whether a lifecycle operation ran the Landofile's `events:` and `hostEvents` steps. `skipped`
- * names why it could not source them: no Landofile at the applied root, a Landofile that
- * failed to load, or one that describes another app or provider.
- */
-export type LandofileEventsOutcome =
-  | { readonly status: "ran" }
-  | { readonly status: "skipped"; readonly reason: string };
-
-export interface StopAppResult {
-  readonly app: string;
-  readonly outcome?: "stopped" | "unchanged";
-  readonly servicesStopped: ReadonlyArray<string>;
-  /** Present when the operation tore down an app whose Landofile steps could have run. */
-  readonly landofileEvents?: LandofileEventsOutcome;
-}
 
 export type StopAppError =
   | Lando3LandofileDetected
@@ -288,6 +293,7 @@ export type StopAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | LandoCommandError
@@ -306,24 +312,11 @@ export interface RestartAppOptions {
   readonly services?: ReadonlyArray<ServiceName>;
 }
 
-export interface RestartAppResult {
-  readonly checks?: ReadonlyArray<CheckResult>;
-  readonly app: string;
-  readonly servicesStarted: StartAppResult["servicesStarted"];
-}
-
 export type RestartAppError = StartAppError | AppResolveError | ProviderError;
 
 export interface RebuildAppOptions {
   readonly services?: ReadonlyArray<ServiceName>;
   readonly signal?: AbortSignal;
-}
-
-export interface RebuildAppResult {
-  readonly checks?: ReadonlyArray<CheckResult>;
-  readonly app: string;
-  readonly servicesRebuilt: ReadonlyArray<string>;
-  readonly servicesStarted: StartAppResult["servicesStarted"];
 }
 
 export type RebuildAppError = StartAppError | AppResolveError;
@@ -334,16 +327,6 @@ export interface DestroyAppOptions {
   readonly purgeCaches?: boolean;
   readonly purgeSnapshots?: boolean;
   readonly yes?: boolean;
-}
-
-export interface DestroyAppResult {
-  readonly app: string;
-  readonly outcome?: "destroyed" | "unchanged";
-  readonly servicesDestroyed: ReadonlyArray<string>;
-  readonly volumesRemoved: boolean;
-  readonly snapshotsRemoved: number;
-  /** Present when the operation tore down an app whose Landofile steps could have run. */
-  readonly landofileEvents?: LandofileEventsOutcome;
 }
 
 export type DestroyAppError =
@@ -367,17 +350,6 @@ export type InfoLogSourceAvailability = ServiceInfoLogSource["availability"];
 export type InfoLogSource = ServiceInfoLogSource;
 export type InfoAppService = ServiceInfo;
 
-export interface InfoAppAgentEnv {
-  readonly enabled: boolean;
-  readonly forwarded: ReadonlyArray<string>;
-}
-
-export interface InfoAppResult {
-  readonly app: string;
-  readonly services: ReadonlyArray<InfoAppService>;
-  readonly agentEnv?: InfoAppAgentEnv;
-}
-
 export type InfoAppError =
   | StateStoreError
   | AppResolveError
@@ -398,15 +370,6 @@ export interface ExecAppOptions {
   readonly tty?: boolean;
 }
 
-export interface ExecAppResult {
-  readonly app: string;
-  readonly service: string;
-  readonly command: ReadonlyArray<string>;
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
 export type ExecAppError =
   | UserLandofileError
   | AppPlannerError
@@ -419,21 +382,14 @@ export type ExecAppError =
  * argument to `app.tooling(id, options?)`, so it is not part of this object.
  */
 export interface ToolingOptions {
-  readonly args?: ReadonlyArray<string>;
+  readonly input?: import("../schema/tooling-input.ts").ToolingInvocationInput;
+  readonly expectedInputRevision?: import("../schema/tooling-input.ts").ToolingInputRevision;
   readonly user?: string;
   readonly cwd?: string;
   readonly env?: Environment;
   readonly cacheRoot?: string;
   /** Explicitly request a provider PTY. Omission remains noninteractive. */
   readonly tty?: boolean;
-}
-
-export interface ToolingResult {
-  readonly tool: string;
-  readonly service: string;
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
 }
 
 export type ToolingError =
@@ -478,6 +434,7 @@ export type LogsAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | LandoCommandError
@@ -509,12 +466,6 @@ export interface ShareStopAppOptions {
   readonly force?: boolean;
 }
 
-export interface ShareStopAppResult {
-  readonly sessionId: string;
-  readonly provider?: string;
-  readonly status: "stopped";
-}
-
 export type ShareAppError =
   | TunnelError
   | TunnelProviderUnavailableError
@@ -531,6 +482,7 @@ export type RemoteSyncError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | RemoteSourceError
@@ -541,11 +493,6 @@ export type RemoteSyncError =
 export type PullAppError = RemoteSyncError;
 export type PushAppError = RemoteSyncError | RemoteProtectedEnvError | RemoteProviderUnavailableError;
 
-export interface AppRemoteEntry {
-  readonly name: string;
-  readonly config: RemoteConfig;
-}
-
 export interface AppRemoteMutationOptions {
   readonly name: string;
   readonly config: RemoteConfig;
@@ -553,13 +500,6 @@ export interface AppRemoteMutationOptions {
 
 export interface AppRemoteRemoveOptions {
   readonly name: string;
-}
-
-export interface AppRemoteMutationResult {
-  readonly app: string;
-  readonly remote: string;
-  readonly file: string;
-  readonly config: RemoteConfig;
 }
 
 export interface AppRemoteTestOptions {
@@ -658,6 +598,7 @@ export interface App {
 
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
+  | DebuggerHostUnavailableError
   | ScratchAppError
   | AppPlacementError
   | ScratchSourceUnresolvedError

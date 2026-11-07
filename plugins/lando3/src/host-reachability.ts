@@ -6,6 +6,7 @@
  */
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import type { Lando3Path } from "./contract.ts";
+import type { AssignmentEntry } from "./environment.ts";
 import { type ServiceLoweringContext, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { rewrittenServiceKey } from "./service-diagnostics.ts";
 
@@ -57,20 +58,21 @@ export const withoutHostAlias = (
 
 /** Drops an authored `LANDO_HOST_IP`; Lando 4 owns it and derives it from capability. */
 export const withoutHostIpVariable = (
-  environment: Readonly<Record<string, string>>,
+  entries: readonly AssignmentEntry[],
   ctx: ServiceLoweringContext,
-  relative: Lando3Path,
   diagnostics: ConfigTranslateDiagnostic[],
 ): Readonly<Record<string, string>> => {
-  if (!Object.hasOwn(environment, HOST_IP_VARIABLE)) return environment;
+  const environment = Object.fromEntries(entries.map(({ name, value }) => [name, value]));
+  const entry = entries.find((item) => item.name === HOST_IP_VARIABLE);
+  if (entry === undefined) return environment;
   diagnostics.push(
     rewrittenServiceKey({
       ctx,
-      relative: [...relative, HOST_IP_VARIABLE],
+      relative: entry.cell,
       message: `Removed ${HOST_IP_VARIABLE}: Lando 4 sets it to ${HOST_ALIAS} whenever the provider can reach the host.`,
       remediation: `Read $${HOST_IP_VARIABLE} inside the container instead of setting it; it is absent when the host is unreachable.`,
     }),
   );
-  const { [HOST_IP_VARIABLE]: _ip, ...kept } = environment;
-  return kept;
+  delete environment[HOST_IP_VARIABLE];
+  return environment;
 };

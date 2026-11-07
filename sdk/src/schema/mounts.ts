@@ -1,5 +1,7 @@
 import { Effect, Schema } from "effect";
 
+import type { AppPlan, FileSyncPlan } from "./app-plan.ts";
+import type { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { PortablePath } from "./primitives.ts";
 
 // ==== Planned mounts ==========================================================
@@ -25,6 +27,10 @@ const originField = Schema.optionalKey(MountOrigin).annotate({
 export const BindMountPlan = Schema.Struct({
   type: Schema.Literal("bind").annotate({ description: "Mount kind." }),
   source: Schema.String.annotate({ description: "Host path." }),
+  sourceIdentity: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Optional host source identity included in container create fingerprints; replacing the source requires a remount even when its path is unchanged.",
+  }),
   target: PortablePath.annotate({ description: "Mount point inside the container." }),
   readOnly: Schema.Boolean.annotate({ description: "Whether the container sees the mount read-only." }),
   createHostPath: Schema.optionalKey(Schema.Boolean).annotate({
@@ -212,4 +218,77 @@ export const plannedFileSyncSessions = (plan: {
     }
   }
   return sessions;
+};
+
+// ==== File-sync session coverage ==============================================
+// Structural verification shared by the engine and providers.
+
+export type FileSyncCoverageEntry = Pick<FileSyncPlan, "session">;
+
+/** Plan shape required to verify accelerated session coverage. */
+export type FileSyncCoveragePlan = Pick<AppPlan, "id" | "name" | "root"> & {
+  readonly services: Readonly<Record<string, MountListOwner>>;
+  readonly fileSync: ReadonlyArray<FileSyncCoverageEntry>;
+};
+
+/**
+ * True when every accelerated bind has exactly one matching session and no
+ * extras or duplicates, with exact derived ignores from
+ * {@link plannedFileSyncSessions}. Providers may pass realpath-aware
+ * `pathEquals`; the default is string equality.
+ */
+export const hasStructuralFileSyncCoverage = (
+  plan: FileSyncCoveragePlan,
+  options?: {
+    readonly sessions?: ReadonlyArray<FileSyncSessionSpec>;
+    readonly pathEquals?: (left: string, right: string) => boolean;
+  },
+): boolean => {
+  const expected = plannedFileSyncSessions(plan);
+  const sessions = options?.sessions ?? plan.fileSync.map((entry) => entry.session);
+  const pathEquals = options?.pathEquals ?? ((left: string, right: string) => left === right);
+  if (
+    expected === undefined ||
+    expected.length === 0 ||
+    sessions.length !== expected.length ||
+    plan.fileSync.length !== expected.length
+  )
+    return false;
+
+  const plannedKeys = new Set<string>();
+  for (const entry of plan.fileSync) {
+    const key = `${entry.session.service}/${entry.session.mountKey}`;
+    if (
+      plannedKeys.has(key) ||
+      !expected.some(
+        (mount) => mount.service === entry.session.service && mount.mountKey === entry.session.mountKey,
+      )
+    )
+      return false;
+    plannedKeys.add(key);
+  }
+  const seen = new Set<string>();
+  return sessions.every((session) => {
+    const key = `${session.service}/${session.mountKey}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    const mount = expected.find(
+      (candidate) => candidate.service === session.service && candidate.mountKey === session.mountKey,
+    );
+    if (mount === undefined) return false;
+    const expectedExcludes = mount.excludes;
+    return (
+      session.app.kind === "user" &&
+      session.app.id === plan.id &&
+      pathEquals(session.app.root, plan.root) &&
+      session.permissions === undefined &&
+      pathEquals(session.source, mount.source) &&
+      session.mode === "two-way-safe" &&
+      session.excludes.length === expectedExcludes.length &&
+      session.excludes.every((exclude, index) => exclude === expectedExcludes[index]) &&
+      session.target._tag === "volume" &&
+      session.target.name === mount.volumeName &&
+      session.target.path === mount.targetPath
+    );
+  });
 };

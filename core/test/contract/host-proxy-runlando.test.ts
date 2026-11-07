@@ -40,6 +40,11 @@ const roundTrip = (
   const executor: HostProxyRunLandoExecutor = (input) =>
     runOpenForHostProxy(plan, input).pipe(
       Effect.provide(commandServices(silentEventLayer(), extras.httpsPort)),
+      Effect.map((result) => ({
+        stdout: JSON.stringify(result.envelope),
+        stderr: "",
+        exitCode: result.exitCode,
+      })),
     );
   const request = buildRunLandoRequest({
     argv: [...argv],
@@ -54,7 +59,14 @@ const roundTrip = (
     depth: 0,
     app: appRef,
   }).pipe(Effect.provide(Layer.mergeAll(layer, redactionLayer())));
-  return { events, exit: Effect.runPromiseExit(program) };
+  return {
+    events,
+    exit: Effect.runPromiseExit(
+      program.pipe(
+        Effect.map((result) => ({ envelope: JSON.parse(result.stdout), exitCode: result.exitCode })),
+      ),
+    ),
+  };
 };
 
 const httpsPlan = () =>
@@ -206,12 +218,10 @@ describe("in-container lando open host-proxy round-trip", () => {
     }
   });
 
-  test("round-trip publishes redacted pre/post-host-proxy-call events", async () => {
+  test("worker dispatch leaves execution hooks to the child runtime", async () => {
     const { events, exit } = roundTrip(httpsPlan(), ["open", "--print"]);
     await exit;
-    const tags = events.map((event) => event._tag);
-    expect(tags).toContain("pre-host-proxy-call");
-    expect(tags).toContain("post-host-proxy-call");
+    expect(events).toEqual([]);
   });
 
   test("failure envelope redacts secret-bearing route selections", async () => {

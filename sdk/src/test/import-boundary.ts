@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import type ts from "typescript";
+import type ts from "@typescript/typescript6";
 
 export type ImportBoundaryViolation = {
   readonly file: string;
@@ -106,7 +106,7 @@ export const collectImportBoundaryViolations = async (
   const pluginsDir = path.join(repoRoot, "plugins");
   const coreRoot = path.join(repoRoot, "core");
   const violations: ImportBoundaryViolation[] = [];
-  const tsModule = (await import("typescript")).default;
+  const tsModule = (await import("@typescript/typescript6")).default;
 
   const isAllowedLandoPackage = (name: string): boolean => {
     if (name === "@lando/core") return false;

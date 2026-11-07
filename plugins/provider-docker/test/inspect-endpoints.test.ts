@@ -87,7 +87,7 @@ test("Docker list leaves planless TCP bindings as TCP rather than guessing HTTP"
           ? JSON.stringify([
               {
                 Id: "test-container",
-                Names: ["/lando-endpoint-test-web"],
+                Names: ["/lando-endpoint-test--web"],
                 State: "running",
                 Labels: { "dev.lando.app": plan.id, "dev.lando.service": name },
               },
@@ -148,7 +148,7 @@ test.each(["paused", "restarting"])(
     // When
     const result = await Effect.runPromise(provider.inspect({ app: plan.id, service: name, plan }));
     // Then
-    expect(result.state).toBe(state);
+    expect(result.status).toBe(state);
     expect(result.health).toBeUndefined();
     expect(result.publications.status).toBe("present");
   },
@@ -190,7 +190,7 @@ test.each([
     const result = await Effect.runPromise(provider.list({ app: plan.id }));
     // Then
     expect(result.map((runtime) => runtime.publications)).toEqual([observation]);
-    expect(result[0]?.state).toBe("paused");
+    expect(result[0]?.status).toBe("paused");
     expect(JSON.stringify(result)).not.toContain("list-inspect-canary");
   },
 );

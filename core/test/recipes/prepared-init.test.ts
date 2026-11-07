@@ -6,9 +6,9 @@ import { plugin } from "@lando/lando4";
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { Effect, Result } from "effect";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
-import { runRecipeInitPipeline } from "../../src/recipes/init-pipeline.ts";
 import { prepareRecipeInit } from "../../src/recipes/prepared-init.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { runRecipeInitPipeline } from "../_support/recipe-pipeline.ts";
 import { compileTestSource, prepareTestSource, testSource } from "./fixtures/prepared-source.ts";
 
 const roots: string[] = [];

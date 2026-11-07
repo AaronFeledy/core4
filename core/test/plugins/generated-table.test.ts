@@ -54,7 +54,7 @@ describe("generated bundled plugin descriptor tables", () => {
     // When: its source is read.
     const source = await readFile(resolve(generatedDir, "bundled.ts"), "utf8");
     // Then: the factory receives the provider, not eagerly resolved ports.
-    expect(source.includes("makeLando3Plugin(loadLando3TranslatorPorts)")).toBe(true);
+    expect(source.includes("makeLando3Plugin(() => loadLando3TranslatorPorts(serviceTypeFacts))")).toBe(true);
   });
 
   test("loads the bundled lando3 translator", async () => {

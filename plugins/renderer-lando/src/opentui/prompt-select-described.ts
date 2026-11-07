@@ -4,7 +4,6 @@ import { wrapWordsToWidth } from "../terminal-width.ts";
 import { choiceDescription, choiceLabel, selectedChoiceIndex } from "./prompt-choice.ts";
 import type {
   KeyEventLike,
-  OpenTuiModuleLike,
   PromptDriverRequestLike,
   RenderableLike,
   RendererLike,
@@ -18,11 +17,11 @@ import {
   issueRowsOf,
   printableChar,
 } from "./prompt-select-described-chrome.ts";
-import { PROMPT_THEME, promptSelectColors } from "./prompt-theme.ts";
+import { type PromptModuleLike, promptSelectColors } from "./prompt-theme.ts";
 import { SELECT_PREVIEW_LAYOUT, resolveSelectPreviewLayout } from "./select-preview-layout.ts";
 
 export const addDescribedSelect = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
@@ -62,7 +61,7 @@ export const addDescribedSelect = <R extends RendererLike>(
     options: catalog,
     showDescription: false,
     selectedIndex: catalogHighlight,
-    ...promptSelectColors,
+    ...promptSelectColors(mod.theme),
     showScrollIndicator: false,
   });
   const preview = new mod.BoxRenderable(renderer, {
@@ -74,20 +73,20 @@ export const addDescribedSelect = <R extends RendererLike>(
   const previewTitle = new mod.TextRenderable(renderer, {
     id: "lando-prompt-select-preview-title",
     content: "",
-    fg: PROMPT_THEME.text,
+    fg: mod.theme.text,
     attributes: TEXT_BOLD,
     width: Math.max(1, layout.previewCols),
   });
   const previewBody = new mod.TextRenderable(renderer, {
     id: "lando-prompt-select-preview-body",
     content: "",
-    fg: PROMPT_THEME.muted,
+    fg: mod.theme.muted,
     width: Math.max(1, layout.previewCols),
   });
   const search = new mod.TextRenderable(renderer, {
     id: "lando-prompt-select-search",
     content: "",
-    fg: PROMPT_THEME.accent,
+    fg: mod.theme.accent,
     height: 1,
   });
   preview.add?.(previewTitle);

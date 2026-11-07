@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
@@ -17,6 +17,9 @@ let app = "";
 const original = "name: original\nruntime: 4\n";
 const remote = "includes:\n  - source: github:acme/shared\n    path: fragment.yml\n";
 let clones = 0;
+let store = makeStateStore({
+  privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+});
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "lando-app-config-candidate-"));
@@ -24,32 +27,39 @@ beforeEach(async () => {
   await mkdir(app);
   await writeFile(join(app, ".lando.yml"), original);
   clones = 0;
-  const unused = async (): Promise<never> => {
-    throw new Error("Unexpected acquisition");
-  };
+  const cacheRoot = join(root, "cache");
+  store = makeStateStore({
+    privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+    roots: {
+      userConfRoot: cacheRoot,
+      userCacheRoot: cacheRoot,
+      userDataRoot: cacheRoot,
+      systemPluginRoot: cacheRoot,
+    },
+  });
   const inputs: LandofileRuntimeInputs = {
     templates: { modules: [] },
+    stateStore: store,
     ports: {
       resolveUserCacheRoot: () => join(root, "cache"),
       resolveUserIncludesDir: () => join(root, "includes"),
-      git: {
-        clone: async ({ dest }) => {
-          clones++;
-          await mkdir(dest, { recursive: true });
-          await writeFile(join(dest, "fragment.yml"), "services:\n  web:\n    image: alpine\n");
-          return { commitSha: "a".repeat(40) };
+      sources: {
+        git: {
+          fetch: async ({ dest }) => {
+            clones++;
+            await mkdir(dest, { recursive: true });
+            await writeFile(join(dest, "fragment.yml"), "services:\n  web:\n    image: alpine\n");
+            return { commit: "a".repeat(40) };
+          },
         },
       },
-      npmRecipeSource: { resolve: unused },
-      tarball: { fetch: unused, extract: unused },
-      publication: { publish: rename },
     },
   };
   installEngineComposition({
     bundledPluginModules: [],
     builtInCommandIds: [],
     landofileRuntimeInputs: inputs,
-    landofileSourcePorts: () => inputs.ports,
+    landofileSourcePorts: () => ({ sources: inputs.ports.sources }),
     hostProxyWorkerEntry: () => ({
       execPath: process.execPath,
       entryPath: undefined,
@@ -63,9 +73,6 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const store = makeStateStore({
-  privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
-});
 const run = <A, E>(effect: Effect.Effect<A, E, StateStore>) =>
   Effect.runPromise(effect.pipe(Effect.provideService(StateStore, store)));
 
@@ -157,7 +164,7 @@ test("a rejected effective candidate does not publish pins", async () => {
   // Then
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileWriteValidationError" } });
   expect(clones).toBeGreaterThan(0);
-  expect(await readdir(app)).toEqual([".lando.local.yml", ".lando.yml"]);
+  expect((await readdir(app)).sort()).toEqual([".lando.local.yml", ".lando.yml"]);
   expect(await Bun.file(join(app, ".lando.yml")).text()).toBe(original);
 });
 

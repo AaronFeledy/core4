@@ -36,6 +36,7 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
   if (check.runtime.oomKilled === true) lines.push("oomKilled: true");
   if (check.selection !== undefined) lines.push(...renderSelectionLines(check.selection));
   if (
+    check.name === "app-listener" ||
     check.name === "setup-readiness" ||
     check.name === "runtime-service" ||
     check.name === "runtime-oom" ||

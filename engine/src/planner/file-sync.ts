@@ -7,8 +7,6 @@ import {
   plannedFileSyncSessions,
 } from "@lando/sdk/schema";
 
-import { type ContributionRef, contributionId } from "./service-types.ts";
-
 export const DEFAULT_APP_MOUNT_EXCLUDES = ["node_modules", "vendor", "tmp"] as const;
 
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
@@ -46,22 +44,4 @@ export const collectFileSyncEntries = (params: {
       },
     }),
   );
-};
-
-export const resolveFileSyncEngineId = (
-  manifests: ReadonlyArray<{
-    readonly contributes?:
-      | { readonly fileSyncEngines?: ReadonlyArray<ContributionRef> | undefined }
-      | undefined;
-  }>,
-): string | undefined => {
-  for (const manifest of manifests) {
-    const ids = (manifest.contributes?.fileSyncEngines ?? []).map(contributionId);
-    if (ids.includes("mutagen")) return "mutagen";
-  }
-  for (const manifest of manifests) {
-    const entry = (manifest.contributes?.fileSyncEngines ?? [])[0];
-    if (entry !== undefined) return contributionId(entry);
-  }
-  return undefined;
 };

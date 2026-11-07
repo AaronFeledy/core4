@@ -22,7 +22,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
-| Service keys | 56 | 83 | 223 | 362 |
+| Service keys | 57 | 82 | 223 | 362 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -82,7 +82,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `dns` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `dns_opt` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `dns_search` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `domainname` | rejected | — | Translate domainname with a Compose-to-Lando config translator. |
+| `domainname` | rejected | — | Remove domainname. Lando sets each container's hostname to its container name, lando-&lt;app&gt;--&lt;service&gt;. Reach the service by its service key or a hostnames: alias. |
 | `entrypoint` | normalized | — | Normalizes into `ServicePlan.entrypoint` |
 | [`env_file`](#env_file) | normalized | 3 | Normalizes into `ServicePlan.environment` |
 | [`environment`](#environment) | normalized | 1 | Normalizes into `ServicePlan.environment` |
@@ -93,9 +93,9 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | [`gpus`](#gpus) | preserved | 7 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `group_add` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | [`healthcheck`](#healthcheck) | normalized | 8 | Normalizes into `ServicePlan.healthcheck` |
-| `hostname` | rejected | — | Translate hostname with a Compose-to-Lando config translator. |
+| `hostname` | rejected | — | Remove hostname. Lando sets each container's hostname to its container name, lando-&lt;app&gt;--&lt;service&gt;. Reach the service by its service key or a hostnames: alias. |
 | `image` | normalized | — | Normalizes into `ServicePlan.artifact` |
-| `init` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `init` | normalized | — | Normalizes into `ServicePlan.init` |
 | `ipc` | rejected | — | Translate ipc with a Compose-to-Lando config translator. |
 | `isolation` | rejected | — | Translate isolation with a Compose-to-Lando config translator. |
 | `label_file` | rejected | — | Translate label_file with a Compose-to-Lando config translator. |

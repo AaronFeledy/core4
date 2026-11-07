@@ -19,9 +19,10 @@
  * All context values are routed through the `RedactionService` redactor, and no
  * raw tool payload (including the canary secret) is ever placed in the check.
  */
-import { Effect, Fiber, Layer, Predicate, Schema } from "effect";
+import { Context, Effect, Fiber, type Layer, Predicate, Schema } from "effect";
 
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
+import { singleAppGenerations } from "@lando/mcp/apps";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry } from "@lando/mcp/registry";
@@ -163,7 +164,7 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
         McpRuntimeConfig.of({
           commandEntries: [canaryEntry],
           defaultAllowlist: [CANARY_TOOL_ID],
-          runtimeLayer: Layer.succeed(RedactionService, redaction),
+          apps: Effect.succeed(singleAppGenerations(Context.make(RedactionService, redaction))),
         }),
       ),
       Effect.timeout("10 seconds"),

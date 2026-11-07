@@ -29,6 +29,8 @@ export interface BugReportEnvelope {
   readonly logsDir: string;
   readonly cacheDir: string;
   readonly issues?: ReadonlyArray<ValidationIssue>;
+  /** Structured members of an aggregate error, redacted; the text renderer uses the `failures` extra instead. */
+  readonly failures?: ReadonlyArray<unknown>;
   readonly extra: ReadonlyArray<readonly [string, string]>;
   readonly additionalErrors?: ReadonlyArray<{
     readonly role: FailureRole;
@@ -116,11 +118,25 @@ export const buildBugReport = (input: {
     diagnosticFields(error),
   ).map(([key, value]) => [key, redactor.redactString(value)] as const);
   const issues = diagnostics.flatMap((item) => item.issues ?? []);
+  const failures = Array.isArray(error.failures) ? redactor.redactValue(error.failures) : undefined;
+  const text: Record<"message" | "remediation", string[]> = { message: [], remediation: [] };
+  const sentences = (value: string): ReadonlyArray<string> =>
+    value
+      .split(/\n|(?<=[.!?])\s+/u)
+      .map((sentence) => sentence.trim().replace(/\s+/gu, " "))
+      .filter((sentence) => sentence.length > 0);
+  for (const diagnostic of diagnostics) {
+    for (const key of ["message", "remediation"] as const) {
+      const value = diagnostic[key];
+      const keptSentences = new Set(text[key].flatMap(sentences));
+      if (!sentences(value).every((sentence) => keptSentences.has(sentence))) text[key].push(value);
+    }
+  }
   return {
     code: redactor.redactString(error._tag),
     commandId: ctx.commandId,
-    body: redactor.redactString([...new Set(diagnostics.map((item) => item.message))].join("\n")),
-    remediation: redactor.redactString([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
+    body: redactor.redactString(text.message.join("\n")),
+    remediation: redactor.redactString(text.remediation.join(" ")),
     appId,
     providerId,
     logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,
@@ -128,6 +144,7 @@ export const buildBugReport = (input: {
     ...(issues.length === 0
       ? {}
       : { issues: Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(redactor.redactValue(issues)) }),
+    ...(Array.isArray(failures) && failures.length > 0 ? { failures } : {}),
     extra,
     ...(input.additionalErrors === undefined || input.additionalErrors.length === 0
       ? {}

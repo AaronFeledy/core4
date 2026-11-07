@@ -17,24 +17,32 @@ export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[numb
 export const PYTHON_FEATURE_ID = "service-lando.python" as const;
 export const PYTHON_FEATURE_PRIORITY = 600;
 
-const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, LanguageFrameworkPreset> = {
+export const FRAMEWORK_PRESETS: Readonly<Record<SupportedPythonFramework, LanguageFrameworkPreset>> = {
   django: {
     port: 8000,
+    daemon: "Django",
+    variables: ["PORT"],
+    when: "framework: django",
     env: new Map([["DJANGO_SETTINGS_MODULE", "config.settings"]]),
   },
   fastapi: {
     port: 8000,
-    env: new Map(),
+    daemon: "FastAPI",
+    variables: ["PORT", "UVICORN_PORT"],
+    hostDefaults: { UVICORN_HOST: "0.0.0.0" },
+    when: "framework: fastapi",
   },
   flask: {
     port: 5000,
+    daemon: "Flask",
+    variables: ["PORT", "FLASK_RUN_PORT"],
+    hostDefaults: { FLASK_RUN_HOST: "0.0.0.0" },
+    when: "framework: flask",
     env: new Map([["FLASK_APP", "app"]]),
   },
-  none: {
-    port: 8000,
-    env: new Map(),
-  },
+  none: { port: 8000, daemon: "Python", variables: ["PORT"], when: "framework omitted or none" },
 };
+export const PYTHON_LISTENERS = FRAMEWORK_PRESETS;
 
 const PythonFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_PYTHON_FRAMEWORKS]),

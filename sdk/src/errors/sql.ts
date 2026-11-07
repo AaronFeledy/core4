@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { VolumeInitializationPhase } from "../schema/volume-initialization.ts";
+
 export class SqlServiceNotFoundError extends Schema.TaggedError<SqlServiceNotFoundError>()(
   "SqlServiceNotFoundError",
   {
@@ -43,6 +45,7 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     service: Schema.String,
     command: Schema.Array(Schema.String),
     exitCode: Schema.optional(Schema.Number),
+    reason: Schema.optional(Schema.Literals(["exit", "protocol", "provider", "timeout", "stdout-limit"])),
     stderrTail: Schema.optional(Schema.String),
     recoverySnapshotId: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
@@ -55,6 +58,20 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
   appRoot: Schema.String,
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
+
+/**
+ * An import or seed dump is empty or lacks its dump tool's completion marker.
+ * Raised before the recovery snapshot, so the database is untouched.
+ */
+export class SqlDumpIncompleteError extends Schema.TaggedError<SqlDumpIncompleteError>()(
+  "SqlDumpIncompleteError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    reason: Schema.Literals(["empty", "truncated"]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
 
 export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressionError>()(
   "SqlDumpCompressionError",
@@ -92,7 +109,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
 export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("SqlSeedStateError", {
   message: Schema.String,
   service: Schema.String,
-  status: Schema.Literals(["unknown", "fresh", "in-progress", "seeded", "failed"]),
+  status: Schema.Literals(["unknown", ...VolumeInitializationPhase.literals]),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 

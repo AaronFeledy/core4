@@ -3,6 +3,7 @@ import { lowerPhpOptions } from "../src/lower-php.ts";
 import type { ServiceLoweringContext } from "../src/lowering-contract.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: {},
   serviceName: "appserver",
   keyPath: ["services", "appserver"],
   fallbackSourceId: "base",
@@ -44,7 +45,7 @@ describe("lowerPhpOptions", () => {
     });
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "needs-review", keyPath: [...ctx.keyPath, "type"] },
-      { kind: "rewritten", keyPath: [...ctx.keyPath, "via"] },
+      { kind: "needs-review", keyPath: [...ctx.keyPath, "via"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "composer_version"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "xdebug"] },
       { kind: "dropped", keyPath: [...ctx.keyPath, "xdebug", "start_with_request"] },
@@ -75,7 +76,7 @@ describe("lowerPhpOptions", () => {
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "needs-review", keyPath: [...ctx.keyPath, "type"] },
       { kind: "generated", keyPath: [...ctx.keyPath, "via"] },
-      { kind: "rewritten", keyPath: [...ctx.keyPath, "via"] },
+      { kind: "needs-review", keyPath: [...ctx.keyPath, "via"] },
     ]);
   });
 
@@ -94,7 +95,7 @@ describe("lowerPhpOptions", () => {
     // When
     const result = lowerPhpOptions(service, ctx);
     // Then
-    expect(result).toEqual({ patch: { via }, diagnostics: [implicitReview] });
+    expect(result).toEqual({ patch: { via }, claims: [["via"]], diagnostics: [implicitReview] });
   });
 
   test.each(["frankenphp", false, null, 42])("drops via when it is %s", (via) => {
@@ -115,7 +116,11 @@ describe("lowerPhpOptions", () => {
     // When
     const result = lowerPhpOptions(service, ctx);
     // Then
-    expect(result).toEqual({ patch: { composer: false }, diagnostics: [implicitReview] });
+    expect(result).toEqual({
+      patch: { composer: false },
+      claims: [["composer_version"]],
+      diagnostics: [implicitReview],
+    });
   });
 
   test("preserves disabling Composer when packages are also present", () => {
@@ -135,6 +140,7 @@ describe("lowerPhpOptions", () => {
     // Then
     expect(result).toEqual({
       patch: { composer: { packages: { "drush/drush": "^12" } } },
+      claims: [["composer", "drush/drush"]],
       diagnostics: [implicitReview],
     });
   });
@@ -154,7 +160,7 @@ describe("lowerPhpOptions", () => {
     // When
     const result = lowerPhpOptions(service, ctx);
     // Then
-    expect(result).toEqual({ patch: { xdebug }, diagnostics: [implicitReview] });
+    expect(result).toEqual({ patch: { xdebug }, claims: [["xdebug"]], diagnostics: [implicitReview] });
   });
 
   test.each([{}, { mode: "" }, { mode: false }])(
@@ -165,7 +171,11 @@ describe("lowerPhpOptions", () => {
       // When
       const result = lowerPhpOptions(service, ctx);
       // Then
-      expect(result).toEqual({ patch: { xdebug: true }, diagnostics: [implicitReview, xdebugRewrite] });
+      expect(result).toEqual({
+        patch: { xdebug: true },
+        claims: Object.keys(xdebug).length === 0 ? [["xdebug"]] : [["xdebug", "mode"]],
+        diagnostics: [implicitReview, xdebugRewrite],
+      });
     },
   );
 
@@ -193,7 +203,7 @@ describe("lowerPhpOptions", () => {
       // When
       const result = lowerPhpOptions(service, ctx);
       // Then
-      expect(result).toEqual({ patch: {}, diagnostics: [implicitReview] });
+      expect(result).toEqual({ patch: {}, claims: [], diagnostics: [implicitReview] });
     },
   );
 });

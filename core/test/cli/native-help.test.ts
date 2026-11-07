@@ -6,8 +6,9 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { suggestBuiltInCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
+import { suggestCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
 import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
+import { metaEventsFollowSpec } from "../../src/cli/command-specs/meta/events/follow.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 
@@ -102,7 +103,7 @@ describe("native registry help", () => {
     expect(result.stdout).toContain("USAGE");
     expect(result.stdout).toContain("Lando  ");
     expect(result.stdout).toContain(`${process.platform}-${process.arch}`);
-    expect(result.stdout).not.toContain("meta:plugin:login");
+    expect(result.stdout).not.toContain("meta:events:follow");
     expect(result.stdout).not.toContain("node-v");
     expect(result.stdout).not.toContain("TOPICS");
     expect(result.stdout).not.toContain("COMMANDS");
@@ -115,20 +116,19 @@ describe("native registry help", () => {
     const help = renderColdAllHelp({ style: false });
 
     // Then
-    expect(help).toContain("plugin:login");
-    expect(help).toContain("meta:plugin:login");
+    expect(help).toContain("events:follow");
+    expect(help).toContain("meta:events:follow");
   });
 
-  test("Given a registered command, when its help is requested, then catalog metadata and spec-owned flags render", async () => {
+  test("Given a registered command, when its help is requested, then catalog metadata and global flags render", async () => {
     // Given / When
-    const result = await runCli(["meta:plugin:login", "--help"]);
+    const result = await runCli(["meta:events:follow", "--help"]);
 
     // Then
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Authenticate with a plugin source.");
-    expect(result.stdout).not.toContain("Authenticate with a private plugin registry.");
-    expect(result.stdout).toContain("meta:plugin:login");
-    expect(result.stdout).toContain("--registry");
+    expect(result.stdout).toContain("Follow the lifecycle event trace stream for diagnostics and e2e tests.");
+    expect(result.stdout).toContain("meta:events:follow");
+    expect(result.stdout).toContain("--format");
   });
 
   test.each(["app:pull", "pull"] as const)(
@@ -143,14 +143,14 @@ describe("native registry help", () => {
     },
   );
 
-  test("Given a deferred command, when help is requested, then its phase status renders successfully", async () => {
+  test("Given a deferred command, when help is requested, then its deferral status renders successfully", async () => {
     // Given / When
-    const result = await runCli(["plugin:login", "--help"]);
+    const result = await runCli(["events", "--help"]);
 
     // Then
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("STATUS");
-    expect(result.stdout).toContain("Planned for Lando 4.1.");
+    expect(result.stdout).toContain(metaEventsFollowSpec.deferred?.summary ?? "<missing deferral summary>");
   });
 
   test("Given a bounded compatibility form, when help is requested, then it resolves to canonical command help", async () => {
@@ -174,12 +174,14 @@ describe("native registry help", () => {
       command: "cli:help",
       ok: true,
     });
-    expect((envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all).toHaveLength(
-      nonHiddenBuiltInCount,
-    );
+    expect(
+      (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.filter(
+        (row) => row.source === "built-in",
+      ),
+    ).toHaveLength(nonHiddenBuiltInCount);
     expect(
       (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.every(
-        (row) => row.source === "built-in",
+        (row) => row.source === "built-in" || row.source === "plugin",
       ),
     ).toBe(true);
   });
@@ -223,9 +225,9 @@ describe("native unknown-command failures", () => {
   });
 
   test("Given an ambiguous, absent, or deferred suffix, when searched, then no canonical command is suggested", () => {
-    expect(suggestBuiltInCommandForSuffix("config")).toBeUndefined();
-    expect(suggestBuiltInCommandForSuffix("does-not-exist")).toBeUndefined();
-    expect(suggestBuiltInCommandForSuffix("plugin:login")).toBeUndefined();
+    expect(suggestCommandForSuffix("config")).toBeUndefined();
+    expect(suggestCommandForSuffix("does-not-exist")).toBeUndefined();
+    expect(suggestCommandForSuffix("events:follow")).toBeUndefined();
   });
 
   test("Given control characters in a near suffix, when dispatched, then the generic diagnostic stays escaped", async () => {
@@ -283,7 +285,7 @@ describe("native unknown-command failures", () => {
 
       // Then
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("ToolingCompileError");
+      expect(result.stderr).toContain("ToolingCommandUnavailableError");
       expect(result.stderr).not.toContain("UnknownCommandError");
     } finally {
       await fixture.cleanup();
@@ -304,7 +306,7 @@ describe("native unknown-command failures", () => {
         // Then
         expect(fixtureResult.exitCode).toBe(1);
         expect(fixtureResult.stderr).toContain("UnknownCommandError");
-        expect(fixtureResult.stderr).not.toContain("ToolingCompileError");
+        expect(fixtureResult.stderr).not.toContain("ToolingCommandUnavailableError");
         expect(fixtureResult.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
       } finally {
         await fixture.cleanup();
@@ -312,7 +314,7 @@ describe("native unknown-command failures", () => {
     },
   );
 
-  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then ToolingCompileError text is escaped", async () => {
+  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then unavailable-command text is escaped", async () => {
     // Given
     const fixture = await makeAppFixture();
     const commandToken = "unknown-tooling\u001b[31m";
@@ -324,7 +326,7 @@ describe("native unknown-command failures", () => {
 
       // Then
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("ToolingCompileError");
+      expect(result.stderr).toContain("ToolingCommandUnavailableError");
       expect(result.stderr).toContain("commandId: app:unknown-tooling\\u001b[31m");
       expect(result.stderr).not.toContain("\u001b");
     } finally {
@@ -351,9 +353,10 @@ describe("native unknown-command failures", () => {
         command: `app:${name}`,
         ok: false,
         error: {
-          _tag: "ToolingCompileError",
-          message:
-            "Tooling command app:unknown-tooling-json\\u001b[31m is unavailable because the app command cache is missing, stale, or does not contain that task.",
+          _tag: "ToolingCommandUnavailableError",
+          reason: "unknown-command",
+          commandId: `app:${name}`,
+          message: expect.stringContaining("unknown-tooling-json\\u001b[31m"),
         },
       });
     } finally {

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,9 +26,9 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -37,6 +41,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +183,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -207,9 +211,9 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     ]);
     const volumes = cache.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(cache.healthcheck?.kind).toBe("command");
-    expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6379"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(6379, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("valkey");
   });
 
@@ -230,7 +234,9 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "valkey-cli", args: ["ping"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "valkey-cli", input: { _tag: "RawArgv", argv: ["ping"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("valkey-cli");
@@ -262,13 +268,17 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const setResult = await Effect.runPromise(
-      runTooling({ name: "valkey-cli", args: ["set", "foo", "bar"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "valkey-cli", input: { _tag: "RawArgv", argv: ["set", "foo", "bar"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(setResult.exitCode).toBe(0);
     expect(setResult.stdout).toBe("OK\n");
 
     const getResult = await Effect.runPromise(
-      runTooling({ name: "valkey-cli", args: ["get", "foo"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "valkey-cli", input: { _tag: "RawArgv", argv: ["get", "foo"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(getResult.exitCode).toBe(0);
     expect(getResult.stdout).toBe("bar\n");

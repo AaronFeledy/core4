@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -17,10 +18,7 @@ import {
   LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import {
-  RUNTIME_BUNDLE_ACTION_PINS,
-  RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT,
-} from "./runtime-bundle-supply-chain.ts";
+import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 import { UNIT_SHARD_COUNT } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -92,15 +90,15 @@ ${setupBunSteps}
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
-      - name: Type check (bun check, no emit)
-        run: bun run check:types
       - name: Typecheck
-        if: matrix.platform == 'linux-x64'
         run: bun run typecheck
 
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
+
+      - name: Host Bun Shell dialect conformance
+        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
 
       - name: Lint
         run: bun run lint
@@ -266,6 +264,16 @@ ${renderSmokeCommands(platform)}
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${platform.binaryName}
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output and native stdio flags
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+
       - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -358,7 +366,17 @@ ${setupBunSteps}
 ${timingNoticeStep("perf-budget-linux-x64", 10)}
 `;
 
-export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+/** Managed podman CLI calls join the service's private runtime dir, recorded in its launch state. */
+export const landoManagedPodmanRuntimeDirCommands = `          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi`;
+
+export const landoManagedPodmanTeardownCommands = `${landoManagedPodmanRuntimeDirCommands}
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true`;
@@ -457,6 +475,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 
       - name: Pre-pull container images
         run: |
+${landoManagedPodmanRuntimeDirCommands}
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
@@ -500,6 +519,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -550,60 +571,54 @@ const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRun
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
-const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+export const linuxRuntimeBundleJob = (hostKey: "linux-x64" | "linux-arm64"): string => {
+  const platform = CI_PLATFORMS.find((candidate) => candidate.id === hostKey);
+  if (platform === undefined) throw new TypeError(`CI_PLATFORMS is missing ${hostKey}`);
+  const label = hostKey.replace("linux-", "Linux ");
+  return `  runtime-bundle-${hostKey}:
+    runs-on: ${hostKey === "linux-x64" ? LINUX_X64_PRIMARY_RUNNER : platform.runsOn}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
-      - name: Restore assembled Linux x64 runtime bundle
-        id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
-
       - name: Setup Bun
-        if: ${linuxRuntimeBundleCacheMiss}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        if: ${linuxRuntimeBundleCacheMiss}
         run: bun install --frozen-lockfile
 
-      - name: Setup Go for Linux Podman source build
-        if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
-
-      - name: Install Linux Podman source-build prerequisites
-        if: ${linuxRuntimeBundleCacheMiss}
+      - name: Derive ${label} runtime bundle cache key from its build context
+        id: runtime-bundle-key
         run: |
-          ${RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
-      - name: Assemble current-commit Linux x64 runtime bundle
+      - name: Restore assembled ${label} runtime bundle
+        id: runtime-bundle-cache
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
+          key: \${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit ${label} runtime bundle
         if: ${linuxRuntimeBundleCacheMiss}
-        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}
 
-      - name: Upload current-commit Linux x64 runtime bundle
+      - name: Upload current-commit ${label} runtime bundle
         uses: actions/upload-artifact@v6
         with:
-          name: runtime-bundle-linux-x64-current
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          name: runtime-bundle-${hostKey}-current
+          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
-${timingNoticeStep("runtime-bundle-linux-x64", 40)}
+${timingNoticeStep(`runtime-bundle-${hostKey}`, 40)}
 `;
+};
 
 const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
@@ -732,7 +747,7 @@ const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
 
-const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
+export const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
 ${landoRuntimeBundleSetupSteps}`;
 
@@ -1034,7 +1049,8 @@ ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 ${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner")}
 ${guideScenarioJobs}
 ${buildJobs}
-${linuxRuntimeBundleJob}
+${linuxRuntimeBundleJob("linux-x64")}
+${linuxRuntimeBundleJob("linux-arm64")}
 ${windowsRuntimeBundleJob}
 ${perfBudgetJob}
 ${providerIntegrationJobs}`);
@@ -1044,6 +1060,8 @@ const main = async (): Promise<void> => {
   const workflow = renderCiWorkflow();
 
   await Bun.write(OUTPUT, workflow);
+  // Biome 1 cannot check YAML; include the generator so this remains a real check.
+  await formatGeneratedPaths([OUTPUT, import.meta.path]);
   console.log(`[build-ci-workflow] wrote ${OUTPUT}`);
 };
 

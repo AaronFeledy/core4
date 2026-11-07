@@ -14,8 +14,8 @@
   "files": [
     {
       "vendored": "kitchen-sink.lando.yml",
-      "bytes": 41587,
-      "sha256": "55a39a76f8f993662c6865e0690e8727553c5862f31c21078b4823a1a8a87245"
+      "bytes": 44225,
+      "sha256": "7bb26053953a0a557a31c9a0a1b2baabd6a45e95301dd90b114e07c44bb1f942"
     },
     {
       "vendored": "kitchen-sink.config.yml",

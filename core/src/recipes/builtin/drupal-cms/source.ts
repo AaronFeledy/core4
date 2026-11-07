@@ -29,6 +29,7 @@ export const source = {
         service: "appserver",
         description: "Run Drush inside the appserver service.",
         cmds: [DRUSH_TOOLING_COMMAND],
+        wrapper: true,
       },
       composer: composerTool,
       "drupal-cms-scaffold": {

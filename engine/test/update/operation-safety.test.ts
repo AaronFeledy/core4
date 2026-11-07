@@ -334,6 +334,7 @@ test.each(["download", "verify", "replace"])(
         platform: "linux",
         arch: "x64",
         argv: [],
+        execve: () => Effect.void,
         rename: async () => {
           throw new Error("fixture replacement failed");
         },

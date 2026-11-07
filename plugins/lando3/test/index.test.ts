@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { createRedactor } from "@lando/sdk/secrets";
+import { testPorts } from "./fixtures/test-ports.ts";
 
 import { type Lando3TranslatorPorts, makeConfigTranslators, makeLando3Plugin } from "../src/index.ts";
 
-const ports: Lando3TranslatorPorts = {
-  decomposers: new Map(),
-  redactor: createRedactor("secrets"),
-};
+const ports: Lando3TranslatorPorts = testPorts({ decomposers: new Map() });
 
 describe("lando3 plugin ports", () => {
   test("resolves a provider only once per loader invocation, not per assertion", async () => {
@@ -58,12 +55,16 @@ describe("lando3 plugin ports", () => {
     expect(translator?.id).toBe("lando3");
   });
 
-  test("uses default ports when none are supplied", async () => {
+  test("rejects translator loading when host ports are absent", async () => {
     // Given: a standalone plugin without host composition.
     const module = makeLando3Plugin();
     // When: its frontend is loaded.
-    const translator = await module.configTranslators?.get("lando3")?.();
-    // Then: the default translator remains usable.
-    expect(translator?.id).toBe("lando3");
+    const loader = module.configTranslators?.get("lando3");
+    // Then
+    expect(loader).toBeDefined();
+    await expect(loader?.()).rejects.toMatchObject({
+      _tag: "ConfigTranslateError",
+      message: expect.stringContaining("serviceFacts"),
+    });
   });
 });

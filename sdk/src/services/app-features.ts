@@ -15,6 +15,7 @@ import type {
   EnvironmentValue,
   ProviderCapabilities,
   ServiceConfig,
+  ServicePlan,
 } from "../schema/index.ts";
 import type {
   ServiceAppMountIntent,
@@ -59,6 +60,8 @@ export interface AppFeatureServiceView {
   readonly primary: boolean;
   readonly featureIds: ReadonlyArray<string>;
   readonly normalizedConfig: ServiceConfig;
+  /** Immutable service-type resolution facts, also retained as plan provenance. */
+  readonly resolutionMetadata?: Readonly<NonNullable<ServicePlan["provenance"]>> | undefined;
   readonly connection?: DatabaseConnection | undefined;
 }
 
@@ -81,6 +84,7 @@ export interface AppFeatureServiceMutators {
   setCerts(certs: Parameters<ServiceFeatureContext["setCerts"]>[0]): void;
   setEntrypoint(entrypoint: Parameters<ServiceFeatureContext["setEntrypoint"]>[0]): void;
   setCommand(command: Parameters<ServiceFeatureContext["setCommand"]>[0]): void;
+  setInit(init: boolean): void;
   setArtifact(artifact: Parameters<ServiceFeatureContext["setArtifact"]>[0]): void;
   setUser(user: string): void;
   setWorkingDirectory(path: Parameters<ServiceFeatureContext["setWorkingDirectory"]>[0]): void;

@@ -17,7 +17,6 @@ export const renderDbSnapshotPrune = (result: DbCommandResult): string => {
 
 export const spec = {
   id: "db:snapshots:prune",
-  summary: "Preview or apply database snapshot retention.",
   namespace: "db",
   bootstrap: "app",
   flags: {

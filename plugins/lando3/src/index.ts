@@ -1,3 +1,4 @@
+import { ConfigTranslateError } from "@lando/sdk/errors";
 /**
  * `@lando/lando3` — the Lando 3 Landofile document-set frontend.
  *
@@ -14,7 +15,7 @@
  *
  * `makeLando3Plugin` exists so a host can inject real ports — recipe
  * decomposition comes from the host, never from a second recipe expansion
- * inside this package. The standalone `plugin` uses the package defaults;
+ * inside this package. The standalone `plugin` requires host ports at load;
  * hosts can pass a lazy ports provider at their composition root.
  */
 import { Effect, Schema } from "effect";
@@ -77,7 +78,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 
 /**
  * Builds the plugin module. `ports` is optional only so the bundled value can
- * exist before a host composes one; the loader resolves the package defaults
+ * exist before a host composes one; the loader rejects missing host ports
  * inside the dynamic import, which keeps redaction and decomposer wiring off
  * the module graph that the composition table imports eagerly.
  */
@@ -96,11 +97,15 @@ export const makeConfigTranslators = (
     [
       LANDO3_TRANSLATOR_ID,
       () =>
-        import("./translator.ts").then(async ({ makeLando3ConfigTranslator, defaultLando3Ports }) =>
-          makeLando3ConfigTranslator(
-            typeof ports === "function" ? await ports() : (ports ?? defaultLando3Ports()),
-          ),
-        ),
+        import("./translator.ts").then(async ({ makeLando3ConfigTranslator }) => {
+          if (ports === undefined)
+            throw new ConfigTranslateError({
+              translator: LANDO3_TRANSLATOR_ID,
+              message: "The lando3 translator is missing host ports: decomposers, redactor, serviceFacts.",
+              remediation: "Construct makeLando3Plugin with the host translator ports before loading it.",
+            });
+          return makeLando3ConfigTranslator(typeof ports === "function" ? await ports() : ports);
+        }),
     ],
   ]);
 

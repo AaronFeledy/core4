@@ -8,7 +8,7 @@ import { commandFailureOutcome, commandInterruptionExitCode } from "../../src/cl
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { renderTerminalFailure } from "../../src/cli/terminal-failure";
 
-for (const reason of ["SIGINT", "SIGTERM", { secret: "private-abort-reason" }] as const)
+for (const reason of ["SIGINT", "SIGTERM", "SIGHUP", { secret: "private-abort-reason" }] as const)
   for (const format of ["json", "text"] as const)
     test(`pure interruption renders ordinary ${format} cancellation (${String(reason)})`, async () => {
       const controller = new AbortController();
@@ -34,7 +34,9 @@ for (const reason of ["SIGINT", "SIGTERM", { secret: "private-abort-reason" }] a
             }),
         },
       );
-      expect(codes).toEqual([reason === "SIGINT" ? 130 : reason === "SIGTERM" ? 143 : 1]);
+      expect(codes).toEqual([
+        reason === "SIGINT" ? 130 : reason === "SIGTERM" ? 143 : reason === "SIGHUP" ? 129 : 1,
+      ]);
       const output = io.stdout() + io.stderr();
       expect(output).toContain("Command interrupted.");
       expect(output).not.toMatch(
@@ -113,6 +115,39 @@ test("terminal fallback shares typed interruption and safe signal projection", a
 test("unaborted signals do not provide a conventional interruption code", () => {
   expect(commandInterruptionExitCode(new AbortController().signal)).toBe(1);
 });
+
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  test(`suppressed ${signal} interruption finalizes without output or an exit-code write`, async () => {
+    const controller = new AbortController();
+    const io = createBufferedRendererIO();
+    const codes: number[] = [];
+    let finalized = false;
+    const operation = Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          finalized = true;
+        }),
+      );
+      controller.abort(signal);
+      yield* Effect.never;
+    }).pipe(Effect.scoped);
+    await runWithRendererHandling(operation, {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      resultFormat: "json",
+      signal: controller.signal,
+      suppressInterruptionDiagnostics: true,
+      io,
+      setExitCode: (code) => codes.push(code),
+      formatError: () => "unused",
+    });
+    expect(finalized).toBe(true);
+    expect({ stdout: io.stdout(), stderr: io.stderr(), codes }).toEqual({
+      stdout: "",
+      stderr: "",
+      codes: [],
+    });
+  });
 
 for (const order of ["boundary-first", "provider-first"] as const)
   test(`same-tick ${order} cancellation preserves a genuine failure and cleanup role`, async () => {

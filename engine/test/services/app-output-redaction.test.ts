@@ -4,13 +4,64 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Schema } from "effect";
+import { Effect, Redacted, Schema } from "effect";
 import { registerProviderOutput } from "../../src/providers/output-redaction.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
+
+test.each([false, true])(
+  "preserves authored plan tiers unless container read-back registers substring: %s",
+  async (readBack) => {
+    const plan = Schema.decodeUnknownSync(AppPlan)({
+      id: "tier-output",
+      name: "tier-output",
+      slug: "tier-output",
+      root: "/tmp/tier-output",
+      provider: "test",
+      services: {
+        web: {
+          name: "web",
+          type: "test",
+          provider: "test",
+          primary: true,
+          environment: { DB_PASSWORD: "wordpress" },
+          mounts: [],
+          endpoints: [],
+          routes: [],
+          dependsOn: [],
+          hostAliases: [],
+          metadata: { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 },
+          extensions: {},
+        },
+      },
+      routes: [],
+      stores: [],
+      fileSync: [],
+      metadata: { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 },
+      extensions: {},
+      committedLiteralDigests: [sha256Hex("wordpress")],
+    });
+    const redaction = makeRedactionService();
+    const output = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* registerProviderOutput({
+          target: { app: plan.id, plan },
+          appliedPlans: [],
+          provider: {
+            ...TestRuntimeProvider,
+            readAppEnvironment: () => Effect.succeed(readBack ? [Redacted.make("wordpress")] : []),
+          },
+        });
+        return (yield* redaction.forProfile("secrets")).redactString("wordpress wordpress-seo");
+      }).pipe(Effect.provideService(RedactionService, redaction)),
+    );
+    expect(output).toBe(readBack ? "[redacted] [redacted]-seo" : "[redacted] wordpress-seo");
+  },
+);
 
 test.each([
   ["ssh", false],

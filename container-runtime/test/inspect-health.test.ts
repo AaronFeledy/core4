@@ -88,7 +88,7 @@ const plan: AppPlan = {
 
 const inspectBody = (health?: string): string =>
   JSON.stringify({
-    Id: "lando-healthapp-web-id",
+    Id: "lando-healthapp--web-id",
     Image: "sha256:runtime-image",
     State: {
       Running: true,
@@ -101,7 +101,7 @@ const inspectBody = (health?: string): string =>
 
 const stoppedInspectBody = (health?: string): string =>
   JSON.stringify({
-    Id: "lando-healthapp-web-id",
+    Id: "lando-healthapp--web-id",
     State: {
       Running: false,
       Status: "exited",
@@ -171,7 +171,7 @@ describe("podman inspect health", () => {
       },
     ]);
     const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
-    expect(observed.state).toBe("restarting");
+    expect(observed.status).toBe("restarting");
     expect(observed).not.toHaveProperty("exitCode");
   });
   test("omits placeholder exit zero for a never-started created container", async () => {
@@ -197,9 +197,9 @@ describe("podman inspect health", () => {
     const fake = apiFromResponses([{ status: 200, body: stoppedInspectBody() }]);
     const observed = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
     expect(observed).toMatchObject({
-      status: "stopped",
+      status: "exited",
       exitCode: 17,
-      containerId: "lando-healthapp-web-id",
+      containerId: "lando-healthapp--web-id",
     });
   });
   test("redacts runtime-registered values in a failed inspect response", async () => {

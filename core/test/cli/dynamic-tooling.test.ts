@@ -33,7 +33,7 @@ test.each([
     mock.module("@lando/engine/operations/tooling-bun-script", () => ({
       runBunShellTooling: (options, root) => Effect.sync(() => {
         observed = { hostIo: options.hostIo,
-          signal: options.signal === controller.signal, args: options.args, root };
+          signal: options.signal === controller.signal, input: options.input, root };
         return { tool: "app:scount", service: ":host", exitCode: 0, stdout: "", stderr: "" };
       }),
     }));
@@ -72,7 +72,7 @@ test.each([
   expect(JSON.parse(stdout)).toEqual({
     ...(scenario.hostIo === undefined ? {} : { hostIo: scenario.hostIo }),
     signal: true,
-    args: ["argument"],
+    input: { _tag: "RawArgv", argv: ["argument"] },
     root: "/app",
     handoff: scenario.handoff,
   });

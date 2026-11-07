@@ -1,7 +1,8 @@
+import { describeConfigKey } from "@lando/engine/config-write/key-schema";
 import { type AppConfigResult, AppConfigResultSchema } from "@lando/engine/operations/app-config-result";
 import { type AppConfigViewOptions, appConfigView } from "@lando/engine/operations/app-config-view";
 import * as Writes from "@lando/engine/operations/app-config-write";
-import { collectLandofileRedactionTokens } from "@lando/engine/services/app-plan-redaction";
+import { collectAuthoredRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
@@ -9,6 +10,7 @@ import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
+import { renderConfigKeyDescription } from "./config-key-render";
 import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";
 import { hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
@@ -22,12 +24,19 @@ export interface AppConfigOptions extends AppConfigViewOptions, Writes.AppConfig
 
 export const appConfigRedactionTokens = (result: unknown): readonly string[] => {
   if (result === null || typeof result !== "object") return [];
+  // Command-result tokens stay substring-only; whole-token was registered during view.
   if ("redactionTokens" in result && Array.isArray(result.redactionTokens))
     return result.redactionTokens.filter((token): token is string => typeof token === "string");
   if ("landofile" in result && Schema.is(LandofileShape)(result.landofile))
-    return collectLandofileRedactionTokens(result.landofile);
+    return collectAuthoredRedactionTokens(result.landofile).substring;
   return configRedactionTokens(result);
 };
+
+/** Describes a Landofile key from the Landofile schema; needs no app. */
+export const describeAppConfig = (options: Pick<AppConfigOptions, "key" | "path">) =>
+  describeConfigKey("app", options.key ?? options.path).pipe(
+    Effect.map((description) => ({ subcommand: "describe" as const, ...description })),
+  );
 
 export const appConfigSet = (options: AppConfigOptions) => Writes.appConfigSet(options);
 export const appConfigUnset = (options: AppConfigOptions) => Writes.appConfigUnset(options);
@@ -98,6 +107,7 @@ export const renderAppConfigResult = (
   format: "json" | "yaml" | "table" = "table",
 ): string => {
   if ("subcommand" in result && result.subcommand !== undefined) {
+    if (result.subcommand === "describe") return renderConfigKeyDescription(result, "Landofile");
     if (result.subcommand === "get")
       return result.value === undefined
         ? ""
@@ -124,6 +134,8 @@ export const renderAppConfigResult = (
 
 export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfigOptions = {}) {
   switch (options.subcommand ?? "view") {
+    case "describe":
+      return yield* describeAppConfig(options);
     case "set":
       return yield* appConfigSet(options);
     case "unset":

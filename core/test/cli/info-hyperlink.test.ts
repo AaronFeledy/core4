@@ -28,12 +28,12 @@ const result: InfoAppResult = {
   ],
 };
 
-const tty = (env: Record<string, string | undefined> = { TERM: "xterm-256color" }): RenderContext => ({
+const tty = (noColor = false): RenderContext => ({
   mode: "lando",
   format: "text",
   columns: 80,
   isTTY: true,
-  env,
+  noColor,
 });
 
 describe("renderInfoAppResult URL hyperlinks", () => {
@@ -72,23 +72,28 @@ describe("renderInfoAppResult URL hyperlinks", () => {
   });
 
   test("keeps endpoints plain when NO_COLOR is set", () => {
-    const out = renderInfoAppResult(result, tty({ TERM: "xterm-256color", NO_COLOR: "1" }));
+    const out = renderInfoAppResult(result, tty(true));
     expect(out).toContain("https://my-app.lndo.site");
     expect(out).not.toContain(`${ESC}]8;`);
+    expect(out).not.toMatch(
+      new RegExp(`${ESC}\\[(?:\\d+;)*(?:3[0-7]|9[0-7]|4[0-7]|10[0-7]|38;[\\d;]+|48;[\\d;]+)(?:;\\d+)*m`, "u"),
+    );
+    expect(stripAnsi(out)).toBe(stripAnsi(renderInfoAppResult(result, tty())));
   });
 
   test("keeps endpoints plain when TERM is dumb", () => {
-    const out = renderInfoAppResult(result, tty({ TERM: "dumb" }));
+    const out = renderInfoAppResult(result, tty(true));
     expect(out).toContain("https://my-app.lndo.site");
     expect(out).not.toContain(`${ESC}]8;`);
   });
 
-  test("keeps endpoints plain when env is missing on a TTY context", () => {
+  test("keeps endpoints plain when injected IO opts out on a TTY context", () => {
     const out = renderInfoAppResult(result, {
       mode: "lando",
       format: "text",
       columns: 80,
       isTTY: true,
+      noColor: true,
     });
     expect(out).toContain("https://my-app.lndo.site");
     expect(out).not.toContain(`${ESC}]8;`);

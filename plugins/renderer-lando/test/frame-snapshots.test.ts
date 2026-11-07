@@ -148,20 +148,28 @@ describe("renderer frame snapshots — driver-owned settlement", () => {
 });
 
 describe("renderer frame snapshots — declined surfaces have no frame", () => {
-  test("secret is declined before a renderer is created", async () => {
+  test.each([
+    { type: "secret", mode: "normal" },
+    { type: "confirm", mode: "confirm" },
+  ] as const)("$type is declined before native loading or frame creation", async ({ type, mode }) => {
+    let loaded = false;
     let created = false;
     const driver = createOpenTuiPromptDriver<CliRenderer>({
-      loadModule: async () => openTui,
+      loadModule: async () => {
+        loaded = true;
+        return openTui;
+      },
       createRenderer: async () => {
         created = true;
         throw new Error("should not create renderer");
       },
     });
     await expect(
-      driver.readRaw({ prompt: { name: "s", type: "secret", message: "Secret" }, mode: "normal" }),
-    ).rejects.toThrow("driver declines secret");
+      driver.readRaw({ prompt: { name: "declined", type, message: "Declined control" }, mode }),
+    ).rejects.toBeInstanceOf(Error);
+    expect(loaded).toBe(false);
     expect(created).toBe(false);
-    expect(PROMPT_FIXTURES.some((fixture) => /secret/.test(fixture.id))).toBe(false);
+    expect(PROMPT_FIXTURES.some((fixture) => fixture.id === `prompt.${type}`)).toBe(false);
   });
 });
 

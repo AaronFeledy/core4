@@ -1,4 +1,4 @@
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import type { RedactionService } from "@lando/redaction/service";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -10,7 +10,7 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
 import * as HostPrivilegeService from "@lando/engine/services/privilege";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { makeLandoRuntime } from "../../runtime/layer";
+import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
 import { uninstallOptionsFromInput } from "../command-specs/meta/uninstall";
@@ -30,6 +30,7 @@ import {
   runCompiledCommand,
   setActiveCommandId,
 } from "../compiled-runtime";
+import { readCliAppCommandCache } from "../tooling-command-cache";
 
 export const runMetaUninstall = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:uninstall", argv)) return;
@@ -58,14 +59,19 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
     ConfigService | RedactionService | BuiltInCommandCatalog,
     ConfigError | LandoRuntimeBootstrapError
   >;
-  const retainedRuntime = makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),
-  ).pipe(Layer.orDie) as Layer.Layer<unknown>;
+  const sessionRuntime = makeLandoGenerationRuntime(
+    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" }, interaction: "non-interactive" }),
+  );
   return dispatchMcpCommand({
     flags,
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
-    retainedRuntime,
+    sessionRuntime,
+    // Session start rebuilds a non-fresh index silently (stdout is the protocol); a failed
+    // rebuild keeps the registry's own fallback so the server still starts.
+    prepareTooling: Effect.ignore(
+      readCliAppCommandCache({ includeScriptInventory: true, rebuildNotice: false }),
+    ),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     invocation: getActiveCommandInvocation() ?? {

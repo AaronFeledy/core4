@@ -1,6 +1,7 @@
-import type { AppId, ProxyAuthority, RoutePlan } from "@lando/sdk/schema";
+import type { AppRouteOwner, ProxyAuthority, RoutePlan } from "@lando/sdk/schema";
 
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
+import { renderRouteFileMetadata } from "./route-file-metadata.ts";
 import { routeBackendUrl, routeMiddlewareConfig } from "./route-provider-config.ts";
 
 export const quoteRuleArgument = (value: string): string =>
@@ -125,19 +126,22 @@ export interface TraefikTlsFiles {
   readonly keyFile: string;
 }
 
+export const routeNamespace = (owner: AppRouteOwner): string =>
+  `route-${owner.ownerKey}-${encodeURIComponent(String(owner.id))}-`;
+
 export const renderTraefikDynamicConfig = (
   routes: ReadonlyArray<RoutePlan>,
-  app: AppId,
+  owner: AppRouteOwner,
   tlsFiles?: TraefikTlsFiles,
 ): string => {
-  const namespace = encodeURIComponent(String(app));
+  const namespace = routeNamespace(owner);
   const routers = routes.flatMap((route, index) =>
     routeSchemes(route).flatMap((scheme) => [
-      `    route-${namespace}-${index}-${scheme}:`,
+      `    ${namespace}${index}-${scheme}:`,
       `      rule: ${JSON.stringify(routeRule(route))}`,
       `      entryPoints: [${scheme === "https" ? "websecure" : "web"}]`,
       `      priority: ${route.priority}`,
-      `      service: route-${namespace}-${index}`,
+      `      service: ${namespace}${index}`,
       ...(scheme === "https" ? ["      tls: {}"] : []),
       ...((route.filters?.length ?? 0) === 0
         ? []
@@ -145,21 +149,21 @@ export const renderTraefikDynamicConfig = (
             "      middlewares:",
             ...(route.filters ?? []).map(
               (filter, filterIndex) =>
-                `        - ${JSON.stringify(`route-${namespace}-${index}-f${filterIndex}-${filter.type}`)}`,
+                `        - ${JSON.stringify(`${namespace}${index}-f${filterIndex}-${filter.type}`)}`,
             ),
           ]),
     ]),
   );
   const services = routes.flatMap((route, index) => [
-    `    route-${namespace}-${index}:`,
+    `    ${namespace}${index}:`,
     "      loadBalancer:",
     "        servers:",
-    `          - url: ${routeBackendUrl(route, app)}`,
+    `          - url: ${routeBackendUrl(route, owner.id)}`,
   ]);
   const middlewares = routes.flatMap((route, index) =>
     (route.filters ?? []).flatMap((filter, filterIndex) => {
       return [
-        `    ${JSON.stringify(`route-${namespace}-${index}-f${filterIndex}-${filter.type}`)}: ${JSON.stringify(routeMiddlewareConfig(filter))}`,
+        `    ${JSON.stringify(`${namespace}${index}-f${filterIndex}-${filter.type}`)}: ${JSON.stringify(routeMiddlewareConfig(filter))}`,
       ];
     }),
   );
@@ -173,6 +177,7 @@ export const renderTraefikDynamicConfig = (
           `      keyFile: ${tlsFiles.keyFile}`,
         ];
   return [
+    renderRouteFileMetadata(owner.id),
     "http:",
     "  routers:",
     ...routers,

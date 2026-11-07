@@ -1,11 +1,8 @@
-import {
-  authoringExpressionSlot,
-  deriveAuthoringAst,
-  getJsonSchemaWithDeprecations,
-} from "@lando/sdk/schema";
+import { deriveAuthoringAst, getJsonSchemaWithDeprecations } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { normalizeJsonSchema } from "../../../../scripts/schema-compatibility/normalize.ts";
 import { wireObject } from "../x-extension-wire-proof.ts";
+import { historicalExpressionSlot } from "./x-extension-historical-expression.ts";
 
 // Reviewed encoded contract from 14b66d1b9, not imported from the live value schemas.
 // Only the generic production authoring/JSON projection is shared with the producer.
@@ -60,7 +57,7 @@ const environmentProjection = (schema: Schema.Top, mode: "bare" | "authoring" | 
             partial: mode === "fragment",
             directives: mode === "fragment",
             // Separate memoization key for each projection, as in the production owners.
-            slotFor: (kind) => authoringExpressionSlot(kind).ast,
+            slotFor: (kind) => historicalExpressionSlot(kind).ast,
             rootExpression: false,
           }),
         );

@@ -1,10 +1,30 @@
 import { readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { isErrnoCode } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 import type { ExportEntry } from "./plugin-build-package";
+
+const fileMtime = async (path: string): Promise<number | undefined> =>
+  stat(path).then(
+    (entry) => entry.mtimeMs,
+    () => undefined,
+  );
+export const isArtifactStale = async (
+  pluginRoot: string,
+  sources: ReadonlyArray<string>,
+): Promise<boolean> => {
+  const marker = await fileMtime(join(pluginRoot, "dist", "package.json"));
+  if (marker === undefined) return true;
+  const packageTime = await fileMtime(join(pluginRoot, "package.json"));
+  if (packageTime !== undefined && packageTime > marker) return true;
+  for (const source of sources) {
+    const sourceTime = await fileMtime(resolve(pluginRoot, source));
+    if (sourceTime !== undefined && sourceTime > marker) return true;
+  }
+  return false;
+};
 
 export class PluginBuildMixedTreeError extends Schema.TaggedError<PluginBuildMixedTreeError>()(
   "PluginBuildMixedTreeError",

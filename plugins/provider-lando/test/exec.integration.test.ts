@@ -104,9 +104,9 @@ const makeFakeApi = (
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
-        if (request.method === "GET" && request.path === "/containers/lando-execapp-node/json")
-          return { status: 200, body: JSON.stringify({ Id: "lando-execapp-node" }) };
-        if (request.method === "POST" && request.path === "/containers/lando-execapp-node/exec") {
+        if (request.method === "GET" && request.path === "/containers/lando-execapp--node/json")
+          return { status: 200, body: JSON.stringify({ Id: "lando-execapp--node" }) };
+        if (request.method === "POST" && request.path === "/containers/lando-execapp--node/exec") {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
         }
         if (request.method === "GET" && request.path === "/exec/exec-1/json") {
@@ -114,6 +114,9 @@ const makeFakeApi = (
         }
         if (request.method === "POST" && request.path.startsWith("/exec/exec-1/resize?")) {
           return { status: 200, body: "" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -182,7 +185,7 @@ describe("provider-lando exec", () => {
       ).pipe(Stream.runCollect, Effect.scoped),
     );
 
-    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp-node/exec");
+    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp--node/exec");
     const start = fake.calls.find((call) => call.path === "/exec/exec-1/start");
     expect(create?.body).toMatchObject({ AttachStdin: true, Tty: true });
     expect(start?.body).toMatchObject({ Tty: true });

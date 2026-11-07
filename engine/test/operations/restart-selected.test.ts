@@ -15,12 +15,14 @@ import {
   PortablePath,
   ServiceName,
   type ServicePlan,
+  type ServiceRunObservation,
 } from "@lando/sdk/schema";
-import { RouterService } from "@lando/sdk/services";
+import { RouterService, type ServiceRuntimeFields } from "@lando/sdk/services";
 import type { ApplyOptions, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
 
 import { restartApp } from "../../src/operations/restart.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const redis: ServicePlan = {
@@ -61,13 +63,12 @@ const threeServicePlan = (): AppPlan => ({
 const runtimeFor = (
   plannedApp: AppPlan,
   service: ServiceName,
-  extras: Partial<ServiceRuntimeInfo> = {},
+  extras: Partial<ServiceRuntimeFields> | ServiceRunObservation = {},
 ): ServiceRuntimeInfo => ({
   app: plannedApp.id,
   service,
   providerId: plannedApp.provider,
-  status: "running",
-  state: "running",
+  status: "running" as const,
   containerId: `cid-${String(service)}`,
   publications: {
     status: "present",
@@ -137,11 +138,11 @@ const runSelected = (
   ).pipe(
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      applyRoutes: (routes, app) =>
+      applyRoutes: (routes, owner) =>
         Effect.sync(() => {
           applyRoutes.push(routes.length);
-        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, app))),
-      removeRoutes: (app) => Effect.sync(() => void removeRoutes.push(String(app))),
+        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, owner))),
+      removeRoutes: (owner) => Effect.sync(() => void removeRoutes.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );
@@ -201,7 +202,7 @@ describe("selected service restart", () => {
           app: plan.id,
           service: target.service,
           providerId: plan.provider,
-          status: "stopped",
+          status: "absent" as const,
           publications: { status: "missing" },
         }),
     });
@@ -298,7 +299,7 @@ describe("selected service restart", () => {
 
   test("refuses before stop when publish-port, bind-source, or network drift would recreate", async () => {
     const cases: Array<{
-      readonly extras: Partial<ServiceRuntimeInfo>;
+      readonly extras: Partial<ServiceRuntimeFields> | ServiceRunObservation;
       readonly reason: ServiceRestartWouldRecreateError["reason"];
     }> = [
       { extras: { publishFingerprint: "8080/tcp@127.0.0.1:18080" }, reason: "publish-port" },
@@ -377,54 +378,79 @@ describe("selected service restart", () => {
     expect(byTag(selected.harness.events, "pre-app-stop")).toEqual([]);
   });
 
-  test("file-sync sessions survive a selected container stop and start", async () => {
-    const session: FileSyncSessionInfo = {
-      ref: FileSyncSessionRef.make("sess-redis"),
-      app: { kind: "user", id: plan.id, root: plan.root },
-      service: redis.name,
-      mountKey: "data",
-      spec: {
-        app: { kind: "user", id: plan.id, root: plan.root },
-        service: redis.name,
-        mountKey: "data",
+  test.each([
+    { selectedService: redis.name, acceleratedSibling: false },
+    { selectedService: web.name, acceleratedSibling: false },
+    { selectedService: redis.name, acceleratedSibling: true },
+  ])(
+    "file-sync sessions survive a selected container stop and start (%j)",
+    async ({ selectedService, acceleratedSibling }) => {
+      const redisPlan = withAcceleratedBind(twoServicePlan(), redis.name, {
+        type: "bind",
         source: AbsolutePath.make(`${plan.root}/data`),
-        target: { _tag: "volume", name: "redis-data", path: PortablePath.make("/data") },
-        mode: "two-way-safe",
+        target: PortablePath.make("/data"),
+        readOnly: false,
+        realization: "accelerated",
+        mountKey: "data",
         excludes: [],
-      },
-      status: "running",
-      lastUpdatedAt: DateTime.makeUnsafe("2026-05-28T00:00:00Z"),
-    };
-    const terminated: string[] = [];
-    const flushed: string[] = [];
-    const plannedApp: AppPlan = {
-      ...twoServicePlan(),
-      fileSync: [{ engineId: "mutagen", session: session.spec }],
-    };
-    const selected = runSelected(plannedApp, {
-      services: [redis.name],
-      fileSync: {
-        ...TestFileSyncEngine,
-        id: "mutagen",
-        sessionsPersistAcrossProcesses: true,
-        isAvailable: Effect.succeed(true),
-        listSessions: () => Effect.succeed([session]),
-        flushSession: (ref) =>
-          Effect.sync(() => {
-            flushed.push(String(ref));
-          }),
-        terminateSession: (ref) =>
-          Effect.sync(() => {
-            terminated.push(String(ref));
-          }),
-      },
-    });
+      });
+      const plannedApp = acceleratedSibling
+        ? withAcceleratedBind(redisPlan, web.name, {
+            type: "bind",
+            source: plan.root,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "accelerated",
+            mountKey: "app-mount",
+            excludes: [],
+          })
+        : redisPlan;
+      const sessions: FileSyncSessionInfo[] = plannedApp.fileSync.map(({ session }) => ({
+        ref: FileSyncSessionRef.make(`sess-${session.service}`),
+        app: session.app,
+        service: session.service,
+        mountKey: session.mountKey,
+        spec: session,
+        status: "running",
+        lastUpdatedAt: DateTime.makeUnsafe("2026-05-28T00:00:00Z"),
+      }));
+      const terminated: string[] = [];
+      const flushed: string[] = [];
+      const selected = runSelected(plannedApp, {
+        services: [selectedService],
+        appliedFileSyncState: "accelerated",
+        fileSync: {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          sessionsPersistAcrossProcesses: true,
+          isAvailable: Effect.succeed(true),
+          listSessions: (filter) =>
+            Effect.succeed(
+              sessions.filter(
+                (session) =>
+                  (filter.service === undefined || session.service === filter.service) &&
+                  (filter.mountKey === undefined || session.mountKey === filter.mountKey),
+              ),
+            ),
+          createSession: () => Effect.die("Selected restart must preserve existing sessions"),
+          flushSession: (ref) =>
+            Effect.sync(() => {
+              flushed.push(String(ref));
+            }),
+          terminateSession: (ref) =>
+            Effect.sync(() => {
+              terminated.push(String(ref));
+            }),
+        },
+      });
 
-    await Effect.runPromise(selected.operation);
+      await Effect.runPromise(selected.operation);
 
-    expect(terminated).toEqual([]);
-    expect(flushed).toEqual(["sess-redis"]);
-    expect(selected.stopCalls).toEqual([redis.name]);
-    expect(selected.destroyCalls).toEqual([]);
-  });
+      expect(terminated).toEqual([]);
+      expect(flushed).toEqual(selectedService === redis.name ? ["sess-redis"] : []);
+      expect(selected.stopCalls).toEqual([selectedService]);
+      expect(selected.destroyCalls).toEqual([]);
+      expect(selected.applyCalls[0]?.options.recordedPlan?.fileSync).toEqual(plannedApp.fileSync);
+    },
+  );
 });

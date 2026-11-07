@@ -78,13 +78,19 @@ const taskFail = (taskId: string, summary: string, exitCode: number, remediation
     timestamp: ts,
   });
 
-const treeComplete = (summary: string, succeeded: number, failed: number): LandoEvent =>
+const treeComplete = (
+  summary: string,
+  succeeded: number,
+  failed: number,
+  outcome?: "failure" | "interrupted",
+): LandoEvent =>
   Schema.decodeUnknownSync(TaskTreeCompleteEvent)({
     _tag: "task.tree.complete",
     parentId: "build",
     summary,
     succeeded,
     failed,
+    ...(outcome === undefined ? {} : { outcome }),
     timestamp: ts,
   });
 
@@ -99,8 +105,24 @@ const assertNoControlBytes = (lines: ReadonlyArray<string>): void => {
 };
 
 describe("TaskTreeViewModel — apply + frameLines content", () => {
+  test.each([
+    ["failure", "╰─ failed"],
+    ["interrupted", "╰─ interrupted"],
+  ] as const)(
+    "a %s tree with no failed child never reads done and hides pending children",
+    (outcome, footer) => {
+      // Given: the tree's work failed before any child started.
+      const vm = new TaskTreeViewModel({ color: false });
+      vm.apply(treeStart("build", "Building", ["web", "db"]));
+      // When
+      vm.apply(treeComplete("Build failed", 0, 0, outcome));
+      // Then
+      expect(vm.snapshot().frameLines).toEqual(["╭─ Build failed", footer]);
+    },
+  );
+
   test("apply(tree.start) yields a skeleton with parent line and pending placeholders; no control bytes", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web", "db", "cache"]));
     const styled = vm.frameLines();
     assertNoControlBytes(styled);
@@ -113,7 +135,7 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
   });
 
   test("snapshot() logical frame is unstyled and carries active running task ids", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web", "db"]));
     vm.apply(taskStart("web", "web service", "build"));
     const snap = vm.snapshot();
@@ -123,7 +145,7 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
   });
 
   test("running detail lines surface under the running task in frameLines", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web"]));
     vm.apply(taskStart("web", "web service", "build"));
     vm.apply(taskDetail("web", "listening on :80"));
@@ -134,7 +156,7 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
   });
 
   test("CJK task content stays within the requested terminal cell width", () => {
-    const vm = new TaskTreeViewModel({ terminalColumns: 40 });
+    const vm = new TaskTreeViewModel({ color: true, terminalColumns: 40 });
     vm.apply(treeStart("build", "한글 애플리케이션 시작 중입니다", ["웹서버"]));
     vm.apply(taskStart("웹서버", "웹서버 런타임을 부팅하는 중", "build"));
     vm.apply(taskDetail("웹서버", "포트 8080 에서 수신 대기 중입니다 지금"));
@@ -145,7 +167,7 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
 
   test("frame lines never exceed terminals narrower than the frame chrome", () => {
     for (let columns = 1; columns <= 6; columns += 1) {
-      const vm = new TaskTreeViewModel({ terminalColumns: columns });
+      const vm = new TaskTreeViewModel({ color: true, terminalColumns: columns });
       vm.apply(treeStart("build", "Building", ["web"]));
       vm.apply(taskStart("web", "web service", "build"));
       vm.apply(taskDetail("web", "progress"));
@@ -161,7 +183,7 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
 
 describe("TaskTreeViewModel — hasAnimatedAffordance (30fps live-gating)", () => {
   test("true only while a running task has a visible spinner", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web"]));
     expect(vm.hasAnimatedAffordance()).toBe(false);
     vm.apply(taskStart("web", "web service", "build"));
@@ -176,7 +198,7 @@ describe("TaskTreeViewModel — hasAnimatedAffordance (30fps live-gating)", () =
 
 describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw bytes)", () => {
   test("focusable ids exclude pending tasks and include started ones", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["a", "b"]));
     expect(vm.focusableTaskIds()).toEqual([]);
     vm.apply(taskStart("b", "step b", "build"));
@@ -184,7 +206,7 @@ describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw b
   });
 
   test("expandTask switches frameLines to the expanded tail; collapse restores the tree; no control bytes", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web"]));
     const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
     vm.apply(taskStart("web", "web service", "build", transcriptPath));
@@ -205,7 +227,7 @@ describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw b
 
 describe("TaskTreeViewModel — new tree replaces prior single-tree state", () => {
   test("a second tree.start drops the prior tree's completed rows, order, spinner, and expanded state", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
 
     // First tree: an artifact build that runs and completes.
     vm.apply(treeStart("build-artifact", "Building artifact", ["artifact-web"]));
@@ -243,7 +265,7 @@ describe("TaskTreeViewModel — new tree replaces prior single-tree state", () =
 describe("TaskTreeViewModel — completion + failure summaries", () => {
   test("retains neutral info state when a task completes with a reader-owned result", () => {
     // Given
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("checks", "Checks", ["web"]));
     vm.apply(taskStart("web", "Web check", "checks"));
 
@@ -264,7 +286,7 @@ describe("TaskTreeViewModel — completion + failure summaries", () => {
   });
 
   test("failed task renders a blocked summary with exit code and remediation", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["db"]));
     vm.apply(taskStart("db", "database", "build"));
     vm.apply(taskFail("db", "migration failed", 1, "run lando db:reset"));
@@ -275,7 +297,7 @@ describe("TaskTreeViewModel — completion + failure summaries", () => {
   });
 
   test("tree.complete renders the passive summary footer", () => {
-    const vm = new TaskTreeViewModel();
+    const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web"]));
     vm.apply(taskStart("web", "web service", "build"));
     vm.apply(taskComplete("web", "web ready", 100));

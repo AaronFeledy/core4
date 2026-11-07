@@ -4,9 +4,9 @@ import { pathToFileURL } from "node:url";
 
 import { Result, Schema } from "effect";
 
-import { importAuthorModule } from "@lando/landofile/author-modules";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
+import { importPluginModule, loadPluginModules } from "./module-cache.ts";
 
 import {
   packageRootPath,
@@ -19,23 +19,30 @@ export interface ExternalPluginModule {
   readonly [key: string]: unknown;
 }
 
-const loadExternalPluginEntry = async (
-  packageRoot: string,
-  manifest: PluginManifest,
-): Promise<ExternalPluginModule | undefined> => {
-  if (manifest.entry === undefined) return undefined;
-  const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
+export const loadInstalledPluginImplementation = async (packageRoot: string, manifest: PluginManifest) => {
   try {
-    return (await importAuthorModule(pathToFileURL(entryPath).href)) as ExternalPluginModule;
+    return await loadPluginModules(packageRoot, async () => {
+      if (manifest.entry === undefined) return undefined;
+      const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
+      const module = await importPluginModule(entryPath);
+      if (typeof module !== "object" || module === null) return undefined;
+      return Object.fromEntries(Object.entries(module));
+    });
   } catch (cause) {
     throw pluginLoadError(
       String(manifest.name),
-      `Failed to import plugin entry ${manifest.entry}`,
+      `Failed to import plugin ${String(manifest.name)} entry ${manifest.entry}`,
       cause,
-      `Repair the ${String(manifest.entry)} entry for plugin ${String(manifest.name)}, or reinstall the plugin.`,
+      `Repair ${join(packageRoot, manifest.entry ?? "package.json")} for plugin ${String(manifest.name)}.`,
     );
   }
 };
+
+export const loadInstalledPluginEntry = async (
+  packageRoot: string,
+  manifest: PluginManifest,
+): Promise<ExternalPluginModule | undefined> =>
+  (await loadInstalledPluginImplementation(packageRoot, manifest)).value;
 
 const normalizeExternalContributionModules = async (
   packageRoot: string,
@@ -46,6 +53,7 @@ const normalizeExternalContributionModules = async (
   const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
   const certificateAuthorities = manifest.contributes?.certificateAuthorities;
+  const fileSyncEngines = manifest.contributes?.fileSyncEngines;
   const routerServices = manifest.contributes?.routerServices;
   const secretStores = manifest.contributes?.secretStores;
   const remoteSources = manifest.contributes?.remoteSources;
@@ -59,6 +67,7 @@ const normalizeExternalContributionModules = async (
     httpClients === undefined &&
     interactionServices === undefined &&
     certificateAuthorities === undefined &&
+    fileSyncEngines === undefined &&
     routerServices === undefined &&
     secretStores === undefined &&
     remoteSources === undefined &&
@@ -163,6 +172,19 @@ const normalizeExternalContributionModules = async (
             module: await normalizeManifestModulePath(contribution.module, "certificateAuthorities"),
           })),
         );
+  const normalizedFileSyncEngines =
+    fileSyncEngines === undefined
+      ? undefined
+      : await Promise.all(
+          fileSyncEngines.map(async (contribution) =>
+            contribution.module === undefined
+              ? contribution
+              : {
+                  ...contribution,
+                  module: await normalizeManifestModulePath(contribution.module, "fileSyncEngines"),
+                },
+          ),
+        );
   const normalizedRouterServices =
     routerServices === undefined
       ? undefined
@@ -232,6 +254,7 @@ const normalizeExternalContributionModules = async (
     ...(normalizedSubscribers === undefined ? {} : { subscribers: normalizedSubscribers }),
     contributes: {
       ...manifest.contributes,
+      ...(normalizedFileSyncEngines === undefined ? {} : { fileSyncEngines: normalizedFileSyncEngines }),
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
       ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
       ...(normalizedHttpClients === undefined ? {} : { httpClients: normalizedHttpClients }),
@@ -281,6 +304,6 @@ export const loadInstalledPlugin = async (
 ): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
   const packageRoot = packageRootPath(packageRootInput);
   const manifest = await loadInstalledPluginManifest(packageRoot);
-  const module = await loadExternalPluginEntry(packageRoot, manifest);
+  const module = await loadInstalledPluginEntry(packageRoot, manifest);
   return { manifest, ...(module === undefined ? {} : { module }) };
 };

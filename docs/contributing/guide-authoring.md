@@ -60,7 +60,7 @@ models `init` and config inspection without starting containers.
 id: my-first-guide
 provider: test
 timeout: 60000
-tags: [beta, docs, authoring]
+tags: [docs, authoring]
 ---
 
 # Create an app from the empty recipe

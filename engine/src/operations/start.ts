@@ -4,11 +4,12 @@ import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { selectPreparedProvider } from "../providers/prepared.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
+import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
@@ -17,9 +18,9 @@ import {
   preflightStartAppDrain,
   startAppForTargetUnlocked,
 } from "./start-internal.ts";
+import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overlays.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
-export { StartedServiceResultSchema, StartAppResultSchema } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
 export type { StartManagedScope } from "./start-file-sync.ts";
 
@@ -33,8 +34,14 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
+    readonly preparedOverlays?: PreparedStartOverlays;
   } = {},
 ) {
+  const providerRegistry = yield* RuntimeProviderRegistry;
+  const preparedOverlays =
+    execution.preparedOverlays ??
+    (yield* prepareStartOverlays(target, yield* providerRegistry.select(target.plan)));
+  yield* validateDesiredFileSyncEngine(target.plan);
   return yield* withHomeTransitionNotices(
     withAppMutationLock(
       appLockTarget(target.plan),
@@ -42,29 +49,29 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         const placement = yield* ensureAppPlacementState(target.app, target.plan.provider);
         const context =
           yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
-        const registry = yield* RuntimeProviderRegistry;
         const stateStore = yield* StateStore;
-        const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
-        const plan = resolvedTarget.plan;
-        yield* rotateChangedFileSync(resolvedTarget);
-        const provider = yield* registry.select(plan);
-        return yield* withPlanVolumeCoordination({
+        const plan = target.plan;
+        const provider = yield* selectPreparedProvider(plan);
+        yield* rotateChangedFileSync(target, provider);
+        return yield* withLaunchVolumeCoordination({
           plan,
           provider,
           stateStore,
           body: () =>
-            preflightStartAppDrain(resolvedTarget)
+            preflightStartAppDrain(target)
               .pipe(
                 Effect.flatMap((preparedTargets) =>
                   Effect.gen(function* () {
                     yield* execution.transactionPreflightDone === true
                       ? Effect.void
-                      : ensureStartTransactionConsistent(resolvedTarget);
+                      : ensureStartTransactionConsistent(target);
                     if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
                     yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
                     yield* publishHomeTransitionNotices(placement.plan, plan);
-                    return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
+                    return yield* startAppForTargetUnlocked(options, target, managed, {
                       ...execution,
+                      provider,
+                      preparedOverlays,
                       ...(preparedTargets === undefined ? {} : { preparedTargets }),
                     });
                   }),
@@ -87,6 +94,7 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
+    readonly preparedOverlays?: PreparedStartOverlays;
   } = {},
 ) {
   return yield* target === undefined

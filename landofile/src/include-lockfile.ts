@@ -2,7 +2,7 @@ import { basename, dirname, resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { type LandofileIncludeError, LandofileParseError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
+import type { DurableStateRoot, StateBucket, StateStoreShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import {
   type FragmentResult,
@@ -64,7 +64,7 @@ const parseLockfileYaml = (content: string): { includes: Array<Record<string, un
   if (!header) throw invalidLock("Missing includes lockfile header.");
   return { includes };
 };
-const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
+export const parseLockEntriesFromText = (content: string): readonly LockEntry[] => {
   const parsed = parseLockfileYaml(content);
   const entries = Schema.decodeUnknownSync(LockEntriesSchema)(parsed.includes, { onExcessProperty: "error" });
   const sources = new Set<string>();
@@ -91,7 +91,8 @@ const renderLockfile = (entries: ReadonlyArray<LockEntry>): string => {
   lines.push("");
   return lines.join("\n");
 };
-const LockEntriesSchema = Schema.Array(
+export const INCLUDE_LOCKFILE_VERSION = 1;
+export const LockEntriesSchema = Schema.Array(
   Schema.Struct({
     source: Schema.String.check(Schema.isMinLength(1)),
     version: Schema.optionalKey(Schema.String),
@@ -103,7 +104,7 @@ const lockTextDecoder = new TextDecoder();
 const lockfileRoot = (
   appRoot: string,
   lockfilePath: string,
-): { readonly root: StateRoot; readonly key: string } => {
+): { readonly root: DurableStateRoot; readonly key: string } => {
   if (resolve(lockfilePath) === resolve(appRoot, ".lando.lock.yml"))
     return { root: { app: AbsolutePath.make(appRoot) }, key: ".lando.lock.yml" };
   return { root: { path: AbsolutePath.make(dirname(lockfilePath)) }, key: basename(lockfilePath) };
@@ -120,7 +121,7 @@ const openLockfileBucket = (
       root,
       key,
       schema: LockEntriesSchema,
-      version: 1,
+      version: INCLUDE_LOCKFILE_VERSION,
       lock: "none",
       onCorrupt: "fail",
       default: [],
@@ -150,7 +151,7 @@ export const parseLockEntries = (
 ): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError | LandofileIncludeError> =>
   openLockfileBucket(stateStore, appRoot, path).pipe(
     Effect.flatMap((bucket) =>
-      bucket.get.pipe(
+      Effect.flatMap(bucket.exists, (exists) => (exists ? bucket.get : Effect.succeed(undefined))).pipe(
         Effect.mapError(
           (cause) =>
             new LandofileParseError({

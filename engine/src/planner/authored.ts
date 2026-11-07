@@ -7,6 +7,7 @@ import { applyAuthoredDependencies } from "../services/authored-dependencies.ts"
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
 import { applyPreparedService } from "../services/feature.ts";
+import { applyAuthoredHealthcheck } from "./authored-probes.ts";
 import {
   SERVICE_FEATURES_EXTENSION_KEY,
   mergeComposeExtension,
@@ -18,6 +19,7 @@ import {
 import { serviceHomeIntent } from "./home.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { plannedContainerDestination } from "./storage.ts";
+export { applyAuthoredHealthcheck } from "./authored-probes.ts";
 
 export const validateAuthoredAppMount = (
   service: ServiceConfig,
@@ -44,40 +46,6 @@ export const validateAuthoredAppMount = (
         "Set appMount to an absolute container path such as /app, or false to disable the app mount.",
     })),
   });
-};
-
-export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
-  const authored = service.healthcheck;
-  if (authored === undefined) return servicePlan;
-  const existing = servicePlan.healthcheck;
-  if (authored === false)
-    return {
-      ...servicePlan,
-      readiness: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 },
-      healthcheck: {
-        kind: "none",
-        intervalSeconds: existing?.intervalSeconds ?? 10,
-        timeoutSeconds: existing?.timeoutSeconds ?? 5,
-        retries: existing?.retries ?? 5,
-      },
-    };
-  const command = authored.command ?? existing?.command;
-  const url = authored.url ?? existing?.url;
-  const port = authored.port ?? existing?.port;
-  const startPeriodSeconds = authored.startPeriodSeconds ?? existing?.startPeriodSeconds;
-  const merged: ServicePlan["healthcheck"] = {
-    kind: authored.kind ?? existing?.kind ?? "command",
-    intervalSeconds: authored.intervalSeconds ?? existing?.intervalSeconds ?? 10,
-    timeoutSeconds: authored.timeoutSeconds ?? existing?.timeoutSeconds ?? 5,
-    retries: authored.retries ?? existing?.retries ?? 5,
-    ...(command !== undefined ? { command } : {}),
-    ...(url !== undefined ? { url } : {}),
-    ...(port !== undefined ? { port } : {}),
-    ...(startPeriodSeconds !== undefined ? { startPeriodSeconds } : {}),
-    ...(authored.command === undefined && existing?.target !== undefined ? { target: existing.target } : {}),
-  };
-  if (merged.kind === "command" && merged.command === undefined) return servicePlan;
-  return { ...servicePlan, healthcheck: merged, readiness: merged };
 };
 
 export { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
@@ -123,10 +91,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       service,
     );
     const build = service.build;
-    const authoredArtifact =
+    const composeArtifact =
       build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
-    const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
-    const appScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
+    const authoredArtifact =
+      composeArtifact ??
+      (service.image === undefined ? undefined : { kind: "ref" as const, ref: service.image });
+    const artifactScripts = composeArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
+    const appScripts = composeArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
     const servicePlan: ServicePlan =
       artifactScripts.length === 0 && appScripts.length === 0
         ? authoredServicePlan
@@ -141,13 +112,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
                   ...artifactScripts.map((script, index) => ({
                     id: `authored-artifact:${index + 1}`,
                     phase: "build" as const,
-                    command: ["sh", "-lc", script.run],
+                    command: ["sh", "-c", script.run],
                     ...(script.user === undefined ? {} : { user: script.user }),
                   })),
                   ...appScripts.map((script, index) => ({
                     id: `authored-app:${index + 1}`,
                     phase: "app" as const,
-                    command: { command: ["sh", "-lc", script.run] },
+                    command: { command: ["sh", "-c", script.run] },
                     ...(script.user === undefined ? {} : { user: script.user }),
                   })),
                 ],

@@ -60,9 +60,24 @@ describe("runtime license metadata", () => {
   test.each([
     ["2.2.1", "https://example.test/archive/refs/tags/v2.2.1.tar.gz"],
     ["1.28", "https://example.test/archive/refs/tags/1.28.tar.gz"],
+    // Debian binary versions may name only the upstream or source-package token.
+    ["0.2.1-2+b14", "https://example.test/archive/refs/tags/v0.2.1.tar.gz"],
+    ["0.2.1-2+b14", "https://example.test/pool/main/c/catatonit/catatonit_0.2.1.orig.tar.gz"],
+    ["0.2.1-2+b14", "https://example.test/changelogs/catatonit_0.2.1-2_copyright"],
   ])("accepts source for %s naming the exact version: %s", (version, source) => {
     const entry = { ...component(), version, license: { ...fixtureLicense(version), source } };
     expect(() => parseRuntimeBundleSources(document(entry))).not.toThrow();
+  });
+  test("rejects Debian license.source that only names an unrelated version", () => {
+    const entry = {
+      ...component(),
+      version: "0.2.1-2+b14",
+      license: {
+        ...fixtureLicense("0.2.1-2+b14"),
+        source: "https://example.test/archive/refs/tags/v0.2.10.tar.gz",
+      },
+    };
+    expect(() => parseRuntimeBundleSources(document(entry))).toThrow();
   });
   test("rejects unversioned sources, empty texts, duplicate files and unsafe filenames", () => {
     const entry = component();

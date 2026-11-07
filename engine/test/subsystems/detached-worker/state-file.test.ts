@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Effect } from "effect";
-import { withDetachedWorkerLock } from "../../../src/subsystems/detached-worker/state-file.ts";
+import { withDetachedWorkerLock } from "../../../src/subsystems/detached-worker/claim.ts";
 
 test("a separate process waits when the holder removes its worker run directory", async () => {
   // Given a worker lock held in this process and a contender in a separate process.
@@ -22,21 +22,24 @@ test("a separate process waits when the holder removes its worker run directory"
           paths: { userDataRoot: root },
           privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
         },
-        Effect.promise(async () => {
-          await rm(dirname(path), { recursive: true, force: true });
-          child = Bun.spawn(
-            [process.execPath, join(import.meta.dir, "fixtures", "lock-contender.ts"), path, root],
-            {
-              stdin: "ignore",
-              stdout: "pipe",
-              stderr: "pipe",
-              ipc: (message: unknown) => {
-                firstMessage.resolve(message);
+        () =>
+          Effect.promise(async () => {
+            await rm(dirname(path), { recursive: true, force: true });
+            child = Bun.spawn(
+              [process.execPath, join(import.meta.dir, "fixtures", "lock-contender.ts"), path, root],
+              {
+                stdin: "ignore",
+                stdout: "pipe",
+                stderr: "pipe",
+                ipc: (message: unknown) => {
+                  firstMessage.resolve(message);
+                },
               },
-            },
-          );
-          expect(await Promise.race([firstMessage.promise, child.exited.then(() => "exited")])).toBe("held");
-        }),
+            );
+            expect(await Promise.race([firstMessage.promise, child.exited.then(() => "exited")])).toBe(
+              "held",
+            );
+          }),
       ),
     );
     if (child === undefined) throw new TypeError("Contender was not started");

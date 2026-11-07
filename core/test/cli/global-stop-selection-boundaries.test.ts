@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { globalStop } from "@lando/engine/operations/global-stop";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
   globalStopOptionsFromInput,
   metaGlobalStopSpec,
 } from "../../src/cli/command-specs/meta/global/stop.ts";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { parseFlagsAndPositionals } from "../../src/cli/compiled-argv.ts";
 import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";
 
@@ -51,7 +51,7 @@ test("explicit selection with entirely absent evidence succeeds unchanged", asyn
   }
 });
 
-for (const status of ["running", "exited", "created"]) {
+for (const status of ["running", "exited", "created"] as const) {
   test(`selected ${status} container is removed without whole-global teardown`, async () => {
     // Given an applied service with an observed container in the selected state.
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-remove-"));

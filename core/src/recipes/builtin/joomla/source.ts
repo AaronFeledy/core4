@@ -9,12 +9,13 @@ export const source = {
   tags: ["joomla", "php", "apache", "mariadb"],
   extends: "lamp",
   config: {
-    services: { appserver: { framework: "joomla", allowOverride: true } },
+    services: { appserver: { framework: "joomla", allowOverride: true, uploadDirs: ["images"] } },
     tooling: {
       joomla: {
         service: "appserver",
         description: "Run the Joomla CLI inside the appserver service.",
         cmds: ["php cli/joomla.php"],
+        wrapper: true,
       },
     },
   },

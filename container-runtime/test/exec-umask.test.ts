@@ -41,8 +41,8 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-umask-app");
 const serviceName = ServiceName.make("web");
 const otherService = ServiceName.make("db");
-const containerName = "lando-exec-umask-app-web";
-const otherContainer = "lando-exec-umask-app-db";
+const containerName = "lando-exec-umask-app--web";
+const otherContainer = "lando-exec-umask-app--db";
 const createPath = `/containers/${containerName}/exec` as const;
 const otherCreatePath = `/containers/${otherContainer}/exec` as const;
 const metadata = {
@@ -544,7 +544,7 @@ describe("exec umask compensation", () => {
       services: { [serviceName]: makeService(serviceName) },
     };
     const otherTarget = { app: otherAppId, service: serviceName };
-    const otherContainer = "lando-exec-umask-app-2-web";
+    const otherContainer = "lando-exec-umask-app-2--web";
     const fake = makeScriptedApi((cmd, container) => {
       if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000"), exitCode: 0 };
       if (isShellProbeCommand(cmd)) return { exitCode: container === otherContainer ? 127 : 0 };

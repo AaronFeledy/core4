@@ -4,8 +4,8 @@ import { LandofileAuthoringFragment, classifyAuthoringSource } from "@lando/sdk/
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { lowerLegacyTag } from "../src/legacy-tags.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const translateFiles = (files: ReadonlyArray<readonly [string, string]>) => {
   const translator = makeLando3ConfigTranslator({
@@ -62,8 +62,8 @@ describe("tooling", () => {
     );
     // Then
     expect(fragment(result).tooling).toEqual({
-      git: { service: "appserver", cmd: "git" },
-      drush: { service: "appserver", description: "Run drush", cmd: "drush --root=/app/web" },
+      git: { service: "appserver", cmd: "git", wrapper: true },
+      drush: { service: "appserver", description: "Run drush", cmd: "drush --root=/app/web", wrapper: true },
       test: { service: "appserver", cmds: ["php -v", "php -m"] },
       install: {
         cmds: [
@@ -71,15 +71,25 @@ describe("tooling", () => {
           { cmd: "pnpm install", service: "node" },
         ],
       },
-      iamroot: { service: "appserver", cmd: "id", dir: "/tmp", env: { TIMEOUT: 600 }, user: "root" },
+      iamroot: {
+        service: "appserver",
+        cmd: "id",
+        dir: "/tmp",
+        env: { TIMEOUT: 600 },
+        user: "root",
+        wrapper: true,
+      },
       "xdebug-off": false,
       php: false,
     });
     expect(summary(result)).toEqual([
+      "generated tooling.git.cmd",
       "needs-review services.appserver.type",
       "generated tooling.git",
-      "rewritten tooling.test.cmd",
-      "rewritten tooling.install.cmd",
+      "generated tooling.drush",
+      "needs-review tooling.test.cmd",
+      "needs-review tooling.install.cmd",
+      "generated tooling.iamroot",
       "rewritten tooling.iamroot.user",
       "dropped tooling.iamroot.env.LANDO_X",
       "rewritten tooling.xdebug-off",
@@ -140,12 +150,12 @@ describe("tooling", () => {
     });
     expect(summary(result)).toEqual([
       "needs-review services.appserver.type",
-      "rewritten tooling.word.options",
+      "needs-review tooling.word.options",
       "dropped tooling.word.options.word.alias.1",
       "dropped tooling.word.options.word.interactive",
       "dropped tooling.word.options.env.default",
       "dropped tooling.word.options.no-wipe.default",
-      "rewritten tooling.drupal-update <core> [module]",
+      "needs-review tooling.drupal-update <core> [module]",
       "needs-review tooling.drupal-update <core> [module].cmd",
     ]);
   });
@@ -170,10 +180,10 @@ describe("tooling", () => {
       "what-host": { cmd: "env", service: ":host-service", flags: { "host-service": { default: "node" } } },
     });
     expect(summary(result)).toEqual([
-      "rewritten tooling.whoami.service",
-      "rewritten tooling.whoami.options",
+      "needs-review tooling.whoami.service",
+      "needs-review tooling.whoami.options",
       "needs-review tooling.what-host.service",
-      "rewritten tooling.what-host.options",
+      "needs-review tooling.what-host.options",
       "unsupported tooling.broken.service",
     ]);
   });
@@ -196,6 +206,7 @@ describe("tooling", () => {
     expect(summary(result)).toEqual([
       "dropped plugins",
       "dropped keys",
+      "generated tooling.bg",
       "dropped tooling.bg.cmd",
       "dropped tooling.bg.level",
       "dropped tooling.bg.usage",
@@ -203,7 +214,7 @@ describe("tooling", () => {
       "dropped tooling.bg.interactive",
     ]);
     const merged = section(result, "tooling");
-    expect(merged).toEqual({ bg: { service: "node", cmd: "sleep infinity" } });
+    expect(merged).toEqual({ bg: { service: "node", cmd: "sleep infinity", wrapper: true } });
   });
 
   test("keeps shell text literal under Lando 4 expression syntax", async () => {
@@ -218,9 +229,10 @@ describe("tooling", () => {
     );
     // Then
     expect(section(result, "tooling")).toEqual({
-      fmt: { service: "web", cmd: "docker inspect -f '{{{{.Id}}' $NAME $HOME $1" },
+      fmt: { service: "web", cmd: "docker inspect -f '{{{{.Id}}' $NAME $HOME $1", wrapper: true },
     });
     expect(summary(result)).toEqual([
+      "generated tooling.fmt",
       "rewritten tooling.fmt.cmd",
       "needs-review tooling.fmt.cmd",
       "unsupported tooling.dflt.cmd",
@@ -313,6 +325,7 @@ describe("events", () => {
     });
     expect(summary(result)).toEqual([
       "needs-review services.appserver.type",
+      "generated tooling.db-import",
       "generated events.pre-start.0",
       "rewritten events.pre-start.1.node",
       "rewritten events.post-db-import",

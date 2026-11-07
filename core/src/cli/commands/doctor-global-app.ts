@@ -2,7 +2,7 @@
  * Global-app diagnostics for `lando doctor`.
  *
  * Reports whether the global app is installed, its materialized Landofile
- * paths, the last `meta:global:install` timestamp (derived from the dist file
+ * paths, the last `meta:global:reconcile` timestamp (derived from the dist file
  * mtime), the list of materialized global services, and the list of plugins
  * that contribute `globalServices:` entries.
  *
@@ -40,8 +40,8 @@ export interface GlobalAppDoctorResult {
 const NOT_INSTALLED_SOLUTION: DoctorSolution = {
   kind: "manual",
   description:
-    "The global app is not installed yet. Starting an app that needs Traefik, Mailpit, or ssh-agent will provision it automatically. To materialize the stack now, run `lando global:install`.",
-  command: "lando global:install",
+    "The global app is not installed yet. Starting an app that needs Traefik, Mailpit, or ssh-agent will provision it automatically. To materialize the stack now, run `lando global:reconcile`.",
+  command: "lando global:reconcile",
 };
 
 /**
@@ -75,7 +75,7 @@ const parseServiceIds = (content: string): ReadonlyArray<string> => {
  *
  * - When the dist file is absent (global app not installed), returns a `warn`
  *   check noting that `lando start` will auto-provision it, with an optional
- *   `lando global:install` solution to materialize the stack now.
+ *   `lando global:reconcile` solution to materialize the stack now.
  * - When the dist file exists, returns a `pass` check carrying:
  *   - `distLandofilePath` / `userLandofilePath` — materialized file paths
  *   - `lastInstallTimestamp` — mtime of the dist file (ISO 8601)
@@ -155,7 +155,7 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
         {
           kind: "manual",
           description:
-            "The global app dist Landofile exists but could not be read. Check file permissions and rerun `lando global:install` if needed.",
+            "The global app dist Landofile exists but could not be read. Check file permissions and rerun `lando global:reconcile` if needed.",
         },
       ],
     });

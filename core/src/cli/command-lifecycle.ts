@@ -8,10 +8,11 @@ import {
 } from "@lando/sdk/command-result";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import type { CommandCompletion } from "@lando/sdk/schema";
-import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
+import { EventService, type LandoEvent, Logger, OnlineAcquisition } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
+import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary";
 
 export interface CliInvocationSnapshot {
@@ -200,6 +201,17 @@ export const runCommandLifecycle: <A, E, R>(
       });
     }
     return outcome;
+  },
+  (body, _command, options) => {
+    const catalog: Readonly<
+      Record<string, { readonly spec: { readonly id: string; readonly onlineAcquisition?: true } }>
+    > = COMMAND_REGISTRY_MANIFEST.commands;
+    return body.pipe(
+      Effect.provideService(
+        OnlineAcquisition,
+        catalog[options.invocation.commandId]?.spec.onlineAcquisition === true,
+      ),
+    );
   },
   withCommandEventService,
 );

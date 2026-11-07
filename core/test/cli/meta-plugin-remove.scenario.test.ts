@@ -1,36 +1,45 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import * as HostContext from "@lando/engine/services/host-execution-context";
 
-import { Effect, Layer } from "effect";
+import { Cause, Effect, type Exit, Layer } from "effect";
 
-import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
+import { FileIoError, PluginPackageOperationError, ProcessExecError } from "@lando/sdk/errors";
+import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import type { NpmPackument, NpmRegistryTransport } from "@lando/source-acquisition";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
-import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
-import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 
 let userDataRoot: string;
 
 const fakeConfigService = (dataRoot: string) =>
-  Layer.succeed(
-    ConfigService,
-    ConfigService.of({
-      get: <K extends string>(key: K) =>
-        Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
-      getEffective: () => Effect.succeed({} as never),
-    } as never),
+  Layer.merge(
+    Layer.succeed(
+      ProcessRunner,
+      processRunnerFor(() => Effect.succeed({ exitCode: 0 })),
+    ),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        get: <K extends string>(key: K) =>
+          Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+        getEffective: () => Effect.succeed({} as never),
+      } as never),
+    ),
   );
 
 const pluginAddLayer = (dataRoot: string) =>
-  Layer.merge(
+  Layer.mergeAll(
     fakeConfigService(dataRoot),
     Layer.succeed(PluginTrustStore, makePluginTrustStore(join(dataRoot, "plugin-trust.yml"))),
+    makeTestStateStore().layer,
   );
 
 const makeNpmTarball = async (files: Readonly<Record<string, string>>): Promise<Uint8Array> => {
@@ -72,17 +81,20 @@ const packumentFor = (packageName: string, bytes: Uint8Array, version = "1.2.3")
   },
 });
 
-const clientFor = (packument: NpmPackument | undefined, calls?: Array<string>): NpmRegistryClient => ({
-  fetchPackument: async (name) => {
+const clientFor = (
+  packument: NpmPackument | undefined,
+  tarball: Uint8Array,
+  calls?: Array<string>,
+  tarballCalls?: Array<string>,
+): NpmRegistryTransport => ({
+  registryFor: () => "https://registry.example/",
+  packument: async (name) => {
     calls?.push(name);
     return packument;
   },
-});
-
-const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetcher => ({
-  fetch: async (url) => {
-    calls?.push(url);
-    return bytes;
+  tarball: async (input) => {
+    tarballCalls?.push(input.dist.tarball);
+    return tarball;
   },
 });
 
@@ -108,7 +120,57 @@ afterEach(async () => {
   if (userDataRoot !== undefined) await rm(userDataRoot, { recursive: true, force: true });
 });
 
+const failureError = (exit: Exit.Exit<unknown, unknown>): unknown => {
+  if (exit._tag !== "Failure") throw new Error("expected failure");
+  const found = Cause.findErrorOption(exit.cause);
+  if (found._tag !== "Some") throw new Error(`expected tagged failure, got ${Cause.pretty(exit.cause)}`);
+  return found.value;
+};
+
 describe("meta:plugin:remove command", () => {
+  test("capture failure preserves installed bytes, registry, trust, and command cache", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-overflow");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), '{"name":"@lando/plugin-overflow"}');
+    const registryPath = join(pluginsRoot, "registry.json");
+    const registry = JSON.stringify({
+      "@lando/plugin-overflow": { name: "@lando/plugin-overflow", version: "1.0.0", path: pluginDir },
+    });
+    await writeFile(registryPath, registry);
+    const trustStore = new Set(["@lando/plugin-overflow"]);
+    const cacheRoot = join(userDataRoot, "cache");
+    const cache = join(cacheRoot, "apps", "tooling-overflow", "commands.bin");
+    await mkdir(dirname(cache), { recursive: true });
+    await writeFile(cache, "retained tooling cache");
+    const result = await Effect.runPromise(
+      pluginRemove({ name: "@lando/plugin-overflow", trustStore, cacheRoot }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) => {
+            expect(input.capture).toBe(true);
+            expect(input.inheritStdin).toBeUndefined();
+            expect(input.inheritOutput).toBeUndefined();
+            return Effect.fail(
+              new ProcessExecError({
+                cmd: input.cmd,
+                message: "Private capture exceeded its byte budget.",
+                remediation: "Reduce output.",
+              }),
+            );
+          }),
+        ),
+        Effect.provide(fakeConfigService(userDataRoot)),
+        Effect.result,
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    expect(await exists(pluginDir)).toBe(true);
+    expect(await Bun.file(registryPath).text()).toBe(registry);
+    expect(trustStore.has("@lando/plugin-overflow")).toBe(true);
+    expect(await exists(cache)).toBe(true);
+  });
+
   test("reports a no-op when the plugin is not installed", async () => {
     const result = await Effect.runPromise(
       pluginRemove({ name: "@lando/plugin-ghost" }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
@@ -122,14 +184,15 @@ describe("meta:plugin:remove command", () => {
     await writeFile(sentinel, "sentinel");
 
     let spawnerCalled = false;
-    const spawner = {
-      uninstall: async () => {
+    const runner = processRunnerFor(() =>
+      Effect.sync(() => {
         spawnerCalled = true;
         return { exitCode: 0, stderr: "" };
-      },
-    };
+      }),
+    );
     const exit = await Effect.runPromiseExit(
-      pluginRemove({ name: "../../../../etc", spawner }).pipe(
+      pluginRemove({ name: "../../../../etc" }).pipe(
+        Effect.provideService(ProcessRunner, runner),
         Effect.provide(fakeConfigService(userDataRoot)),
       ),
     );
@@ -209,13 +272,9 @@ describe("meta:plugin:remove command", () => {
     await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
 
     const trustStore = new Set<string>(["@lando/plugin-php"]);
-    const spawner = {
-      uninstall: async () => ({ exitCode: 0, stderr: "" }),
-    };
     const result = await Effect.runPromise(
       pluginRemove({
         name: "@lando/plugin-php",
-        spawner,
         trustStore,
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
@@ -223,29 +282,30 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
-  test("invalidates the plugin-command cache after removing a plugin", async () => {
+  test("invalidates app tooling caches after removing a plugin", async () => {
     const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
     await mkdir(pluginDir, { recursive: true });
     await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-removefixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
       await Effect.runPromise(
         pluginRemove({
           name: "@lando/plugin-php",
-          spawner: { uninstall: async () => ({ exitCode: 0, stderr: "" }) },
           cacheRoot,
         }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
       );
 
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }
   });
 
-  test("invalidates the plugin-command cache when reconciling a stale missing plugin", async () => {
+  test("invalidates app tooling caches when reconciling a stale missing plugin", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
     await writeFile(
@@ -260,7 +320,9 @@ describe("meta:plugin:remove command", () => {
     );
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-stalefixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
       const result = await Effect.runPromise(
         pluginRemove({ name: "@lando/plugin-php", cacheRoot }).pipe(
@@ -269,13 +331,13 @@ describe("meta:plugin:remove command", () => {
       );
 
       expect(result.removed).toBe(false);
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }
   });
 
-  test("does not overwrite a corrupt installed registry during removal", async () => {
+  test("preserves plugin files and a corrupt installed registry during removal", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     const pluginDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
     const registryPath = join(pluginsRoot, "registry.json");
@@ -290,7 +352,8 @@ describe("meta:plugin:remove command", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    expect(await exists(pluginDir)).toBe(false);
+    expect(await exists(pluginDir)).toBe(true);
+    expect(await Bun.file(join(pluginDir, "package.json")).text()).toBe(`{"name":"@lando/plugin-php"}`);
     expect(await Bun.file(registryPath).text()).toBe("not json");
   });
 
@@ -343,23 +406,23 @@ describe("meta:plugin:remove command", () => {
     );
 
     let attempts = 0;
-    const spawner = {
-      uninstall: async () => {
+    const runner = processRunnerFor(() =>
+      Effect.sync(() => {
         attempts += 1;
         return attempts === 1
           ? { exitCode: 1, stderr: "injected uninstall failure" }
           : { exitCode: 0, stderr: "" };
-      },
-    };
+      }),
+    );
 
     const first = await Effect.runPromiseExit(
       pluginRemove({
         name: "@lando/plugin-php",
-        spawner,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provideService(ProcessRunner, runner), Effect.provide(fakeConfigService(userDataRoot))),
     );
 
     expect(first._tag).toBe("Failure");
+    expect(failureError(first)).toBeInstanceOf(PluginPackageOperationError);
     expect(await exists(pluginDir)).toBe(true);
     expect(await readInstalledRegistry()).toMatchObject({
       "@lando/plugin-php": { path: pluginDir, version: "1.2.3" },
@@ -368,8 +431,7 @@ describe("meta:plugin:remove command", () => {
     const second = await Effect.runPromise(
       pluginRemove({
         name: "@lando/plugin-php",
-        spawner,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      }).pipe(Effect.provideService(ProcessRunner, runner), Effect.provide(fakeConfigService(userDataRoot))),
     );
 
     expect(second.removed).toBe(true);
@@ -396,8 +458,7 @@ describe("meta:plugin:remove command", () => {
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: true,
-        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
-        fetcher: fetcherFor(bytes, []),
+        npmRegistry: clientFor(packumentFor("@lando/plugin-php", bytes), bytes, []),
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -439,8 +500,7 @@ describe("meta:plugin:remove command", () => {
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: true,
-        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
-        fetcher: fetcherFor(bytes, []),
+        npmRegistry: clientFor(packumentFor("@lando/plugin-php", bytes), bytes, []),
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -449,13 +509,9 @@ describe("meta:plugin:remove command", () => {
     await mkdir(nodeModulesDir, { recursive: true });
     await writeFile(join(nodeModulesDir, "package.json"), `{"name":"@lando/plugin-php"}`);
 
-    const spawner = {
-      uninstall: async () => ({ exitCode: 0, stderr: "" }),
-    };
     const result = await Effect.runPromise(
       pluginRemove({
         name: "@lando/plugin-php",
-        spawner,
         trustStore,
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
@@ -477,7 +533,6 @@ describe("meta:plugin:remove command", () => {
     const exit = await Effect.runPromiseExit(
       pluginRemove({
         name: "@lando/plugin-php",
-        spawner: { uninstall: async () => ({ exitCode: 0, stderr: "" }) },
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
@@ -516,7 +571,6 @@ describe("meta:plugin:remove command", () => {
     const result = await Effect.runPromise(
       pluginRemove({
         name: "@lando/plugin-php",
-        spawner: { uninstall: async () => ({ exitCode: 0, stderr: "" }) },
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
@@ -588,6 +642,196 @@ describe("meta:plugin:remove command", () => {
       }
     } finally {
       await rm(appRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("maps observed uninstall failure to its package stage and skips registry trust cache mutations", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-php");
+    const versionedDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(versionedDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(join(versionedDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    const registryPath = join(pluginsRoot, "registry.json");
+    const registryBody = `${JSON.stringify({
+      "@lando/plugin-php": {
+        name: "@lando/plugin-php",
+        version: "1.2.3",
+        path: versionedDir,
+      },
+    })}\n`;
+    await writeFile(registryPath, registryBody);
+    const manifestPath = join(pluginsRoot, "package.json");
+    const manifestBody = `${JSON.stringify({
+      name: "lando-plugin-root",
+      dependencies: { "@lando/plugin-php": "1.2.3" },
+    })}\n`;
+    await writeFile(manifestPath, manifestBody);
+    const trustStore = new Set<string>(["@lando/plugin-php"]);
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-fail-cache-"));
+    try {
+      const cachePath = join(cacheRoot, "apps", "tooling-failed-remove", "commands.bin");
+      await mkdir(dirname(cachePath), { recursive: true });
+      await writeFile(cachePath, "retained tooling cache");
+
+      const exit = await Effect.runPromiseExit(
+        pluginRemove({
+          name: "@lando/plugin-php",
+          trustStore,
+          cacheRoot,
+        }).pipe(
+          Effect.provideService(
+            ProcessRunner,
+            processRunnerFor(() => Effect.succeed({ exitCode: 9, stderr: "bun remove failed" })),
+          ),
+          Effect.provide(fakeConfigService(userDataRoot)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      const error = failureError(exit);
+      expect(error).toBeInstanceOf(PluginPackageOperationError);
+      expect(error).toMatchObject({
+        _tag: "PluginPackageOperationError",
+        operation: "remove",
+        packageSpec: "@lando/plugin-php",
+        commandId: "meta:plugin:remove",
+        exitCode: 9,
+        detail: "bun remove failed",
+      });
+      expect(await exists(pluginDir)).toBe(true);
+      expect(await exists(versionedDir)).toBe(true);
+      expect(await Bun.file(registryPath).text()).toBe(registryBody);
+      expect(await Bun.file(manifestPath).text()).toBe(manifestBody);
+      expect(trustStore.has("@lando/plugin-php")).toBe(true);
+      expect(await exists(cachePath)).toBe(true);
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("version-only layout removes without spawning bun", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const versionedDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
+    await mkdir(versionedDir, { recursive: true });
+    await writeFile(join(versionedDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify({
+        "@lando/plugin-php": {
+          name: "@lando/plugin-php",
+          version: "1.2.3",
+          path: versionedDir,
+        },
+      })}\n`,
+    );
+    let spawnerCalls = 0;
+
+    const result = await Effect.runPromise(
+      pluginRemove({
+        name: "@lando/plugin-php",
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor(() =>
+            Effect.sync(() => {
+              spawnerCalls += 1;
+              return { exitCode: 0, stderr: "" };
+            }),
+          ),
+        ),
+        Effect.provide(fakeConfigService(userDataRoot)),
+      ),
+    );
+
+    expect(result.removed).toBe(true);
+    expect(spawnerCalls).toBe(0);
+    expect(await exists(versionedDir)).toBe(false);
+    expect(await readInstalledRegistry()).toEqual({});
+  });
+
+  test("preserves typed uninstall failures without inventing exitCode", async () => {
+    const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+
+    const typed = new ProcessExecError({
+      message: "spawn failed",
+      cmd: "bun",
+      remediation: "fix bun",
+    });
+    const exitTyped = await Effect.runPromiseExit(
+      pluginRemove({
+        name: "@lando/plugin-php",
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor(() => Effect.fail(typed)),
+        ),
+        Effect.provide(fakeConfigService(userDataRoot)),
+      ),
+    );
+    expect(exitTyped._tag).toBe("Failure");
+    expect(failureError(exitTyped)).toMatchObject({
+      _tag: typed._tag,
+      message: typed.message,
+      cmd: typed.cmd,
+    });
+    expect(await exists(pluginDir)).toBe(true);
+
+    const exitOpaque = await Effect.runPromiseExit(
+      pluginRemove({
+        name: "@lando/plugin-php",
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor(() =>
+            Effect.tryPromise({
+              try: async () => {
+                throw new Error("boom");
+              },
+              catch: (cause) =>
+                new ProcessExecError({
+                  cmd: "bun",
+                  message: String(cause),
+                  remediation: "Fix child execution.",
+                }),
+            }),
+          ),
+        ),
+        Effect.provide(fakeConfigService(userDataRoot)),
+      ),
+    );
+    expect(exitOpaque._tag).toBe("Failure");
+    const opaque = failureError(exitOpaque);
+    expect(opaque).toBeInstanceOf(ProcessExecError);
+    expect(opaque).not.toHaveProperty("exitCode");
+    expect(await exists(pluginDir)).toBe(true);
+  });
+
+  test("preserves FileIoError from injected uninstall", async () => {
+    const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    const io = new FileIoError({
+      message: "cannot read lock",
+      path: pluginDir,
+      remediation: "fix permissions",
+    });
+    const prepare = spyOn(HostContext, "prepareHostExecutionContext").mockRejectedValue(io);
+    try {
+      const exit = await Effect.runPromiseExit(
+        pluginRemove({ name: "@lando/plugin-php" }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      );
+      expect(failureError(exit)).toMatchObject({
+        _tag: io._tag,
+        path: pluginDir,
+        remediation: io.remediation,
+      });
+      expect(await exists(pluginDir)).toBe(true);
+    } finally {
+      prepare.mockRestore();
     }
   });
 });

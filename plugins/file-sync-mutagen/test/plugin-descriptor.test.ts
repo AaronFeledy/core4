@@ -69,7 +69,9 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
   });
 
   test("contributes the contextual engine factory", () => {
-    expect(manifest.contributes?.fileSyncEngines).toEqual([...(plugin.fileSyncEngines?.keys() ?? [])]);
+    expect(manifest.contributes?.fileSyncEngines?.map(({ id }) => id)).toEqual([
+      ...(plugin.fileSyncEngines?.keys() ?? []),
+    ]);
     expect(plugin.fileSyncEngines?.get(ENGINE_ID)?.make).toBeFunction();
   });
 

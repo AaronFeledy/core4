@@ -13,6 +13,8 @@ import { ManagedFileService } from "@lando/sdk/services";
 
 import type { LandoEvent } from "@lando/sdk/services";
 
+import { planLedgerStateWrite } from "./ledger.ts";
+
 import {
   type LedgerEntry,
   type ManagedFileBackend,
@@ -80,13 +82,16 @@ export const makeTestManagedFileStore = Effect.fnUntraced(function* (
     writeAtomic: (abs, content) => Effect.sync(() => void files.set(abs, content)),
     removeFile: (abs) => Effect.sync(() => void files.delete(abs)),
     peekLedger: (_operation, ledgerBase) => Effect.succeed(ledgers.get(ledgerBase ?? base) ?? []),
-    mutateLedger: (_operation, f, ledgerBase) =>
-      f(ledgers.get(ledgerBase ?? base) ?? []).pipe(
-        Effect.map(([result, next]) => {
-          ledgers.set(ledgerBase ?? base, next);
-          return result;
+    mutateLedger: (_operation, f, ledgerBase) => {
+      const current = ledgers.get(ledgerBase ?? base) ?? [];
+      return f(current).pipe(
+        Effect.map((outcome) => {
+          const write = planLedgerStateWrite(current, outcome);
+          if (write._tag === "Set") ledgers.set(ledgerBase ?? base, write.value.entries);
+          return write.result;
         }),
-      ),
+      );
+    },
   };
 
   const service = yield* makeManagedFileService(backend, eventSink);

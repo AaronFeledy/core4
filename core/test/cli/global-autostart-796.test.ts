@@ -1,49 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
 
 import { GlobalAutoStartError, ProviderUnavailableError } from "@lando/core/errors";
 
 import { formatBugReport } from "../../src/cli/bug-report.ts";
-import { metaGlobalInstallSpec } from "../../src/cli/command-specs/meta/global/install.ts";
-
-const repoRoot = resolve(import.meta.dirname, "../../..");
-const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+import { metaGlobalReconcileSpec } from "../../src/cli/command-specs/meta/global/reconcile.ts";
 
 describe("issue 796 global autostart", () => {
-  test("global:install spec accepts --yes", () => {
-    expect(metaGlobalInstallSpec.flags?.yes).toBeDefined();
-    expect(metaGlobalInstallSpec.flags?.yes?.type).toBe("boolean");
+  test("configuration reconciliation has an explicit command that preserves saved policy", () => {
+    expect(metaGlobalReconcileSpec.id).toBe("meta:global:reconcile");
+    expect(metaGlobalReconcileSpec.topLevelAlias).toBe("global:reconcile");
   });
-
-  test("CLI accepts global:install --yes without UnknownCliFlagError", async () => {
-    const dataRoot = await mkdtemp(join(tmpdir(), "lando-796-yes-data-"));
-    const confRoot = await mkdtemp(join(tmpdir(), "lando-796-yes-conf-"));
-    try {
-      const proc = Bun.spawn(["bun", cliEntry, "global:install", "--yes", "--format", "json"], {
-        cwd: dataRoot,
-        env: {
-          ...process.env,
-          LANDO_USER_DATA_ROOT: dataRoot,
-          LANDO_USER_CONF_ROOT: confRoot,
-        },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]);
-      const combined = `${stdout}\n${stderr}`;
-      expect(combined).not.toContain("UnknownCliFlagError");
-      expect(combined).not.toContain("Unknown flag");
-    } finally {
-      await rm(dataRoot, { recursive: true, force: true });
-      await rm(confRoot, { recursive: true, force: true });
-    }
-  }, 60_000);
 
   test("auto-start failure report prints the cause and never says start Traefik by hand", () => {
     const text = formatBugReport({

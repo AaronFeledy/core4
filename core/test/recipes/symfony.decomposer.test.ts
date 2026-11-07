@@ -44,11 +44,13 @@ const expected = {
       service: "appserver",
       description: "Run the Symfony console inside the appserver service.",
       cmds: ["php bin/console"],
+      wrapper: true,
     },
     composer: {
       service: "appserver",
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
+      wrapper: true,
     },
   },
 } as const;

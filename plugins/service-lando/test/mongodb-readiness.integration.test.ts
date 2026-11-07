@@ -102,7 +102,8 @@ describe("MongoDB final-server readiness", () => {
             const initializing = yield* app.exec("db", probe);
 
             // Then: it must reject that daemon, but accept the final network listener.
-            expect(initializing.exitCode).not.toBe(0);
+            expect(initializing.exitCode).toBe(1);
+            expect(initializing.stderr.trim()).toMatch(/^Lando's TCP probe could not connect to .+:27017$/);
             expect((yield* app.exec("db", cheapProbe)).exitCode).not.toBe(0);
             const released = yield* release;
             expect({ exitCode: released.exitCode, stderr: released.stderr }).toEqual({

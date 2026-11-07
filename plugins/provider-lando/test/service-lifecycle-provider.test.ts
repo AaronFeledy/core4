@@ -15,6 +15,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 import type { ListFilter } from "@lando/sdk/services";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
@@ -34,7 +35,7 @@ import type {
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("lifecycle-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-lifecycle-app-web";
+const containerName = "lando-lifecycle-app--web";
 const lifecycleActions = ["start", "stop", "restart"] as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
@@ -82,10 +83,30 @@ const makeFakeApi = (response: EngineHttpResponse, inspectedPlan: AppPlan = plan
     ping: Effect.void,
     request: (input) => {
       calls.push(input);
+      if (input.method === "GET" && input.path.startsWith("/containers/json?")) {
+        return Effect.succeed({
+          status: 200,
+          body: JSON.stringify(
+            Object.values(inspectedPlan.services).map((service) => {
+              const name = landoServiceContainerName(inspectedPlan.slug, service.name);
+              return {
+                Id: `${name}-id`,
+                Names: [`/${name}`],
+                State: "running",
+                Labels: {
+                  "dev.lando.app": inspectedPlan.id,
+                  "dev.lando.app-root": inspectedPlan.root,
+                  "dev.lando.service": service.name,
+                },
+              };
+            }),
+          ),
+        });
+      }
       if (input.method === "GET" && input.path.startsWith("/containers/")) {
         const reference = decodeURIComponent(input.path.slice("/containers/".length).split("/")[0] ?? "");
         const service = Object.values(inspectedPlan.services).find((service) => {
-          const name = `lando-${inspectedPlan.slug}-${service.name}`;
+          const name = landoServiceContainerName(inspectedPlan.slug, service.name);
           return reference === name || reference === `${name}-id`;
         });
         return Effect.succeed(
@@ -94,7 +115,7 @@ const makeFakeApi = (response: EngineHttpResponse, inspectedPlan: AppPlan = plan
             : {
                 status: 200,
                 body: JSON.stringify({
-                  Id: `lando-${inspectedPlan.slug}-${service.name}-id`,
+                  Id: `${landoServiceContainerName(inspectedPlan.slug, service.name)}-id`,
                   Config: {
                     Labels: {
                       "dev.lando.app": inspectedPlan.id,
@@ -256,12 +277,24 @@ describe("provider-lando service lifecycle", () => {
       await Effect.runPromise(quiesce({ app: plan.id, plan }));
       fake.calls.length = 0;
       await Effect.runPromise(persistAppliedPlan(store, appliedPlan));
-      await Effect.runPromise(quiesce({ app: plan.id, plan }));
+      const receipt = await Effect.runPromise(quiesce({ app: plan.id, plan }));
+      expect(receipt.shutdownObservations).toEqual(
+        expect.arrayContaining([
+          {
+            appId: plan.id,
+            providerId,
+            service: oldServiceName,
+            containerId: "lando-lifecycle-app--old-worker-id",
+            status: "unknown",
+            reason: "state-unavailable",
+          },
+        ]),
+      );
       const stopped = fake.calls.filter((call) => call.method === "POST" && call.path.endsWith("/stop"));
       expect(stopped.map((call) => call.path)).toContain(
-        "/containers/lando-lifecycle-app-old-worker-id/stop",
+        "/containers/lando-lifecycle-app--old-worker-id/stop",
       );
-      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app-web-id/stop");
+      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app--web-id/stop");
       expect(fake.calls.some((call) => call.path.startsWith("/volumes/"))).toBe(false);
     } finally {
       await rm(directory, { recursive: true, force: true });

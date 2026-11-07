@@ -17,10 +17,11 @@ import {
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import {
   type AppPlan,
+  AppRemoteEntry,
+  type AppRemoteMutationResult,
   type DataEndpoint,
   type DatasetKind,
   LandofileShape,
-  RemoteConfig,
   type RemoteConfig as RemoteConfigType,
   RemoteEnvironment,
   type RemoteEnvironment as RemoteEnvironmentType,
@@ -45,27 +46,8 @@ import { parseLandofile } from "@lando/landofile/parser";
 import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 
-export const RemoteEntrySchema = Schema.Struct({ name: Schema.String, config: RemoteConfig });
-export const RemoteListResultSchema = Schema.Array(RemoteEntrySchema);
-export const RemoteMutationResultSchema = Schema.Struct({
-  app: Schema.String,
-  remote: Schema.String,
-  file: Schema.String,
-  config: RemoteConfig,
-});
+export const RemoteListResultSchema = Schema.Array(AppRemoteEntry);
 export const RemoteEnvListResultSchema = Schema.Array(RemoteEnvironment);
-
-export interface RemoteEntry {
-  readonly name: string;
-  readonly config: RemoteConfigType;
-}
-
-export interface RemoteMutationResult {
-  readonly app: string;
-  readonly remote: string;
-  readonly file: string;
-  readonly config: RemoteConfigType;
-}
 
 export interface RemoteSyncOptions {
   readonly cwd?: string;
@@ -134,8 +116,7 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
       "lando plugin:add <remote-source-plugin>",
       "lando setup --provider=<provider-with-remotes>",
     ],
-    remediation:
-      "Install a RemoteSource plugin for this remote, then rerun the command. Bundled remotes ship in Lando 4.1.",
+    remediation: "Install a RemoteSource plugin for this remote, then rerun the command.",
   });
 
 const outputRedactor = Effect.fnUntraced(function* (profile: RedactionProfile) {
@@ -149,10 +130,10 @@ const outputRedactor = Effect.fnUntraced(function* (profile: RedactionProfile) {
 const redactConfig = (config: RemoteConfigType) =>
   outputRedactor("secrets").pipe(Effect.map((redactor) => redactor.redactValue(config) as RemoteConfigType));
 
-const redactEntry = (entry: RemoteEntry) =>
+const redactEntry = (entry: AppRemoteEntry) =>
   redactConfig(entry.config).pipe(Effect.map((config) => ({ ...entry, config })));
 
-const redactMutationResult = (result: RemoteMutationResult) =>
+const redactMutationResult = (result: AppRemoteMutationResult) =>
   redactConfig(result.config).pipe(Effect.map((config) => ({ ...result, config })));
 
 const redactSyncResult = (result: SyncResultType) =>
@@ -209,13 +190,13 @@ const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>
       }),
   });
 
-const remoteEntries = (landofile: typeof LandofileShape.Type): ReadonlyArray<RemoteEntry> =>
+const remoteEntries = (landofile: typeof LandofileShape.Type): ReadonlyArray<AppRemoteEntry> =>
   Object.entries(landofile.remotes ?? {}).map(([name, config]) => ({ name, config }));
 
 const chooseRemote = Effect.fnUntraced(function* (
   landofile: typeof LandofileShape.Type,
   requested: string | undefined,
-): Effect.fn.Return<RemoteEntry, RemoteProviderUnavailableError> {
+): Effect.fn.Return<AppRemoteEntry, RemoteProviderUnavailableError> {
   const entries = remoteEntries(landofile);
   const match = requested === undefined ? entries[0] : entries.find((entry) => entry.name === requested);
   if (match !== undefined) return match;
@@ -227,7 +208,7 @@ const chooseRemote = Effect.fnUntraced(function* (
   return yield* Effect.fail(unavailable(requested));
 });
 
-const resolveRemoteSource = Effect.fnUntraced(function* (entry: RemoteEntry) {
+const resolveRemoteSource = Effect.fnUntraced(function* (entry: AppRemoteEntry) {
   const sourceOption = yield* Effect.serviceOption(RemoteSource);
   if (sourceOption._tag === "None") return yield* Effect.fail(unavailable(entry.config.source));
   const source = sourceOption.value;
@@ -357,7 +338,7 @@ const snapshotBeforeApply = Effect.fnUntraced(function* (
 export const appRemoteList = Effect.fn("AppOperation.remoteList")(function* (
   options: RemoteListOptions = {},
 ): Effect.fn.Return<
-  ReadonlyArray<RemoteEntry>,
+  ReadonlyArray<AppRemoteEntry>,
   LandofileNotFoundError | LandofileParseError | LandofileFormConflictError
 > {
   return yield* loadRemoteLandofile(options.cwd).pipe(
@@ -374,7 +355,7 @@ export const appRemoteList = Effect.fn("AppOperation.remoteList")(function* (
 export const appRemoteAdd = Effect.fn("AppOperation.remoteAdd")(function* (
   options: RemoteAddOptions,
 ): Effect.fn.Return<
-  RemoteMutationResult,
+  AppRemoteMutationResult,
   LandofileNotFoundError | LandofileParseError | LandofileFormConflictError
 > {
   const loaded = yield* loadRemoteLandofile(options.cwd);
@@ -392,7 +373,7 @@ export const appRemoteAdd = Effect.fn("AppOperation.remoteAdd")(function* (
 export const appRemoteRemove = Effect.fn("AppOperation.remoteRemove")(function* (
   options: RemoteRemoveOptions,
 ): Effect.fn.Return<
-  RemoteMutationResult,
+  AppRemoteMutationResult,
   LandofileNotFoundError | LandofileParseError | LandofileFormConflictError | RemoteError
 > {
   const loaded = yield* loadRemoteLandofile(options.cwd);
