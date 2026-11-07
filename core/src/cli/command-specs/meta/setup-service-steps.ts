@@ -7,6 +7,7 @@
  * each service concern reads as one unit.
  */
 import { type Context, DateTime, Duration, Effect, Result } from "effect";
+import { CliInvocation } from "../../invocation-context";
 
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
@@ -201,7 +202,7 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
       }),
     );
     if (Result.isFailure(setup)) {
-      const { redact } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+      const { redact } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
       const evidence = redact(setup.failure.message);
       const setupCommand =
         selectedProviderId in SYSTEM_RUNTIME_PROVIDERS

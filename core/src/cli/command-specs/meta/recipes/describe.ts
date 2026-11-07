@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../invocation-context";
 import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -35,7 +36,7 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
         }),
       );
     }
-    return recipesDescribe(ref, { cwd: process.cwd() });
+    return Effect.flatMap(CliInvocation, ({ cwd }) => recipesDescribe(ref, { cwd }));
   },
   render: (result) => renderRecipesDescribeResult(result),
 };

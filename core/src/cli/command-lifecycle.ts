@@ -12,6 +12,7 @@ import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
+import { CliInvocation } from "./invocation-context";
 import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary";
 
 export interface CliInvocationSnapshot {
@@ -57,15 +58,17 @@ export const makeNestedCommandInvocation = (
   input: NestedCommandInvocationInput,
 ): Effect.Effect<CliInvocationSnapshot> =>
   CurrentCommandInvocation.pipe(
-    Effect.map((parent) => ({
-      commandId,
-      argv: input.argv,
-      args: input.args,
-      flags: input.flags,
-      cwd: input.cwd ?? parent?.cwd ?? process.cwd(),
-      invocationId: newInvocationId(),
-      ...(parent?.invocationId === undefined ? {} : { parentInvocationId: parent.invocationId }),
-    })),
+    Effect.flatMap((parent) =>
+      Effect.map(CliInvocation, (invocation) => ({
+        commandId,
+        argv: input.argv,
+        args: input.args,
+        flags: input.flags,
+        cwd: input.cwd ?? parent?.cwd ?? invocation.cwd,
+        invocationId: newInvocationId(),
+        ...(parent?.invocationId === undefined ? {} : { parentInvocationId: parent.invocationId }),
+      })),
+    ),
   );
 
 export const newInvocationId = (): string => {
@@ -112,7 +115,7 @@ const publishRedacted = Effect.fnUntraced(
   function* <A extends LandoEvent, I>(schema: Schema.Codec<A, I>, event: I) {
     const redaction = yield* RedactionService;
     const events = yield* EventService;
-    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
     const decoded = yield* Schema.decodeUnknownEffect(schema)(redactor.redactValue(event));
     yield* events.publish(decoded);
   },

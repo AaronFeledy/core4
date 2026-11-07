@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { ConfigDescribeResultSchema, describeConfigKey } from "@lando/engine/config-write/key-schema";
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
+import { CliInvocation } from "../../invocation-context";
 
 import { Effect, Schema } from "effect";
 
@@ -156,12 +157,13 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
   filePath: string,
 ): GlobalConfigMutationReturn {
   yield* requireMutableGlobalLandofile(filePath, "edit");
+  const env = (yield* CliInvocation).env;
   const runner =
     options.editorRunner ??
     createDefaultEditorRunner(
       options.editor === undefined
-        ? {}
-        : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
+        ? { env }
+        : { env: { ...env, EDITOR: options.editor, VISUAL: options.editor } },
     );
   const document = globalConfigDocument(filePath, "edit");
   const source = yield* document.readText;

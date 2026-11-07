@@ -13,6 +13,7 @@ import { Effect, Option, Schema } from "effect";
 import { escapeDiagnosticText } from "../../diagnostic-text";
 import { validateEventCommandInput } from "../../event-command-input";
 import { type ResolvedPluginCommandSpec, loadPluginSpec } from "../../event-command-target";
+import { CliInvocation } from "../../invocation-context";
 import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
 import { requireConfirmation } from "../../require-confirmation";
 import type { McpCommandRegistry } from "./mcp-registry";
@@ -101,7 +102,7 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
   if (Option.isNone(available)) return registry;
   const graph = available.value;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const diagnostics: PluginCommandDiagnostic[] = [...(registry.diagnostics ?? [])];
   const isTaggedDiagnostic = Schema.is(
     Schema.Struct({

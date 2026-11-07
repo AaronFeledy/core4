@@ -1,4 +1,5 @@
 import { Effect, Option } from "effect";
+import { CliInvocation } from "../invocation-context";
 
 import { GlobalConfigSources } from "@lando/engine/services/config";
 
@@ -54,7 +55,11 @@ export const gatherSelectionInputs = Effect.fnUntraced(function* (
   const captured = yield* Effect.serviceOption(GlobalConfigSources);
   const providerEnv =
     options.env ??
-    (Option.isSome(captured) ? (captured.value.sources.env ? captured.value.env : {}) : process.env);
+    (Option.isSome(captured)
+      ? captured.value.sources.env
+        ? captured.value.env
+        : {}
+      : (yield* CliInvocation).env);
   const env = readProviderEnvVar(providerEnv);
   return {
     inputs: {

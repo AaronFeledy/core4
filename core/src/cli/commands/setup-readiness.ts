@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { CliInvocation } from "../invocation-context";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { causeMessage } from "@lando/sdk/errors";
@@ -62,7 +63,7 @@ export const writeSetupReadiness = Effect.fnUntraced(function* (
   if (userDataRoot === undefined) return;
   const { status, steps, runtimeService } = snapshot;
   const service = yield* Effect.serviceOption(RedactionService);
-  const sourceEnv = { ...process.env };
+  const sourceEnv = (yield* CliInvocation).env;
   const redactor = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", { sourceEnv })
     : createStandaloneRedactor("secrets", { sourceEnv });
@@ -100,7 +101,7 @@ export const readSetupReadiness = (
       Effect.gen(function* () {
         if (summary === undefined) return undefined;
         const service = yield* Effect.serviceOption(RedactionService);
-        const sourceEnv = { ...process.env };
+        const sourceEnv = (yield* CliInvocation).env;
         const redactor = Option.isSome(service)
           ? yield* service.value.forProfile("secrets", { sourceEnv })
           : createStandaloneRedactor("secrets", { sourceEnv });

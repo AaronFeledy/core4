@@ -7,6 +7,7 @@ import { DestroyAppResult, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { renderDestroyAppResult } from "../../commands/destroy";
 import { publishShutdownWarnings } from "../../commands/shutdown-summary";
+import { CliInvocation } from "../../invocation-context";
 import { requireConfirmation } from "../../require-confirmation";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { yesFlag } from "../../spec/confirmation-flag";
@@ -36,7 +37,7 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
   const flags = specFlagsOf(input);
   const volumes = booleanFlag(flags, "volumes") || booleanFlag(flags, "purge");
   const rootFlag = stringFlag(flags, "root");
-  const root = rootFlag === undefined ? undefined : resolve(process.cwd(), rootFlag);
+  const root = rootFlag === undefined ? undefined : resolve((yield* CliInvocation).cwd, rootFlag);
   yield* requireConfirmation({
     yes: booleanFlag(flags, "yes"),
     message: destroyConfirmation(root, {

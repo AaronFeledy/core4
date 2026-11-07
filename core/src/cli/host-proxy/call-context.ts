@@ -9,6 +9,7 @@ import { AppRef } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { Clock, DateTime, Effect, Exit, Schema } from "effect";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
+import { CliInvocation } from "../invocation-context";
 
 export const HOST_PROXY_CALL_COMMAND = "__internal:host-proxy-call";
 const callFields = {
@@ -68,13 +69,14 @@ export const withHostProxyCall = Effect.fnUntraced(function* <A, E, R>(
   commandId: string,
 ) {
   const events = yield* EventService;
-  const redactor = yield* (yield* RedactionService).forProfile("secrets", { sourceEnv: process.env });
+  const invocation = yield* CliInvocation;
+  const redactor = yield* (yield* RedactionService).forProfile("secrets", { sourceEnv: invocation.env });
   const common = {
     app: call.app,
     callId: call.callId,
     callerService: redactor.redactString(call.callerService),
     depth: call.depth,
-    request: { kind: "runLando", commandId, cwd: redactor.redactString(process.cwd()) },
+    request: { kind: "runLando", commandId, cwd: redactor.redactString(invocation.cwd) },
   };
   const started = yield* Clock.currentTimeMillis;
   yield* events.publish(PreHostProxyCallEvent.make({ ...common, timestamp: yield* DateTime.now }));

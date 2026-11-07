@@ -20,6 +20,7 @@
  * raw tool payload (including the canary secret) is ever placed in the check.
  */
 import { Effect, Fiber, Layer, Predicate, Schema } from "effect";
+import { CliInvocation } from "../invocation-context";
 
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
@@ -124,7 +125,7 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
   const redaction = yield* RedactionService;
   const redactor = yield* redaction.forProfile("secrets", {
     redactionTokens: [MCP_DOCTOR_CANARY_SECRET],
-    sourceEnv: process.env,
+    sourceEnv: (yield* CliInvocation).env,
   });
 
   const allowlistFreshResult = yield* Effect.result(

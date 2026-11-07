@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { CliInvocationContext } from "../../invocation-context";
 import { yesFlag } from "../../spec/confirmation-flag";
 import { Args, Flags } from "../../spec/metadata";
 
@@ -38,7 +39,7 @@ export interface InitFlags {
   readonly yes?: boolean;
 }
 
-export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
+export const initOptionsFromInput = (input: unknown, context?: CliInvocationContext): InitCommandOptions => {
   const destination = stringFlag(specArgsOf(input), "destination");
   const values = specFlagsOf(input);
   const flags = {
@@ -69,7 +70,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
     path: flags.path,
     checksum: flags.checksum,
   });
-  const cwd = process.cwd();
+  const cwd = context?.cwd ?? process.cwd();
   return {
     cwd,
     full: flags.full === true,
@@ -80,7 +81,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
     nonInteractive: resolveNonInteractive({
       interactive: flags.interactive === true,
       noInteractive: flags["no-interactive"] === true,
-      isTTY: process.stdin.isTTY,
+      isTTY: (context === undefined ? process.stdin.isTTY : context.io.stdinIsTTY) === true,
     }),
     ...sourceOptions,
     destination: resolveInitDestination({

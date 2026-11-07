@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { CliInvocation } from "../invocation-context";
 
 import { Effect, Schema } from "effect";
 
@@ -56,7 +57,7 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
   ConfigService
 > {
   const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:link");
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? (yield* CliInvocation).cwd;
   const linkedPath = resolve(cwd, options.path ?? ".");
   const { manifest } = yield* Effect.tryPromise({
     try: () => validatePluginManifest(linkedPath),
