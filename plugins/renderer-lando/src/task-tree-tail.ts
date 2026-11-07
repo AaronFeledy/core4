@@ -20,6 +20,8 @@ export { csi, TASK_DETAIL_TAIL_CAPACITY, TaskDetailRing };
 const DEFAULT_EXPANDED_LINE_LIMIT = 1000;
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
+const asTreeOutcome = (value: unknown): "failure" | "interrupted" | undefined =>
+  value === "failure" || value === "interrupted" ? value : undefined;
 const asAbsolutePath = (value: unknown): typeof AbsolutePath.Type | undefined =>
   Schema.is(AbsolutePath)(value) ? value : undefined;
 
@@ -168,6 +170,7 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
             succeeded: asNumber(event.succeeded) ?? 0,
             failed: asNumber(event.failed) ?? 0,
             durationMs: asNumber(event.durationMs),
+            outcome: asTreeOutcome(event.outcome),
           };
           return;
         }
@@ -177,6 +180,7 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
         this.#tree.failed = asNumber(event.failed) ?? 0;
         this.#tree.label = asString(event.summary) ?? this.#tree.label;
         this.#tree.durationMs = asNumber(event.durationMs);
+        this.#tree.outcome = asTreeOutcome(event.outcome);
         return;
       }
       default:
