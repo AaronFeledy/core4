@@ -30,7 +30,6 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
-import { routerEnabled } from "../config/router-config.ts";
 import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -41,7 +40,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 48n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 49n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -217,21 +216,6 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
-const withDerivedRouteRequirements = (plan: CurrentExecutableAppPlan): CurrentExecutableAppPlan => {
-  if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
-
-  const current = plan.requires?.globalServices ?? [];
-  if (current.includes("traefik")) return plan;
-
-  return {
-    ...plan,
-    requires: {
-      ...plan.requires,
-      globalServices: [...current, "traefik"],
-    },
-  };
-};
-
 const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>): boolean => {
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   if (evaluation.invalid.length > 0) return false;
@@ -278,7 +262,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
     if (!sameGitDirectories(current, check.directories)) return null;
   }
   return yield* Effect.try({
-    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan)),
+    try: () => Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan),
     catch: (cause) =>
       new CacheError({
         message: `Cached app plan at ${path} failed schema decode.`,
