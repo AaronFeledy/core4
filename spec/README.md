@@ -173,6 +173,7 @@ If you are looking for a public surface or policy:
 | Durable `lando` grants, scope-local `lando-session`, and 1Password references | 10 | §9.5.1 |
 | Plugin authoring commands | 10 | §9.10 |
 | Networking, same-provider routes, provider mismatch rejection, tunnels, and host ports | 11 | §10.1 + §10.2 |
+| Manifest-only router selection, static global-service requirements, and plan-cache identity | 04 + 10 + 11 | §4.3 + §9.5 + §10.2 |
 | Exact route-application acceptance, bounded convergence, warm-route reuse, and stopped-router withdrawal | 11 | §10.2.1 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
