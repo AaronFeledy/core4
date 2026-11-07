@@ -1,4 +1,5 @@
 import { type Context, Effect, Layer, Scope } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import type { App, AppSelector, LandoRuntime, ScratchAcquireError } from "@lando/sdk/app";
 import {
@@ -49,7 +50,7 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
   Scope.Scope
 > {
   const { scratch: scratchInput, ...runtimeOptions } = options;
-  const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? process.cwd());
+  const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? (yield* CliInvocation).cwd);
   const appLayer = makeLandoRuntime({ bootstrap: "app", ...runtimeOptions } as LandoRuntimeOptions & {
     readonly bootstrap: "app";
   });

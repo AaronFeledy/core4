@@ -10,6 +10,7 @@ import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
 import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Option, Schema } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { escapeDiagnosticText } from "../../diagnostic-text";
 import { validateEventCommandInput } from "../../event-command-input";
 import { type ResolvedPluginCommandSpec, loadPluginSpec } from "../../event-command-target";
@@ -101,7 +102,7 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
   if (Option.isNone(available)) return registry;
   const graph = available.value;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const diagnostics: PluginCommandDiagnostic[] = [...(registry.diagnostics ?? [])];
   const isTaggedDiagnostic = Schema.is(
     Schema.Struct({

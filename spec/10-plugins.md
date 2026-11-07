@@ -98,7 +98,7 @@ Command ids MUST be canonical and namespaced. Command descriptors carry no `name
 | `globalServices` | `GlobalAppService` | Contributes global-app services (§20.4). |
 | `commands` | Command registry | Obeys namespace and alias rules (§8.1); a declared `yes` flag follows §8.3.1. |
 | `initSources` | Init command | Supplies prompts, source auth, dynamic choices, and acquisition locators; core acquires and commits (§8.8.13). |
-| `routerServices`, `tunnelServices` | Networking subsystems | Implements routing or sharing contracts. |
+| `routerServices`, `tunnelServices` | Networking subsystems | Implements routing or sharing contracts. Router entries may declare static `requires.globalServices` independently of their implementation id (§10.2). |
 | `remoteSources`, `datasets` | Remote-sync subsystem | Implements the §10.12 contracts; core owns orchestration, `CodeSync`, setup, and tool execution. |
 | `certificateAuthorities` | Certs subsystem | Implements certificate authority contracts. |
 | `loggers`, `renderers`, `rendererPanels` | Output services | Implements logging, rendering, or frozen panel contracts. |

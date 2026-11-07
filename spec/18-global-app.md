@@ -168,7 +168,7 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 
 #### 20.6.3 Auto-start integration with user apps
 
-`AppFeature.requires.globalServices` is the only hard dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
+`AppFeature.requires.globalServices` and the selected router contribution's `requires.globalServices` (§10.2) are the only hard dependency declarations for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
 - A fresh retained set whose owned running identity and readiness are verified with current provider reads emits the start pair with `cached: true`, skipping regeneration, planning, building, and apply.
 - A cold or unhealthy set starts the required services with `cached: false` before user-app build. Shared services started this way stay up when the user-app start later fails or is interrupted; a failed user app never undoes global services.

@@ -14,6 +14,7 @@ import {
 } from "effect";
 
 import { GlobalConfigSnapshot } from "@lando/engine/services/config";
+import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
 import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
@@ -32,8 +33,10 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import {
+  RendererHost,
   type RendererIO,
   createStdioRendererIO,
+  isStdioRendererIO,
   onStdioBrokenPipe,
   withStdioTerminalNewlines,
 } from "@lando/renderer/io";
@@ -41,6 +44,7 @@ import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { makePlainRenderer } from "@lando/renderer/runtime";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
 import {
   type CliInvocationSnapshot,
@@ -128,6 +132,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly documentOutput?: boolean;
   readonly payloadStdout?: boolean;
   readonly io?: RendererIO;
+  readonly context?: CliInvocationContext;
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
@@ -195,12 +200,21 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
   const owner = makeRedactionOwner();
-  const sourceEnv = { ...(options.sourceEnv ?? process.env) };
+  const sourceEnv = { ...(options.sourceEnv ?? options.context?.env ?? process.env) };
+  const handlingOptions = {
+    ...options,
+    ...(options.context === undefined
+      ? {}
+      : {
+          io: options.io ?? options.context.io,
+          setExitCode: options.setExitCode ?? options.context.setExitCode,
+        }),
+  };
   try {
-    await runWithInvocationRedaction(effect, { ...options, sourceEnv }, owner.service);
+    await runWithInvocationRedaction(effect, { ...handlingOptions, sourceEnv }, owner.service);
   } catch (cause) {
     const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
-    await renderTerminalFailure(Cause.isCause(cause) ? cause : Cause.die(cause), options, redactor);
+    await renderTerminalFailure(Cause.isCause(cause) ? cause : Cause.die(cause), handlingOptions, redactor);
   } finally {
     owner.dispose();
   }
@@ -264,9 +278,11 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   });
   const childOutput = makeChildOutputPolicy({
     native:
+      isStdioRendererIO(realIO) &&
       !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) &&
       options.rendererMode !== "json",
-    stdin: true,
+    // Children inherit the host stdin unless the invocation supplies its own.
+    stdin: isStdioRendererIO(realIO) || realIO.stdin === undefined,
     stream:
       isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) || options.rendererMode === "json"
         ? undefined
@@ -550,6 +566,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         );
       }),
     );
+    const observeScenarioEvent = options.context?.observeEvent;
     const commandOutcome = yield* Effect.exit(
       Effect.scoped(
         Effect.gen(function* () {
@@ -568,9 +585,12 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         }),
       ).pipe(
         Effect.provideService(EventPublicationObserver, (event) =>
-          envelopeFormat && isMessageWarnEvent(event)
-            ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
-            : Effect.void,
+          Effect.andThen(
+            observeScenarioEvent === undefined ? Effect.void : Effect.sync(() => observeScenarioEvent(event)),
+            envelopeFormat && isMessageWarnEvent(event)
+              ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
+              : Effect.void,
+          ),
         ),
         Effect.withErrorReporting({ defectsOnly: true }),
       ),
@@ -656,10 +676,23 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     Effect.withErrorReporting({ defectsOnly: true }),
     Effect.provide(Layer.merge(failureDiagnosticsLayer, ErrorReporter.layer([reporter]))),
   );
+  const scopedProgram = (
+    options.context === undefined
+      ? diagnosedProgram
+      : diagnosedProgram.pipe(
+          Effect.provideService(CliInvocation, options.context),
+          Effect.provideService(HostExecutionDefaults, {
+            cwd: options.context.cwd,
+            env: options.context.env,
+            platform: process.platform,
+            ...(!isStdioRendererIO(realIO) && realIO.stdin !== undefined ? { stdin: realIO.stdin } : {}),
+          }),
+        )
+  ).pipe(Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }));
   const exit = await Effect.runPromiseExit(
     options.tracer === undefined
-      ? diagnosedProgram.pipe(Effect.provideService(References.TracerEnabled, false))
-      : diagnosedProgram.pipe(
+      ? scopedProgram.pipe(Effect.provideService(References.TracerEnabled, false))
+      : scopedProgram.pipe(
           Effect.provideService(Tracer.Tracer, options.tracer),
           Effect.provideService(References.TracerEnabled, true),
         ),

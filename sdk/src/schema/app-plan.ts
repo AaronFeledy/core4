@@ -448,10 +448,13 @@ export const AppPlan = Schema.Struct({
   router: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
+      id: Schema.optionalKey(Schema.String).annotate({
+        description: "Selected router contribution id for enabled routes; absent in legacy applied plans.",
+      }),
     }),
   ).annotate({
     description:
-      "Resolved router enablement; optional only because persisted cached plans predate this field.",
+      "Resolved router enablement and selected contribution identity; optional for legacy applied plans.",
   }),
   /**
    * Global-app services this app depends on at start, aggregated by the planner

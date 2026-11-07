@@ -1,6 +1,8 @@
 import { Effect, Schema } from "effect";
 import { Flags } from "../../spec/metadata";
 
+import { resolveLandoRoots } from "@lando/paths";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
@@ -29,12 +31,18 @@ export const shellenvSpec: LandoCommandSpec<string, ShellenvInstallRecordError, 
     }),
   },
   run: (input) =>
-    Effect.try({
-      try: () => renderShellenv(shellenvShellFromInput(input)),
-      catch: (error) => {
-        if (error instanceof ShellenvInstallRecordError) return error;
-        throw error;
-      },
-    }),
+    Effect.flatMap(CliInvocation, (invocation) =>
+      Effect.try({
+        try: () =>
+          renderShellenv(
+            shellenvShellFromInput(input),
+            resolveLandoRoots({ env: invocation.env }).userDataRoot,
+          ),
+        catch: (error) => {
+          if (error instanceof ShellenvInstallRecordError) return error;
+          throw error;
+        },
+      }),
+    ),
   render: (result) => (typeof result === "string" ? result : undefined),
 };

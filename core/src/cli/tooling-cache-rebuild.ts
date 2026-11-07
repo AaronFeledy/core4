@@ -7,6 +7,7 @@ import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { type DiscoveryOperation, currentDiscoveryOperation } from "@lando/landofile/operation-scope";
 import type { CacheError, LandofileFormConflictError } from "@lando/sdk/errors";
 import { Effect, Fiber } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import { refreshAppCache } from "./commands/app-cache-refresh";
 import { activeRendererMode, activeResultFormat, emitDiagnosticLine } from "./compiled-session";
@@ -57,29 +58,31 @@ const withSlowRebuildNotice = <A, E, R>(
   enabled: boolean,
   rebuild: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
-  // Progress belongs to an interactive terminal: piped stderr and machine output never gain a line.
-  enabled &&
-  process.stderr.isTTY === true &&
-  activeRendererMode !== "json" &&
-  !isEnvelopeResultFormat(activeResultFormat)
-    ? Effect.gen(function* () {
-        const notice = yield* Effect.forkChild(
-          Effect.sleep(SLOW_REBUILD_NOTICE_DELAY).pipe(
-            // Routing can start before the configured renderer is applied, so a config-selected
-            // json renderer is checked here, only once a rebuild is already slow. An unreadable
-            // config skips this cosmetic line; the rebuild and the command report that error.
-            Effect.andThen(Effect.tryPromise(readConfigCliGlobals)),
-            Effect.flatMap((config) =>
-              config.renderer === "json"
-                ? Effect.void
-                : Effect.promise(() => emitDiagnosticLine(slowRebuildNotice(receipt))),
+  Effect.flatMap(CliInvocation, (invocation) =>
+    // Progress belongs to an interactive terminal: piped stderr and machine output never gain a line.
+    enabled &&
+    invocation.io.isTTY === true &&
+    activeRendererMode !== "json" &&
+    !isEnvelopeResultFormat(activeResultFormat)
+      ? Effect.gen(function* () {
+          const notice = yield* Effect.forkChild(
+            Effect.sleep(SLOW_REBUILD_NOTICE_DELAY).pipe(
+              // Routing can start before the configured renderer is applied, so a config-selected
+              // json renderer is checked here, only once a rebuild is already slow. An unreadable
+              // config skips this cosmetic line; the rebuild and the command report that error.
+              Effect.andThen(Effect.tryPromise(() => readConfigCliGlobals(invocation.env))),
+              Effect.flatMap((config) =>
+                config.renderer === "json"
+                  ? Effect.void
+                  : Effect.promise(() => emitDiagnosticLine(slowRebuildNotice(receipt), invocation)),
+              ),
+              Effect.catchTag("UnknownError", () => Effect.void),
             ),
-            Effect.catchTag("UnknownError", () => Effect.void),
-          ),
-        );
-        return yield* rebuild.pipe(Effect.ensuring(Fiber.interrupt(notice)));
-      })
-    : rebuild;
+          );
+          return yield* rebuild.pipe(Effect.ensuring(Fiber.interrupt(notice)));
+        })
+      : rebuild,
+  );
 
 export const rebuildToolingCache = Effect.fnUntraced(function* (
   receipt: PendingReceipt,

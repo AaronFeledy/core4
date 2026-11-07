@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { yesFlag } from "../../../spec/confirmation-flag";
 import { Args, Flags } from "../../../spec/metadata";
 
@@ -59,7 +60,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
     return yield* pluginAdd({
       spec: parsed.spec,
       trust: parsed.trust || parsed.yes,
-      nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
+      nonInteractive: resolveNonInteractive({ isTTY: (yield* CliInvocation).io.stdinIsTTY === true }),
     });
   }),
   render: (result) => renderPluginAddResult(result),

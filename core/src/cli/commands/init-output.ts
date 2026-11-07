@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { RedactionService } from "@lando/redaction/service";
 import { Renderer } from "@lando/sdk/services";
@@ -12,7 +13,7 @@ export const makeInitOutput = Effect.fnUntraced(function* (
 ): Effect.fn.Return<PostInitIO, never, Renderer | RedactionService> {
   const renderer = yield* Renderer;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const machineOutput = isEnvelopeResultFormat(format) || format === "ndjson";
   return {
     out: (line) => {

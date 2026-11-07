@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import {
   type AppPlacementError,
@@ -180,8 +181,9 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         ),
       );
       const landofile = yield* deps.readLandofile(handle.id);
-      const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-      const env = withAgentContextEnv(undefined, process.env, {
+      const sourceEnv = (yield* CliInvocation).env;
+      const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, sourceEnv);
+      const env = withAgentContextEnv(undefined, sourceEnv, {
         allowlist,
         lowerThanEnv: service.environment,
       });

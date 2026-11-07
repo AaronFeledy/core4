@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { availableParallelism } from "node:os";
 import { rewriteScenarioSourceMappedOutput } from "./scenario-source-mapper.ts";
 
 export const LIVE_OUTPUT_ENV = "LANDO_GUIDE_SCENARIO_LIVE_OUTPUT";
@@ -31,10 +32,30 @@ export const drainStream = async (
   return text;
 };
 
-export const guideScenarioTestArgs = (args: ReadonlyArray<string>): ReadonlyArray<string> =>
-  args.some((arg) => arg === "--max-concurrency" || arg.startsWith("--max-concurrency="))
+export const guideScenarioTestArgs = (
+  args: ReadonlyArray<string>,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  cpus = availableParallelism(),
+): ReadonlyArray<string> => {
+  const e2e =
+    env.LANDO_GUIDE_E2E === "1" ||
+    args.some((arg, index) => {
+      let pattern: string | undefined;
+      if (arg.startsWith("--test-name-pattern=")) {
+        pattern = arg.slice("--test-name-pattern=".length);
+      } else if (arg === "--test-name-pattern" || arg === "-t") {
+        pattern = args[index + 1];
+      }
+      return pattern?.replaceAll("\\", "").includes("[e2e]") === true;
+    });
+  const serialArgs = args.some((arg) => arg === "--max-concurrency" || arg.startsWith("--max-concurrency="))
     ? args
     : [...args, "--max-concurrency=1"];
+  if (e2e) return [...serialArgs, "--parallel=1", "--max-concurrency=1"];
+  return args.some((arg) => arg === "--parallel" || arg.startsWith("--parallel="))
+    ? serialArgs
+    : [...serialArgs, `--parallel=${Math.max(1, Math.min(8, cpus))}`];
+};
 
 const main = async (): Promise<never> => {
   const live = liveOutputEnabled(process.env);

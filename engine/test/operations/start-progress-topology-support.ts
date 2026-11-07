@@ -310,7 +310,8 @@ export const makeHarness = (
           },
         })),
     execStream: options.providerOverrides?.execStream ?? (() => Stream.empty),
-    exec: options.exec ?? TestRuntimeProvider.exec,
+    // The harness stubs apply and reports every planned service running, so exec answers like one.
+    exec: options.exec ?? (() => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" })),
     logs: options.logs ?? (() => Stream.empty),
   };
   const provider = globalAdmission.wrapProvider(userProvider);

@@ -1,4 +1,5 @@
 import { Cause, Context, Effect, Layer } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { commandFailureCause } from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
@@ -130,7 +131,7 @@ export const makeEventCommandExecutor = (
         yield* lifecycleRedaction.registerValues(shellRedaction.substring);
         yield* lifecycleRedaction.registerValues(classifiedToolingEnv.wholeToken, { match: "whole-token" });
         const inputRedactor = yield* lifecycleRedaction.forProfile("secrets", {
-          sourceEnv: process.env,
+          sourceEnv: (yield* CliInvocation).env,
           redactionTokens: shellRedaction.substring,
           wholeTokenValues: [...(planValues?.wholeToken ?? []), ...classifiedToolingEnv.wholeToken],
         });

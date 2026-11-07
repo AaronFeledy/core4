@@ -433,9 +433,9 @@ describe("App handle managed lifecycle scopes", () => {
             });
             const provider: RuntimeProviderShape = {
               ...TestRuntimeProvider,
-              apply: () =>
+              apply: (plan, options) =>
                 !failApply
-                  ? Effect.succeed({ changed: true })
+                  ? TestRuntimeProvider.apply(plan, options)
                   : resume && mode === "interrupt"
                     ? Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never))
                     : Effect.fail(primary),
@@ -518,9 +518,9 @@ describe("App handle managed lifecycle scopes", () => {
           });
           const provider: RuntimeProviderShape = {
             ...TestRuntimeProvider,
-            apply: () =>
+            apply: (plan, options) =>
               !failApply
-                ? Effect.succeed({ changed: true })
+                ? TestRuntimeProvider.apply(plan, options)
                 : mode === "failure"
                   ? Effect.fail(primary)
                   : Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never)),
@@ -1129,7 +1129,7 @@ describe("App handle managed lifecycle scopes", () => {
       let finalizerCalls = 0;
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        apply: Effect.fnUntraced(function* () {
+        apply: Effect.fnUntraced(function* (plan, options) {
           applyCalls += 1;
           if (applyCalls === 2) {
             return yield* Effect.fail(
@@ -1142,7 +1142,7 @@ describe("App handle managed lifecycle scopes", () => {
               }),
             );
           }
-          return { changed: false };
+          return yield* TestRuntimeProvider.apply(plan, options);
         }),
       };
       const engine: FileSyncEngineShape = {

@@ -360,6 +360,10 @@ const makeHarness = async (
           ),
         );
         calls.apply.push({ plan, options: applyOptions, environments });
+        yield* TestRuntimeProvider.apply(plan, {
+          ...applyOptions,
+          resolveServiceEnvironment: (service) => Effect.succeed(environments[service.name] ?? {}),
+        });
         return { changed: true };
       }).pipe(
         Effect.flatMap((result) => {

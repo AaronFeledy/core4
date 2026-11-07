@@ -221,7 +221,7 @@ Container-only discoveries may have no saved root.
     <Step name="list-apps">
       <Run command="lando list" />
       <Verify command="lando list" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
-      <Verify command="lando list --status=active --jq=[.result.apps[].status]" expect={{ stdout: { regex: "^\\[(.active.(,.active.)*)?\\]\\s*$" } }} />
+      <Verify command="lando list --status=active --jq='[.result.apps[].status]'" expect={{ stdout: { regex: "^\\[(.active.(,.active.)*)?\\]\\s*$" } }} />
       <Verify command="lando list --format=json" expect={{ stdout: { regex: ".apps.:\\[" } }} />
     </Step>
     <Step name="prune-stale-inventory">

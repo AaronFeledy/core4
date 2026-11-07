@@ -192,7 +192,7 @@ test("retained invocations read current containers again instead of caching regi
     slug: "retained-output",
     root: "/tmp/retained-output",
     provider: "test",
-    services: {},
+    services: { web: planService("web", {}) },
     routes: [],
     stores: [],
     fileSync: [],
@@ -213,6 +213,7 @@ test("retained invocations read current containers again instead of caching regi
     Effect.gen(function* () {
       const rendererRedactor = yield* redaction.forProfile("secrets");
       const selected = outputRegisteredTestProvider(provider, plan);
+      yield* Effect.scoped(provider.apply(plan, { reconcile: true }));
       yield* selected.exec({ app: plan.id, service: ServiceName.make("web") }, { command: ["true"] });
       yield* selected.exec({ app: plan.id, service: ServiceName.make("web") }, { command: ["true"] });
       return rendererRedactor.redactString("new-container-private");

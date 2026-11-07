@@ -1,4 +1,14 @@
 {
+  "routerContributionFields": [
+    "capabilities",
+    "defaultFor",
+    "deprecated",
+    "enabledByDefault",
+    "id",
+    "module",
+    "requires",
+    "summary"
+  ],
   "landofileServiceErrorTags": [
     "ComposeKeyRejectedError",
     "ConfigExpressionError",
@@ -2145,6 +2155,7 @@
       "makeTestCertificateAuthority",
       "makeTestHealthcheckRunner",
       "makeTestRouterService",
+      "makeTestRuntimeProvider",
       "makeTestSshService",
       "makeTestUrlScanner",
       "makeToolingEngineContractSuite",

@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { listSelectableResultKeys } from "@lando/sdk/command-result";
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report";
 import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle";
 import { DEFAULT_RESULT_FORMAT, JSON_CONTROL_OFF, type JsonControl, type ResultFormat } from "./format-flags";
@@ -21,6 +22,7 @@ export interface CompiledCommandInput {
   readonly resultFormat?: ResultFormat;
   readonly signal?: AbortSignal;
   readonly hostIo?: "cli";
+  readonly context?: CliInvocationContext;
 }
 
 const assertNever = (value: never): never => value;
@@ -62,10 +64,13 @@ export const activeProjectResultKeys = (): readonly string[] | undefined => {
   }
 };
 
-export const emitJsonListModeIfRequested = async (resultSchema: unknown): Promise<boolean> => {
+export const emitJsonListModeIfRequested = async (
+  resultSchema: unknown,
+  context?: CliInvocationContext,
+): Promise<boolean> => {
   switch (activeJsonControl.mode) {
     case "list":
-      await emitResultLine(JSON.stringify(listSelectableResultKeys(resultSchema)));
+      await emitResultLine(JSON.stringify(listSelectableResultKeys(resultSchema)), context);
       return true;
     case "off":
     case "keys":
@@ -85,7 +90,7 @@ export const setActiveCommandId = (commandId: string): void => {
 
 export const setActiveCommandInvocation = (
   commandId: string,
-  input: Pick<CompiledCommandInput, "argv" | "args" | "flags">,
+  input: Pick<CompiledCommandInput, "argv" | "args" | "flags" | "context">,
   options: { readonly parentInvocationId?: string } = {},
 ): void => {
   const sameCommand = activeCommandInvocation?.commandId === commandId;
@@ -100,7 +105,7 @@ export const setActiveCommandInvocation = (
     argv: input.argv,
     args: input.args,
     flags: input.flags,
-    cwd: process.cwd(),
+    cwd: input.context?.cwd ?? process.cwd(),
     invocationId,
     ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
   };
@@ -109,14 +114,14 @@ export const setActiveCommandInvocation = (
 export const resetActiveCommandInvocation = (
   commandId: string,
   argv: ReadonlyArray<string>,
-  options: { readonly parentInvocationId?: string } = {},
+  options: { readonly parentInvocationId?: string; readonly context?: CliInvocationContext } = {},
 ): void => {
   activeCommandInvocation = {
     commandId,
     argv,
     args: {},
     flags: {},
-    cwd: process.cwd(),
+    cwd: options.context?.cwd ?? process.cwd(),
     invocationId: newInvocationId(),
     ...(options.parentInvocationId === undefined ? {} : { parentInvocationId: options.parentInvocationId }),
   };
@@ -137,6 +142,7 @@ export const commandErrorMessage = (
   failure: import("@lando/sdk/command-result").ProjectedFailure,
   commandId: string = activeCommandId,
   redactor?: import("@lando/sdk/secrets").Redactor,
+  sourceEnv?: Readonly<Record<string, string | undefined>>,
 ): string => {
   const context: BugReportContext = { commandId };
   return formatBugReport({
@@ -144,19 +150,20 @@ export const commandErrorMessage = (
     context,
     rendererMode: activeRendererMode,
     ...(redactor === undefined ? {} : { redactor }),
+    ...(sourceEnv === undefined ? {} : { sourceEnv }),
   });
 };
 
-export const emitResultLine = (text: string): Promise<void> =>
+export const emitResultLine = (text: string, context?: CliInvocationContext): Promise<void> =>
   Effect.runPromise(
     writeResultLine(text).pipe(
-      Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer)),
+      Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer, context?.io)),
     ),
   );
 
-export const emitDiagnosticLine = (text: string): Promise<void> =>
+export const emitDiagnosticLine = (text: string, context?: CliInvocationContext): Promise<void> =>
   Effect.runPromise(
     writeDiagnosticLine(text).pipe(
-      Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer)),
+      Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer, context?.io)),
     ),
   );

@@ -2,6 +2,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { Renderer } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 
 import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
 import { Flags } from "../../../spec/metadata";
@@ -63,6 +64,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
     const privateFileAccess = yield* PrivateFileAccessService;
     const renderer = yield* Renderer;
     const redaction = yield* RedactionService;
+    const sourceEnv = (yield* CliInvocation).env;
     return yield* appConfigTranslate({
       write: flags.write === true,
       list: flags.list === true,
@@ -76,7 +78,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
         : {
             onWriteBlocked: (diagnostics) =>
               redaction
-                .forProfile("secrets", { sourceEnv: process.env })
+                .forProfile("secrets", { sourceEnv })
                 .pipe(
                   Effect.flatMap((redactor) =>
                     renderer.output.stderr(

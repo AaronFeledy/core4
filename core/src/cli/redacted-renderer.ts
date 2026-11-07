@@ -7,6 +7,7 @@ import {
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { Renderer } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 export const withRedactedRenderer = Effect.fnUntraced(function* <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -14,7 +15,7 @@ export const withRedactedRenderer = Effect.fnUntraced(function* <A, E, R>(
 ) {
   const renderer = yield* Renderer;
   const service = yield* Effect.serviceOption(RedactionService);
-  const scoped = { sourceEnv: process.env, ...options };
+  const scoped = { sourceEnv: (yield* CliInvocation).env, ...options };
   const redactor =
     service._tag === "Some"
       ? yield* service.value.forProfile("secrets", scoped)
