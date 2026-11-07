@@ -207,6 +207,7 @@ const fixture = (hooks: Hooks = {}) => {
                         previousSeq = pulse.seq;
                         recordPulse();
                         if (launches === 0) {
+                          recordEvent("ready");
                           const ready = frame(
                             `${JSON.stringify({ ok: true, seq: pulse.seq, state: "ready" })}\n`,
                           );
@@ -240,7 +241,16 @@ const fixture = (hooks: Hooks = {}) => {
               );
             }
           }
-          return stream(input);
+          return stream(input).pipe(
+            Stream.flatMap((chunk) => {
+              if (stage !== "watch" || !new TextDecoder().decode(chunk).includes('"state":"ready"'))
+                return Stream.make(chunk);
+              recordEvent("ready");
+              return Stream.fromEffect(hooks.before?.("ready", input) ?? Effect.void).pipe(
+                Stream.flatMap(() => hooks.replaceStream?.("ready", input) ?? Stream.make(chunk)),
+              );
+            }),
+          );
         }),
       ),
   });
@@ -400,12 +410,12 @@ describe("non-TTY exec supervision lifecycle", () => {
     const f = fixture({
       replaceStream: (stage) =>
         stage === "ready"
-          ? Stream.make(frame(`${JSON.stringify({ ok: true, state: "cancelled", joined: true })}\n`))
+          ? Stream.make(frame(`${JSON.stringify({ ok: true, seq: 1, state: "cancelled", joined: true })}\n`))
           : undefined,
     });
     const { exit, chunks } = await f.run();
     expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(false);
-    expect(failureText(exit)).toContain("cancelled-before-launch");
+    expect(failureText(exit)).toContain("terminal-before-launch");
     expect(terminalChunks(chunks)).toHaveLength(0);
   });
 
@@ -438,9 +448,9 @@ describe("non-TTY exec supervision lifecycle", () => {
       expect(terminalChunks(chunks)).toHaveLength(0);
       expect(f.counts().launches).toBe(0);
       expect(f.events).toContain("cancel");
-      if (["ready", "watch-create", "launch"].includes(stopAt))
+      if (["watch-create", "launch"].includes(stopAt))
         expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-      if (stopAt === "watch") {
+      if (stopAt === "watch" || stopAt === "ready") {
         expect(failureText(exit)).toContain("cleanup-unconfirmed");
         expect(f.events).not.toContain("cleanup");
       } else {
@@ -627,8 +637,6 @@ describe("non-TTY exec supervision lifecycle", () => {
     const { exit, chunks } = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(f.runEffect());
-        yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.millis(100));
         yield* Effect.promise(() => f.waitForEvent("watch"));
         yield* flushWatchReply;
         yield* TestClock.adjust(Duration.seconds(30));
@@ -681,8 +689,6 @@ describe("non-TTY exec supervision lifecycle", () => {
     const { exit, chunks } = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(f.runEffect());
-        yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.millis(100));
         yield* Effect.promise(() => f.waitForEvent("watch"));
         yield* flushWatchReply;
         yield* Effect.promise(() => running);

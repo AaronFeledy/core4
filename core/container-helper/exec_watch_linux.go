@@ -146,7 +146,11 @@ func execWatchLoop(dir string, output io.Writer, read func([]byte) (int, error),
 				if writer, ok := output.(*execWatchWriter); ok {
 					writer.deadline = time.Now().Add(2 * time.Second)
 				}
-				reply := execControlExchangeTimeout(dir, execRequest{Op: "status"}, time.Second)
+				op := "status"
+				if seq == 1 {
+					op = "ready"
+				}
+				reply := execControlExchangeTimeout(dir, execRequest{Op: op}, time.Second)
 				if code := execWatchEmit(output, reply, seq); code != 0 {
 					return code
 				}

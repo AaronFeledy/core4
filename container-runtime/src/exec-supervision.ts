@@ -407,13 +407,6 @@ export const supervisedExecStream = (
       yield* runControl(["exec-prepare", directory, nonce, target.user ?? configuredUser ?? "", digest], "0");
       if (command.signal?.aborted) return yield* Effect.interrupt;
       const supervise = Effect.gen(function* () {
-        const ready = yield* poll(
-          "supervisor-not-ready",
-          control("ready"),
-          (state) => state.state === "ready" || state.state === "cancelled",
-        );
-        if (command.signal?.aborted) return yield* Effect.interrupt;
-        if (ready.state === "cancelled") return yield* Effect.fail(failure("cancelled-before-launch"));
         const watch = yield* startExecWatch(plan, target, {
           api,
           ctx: options.ctx,
