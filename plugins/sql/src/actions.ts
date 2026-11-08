@@ -34,6 +34,7 @@ import {
   mssqlRestoreCommand,
 } from "./mssql.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
+import { sqlPlanDataId } from "./views.ts";
 import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlExec = (
@@ -65,7 +66,7 @@ export const requireVolume = (
   _name: string,
 ): Effect.Effect<VolumeRef, VolumeNotFoundError> =>
   requireDatabaseMount(service, plan.id).pipe(
-    Effect.map((mount) => ({ app: AppId.make(plan.id), store: mount.store })),
+    Effect.map((mount) => ({ app: sqlPlanDataId(plan), store: mount.store })),
   );
 
 export type ExportDestination =
