@@ -65,6 +65,14 @@ test("built-in machine help carries declared flags and positional arguments (#20
     expect(JSON.parse(result.stdout).result.target.input).toEqual({
       flags: [
         {
+          name: "service",
+          type: "string",
+          description: "Service to run the command in (default: the primary service).",
+          required: false,
+          multiple: false,
+          char: "s",
+        },
+        {
           name: "user",
           type: "string",
           description: "User to run the command as inside the service.",
@@ -107,11 +115,11 @@ test("explicit machine help rejects an unknown target instead of returning a roo
     // When
     const result = await runHelp(root, cacheRoot, ["help", "app:absent"]);
     // Then
-    expect(result.code, result.stderr).toBe(1);
+    expect(result.code, result.stderr).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      command: "app:absent",
+      command: "cli:unknown-command",
       ok: false,
-      error: { _tag: "ToolingCommandUnavailableError", reason: "unknown-command" },
+      error: { _tag: "UnknownCommandError", commandToken: "app:absent" },
     });
   });
 });

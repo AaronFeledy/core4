@@ -42,9 +42,9 @@ export {
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "./plugin-owned-command-input";
+import type { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { CommandPayloadStdout } from "./command-payload-stdout";
-import type { MalformedCliFlagValueError, UnknownCliFlagError } from "./flag-value-validation";
 import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 
@@ -160,12 +160,14 @@ const renderPluginOwnedPreCommandFailure = async (
   io?: RendererIO,
   payloadStdout = false,
   context?: CliInvocationContext,
+  usage = false,
 ): Promise<void> => {
   await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
     ...(context === undefined ? {} : { context }),
     failureExitCode: () => 2,
     preCommand: true,
     payloadStdout,
+    ...(usage ? { usage } : {}),
     ...(io === undefined ? {} : { io }),
   });
 };
@@ -187,6 +189,7 @@ const runPluginOwnedCommand = (
           options.io,
           request.stdout === true,
           options.context,
+          true,
         );
         return;
       }
@@ -269,6 +272,8 @@ const dispatchPluginOwnedCommand = async (
   if (signal?.aborted) return "dispatched";
   const row = await catalog.resolve(commandId);
   if (row === undefined) return "not-found";
+  // Failed discovery cannot claim a typo of a command that does not need plugins.
+  if ("unavailable" in row && (await catalog.hasCloseSpelling([commandId, ...argv]))) return "not-found";
   if ("unavailable" in row || row.loadError !== undefined) {
     // Without a loaded spec there is no stdio declaration, so stdout keeps its usual role.
     await renderPluginOwnedPreCommandFailure(
@@ -303,7 +308,13 @@ const dispatchPluginOwnedCommand = async (
     return "dispatched";
   const flagError = pluginOwnedCliFlagError(spec, argv);
   if (flagError !== undefined) {
-    await renderPluginOwnedPreCommandFailure(flagError, catalog.context?.io, payloadStdout, catalog.context);
+    await renderPluginOwnedPreCommandFailure(
+      flagError,
+      catalog.context?.io,
+      payloadStdout,
+      catalog.context,
+      true,
+    );
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema, catalog.context)) return "dispatched";

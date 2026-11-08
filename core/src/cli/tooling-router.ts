@@ -37,8 +37,6 @@ export {
   toolingVersionRequested,
 } from "./tooling-route";
 
-const UNKNOWN_REMEDIATION = "Check the task name with `lando help` or inspect the app's tooling definitions.";
-
 const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId);
 
@@ -180,12 +178,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     const customEntry = cache.entries.find((candidate) => candidate.id === custom);
     const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
     if (customEntry === undefined)
-      return {
-        _tag: "unknown-tooling",
-        commandId: custom,
-        name: customName,
-        remediation: UNKNOWN_REMEDIATION,
-      } as const;
+      return { _tag: "unknown-tooling", commandId: custom, name: customName } as const;
     if (customEntry.source === "bun-script") {
       return bunScriptRoute(customEntry, appRoot, cache);
     }
@@ -220,12 +213,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
       const entry = yield* Effect.fromResult(compileBunShellScriptCommand(script));
       return { ...bunScriptRoute(entry, appRoot, cache), relativePath: script.relativePath };
     }
-    return {
-      _tag: "unknown-tooling",
-      commandId,
-      name,
-      remediation: UNKNOWN_REMEDIATION,
-    } as const;
+    return { _tag: "unknown-tooling", commandId, name } as const;
   }
 
   if (entry.source === "bun-script") {
@@ -234,28 +222,24 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);
 });
 
-type ToolingRouteMiss = Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>;
+type ToolingCacheMiss = Extract<ToolingRoute, { readonly _tag: "cache-miss" }>;
 
-export const toolingRouteFailure = (route: ToolingRouteMiss, hint?: string): unknown => {
-  if (route._tag === "cache-miss" && route.reason === "rebuild-failed") return route.error;
+export const toolingRouteFailure = (route: ToolingCacheMiss, hint?: string): unknown => {
+  if (route.reason === "rebuild-failed") return route.error;
   return toolingRouteError(
     hint === undefined ? route : { ...route, remediation: `${route.remediation} ${hint}` },
   );
 };
 
 export const toolingRouteError = (
-  route: Exclude<ToolingRouteMiss, { readonly reason: "rebuild-failed" }>,
+  route: Exclude<ToolingCacheMiss, { readonly reason: "rebuild-failed" }>,
 ): ToolingCommandUnavailableError =>
   new ToolingCommandUnavailableError({
-    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable (${route._tag === "unknown-tooling" ? "unknown-command" : route.reason}).`,
+    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable (${route.reason}).`,
     commandId: route.commandId,
     tool: route.name,
-    reason: route._tag === "unknown-tooling" ? "unknown-command" : route.reason,
-    ...(route._tag === "cache-miss" && route.staleReason !== undefined
-      ? { staleReason: route.staleReason }
-      : {}),
-    ...(route._tag === "cache-miss" && route.sourcePath !== undefined
-      ? { sourcePath: route.sourcePath }
-      : {}),
+    reason: route.reason,
+    ...(route.staleReason === undefined ? {} : { staleReason: route.staleReason }),
+    ...(route.sourcePath === undefined ? {} : { sourcePath: route.sourcePath }),
     remediation: route.remediation,
   });

@@ -170,10 +170,11 @@ test("an unknown command uses fresh-index remediation after rebuilding missing m
   try {
     const result = await runSource(fixture, ["absent", "--format=json"]);
 
-    expect(result.exitCode, result.stdout + result.stderr).toBe(1);
+    expect(result.exitCode, result.stdout + result.stderr).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
-      error: { _tag: "ToolingCommandUnavailableError", reason: "unknown-command", commandId: "app:absent" },
+      command: "cli:unknown-command",
+      error: { _tag: "UnknownCommandError", commandToken: "absent" },
     });
     expect(result.stderr).toBe("");
   } finally {

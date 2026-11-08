@@ -63,14 +63,11 @@ import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
-  normalizeScratchRunArgvForParsing,
-  parseScratchRunArgv,
   scratchRun,
-  scratchRunHasCommandTail,
   scratchRunOptionsFromInput,
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
-import { resolveResultFormat } from "../../src/cli/format-flags.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
@@ -368,18 +365,48 @@ const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> 
   }
 };
 
-describe("parseScratchRunArgv", () => {
-  test("everything after -- passes verbatim as the command", () => {
-    const options = parseScratchRunArgv(["--", "echo", "ok", "--keep"]);
-    expect(options.command).toEqual(["echo", "ok", "--keep"]);
+describe("scratch run input", () => {
+  const optionsFor = (argv: ReadonlyArray<string>) =>
+    scratchRunOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:run", argv));
+
+  test.each([
+    [[], ["composer", "install", "--no-dev"]],
+    [
+      ["node", "--version"],
+      ["node", "--version"],
+    ],
+  ])("scratch input prefers argv and otherwise consumes named command: %j", (argv, expected) => {
+    const options = scratchRunOptionsFromInput({
+      argv,
+      args: { command: ["composer", "install", "--no-dev"] },
+      flags: { from: "lamp" },
+    });
+    expect(options.command).toEqual(expected);
+    expect(options.from).toBe("lamp");
+  });
+
+  test.each([
+    ["everything after -- passes verbatim", ["--", "echo", "ok", "--keep"], ["echo", "ok", "--keep"]],
+    [
+      "the first bare token starts the command",
+      ["composer", "install", "--no-dev"],
+      ["composer", "install", "--no-dev"],
+    ],
+    ["declared flags after the command stay in it", ["echo", "--keep"], ["echo", "--keep"]],
+    [
+      "output flags after the command stay in it",
+      ["node", "--format=json", "-j", "--json"],
+      ["node", "--format=json", "-j", "--json"],
+    ],
+  ])("%s", (_name, argv, command) => {
+    const options = optionsFor(argv);
+    expect(options.command).toEqual(command);
     expect(options.keep).toBe(false);
     expect(options.mount).toBe(true);
-    expect(options.from).toBeUndefined();
-    expect(options.issues).toEqual([]);
   });
 
   test("parses lando flags before the command tail", () => {
-    const options = parseScratchRunArgv([
+    const options = optionsFor([
       "--from",
       "lamp",
       "--service",
@@ -402,109 +429,15 @@ describe("parseScratchRunArgv", () => {
     expect(options.command).toEqual(["tool", "--flag"]);
   });
 
-  test("the first bare token starts the command without --", () => {
-    const options = parseScratchRunArgv(["composer", "install", "--no-dev"]);
-    expect(options.command).toEqual(["composer", "install", "--no-dev"]);
-    expect(options.mount).toBe(true);
-  });
-
-  test("known lando flags after the first command token stay in the command", () => {
-    const options = parseScratchRunArgv(["echo", "--keep"]);
-    expect(options.command).toEqual(["echo", "--keep"]);
-    expect(options.keep).toBe(false);
-  });
-
-  test("a value flag with no value is an issue", () => {
-    const options = parseScratchRunArgv(["--from"]);
-    expect(options.issues.length).toBeGreaterThan(0);
-  });
-
-  test("scratchRunOptionsFromInput reads raw argv and the abort signal", () => {
+  test("reads the abort signal", () => {
     const controller = new AbortController();
     const options = scratchRunOptionsFromInput({
-      argv: ["--keep", "--", "true"],
-      flags: {},
-      args: {},
+      ...compiledCommandInputFromArgv("apps:scratch:run", ["--keep", "--", "true"]),
       signal: controller.signal,
     });
     expect(options.keep).toBe(true);
     expect(options.command).toEqual(["true"]);
     expect(options.signal).toBe(controller.signal);
-  });
-
-  test("scratchRunOptionsFromInput merges OCLIF structured flags with the command argv", () => {
-    const options = scratchRunOptionsFromInput({
-      argv: ["node", "--version"],
-      flags: {
-        from: "lamp",
-        service: "appserver",
-        "no-mount": true,
-        answer: ["php=8.3", "webroot=public"],
-        keep: true,
-      },
-      args: {},
-    });
-    expect(options.command).toEqual(["node", "--version"]);
-    expect(options.from).toBe("lamp");
-    expect(options.service).toBe("appserver");
-    expect(options.mount).toBe(false);
-    expect(options.keep).toBe(true);
-    expect(options.answers).toEqual({ php: "8.3", webroot: "public" });
-  });
-
-  test("normalizes bare command tails before OCLIF can parse tool flags", () => {
-    expect(normalizeScratchRunArgvForParsing(["node", "--version"])).toEqual(["--", "node", "--version"]);
-    expect(normalizeScratchRunArgvForParsing(["--from", "toolbox", "node", "--version"])).toEqual([
-      "--from",
-      "toolbox",
-      "--",
-      "node",
-      "--version",
-    ]);
-    expect(normalizeScratchRunArgvForParsing(["--keep", "--", "echo", "ok"])).toEqual([
-      "--keep",
-      "--",
-      "echo",
-      "ok",
-    ]);
-    expect(normalizeScratchRunArgvForParsing(["-v", "node", "--version"])).toEqual([
-      "--",
-      "-v",
-      "node",
-      "--version",
-    ]);
-    expect(normalizeScratchRunArgvForParsing(["--version", "node"])).toEqual(["--", "--version", "node"]);
-    expect(scratchRunHasCommandTail(["node", "--help"])).toBe(true);
-    expect(scratchRunHasCommandTail(["--help"])).toBe(false);
-    expect(scratchRunHasCommandTail(["--version"])).toBe(false);
-    expect(scratchRunHasCommandTail(["-v"])).toBe(false);
-  });
-
-  test("normalization protects tool output flags from universal result-format parsing", () => {
-    expect(
-      resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["node", "--format=json"]) }),
-    ).toEqual({
-      format: "text",
-      remainingArgv: ["--", "node", "--format=json"],
-      source: "default",
-    });
-    expect(resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["node", "--json"]) })).toEqual({
-      format: "text",
-      remainingArgv: ["--", "node", "--json"],
-      source: "default",
-    });
-    expect(resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["node", "-j"]) })).toEqual({
-      format: "text",
-      remainingArgv: ["--", "node", "-j"],
-      source: "default",
-    });
-    expect(
-      resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["--format", "json", "node"]) }),
-    ).toEqual({
-      format: "json",
-      remainingArgv: ["node"],
-      source: "format",
-    });
   });
 });
 
@@ -568,7 +501,6 @@ describe("scratchRun", () => {
           mount: true,
           keep: false,
           answers: {},
-          issues: [],
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n", stopCalls })),
           Effect.provide(testSupportLayer()),
@@ -618,7 +550,6 @@ describe("scratchRun", () => {
           mount: false,
           keep: false,
           answers: {},
-          issues: [],
         }).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       const plan = recorded.appliedPlans[0];
@@ -678,7 +609,6 @@ describe("scratchRun", () => {
           mount: true,
           keep: false,
           answers: {},
-          issues: [],
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execExitCode: 7 })),
           Effect.provide(testSupportLayer()),
@@ -700,7 +630,6 @@ describe("scratchRun", () => {
           mount: true,
           keep: false,
           answers: {},
-          issues: [],
         }).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       expect(Exit.isFailure(exit)).toBe(true);
@@ -726,7 +655,6 @@ describe("scratchRun", () => {
           mount: true,
           keep: true,
           answers: {},
-          issues: [],
         }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       expect(Exit.isFailure(exit)).toBe(true);
@@ -749,7 +677,6 @@ describe("scratchRun", () => {
           mount: true,
           keep: false,
           answers: {},
-          issues: [],
         }).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       expect(Exit.isFailure(exit)).toBe(true);
@@ -770,7 +697,6 @@ describe("scratchRun", () => {
           mount: true,
           keep: true,
           answers: {},
-          issues: [],
         }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       expect(result.kept).toBe(true);
@@ -805,7 +731,6 @@ describe("scratchRun", () => {
               mount: true,
               keep: false,
               answers: {},
-              issues: [],
               hostIo: "cli",
             }).pipe(
               Effect.provide(layer),
@@ -840,7 +765,6 @@ describe("scratchRun", () => {
             mount: true,
             keep: false,
             answers: { name: "toolbox" },
-            issues: [],
           },
           {
             ...defaultScratchRunDeps,
@@ -871,7 +795,6 @@ describe("scratchRun", () => {
             mount: false,
             keep: false,
             answers: {},
-            issues: [],
           },
           {
             ...defaultScratchRunDeps,
@@ -897,7 +820,6 @@ describe("scratchRun", () => {
             mount: true,
             keep: false,
             answers: {},
-            issues: [],
           },
           defaultScratchRunDeps,
         ).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
@@ -928,7 +850,7 @@ describe("scratch run cleanup and warm repeats", () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
       const layer = makeHarnessLayer(recorded, { execStdout: "ok\n" });
       const result = await Effect.runPromise(
-        scratchRun({ command: ["echo", "ok"], mount: true, keep: true, answers: {}, issues: [] }).pipe(
+        scratchRun({ command: ["echo", "ok"], mount: true, keep: true, answers: {} }).pipe(
           Effect.provide(layer),
           Effect.provide(testSupportLayer()),
         ),
@@ -981,7 +903,6 @@ describe("scratch run cleanup and warm repeats", () => {
               mount: true,
               keep: false,
               answers: {},
-              issues: [],
             }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
           );
           yield* Effect.promise(() => ready.promise);
@@ -1009,7 +930,6 @@ describe("scratch run cleanup and warm repeats", () => {
         mount: true,
         keep: false,
         answers: {},
-        issues: [],
       } as const;
 
       const first = await Effect.runPromise(
@@ -1069,7 +989,7 @@ describe("scratch run cleanup and warm repeats", () => {
       const supportLayer = layer.pipe(Layer.provide(testSupportLayer()));
       await Effect.runPromise(
         Effect.gen(function* () {
-          const options = { command: ["echo", "ok"], mount: true, keep: false, answers: {}, issues: [] };
+          const options = { command: ["echo", "ok"], mount: true, keep: false, answers: {} };
           const first = yield* scratchRun(options);
           const second = yield* scratchRun(options);
           expect(first.scratchId).not.toBe(second.scratchId);
@@ -1104,7 +1024,7 @@ describe("scratch run rendering", () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
       const chunks: string[] = [];
       await Effect.runPromise(
-        scratchRun({ command: ["echo", "ok"], mount: false, keep: false, answers: {}, issues: [] }).pipe(
+        scratchRun({ command: ["echo", "ok"], mount: false, keep: false, answers: {} }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
           Effect.provide(testSupportLayer()),
           Effect.provideService(StreamFrameSink, {
@@ -1131,7 +1051,6 @@ describe("scratch run rendering", () => {
           mount: false,
           keep: true,
           answers: {},
-          issues: [],
           hostIo: "cli",
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
@@ -1160,7 +1079,7 @@ describe("scratch run rendering", () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
       const frames: StreamFrameSinkFrame[] = [];
       await Effect.runPromise(
-        scratchRun({ command: ["true"], mount: false, keep: false, answers: {}, issues: [] }).pipe(
+        scratchRun({ command: ["true"], mount: false, keep: false, answers: {} }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
           Effect.provide(testSupportLayer()),
           Effect.provideService(StreamFrameSink, {
@@ -1191,9 +1110,9 @@ describe("scratch run rendering", () => {
           : appsScratchRunSpec.streamingMode;
       await runWithRendererHandling(
         appsScratchRunSpec.run({
-          argv: ["--no-mount", "--keep", "--", "cat"],
+          argv: ["cat"],
           hostIo: "cli",
-          flags: { format: "json" },
+          flags: { format: "json", "no-mount": true, keep: true },
         }),
         {
           runtime: makeHarnessLayer(recorded, { execStdout: "piped-in\n", execStderr: "warn\n" }).pipe(
@@ -1241,7 +1160,6 @@ describe("scratch run rendering", () => {
           mount: true,
           keep: false,
           answers: {},
-          issues: [],
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
           Effect.provide(testSupportLayer()),
@@ -1284,7 +1202,6 @@ describe("scratch run agent env forwarding", () => {
     mount: true,
     keep: false,
     answers: {},
-    issues: [],
   };
 
   test("forwards present agent markers from the host env into the scratch exec", async () => {
@@ -1421,7 +1338,6 @@ describe("readScratchLandofile", () => {
           mount: true,
           keep: true,
           answers: {},
-          issues: [],
         }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       const landofile = await Effect.runPromise(
@@ -1485,7 +1401,6 @@ describe("scratch run streaming spec", () => {
         mount: false,
         keep: false,
         answers: {},
-        issues: [],
         hostIo: "cli",
       }).pipe(
         Effect.provide(layer),
@@ -1534,7 +1449,6 @@ describe("scratch run streaming spec", () => {
           mount: false,
           keep: false,
           answers: {},
-          issues: [],
           hostIo: "cli",
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded)),
@@ -1598,7 +1512,6 @@ describe("scratch run streaming spec", () => {
               mount: false,
               keep: false,
               answers: {},
-              issues: [],
               hostIo: "cli",
               tty: true,
               signal: controller.signal,
@@ -1768,8 +1681,8 @@ describe("scratch run streaming spec", () => {
         const result = await Effect.runPromise(
           appsScratchRunSpec
             .run({
-              argv: ["--no-mount", "--", "cat"],
-              flags: { format: scenario.format },
+              argv: ["cat"],
+              flags: { format: scenario.format, "no-mount": true },
               rendererMode: scenario.rendererMode,
               ...(scenario.cli ? { hostIo: "cli" } : {}),
               ...("nonInteractive" in scenario ? { interaction: "non-interactive" } : {}),

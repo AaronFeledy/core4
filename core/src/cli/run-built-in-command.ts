@@ -44,7 +44,11 @@ export const runBuiltInCommand = (
       ),
       Layer.empty,
       () => undefined,
-      { failureExitCode: () => 2, preCommand: true, ...(context === undefined ? {} : { context }) },
+      {
+        preCommand: true,
+        usage: true,
+        ...(context === undefined ? {} : { context }),
+      },
     );
   }
 

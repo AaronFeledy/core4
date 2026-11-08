@@ -89,7 +89,7 @@ describe("help dispatcher special", () => {
     const result = await runCli(["help", "does-not-exist"]);
 
     // Then
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("UnknownCommandError");
   });
 

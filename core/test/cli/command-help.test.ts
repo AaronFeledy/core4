@@ -87,7 +87,9 @@ describe("renderCommandHelp", () => {
 
   test("commandStructureExample uses the typeable usage shape", () => {
     expect(commandStructureExample("app:shell")).toBe("lando shell [--service SERVICE]");
-    expect(commandStructureExample("app:exec")).toBe("lando exec [SERVICE] -- [COMMAND...]");
+    expect(commandStructureExample("app:exec")).toBe(
+      "lando exec [--service SERVICE | SERVICE] -- [COMMAND...]",
+    );
     expect(commandStructureExample("app:start")).toBe("lando start");
   });
 
@@ -208,7 +210,7 @@ describe("renderCommandHelp", () => {
     const help = renderCommandHelp(entry);
 
     // Then USAGE and EXAMPLES document positional service plus `--`
-    expect(sectionBody(help, "USAGE")).toContain("lando exec [SERVICE] -- [COMMAND...]");
+    expect(sectionBody(help, "USAGE")).toContain("lando exec [--service SERVICE | SERVICE] -- [COMMAND...]");
     const examples = sectionBody(help, "EXAMPLES");
     expect(examples).toContain("lando exec -- echo hello");
     expect(examples).toContain("lando exec appserver -- echo hello");

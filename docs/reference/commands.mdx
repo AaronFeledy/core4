@@ -239,6 +239,7 @@ Flags:
 | --- | --- |
 | `--cwd` | Working directory inside the service. |
 | `--interactive, -i` | Attach your terminal keyboard to the command. Piped stdin is always attached. |
+| `--service, -s` | Service to run the command in (default: the primary service). |
 | `--user, -u` | User to run the command as inside the service. |
 
 ## `lando app:includes:update`
@@ -700,6 +701,12 @@ Arguments:
 Run a one-off command in a disposable scratch app.
 
 Aliases: `lando scratch:run`, `lando run`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `command` | Command argv after `--`. |
 
 Flags:
 

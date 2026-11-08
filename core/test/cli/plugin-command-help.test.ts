@@ -119,14 +119,14 @@ test.each([{ args: ["help", "db:export"] }, { args: ["db:export", "--help"] }])(
 
 test.each([
   ["export", "lando db:export"],
-  ["db:exprt", "lando help db"],
+  ["db:exprt", "Did you mean `lando db:export`?"],
   ["db", "lando help db"],
   ["app", "lando help app"],
 ])("unknown %s offers %s", async (token, hint) => {
   const f = await fixture();
   try {
     const result = await f.invoke([token, "--format", "json"]);
-    expect(result.exit).toBe(1);
+    expect(result.exit).toBe(2);
     expect(JSON.parse(result.stdout).error).toMatchObject({
       _tag: "UnknownCommandError",
       remediation: expect.stringContaining(hint),

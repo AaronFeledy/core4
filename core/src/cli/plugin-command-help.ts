@@ -28,8 +28,8 @@ export const tryPluginCommandHelp = async (
   const row = await catalog.resolve(token);
   if (row === undefined) return false;
   if ("unavailable" in row) {
-    // Unavailable discovery can only explain a colon-form token; a bare token may still be a topic or typo.
-    if (!token.includes(":")) return false;
+    // Unavailable discovery can only explain a colon-form token that no other command is spelled close to.
+    if (!token.includes(":") || (await catalog.hasCloseSpelling([token]))) return false;
     await renderHelpFailure(row.unavailable, catalog.context);
     return true;
   }

@@ -28,8 +28,10 @@ const failures = {
   missing: { _tag: "LandofileParseError" },
   stale: { _tag: "LandofileParseError" },
   invalid: { _tag: "LandofileParseError" },
-  unknown: { _tag: "ToolingCommandUnavailableError", reason: "unknown-command" },
+  // A fresh index that lacks the task is an ordinary unknown command.
+  unknown: { _tag: "UnknownCommandError", commandToken: "app:absent" },
 } as const;
+const failureCommand = (state: State) => (state === "unknown" ? "cli:unknown-command" : "app:absent");
 
 test.each([
   { acceptsArguments: true, wrapper: true, expected: false },
@@ -97,57 +99,59 @@ const withCache = async (state: State, run: (cwd: string, cacheRoot: string) => 
   }
 };
 
-test.each(states)("renders %s recovery without using caller-provided services", async (state) => {
-  await withCache(state, async (cwd, cacheRoot) => {
-    // Given
-    const calls = { plan: 0, provider: 0, registry: 0 };
-    const blocked = (key: keyof typeof calls) =>
-      Effect.sync((): never => {
-        calls[key]++;
-        throw new TypeError(`Unexpected live ${key} call`);
+test.each(["missing", "stale", "invalid"] as const)(
+  "renders %s recovery without using caller-provided services",
+  async (state) => {
+    await withCache(state, async (cwd, cacheRoot) => {
+      // Given
+      const calls = { plan: 0, provider: 0, registry: 0 };
+      const blocked = (key: keyof typeof calls) =>
+        Effect.sync((): never => {
+          calls[key]++;
+          throw new TypeError(`Unexpected live ${key} call`);
+        });
+      const route = await Effect.runPromise(
+        resolveToolingRoute("absent", { cwd, cacheRoot }).pipe(
+          Effect.provideService(AppPlanner, { plan: () => blocked("plan") }),
+          Effect.provideService(CommandRegistry, { list: blocked("registry") }),
+          Effect.provideService(RuntimeProviderRegistry, {
+            list: blocked("provider"),
+            capabilities: blocked("provider"),
+            appliedPlansFor: () => blocked("provider"),
+            select: () => blocked("provider"),
+            resolveAppliedPlan: () => blocked("provider"),
+            resolveTeardownEvidence: () => blocked("provider"),
+          }),
+        ),
+      );
+      if (route._tag !== "cache-miss") throw new TypeError(`Unexpected route ${route._tag}`);
+      const error = toolingRouteFailure(route);
+      const io = createBufferedRendererIO();
+      let exitCode = 0;
+      // When
+      await renderPreCommandFailure({
+        commandId: route.commandId,
+        error,
+        rendererMode: "json",
+        resultFormat: "json",
+        io,
+        setExitCode: (code) => {
+          exitCode = code;
+        },
       });
-    const route = await Effect.runPromise(
-      resolveToolingRoute("absent", { cwd, cacheRoot }).pipe(
-        Effect.provideService(AppPlanner, { plan: () => blocked("plan") }),
-        Effect.provideService(CommandRegistry, { list: blocked("registry") }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          list: blocked("provider"),
-          capabilities: blocked("provider"),
-          appliedPlansFor: () => blocked("provider"),
-          select: () => blocked("provider"),
-          resolveAppliedPlan: () => blocked("provider"),
-          resolveTeardownEvidence: () => blocked("provider"),
-        }),
-      ),
-    );
-    if (route._tag !== "cache-miss" && route._tag !== "unknown-tooling")
-      throw new TypeError(`Unexpected route ${route._tag}`);
-    const error = toolingRouteFailure(route);
-    const io = createBufferedRendererIO();
-    let exitCode = 0;
-    // When
-    await renderPreCommandFailure({
-      commandId: route.commandId,
-      error,
-      rendererMode: "json",
-      resultFormat: "json",
-      io,
-      setExitCode: (code) => {
-        exitCode = code;
-      },
+      // Then
+      expect(exitCode).toBe(1);
+      expect(JSON.parse(io.stdout())).toMatchObject({
+        ok: false,
+        command: "app:absent",
+        error: failures[state],
+      });
+      expect(calls).toEqual({ plan: 0, provider: 0, registry: 0 });
+      expect(io.stdout()).not.toContain("credential");
+      expect(io.stdout()).not.toContain("app:cache:refresh");
     });
-    // Then
-    expect(exitCode).toBe(1);
-    expect(JSON.parse(io.stdout())).toMatchObject({
-      ok: false,
-      command: "app:absent",
-      error: failures[state],
-    });
-    expect(calls).toEqual({ plan: 0, provider: 0, registry: 0 });
-    expect(io.stdout()).not.toContain("credential");
-    expect(io.stdout()).not.toContain("app:cache:refresh");
-  });
-});
+  },
+);
 
 test.each(states)("keeps built-ins available and reflects %s metadata in root help", async (state) => {
   await withCache(state, async (cwd, cacheRoot) => {
@@ -202,10 +206,10 @@ test.each(states)("direct help adapter reports the %s lookup failure", async (st
       new Response(child.stderr).text(),
     ]);
     // Then
-    expect(code, stderr).toBe(1);
+    expect(code, stderr).toBe(state === "unknown" ? 2 : 1);
     expect(JSON.parse(stdout)).toMatchObject({
       ok: false,
-      command: "app:absent",
+      command: failureCommand(state),
       error: { ...failures[state], remediation: expect.stringMatching(/\S/u) },
     });
     expect(stderr).toBe("");

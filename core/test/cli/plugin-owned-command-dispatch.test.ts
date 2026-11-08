@@ -3,6 +3,7 @@ import { Cause, Context, Effect, Exit, Schema } from "effect";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { ToolingCommandLookupError } from "@lando/sdk/errors";
+import { UnknownCliFlagError } from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -11,7 +12,6 @@ import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/buil
 import { setActiveRendererMode, setActiveResultFormat } from "../../src/cli/compiled-runtime.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
-import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   isPluginOwnedCommandId,
@@ -119,6 +119,32 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
 };
 
 describe("plugin-owned command dispatch", () => {
+  test.each([
+    ["implicit", ["--host", "db", "sh", "--host", "-u", "-", "x"], ["sh", "--host", "-u", "-", "x"]],
+    ["explicit", ["--host", "db", "--", "sh", "--host", "-u", "--", "x"], ["sh", "--host", "-u", "--", "x"]],
+  ])("preserves a plugin command's %s tail through input validation", async (_name, argv, tail) => {
+    const spec: ExecutableCommandSpec = {
+      ...makeDbImportSpec(),
+      args: { command: { type: "string", multiple: true } },
+    };
+    expect(pluginOwnedCliFlagError(spec, argv)).toBeUndefined();
+    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+    const input = await Effect.runPromise(validateEventCommandInput(spec, parsed));
+    expect(input.flags.host).toBe("db");
+    expect(input.args.command).toEqual(tail);
+    expect(input.parsedArgv).toEqual(tail);
+  });
+
+  test("rejects unknown prefix flags for plugin command tails", () => {
+    const spec: ExecutableCommandSpec = {
+      ...makeDbImportSpec(),
+      args: { command: { type: "string", multiple: true } },
+    };
+    expect(pluginOwnedCliFlagError(spec, ["--hosst=private", "sh"])).toMatchObject({
+      _tag: "UnknownCliFlagError",
+      flag: "--hosst",
+    });
+  });
   test("refuses terminal stdout from argv before invoking a plugin flag parser", async () => {
     let parsed = false;
     let ran = false;
@@ -360,7 +386,7 @@ describe("plugin-owned command dispatch", () => {
     expect(help).not.toContain("--label <value...>");
     expect(
       pluginOwnedCommandInputFromArgv(spec, ["--label", "one", "--label=two", "a.sql", "b.sql"]),
-    ).toEqual({ flags: { label: ["one", "two"] }, args: { file: "a.sql" }, raw: ["b.sql"] });
+    ).toEqual({ flags: { label: ["one", "two"] }, args: { file: ["a.sql", "b.sql"] }, raw: [] });
   });
 
   test("parses fixture plugin argv and decodes the spec resultSchema", async () => {

@@ -40,10 +40,12 @@ export interface PreCommandFailureInput {
   /** A dash argument reserved stdout for the payload, so a machine failure goes to stderr. */
   readonly payloadStdout?: boolean;
   readonly setExitCode?: (code: number) => void;
+  /** The CLI was called wrong (unknown command, bad flag): exits 2 and the human report omits log locations. */
+  readonly usage?: boolean;
 }
 
 export const renderPreCommandFailure = async (input: PreCommandFailureInput): Promise<void> => {
-  const exitCode = input.failureExitCode ?? 1;
+  const exitCode = input.failureExitCode ?? (input.usage === true ? 2 : 1);
   await runWithRendererHandling(Effect.fail(input.error), {
     ...(input.context === undefined ? {} : { context: input.context }),
     runtime: Layer.empty,
@@ -63,6 +65,7 @@ export const renderPreCommandFailure = async (input: PreCommandFailureInput): Pr
         redactor,
         context: { commandId: input.commandId },
         rendererMode: input.rendererMode,
+        ...(input.usage === true ? { usage: true } : {}),
       }),
   });
 };
@@ -134,7 +137,7 @@ export const renderCommandFlagValueValidation = async (
     rendererMode: input.rendererMode,
     resultFormat: input.resultFormat,
     resultSchema: input.resultSchema,
-    failureExitCode: 2,
+    usage: true,
     ...(input.deprecationWarnings === undefined ? {} : { deprecationWarnings: input.deprecationWarnings }),
   });
   return true;
