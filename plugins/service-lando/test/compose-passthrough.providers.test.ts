@@ -18,6 +18,7 @@ const providerLandoCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -78,22 +79,22 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
   test("provider-lando renderCompose emits the compose image, named volume, env, and port mapping", async () => {
     const plan = await planFor(composeLandofile, "lando");
 
-    expect(plan.stores.map((s) => s.name)).toContain("composeapp-worker-state");
-    expect(plan.stores.every((s) => s.scope === "service")).toBe(true);
+    expect(plan.stores.map((s) => s.name)).toContain("lando-composeapp_worker-state");
+    expect(plan.stores.find((s) => s.name === "lando-composeapp_worker-state")?.scope).toBe("app");
 
     const document = renderLandoCompose(plan);
     expect(document).toContain('image: "ghcr.io/example/worker:latest"');
     expect(document).toContain('"127.0.0.1:9000:9000"');
-    expect(document).toContain('- "composeapp-worker-state:/var/state"');
+    expect(document).toContain('- "lando-composeapp_worker-state:/var/state"');
     expect(document).toContain('WORKER_ENV: "prod"');
     expect(document).toContain("volumes:");
-    expect(document).toContain("composeapp-worker-state:");
+    expect(document).toContain("lando-composeapp_worker-state:");
   });
 
   test("provider-docker renderCompose emits the compose image and port mapping from a compose-typed plan", async () => {
     const plan = await planFor(composeLandofile, "docker");
 
-    expect(plan.stores.map((s) => s.name)).toContain("composeapp-worker-state");
+    expect(plan.stores.map((s) => s.name)).toContain("lando-composeapp_worker-state");
 
     const document = renderDockerCompose(plan);
     expect(document).toContain("ghcr.io/example/worker:latest");
@@ -104,13 +105,13 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const landoPlan = await planFor(composeLandofile, "lando");
     const dockerPlan = await planFor(composeLandofile, "docker");
     expect(landoPlan.stores).toContainEqual({
-      name: "composeapp-worker-state",
-      scope: "service",
+      name: "lando-composeapp_worker-state",
+      scope: "app",
       kind: "data",
     });
     expect(dockerPlan.stores).toContainEqual({
-      name: "composeapp-worker-state",
-      scope: "service",
+      name: "lando-composeapp_worker-state",
+      scope: "app",
       kind: "data",
     });
   });
@@ -164,7 +165,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     expect(worker?.mounts).toContainEqual({
       type: "volume",
       origin: "authored",
-      store: "composeapp-worker-state",
+      store: "lando-composeapp_worker-state",
       target: PortablePath.make("/var/state"),
       readOnly: false,
       subpath: "tenant",

@@ -5,13 +5,14 @@ import { sha256Hex } from "@lando/sdk/digest";
 
 import { Context, DateTime, Effect } from "effect";
 
-import { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
+import { AppLockTimeoutError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 import { EventService, PathsService } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { PinnedAppRoot } from "./app-root-identity.ts";
 
 export { canonicalAppRoot } from "./app-root-identity.ts";
@@ -30,6 +31,13 @@ const HeldAppLockKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/He
   defaultValue: (): ReadonlySet<string> => new Set(),
 });
 
+const HeldGlobalAppRoot = Context.Reference<string | undefined>("@lando/engine/HeldGlobalAppRoot", {
+  defaultValue: () => undefined,
+});
+
+/** Used by the global coordinator to reject actual-root to policy lock-order upgrades. */
+export const heldGlobalAppMutationRoot = HeldGlobalAppRoot;
+
 export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): number => {
   const raw = env[APP_LOCK_TIMEOUT_ENV];
   if (raw === undefined || raw === "") return DEFAULT_APP_LOCK_TIMEOUT_MS;
@@ -39,13 +47,17 @@ export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): n
 };
 
 /**
- * Stable operation-locks key: app id plus the canonical (realpath) root at
+ * Stable operation-locks key: user app roots survive renames; scratch and global
+ * identities retain their id plus the canonical (realpath) root at
  * acquire time. If the app directory is moved or its realpath changes mid-flight,
  * a second command against the new path computes a different key and does not
  * wait on the first lock.
  */
-export const appMutationLockKey = (appId: string, canonicalRoot: string): string =>
-  `app-${sha256Hex(`${appId}\0${canonicalRoot}`)}`;
+export const appMutationLockKey = (
+  appId: string,
+  canonicalRoot: string,
+  kind: AppRef["kind"] = appId === "global" || appId === "global-policy" ? "global" : "user",
+): string => `app-${sha256Hex(kind === "user" ? canonicalRoot : `${appId}\0${canonicalRoot}`)}`;
 
 const parseHolderEntries = (raw: string | undefined): ReadonlyArray<readonly [string, string]> => {
   if (raw === undefined || raw === "") return [];
@@ -104,17 +116,37 @@ export const isSelfOrAncestorPid = (holderPid: number, pid = process.pid, ppid =
 export const isAncestorPid = (holderPid: number, pid = process.pid, ppid = process.ppid): boolean =>
   holderPid !== pid && isSelfOrAncestorPid(holderPid, pid, ppid);
 
-const isSameHolder = (key: string, lockPath: string): Effect.Effect<boolean> =>
-  Effect.promise(async () => {
-    const record = await peekAdvisoryLockRecord(lockPath);
-    if (record === null) return false;
-    // Same PID is another fiber in this process: wait on the file lock.
-    // Nested same-process acquires are context-reference no-ops before this check.
-    if (record.pid === process.pid) return false;
-    if (isAncestorPid(record.pid)) return true;
-    return parseHolderEntries(process.env[APP_LOCK_HOLDERS_ENV]).some(
-      ([held, token]) => held === key && token === record.token,
-    );
+const borrowedMutationOwner = (
+  key: string,
+  lockPath: string,
+): Effect.Effect<number | undefined, StateStoreError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const record = await peekAdvisoryLockRecord(lockPath);
+      if (record === null) return undefined;
+      // Same PID is another fiber in this process: wait on the file lock.
+      // Nested same-process acquires are context-reference no-ops before this check.
+      if (record.pid === process.pid) return undefined;
+      try {
+        process.kill(record.pid, 0);
+      } catch (cause) {
+        if (isErrnoCode(cause, "ESRCH")) return undefined;
+      }
+      return isAncestorPid(record.pid) ||
+        parseHolderEntries(process.env[APP_LOCK_HOLDERS_ENV]).some(
+          ([held, token]) => held === key && token === record.token,
+        )
+        ? record.pid
+        : undefined;
+    },
+    catch: (cause) =>
+      new StateStoreError({
+        reason: "io",
+        operation: "readAppMutationOwner",
+        path: lockPath,
+        cause,
+        remediation: "Restore access to the app mutation lock and retry.",
+      }),
   });
 
 const announceWait = Effect.fnUntraced(
@@ -144,9 +176,18 @@ export const appLockTarget = (app: {
   readonly id: unknown;
   readonly root: unknown;
   readonly identity?: { readonly appRoot?: unknown } | undefined;
-}): { readonly id: string; readonly root: string } => ({
+  readonly kind?: AppRef["kind"];
+  readonly extensions?: Readonly<Record<string, unknown>>;
+}): { readonly id: string; readonly root: string; readonly kind: AppRef["kind"] } => ({
   id: String(app.id),
   root: String(app.identity?.appRoot ?? app.root),
+  kind:
+    app.kind ??
+    (app.extensions !== undefined && Object.hasOwn(app.extensions, SCRATCH_EXTENSION_KEY)
+      ? "scratch"
+      : app.id === "global"
+        ? "global"
+        : "user"),
 });
 
 /** Resolve a missing app root through its nearest existing parent for the lock key. */
@@ -187,6 +228,7 @@ export const canonicalMissingAppRoot = (root: string): Effect.Effect<string, Sta
 export const appMutationLockIdentity = (app: {
   readonly id: string;
   readonly root: string;
+  readonly kind?: AppRef["kind"];
 }): Effect.Effect<
   {
     readonly key: string;
@@ -197,24 +239,24 @@ export const appMutationLockIdentity = (app: {
   canonicalMissingAppRoot(app.root).pipe(
     Effect.map((canonicalRoot) => ({
       canonicalRoot,
-      key: appMutationLockKey(String(app.id), canonicalRoot),
+      key: appMutationLockKey(String(app.id), canonicalRoot, app.kind),
     })),
   );
 
 /**
  * Acquire one per-app advisory file lock around a mutating operation.
  *
- * Reentrancy: already holding this key (in-process context reference, inherited
- * {@link APP_LOCK_HOLDERS_ENV} token, or lock-holder PID in this process tree)
- * is a no-op acquire so a plugin/hook/helper that shells out to another `lando`
- * mutate on the same app cannot deadlock.
+ * Same-process nesting reuses the context-held key. A child command recognized
+ * through ancestry or an inherited holder token refuses borrowed ownership;
+ * waiting on a live parent would deadlock when that parent awaits its child.
  *
  * Confirmation prompts belong outside this wrapper. The lock is the mutate
  * phase only.
  */
 export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
-  app: { readonly id: string; readonly root: string },
+  app: { readonly id: string; readonly root: string; readonly kind?: AppRef["kind"] },
   body: Effect.Effect<A, E, R>,
+  options: { readonly lockRoot?: string } = {},
 ): Effect.fn.Return<
   A,
   E | AppLockTimeoutError | StateStoreError,
@@ -225,21 +267,58 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
   const privateFileAccess = yield* PrivateFileAccessService;
   const { key, canonicalRoot } = yield* appMutationLockIdentity(app);
   const held = yield* HeldAppLockKeys;
+  const heldGlobalRoot = yield* HeldGlobalAppRoot;
+  if (app.id === "global" && heldGlobalRoot !== undefined && heldGlobalRoot !== canonicalRoot)
+    return yield* Effect.fail(
+      new StateStoreError({
+        reason: "lock",
+        operation: "nestedGlobalAppMutation",
+        path: canonicalRoot,
+        remediation: "Finish the current global operation before mutating another global app root.",
+      }),
+    );
+  if (app.id === "global" && options.lockRoot !== undefined)
+    return yield* Effect.fail(
+      new StateStoreError({
+        reason: "path",
+        operation: "globalMutationLockRoot",
+        path: options.lockRoot,
+        remediation: "Global app mutation locks must use the canonical runtime root's lock directory.",
+      }),
+    );
   const provided = body.pipe(
     Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
     Effect.provideService(HeldAppLockKeys, new Set([...held, key])),
+    Effect.provideService(HeldGlobalAppRoot, app.id === "global" ? canonicalRoot : heldGlobalRoot),
     Effect.provide(context),
   );
   if (held.has(key)) return yield* provided;
 
+  // Embedded hosts can share a physical global root while using different data roots.
+  // A per-root namespace also avoids a shared directory owned by another user in /tmp.
   const resolved = yield* resolveStatePath(
-    { path: AbsolutePath.make(paths.roots.userDataRoot) },
-    "operation-locks",
+    {
+      path: AbsolutePath.make(
+        app.id === "global" ? dirname(canonicalRoot) : (options.lockRoot ?? paths.roots.userDataRoot),
+      ),
+    },
+    app.id === "global" ? `.lando-global-${key}` : "operation-locks",
     key,
     "app-mutate",
   );
   const lockPath = `${resolved.file}.lock`;
-  if (yield* isSameHolder(key, lockPath)) return yield* provided;
+  const borrowed = yield* borrowedMutationOwner(key, lockPath);
+  if (borrowed !== undefined)
+    return yield* Effect.fail(
+      new StateStoreError({
+        reason: "lock",
+        operation: "nestedAppMutation",
+        path: lockPath,
+        cause: { app: String(app.id), ownerPid: borrowed },
+        remediation:
+          "This child command cannot borrow its parent command's app mutation lock. Run nested mutations in the parent process, or run this command after the parent finishes.",
+      }),
+    );
 
   const timeoutMs = resolveAppLockTimeoutMs();
   return yield* Effect.acquireUseRelease(

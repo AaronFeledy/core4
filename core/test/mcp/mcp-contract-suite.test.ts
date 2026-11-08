@@ -16,7 +16,7 @@
  *
  * allow: SIZE_OK — acceptance bullets stay collocated in one discoverable suite.
  */
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
 
 import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
@@ -26,7 +26,7 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
-import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
+import { type McpDispatchDeps, type McpExecute, dispatchTool } from "@lando/mcp/dispatch";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import {
   type McpCommandEntry,
@@ -35,12 +35,11 @@ import {
   validateToolInput,
 } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
-import { makeStdioClient } from "@lando/mcp/testing";
+import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
-import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
+import { bundledMcpRegistry } from "./plugin-fixture";
 
 /** A prompt-required tagged failure, standing in for interactive recipe answers. */
 class PromptRequiredError extends Schema.TaggedError<PromptRequiredError>()("RecipeMissingAnswerError", {
@@ -62,11 +61,11 @@ const spec = (
   ...extra,
 });
 
-const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
+const directExecute = (): McpExecute => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) as const),
     Effect.catch((error) => Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const)),
-  ) as ReturnType<McpDispatchDeps["execute"]>;
+  ) as ReturnType<McpExecute>;
 
 interface Harness {
   readonly deps: McpDispatchDeps;
@@ -104,8 +103,13 @@ const decodeEnvelope = (envelope: unknown): CommandResultEnvelope =>
 const specFor = (id: string): McpCommandSpec | undefined =>
   allCommandEntries().find((entry) => entry.spec.id === id)?.spec;
 
-const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
-  mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries;
+let commandEntries: ReadonlyArray<McpCommandEntry> = [];
+beforeAll(async () => {
+  commandEntries = (
+    await Effect.runPromise(bundledMcpRegistry().pipe(Effect.provide(RedactionService.layer)))
+  ).commandEntries;
+});
+const allCommandEntries = (): ReadonlyArray<McpCommandEntry> => commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
   Layer.effect(
@@ -299,7 +303,7 @@ describe("MCP contract suite — cancellation mid-call", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: blocking }],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
     const program = Effect.gen(function* () {
       const inmem = yield* makeStdioClient();
@@ -344,7 +348,7 @@ describe("MCP contract suite — concurrency cap", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: blocking }],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
     const program = Effect.gen(function* () {
       const inmem = yield* makeStdioClient();

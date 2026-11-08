@@ -34,6 +34,26 @@ const blocked = (root: string) =>
     remediation: "Resolve the conflicting target before retrying.",
   });
 
+test("read-only loads refuse a pending transaction without recovering or writing", async () => {
+  await withApp(async (root) => {
+    const failure = blocked(root);
+    const result = await Effect.runPromise(
+      loadLandofileLayers(root, join(root, ".lando.yml"), {
+        readOnly: true,
+        ports: makeTestLandofilePorts(root),
+        templates: { modules: [] },
+        transactionGuard: {
+          ensureConsistent: () => Effect.die("read-only load attempted recovery"),
+          pending: () => Effect.die("guard owns journal inspection"),
+          assertReadable: () => Effect.fail(failure),
+        },
+      }).pipe(Effect.result),
+    );
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
+    expect(await Bun.file(join(root, ".lando.yml")).exists()).toBe(false);
+  });
+});
+
 test("loads repaired layers when the guard changes the file set before enumeration", async () => {
   await withApp(async (root) => {
     // Given: a partial canonical file and a guard that repairs both layers.

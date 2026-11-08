@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { Socket } from "node:net";
+import { resolve } from "node:path";
 import { createStdioRendererIO } from "@lando/renderer/io";
 import { writeResultLine } from "@lando/renderer/output";
 import { Deferred, Effect, Layer } from "effect";
@@ -39,7 +40,7 @@ const fakeStdin = {
   off: () => {},
 };
 
-test("a command that writes forever is interrupted when stdout breaks, resolves, and writes no diagnostic", async () => {
+const verifyBrokenStdoutInterrupts = async (): Promise<void> => {
   // Given: only one stdout notification exists per process; this scenario owns it.
   const stdout = fakeStream(3);
   const stderr = fakeStream();
@@ -84,6 +85,30 @@ test("a command that writes forever is interrupted when stdout breaks, resolves,
     await Effect.runPromise(Deferred.succeed(stop, undefined));
     await running;
   }
+};
+
+test("a command that writes forever is interrupted when stdout breaks, resolves, and writes no diagnostic", async () => {
+  if (process.env.LANDO_TEST_BROKEN_STDOUT_CHILD === "1") {
+    await verifyBrokenStdoutInterrupts();
+    return;
+  }
+
+  // Destination notifications are process-lifetime state. Run this scenario
+  // in its own Bun test process so an earlier EPIPE cannot consume its signal.
+  const child = Bun.spawn({
+    cmd: [process.execPath, "--no-orphans", "test", import.meta.path],
+    cwd: resolve(import.meta.dirname, "../../.."),
+    env: { ...process.env, LANDO_TEST_BROKEN_STDOUT_CHILD: "1" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  expect({ exitCode, stdout, stderr }).toMatchObject({ exitCode: 0 });
+  expect(stderr).toMatch(/2 pass\s*\n\s*0 fail/u);
 });
 
 test("finalizers still run when a stream breaks", async () => {

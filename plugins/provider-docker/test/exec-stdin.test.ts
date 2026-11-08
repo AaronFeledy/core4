@@ -25,7 +25,7 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-exec-stdin-app-web";
+const containerName = "lando-exec-stdin-app--web";
 const createPath = `/containers/${containerName}/exec` as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),

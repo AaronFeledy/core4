@@ -36,7 +36,7 @@ test.each(["always", "unless-stopped", "on-failure"])(
           app: plan.id,
           service: target.service,
           providerId: plan.provider,
-          status: "stopped",
+          status: "exited" as const,
           exitCode: 17,
           publications: { status: "unknown" },
         }),
@@ -76,7 +76,7 @@ test.each([undefined, "no", "on-failure"])(
           app: plan.id,
           service: target.service,
           providerId: plan.provider,
-          status: "stopped",
+          status: "exited" as const,
           exitCode: restart === "on-failure" ? 0 : 17,
           publications: { status: "unknown" as const },
         }),
@@ -93,7 +93,7 @@ test.each([undefined, "no", "on-failure"])(
   },
 );
 
-test.each(["unknown", "stopped"])(
+test.each(["unknown", "exited"] as const)(
   "supervision does not invent an exit for %s without terminal evidence",
   async (status) => {
     const provider = {
@@ -146,11 +146,10 @@ test("a supervised crash loop stops its healthcheck wait on the first exit", asy
         app: plan.id,
         service: target.service,
         providerId: plan.provider,
-        status: now >= 250 ? "stopped" : "running",
         publications: { status: "unknown" as const },
         containerId: "worker",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
-        ...(now >= 250 ? { exitCode: 7 } : {}),
+        ...(now >= 250 ? { status: "exited" as const, exitCode: 7 } : { status: "running" as const }),
       })),
     exec: () => Effect.never,
   });
@@ -223,7 +222,7 @@ test("a supervised restart while a sibling waits is downgraded once", async () =
         app: plan.id,
         service: target.service,
         providerId: plan.provider,
-        status: "running",
+        status: "running" as const,
         publications: { status: "unknown" as const },
         containerId: "container",
         lastStartedAt: DateTime.toDate(

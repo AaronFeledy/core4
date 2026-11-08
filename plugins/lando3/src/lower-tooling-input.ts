@@ -187,7 +187,7 @@ export const lowerFlags = (
   }
   if (Object.keys(flags).length === 0) return undefined;
   report(
-    "rewritten",
+    "needs-review",
     path,
     "Options became flags. Lando 4 forwards every flag that has a value to the command as --name=value and rejects flags the task does not declare.",
     "Review the flags and how the command reads them.",
@@ -256,7 +256,7 @@ export const lowerPositionals = (
     args[name] = out;
   }
   report(
-    "rewritten",
+    "needs-review",
     tokens.length > 0 ? taskPath : [...taskPath, "positionals"],
     "Positional arguments became args. Lando 4 hands them to the command as $1 onward after any declared flags.",
     "Review the args and how the command reads them.",

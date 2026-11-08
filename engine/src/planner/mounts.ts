@@ -7,17 +7,22 @@ import {
   type ServiceConfig,
   type ServicePlan,
   duplicateMountTarget,
+  landoServiceShadowStoreName,
   orderMounts,
   serviceAppMount,
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
-import { compileAuthoredMounts, excludeDestination, literalIncludeError } from "./authored-mounts.ts";
-import { bindRealization } from "./compose-capabilities.ts";
+import {
+  type CompiledAuthoredMounts,
+  compileAuthoredMounts,
+  excludeDestination,
+  literalIncludeError,
+} from "./authored-mounts.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY, serviceFeatureExtension } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
-import { kebab, shortHash } from "./naming.ts";
+import { shortHash } from "./naming.ts";
 import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
 import { plannedContainerDestination } from "./storage.ts";
 
@@ -27,11 +32,14 @@ export const prepareServiceMounts = (input: {
   readonly servicePlan: ServicePlan;
   readonly normalizedConfig: ServiceConfig;
   readonly storage: ServiceConfig["storage"];
-}): ServicePlan | LandofileValidationError | ServiceFeatureError => {
+}):
+  | { readonly servicePlan: ServicePlan; readonly storageByTarget: CompiledAuthoredMounts["storageByTarget"] }
+  | LandofileValidationError
+  | ServiceFeatureError => {
   const service = mergeDefaultExcludes(input.servicePlan);
   const authored = compileAuthoredMounts(input.context, input.normalizedConfig, input.storage);
   if (authored instanceof LandofileValidationError) return authored;
-  const targets = new Set(authored.map((mount) => mount.target));
+  const targets = new Set(authored.mounts.map((mount) => mount.target));
   const mounts: MountPlan[] = [];
   for (const mount of service.mounts) {
     const target = plannedContainerDestination(mount.target, input.context.appRoot, [
@@ -42,7 +50,7 @@ export const prepareServiceMounts = (input: {
     if (target instanceof LandofileValidationError) return target;
     if (!targets.has(target)) mounts.push({ ...mount, target });
   }
-  mounts.push(...authored);
+  mounts.push(...authored.mounts);
   const duplicate = duplicateMountTarget(mounts);
   if (duplicate !== undefined)
     return new ServiceFeatureError({
@@ -59,9 +67,12 @@ export const prepareServiceMounts = (input: {
     ? trees.filter((tree: { readonly target: string }) => volumes.has(tree.target))
     : [];
   return {
-    ...service,
-    mounts,
-    extensions: { ...service.extensions, [SERVICE_FEATURES_EXTENSION_KEY]: { ...extension, dataTrees } },
+    storageByTarget: authored.storageByTarget,
+    servicePlan: {
+      ...service,
+      mounts,
+      extensions: { ...service.extensions, [SERVICE_FEATURES_EXTENSION_KEY]: { ...extension, dataTrees } },
+    },
   };
 };
 
@@ -95,7 +106,7 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
       const shadow: MountPlan = {
         type: "volume",
         origin: "derived",
-        store: `${input.context.appSlug}-${input.context.serviceName}-${kebab(target)}-${shortHash(target)}`,
+        store: landoServiceShadowStoreName(input.context.appSlug, input.context.serviceName, target),
         target,
         readOnly: false,
       };
@@ -135,12 +146,13 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
 export const realizeServiceMounts = (
   service: ServicePlan,
   capabilities: ProviderCapabilities,
+  accelerate = capabilities.bindMountPerformance === "slow",
 ): ServicePlan => ({
   ...service,
   mounts: orderMounts(service.mounts).map((mount) => {
     if (mount.type !== "bind") return mount;
     const { mountKey: _mountKey, ...bind } = mount;
-    const realization = bind.role === "app" ? bindRealization(capabilities) : "passthrough";
+    const realization = bind.role === "app" && accelerate ? "accelerated" : "passthrough";
     if (realization === "passthrough") return { ...bind, realization };
     return {
       ...bind,

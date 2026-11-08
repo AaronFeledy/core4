@@ -36,6 +36,7 @@ import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
+import { lifecycleFileSyncPlugin } from "./lifecycle-file-sync-plugin.ts";
 
 const fixedDateTime = DateTime.makeUnsafe("2026-06-22T00:00:00Z");
 
@@ -188,6 +189,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   let appliedPlan: AppPlan | undefined;
   return RuntimeProvider.of({
     ...provider,
+    capabilities: { ...provider.capabilities, fileSyncTargets: "prepared-volume" },
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
       Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
@@ -203,7 +205,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
                 sessions: appliedPlan.fileSync.map((entry) => entry.session),
               },
       ),
-    quiesceForFileSync: () => Effect.void,
+    quiesceForFileSync: () => Effect.succeed({}),
     apply: (plan, options) =>
       provider.apply(plan, options).pipe(
         Effect.tap(() =>
@@ -289,6 +291,7 @@ const appLayer = (
     bootstrap: "app",
     plugins: {
       policy: "bundled-only",
+      manifests: [lifecycleFileSyncPlugin(engine)],
       layers: [
         Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
         Layer.succeed(
@@ -314,7 +317,6 @@ const appLayer = (
           }),
         ),
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
-        Layer.succeed(FileSyncEngine, FileSyncEngine.of(engine)),
         Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       ],
     },
@@ -431,9 +433,9 @@ describe("App handle managed lifecycle scopes", () => {
             });
             const provider: RuntimeProviderShape = {
               ...TestRuntimeProvider,
-              apply: () =>
+              apply: (plan, options) =>
                 !failApply
-                  ? Effect.succeed({ changed: true })
+                  ? TestRuntimeProvider.apply(plan, options)
                   : resume && mode === "interrupt"
                     ? Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never))
                     : Effect.fail(primary),
@@ -516,9 +518,9 @@ describe("App handle managed lifecycle scopes", () => {
           });
           const provider: RuntimeProviderShape = {
             ...TestRuntimeProvider,
-            apply: () =>
+            apply: (plan, options) =>
               !failApply
-                ? Effect.succeed({ changed: true })
+                ? TestRuntimeProvider.apply(plan, options)
                 : mode === "failure"
                   ? Effect.fail(primary)
                   : Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never)),
@@ -1127,7 +1129,7 @@ describe("App handle managed lifecycle scopes", () => {
       let finalizerCalls = 0;
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        apply: Effect.fnUntraced(function* () {
+        apply: Effect.fnUntraced(function* (plan, options) {
           applyCalls += 1;
           if (applyCalls === 2) {
             return yield* Effect.fail(
@@ -1140,7 +1142,7 @@ describe("App handle managed lifecycle scopes", () => {
               }),
             );
           }
-          return { changed: false };
+          return yield* TestRuntimeProvider.apply(plan, options);
         }),
       };
       const engine: FileSyncEngineShape = {
@@ -1355,6 +1357,7 @@ describe("App handle managed lifecycle scopes", () => {
               cwd: dir,
               plugins: {
                 policy: "bundled-only",
+                manifests: [lifecycleFileSyncPlugin(tracking.engine)],
                 layers: [
                   Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
                   Layer.succeed(
@@ -1372,7 +1375,6 @@ describe("App handle managed lifecycle scopes", () => {
                     AppPlanner,
                     AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                   ),
-                  Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
                   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
                 ],
               },

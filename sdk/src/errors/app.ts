@@ -1,6 +1,19 @@
 import { Schema } from "effect";
 import { AppRef } from "../schema/networking.ts";
 
+export class AppDataIdentityError extends Schema.TaggedError<AppDataIdentityError>()("AppDataIdentityError", {
+  appRoot: Schema.String.annotate({
+    description: "Canonical app folder whose durable data identity could not be established.",
+  }),
+  message: Schema.String.annotate({ description: "Reason the data identity cannot be used safely." }),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+    description: "Action that restores readable data identity or allows a fresh plan on retry.",
+  }),
+  cause: Schema.optional(Schema.Unknown).annotate({
+    description: "State store failure behind an unreadable or unwritable data identity record.",
+  }),
+}) {}
+
 /** Creation never relocates an app that has applied state on another provider. */
 export class AppPlacementError extends Schema.TaggedError<AppPlacementError>()("AppPlacementError", {
   app: AppRef.annotate({ description: "App whose canonical root already has an applied realization." }),

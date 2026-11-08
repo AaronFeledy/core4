@@ -13,7 +13,6 @@ import {
   type SetupReadinessRecorder,
   makeSetupReadinessRecorder,
   runFileSyncSetupStep,
-  setupDeferredFileSyncPath,
 } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import type { ResolvedSetupNetworkTrust } from "../../src/cli/commands/setup-network-trust.ts";
 import { type SetupReadinessStep, setupReadinessPath } from "../../src/cli/commands/setup-readiness.ts";
@@ -23,7 +22,9 @@ const network = {
   ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
 } satisfies ResolvedSetupNetworkTrust;
 
-const slowProvider = { capabilities: { bindMountPerformance: "slow" } } as const;
+const slowProvider = {
+  capabilities: { bindMountPerformance: "slow", fileSyncTargets: "prepared-volume" },
+} as const;
 const nativeProvider = { capabilities: { bindMountPerformance: "native" } } as const;
 
 const makeRecorder = () => {
@@ -67,7 +68,14 @@ describe("file-sync setup step", () => {
         userDataRoot: "/tmp/lando-test",
         network,
         recorder,
-      }).pipe(Effect.provide(Layer.succeed(FileSyncEngine, fileSync))),
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            FileSyncResolver.layerWithEngine(fileSync, { platform: ["linux", "darwin", "win32"] }),
+            Layer.succeed(PathsService, makeLandoPaths()),
+          ),
+        ),
+      ),
     );
 
     expect(status).toBe("installed");
@@ -92,28 +100,30 @@ describe("file-sync setup step", () => {
     expect(steps.map((step) => step.status)).toEqual(["skipped"]);
   });
 
-  test("returns deferred and records the bundled engine id when setup is skipped", async () => {
-    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-step-deferred-"));
-    const { recorder, steps } = makeRecorder();
-    try {
-      const status = await Effect.runPromise(
-        runFileSyncSetupStep({
-          provider: slowProvider,
-          input: { flags: { "skip-file-sync": true } },
-          userDataRoot,
-          network,
-          recorder,
-        }),
-      );
-      const marker: unknown = JSON.parse(await readFile(setupDeferredFileSyncPath(userDataRoot), "utf-8"));
+  test.each([undefined, "mutagen"])(
+    "records deferred setup without inventing an engine id (%s)",
+    async (defaultEngine) => {
+      const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-step-deferred-"));
+      const { recorder, steps } = makeRecorder();
+      try {
+        const status = await Effect.runPromise(
+          runFileSyncSetupStep({
+            provider: slowProvider,
+            input: { flags: { "skip-file-sync": true } },
+            ...(defaultEngine === undefined ? {} : { defaultEngine }),
+            userDataRoot,
+            network,
+            recorder,
+          }),
+        );
 
-      expect(status).toBe("deferred");
-      expect(marker).toEqual({ status: "deferred", engineId: "mutagen", resumeCommand: "lando setup" });
-      expect(steps.map((step) => step.status)).toEqual(["deferred"]);
-    } finally {
-      await rm(userDataRoot, { recursive: true, force: true });
-    }
-  });
+        expect(status).toBe("deferred");
+        expect(steps.map((step) => step.status)).toEqual(["deferred"]);
+      } finally {
+        await rm(userDataRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("returns satisfied without resolving an engine for native bind mounts", async () => {
     const { recorder, steps } = makeRecorder();
@@ -148,7 +158,7 @@ describe("setup readiness recorder", () => {
       // Then: inspect the persisted bytes, not the redacting read helper.
       const persisted: unknown = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8"));
       expect(persisted).toMatchObject({
-        status: "failed",
+        status: "in-progress",
         providerId: "podman",
         steps: [
           {
@@ -182,3 +192,6 @@ describe("setup readiness recorder", () => {
     }
   });
 });
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { makeLandoPaths } from "@lando/paths";
+import { PathsService } from "@lando/sdk/services";

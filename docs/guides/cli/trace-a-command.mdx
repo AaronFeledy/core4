@@ -3,7 +3,7 @@ id: trace-a-command
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, cli, tracing]
+tags: [docs, cli, tracing]
 ---
 
 # Trace a slow command
@@ -64,6 +64,9 @@ Attributes pass through the same redaction as the rest of the envelope. A token 
       <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"spans\":\\s*\\[\\s*\\{" } }} />
       <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"lando meta:config\"" } }} />
       <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"droppedSpans\":\\s*0" } }} />
+    </Step>
+    <Step name="slowest-spans">
+      <Verify command={`lando config --trace --jq ".trace.spans | sort_by(.durationMs) | reverse | .[0:5]"`} expect={{ stdout: { regex: "^\\s*\\[[\\s\\S]*\"durationMs\"" } }} />
     </Step>
   </Scenario>
 </Guide>

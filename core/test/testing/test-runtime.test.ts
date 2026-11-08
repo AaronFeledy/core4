@@ -468,6 +468,36 @@ describe("@lando/core/testing", () => {
     });
   });
 
+  test("scratch registry double preserves detach through stale writes and rejects illegal transitions", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* ScratchRegistry;
+        const original = {
+          id: "scratch-detach",
+          source: { kind: "fork" as const },
+          isolate: "full" as const,
+          detached: false,
+          rootPath: "/scratch/root",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+        yield* registry.upsert("acquire", original);
+        yield* registry.upsert("detach", original);
+        yield* registry.upsert("mark-running", original);
+        const running = yield* registry.get(original.id);
+        yield* registry.upsert("mark-pending-cleanup", original);
+        const rejected = yield* registry.upsert("mark-running", original).pipe(Effect.result);
+        return { running, rejected };
+      }).pipe(Effect.provide(provideTestRuntime({ bootstrap: "scratch" }))),
+    );
+
+    expect(result.running).toMatchObject({ detached: true, status: "running" });
+    expect(result.rejected._tag).toBe("Failure");
+    if (result.rejected._tag === "Failure") {
+      expect(result.rejected.failure).toMatchObject({ _tag: "ScratchAppError", operation: "registry.write" });
+    }
+  });
+
   test("scratch bootstrap keeps scratch service and registry doubles consistent", async () => {
     const layer = provideTestRuntime({ bootstrap: "scratch" });
 

@@ -17,6 +17,7 @@ import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
 import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
 import { type PrivateFileAccess, PrivateFileAccessService } from "./private-file-access.ts";
+import { validateCacheSpec } from "./spec.ts";
 
 const ioError = (operation: string, path: string, cause: unknown): StateStoreError =>
   new StateStoreError({
@@ -82,6 +83,7 @@ export const makeStateStore = (options: {
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
         resolveStatePath(spec.root, spec.namespace, spec.key, "open", roots).pipe(
+          Effect.tap(() => validateCacheSpec(spec)),
           Effect.map((resolved) =>
             buildStateBucket(spec, resolved.file, makeDiskBucketBackend(options.privateFileAccess)),
           ),
@@ -113,3 +115,12 @@ export const layerWithPrivateFileAccess: Layer.Layer<StateStore, never, PrivateF
 export const layer: Layer.Layer<StateStore> = layerWithPrivateFileAccess.pipe(
   Layer.provide(PrivateFileAccessService.layer),
 );
+
+/** A disk store over roots a caller resolved itself, such as from a CLI invocation's environment. */
+export const layerAt = (roots: LandoRoots): Layer.Layer<StateStore> =>
+  Layer.effect(
+    StateStore,
+    Effect.gen(function* () {
+      return makeStateStore({ privateFileAccess: yield* PrivateFileAccessService, roots });
+    }),
+  ).pipe(Layer.provide(PrivateFileAccessService.layer));

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { engineInfoArchitecture } from "@lando/container-runtime/capabilities";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
-import { AppInfoResultSchema } from "@lando/engine/operations/info";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeLandoPaths } from "@lando/paths";
 import { mvpProviderCapabilities } from "@lando/provider-lando";
 import { makePodmanApiClient, podmanCapabilitiesForPlatform } from "@lando/provider-podman";
+import { InfoAppResult } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
 import { selectCatalogHomes } from "./home-persistence-fixture.ts";
@@ -118,7 +118,7 @@ test.skipIf(socket === undefined)(
       const result = await lando(["info", "--format=json"]);
       const envelope = decodeInfoCliEnvelope(result.stdout);
       expect(envelope.ok, result.stdout).toBe(true);
-      return Schema.decodeUnknownSync(AppInfoResultSchema)(envelope.result);
+      return Schema.decodeUnknownSync(InfoAppResult)(envelope.result);
     };
     const homeFor = async (service: string) => {
       const home = (await info()).services.find((row) => row.service === service)?.home;

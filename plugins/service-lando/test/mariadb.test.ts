@@ -87,7 +87,7 @@ describe("mariadb ServiceType", () => {
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe(plan.environment.MARIADB_ROOT_PASSWORD);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-mariadb-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--mariadb-data");
     expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
@@ -190,6 +190,7 @@ describe("mariadb ServiceType", () => {
 
     // Then
     expect(resolution.tooling?.mariadb).toEqual({
+      wrapper: true,
       description: "Open the MariaDB client for this service.",
       dir: PortablePath.make("/"),
       service: "db",

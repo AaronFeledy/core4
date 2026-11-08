@@ -16,6 +16,8 @@ import { type AgentRelaySession, agentSocketMountPlan } from "./session.ts";
 const Intent = Schema.Struct({ mode: Schema.Literals(["host", "sidecar"]) });
 const Features = Schema.Struct({ featureIds: Schema.Array(Schema.String) });
 const target = PortablePath.make(AGENT_SOCKET_CONTAINER_DIR.ssh);
+const knownHostsTarget = PortablePath.make("/etc/ssh/ssh_known_hosts");
+const ownedTargets: readonly string[] = [target, knownHostsTarget];
 type OverlaySession = Pick<AgentRelaySession, "mount" | "kind" | "socketName">;
 
 export const serviceHasSshAgentFeature = (service: ServicePlan): boolean => {
@@ -25,6 +27,26 @@ export const serviceHasSshAgentFeature = (service: ServicePlan): boolean => {
 };
 export const sshAgentEligibleServices = (plan: AppPlan) =>
   Object.values(plan.services).filter(serviceHasSshAgentFeature);
+
+export const validateSshAgentOverlay = (plan: AppPlan) =>
+  Effect.forEach(
+    sshAgentEligibleServices(plan),
+    (service) => {
+      const duplicate =
+        duplicateMountTarget(orderMounts(service.mounts)) ??
+        service.mounts.find((mount) => mount.target === target)?.target;
+      return duplicate === undefined
+        ? Effect.void
+        : Effect.fail(
+            new SshAgentTransportError({
+              message: `SSH agent mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+              stage: "bridge",
+              remediation: "Remove the conflicting mount or disable the ssh-agent feature for this service.",
+            }),
+          );
+    },
+    { discard: true },
+  );
 
 export const agentSocketOverlayFeature = (session: OverlaySession) => ({
   apply: (service: {
@@ -44,7 +66,8 @@ const stripService = (service: ServicePlan): ServicePlan => ({
     ),
   ),
   mounts: service.mounts.filter(
-    (mount) => mount.target !== target || (mount.origin !== undefined && mount.origin !== "integration"),
+    (mount) =>
+      !ownedTargets.includes(mount.target) || (mount.origin !== undefined && mount.origin !== "integration"),
   ),
 });
 
@@ -58,6 +81,7 @@ export const stripSshAgentOverlay = (plan: AppPlan): AppPlan => ({
 export const withSshAgentOverlay = Effect.fnUntraced(function* (
   plan: AppPlan,
   session: OverlaySession,
+  options?: { readonly knownHostsFile?: string; readonly knownHostsSourceIdentity?: string },
 ): Effect.fn.Return<AppPlan, SshAgentTransportError> {
   const services = { ...plan.services };
   for (const service of Object.values(plan.services)) {
@@ -72,6 +96,25 @@ export const withSshAgentOverlay = Effect.fnUntraced(function* (
         mounts.push(mount);
       },
     });
+    // Existing ownership wins, including directories where a nested bind could create a host file.
+    const knownHostsOwned = service.mounts.some((mount) => {
+      const mountTarget = mount.target.replace(/\/+$/, "");
+      return knownHostsTarget === mountTarget || knownHostsTarget.startsWith(`${mountTarget}/`);
+    });
+    if (options?.knownHostsFile !== undefined && !knownHostsOwned) {
+      mounts.push({
+        type: "bind",
+        origin: "integration",
+        source: options.knownHostsFile,
+        ...(options.knownHostsSourceIdentity === undefined
+          ? {}
+          : { sourceIdentity: options.knownHostsSourceIdentity }),
+        target: knownHostsTarget,
+        readOnly: true,
+        createHostPath: false,
+        realization: "passthrough",
+      });
+    }
     const ordered = orderMounts(mounts);
     const duplicate = duplicateMountTarget(ordered);
     if (duplicate !== undefined) {

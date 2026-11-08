@@ -84,13 +84,6 @@ export class CaError extends Schema.TaggedError<CaError>()("CaError", {
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-export class HostProxyError extends Schema.TaggedError<HostProxyError>()("HostProxyError", {
-  message: Schema.String,
-  hostProxyId: Schema.String,
-  remediation: Remediation,
-  cause: Schema.optional(Schema.Unknown),
-}) {}
-
 export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeBootstrapError>()(
   "LandoRuntimeBootstrapError",
   {

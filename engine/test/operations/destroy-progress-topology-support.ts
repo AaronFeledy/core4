@@ -20,7 +20,7 @@ import {
   AppPlanner,
   DataMover,
   EventService,
-  FileSyncEngine,
+  type FileSyncEngine,
   LandofileService,
   PathsService,
   RouterService,
@@ -37,6 +37,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
 
 export { destroyTreeId };
 
@@ -123,11 +124,12 @@ export const makeHarness = (
         }),
     ...(options.quiesceEffect === undefined
       ? {}
-      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
+      : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
+    layerTransactionGuard,
     options.dataMover === undefined ? emptySnapshotsLayer : Layer.succeed(DataMover, options.dataMover),
     PrivateFileAccessService.layer,
     // The app root holds no Landofile, so teardown skips Landofile events before it would plan.
@@ -168,12 +170,13 @@ export const makeHarness = (
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
     ),
     ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
-    ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
+    ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
   );
   return { layer, events };
 };
@@ -189,3 +192,4 @@ export const runDestroyTarget = (
       app: { kind: "user", id: plan.id, root: plan.root },
     }).pipe(Effect.provide(harness.layer)),
   );
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";

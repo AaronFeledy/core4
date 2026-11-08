@@ -2,23 +2,32 @@
 import { Effect, Schema } from "effect";
 
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
-import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
+import { encodeCommandResult } from "@lando/sdk/command-result";
+import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
+import type { ToolingMetadataStatus } from "./tooling-cache-status";
 
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 
-import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import {
-  MORE_ROWS,
-  type ThisAppHelpRow,
-  commonRows,
-  renderColdRootHelp,
-  visibleHelpRows,
-} from "./cold-path-output";
-import { emitResultLine } from "./compiled-runtime";
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../runtime/invocation-context";
+import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
+import { buildCommandCatalog } from "./command-catalog";
+import { activeResultFormat, emitResultLine } from "./compiled-runtime";
+import { isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
+import { HelpCommandDescriptor } from "./help-command-descriptor";
+import { commandHelpInput } from "./help-command-input";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
+import { helpRedactor } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
+import { printMachineHelpTarget } from "./help-target";
+import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
+import { moreRows } from "./root-help-topics";
 
 import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 
@@ -26,18 +35,30 @@ export { renderCommandHelp, renderToolingHelp } from "./cli-help";
 
 const HELP_CATALOG_COMMAND = "cli:help" as const;
 
-export const HelpCatalogRow = Schema.Struct({
-  typeable: Schema.String,
-  extras: Schema.Array(Schema.String),
-  canonicalId: Schema.String,
-  summary: Schema.String,
-  source: Schema.Literals(["built-in", "tooling"]),
-});
+export const HelpCatalogRow = HelpCommandDescriptor;
 
 export const HelpCatalogResult = Schema.Struct({
   version: Schema.String,
   platform: Schema.String,
   arch: Schema.String,
+  pluginMetadata: PluginMetadata,
+  toolingMetadata: Schema.Union([
+    Schema.Struct({ status: Schema.Literals(["fresh", "not-app"]) }),
+    Schema.Struct({
+      status: Schema.Literal("unavailable"),
+      reason: ToolingCommandUnavailableError.fields.reason,
+      staleReason: ToolingCommandUnavailableError.fields.staleReason,
+      sourcePath: ToolingCommandUnavailableError.fields.sourcePath,
+      remediation: ToolingCommandUnavailableError.fields.remediation,
+    }),
+    Schema.Struct({
+      status: Schema.Literal("unavailable"),
+      reason: Schema.Literal("rebuild-failed"),
+      sourcePath: Schema.optional(Schema.String),
+      remediation: Schema.String,
+      error: Schema.Struct({ _tag: Schema.String, message: Schema.String }),
+    }),
+  ]),
   sections: Schema.Struct({
     common: Schema.Array(HelpCatalogRow),
     thisApp: Schema.Array(HelpCatalogRow),
@@ -57,6 +78,8 @@ const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): T
   hidden: entry.hidden,
   ...(entry.service === undefined ? {} : { service: entry.service }),
   ...(entry.input === undefined ? {} : { input: entry.input }),
+  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
+  ...(entry.source === undefined ? {} : { source: entry.source }),
 });
 
 export const toolingHelpEntryForToken = (
@@ -67,10 +90,10 @@ export const toolingHelpEntryForToken = (
   for (const entry of cache.entries) {
     if (entry.hidden || isBuiltInRegistryId(entry.id)) continue;
     if (entry.id === token) return toToolingHelpEntry(entry);
-    const implicit = entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id;
     const name = typeableName({
       canonicalId: entry.id,
-      builtInAliases: implicit.length === 0 ? [] : [implicit],
+      builtInAliases: [],
+      implicitNamespaceStrip: true,
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     });
     if (name.primary === token || name.extras.includes(token)) return toToolingHelpEntry(entry);
@@ -101,7 +124,7 @@ export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonl
     );
 };
 
-const toCatalogRow = (row: ThisAppHelpRow, source: HelpCatalogRow["source"]): HelpCatalogRow => ({
+const toCatalogRow = (row: ThisAppHelpRow, source: "built-in" | "tooling"): HelpCatalogRow => ({
   typeable: row.primary,
   extras: [...row.extras],
   canonicalId: row.canonicalId,
@@ -112,58 +135,83 @@ const toCatalogRow = (row: ThisAppHelpRow, source: HelpCatalogRow["source"]): He
 const byTypeable = (left: HelpCatalogRow, right: HelpCatalogRow): number =>
   left.typeable.localeCompare(right.typeable) || left.canonicalId.localeCompare(right.canonicalId);
 
-export const buildHelpCatalog = (cache?: AppCommandIndexPayload | null): HelpCatalogResult => {
+export const pluginRowsForCache = (
+  rows: PluginCommandListing["rows"],
+  cache?: AppCommandIndexPayload | null,
+): PluginCommandListing["rows"] => {
+  return buildCommandCatalog(rows, cache).entries.flatMap((entry) =>
+    entry.plugin === undefined || entry.hidden ? [] : [{ ...entry.plugin, tokens: entry.tokens }],
+  );
+};
+
+export const buildHelpCatalog = (
+  cache?: AppCommandIndexPayload | null,
+  metadata?: ToolingMetadataStatus,
+  plugins?: PluginCommandListing,
+): HelpCatalogResult => {
   const aliasPolicy = cache?.aliasPolicy;
   const common = commonRows(aliasPolicy).map((row) => toCatalogRow(row, "built-in"));
   const thisApp =
     cache == null ? [] : thisAppHelpRowsFromCache(cache).map((row) => toCatalogRow(row, "tooling"));
-  const more = MORE_ROWS.map((row) => ({
+  const more = moreRows(plugins?.topics).map((row) => ({
     typeable: row.token,
     extras: [],
     canonicalId: row.token,
     summary: row.summary,
     source: "built-in" as const,
   }));
-  const builtIns = visibleHelpRows(aliasPolicy).map((row) => toCatalogRow(row, "built-in"));
+  const catalog = buildCommandCatalog(plugins?.rows ?? [], cache);
   return {
     version: CORE_VERSION,
     platform: process.platform,
     arch: process.arch,
+    toolingMetadata: metadata ?? { status: cache == null ? "not-app" : "fresh" },
+    pluginMetadata: plugins?.metadata ?? { status: "available" },
     sections: { common, thisApp, more },
-    all: [...builtIns, ...thisApp].toSorted(byTypeable),
+    all: catalog.entries
+      .filter((entry) => !entry.hidden)
+      .map((entry): HelpCatalogRow => {
+        const row = {
+          canonicalId: entry.id,
+          typeable: entry.primary,
+          extras: entry.extras,
+          summary: entry.summary,
+        };
+        if (entry.plugin !== undefined)
+          return {
+            ...row,
+            source: "plugin",
+            plugin: entry.plugin.pluginName,
+            provenance: entry.plugin.source,
+            implementation: entry.plugin.spec === undefined ? "discovered" : "validated",
+            ...(entry.plugin.loadError === undefined ? {} : { loadError: entry.plugin.loadError }),
+          };
+        return { ...row, source: entry.source === "tooling" ? "tooling" : "built-in" };
+      })
+      .toSorted(byTypeable),
   };
 };
 
 export const printHelpCatalogJson = (
   cache?: AppCommandIndexPayload | null,
   format: CommandResultEnvelopeFormat = "json",
-): Promise<void> => {
-  const line = Effect.runSync(
-    encodeCommandResult({
-      command: HELP_CATALOG_COMMAND,
-      resultSchema: HelpCatalogResult,
-      outcome: { _tag: "success", value: buildHelpCatalog(cache) },
-      redactor: identityRedactor,
-      format,
-    }),
+  metadata?: ToolingMetadataStatus,
+  plugins?: PluginCommandListing,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const redactor = yield* helpRedactor;
+      const line = yield* encodeCommandResult({
+        command: HELP_CATALOG_COMMAND,
+        resultSchema: HelpCatalogResult,
+        outcome: { _tag: "success", value: buildHelpCatalog(cache, metadata, plugins) },
+        redactor,
+        format,
+      });
+      yield* Effect.promise(() => emitResultLine(line, context));
+    }).pipe(Effect.provideService(CliInvocation, context)),
   );
-  return emitResultLine(line);
-};
-
-export const printRootHelp = (
-  activeAliases?: ReadonlyArray<readonly [string, string]>,
-  cache?: AppCommandIndexPayload | null,
-): Promise<void> => {
-  if (cache == null) {
-    return emitResultLine(renderColdRootHelp(activeAliases));
-  }
-  return emitResultLine(
-    renderColdRootHelp(activeAliases, {
-      thisAppRows: thisAppHelpRowsFromCache(cache),
-      ...(cache.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
-    }),
-  );
-};
 
 const rendererModeFrom = (
   argv: ReadonlyArray<string>,
@@ -179,31 +227,74 @@ const rendererModeFrom = (
   return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
 };
 
-export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
+export const printCommandHelp = (
+  entry: BuiltInCommandEntry,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) {
+    return printMachineHelpTarget(
+      {
+        canonicalId: entry.spec.id,
+        typeable: entry.spec.id,
+        extras: [],
+        summary: entry.spec.summary,
+        source: "built-in",
+        input: commandHelpInput(entry.spec),
+      },
+      activeResultFormat,
+      context,
+    );
+  }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderCommandHelp(entry, {
       styled: shouldStyleHelp({
-        isTTY: process.stdout.isTTY === true,
-        env: process.env,
+        isTTY: context.io.stdoutIsTTY === true,
+        env: context.env,
         argv,
-        rendererMode: rendererModeFrom(argv, process.env),
+        rendererMode: rendererModeFrom(argv, context.env),
       }),
     }),
+    context,
   );
 };
 
-export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): Promise<void> => {
+export const printToolingHelp = (
+  entry: ToolingHelpEntry,
+  aliasPolicy?: HelpAliasPolicy,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) {
+    const names = typeableName({
+      canonicalId: entry.id,
+      builtInAliases: [],
+      implicitNamespaceStrip: true,
+      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+    });
+    return printMachineHelpTarget(
+      {
+        canonicalId: entry.id,
+        typeable: names.primary,
+        extras: [...names.extras],
+        summary: entry.summary,
+        source: "tooling",
+        ...(entry.input === undefined ? {} : { input: entry.input }),
+      },
+      activeResultFormat,
+      context,
+    );
+  }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
-        isTTY: process.stdout.isTTY === true,
-        env: process.env,
+        isTTY: context.io.stdoutIsTTY === true,
+        env: context.env,
         argv,
-        rendererMode: rendererModeFrom(argv, process.env),
+        rendererMode: rendererModeFrom(argv, context.env),
       }),
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),
+    context,
   );
 };

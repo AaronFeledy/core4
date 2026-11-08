@@ -128,20 +128,49 @@ describe("ensureGlobalServicesRunning", () => {
     });
   });
 
-  test("subset starts retain the complete global plan for later poweroff", async () => {
+  test("a cold selected ensure excludes never-started siblings from recorded metadata", async () => {
     await withHarness(
       async (harness) => {
-        // Given two independently started global services, ensure only the router.
+        // Given two available contributions, ensure only the router.
         await Effect.runPromise(
           ensureGlobalServicesRunning({ services: ["traefik"] }).pipe(Effect.provide(harness.layer)),
         );
-        // Then apply only the router, but retain both services for app-wide teardown.
+        // Then execution and recorded evidence include only the service actually started.
         const call = harness.applyCalls[0];
         expect(Object.keys(call?.plan.services ?? {})).toEqual(["traefik"]);
-        expect(Object.keys(call?.options.recordedPlan?.services ?? {}).sort()).toEqual([
+        expect(Object.keys(call?.options.recordedPlan?.services ?? {})).toEqual(["traefik"]);
+      },
+      ["traefik", "ssh-agent"],
+    );
+  });
+
+  test("selected ensure preserves an observed previously started sibling in recorded metadata", async () => {
+    await withHarness(
+      async (harness) => {
+        await Effect.runPromise(
+          ensureGlobalServicesRunning({ services: ["ssh-agent"] }).pipe(Effect.provide(harness.layer)),
+        );
+        const prior = harness.applyCalls[0]?.options.recordedPlan;
+        const sibling = prior?.services[ServiceName.make("ssh-agent")];
+        if (prior === undefined || sibling === undefined) throw new Error("fixture must start the sibling");
+        await Effect.runPromise(
+          ensureGlobalServicesRunning({ services: ["traefik"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(harness.applyCalls).toHaveLength(2);
+        const selected = harness.applyCalls[1];
+        expect(Object.keys(selected?.plan.services ?? {})).toEqual(["traefik"]);
+        expect(Object.keys(selected?.options.recordedPlan?.services ?? {}).sort()).toEqual([
           "ssh-agent",
           "traefik",
         ]);
+        const recorded = selected?.options.recordedPlan;
+        const retained = recorded?.services[ServiceName.make("ssh-agent")];
+        if (recorded === undefined || retained === undefined)
+          throw new Error("fixture must retain the sibling");
+        expect({ ...retained, routes: [] }).toEqual({ ...sibling, routes: [] });
+        expect(retained.routes.map((ref) => recorded.routes[ref.index])).toEqual(
+          sibling.routes.map((ref) => prior.routes[ref.index]),
+        );
       },
       ["traefik", "ssh-agent"],
     );

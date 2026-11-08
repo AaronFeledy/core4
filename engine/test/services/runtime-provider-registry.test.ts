@@ -151,6 +151,7 @@ describe("RuntimeProviderRegistryLayer.layer", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       });

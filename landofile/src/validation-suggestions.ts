@@ -119,6 +119,7 @@ export const landofileIssuesFromSchema = (
     return {
       path: leaf.path.map((segment) => (typeof segment === "number" ? segment : String(segment))),
       message: leaf.message,
+      ...(leaf.kind === undefined ? {} : { kind: leaf.kind }),
       ...(suggestion === undefined ? {} : { suggestion }),
     };
   });

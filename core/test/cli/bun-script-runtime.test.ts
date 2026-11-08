@@ -67,7 +67,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
           // Then
           if (expected === undefined) {
             expect(exitCode).not.toBe(0);
-            expect(stderr + stdout).toContain("Recursive `lando bun` invocation detected");
+            expect(stderr + stdout).toContain("code: BunSelfReentryError");
           } else {
             expect(exitCode, stderr || stdout).toBe(0);
             expect(stdout.trim()).toBe(expected);

@@ -13,17 +13,18 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
 
-const MSSQL_LISTENER = {
+export const MSSQL_LISTENER = {
   port: 1433,
-  variable: "MSSQL_TCP_PORT",
+  variables: ["MSSQL_TCP_PORT"],
   daemon: "SQL Server",
+  when: "All SQL Server services",
   reserved: [{ port: 1434, use: "dedicated admin connection" }],
 } as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
@@ -61,7 +62,6 @@ const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCH
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { creds, port } = connectionFor(ctx);
-  const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
   const { ownsStartup } = Schema.decodeUnknownSync(MssqlFeatureConfig)(ctx.config);
 
@@ -74,7 +74,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     MSSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
-    store: `${appName}-mssql-data`,
+    store: ctx.serviceStoreName("mssql-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -102,6 +102,7 @@ const mssqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
         sqlcmd: {
           service: name,
           cmd: [...sqlcmdToolingArgv(connection.port)],
+          wrapper: true,
           env: { SQLCMDPASSWORD: connection.creds.password },
         },
       };
@@ -142,7 +143,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       );
     }
 
-    const appName = appNameFor(input);
+    const appName = dataNameFor(input);
     const authoredEnv = input.service.environment ?? {};
     return serviceTypeResolve(id, "mssql service type failed to resolve", () => {
       const creds = resolveServiceCreds({

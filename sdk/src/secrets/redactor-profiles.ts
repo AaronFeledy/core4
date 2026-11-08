@@ -11,7 +11,9 @@
  *    pattern boundary.
  * 2. The **pattern layer**: a fixed catalog of pattern classes, selected by
  *    profile, that normalizes secrets and PII to deterministic sentinels and
- *    placeholders.
+ *    placeholders. Complete bare npm-style `${IDENT}` / `${IDENT?}` assignment
+ *    and signed-query values are left intact so config examples stay readable;
+ *    suffix, malformed, quoted, escaped, and truncated forms still mask.
  *
  * Three profiles are published:
  *
@@ -31,6 +33,12 @@
  */
 
 import { replacePatternsBounded } from "./bounded-redaction.ts";
+import {
+  ASSIGNMENT_STOP_CLASS,
+  QUERY_STOP_CLASS,
+  keepCompleteEnvPlaceholderOrRedact,
+  unquotedSecretValueSource,
+} from "./env-placeholder.ts";
 import { redactedInspection } from "./inspection.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
 import {
@@ -58,6 +66,7 @@ export type RedactionProfile = (typeof REDACTION_PROFILES)[number];
 export interface CreateRedactorOptions {
   /** Known secret values masked by the value layer before any pattern pass. */
   readonly values?: Iterable<string>;
+  readonly wholeTokenValues?: Iterable<string>;
   /** Explicit secret values; unsafe exact matches suppress the whole affected detail. */
   readonly authoritativeValues?: Iterable<string>;
   /** Environment roots for the `transcript` profile's literal masking. */
@@ -88,8 +97,11 @@ const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
 
+const QUOTED_VALUE_SOURCE = String.raw`\\+"[^"]*\\+"|\\+'[^']*\\+'|"[^"]*"|'[^']*'|`;
+const ASSIGNMENT_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(ASSIGNMENT_STOP_CLASS);
+
 const SECRET_ASSIGNMENT_PATTERN = new RegExp(
-  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(\\+"[^"]*\\+"|\\+'[^']*\\+'|"[^"]*"|'[^']*'|(?:\[redacted\]|[^\s,;"'\]}])+)`,
+  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(${ASSIGNMENT_VALUE_SOURCE})`,
   "giu",
 );
 
@@ -101,10 +113,18 @@ const ENCODED_URL_USERINFO_PATTERN =
 
 const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+(?:\[redacted\]|[\w.~+/=-])+/giu;
 
+const QUERY_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(QUERY_STOP_CLASS);
+
 const SIGNED_QUERY_PARAM_PATTERN = new RegExp(
-  String.raw`([?&](?:[\w-]*[-_])?(?:${SIGNED_QUERY_WORD_SOURCE})=)((?:\[redacted\]|[^&\s"'\]}])+)`,
+  String.raw`([?&](?:[\w-]*[-_])?(?:${SIGNED_QUERY_WORD_SOURCE})=)(${QUERY_VALUE_SOURCE})`,
   "giu",
 );
+
+const keepOrRedactAssignment = (match: string, _name: string, value: string): string =>
+  keepCompleteEnvPlaceholderOrRedact(match, `${_name}=${REDACTED}`, value);
+
+const keepOrRedactQuery = (match: string, prefix: string, value: string): string =>
+  keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${REDACTED}`, value);
 
 const SECRETS_REPLACEMENTS = [
   { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },
@@ -112,9 +132,9 @@ const SECRETS_REPLACEMENTS = [
     pattern: ENCODED_URL_USERINFO_PATTERN,
     replace: (_m: string, scheme: string) => `${scheme}${REDACTED}%40`,
   },
-  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: (_m: string, name: string) => `${name}=${REDACTED}` },
+  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: keepOrRedactAssignment },
   { pattern: BEARER_TOKEN_PATTERN, replace: (_m: string, scheme: string) => `${scheme} ${REDACTED}` },
-  { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: (_m: string, prefix: string) => `${prefix}${REDACTED}` },
+  { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: keepOrRedactQuery },
 ] as const;
 
 const redactSecretsString = (text: string): string =>
@@ -153,13 +173,13 @@ const redactTelemetryString = (text: string): string =>
 export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.freeze({
   secretAssignment: {
     pattern: SECRET_ASSIGNMENT_PATTERN,
-    replace: (_m, name: string) => `${name}=${REDACTED}`,
+    replace: keepOrRedactAssignment,
   },
   urlUserinfo: { pattern: URL_USERINFO_PATTERN, replace: (_m, scheme: string) => `${scheme}${REDACTED}@` },
   bearerToken: { pattern: BEARER_TOKEN_PATTERN, replace: (_m, scheme: string) => `${scheme} ${REDACTED}` },
   signedQueryParam: {
     pattern: SIGNED_QUERY_PARAM_PATTERN,
-    replace: (_m, prefix: string) => `${prefix}${REDACTED}`,
+    replace: keepOrRedactQuery,
   },
   secretKeyedField: { pattern: SECRET_FIELD_PATTERN, replace: REDACTED },
   url: { pattern: TELEMETRY_URL_PATTERN, replace: URL },
@@ -185,7 +205,11 @@ export const createRedactor = (
   profile: RedactionProfile,
   options: CreateRedactorOptions = {},
 ): Redactor & typeof redactedInspection => {
-  const valueLayer = createSecretRedactor(options.values ?? [], options.authoritativeValues);
+  const valueLayer = createSecretRedactor(
+    options.values ?? [],
+    options.authoritativeValues,
+    options.wholeTokenValues,
+  );
   const env = options.env ?? {};
 
   let patternString: (text: string) => string;

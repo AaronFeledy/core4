@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { runMetaMcp } from "./cli-adapters/meta-plugin";
@@ -9,6 +10,7 @@ import { commandStructureExample } from "./compiled-argv";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { InvalidCliInvocationError, invocationParityError } from "./compiled-invocation-parity";
 import { runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
+import { type HostProxyLandoCall, withHostProxyCall } from "./host-proxy/call-context";
 import type { LandoCommandSpec } from "./spec/command-base";
 
 export const compiledCommandOptionsFromSpec = (spec: LandoCommandSpec, input: unknown) => {
@@ -26,6 +28,8 @@ export const runBuiltInCommand = (
   entry: BuiltInCommandEntry,
   argv: ReadonlyArray<string>,
   parentSignal?: AbortSignal,
+  hostProxy?: HostProxyLandoCall,
+  context?: CliInvocationContext,
 ): Promise<void> => {
   if (parentSignal?.aborted) return Promise.resolve();
   const diagnostic = entry.spec.strict === false ? undefined : invocationParityError(entry.spec.id, argv);
@@ -40,23 +44,36 @@ export const runBuiltInCommand = (
       ),
       Layer.empty,
       () => undefined,
-      { failureExitCode: () => 2, preCommand: true },
+      { failureExitCode: () => 2, preCommand: true, ...(context === undefined ? {} : { context }) },
     );
   }
 
   return runWithProcessAbortSignal(
     (signal) => {
-      const input = compiledCommandInputFromArgv(entry.spec.id, argv, { signal });
-      if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal);
+      const input = compiledCommandInputFromArgv(entry.spec.id, argv, {
+        signal,
+        ...(context === undefined ? {} : { context }),
+      });
+      if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal, context);
 
       const runtime = makeLandoRuntime(
-        cliRuntimeOptions({ bootstrap: entry.spec.bootstrap, plugins: { policy: "discovery" } }),
+        cliRuntimeOptions(
+          { bootstrap: entry.spec.bootstrap, plugins: { policy: "discovery" } },
+          context?.env,
+        ),
       ) as Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
       return runCompiledCommand(
-        entry.spec.run(input),
+        hostProxy === undefined
+          ? entry.spec.run(input)
+          : withHostProxyCall(entry.spec.run(input), hostProxy, entry.spec.id),
         runtime,
+        // Hooks only receive the value produced by this same spec's run.
         (result, context) => entry.spec.render?.(result, input, context),
-        { ...compiledCommandOptionsFromSpec(entry.spec, input), signal },
+        {
+          ...compiledCommandOptionsFromSpec(entry.spec, input),
+          signal,
+          ...(context === undefined ? {} : { context }),
+        },
       );
     },
     parentSignal === undefined ? {} : { signal: parentSignal },

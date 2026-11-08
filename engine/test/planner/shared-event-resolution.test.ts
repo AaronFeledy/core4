@@ -25,6 +25,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -138,6 +139,7 @@ toolingIncludes:
 services:
   web:
     type: ${serviceType.id}
+    image: alpine:3.22
     home: false
 tooling:
   authored:

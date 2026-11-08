@@ -1,0 +1,6 @@
+name: php-nonroot
+services:
+  appserver:
+    type: php:8.3
+    user: www-data
+    port: 8080

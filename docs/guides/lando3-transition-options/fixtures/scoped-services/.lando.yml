@@ -1,4 +1,6 @@
 name: scoped-services
+router:
+  enabled: false
 services:
   frontend:
     type: "node:22"

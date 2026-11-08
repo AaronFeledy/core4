@@ -137,16 +137,20 @@ describe("Compose runtime knobs", () => {
 
   test("Given the fail-closed capability matrix, when one knob is checked, then only native exact support accepts it", () => {
     // Given
-    const uses = collectComposeKnobs({ web: servicePlan("web", { init: true }) });
+    const uses = collectComposeKnobs({ web: servicePlan("web", { read_only: true }) });
 
     // When
     const results = [
       findUnsupportedComposeKnob(uses, capabilities("native")),
-      findUnsupportedComposeKnob(uses, capabilities("portable", { supported: ["init"] })),
-      findUnsupportedComposeKnob(uses, capabilities("native", { supported: ["init"] })),
+      findUnsupportedComposeKnob(uses, capabilities("portable", { supported: ["read_only"] })),
+      findUnsupportedComposeKnob(uses, capabilities("native", { supported: ["read_only"] })),
     ];
 
     // Then
-    expect(results).toEqual([{ service: "web", key: "init" }, { service: "web", key: "init" }, undefined]);
+    expect(results).toEqual([
+      { service: "web", key: "read_only" },
+      { service: "web", key: "read_only" },
+      undefined,
+    ]);
   });
 });

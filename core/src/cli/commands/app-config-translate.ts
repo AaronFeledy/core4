@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import type { TransactionOptions } from "@lando/managed-file/transaction";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 import { Effect, Option } from "effect";
@@ -15,7 +16,7 @@ import {
   type PluginDescriptorMismatchError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
-import { ConfigTranslateSourceId } from "@lando/sdk/schema";
+import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
@@ -67,6 +68,8 @@ export interface AppConfigTranslateOptions {
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
   readonly privateFileAccess?: PrivateFileAccess;
   readonly transactionCheckpoint?: TransactionOptions["checkpoint"];
+  /** CLI-only presentation hook; the tagged failure and machine payload stay unchanged. */
+  readonly onWriteBlocked?: (diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>) => Effect.Effect<void>;
 }
 
 export type AppConfigTranslateError =
@@ -188,7 +191,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
         { outputs, currentLowerV4Fragments, ...(expectations === undefined ? {} : { expectations }) },
         target.encode,
       );
-  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
   const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
   const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
   const diagnostics = orderTranslateDiagnostics([...encodingDiagnostics, ...includeDiagnostics], files).map(
@@ -232,5 +235,6 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     documents,
     privateFileAccess: options.privateFileAccess,
     transactionCheckpoint: options.transactionCheckpoint,
+    ...(options.onWriteBlocked === undefined ? {} : { onWriteBlocked: options.onWriteBlocked }),
   });
 });

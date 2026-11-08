@@ -168,7 +168,7 @@ describe("makePluginCapabilityIndex", () => {
       name: "@lando/command-mismatch",
       version: "1.0.0",
       api: 4,
-      contributes: { commands: ["meta:declared"] },
+      contributes: { commands: [{ id: "meta:declared", summary: "Declared command." }] },
     });
     const module = { name: manifest.name, manifest };
 

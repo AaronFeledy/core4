@@ -6,6 +6,7 @@ import type {
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
+  HealthcheckTargetUnsupportedError,
   NoProviderInstalledError,
   PlanReplanRequiredError,
   ProviderCapabilityError,
@@ -31,8 +32,11 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
+  AppRef,
+  AppliedStateInventory,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
+  HealthcheckPlan,
   HostPlatform,
   HostProxyBridgeInput,
   HostProxyBridgeResult,
@@ -50,6 +54,7 @@ import type {
   ServiceCopyOutSpec,
   ServiceName,
   ServicePlan,
+  ServiceRunObservation,
   VolumeFilter,
   VolumeIdentity,
   VolumeInfo,
@@ -62,9 +67,20 @@ import type {
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
-import type { PrivilegeService } from "./process.ts";
+import type {
+  DestroyOutcome,
+  FileSyncQuiesceResult,
+  ObservedServiceRemoval,
+} from "../schema/service-shutdown.ts";
+export type {
+  DestroyOutcome,
+  FileSyncQuiesceResult,
+  ObservedServiceRemoval,
+} from "../schema/service-shutdown.ts";
+import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =
+  | HealthcheckTargetUnsupportedError
   | PlanReplanRequiredError
   | EnvironmentValueResolutionError
   | SecretStoreError
@@ -144,6 +160,10 @@ export interface ApplyOptions {
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
   readonly completionPlan?: AppPlan;
   readonly signal?: AbortSignal;
+  readonly executeReadinessAttempt?: (
+    serviceName: ServiceName,
+    probe: HealthcheckPlan,
+  ) => Effect.Effect<ProcessResult, ProviderError>;
   readonly resolveServiceEnvironment?: (
     service: ServicePlan,
   ) => Effect.Effect<Readonly<Record<string, string>>, ProviderError>;
@@ -245,18 +265,13 @@ export interface LogChunk {
   readonly timestamp?: Date;
 }
 
-export interface ServiceRuntimeInfo {
+/** Identity and non-run-state evidence from one container inspection or listing. */
+export interface ServiceRuntimeFields {
   readonly app: AppId;
   /** Canonical app root proven by provider-owned runtime metadata. */
   readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
-  readonly status: string;
-  /** Container healthcheck status when the provider exposes one. */
-  readonly health?: "healthy" | "starting" | "unhealthy";
-  readonly state?: string;
-  /** Container exit code of a stopped container, when exposed by the runtime. */
-  readonly exitCode?: number;
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
@@ -271,6 +286,13 @@ export interface ServiceRuntimeInfo {
   /** Inspected network names attached to the container. */
   readonly networkNames?: ReadonlyArray<string>;
 }
+
+/**
+ * One provider observation of a service container. Run state is the closed
+ * {@link ServiceRunObservation} (`status`, plus `health` only while running and `exitCode` only
+ * once exited), normalized by the provider so consumers never reconcile engine spellings.
+ */
+export type ServiceRuntimeInfo = ServiceRuntimeFields & ServiceRunObservation;
 
 export interface ServiceRuntimeIdentity {
   readonly containerId: string;
@@ -330,6 +352,11 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly appliedPlansFor: (
       root: AbsolutePath,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
+     * Filesystem-only: never constructs, initializes, or contacts a runtime. */
+    readonly appliedStateInventory?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
     readonly assertAppliedStateReadable?: (
       plan: Pick<AppPlan, "id" | "provider">,
     ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
@@ -342,9 +369,11 @@ export class RuntimeProviderRegistry extends Context.Service<
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly resolveTeardownEvidence: (
       root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly observeRuntime?: Effect.Effect<
       ReadonlyArray<ProviderRuntimeSnapshot>,
@@ -399,7 +428,11 @@ export class RuntimeProvider extends Context.Service<
     /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
     readonly openHostProxyBridge?: (
       input: HostProxyBridgeInput,
-    ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+    ) => Effect.Effect<
+      HostProxyBridgeResult & { readonly exited: Promise<number> },
+      ProviderError,
+      Scope.Scope
+    >;
     /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
     readonly openAgentSocketBridge?: (
       input: AgentSocketBridgeInput,
@@ -461,7 +494,9 @@ export class RuntimeProvider extends Context.Service<
       observed: ServiceRuntimeInfo,
     ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
     /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
-    readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
+    readonly quiesceForFileSync?: (
+      target: AppSelector,
+    ) => Effect.Effect<FileSyncQuiesceResult, ProviderError>;
 
     /**
      * Read only requested environment names from existing service containers. Absent containers,
@@ -533,16 +568,5 @@ export interface DestroyOptions {
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }
-
-/**
- * What a `destroy` call actually did. A provider handed no plan that finds no applied record for
- * the app removed nothing, and says so, so no caller can read silent success as teardown.
- */
-export type DestroyOutcome =
-  | { readonly kind: "destroyed" }
-  | { readonly kind: "no-op"; readonly reason: "no-applied-plan" };
-
-/** Whether `removeObservedService` removed the container behind an observation, or found none. */
-export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
 export type RuntimeProviderShape = RuntimeProvider["Service"];

@@ -2,6 +2,7 @@ import { expect } from "bun:test";
 import { resolve } from "node:path";
 
 import { PortablePath, ServiceName, type ServicePlan } from "@lando/core/schema";
+import { landoAppStoreName } from "@lando/sdk/schema";
 
 import {
   ComposeFixtureOutcomeError,
@@ -108,7 +109,7 @@ const expectations = {
     });
     expect(web.mounts).toContainEqual({
       type: "volume",
-      store: `${context.plan.name}-cache`,
+      store: landoAppStoreName(context.plan.slug, "cache"),
       origin: "authored",
       target: PortablePath.make("/var/cache/app"),
       readOnly: false,
@@ -124,6 +125,11 @@ const expectations = {
   },
   "corpus/runtime-knobs.compose.yaml": (context) => {
     const database = servicePlan(context, "database");
+    expect(database.init).toBe(true);
+    expect(valueAt(database.extensions.compose, "init")).toBeUndefined();
+    const optedOut = servicePlan(context, "opted_out");
+    expect(optedOut.init).toBe(false);
+    expect(valueAt(optedOut.extensions.compose, "init")).toBeUndefined();
     expect(database.mounts).toContainEqual({
       type: "tmpfs",
       target: PortablePath.make("/run"),

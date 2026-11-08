@@ -17,12 +17,13 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
@@ -125,17 +126,18 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
   sink: Option.Option<StreamFrameSinkShape>,
 ) {
   const { provider, target, service, options } = input;
+  const host = yield* HostExecutionDefaults;
   const tty = inheritTty(options);
   const session = yield* (yield* EnvironmentValueResolver).openSession();
   const typedEnv = withTerminalEnv({
     tty,
-    hostEnv: process.env,
+    hostEnv: host?.env ?? process.env,
     ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
     serviceEnv: service.environment,
     ...(options.env === undefined ? {} : { env: options.env }),
   });
   const mergedEnv = typedEnv === undefined ? undefined : yield* session.resolveEnvironment(typedEnv);
-  const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
+  const cwd = resolveContainerCwd(service, options.cwd, host?.cwd ?? process.cwd());
   const spec: CommandSpec = {
     command: options.command,
     ...(cwd === undefined ? {} : { cwd }),
@@ -188,6 +190,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   }
 
   const service = yield* resolveService(split.service, plan);
+  yield* registerPlanRedaction(plan);
   const provider = yield* registry.select(plan);
   const target: ExecTarget = {
     app: plan.id,
@@ -195,8 +198,9 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     plan,
     ...(options.user === undefined ? {} : { user: options.user }),
   };
-  const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
-  const env = withAgentContextEnv(options.env, process.env, {
+  const hostEnv = (yield* HostExecutionDefaults)?.env ?? process.env;
+  const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, hostEnv);
+  const env = withAgentContextEnv(options.env, hostEnv, {
     allowlist,
     lowerThanEnv: service.environment,
   });
@@ -215,10 +219,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     app: plan.name,
     service: String(service.name),
     command: split.command,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    redactionTokens: collectAppPlanRedactionTokens(plan),
+    ...result,
   };
   return withTokens;
 });

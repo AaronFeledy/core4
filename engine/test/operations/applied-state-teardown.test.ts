@@ -54,9 +54,12 @@ import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
@@ -173,23 +176,15 @@ const planAt = (root: string): AppPlan => ({
 
 const retainedPlanAt = (root: string): AppPlan => {
   const base = planAt(root);
-  return {
-    ...base,
-    fileSync: [
-      {
-        engineId: "mutagen",
-        session: {
-          app: { kind: "user", id: base.id, root: base.root },
-          service: ServiceName.make("web"),
-          mountKey: "app-mount",
-          source: base.root,
-          target: { _tag: "volume", name: "retained-web", path: PortablePath.make("/app") },
-          mode: "two-way-safe",
-          excludes: [],
-        },
-      },
-    ],
-  };
+  return withAcceleratedBind({ ...base, services: { [web.name]: web } }, web.name, {
+    type: "bind",
+    source: base.root,
+    target: PortablePath.make("/app"),
+    readOnly: false,
+    realization: "accelerated",
+    mountKey: "app-mount",
+    excludes: [],
+  });
 };
 
 const targetFor = (plan: AppPlan, root = plan.root): ResolvedAppTarget => ({
@@ -352,6 +347,7 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
+    layerTransactionGuard,
     emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -400,6 +396,7 @@ const makeLayer = (input: {
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
@@ -452,7 +449,7 @@ const orphanGroup = (input: {
     appRoot: AbsolutePath.make(input.root),
     service: ServiceName.make(name),
     providerId,
-    status: "running",
+    status: "running" as const,
     publications: { status: "unknown" as const },
     ...((input.withoutContainerId ?? []).includes(name) ? {} : { containerId: `container-${name}` }),
   })),
@@ -463,6 +460,28 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test("Landofile-backed handle destroy preserves orphan evidence", async () => {
+    await withTempRoot(async (root) => {
+      const desired = planAt(root);
+      const harness = makeLayer({
+        desiredPlan: desired,
+        orphans: [orphanGroup({ root, services: ["web"], volumes: ["data"] })],
+      });
+      const result = await Effect.runPromise(
+        destroyAppForTarget(
+          { volumes: true, yes: true },
+          {
+            ...targetFor(desired),
+            landofile: literalTestLandofile({ name: desired.name, services: {} }),
+          },
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesDestroyed).toEqual(["web"]);
+      expect(harness.removedVolumes.map((volume) => volume.store)).toEqual(["data"]);
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
   test("destroy with an explicit provider resolves ambiguous applied state and retains volumes", async () => {
     await withTempRoot(async (root) => {
       const applied = planAt(root);
@@ -521,12 +540,11 @@ describe("applied-state teardown", () => {
             ...observed,
             ...orphanGroup({ root: join(parent, "other"), services: ["other-root"] }).services,
             {
-              ...observed[0],
               app: AppId.make("other-app"),
               service: ServiceName.make("other-app"),
               appRoot: AbsolutePath.make(root),
               providerId,
-              status: "running",
+              status: "running" as const,
               publications: { status: "unknown" },
               containerId: "foreign",
             },
@@ -1049,7 +1067,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1082,7 +1102,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1110,7 +1132,9 @@ describe("applied-state teardown", () => {
           id: oldPlan.id,
           root: oldPlan.root,
         }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1247,6 +1271,7 @@ describe("Landofile events on applied-state teardown", () => {
     });
   const eventRuntime = (executed: string[]) =>
     Layer.mergeAll(
+      BunProcessRunner.layer,
       Layer.succeed(ToolingEngine, recordingEngine(executed)),
       testEnvironmentResolverLayerFor(makeRedactionService()),
     );

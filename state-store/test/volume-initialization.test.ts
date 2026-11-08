@@ -2,11 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
+import { AbsolutePath, type VolumeIdentity, type VolumeInitializationRecord } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import * as StateStoreLayer from "../src/service.ts";
-import { volumeInitialization } from "../src/volume-initialization.ts";
+import { planVolumeInitializationWrite, volumeInitialization } from "../src/volume-initialization.ts";
 
 const identity: VolumeIdentity = {
   coordinationKey: "socket/data",
@@ -87,3 +87,69 @@ test("concurrent claims admit exactly one operation", () =>
     const claims = await Promise.all(["a", "b", "c"].map((id) => Effect.runPromise(state.begin(id))));
     expect(claims.filter(Boolean)).toHaveLength(1);
   }));
+
+test.each(["seeded", "failed"] as const)("finish %s requires a begun claim", (outcome) =>
+  isolated(async (store) => {
+    const state = await Effect.runPromise(volumeInitialization(store, identity));
+    expect(await Effect.runPromise(state.finish({ operationId: "seed", outcome }))).toBe(false);
+    await Effect.runPromise(state.recordCreation);
+    expect(await Effect.runPromise(state.finish({ operationId: "seed", outcome }))).toBe(false);
+    expect((await Effect.runPromise(state.read))?.state).toEqual({ _tag: "fresh" });
+  }),
+);
+
+test("empty and repeated begin claims cannot replace the winning operation", () =>
+  isolated(async (store) => {
+    const state = await Effect.runPromise(volumeInitialization(store, identity));
+    await Effect.runPromise(state.recordCreation);
+    expect(await Effect.runPromise(state.begin(""))).toBe(false);
+    expect(await Effect.runPromise(state.begin("winner"))).toBe(true);
+    expect(await Effect.runPromise(state.begin("winner"))).toBe(false);
+    expect(await Effect.runPromise(state.begin("loser"))).toBe(false);
+    expect(await Effect.runPromise(state.finish({ operationId: "", outcome: "seeded" }))).toBe(false);
+    expect((await Effect.runPromise(state.read))?.state).toEqual({
+      _tag: "in-progress",
+      operationId: "winner",
+    });
+  }));
+
+test.each(["seeded", "failed"] as const)(
+  "%s is terminal and creation replay preserves its outcome",
+  (outcome) =>
+    isolated(async (store) => {
+      const state = await Effect.runPromise(volumeInitialization(store, identity));
+      await Effect.runPromise(state.recordCreation);
+      await Effect.runPromise(state.begin("seed"));
+      expect(await Effect.runPromise(state.finish({ operationId: "seed", outcome }))).toBe(true);
+      expect(await Effect.runPromise(state.recordCreation)).toBe(true);
+      expect(await Effect.runPromise(state.begin("retry"))).toBe(false);
+      expect(await Effect.runPromise(state.finish({ operationId: "seed", outcome: "seeded" }))).toBe(false);
+      expect(await Effect.runPromise(state.finish({ operationId: "seed", outcome: "failed" }))).toBe(false);
+      expect((await Effect.runPromise(state.read))?.state).toEqual({ _tag: outcome, operationId: "seed" });
+    }),
+);
+
+test("creation replay is settled while fresh", () =>
+  isolated(async (store) => {
+    const state = await Effect.runPromise(volumeInitialization(store, identity));
+    await Effect.runPromise(state.recordCreation);
+    expect(await Effect.runPromise(state.recordCreation)).toBe(true);
+    expect((await Effect.runPromise(state.read))?.state).toEqual({ _tag: "fresh" });
+  }));
+
+test.each([
+  { generation: "racing-generation", ownerRoot: identity.ownerRoot },
+  { generation: identity.generation, ownerRoot: AbsolutePath.make("/racing-owner") },
+])("creation refuses baseline drift: %j", (change) => {
+  const baseline: VolumeInitializationRecord = { identity, state: { _tag: "fresh" } };
+  const current = { ...baseline, identity: { ...identity, ...change } };
+  const write = planVolumeInitializationWrite(
+    current,
+    { ...identity, generation: "replacement" },
+    {
+      operation: "record-creation",
+      baseline,
+    },
+  );
+  expect(write).toEqual({ _tag: "Keep", result: false });
+});

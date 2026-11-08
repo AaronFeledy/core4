@@ -6,9 +6,8 @@ import {
   mergeGlobalConfigSources,
 } from "@lando/paths/config-sources";
 import type { PluginManifest } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
-import { loadInstalledPluginManifest } from "../plugins/installed-plugin-loader.ts";
-import { readInstalledPluginRegistry } from "../plugins/installed-registry.ts";
+import { Effect } from "effect";
+import { resolvePluginManifests } from "../plugins/manifest-resolution.ts";
 
 export interface ConfigDecoderInputs extends ConfigSourceInputs {
   readonly commandIds?: readonly string[];
@@ -29,7 +28,7 @@ export const configCommandIds = Effect.fnUntraced(function* (
   if (inputs.commandPlugins?.disable.includes("@lando/notify-lando")) return undefined;
   const ids = new Set(inputs.commandIds);
   const plugins = inputs.commandPlugins;
-  const manifests = new Map((plugins?.manifests ?? []).map((manifest) => [manifest.name, manifest]));
+  const directories: { source: "system" | "user"; path: string }[] = [];
   const notify = mergeGlobalConfigSources(stack).tree.notify;
   if (
     (plugins?.user === true || plugins?.system === true) &&
@@ -42,25 +41,15 @@ export const configCommandIds = Effect.fnUntraced(function* (
       resolveLandoRootsFromSources(stack),
       normalizeHostPlatform({ env: inputs.env }),
     );
-    for (const directory of [
-      ...(plugins.system ? [paths.systemPluginsDir] : []),
-      ...(plugins.user ? [paths.pluginsDir] : []),
-    ]) {
-      const registry = yield* Effect.promise(() => readInstalledPluginRegistry(directory));
-      for (const entry of Object.values(registry)) {
-        const loaded = yield* Effect.tryPromise({
-          try: () => loadInstalledPluginManifest(entry.path),
-          catch: (cause) => cause,
-        }).pipe(Effect.result);
-        if (Result.isSuccess(loaded)) manifests.set(loaded.success.name, loaded.success);
-      }
-    }
+    if (plugins.system) directories.push({ source: "system", path: paths.systemPluginsDir });
+    if (plugins.user) directories.push({ source: "user", path: paths.pluginsDir });
   }
-  for (const manifest of plugins?.explicit ?? []) manifests.set(manifest.name, manifest);
-  for (const manifest of manifests.values()) {
-    if (plugins?.disable.includes(manifest.name)) continue;
-    for (const command of manifest.contributes?.commands ?? [])
-      ids.add(typeof command === "string" ? command : command.id);
-  }
+  const selected = yield* resolvePluginManifests({
+    bundled: (plugins?.manifests ?? []).map((manifest) => ({ manifest, source: "bundled" as const })),
+    explicit: (plugins?.explicit ?? []).map((manifest) => ({ manifest, source: "explicit" as const })),
+    directories,
+    disable: plugins?.disable ?? [],
+  });
+  for (const command of selected.commands) ids.add(command.id);
   return ids;
 });

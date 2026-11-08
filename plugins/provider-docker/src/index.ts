@@ -7,6 +7,7 @@ import {
 } from "@lando/container-runtime/docker/api-client";
 import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
+import { runObservationFromListState } from "@lando/container-runtime/run-observation";
 
 import {
   type HostProxyContainerTarget,
@@ -67,17 +68,16 @@ import {
 } from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
-  DESTROYED,
   DESTROY_NO_OP,
-  observedRemoval,
   postExactServiceLifecycle,
   postServiceLifecycle,
   removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
-import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 
+import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
@@ -374,7 +374,6 @@ interface DiscoveredContainer {
   readonly name: string;
   readonly labels: Readonly<Record<string, string>>;
   readonly state: string;
-  readonly startedAt?: string;
 }
 
 const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
@@ -413,7 +412,6 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
         Names?: unknown;
         Labels?: unknown;
         State?: unknown;
-        Status?: unknown;
       };
 
       if (typeof obj.Id !== "string" || !Array.isArray(obj.Names)) return undefined;
@@ -426,9 +424,6 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
       // In /containers/json, State is a string like "running" or "exited"
       const state = typeof obj.State === "string" ? obj.State : "unknown";
 
-      // Status contains more info like "Up 5 minutes"
-      const status = typeof obj.Status === "string" ? obj.Status : undefined;
-
       return {
         id: obj.Id,
         name: name.startsWith("/") ? name.slice(1) : name,
@@ -436,7 +431,6 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         ),
         state,
-        ...(status === undefined ? {} : { startedAt: status }),
       };
     })
     .filter((container): container is DiscoveredContainer => container !== undefined);
@@ -624,9 +618,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          ...(applyOptions.executeReadinessAttempt === undefined
+            ? {}
+            : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: dockerApi,
           ctx: DOCKER_CTX,
           dialect: dockerLifecycleDialect,
@@ -669,7 +667,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     : { purgeCaches: destroyOptions.purgeCaches }),
                 }).pipe(
                   Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.as(DESTROYED),
+                  Effect.map(({ shutdownObservations }) => ({
+                    kind: "destroyed" as const,
+                    shutdownObservations,
+                  })),
                 ),
           ),
         );
@@ -677,10 +678,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans
           .resolveMutationPlan(observed.app)
-          .pipe(
-            Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX })),
-            Effect.map(observedRemoval),
-          ),
+          .pipe(Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }))),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
@@ -744,9 +742,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                 Effect.gen(function* () {
                   const appId = container.labels[APP_LABEL] ?? "";
                   const serviceName = container.labels[SERVICE_LABEL] ?? "";
-                  const isRunning = container.state === "running";
-                  const status = isRunning ? "running" : "stopped";
-
                   const inspectResponse = yield* request(dockerApi, "list", {
                     method: "GET",
                     path: `/containers/${encodeURIComponent(container.name)}/json`,
@@ -768,23 +763,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                       : { appRoot: AbsolutePath.make(container.labels[APP_ROOT_LABEL]) }),
                     service: ServiceName.make(serviceName),
                     providerId: ProviderId.make(PROVIDER_ID),
-                    status,
-                    state: container.state,
+                    ...runObservationFromListState(container.state),
                     containerId: container.id,
                     labels: container.labels,
                     publications,
-                    ...(container.startedAt === undefined
-                      ? {}
-                      : {
-                          lastStartedAt: Option.match(DateTime.make(container.startedAt), {
-                            onSome: DateTime.toDate,
-                            // Preserve the invalid Date returned for Docker's relative Status text.
-                            onNone: () =>
-                              DateTime.toDate(
-                                DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => Number.NaN),
-                              ),
-                          }),
-                        }),
                   };
                 }),
             ),

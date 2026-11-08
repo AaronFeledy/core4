@@ -13,12 +13,13 @@ import {
   serviceAppMount,
 } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 
 const plan = async (service: Record<string, unknown>, accelerated = false): Promise<AppPlan> => {
   const root = await mkdtemp(join(tmpdir(), "lando-mount-list-"));
@@ -33,6 +34,7 @@ const plan = async (service: Record<string, unknown>, accelerated = false): Prom
         Layer.mergeAll(
           PluginRegistryLayer.layer,
           BunFileSystem.layer,
+          fileSyncEngineLayer({ ...TestFileSyncEngine, id: "mutagen" }),
           Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", home: root, env: {} })),
         ),
       ),
@@ -42,6 +44,7 @@ const plan = async (service: Record<string, unknown>, accelerated = false): Prom
         planner.plan(literalTestLandofile(document, root), {
           ...TestRuntimeProvider.capabilities,
           bindMountPerformance: accelerated ? "slow" : "native",
+          fileSyncTargets: "prepared-volume",
         }),
       ).pipe(Effect.provide(layer)),
     );
@@ -205,12 +208,12 @@ test("named mounts volumes register an owned store", async () => {
   const app = await plan({ mounts: [{ type: "volume", source: "named", target: "/named" }] });
   expect(wireMounts(app)).toContainEqual({
     type: "volume",
-    store: "mountapp-named",
+    store: "lando-mountapp_named",
     origin: "authored",
     target: "/named",
     readOnly: false,
   });
-  expect(app.stores).toContainEqual({ name: "mountapp-named", scope: "service", kind: "data" });
+  expect(app.stores).toContainEqual({ name: "lando-mountapp_named", scope: "app", kind: "data" });
 });
 
 test("authored bind replaces type data volume and removes its ownership tree", async () => {

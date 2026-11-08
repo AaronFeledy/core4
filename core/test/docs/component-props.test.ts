@@ -385,7 +385,7 @@ describe("component prop schemas", () => {
         expect(error).toBeInstanceOf(NotImplementedError);
         if (!(error instanceof NotImplementedError)) return;
         expect(error.commandId).toBe(`guide.component.${componentName.toLowerCase()}`);
-        expect(error.remediation).toBe(`<${componentName}> is not supported yet.`);
+        expect(error.remediation).toBe(`<${componentName}> is not supported.`);
       }
     },
   );

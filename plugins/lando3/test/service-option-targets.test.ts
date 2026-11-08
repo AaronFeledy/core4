@@ -5,10 +5,11 @@ import { Effect, Schema } from "effect";
 import { lowerCatalogCommon } from "../src/lower-catalog-common.ts";
 import { lowerPhpOptions } from "../src/lower-php.ts";
 import { type ServiceLoweringContext, mergePatches } from "../src/lowering-contract.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator, testPorts } from "./fixtures/test-ports.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: testPorts().serviceFacts,
   serviceName: "app",
   keyPath: ["services", "app"],
   fallbackSourceId: "base",

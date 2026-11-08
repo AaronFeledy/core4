@@ -15,6 +15,7 @@ import {
   type ServicePlan,
   landoServiceNetworkAttachments,
   landoSharedNetworkName,
+  planDataId,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
@@ -189,7 +190,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
     ...plan.stores.map(
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
         const labels = {
-          [APP_LABEL]: plan.id,
+          [APP_LABEL]: planDataId(plan),
           [PROVIDER_LABEL]: plan.provider,
           [STORE_LABEL]: store.name,
           [STORAGE_SCOPE_LABEL]: store.scope,
@@ -289,6 +290,7 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
     lines.push(`  ${yamlMappingKeyText(serviceName)}:`, `    image: ${quoteYamlScalar(service.image)}`);
     const plannedService = Object.values(plan.services).find((candidate) => candidate.name === serviceName);
     if (plannedService !== undefined) lines.push(...composeHealthcheck(plan, plannedService));
+    if (plannedService?.init !== undefined) lines.push(`    init: ${plannedService.init ? "true" : "false"}`);
 
     if (service.ports !== undefined) {
       lines.push("    ports:");

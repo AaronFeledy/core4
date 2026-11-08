@@ -1,5 +1,6 @@
 import type { ConfigResult } from "@lando/engine/operations/config";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/telemetry/policy";
+import { renderConfigKeyDescription } from "./config-key-render";
 import { renderConfigWriteResult } from "./config-write-render";
 
 const formatTable = (value: unknown): string => {
@@ -25,6 +26,7 @@ const formatTable = (value: unknown): string => {
 };
 
 export const renderConfigResult = (result: ConfigResult): string => {
+  if (result.subcommand === "describe") return renderConfigKeyDescription(result, "config.yml");
   const writeResult = renderConfigWriteResult({
     file: result.configPath ?? "",
     subcommand: result.subcommand,

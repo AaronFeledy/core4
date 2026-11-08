@@ -116,7 +116,7 @@ describe("plugin contribution source merge", () => {
       name: "@example/commands",
       version: "1.0.0",
       api: 4,
-      contributes: { commands: ["meta:example:hello"] },
+      contributes: { commands: [{ id: "meta:example:hello", summary: "Example hello." }] },
     });
     const module = definePlugin({
       name: manifest.name,
@@ -147,13 +147,13 @@ describe("plugin contribution source merge", () => {
     }
   });
 
-  test("accepts manifest-only command declarations without executable candidates", () => {
+  test("retains missing loaders as command-local diagnostics", async () => {
     // Given
     const manifest = Schema.decodeSync(PluginManifest)({
       name: "@example/manifest-only",
       version: "1.0.0",
       api: 4,
-      contributes: { commands: ["example:doctor"] },
+      contributes: { commands: [{ id: "example:doctor", summary: "Inspect example." }] },
     });
 
     // When
@@ -161,7 +161,12 @@ describe("plugin contribution source merge", () => {
 
     // Then
     expect(Result.isSuccess(candidates)).toBe(true);
-    if (Result.isSuccess(candidates)) expect(candidates.success).toEqual([]);
+    if (Result.isSuccess(candidates)) {
+      expect(candidates.success.map((candidate) => candidate.id)).toEqual(["example:doctor"]);
+      await expect(candidates.success[0]?.load()).rejects.toMatchObject({
+        _tag: "PluginDescriptorMismatchError",
+      });
+    }
   });
 
   test("rejects executable command loaders absent from the manifest", () => {

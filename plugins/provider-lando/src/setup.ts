@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
-import { readFile, rename } from "node:fs/promises";
-import { Result } from "effect";
-
-import { Cause, DateTime, Effect, Exit } from "effect";
+import { chmod, lstat, readFile, rename } from "node:fs/promises";
+import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
+import { RecordedMachineOwnership, SetupMachineOwnership } from "./setup-machine-ownership.ts";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -15,7 +15,7 @@ import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
-import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   type HostPlatform,
@@ -24,7 +24,12 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
-import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
+import {
+  type ProgressEmitter,
+  type TaskTreeController,
+  makeTaskTree,
+  withCurrentTaskDetail,
+} from "@lando/sdk/task-progress";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
@@ -41,6 +46,7 @@ export {
   isIntelMacHost,
   rejectIntelMacHost,
 } from "./host-support.ts";
+import { type CatatonitPackage, ensureManagedCatatonit } from "./catatonit-provision.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import { providerContextForEnv } from "./provider-context.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
@@ -160,6 +166,7 @@ export interface PodmanMachineRunner {
   readonly create: Effect.Effect<void, ProviderUnavailableError>;
   readonly syncTrust?: Effect.Effect<void, ProviderUnavailableError>;
   readonly activateApiSocket?: Effect.Effect<void, ProviderUnavailableError>;
+  readonly verifyNativeInit?: Effect.Effect<void, ProviderUnavailableError>;
   readonly occupiedPublishPorts?: (
     ports: ReadonlyArray<number>,
   ) => Effect.Effect<ReadonlyArray<number>, ProviderUnavailableError>;
@@ -195,6 +202,7 @@ export interface RuntimeBundleDownloader {
 }
 
 export interface SetupOptions {
+  readonly endpointOwnership?: "managed" | "external";
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
@@ -212,6 +220,8 @@ export interface SetupOptions {
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
   readonly runtimeConfigDir?: string;
+  readonly withRuntimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
+  readonly _catatonitPackage?: CatatonitPackage;
   readonly eventService?: ProgressEmitter;
   // Test-only seam (never set in production): overrides the bundled-tooling existence check.
   readonly _machineToolingExists?: (podmanBin: string) => boolean;
@@ -223,7 +233,7 @@ export interface SetupOptions {
   ) => PodmanMachineRunner;
 }
 
-export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness" | "smoke";
+export type RuntimeSetupPhase = "prerequisites" | "helpers" | "launch" | "readiness" | "smoke";
 
 export interface RuntimeSetupProgress {
   readonly runtimeBundleVersion?: string;
@@ -236,12 +246,6 @@ export interface SetupResult {
   readonly runtimeBinDir?: string;
   readonly statePath?: string;
 }
-
-type RecordedMachineOwnership = {
-  readonly name: "lando";
-  readonly createdByLando: boolean;
-  readonly createdAt?: string;
-};
 
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
@@ -284,23 +288,8 @@ const readExistingMachineOwnership = Effect.fnUntraced(function* (
     return undefined;
   }
 
-  if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
-  const machine = (parsed as { readonly machine: unknown }).machine;
-  if (typeof machine !== "object" || machine === null) return undefined;
-  const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
-  const createdByLando =
-    "createdByLando" in machine
-      ? (machine as { readonly createdByLando: unknown }).createdByLando
-      : undefined;
-  if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
-  const createdAt = "createdAt" in machine ? machine.createdAt : undefined;
-  if (createdAt !== undefined && (typeof createdAt !== "string" || createdAt.length === 0)) return undefined;
-  const ownership: RecordedMachineOwnership = {
-    name: "lando",
-    createdByLando,
-    ...(createdAt === undefined ? {} : { createdAt }),
-  };
-  return ownership;
+  const decoded = Schema.decodeUnknownResult(SetupMachineOwnership)(parsed);
+  return Result.isSuccess(decoded) ? decoded.success.machine : undefined;
 });
 
 const verifyRecordedMachineOwnership = Effect.fnUntraced(function* (
@@ -331,7 +320,12 @@ const readText = (stream: ReadableStream<Uint8Array> | null) =>
 export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommandRunner => ({
   version: Effect.tryPromise({
     try: async () => {
-      const proc = Bun.spawn([command, "--version"], { stderr: "pipe", stdout: "pipe", windowsHide: true });
+      const proc = Bun.spawn([command, "--version"], {
+        stderr: "pipe",
+        stdout: "pipe",
+        windowsHide: true,
+        env: managedMachineCliEnv(),
+      });
       const [stdout, stderr, exitCode] = await Promise.all([
         readText(proc.stdout),
         readText(proc.stderr),
@@ -425,8 +419,17 @@ interface MachineProcess {
 
 export type MachineSpawn = (argv: ReadonlyArray<string>) => MachineProcess;
 
+export const managedMachineCliEnv = (
+  hostEnv: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<Record<string, string>> => withoutPodmanRedirectsDefined(hostEnv);
+
 const defaultMachineSpawn: MachineSpawn = (argv) =>
-  Bun.spawn([...argv], { stderr: "pipe", stdout: "pipe", windowsHide: true });
+  Bun.spawn([...argv], {
+    stderr: "pipe",
+    stdout: "pipe",
+    windowsHide: true,
+    env: managedMachineCliEnv(),
+  });
 
 const readProcess = async (proc: MachineProcess) => {
   const stdoutStream = proc.stdout instanceof ReadableStream ? proc.stdout : null;
@@ -799,6 +802,23 @@ ConvertTo-Json -InputObject $rows -Compress`;
     );
   });
   return {
+    verifyNativeInit: runMachineCommand(
+      spawn,
+      family === "win32" ? "wsl.exe" : command,
+      family === "win32"
+        ? [
+            "--distribution",
+            `podman-${machineName}`,
+            "--user",
+            "root",
+            "--exec",
+            "/usr/libexec/podman/catatonit",
+            "--version",
+          ]
+        : ["machine", "ssh", machineName, "/usr/libexec/podman/catatonit", "--version"],
+      "verifyNativeInit",
+      platform,
+    ).pipe(Effect.asVoid),
     ...(family === "win32"
       ? {
           activateApiSocket,
@@ -1009,6 +1029,7 @@ export const ensureMacOSPodmanMachine = Effect.fn("ProviderLando.ensureMacOSPodm
     yield* machine.create;
     yield* onCreated;
     yield* machine.start;
+    yield* machine.verifyNativeInit ?? Effect.void;
     return { createdByLando: true };
   }
   const trust =
@@ -1016,12 +1037,14 @@ export const ensureMacOSPodmanMachine = Effect.fn("ProviderLando.ensureMacOSPodm
       ? resolveMachineTrustImport({ status })
       : resolveMachineTrustImport({ status, recordedOwnership });
   if (status === "running") {
+    yield* machine.verifyNativeInit ?? Effect.void;
     return { createdByLando: false };
   }
   if (trust.kind === "import" && trust.mode === "manage") {
     yield* machine.syncTrust ?? Effect.void;
   }
   yield* machine.start;
+  yield* machine.verifyNativeInit ?? Effect.void;
   return { createdByLando: false };
 });
 
@@ -1047,6 +1070,7 @@ export const ensureWindowsPodmanMachine = Effect.fn("ProviderLando.ensureWindows
     yield* machine.create;
     yield* onCreated;
     yield* machine.start;
+    yield* machine.verifyNativeInit ?? Effect.void;
     return { createdByLando: true };
   }
   const trust =
@@ -1054,12 +1078,14 @@ export const ensureWindowsPodmanMachine = Effect.fn("ProviderLando.ensureWindows
       ? resolveMachineTrustImport({ status })
       : resolveMachineTrustImport({ status, recordedOwnership });
   if (status === "running") {
+    yield* machine.verifyNativeInit ?? Effect.void;
     return { createdByLando: false };
   }
   if (trust.kind === "import" && trust.mode === "manage") {
     yield* machine.syncTrust ?? Effect.void;
   }
   yield* machine.start;
+  yield* machine.verifyNativeInit ?? Effect.void;
   return { createdByLando: false };
 });
 
@@ -1130,7 +1156,26 @@ export const persistSetupState = (
   Effect.tryPromise({
     try: async () => {
       const statePath = providerStatePath(stateDir);
-      await writeFileAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`, {
+      const body = `${JSON.stringify(
+        {
+          ...state,
+          ...(state.machine === undefined
+            ? {}
+            : { machine: Schema.encodeSync(RecordedMachineOwnership)(state.machine) }),
+        },
+        null,
+        2,
+      )}\n`;
+      try {
+        const info = await lstat(statePath);
+        if (info.isFile() && (await readFile(statePath, "utf8")) === body) {
+          if ((info.mode & 0o7777) !== 0o600) await chmod(statePath, 0o600);
+          return statePath;
+        }
+      } catch (cause) {
+        if (!isErrnoCode(cause, "ENOENT")) throw cause;
+      }
+      await writeFileAtomic(statePath, body, {
         mode: 0o600,
         ownerOnly: "best-effort",
         renameFile: renameState,
@@ -1161,28 +1206,29 @@ interface SetupStep {
   readonly label: string;
 }
 
-const buildSetupSteps = (
-  family: HostPlatformFamily,
-  hasBundle: boolean,
-  hasStateDir: boolean,
-  probesSocket: boolean,
-  managesRuntime: boolean,
-  smoke: boolean,
-): ReadonlyArray<SetupStep> => {
+const buildSetupSteps = (family: HostPlatformFamily, options: SetupOptions): ReadonlyArray<SetupStep> => {
   const steps: SetupStep[] = [];
-  if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
+  if (options.endpointOwnership !== "external" && options.runtimeBundleDownloader !== undefined)
+    steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
   steps.push({ taskId: "podman", label: "Detect Podman" });
-  if (family === "darwin" || family === "win32")
+  // Linux helper preparation (nft, native init, containers.conf) runs here on the
+  // direct path and inside the managed ensure path otherwise.
+  const prepareHelpers =
+    options.endpointOwnership !== "external" && family === "linux" && options.runtimeBinDir !== undefined;
+  const helpersStep = { taskId: "helpers", label: "Prepare runtime helpers" };
+  if (prepareHelpers && options.managedRuntimeSetup === undefined) steps.push(helpersStep);
+  if (options.endpointOwnership !== "external" && (family === "darwin" || family === "win32"))
     steps.push({ taskId: "machine", label: "Ensure Podman machine" });
-  if (probesSocket) steps.push({ taskId: "socket", label: "Probe Podman API" });
-  if (managesRuntime) {
+  if (options.skipSocketProbe !== true) steps.push({ taskId: "socket", label: "Probe Podman API" });
+  if (options.endpointOwnership !== "external" && options.managedRuntimeSetup !== undefined) {
     if (family === "linux")
       steps.push({ taskId: "prerequisites", label: "Provision and preflight runtime prerequisites" });
+    if (prepareHelpers) steps.push(helpersStep);
     steps.push({ taskId: "launch", label: "Launch managed runtime" });
     steps.push({ taskId: "readiness", label: "Verify managed runtime readiness" });
-    if (smoke) steps.push({ taskId: "smoke", label: "Verify managed runtime operations" });
+    if (options.smoke === true) steps.push({ taskId: "smoke", label: "Verify managed runtime operations" });
   }
-  if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
+  if (options.stateDir !== undefined) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
 };
 
@@ -1214,7 +1260,7 @@ const withStep = Effect.fnUntraced(function* <A, E>(
   body: Effect.Effect<A, E>,
 ): Effect.fn.Return<A, E> {
   yield* tree.startTask(step.taskId);
-  const result = yield* body.pipe(
+  const result = yield* withCurrentTaskDetail(tree, step.taskId, body).pipe(
     Effect.onExit((exit) => {
       if (Exit.isSuccess(exit)) return Effect.void;
       const details = failureDetails(exit.cause);
@@ -1236,18 +1282,8 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
   const family = hostPlatformFamily(platform);
   const arch = options.arch;
   yield* rejectIntelMacHost(platform, arch);
-  const hasBundle = options.runtimeBundleDownloader !== undefined;
-  const hasStateDir = options.stateDir !== undefined;
   const probesSocket = options.skipSocketProbe !== true;
-  const managesRuntime = options.managedRuntimeSetup !== undefined;
-  const steps = buildSetupSteps(
-    family,
-    hasBundle,
-    hasStateDir,
-    probesSocket,
-    managesRuntime,
-    options.smoke === true,
-  );
+  const steps = buildSetupSteps(family, options);
   const tree = makeTaskTree(options.eventService, {
     parentId: SETUP_PARENT_ID,
     label: "Setting up Lando runtime",
@@ -1262,17 +1298,35 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
   const machineStep = steps.find((step) => step.taskId === "machine");
   const socketStep = steps.find((step) => step.taskId === "socket");
   const stateStep = steps.find((step) => step.taskId === "state");
+  const directHelpersStep =
+    options.managedRuntimeSetup === undefined ? steps.find((step) => step.taskId === "helpers") : undefined;
 
   if (podmanStep === undefined || (probesSocket && socketStep === undefined)) {
     return yield* Effect.die("internal: missing required setup steps");
   }
 
+  const withInstallationLock = <A, E>(body: Effect.Effect<A, E>) =>
+    (options.endpointOwnership === "external" ? body : (options.withRuntimeLock?.(body) ?? body)).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof StateStoreError
+          ? new ProviderUnavailableError({
+              providerId: "lando",
+              operation: "setup",
+              message: "Cannot acquire the managed runtime installation lock.",
+              remediation: "Wait for the other runtime setup to finish, then retry `lando setup`.",
+              cause,
+            })
+          : cause,
+      ),
+    );
   const result = yield* Effect.gen(function* () {
-    const runtimeBinDir = options.runtimeBinDir;
-    const runtimeConfigDir = options.runtimeConfigDir;
+    const runtimeBinDir = options.endpointOwnership === "external" ? undefined : options.runtimeBinDir;
+    const runtimeConfigDir = options.endpointOwnership === "external" ? undefined : options.runtimeConfigDir;
     let machineOwnership: RecordedMachineOwnership | undefined;
     const existingMachineOwnership =
-      options.stateDir === undefined || (family !== "darwin" && family !== "win32")
+      options.endpointOwnership === "external" ||
+      options.stateDir === undefined ||
+      (family !== "darwin" && family !== "win32")
         ? undefined
         : yield* readExistingMachineOwnership(options.stateDir, options.eventService);
     const bundle =
@@ -1291,6 +1345,10 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
                       version: verified.version,
                       runtimeBinDir,
                       platform,
+                      arch: arch ?? process.arch,
+                      ...(options._catatonitPackage === undefined
+                        ? {}
+                        : { nativeInitHelper: options._catatonitPackage }),
                     }).pipe(
                       Effect.andThen(
                         family === "win32"
@@ -1304,35 +1362,78 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
             ),
           );
 
-    if (runtimeBinDir !== undefined && runtimeConfigDir !== undefined) {
-      yield* writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir });
-    }
-
-    if (family === "linux" && runtimeBinDir !== undefined && options.nftArtifactDownload !== undefined) {
-      yield* ensureManagedNft({
+    if (runtimeBinDir !== undefined && runtimeConfigDir !== undefined && family !== "linux") {
+      yield* writeManagedRuntimeContainersConf({
         runtimeBinDir,
-        download: options.nftArtifactDownload,
-        cacheDir:
-          options.nftCacheDir ?? `${(options.stateDir ?? runtimeBinDir).replace(/\/+$/u, "")}/nft-downloads`,
-        platform,
-        arch: arch ?? process.arch,
+        runtimeConfigDir,
+        nativeInit: false,
       });
     }
 
+    const socketPath = options.socketPath;
+    const api =
+      options.podmanApi ??
+      (socketPath === undefined
+        ? undefined
+        : makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env })));
     const podmanVersionOutput = yield* withStep(
       tree,
       podmanStep,
-      (options.podmanCommand !== undefined
-        ? options.podmanCommand.version
-        : resolveSetupPodmanCommandRunner(
-            platform,
-            options.runtimeBinDir,
-            options._machineToolingExists ?? existsSync,
-          ).pipe(Effect.flatMap((runner) => runner.version))
-      ).pipe(Effect.tap((output) => enforcePodmanVersionFloor(parsePodmanVersion(output), "cli"))),
+      options.endpointOwnership === "external"
+        ? api === undefined
+          ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
+          : api.info.pipe(
+              Effect.mapError((cause) => new PodmanSocketUnreachableError(cause)),
+              Effect.map((value) => infoPodmanVersion(value) ?? "unknown"),
+            )
+        : (options.podmanCommand !== undefined
+            ? options.podmanCommand.version
+            : resolveSetupPodmanCommandRunner(
+                platform,
+                options.runtimeBinDir,
+                options._machineToolingExists ?? existsSync,
+              ).pipe(Effect.flatMap((runner) => runner.version))
+          ).pipe(Effect.tap((output) => enforcePodmanVersionFloor(parsePodmanVersion(output), "cli"))),
     );
     const detectedPodmanVersion = parsePodmanVersion(podmanVersionOutput);
-    const socketPath = options.socketPath;
+    if (directHelpersStep !== undefined && runtimeBinDir !== undefined) {
+      const nft =
+        options.nftArtifactDownload === undefined
+          ? Effect.void
+          : ensureManagedNft({
+              runtimeBinDir,
+              download: options.nftArtifactDownload,
+              cacheDir:
+                options.nftCacheDir ??
+                `${(options.stateDir ?? runtimeBinDir).replace(/\/+$/u, "")}/nft-downloads`,
+              platform,
+              arch: arch ?? process.arch,
+            });
+      const nativeInit = ensureManagedCatatonit({
+        runtimeBinDir,
+        download:
+          options.artifactDownload ??
+          (() =>
+            Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "setup",
+                message: "Native init setup requires the verified artifact downloader.",
+                remediation: "Run `lando setup` through the standard runtime provider registry.",
+              }),
+            )),
+        cacheDir: options.nftCacheDir ?? `${runtimeBinDir}/.init-downloads`,
+        arch: arch ?? process.arch,
+        ...(options._catatonitPackage === undefined ? {} : { package: options._catatonitPackage }),
+      }).pipe(
+        Effect.andThen(
+          runtimeConfigDir === undefined
+            ? Effect.void
+            : writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }),
+        ),
+      );
+      yield* withStep(tree, directHelpersStep, Effect.andThen(nft, nativeInit));
+    }
     const recordCreatedMachine = (runner: PodmanMachineRunner) =>
       createdMachineOwnership(runner).pipe(
         Effect.tap((ownership) =>
@@ -1409,12 +1510,6 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
       );
     }
 
-    const api =
-      options.podmanApi ??
-      (socketPath === undefined
-        ? undefined
-        : makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env })));
-
     let info: unknown;
     if (probesSocket && socketStep !== undefined) {
       info = yield* withStep(
@@ -1435,7 +1530,7 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
     }
 
     const podmanVersion = infoPodmanVersion(info) ?? detectedPodmanVersion;
-    if (options.managedRuntimeSetup !== undefined) {
+    if (options.endpointOwnership !== "external" && options.managedRuntimeSetup !== undefined) {
       const progress: RuntimeSetupProgress = {
         ...(bundle === undefined ? {} : { runtimeBundleVersion: bundle.version }),
         run: (phase, body) => {
@@ -1446,7 +1541,7 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
         },
       };
       yield* options.managedRuntimeSetup(progress);
-    } else {
+    } else if (options.endpointOwnership !== "external") {
       yield* options.readinessCheck ?? Effect.void;
     }
     const statePath =
@@ -1473,20 +1568,14 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
       ...(statePath === undefined ? {} : { statePath }),
     } satisfies SetupResult;
   }).pipe(
+    withInstallationLock,
     Effect.onExit((exit) =>
       Exit.isSuccess(exit)
         ? Effect.void
-        : Effect.gen(function* () {
-            const details = failureDetails(exit.cause);
-            for (const step of steps) {
-              yield* tree.failTask(
-                step.taskId,
-                details.summary,
-                details.remediation === undefined ? undefined : { remediation: details.remediation },
-              );
-            }
-            yield* tree.close("Lando runtime setup failed");
-          }),
+        : // A failing step already settled itself; never-started steps stay pending.
+          Cause.hasInterruptsOnly(exit.cause)
+          ? tree.settleInterrupt("Lando runtime setup interrupted")
+          : tree.settleFailure("Lando runtime setup failed"),
     ),
   );
 

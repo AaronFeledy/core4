@@ -34,6 +34,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { execApp } from "../../src/operations/exec.ts";
 import { followLogsForPlan } from "../../src/operations/logs.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
+import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "../../src/subsystems/host-proxy/worker-records.ts";
 import { workerStatePath } from "../../src/subsystems/host-proxy/worker-state-file.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 
@@ -137,7 +138,7 @@ describe("live plan-secret redaction", () => {
           appId: foreign ? "another-app" : plan.id,
           appRoot: plan.root,
           providerId: provider.id,
-          protocolVersion: 2,
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid: 123,
           transport: "unix-socket",
           socketPath: "/unused/socket",

@@ -43,6 +43,7 @@ test("the live shared port reads engine creation state and does not expose a cre
             subscribe: () => Stream.empty,
             subscribeQueue: Effect.never,
             waitFor: () => Effect.never,
+            subscribeWithHistory: () => Effect.never,
             waitForAny: () => Effect.never,
             query: () => Effect.succeed([]),
           }),

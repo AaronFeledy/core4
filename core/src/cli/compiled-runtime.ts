@@ -8,10 +8,10 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
 import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
-import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
 import type { RendererIO } from "@lando/renderer/io";
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { withCommandTracing } from "./command-tracing";
 import { landoSpecForId } from "./compiled-argv";
 import {
@@ -25,13 +25,13 @@ import {
 } from "./compiled-session";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
-import { EmptyResultSchema } from "./spec/command-base";
+import { EmptyResultSchema, type LandoCommandSpec } from "./spec/command-base";
 import { activeTrace } from "./trace-selection";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
 
-const makeCompiledRuntime: CompiledRuntimeFactory = (bootstrap) =>
-  makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } }));
+const makeCompiledRuntime = (bootstrap: BootstrapLevel, context?: CliInvocationContext) =>
+  makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } }, context?.env));
 
 export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state";
 export {
@@ -69,6 +69,7 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
   declaredBootstrap: BootstrapLevel,
   runtime: Layer.Layer<ROut, E, RIn>,
   runtimeForBootstrap: CompiledRuntimeFactory = makeCompiledRuntime,
+  context?: CliInvocationContext,
 ) => {
   const invocation = getActiveCommandInvocation();
   if (
@@ -84,9 +85,18 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
       }),
     );
   }
-  const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap);
+  const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap, context?.env);
   return effectiveBootstrap === declaredBootstrap ? runtime : runtimeForBootstrap(effectiveBootstrap);
 };
+
+export const compiledCommandTransportOptions = (
+  spec: LandoCommandSpec | undefined,
+  streamingMode: "live" | undefined,
+) => ({
+  ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
+  ...(streamingMode === undefined ? {} : { streamingMode }),
+  ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+});
 
 export const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
@@ -102,7 +112,9 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
     readonly streamingMode?: "live";
     readonly preCommand?: boolean;
+    readonly payloadStdout?: boolean;
     readonly io?: RendererIO;
+    readonly context?: CliInvocationContext;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
     readonly tracer?: Tracer.Tracer;
     readonly signal?: AbortSignal;
@@ -115,7 +127,13 @@ export const runCompiledCommand = <A, E, R, RE>(
     activeCommandId === "meta:doctor" ||
     activeCommandId === "meta:uninstall"
       ? runtime
-      : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
+      : resolveCompiledCommandRuntime(
+          activeCommandId,
+          spec.bootstrap,
+          runtime,
+          options.runtimeForBootstrap ?? ((bootstrap) => makeCompiledRuntime(bootstrap, options.context)),
+          options.context,
+        );
   const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
   const specCompletion = spec?.completion;
   const completion =
@@ -134,6 +152,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     projectResultKeys === undefined &&
     jqExpression === undefined;
   const rendererOptions = {
+    ...(options.context === undefined ? {} : { context: options.context }),
     runtime: effectiveRuntime as Layer.Layer<
       Exclude<R, EventService | Renderer>,
       RE | ConfigError | LandoRuntimeBootstrapError
@@ -143,13 +162,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     command: activeCommandId,
     ...(options.preCommand !== true && invocation !== undefined ? { invocation } : {}),
     resultSchema: options.resultSchema ?? spec?.resultSchema ?? EmptyResultSchema,
-    ...(options.preCommand === true || spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
-    ...(options.preCommand === true || options.streamingMode === undefined
-      ? {}
-      : { streamingMode: options.streamingMode }),
-    ...(options.preCommand === true || spec?.streamFrames === undefined
-      ? {}
-      : { streamFrames: spec.streamFrames }),
+    ...(options.preCommand === true ? {} : compiledCommandTransportOptions(spec, options.streamingMode)),
     ...(redactionTokens === undefined ? {} : { redactionTokens }),
     ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
     ...(jqExpression === undefined ? {} : { jqExpression }),
@@ -160,12 +173,13 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
+    ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
     formatError: (
       failure: import("@lando/sdk/command-result").ProjectedFailure,
       redactor: import("@lando/sdk/secrets").Redactor,
-    ) => commandErrorMessage(failure, activeCommandId, redactor),
+    ) => commandErrorMessage(failure, activeCommandId, redactor, options.context?.env),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

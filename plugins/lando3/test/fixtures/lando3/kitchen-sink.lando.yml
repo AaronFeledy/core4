@@ -310,6 +310,8 @@ services:
   # Recipe database service, customized.
   database:
     type: mysql:8.0
+    environment:
+      MYSQL_TCP_PORT: "3307"
     portforward: true             # true = random host port; or a fixed number
     creds:                        # recipe defaults are all "drupal"/"lamp"/...
       user: drupal
@@ -359,6 +361,11 @@ services:
 
   postgres:
     type: postgres:16
+    environment:
+      PGPORT: "5432"
+    overrides:
+      environment:
+        PGPORT: "5433"
     portforward: true
     creds:
       database: trouble           # postgres only honors database (user is postgres)
@@ -373,6 +380,8 @@ services:
 
   mssql:
     type: mssql:2022
+    environment:
+      MSSQL_TCP_PORT: "1435"
     portforward: true
 
   redis:
@@ -424,6 +433,8 @@ services:
 
   phpmyadmin:
     type: phpmyadmin:5.2
+    environment:
+      APACHE_PORT: "8081"
     hosts:                        # db services to show in the PMA server list
       - database
       - mariadb
@@ -431,6 +442,11 @@ services:
       config: .lando/config.user.inc.php
     build_as_root:
       - apk --update add openssl wget unzip
+
+  rabbitmq:
+    type: rabbitmq:3
+    environment:
+      RABBITMQ_NODE_PORT: "5673"
 
   nginx:
     type: nginx:1.27
@@ -807,6 +823,116 @@ services:
     scanner: false
     overrides:                    # raw Compose applied last, same as api 3
       working_dir: /app
+
+  mount-aliases4:
+    api: 4
+    type: l337
+    image: alpine:3.21
+    home: false
+    appMount: /preferred
+    appmount: /middle
+    app-mount:
+      source: ./ignored
+      src: ./also-ignored
+      target: /site
+      destination: /destination
+      dest: /dest
+      owner: www-data
+      permissions: "775"
+      perms: "775"
+      user: www-data
+      group: www-data
+      scope: app
+      instructions: echo ignored
+      read_only: true
+      readOnly: true
+      exclude: cache
+      excludes: [node_modules, "!/node_modules/keep"]
+      include: live
+      includes: [other]
+      content: ignored
+      contents: ignored
+    mount: ['./a:/b:cached']
+    mounts:
+      - src: ./a
+        dest: /b
+        read_only: false
+        readOnly: true
+        exclude: cache
+        excludes: ["!cache/keep"]
+        include: ignored
+        includes: [ignored]
+        owner: www-data
+        permissions: "775"
+        perms: "775"
+        user: www-data
+        scope: app
+        instructions: echo ignored
+      - type: storage:volume
+        dest: /data
+      - type: storage:bind
+        source: ./data
+        target: /data-bind
+    storage:
+      - dest: /data
+        scope: project
+        perms: "775"
+        user: www-data
+        group: www-data
+        instructions: echo ignored
+        src: ignored
+        read_only: true
+    endpoints: [8080/http]
+
+  claim-gaps:
+    type: node:22
+    user: node
+    via: nginx
+    xdebug: {mode: debug}
+    composer_version: false
+    composer: {vendor/tool: '*'}
+    db_client: mysql
+    authentication: native
+    password: ignored
+    persist: true
+    core: ignored
+    mailFrom: [appserver]
+    hogfrom: [appserver]
+    maxMessages: 100
+    hosts: [database]
+    backends: [appserver]
+    backend: appserver
+    backend_port: 8080
+    ssl: false
+    sslExpose: true
+    sport: 8443
+
+  no-command-health:
+    api: 4
+    image: {dockerfile: Dockerfile, ssh: false}
+    healthcheck: true
+
+  command-alias-health:
+    api: 4
+    image: alpine:3.21
+    healthcheck: {cmd: echo ok, retry: 3, delay: 1000}
+
+  bare-l337:
+    api: 4
+    type: l337
+    image: alpine:3.21
+    volumes: ['.:/src']
+    healthcheck: echo ignored
+
+  ssl-default-exposure:
+    type: nginx
+    ssl: true
+
+  ssl-private-certs:
+    type: nginx
+    ssl: true
+    sport: 8443
+    sslExpose: false
 
   # Minimal api 4 service: `type` omitted means `lando`.
   curl:

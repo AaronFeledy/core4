@@ -35,7 +35,7 @@ func parsePolicy() envPolicy {
 func (p envPolicy) filter(env map[string]string) map[string]string {
 	result := make(map[string]string)
 	for name, value := range env {
-		if p.blocked[name] || (p.oneOnly[name] && value != "1") {
+		if strings.HasPrefix(name, "LANDO_") || p.blocked[name] || (p.oneOnly[name] && value != "1") {
 			continue
 		}
 		allowed := p.names[name]

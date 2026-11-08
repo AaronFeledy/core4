@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Effect, Exit } from "effect";
 
-import { SqlSeedStateError } from "@lando/sdk/errors";
+import type { SqlSeedStateError } from "@lando/sdk/errors";
 import {
   AppId,
   type DataTransferSpec,
   type Environment,
+  type EnvironmentValue,
   ServiceName,
   type SnapshotInfo,
   type VolumeRef,
@@ -15,10 +16,12 @@ import {
 import { type SqlExec, runImport } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
 import { parseCount } from "./command-input.ts";
-import { resolveSqlEnvironment } from "./environment.ts";
+import { registerSqlCredentials, resolveSqlEnvironment } from "./environment.ts";
 import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
+import { seedStateError } from "./seed-state.ts";
 import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
+import type { SqlPlan } from "./views.ts";
 
 export const executeSeed = Effect.fn("Sql.seed")(function* (
   deps: SqlRecoveryDeps & { readonly exec: SqlExec },
@@ -26,21 +29,21 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
   input: Parameters<typeof runImport>[2] & {
     readonly snapshot?: SnapshotInfo;
     readonly source?: {
-      readonly endpoint: Omit<Extract<DataTransferSpec["from"], { readonly _tag: "serviceCmd" }>, "env"> & {
+      readonly plan: SqlPlan;
+      readonly endpoint: Omit<
+        Extract<DataTransferSpec["from"], { readonly _tag: "serviceCmd" }>,
+        "env" | "secrets"
+      > & {
         readonly env: Environment;
       };
       readonly database: string;
+      readonly credentials: ReadonlyArray<EnvironmentValue>;
+      readonly redactionTokens: string[];
     };
     readonly store: VolumeRef;
   },
 ) {
-  const reject = (status: SqlSeedStateError["status"]) =>
-    new SqlSeedStateError({
-      message: `Cannot seed ${input.service} from state ${status}.`,
-      service: input.service,
-      status,
-      remediation: "Create a fresh database volume or explicitly import into the existing database.",
-    });
+  const reject = (status: SqlSeedStateError["status"]) => seedStateError(input.service, status);
   const identity = context.volumeIdentity;
   if (identity.origin !== "created" || identity.ownerRoot !== context.owner.appRoot)
     return yield* Effect.fail(reject("unknown"));
@@ -52,17 +55,11 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
     service: input.service,
     command,
     env: input.env,
+    secrets: input.secrets,
   });
   const count = parseCount(counted.stdout);
   if (count !== 0) {
-    return yield* Effect.fail(
-      new SqlSeedStateError({
-        message: `Cannot seed ${input.service} from state ${status}.`,
-        service: input.service,
-        status,
-        remediation: "Create a fresh database volume or explicitly import into the existing database.",
-      }),
-    );
+    return yield* Effect.fail(reject(status));
   }
   const seedHandle = input.snapshot === undefined ? undefined : snapshotHandle(input.snapshot);
   if (input.snapshot !== undefined) {
@@ -75,14 +72,24 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       const seeded = Effect.gen(function* () {
         yield* context.verifyVolume;
         if (input.source !== undefined) {
+          const registered = yield* registerSqlCredentials(input.source.plan, input.source.credentials);
+          input.source.redactionTokens.push(...registered.substringTokens);
+          const sourceEnv = yield* resolveSqlEnvironment(input.source.endpoint.env);
+          const targetEnv = yield* resolveSqlEnvironment(input.env);
+          const targetSecrets = input.secrets();
           return yield* deps.transfer({
-            from: { ...input.source.endpoint, env: yield* resolveSqlEnvironment(input.source.endpoint.env) },
+            from: {
+              ...input.source.endpoint,
+              env: sourceEnv,
+              secrets: registered.secrets,
+            },
             to: {
               _tag: "serviceCmd",
               app: AppId.make(input.plan.id),
               service: ServiceName.make(input.service),
               command: loadCommand(input.family, input.creds, input.source.database),
-              env: yield* resolveSqlEnvironment(input.env),
+              env: targetEnv,
+              secrets: targetSecrets,
             },
             overwrite: true,
           });

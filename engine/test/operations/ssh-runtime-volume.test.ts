@@ -75,7 +75,7 @@ const ssh = {
   getAgentSocket: (appId: AppId) =>
     Effect.succeed({ appId, socketPath: "/missing-host-agent.sock", runtimeVolume: "plugin-owned-agent" }),
 };
-const registry = (state: string, selected: string[]) => ({
+const registry = (state: "running" | "exited", selected: string[]) => ({
   appliedPlansFor: () => Effect.succeed([]),
   resolveAppliedPlan: () => Effect.succeed(undefined),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -93,7 +93,6 @@ const registry = (state: string, selected: string[]) => ({
           providerId: ProviderId.make("lando"),
           status: state,
           publications: { status: "unknown" as const },
-          state,
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     });
@@ -347,11 +346,15 @@ test("stopped sidecar starts once and forwards after delayed readiness with task
             Effect.map((provider) => ({
               ...provider,
               inspect: () =>
-                provider
-                  .inspect()
-                  .pipe(
-                    Effect.map((service) => ({ ...service, state: setups === 0 ? "exited" : "running" })),
-                  ),
+                provider.inspect().pipe(
+                  Effect.map((service) => ({
+                    app: service.app,
+                    service: service.service,
+                    providerId: service.providerId,
+                    publications: service.publications,
+                    status: setups === 0 ? ("exited" as const) : ("running" as const),
+                  })),
+                ),
               exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
             })),
           ),
@@ -399,7 +402,7 @@ test.each([
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RedactionService, {
         registerValues: () => Effect.void,
-        payloadValues: () => Effect.succeed(() => ["super-secret"]),
+        payloadValues: () => Effect.succeed(() => ({ substring: ["super-secret"], wholeToken: [] })),
         forProfile: () => Effect.succeed(redactor),
       }),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),

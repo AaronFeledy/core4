@@ -1,3 +1,7 @@
+import { RecipeManifestValidationError, RecipeSourceError } from "@lando/sdk/errors";
+import { compileRecipeSource } from "@lando/sdk/recipes";
+import { parseValidationIssuePath, validationIssue } from "@lando/sdk/schema";
+import { type SourceSession, displaySource } from "@lando/source-acquisition";
 import { Cause, Effect, Exit } from "effect";
 import type { InitAppOptions } from "../cli/commands/init";
 import { parseInitSourceFlags } from "../cli/commands/init-source";
@@ -23,9 +27,32 @@ export const parseResolvedRecipe = async (
   context: Partial<FlattenRecipeContext> = {},
 ) => {
   const resolution = await unwrap(resolveRecipeSource(resolved, context));
-  const { compileResolvedRecipe } = await import("./compiled-source");
-  const compiled = await unwrap(compileResolvedRecipe(resolution));
-  return { resolved, resolution, compiled, manifest: compiled.manifest };
+  const { files: _files, ...questionnaireSource } = resolution.source;
+  const origin = resolution.sources.at(-1)?.origin;
+  const questionnaire = await unwrap(
+    Effect.fromResult(
+      compileRecipeSource(questionnaireSource, {
+        sourceKind: origin?.kind === "bundled" ? "bundled" : "local",
+        packageName:
+          origin?.kind === "bundled"
+            ? `@lando/recipe-${questionnaireSource.id}`
+            : (questionnaireSource.package ?? "local"),
+        assets: [],
+        configLayers: resolution.configLayers,
+      }),
+    ).pipe(
+      Effect.mapError(
+        (error) =>
+          new RecipeManifestValidationError({
+            source: resolution.source.id,
+            message: error.message,
+            issues: [validationIssue(parseValidationIssuePath(error.path ?? "config") ?? [], error.message)],
+            remediation: error.remediation,
+          }),
+      ),
+    ),
+  );
+  return { resolved, resolution, questionnaire };
 };
 
 export const acquireInitRecipe = async (
@@ -33,19 +60,28 @@ export const acquireInitRecipe = async (
   recipeRef: string,
   interaction: InteractionPrompter | undefined,
 ) => {
+  const sources = options.sources;
+  const requireSources = (): SourceSession => {
+    if (sources === undefined) {
+      throw new RecipeSourceError({
+        message: "Remote recipe acquisition requires a SourceSession spanning the init lifecycle.",
+        source: displaySource(recipeRef),
+        kind: "cache",
+        remediation: "Open a source session before preparing a remote recipe.",
+      });
+    }
+    return sources;
+  };
+
   const flags = parseInitSourceFlags(options);
   const onWarn = options.onWarn ?? options.postInitIO?.err;
-  const common = { ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }) };
   const parse = (resolved: ResolvedRecipe) =>
     parseResolvedRecipe(resolved, {
-      ...common,
-      ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
+      ...(sources === undefined ? {} : { sources }),
+      ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
       ...(onWarn === undefined ? {} : { onWarn }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
-  const archive = {
-    ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
-    ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
-  };
   const path = flags.path === undefined ? {} : { path: flags.path };
   switch (flags.source) {
     case "git": {
@@ -53,11 +89,11 @@ export const acquireInitRecipe = async (
       return parse(
         await resolveGitRecipeSource({
           url: flags.url ?? "",
-          ...common,
+          sources: requireSources(),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...path,
           ...(ref === undefined ? {} : { ref }),
           ...(onWarn === undefined ? {} : { onWarn }),
-          ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
         }),
       );
     }
@@ -75,15 +111,12 @@ export const acquireInitRecipe = async (
       return parse(
         await resolveTarballRecipeSource({
           url: flags.url ?? "",
-          ...common,
-          ...archive,
+          sources: requireSources(),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...path,
           ...(flags.checksum === undefined ? {} : { checksum: flags.checksum }),
-          ...(confirmUnverified === undefined
-            ? onWarn === undefined
-              ? {}
-              : { onWarn }
-            : { confirmUnverified }),
+          ...(confirmUnverified === undefined ? {} : { confirmUnverified }),
+          ...(onWarn === undefined ? {} : { onWarn }),
         }),
       );
     }
@@ -91,28 +124,21 @@ export const acquireInitRecipe = async (
       return parse(
         await resolveNpmRecipeSource({
           package: flags.package ?? "",
-          ...common,
-          ...archive,
+          sources: requireSources(),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...path,
-          ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
-          ...(options.npmRegistryClient === undefined ? {} : { registryClient: options.npmRegistryClient }),
         }),
       );
     case "registry":
       return parse(
         await resolveRegistryRecipeSource({
           id: flags.id ?? "",
-          ...common,
+          sources: requireSources(),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...path,
           ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
           ...(options.registryClient === undefined ? {} : { registryClient: options.registryClient }),
-          ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
-          ...(options.tarballRecipeFetcher === undefined
-            ? {}
-            : { tarballRecipeFetcher: options.tarballRecipeFetcher }),
-          ...(options.tarballRecipeExtractor === undefined
-            ? {}
-            : { tarballRecipeExtractor: options.tarballRecipeExtractor }),
+          ...(onWarn === undefined ? {} : { onWarn }),
         }),
       );
     case undefined:

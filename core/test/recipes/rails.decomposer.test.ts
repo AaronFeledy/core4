@@ -98,9 +98,24 @@ describe("rails decomposition", () => {
         cache: { type: "redis" },
       },
       tooling: {
-        rails: { service: "web", description: "Run the Rails CLI inside the web service.", cmds: ["rails"] },
-        bundle: { service: "web", description: "Run Bundler inside the web service.", cmds: ["bundle"] },
-        rake: { service: "web", description: "Run Rake inside the web service.", cmds: ["rake"] },
+        rails: {
+          service: "web",
+          description: "Run the Rails CLI inside the web service.",
+          cmds: ["rails"],
+          wrapper: true,
+        },
+        bundle: {
+          service: "web",
+          description: "Run Bundler inside the web service.",
+          cmds: ["bundle"],
+          wrapper: true,
+        },
+        rake: {
+          service: "web",
+          description: "Run Rake inside the web service.",
+          cmds: ["rake"],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({

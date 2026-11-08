@@ -49,11 +49,13 @@ const authoring = {
       service: "appserver",
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
+      wrapper: true,
     },
     php: {
       service: "appserver",
       description: "Run the PHP CLI inside the appserver service.",
       cmds: ["php"],
+      wrapper: true,
     },
   },
 } as const;
@@ -78,6 +80,7 @@ describe("lemp decomposition", () => {
       webroot: ".",
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
+    expect(fragment.services?.web).not.toHaveProperty("uploadDirs");
     expect(fragment.services?.appserver).toMatchObject({ primary: true, via: "fpm", webroot: "." });
     expect(fragment.services?.appserver).not.toHaveProperty("routes");
   });

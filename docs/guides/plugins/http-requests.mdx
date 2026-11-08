@@ -3,7 +3,7 @@ id: http-requests
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, authoring, http]
+tags: [docs, plugins, authoring, http]
 ---
 
 # Make HTTP requests from a plugin
@@ -59,11 +59,26 @@ const report = (ctx: LandoPluginContext, payload: unknown) =>
   );
 ```
 
-Failures arrive as `HttpClientError`. When trust is the problem (a missing CA file or a blocked endpoint), the error's `cause` is a Lando `HttpTrustError` with a `remediation` line you can show the user.
+Failures arrive as `HttpClientError`. When trust is the problem, the error's `cause` is a Lando `HttpTrustError` with a `kind` and a `remediation` line you can show the user. `missing-custom-ca` means the server's issuer isn't trusted; `certificate-invalid` means the certificate is expired, not yet valid, issued for another host, or revoked; the proxy kinds mean the proxy refused the tunnel or wants credentials. A reset, refused, or timed-out connection is not a trust failure and arrives as a plain transport error. The client sends each request once and never retries it for you.
 
 ## Download files
 
 Fetching a binary or archive you will keep on disk? Use the `Downloader` service instead. It streams through the same client and checks the SHA-256 before it hands you the file.
+
+You don't choose whether a download retries; the command running your code does. During commands that download on purpose, such as `lando setup`, `lando update`, `lando init`, and `lando plugin:add`, the `Downloader` makes up to three attempts, waiting 1 second and then 2 seconds, and only for a dropped, refused, or timed-out connection or an HTTP 408, 429, 500, 502, 503, or 504 response. During everyday commands like `lando start` it makes one attempt, so a missing download fails fast. Every download fails after 120 seconds without response headers or 60 seconds without body data, instead of hanging.
+
+When a download fails, the `DownloadFetchError` tells you what happened: `reason` is `connection-reset`, `connection-refused`, `timeout`, `dns-temporary`, `host-not-found`, `network-unreachable`, `tls-handshake`, `trust`, `http-status`, or `transport`, and `attempts` counts the tries. Its message and remediation are written for the user, so show them as they are, and keep the error as the `cause` of your own error instead of copying its text into yours.
+
+A library host that runs its own download step can opt in the same way the CLI does, by providing `OnlineAcquisition` from `@lando/sdk/services`:
+
+```ts
+import { Effect } from "effect";
+import { OnlineAcquisition } from "@lando/sdk/services";
+
+// Downloads inside `step` retry transient failures, as they would during `lando setup`.
+const asDownloadStep = <A, E, R>(step: Effect.Effect<A, E, R>) =>
+  step.pipe(Effect.provideService(OnlineAcquisition, true));
+```
 
 ## Try it from a library host
 

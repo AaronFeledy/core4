@@ -6,6 +6,7 @@ import { RedactionService } from "@lando/redaction/service";
  */
 import { Effect, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { AppPlacementError } from "@lando/sdk/errors";
 import {
@@ -30,7 +31,6 @@ import {
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
 import { GlobalConfigSources } from "@lando/engine/services/config";
-import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { formatSummary } from "@lando/renderer/summary";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
@@ -47,7 +47,6 @@ import {
   inputNetworkProbe,
   inputProviderFlag,
   inputStringFlag,
-  shouldDisableHostProxyForSetup,
   sourceInstallDir,
 } from "./setup-inputs";
 import { authorizeProviderSetupPlan } from "./setup-provider-authorization";
@@ -67,9 +66,9 @@ import {
 } from "./setup-steps";
 import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary";
 
-export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
+export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
+export { SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -83,6 +82,7 @@ export const setupSpec: LandoCommandSpec<
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
+  onlineAcquisition: true,
   helpGroup: "common",
   summary: "Run host setup (provider, CA, router, shell integration).",
   description: "Run provider, CA, router, and shell-integration setup.",
@@ -98,7 +98,11 @@ export const setupSpec: LandoCommandSpec<
     const flag = inputProviderFlag(input);
     const captured = yield* Effect.serviceOption(GlobalConfigSources);
     const env = readProviderEnvVar(
-      captured._tag === "None" ? process.env : captured.value.sources.env ? captured.value.env : {},
+      captured._tag === "None"
+        ? (yield* CliInvocation).env
+        : captured.value.sources.env
+          ? captured.value.env
+          : {},
     );
     const configRaw = globalConfig.defaultProviderId;
     const config = configRaw ?? undefined;
@@ -109,6 +113,19 @@ export const setupSpec: LandoCommandSpec<
       ...(config === undefined ? {} : { config }),
       capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
     });
+
+    const userDataRootRaw = globalConfig.userDataRoot;
+    const userDataRoot =
+      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const recorder = makeSetupReadinessRecorder(
+      userDataRoot,
+      resolution.providerId,
+      redaction._tag === "Some" ? redaction.value : undefined,
+      (yield* CliInvocation).env,
+    );
+    yield* recorder.start;
+    yield* Effect.addFinalizer(recorder.finish);
 
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
@@ -122,6 +139,7 @@ export const setupSpec: LandoCommandSpec<
     });
 
     const selectedProvider = selection.providerId;
+    recorder.setProvider(selectedProvider);
     const persistsSelection =
       !inputBooleanFlag(input, "skip-provider") &&
       (selection.source === "flag" || selection.source === "prompt");
@@ -151,15 +169,6 @@ export const setupSpec: LandoCommandSpec<
     const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
 
     const selectedProviderId = String(selectedProvider);
-    const userDataRootRaw = globalConfig.userDataRoot;
-    const userDataRoot =
-      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    const recorder = makeSetupReadinessRecorder(
-      userDataRoot,
-      selectedProviderId,
-      redaction._tag === "Some" ? redaction.value : undefined,
-    );
     const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
@@ -231,10 +240,6 @@ export const setupSpec: LandoCommandSpec<
     yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
-    if (shouldDisableHostProxyForSetup(input)) {
-      yield* HostProxyServiceDisabled.setup({ mode: "none" });
-    }
-
     if (
       process.platform !== "win32" &&
       !inputBooleanFlag(input, "skip-shell-integration") &&
@@ -276,6 +281,9 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       network,
       recorder,
+      ...(globalConfig.defaultFileSyncEngine === undefined
+        ? {}
+        : { defaultEngine: globalConfig.defaultFileSyncEngine }),
     }).pipe(withHostProvider);
 
     const failedStep = recorder.firstFailedStep();
@@ -302,7 +310,7 @@ export const setupSpec: LandoCommandSpec<
       networkCaInjectionConfigured,
       ...(providerSwitch === undefined ? {} : { providerSwitch }),
     };
-  }),
+  }, Effect.scoped),
   render: (result, _input, ctx) => {
     if (
       typeof result !== "object" ||

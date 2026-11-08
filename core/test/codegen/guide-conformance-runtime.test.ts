@@ -89,12 +89,10 @@ test.each([
       const generated = await Bun.file(path).text();
       await Bun.write(
         path,
-        generated
-          .replace('guideId: "conformance",', `guideId: "conformance", runCli: ${runner},`)
-          .replace(
-            "Effect.gen(function* () {",
-            `Effect.gen(function* () {${"event" in fixture ? `context.events.push(${JSON.stringify(fixture.event)});` : ""}`,
-          ),
+        generated.replace(
+          'guideId: "conformance",',
+          `guideId: "conformance", runCli: ${"event" in fixture ? runner.replace("events: []", `events: [${JSON.stringify(fixture.event)}]`) : runner},`,
+        ),
       );
     }
 

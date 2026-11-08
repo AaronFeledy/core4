@@ -164,21 +164,6 @@ ${matrixInclude}
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Setup Go for Linux Podman source build
-        if: startsWith(matrix.hostKey, 'linux-')
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        if: startsWith(matrix.hostKey, 'linux-')
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain} # 1.88.0
-
-      - name: Install Linux Podman source-build prerequisites
-        if: startsWith(matrix.hostKey, 'linux-')
-        run: |
-          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
-
       - name: Assemble \${{ matrix.hostKey }} runtime bundle from pinned sources
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}
 

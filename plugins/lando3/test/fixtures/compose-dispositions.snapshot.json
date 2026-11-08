@@ -98,7 +98,7 @@
   "gpus.x-*": "preserved",
   "group_add": "preserved",
   "healthcheck.start_interval": "preserved",
-  "init": "preserved",
+  "init": "normalized",
   "labels": "preserved",
   "labels.*": "preserved",
   "logging": "preserved",

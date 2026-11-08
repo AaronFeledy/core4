@@ -17,7 +17,7 @@ export const table = {
     { name: "false disables the probe", input: false, expected: false },
     { name: "bare NONE is an executable", input: ["NONE"], expected: { kind: "command", command: ["NONE"] } },
     {
-      name: "none drops probe targets and timings",
+      name: "none drops executable fields but preserves normalized settings",
       input: {
         kind: "none",
         command: "x",
@@ -26,12 +26,12 @@ export const table = {
         intervalSeconds: 2,
         startInterval: "5s",
       },
-      expected: false,
+      expected: { kind: "none", intervalSeconds: 2, startInterval: "5s" },
     },
     {
-      name: "disable ignores test and timings",
+      name: "disable drops the test but preserves normalized settings",
       input: { disable: true, test: "x", interval: "5s", start_interval: "1s" },
-      expected: false,
+      expected: { kind: "none", intervalSeconds: 5, startInterval: "1s" },
     },
     {
       name: "string is a shell command",
@@ -63,7 +63,11 @@ export const table = {
       input: { test: ["CMD-SHELL", "echo ready"] },
       expected: { kind: "command", command: "echo ready" },
     },
-    { name: "NONE test disables the probe", input: { test: ["NONE"], interval: "5s" }, expected: false },
+    {
+      name: "NONE test disables the probe",
+      input: { test: ["NONE"], interval: "5s" },
+      expected: { kind: "none", intervalSeconds: 5 },
+    },
     {
       name: "Compose disable true",
       input: { disable: true, test: "x" },
@@ -92,7 +96,7 @@ export const table = {
     },
     { name: "start_interval stays raw", input: { start_interval: "5s" }, expected: { startInterval: "5s" } },
     {
-      name: "none discards valid Compose and shared fields",
+      name: "none retains valid shared fields under Lando precedence",
       input: {
         test: ["CMD", "x"],
         disable: false,
@@ -103,7 +107,7 @@ export const table = {
         retries: "3",
         start_interval: "5s",
       },
-      expected: false,
+      expected: { kind: "none", retries: 3, startInterval: "5s" },
     },
     {
       name: "command selects Lando precedence over disable",

@@ -24,6 +24,7 @@ import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("orphan-relay");
@@ -73,6 +74,7 @@ const layerFor = (root: string) => {
   return {
     paths,
     layer: Layer.mergeAll(
+      layerTransactionGuard,
       emptySnapshotsLayer,
       PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
@@ -103,6 +105,7 @@ const layerFor = (root: string) => {
           subscribe: () => Stream.die("not used"),
           subscribeQueue: Effect.die("not used"),
           waitFor: () => Effect.die("not used"),
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.die("not used"),
           query: () => Effect.succeed([]),
         }),

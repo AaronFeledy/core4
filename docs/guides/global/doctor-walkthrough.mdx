@@ -3,7 +3,7 @@ id: global-doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, global, doctor, diagnostics]
+tags: [docs, global, doctor, diagnostics]
 ---
 
 # Read the global-app doctor check
@@ -17,27 +17,38 @@ lando doctor
 
 Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run.
 
-Doctor reads the global app on the provider setup selected. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
+This check reads the local generated files under the global root; it doesn't
+inspect the provider's containers. Use `lando global:status --format=json` for
+runtime observations. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs)
+for provider placement.
 
 ## When it is not installed
 
 The check warns and sets `installed` to `false`. Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To materialize it now:
 
 ```sh
-lando global:install
+lando global:reconcile
+lando global:status --format=json
 ```
 
 ## When it is installed
 
 The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), the dist file mtime as `lastInstallTimestamp`, materialized service ids, and plugin names that declare `globalServices:`.
 
-If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:install`.
+If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:reconcile`. Reconcile preserves saved policy and starts no containers. Use `lando global:status --format=json` to inspect desired policy, observed services, and pending cleanup separately; generated configuration alone isn't proof that a disabled service has stopped.
 
 ## Read the router file-watcher check
 
 The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record even when doctor selected a different app provider, because Traefik runs on the host provider, not on whatever the app pinned.
 
 It is a record, not a live probe. The check shows what the last router startup observed, and it stays reported until the next `lando global:restart` or `lando global:rebuild` observes a clean start and refreshes it. If the check still fails after you fixed the host, restart the global router and run doctor again.
+
+Restart and rebuild revalidate a router they actually applied. If the router is
+disabled, missing, or cannot be observed running, Lando doesn't probe it or create
+ready evidence. Its previous watcher-failure record remains historical evidence;
+disabling a service doesn't prove that failure was repaired. Check
+`lando global:list --format=json` for policy and
+`lando global:status --format=json` for observed state before deciding to restart it.
 
 The watcher runs on the provider runtime host, which is not always the operating system you typed the command on:
 
@@ -59,6 +70,12 @@ The first remediation is always something you can do without privileges, such as
 A watcher that starts but never delivers events, which some virtual filesystems cause, is not detected by this check.
 
 Read the `filesystem-watch` check in the same report for a live CLI-host result. Linux and WSL test one watch allocation. Windows also confirms one file event on the host's temporary filesystem. Neither result looks inside the provider VM or refreshes this router record. See [Check filesystem watches on this host](../subsystems/doctor-walkthrough.mdx#check-filesystem-watches-on-this-host).
+
+## Read the legacy route files check
+
+Each route file in the router's configuration directory is named after a hash of its owner: the app folder for user and global apps, the scratch id for scratch apps. That's what lets a renamed app replace its routes instead of leaving the old hostnames live. The `legacy-route-files` check warns about any `routes-*.yml` file that doesn't use that layout, such as files that development builds named after the app. Starting or destroying an app never adopts or deletes a file it can't attribute, so those hostnames stay published until you remove the file. The check also reports an owner-named file whose first line isn't Lando's route metadata; `lando start` refuses to overwrite that file.
+
+Doctor only reads. It lists the full paths of the files it found, and marks the list as truncated when there are too many to show. Delete those files. On Windows, then run `lando global:restart` so Traefik reloads its route configuration. Republish the routes you still need: run `lando start` in a user app, `lando global:start` for global services, or start a scratch app again with its scratch command.
 
 ## Verify
 

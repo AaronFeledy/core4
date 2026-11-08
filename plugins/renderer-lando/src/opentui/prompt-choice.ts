@@ -47,10 +47,8 @@ export const selectedChoiceIndex = (
   return resolveTokenIndex(choices, defaultRaw) ?? 0;
 };
 
-export const isYesDefault = (defaultRaw: string | undefined): boolean =>
-  defaultRaw !== undefined && /^(y|yes|true|1|on)$/i.test(defaultRaw.trim());
-
-export const isDeclinedType = (type: string): boolean => type === "secret";
+// Main-screen prompts displace prior output; confirmations must keep that decision context inline.
+export const isDeclinedType = (type: string): boolean => type === "secret" || type === "confirm";
 
 export const readPromptType = (request: PromptDriverRequestLike): string => {
   if (request.mode === "confirm") return "confirm";

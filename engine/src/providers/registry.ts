@@ -9,7 +9,7 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, type AppPlan, type PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type AppRef, type PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -29,6 +29,7 @@ import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { TeardownProvider } from "./app-placement.ts";
 import {
   observeProviderRuntime,
@@ -52,7 +53,7 @@ const toProviderUnavailable = (cause: unknown) =>
     message: "Unable to list runtime provider plugins.",
     cause,
     remediation:
-      "Run lando plugin:list and repair the provider plugin manifest or import reported by the cause before retrying.",
+      "Run lando doctor and repair the provider plugin manifest or import reported by the cause before retrying.",
   });
 
 export const makeRuntimeProviderRegistry = (
@@ -175,6 +176,7 @@ export const makeRuntimeProviderRegistry = (
       });
 
       const makeProvider = makeProviderFactory({
+        hostProbeRunners: yield* captureHostProbeRunners,
         paths,
         downloader,
         containerHelperAssets,
@@ -206,18 +208,40 @@ export const makeRuntimeProviderRegistry = (
       });
 
       const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
-        (root: AbsolutePath) =>
+        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
           appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers)),
+            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers, app)),
           ),
       );
 
       const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(
-        (root: AbsolutePath) =>
-          appliedStateProviders.pipe(Effect.flatMap((providers) => resolveTeardownEvidence(root, providers))),
+        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
+          appliedStateProviders.pipe(
+            Effect.flatMap((providers) => resolveTeardownEvidence(root, providers, app)),
+          ),
       );
 
       return RuntimeProviderRegistry.of({
+        appliedStateInventory: Effect.fn("RuntimeProviderRegistry.appliedStateInventory")(function* (
+          providerId: ProviderId,
+        ) {
+          const { contribution, context } = yield* contributionFor(providerId);
+          if (contribution.appliedStateInventory === undefined)
+            return yield* Effect.fail(
+              redactFailure(
+                new ProviderUnavailableError({
+                  providerId,
+                  operation: "applied-state.list",
+                  message: `Runtime provider ${providerId} does not provide a strict applied-state inventory.`,
+                  remediation:
+                    "Update the provider plugin to support strict applied-state inventory before relying on host-wide ownership checks.",
+                }),
+              ),
+            );
+          return yield* contribution
+            .appliedStateInventory(context)
+            .pipe(Effect.provideService(PathsService, paths), Effect.mapError(redactFailure));
+        }),
         assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
           function* (plan) {
             const { contribution, context } = yield* contributionFor(plan.provider);
@@ -234,6 +258,7 @@ export const makeRuntimeProviderRegistry = (
                   providerId: plan.provider,
                   path: issue.path,
                   layout: issue.appId === undefined ? "record" : "per-app",
+                  appId: plan.id,
                 }),
               );
           },

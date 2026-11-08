@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Stream, Struct } from "effect";
 
 import { execApp } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -24,42 +24,28 @@ import { validateToolInput } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec";
 import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceLogSources: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
+  ...Struct.omit(TestRuntimeProvider.capabilities, [
+    "composeKnobs",
+    "composeServiceFields",
+    "authoredNetworks",
+    "composeProjectFields",
+  ]),
   volumeSnapshot: "none",
   serviceFileCopy: "none",
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
-  providerExtensions: [],
 };
 
 const metadata = {
@@ -273,7 +259,8 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "proof" }]);
     const command = ["appserver", "--", "printf", "%s", "one argument", "--flag", ""];
-    const validated = validateToolInput(execSpec, { args: { command } });
+    const registrySpec: LandoCommandSpec = execSpec;
+    const validated = validateToolInput(registrySpec, { args: { command } });
     // When: the canonical spec runs the decoded MCP input, without CLI argv.
     const result = await Effect.runPromise(
       execSpec

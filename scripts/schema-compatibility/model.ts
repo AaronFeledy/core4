@@ -1,3 +1,5 @@
+import { INTERNAL_PERSISTED_STORES, type InternalPersistedStoreId } from "./internal-stores.ts";
+
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonObject | ReadonlyArray<JsonValue>;
 export type JsonObject = { readonly [key: string]: JsonValue };
@@ -15,11 +17,25 @@ export interface CompatibilityFinding {
   readonly justification?: string;
 }
 
+export type PublishedPersistedStoreId = "applied-state" | "tunnel-registry";
+export type PersistedStoreId = PublishedPersistedStoreId | InternalPersistedStoreId;
+
+export const isPersistedStoreId = (value: unknown): value is PersistedStoreId =>
+  value === "applied-state" ||
+  value === "tunnel-registry" ||
+  INTERNAL_PERSISTED_STORES.some(({ id }) => id === value);
+
+export interface PersistedStateRef {
+  readonly store: PersistedStoreId;
+  readonly version: number;
+}
+
 export interface CompatibilityException {
   readonly surface: string;
   readonly changeKind: string;
   readonly path: string;
   readonly justification: string;
+  readonly persistedState?: PersistedStateRef | ReadonlyArray<PersistedStateRef>;
 }
 
 export const isJsonObject = (value: unknown): value is JsonObject =>

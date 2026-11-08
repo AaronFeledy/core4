@@ -168,8 +168,13 @@ describe("fastapi decomposition", () => {
         cache: { type: "redis" },
       },
       tooling: {
-        uvicorn: { service: "web", description: "Run uvicorn inside the web service.", cmds: ["uvicorn"] },
-        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"] },
+        uvicorn: {
+          service: "web",
+          description: "Run uvicorn inside the web service.",
+          cmds: ["uvicorn"],
+          wrapper: true,
+        },
+        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"], wrapper: true },
       },
     });
     expect<unknown>(result.fragment).toEqual({

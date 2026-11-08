@@ -5,6 +5,7 @@ import { Effect, Fiber, Result } from "effect";
 import type { AbsolutePath, DownloadResult } from "../schema/index.ts";
 import type { DownloaderShape, LandoEvent } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
+import { runDownloaderRetryContract } from "./downloader-retry-contract.ts";
 
 const downloaderContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `Downloader contract failed: ${assertion}`, assertion, details });
@@ -34,6 +35,12 @@ export interface DownloaderContractHarness {
   readonly read: (filename: string) => Effect.Effect<Uint8Array | null>;
   readonly listDir: () => Effect.Effect<ReadonlyArray<string>>;
   readonly events: () => Effect.Effect<ReadonlyArray<LandoEvent>>;
+  /** Scripted transient and HTTP-status failures; required so the retry contract always runs. */
+  readonly failures: {
+    readonly reset: (url: string, count: number) => Effect.Effect<void>;
+    readonly status: (url: string, status: number) => Effect.Effect<void>;
+    readonly nextRetry: Effect.Effect<void>;
+  };
   readonly egress?: {
     readonly streamCallCount: () => Effect.Effect<number>;
     readonly bytesStreamed: () => Effect.Effect<number>;
@@ -56,6 +63,7 @@ export interface DownloaderContractHarness {
  * byte count equals the downloaded size.
  */
 export const runDownloaderContract = Effect.fnUntraced(function* (harness: DownloaderContractHarness) {
+  yield* runDownloaderRetryContract(harness);
   const service = harness.service;
   const download = (
     request: Parameters<DownloaderShape["download"]>[0],

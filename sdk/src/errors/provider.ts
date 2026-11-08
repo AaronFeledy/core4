@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { ListenerObservation } from "../schema/listener-observation.ts";
 import { ProviderId } from "../schema/primitives.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
@@ -85,6 +86,7 @@ export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyErro
   lastStatus: Schema.optional(
     Schema.String.annotate({ description: "Redacted last probe or provider observation detail." }),
   ),
+  listener: Schema.optional(ListenerObservation),
   logTail: Schema.optional(
     ServiceStartLogTail.annotate({ description: "Bounded, redacted service log snapshot." }),
   ),
@@ -94,6 +96,7 @@ export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("
   ...ProviderErrorBase,
   service: Schema.String,
   logTail: Schema.optional(ServiceStartLogTail),
+  listener: Schema.optional(ListenerObservation),
 }) {}
 
 export class ServiceExecError extends Schema.TaggedError<ServiceExecError>()("ServiceExecError", {

@@ -90,8 +90,9 @@ describe("django decomposition", () => {
           service: "web",
           description: "Run the Django management script inside the web service.",
           cmds: ["python manage.py"],
+          wrapper: true,
         },
-        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"] },
+        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"], wrapper: true },
       },
     });
     expect<unknown>(result.fragment).toEqual({

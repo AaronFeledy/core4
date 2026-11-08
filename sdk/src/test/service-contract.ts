@@ -11,6 +11,7 @@ import {
   ServiceConfig,
   ServiceName,
   ServicePlan,
+  landoServiceStoreName,
 } from "../schema/index.ts";
 import type {
   AppFeatureContext,
@@ -200,10 +201,14 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
       { index, source },
     );
     sourceIds.add(String(source.id));
-    yield* requireServiceComposition(source.path.startsWith("/"), "resolution logSource path is absolute", {
-      index,
-      source,
-    });
+    yield* requireServiceComposition(
+      source.path === undefined || source.path.startsWith("/"),
+      "resolution logSource path is absolute",
+      {
+        index,
+        source,
+      },
+    );
     yield* requireServiceComposition(
       resolution.base === "lando" || source.strategy !== "redirect",
       "resolution logSource strategy is supported by the base",
@@ -297,6 +302,7 @@ export interface ServiceFeatureContractHarness {
   readonly base?: "l337" | "lando";
   readonly primary?: boolean;
   readonly appName?: string;
+  readonly appSlug?: string;
   readonly appRoot?: string;
   readonly normalizedConfig?: ServiceConfig;
   readonly connection?: DatabaseConnection;
@@ -328,6 +334,8 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     normalizedConfig: input.normalizedConfig ?? { type: "test" },
     ...(input.connection === undefined ? {} : { connection: input.connection }),
     config: input.config ?? {},
+    serviceStoreName: (role) =>
+      landoServiceStoreName(input.appSlug ?? "myapp", input.serviceName ?? "web", role),
     addEnv(name, value) {
       recorded.env.set(name, value);
     },
@@ -358,6 +366,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     setReadiness(readiness) {
       recorded.settings.readiness = readiness;
     },
+    setListenerAuthority(authority) {
+      recorded.settings.listenerAuthority = authority;
+    },
     setCerts(certs) {
       recorded.settings.certs = certs;
     },
@@ -366,6 +377,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     },
     setCommand(command) {
       recorded.settings.command = command;
+    },
+    setInit(init) {
+      recorded.settings.init = init;
     },
     setArtifact(artifact) {
       recorded.settings.artifact = artifact;
@@ -622,6 +636,7 @@ const makeRecordingAppFeatureContext = (
       setCerts: recordMutation,
       setEntrypoint: recordMutation,
       setCommand: recordMutation,
+      setInit: recordMutation,
       setArtifact: recordMutation,
       setUser: recordMutation,
       setWorkingDirectory: recordMutation,

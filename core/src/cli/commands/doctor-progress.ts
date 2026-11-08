@@ -22,6 +22,7 @@ export const DOCTOR_TREE_ID = "doctor";
 
 export type DoctorSectionId =
   | "provider"
+  | "app-listeners"
   | "certificate-authority"
   | "network-trust"
   | "subsystems"
@@ -48,6 +49,7 @@ export const doctorSections = (options: DoctorOptions): ReadonlyArray<TaskSpec> 
     "global-app",
     "mcp",
   ];
+  if (options.app === true) ids.splice(1, 0, "app-listeners");
   if (options.app === true) ids.push("app-version-constraints");
   if (options.deprecations === true) ids.push("deprecations");
   if (options.app === true) ids.push("app-config");

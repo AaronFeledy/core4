@@ -2,13 +2,13 @@ import type { ServerResponse } from "node:http";
 import type { Context, Fiber } from "effect";
 
 import type { AppRef } from "@lando/sdk/schema";
-import type { EventService } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
-import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
-import type { HostProxyOpenExecutor } from "./open-target.ts";
+import type { HostProxyOpenCallExecutor, HostProxyRunLandoExecutor } from "./dispatch.ts";
+import type { HostProxyRunLandoSessionOptions } from "./transport-session.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
+import type { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 
 export interface HostProxyInFlightRequest {
   readonly fiber: Fiber.Fiber<void, never>;
@@ -22,7 +22,8 @@ export interface HandlerOptions {
   readonly allowlist: ReadonlyArray<string>;
   readonly callerService: string;
   readonly executor: HostProxyRunLandoExecutor;
-  readonly openExecutor?: HostProxyOpenExecutor;
+  readonly openExecutor?: HostProxyOpenCallExecutor;
+  readonly diagnostic?: HostProxyRunLandoSessionOptions["diagnostic"];
   readonly maxDepth: number;
   readonly concurrency: number;
   readonly bodyReadTimeoutMs: number;
@@ -37,12 +38,13 @@ export interface HandlerOptions {
   readonly control: {
     readonly token: string;
     readonly transport: HostProxyTransportKind;
-    readonly protocolVersion: 2;
+    readonly protocolVersion: typeof HOST_PROXY_WORKER_PROTOCOL_VERSION;
     readonly configDigest: string;
     readonly providerId?: string;
     readonly configure?: (body: unknown) => Promise<void>;
     readonly pid: number;
+    readonly bridgeState: () => "none" | "alive" | "dead";
     readonly shutdown: () => Promise<void>;
   };
-  readonly runtimeContext: Context.Context<EventService | RedactionService>;
+  readonly runtimeContext: Context.Context<RedactionService>;
 }

@@ -1,14 +1,9 @@
 import { expect, test } from "bun:test";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { ServiceConfig, ServicePlan, landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 import { Schema } from "effect";
-import {
-  applyServiceHome,
-  hasCustomImage,
-  homeStoreName,
-  serviceHomeIntent,
-} from "../../src/planner/home.ts";
+import { applyServiceHome, hasCustomImage, serviceHomeIntent } from "../../src/planner/home.ts";
 
 const identity: ServiceImageIdentity = { defaultUser: "root", homes: { root: "/root", node: "/home/node" } };
 const basePlan = Schema.decodeUnknownSync(ServicePlan)({
@@ -199,16 +194,4 @@ test("distinguishes catalog Hub aliases from custom images", () => {
   const config = Schema.decodeUnknownSync(ServiceConfig)({ image: "index.docker.io/library/node:22" });
   expect(hasCustomImage(config, "node:22")).toBe(false);
   expect(hasCustomImage(config, "ghcr.io/library/node:22")).toBe(true);
-});
-
-test("uses per-principal digests that separate ambiguous service/user pairs", () => {
-  expect(homeStoreName("app", "web", "root")).toBe("lando-app-web-home-root-3177abf4");
-  expect(homeStoreName("app", "a-b", "c")).toBe("lando-app-a-b-home-c-695274f6");
-  expect(homeStoreName("app", "a", "b-c")).toBe("lando-app-a-home-b-c-02654a5c");
-  expect(homeStoreName("app", "a-b", "c")).not.toBe(homeStoreName("app", "a", "b-c"));
-  expect(homeStoreName("app", "web", "Root")).toMatch(/^lando-app-web-home-root-[a-f0-9]{8}$/u);
-  expect(homeStoreName("app", "web", "Root")).not.toBe(homeStoreName("app", "web", "root"));
-  expect(homeStoreName("app", "web", "--User A--")).toMatch(/^lando-app-web-home-user-a-[a-f0-9]{8}$/u);
-  expect(homeStoreName("app", "web", "a".repeat(40))).toMatch(/^lando-app-web-home-a{32}-[a-f0-9]{8}$/u);
-  expect(homeStoreName("app", "web")).toBe("lando-app-web-home");
 });

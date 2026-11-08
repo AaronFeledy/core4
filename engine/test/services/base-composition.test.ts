@@ -53,6 +53,7 @@ const inputFor = (
   base: baseSeed(baseKind, options.environment),
   baseKind,
   appName: options.appName ?? "myapp",
+  appSlug: "myapp",
   appRoot: "/srv/apps/myapp",
   ...(options.withHost === true ? { host } : {}),
   normalizedConfig: { type: "node", environment: options.userEnv ?? {} },

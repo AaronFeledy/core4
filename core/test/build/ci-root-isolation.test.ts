@@ -31,7 +31,12 @@ test.each([
   {
     workflow: renderNightlyWorkflow,
     job: "provider-lando-e2e-linux-x64",
-    before: "Install Podman 6 toolchain",
+    before: "Prepare provider via lando setup",
+  },
+  {
+    workflow: renderNightlyWorkflow,
+    job: "service-listeners-linux-x64",
+    before: "Prepare provider via lando setup",
   },
   {
     workflow: renderNightlyWorkflow,
@@ -41,7 +46,7 @@ test.each([
   {
     workflow: renderNightlyWorkflow,
     job: "mysql-arm-client-linux-arm64",
-    before: "Assemble current-commit linux-arm64 runtime bundle",
+    before: "Prepare provider via lando setup against the current-commit manifest",
   },
   {
     workflow: renderNightlyWorkflow,

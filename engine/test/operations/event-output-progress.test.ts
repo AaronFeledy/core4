@@ -10,6 +10,7 @@ import { StreamFrameSink, createCollectingStreamFrameSink } from "../../src/oper
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 for (const kind of ["cmd", "task"] as const) {
@@ -37,6 +38,7 @@ for (const kind of ["cmd", "task"] as const) {
       );
       const payload = createCollectingStreamFrameSink();
       const layer = Layer.mergeAll(
+        BunProcessRunner.layer,
         testEnvironmentResolverLayer,
         EventRuntime.layer,
         Layer.succeed(RedactionService, makeRedactionService()),

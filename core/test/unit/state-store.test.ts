@@ -13,7 +13,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
-import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
+import { type DurableStateBucketSpec, StateStore } from "@lando/sdk/services";
 
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { makeStateStore } from "@lando/state-store/service";
@@ -51,7 +51,9 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const jsonSpec = (overrides: Partial<StateBucketSpec<Doc, Doc>> = {}): StateBucketSpec<Doc, Doc> => ({
+const jsonSpec = (
+  overrides: Partial<DurableStateBucketSpec<Doc, Doc>> = {},
+): DurableStateBucketSpec<Doc, Doc> => ({
   root: { path: dir },
   key: "doc.json",
   schema: Doc,
@@ -282,7 +284,7 @@ describe("StateStore — custom raw codec", () => {
   const Line = Schema.Struct({ value: Schema.String });
   type Line = typeof Line.Type;
 
-  const customSpec = (): StateBucketSpec<Line, Line> => ({
+  const customSpec = (): DurableStateBucketSpec<Line, Line> => ({
     root: { path: dir },
     key: "raw.txt",
     schema: Line,

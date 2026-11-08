@@ -23,6 +23,5 @@ export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>
     format: Flags.string({ description: "Output format.", default: "table" }),
   },
   run: () => scratchList(),
-  render: (result, input, ctx) =>
-    renderScratchListResult(result as ReadonlyArray<ScratchSummary>, scratchListFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderScratchListResult(result, scratchListFormatFromInput(input), ctx),
 };

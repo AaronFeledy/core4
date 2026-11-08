@@ -1,6 +1,11 @@
 import { join } from "node:path";
 
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import type { ProcessRunner } from "@lando/sdk/services";
+import type { SourceSession } from "@lando/source-acquisition";
 import { Effect } from "effect";
+import { retainedRecipeSourceStore } from "../../recipes/runtime-sources";
+import { mapSourceAcquisitionError } from "../../recipes/source-session";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import { makeTaskTree } from "@lando/sdk/task-progress";
@@ -33,8 +38,49 @@ export interface InitAppResult {
   readonly agentSkills?: AgentSkillsResult;
 }
 
-export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
-  const { prepared, manifest, directory, publicAnswers, appName } = await prepareInitApp(options);
+const runInitWithSources = Effect.fn("InitApp.runWithSources")(function* (
+  options: InitAppOptions & { readonly sources: SourceSession },
+): Effect.fn.Return<InitAppResult, unknown, ProcessRunner> {
+  const context = yield* Effect.context<ProcessRunner>();
+  return yield* tryPromiseSettled({
+    try: (signal) => {
+      const bound = Effect.runPromiseWith(context);
+      const run: ReturnType<typeof Effect.runPromiseWith<ProcessRunner>> = (effect, runOptions) =>
+        bound(effect, {
+          ...runOptions,
+          signal: runOptions?.signal === undefined ? signal : AbortSignal.any([signal, runOptions.signal]),
+        });
+      return initAppInContext({ ...options, signal: options.signal ?? signal }, run);
+    },
+    catch: (cause) => cause,
+  });
+});
+
+/**
+ * Initialize an app. Opens one SourceSession spanning acquisition, parent/asset
+ * resolution, preparation, and publication when `options.sources` is omitted.
+ * Prefer an outer scoped session for hosts that already hold a store.
+ */
+export const initApp = Effect.fn("InitApp.run")(function* (options: InitAppOptions) {
+  if (options.sources !== undefined) {
+    return yield* runInitWithSources({ ...options, sources: options.sources });
+  }
+  const store = options.recipeSourceStore ?? (yield* retainedRecipeSourceStore(options.registryUrl)).store;
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      return yield* runInitWithSources({ ...options, sources });
+    }),
+  );
+});
+
+const initAppInContext = async (
+  options: InitAppOptions,
+  run: ReturnType<typeof Effect.runPromiseWith<ProcessRunner>>,
+): Promise<InitAppResult> => {
+  options.signal?.throwIfAborted();
+  const { prepared, manifest, directory, publicAnswers, appName, interaction, reviewEligible } =
+    await prepareInitApp(options);
 
   const filesToWrite = prepared.outputs;
   const postInitActions = prepared.actions;
@@ -54,21 +100,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     mode: "list",
   });
 
-  await Effect.runPromise(tree.start);
-  await Effect.runPromise(tree.startTask("render"));
-
   let postInit: PostInitOutcome = { executed: [] };
   const skippedScaffold = prepared.skippedScaffold;
   let receipt: RecipeInitReceipt;
   let postInitStarted = false;
+  let renderStarted = false;
 
   try {
     if (prepared.conflicts[0] !== undefined) {
       const conflictPath = join(directory, prepared.conflicts[0]);
-      await Effect.runPromise(
-        tree.failTask("render", `Init target already has a Landofile: ${conflictPath}`),
-      );
-      await Effect.runPromise(tree.close("Initialization aborted"));
       throw new InitTargetExistsError({
         message: `Init target already has a Landofile: ${conflictPath}`,
         path: conflictPath,
@@ -84,62 +124,81 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         reason: "private-file-access-unavailable",
       });
     }
-    const result = await Effect.runPromise(
-      runRecipeInitPipeline({
-        prepared,
-        postInitEnabled: options.runPostInit !== false,
-        journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
-        privateFileAccess: options.privateFileAccess,
-        runPostInit: async (bound) => {
-          if (!shouldRunPostInit) {
-            return { executed: [] };
-          }
-          if (!postInitStarted) {
-            await Effect.runPromise(
-              tree.completeTask(
-                "render",
-                `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
-              ),
-            );
-            await Effect.runPromise(tree.startTask("postinit"));
-            postInitStarted = true;
-          }
-          return runPostInit({
-            ...bound,
-            ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
-            ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
-            ...(options.postInitCommandRunner === undefined
-              ? {}
-              : { commandRunner: options.postInitCommandRunner }),
-          });
+    const result = await run(
+      runRecipeInitPipeline(
+        {
+          prepared,
+          postInitEnabled: options.runPostInit !== false,
+          journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
+          privateFileAccess: options.privateFileAccess,
+          runPostInit: async (bound) => {
+            if (!shouldRunPostInit) {
+              return { executed: [] };
+            }
+            if (!postInitStarted) {
+              await run(
+                tree.completeTask(
+                  "render",
+                  `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
+                ),
+              );
+              await run(tree.startTask("postinit"));
+              postInitStarted = true;
+            }
+            return runPostInit({
+              ...bound,
+              ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
+              ...(options.postInitCommandRunner === undefined
+                ? {}
+                : { commandRunner: options.postInitCommandRunner }),
+            });
+          },
         },
-      }),
+        (review) =>
+          Effect.gen(function* () {
+            const onPrepared = options.onPrepared;
+            if (reviewEligible && onPrepared !== undefined) {
+              yield* Effect.tryPromise({
+                try: async (signal) => {
+                  const sharedSignal = options.signal ?? signal;
+                  sharedSignal.throwIfAborted();
+                  await onPrepared(review, { interaction, signal: sharedSignal });
+                  sharedSignal.throwIfAborted();
+                },
+                catch: (cause) => cause,
+              });
+            }
+            yield* tree.start;
+            renderStarted = true;
+            yield* tree.startTask("render");
+          }),
+      ),
       options.signal === undefined ? undefined : { signal: options.signal },
     );
     postInit = result.postInit;
     receipt = result.receipt;
   } catch (cause) {
-    if (cause instanceof InitTargetExistsError) throw cause;
+    if (!renderStarted) throw cause;
 
-    await Effect.runPromise(
+    await run(
       tree.failTask(
         postInitStarted ? "postinit" : "render",
         postInitStarted ? "Post-init failed" : "Render failed",
       ),
     );
-    await Effect.runPromise(tree.close("Initialization failed"));
+    await run(tree.close("Initialization failed"));
     throw cause;
   }
 
   if (postInitStarted) {
-    await Effect.runPromise(
+    await run(
       tree.completeTask(
         "postinit",
         `Ran ${postInit.executed.length} ${postInit.executed.length === 1 ? "action" : "actions"}`,
       ),
     );
   } else {
-    await Effect.runPromise(
+    await run(
       tree.completeTask(
         "render",
         `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
@@ -148,7 +207,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   }
 
   if (options.agentSkills !== true) {
-    await Effect.runPromise(tree.close(`Initialized ${appName}`));
+    await run(tree.close(`Initialized ${appName}`));
     return {
       appName,
       directory,
@@ -160,20 +219,20 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     };
   }
 
-  await Effect.runPromise(tree.startTask("agentskills"));
+  await run(tree.startTask("agentskills"));
   let agentSkills: AgentSkillsResult;
   try {
-    agentSkills = await Effect.runPromise(
+    agentSkills = await run(
       installAgentSkills({ appRoot: directory }),
       options.signal === undefined ? undefined : { signal: options.signal },
     );
   } catch (cause) {
-    await Effect.runPromise(tree.failTask("agentskills", "Agent skill installation failed"));
-    await Effect.runPromise(tree.close("Initialization failed"));
+    await run(tree.failTask("agentskills", "Agent skill installation failed"));
+    await run(tree.close("Initialization failed"));
     throw cause;
   }
-  await Effect.runPromise(tree.completeTask("agentskills", "Installed agent skills"));
-  await Effect.runPromise(tree.close(`Initialized ${appName}`));
+  await run(tree.completeTask("agentskills", "Installed agent skills"));
+  await run(tree.close(`Initialized ${appName}`));
   return {
     appName,
     directory,

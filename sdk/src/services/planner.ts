@@ -1,11 +1,14 @@
 import { Context, type Effect } from "effect";
 
 import type {
+  AppDataIdentityError,
   BuildPhaseFailedError,
   CapabilityError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
+  FileSyncSelectionError,
+  HealthcheckTargetUnsupportedError,
   LandofileValidationError,
   NotImplementedError,
   PublicationUnsupportedError,
@@ -14,6 +17,7 @@ import type {
 } from "../errors/index.ts";
 import type {
   AppPlan,
+  AppRef,
   CurrentExecutableAppPlan,
   LoadScopedLandofile,
   ProviderCapabilities,
@@ -21,6 +25,9 @@ import type {
 import type { ProviderError, ProviderSelectionError } from "./provider.ts";
 
 export type AppPlannerError =
+  | AppDataIdentityError
+  | HealthcheckTargetUnsupportedError
+  | FileSyncSelectionError
   | LandofileValidationError
   | RouteInputError
   | RouteProviderMismatchError
@@ -54,6 +61,7 @@ export class AppPlanner extends Context.Service<
     readonly plan: (
       landofile: LoadScopedLandofile,
       providerCapabilities: ProviderCapabilities,
+      options?: { readonly kind?: AppRef["kind"]; readonly dataName?: string },
     ) => Effect.Effect<CurrentExecutableAppPlan, AppPlannerError>;
   }
 >()("@lando/core/AppPlanner") {}

@@ -148,7 +148,7 @@ const makeInput = (
     resolvePlan,
     noPlanError,
     readAppEnvironment: () => Effect.succeed([]),
-    before: Effect.sync(() => calls.push({ name: "before", args: [] })),
+    before: () => Effect.sync(() => calls.push({ name: "before", args: [] })),
     service: makeService(calls),
     ...(dataPlane === undefined ? {} : { dataPlane }),
   };
@@ -209,7 +209,7 @@ describe("resolved provider operations", () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps({
       ...makeInput(calls),
-      before: Effect.die("must not start runtime"),
+      before: () => Effect.die("must not start runtime"),
     });
     if (ops.listVolumeSnapshots === undefined) throw new Error("Expected snapshot listing adapter");
     expect(await Effect.runPromise(ops.listVolumeSnapshots())).toEqual([]);
@@ -230,7 +230,7 @@ describe("resolved provider operations", () => {
     const calls: Call[] = [];
     const canonical = {
       ...plan,
-      identity: { appRoot: AbsolutePath.make("/canonical/root"), ownerKey: "owner" },
+      identity: { appRoot: AbsolutePath.make("/canonical/root"), ownerKey: "owner", dataName: "original" },
     };
     const input = makeInput(calls, () => Effect.succeed(canonical));
     const ops = makeResolvedProviderOps({
@@ -242,7 +242,7 @@ describe("resolved provider operations", () => {
             app,
             service,
             providerId: ProviderId.make("test"),
-            status: "stopped",
+            status: "exited",
             containerId: "observed-id",
             publications: { status: "unknown" as const },
           }),
@@ -251,37 +251,50 @@ describe("resolved provider operations", () => {
     if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
     await Effect.runPromise(ops.adoptVolume(target, PortablePath.make("/data")));
     expect(calls.find((call) => call.name === "adoptVolume")?.args).toEqual([
-      { app, containerId: "observed-id", destination: "/data", ownerRoot: "/canonical/root" },
+      { app: "original", containerId: "observed-id", destination: "/data", ownerRoot: "/canonical/root" },
     ]);
   });
 
-  test("observes a volume through the existing container identity and destination", async () => {
-    const calls: Call[] = [];
-    const input = makeInput(calls);
-    const ops = makeResolvedProviderOps({
-      ...input,
-      service: {
-        ...input.service,
-        inspect: () =>
-          Effect.succeed({
-            app,
-            service,
-            providerId: ProviderId.make("test"),
-            status: "stopped",
-            containerId: "observed-id",
-            publications: { status: "unknown" as const },
-          }),
-      },
-    });
-    if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
-    const destination = PortablePath.make("/var/lib/mysql");
-    const result = await Effect.runPromise(ops.observeVolume(target, destination));
-    expect(result.ref.store).toBe("actual-native-volume");
-    expect(calls).toEqual([
-      { name: "before", args: [] },
-      { name: "observeVolume", args: [{ app, containerId: "observed-id", destination }] },
-    ]);
-  });
+  test.each([undefined, "original"])(
+    "observes a volume with dataName=%s through the runtime container",
+    async (dataName) => {
+      const calls: Call[] = [];
+      const input = makeInput(calls, () =>
+        Effect.succeed({
+          ...plan,
+          identity: {
+            appRoot: plan.root,
+            ownerKey: "owner",
+            ...(dataName === undefined ? {} : { dataName }),
+          },
+        }),
+      );
+      const ops = makeResolvedProviderOps({
+        ...input,
+        service: {
+          ...input.service,
+          inspect: () =>
+            Effect.succeed({
+              app,
+              service,
+              providerId: ProviderId.make("test"),
+              status: "exited",
+              containerId: "observed-id",
+              publications: { status: "unknown" as const },
+            }),
+        },
+      });
+      if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
+      const destination = PortablePath.make("/var/lib/mysql");
+      const result = await Effect.runPromise(ops.observeVolume(target, destination));
+      expect(result.ref.store).toBe("actual-native-volume");
+      expect(result.ref.app).toBe(AppId.make(dataName ?? app));
+      expect(calls).toEqual([
+        { name: "before", args: [] },
+        { name: "observeVolume", args: [{ app: dataName ?? app, containerId: "observed-id", destination }] },
+      ]);
+    },
+  );
 
   test("rejects volume observation when inspection has no existing container identity", async () => {
     const calls: Call[] = [];

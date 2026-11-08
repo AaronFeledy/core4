@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { ToolingCompileError } from "@lando/sdk/errors";
-import { LandofileShape, type PluginManifest } from "@lando/sdk/schema";
+import { LandofileShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
   compileAppCommands,
   compileBunShellScriptCommands,
-  compilePluginCommands,
   compileToolingCommands,
 } from "../../src/cache/command-compiler.ts";
 
@@ -18,6 +17,26 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
+  test("indexes only resolved forwarding decisions as literal true", () => {
+    // Given
+    const source = landofile({
+      auto: { cmd: "wp" },
+      compound: { cmd: "cd web && drush" },
+      explicit: { cmd: "cd web && drush", wrapper: true },
+      owned: { cmd: "wp", wrapper: false },
+    });
+    // When
+    const entries = compileToolingCommands(source);
+    // Then
+    expect(entries.map(({ id, wrapper }) => [id, wrapper])).toEqual([
+      ["app:auto", undefined],
+      ["app:compound", undefined],
+      ["app:explicit", true],
+      ["app:owned", undefined],
+    ]);
+    for (const entry of entries.filter((entry) => entry.id !== "app:explicit"))
+      expect(entry).not.toHaveProperty("wrapper");
+  });
   test.each([false, { cmd: "echo retired", disabled: true }])(
     "indexes disabled task %j as hidden so the router can refuse it",
     (task) => {
@@ -26,7 +45,15 @@ describe("compileToolingCommands", () => {
       // When
       const entries = compileAppCommands(source, []);
       // Then
-      expect(entries).toEqual([{ id: "app:retired", summary: "", hidden: true }]);
+      expect(entries).toMatchObject([
+        {
+          id: "app:retired",
+          summary: "",
+          hidden: true,
+          disabled: true,
+          input: { flags: [], args: [], acceptsArguments: true },
+        },
+      ]);
     },
   );
 
@@ -49,7 +76,7 @@ describe("compileToolingCommands", () => {
     // When
     const [entry] = compileToolingCommands(source);
     // Then
-    expect(entry?.input).toEqual({
+    expect(entry?.input).toMatchObject({
       flags: [
         { name: "name", alias: "n", default: "world", boolean: false, required: false },
         { name: "loud", boolean: true, required: false },
@@ -62,13 +89,18 @@ describe("compileToolingCommands", () => {
     });
   });
 
-  test("omits input when neither flags nor args are declared", () => {
+  test("publishes an explicit empty declaration when neither flags nor args are declared", () => {
     // Given
     const source = landofile({ plain: { cmd: "echo plain" } });
     // When
     const [entry] = compileToolingCommands(source);
     // Then
-    expect(entry).not.toHaveProperty("input");
+    expect(entry?.input).toMatchObject({
+      flags: [],
+      args: [],
+      acceptsArguments: true,
+      revision: expect.any(String),
+    });
   });
 
   test.each([":host", ":target"])("omits a literal service when service is %s", (service) => {
@@ -109,7 +141,7 @@ describe("compileToolingCommands", () => {
       }),
     );
 
-    expect(entries).toEqual([
+    expect(entries).toMatchObject([
       { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
       { id: "app:test", summary: "Tests", hidden: false, service: "appserver" },
       { id: "app:zoo", summary: "Z thing", hidden: false, service: "appserver" },
@@ -143,7 +175,7 @@ describe("compileToolingCommands", () => {
 
   test("omits the service field when the tooling task has no service binding", () => {
     const [entry] = compileToolingCommands(landofile({ build: { cmd: "make" } }));
-    expect(entry).toEqual({ id: "app:build", summary: "", hidden: false });
+    expect(entry).toMatchObject({ id: "app:build", summary: "", hidden: false });
     expect(entry).not.toHaveProperty("service");
   });
 
@@ -159,6 +191,7 @@ describe("compileToolingCommands", () => {
 
     // Then only the included tasks are hidden
     expect(entries.find((entry) => entry.id === "app:docs:build")?.hidden).toBe(true);
+    expect(entries.find((entry) => entry.id === "app:docs:build")).not.toHaveProperty("disabled");
     expect(entries.find((entry) => entry.id === "app:build")?.hidden).toBe(false);
   });
 });
@@ -182,7 +215,8 @@ describe("compileBunShellScriptCommands", () => {
     const entries = compileBunShellScriptCommands(scripts);
 
     // Then
-    expect(entries).toEqual([
+    expect(entries[0]).not.toHaveProperty("wrapper");
+    expect(entries).toMatchObject([
       {
         id: "app:quality",
         summary: "Run quality checks",
@@ -210,42 +244,6 @@ describe("compileBunShellScriptCommands", () => {
     // When
     const entries = compileAppCommands(source, scripts);
     // Then
-    expect(entries).toEqual([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
-  });
-});
-
-const manifest = (name: string, commands?: ReadonlyArray<string>): PluginManifest => ({
-  name: name as PluginManifest["name"],
-  version: "0.0.0",
-  api: 4,
-  bootstrap: "app",
-  ...(commands === undefined ? {} : { contributes: { commands } }),
-});
-
-describe("compilePluginCommands", () => {
-  test("returns an empty list when no plugin contributes commands", () => {
-    const entries = compilePluginCommands([manifest("@lando/a"), manifest("@lando/b", [])]);
-    expect(entries).toEqual([]);
-  });
-
-  test("flattens contributed command ids across plugins, sorted by id", () => {
-    const entries = compilePluginCommands([
-      manifest("@lando/b", ["b:bravo", "b:alpha"]),
-      manifest("@lando/a", ["a:zulu", "a:mike"]),
-    ]);
-    expect(entries).toEqual([
-      { id: "a:mike", summary: "", hidden: false },
-      { id: "a:zulu", summary: "", hidden: false },
-      { id: "b:alpha", summary: "", hidden: false },
-      { id: "b:bravo", summary: "", hidden: false },
-    ]);
-  });
-
-  test("deduplicates duplicate command ids across plugins", () => {
-    const entries = compilePluginCommands([
-      manifest("@lando/a", ["meta:plugin:add"]),
-      manifest("@lando/b", ["meta:plugin:add"]),
-    ]);
-    expect(entries).toEqual([{ id: "meta:plugin:add", summary: "", hidden: false }]);
+    expect(entries).toMatchObject([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
   });
 });

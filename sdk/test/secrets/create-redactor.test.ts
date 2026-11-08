@@ -430,3 +430,73 @@ describe("transcript profile placeholders", () => {
     expect(tr.redactString("user alice on devbox")).toBe("user <USER> on <HOST>");
   });
 });
+
+describe("complete env-placeholder exemption (all profiles)", () => {
+  const profiles = ["secrets", "telemetry", "transcript"] as const;
+  const completeCases = [
+    "//npm.example.com/:_authToken=${NPM_TOKEN}",
+    "password=${NPM_TOKEN?}",
+    "?api_token=${NPM_TOKEN}",
+    "API_KEY=${CI_TOKEN?}",
+  ] as const;
+  const maskedCases = [
+    { input: "token=${NPM_TOKEN}suffix", note: "suffix" },
+    { input: "token=${NPM_TO", note: "truncated-open" },
+    { input: 'token="${NPM_TOKEN}"', note: "double-quoted" },
+    { input: "token='${NPM_TOKEN}'", note: "single-quoted" },
+    { input: "token=\\${NPM_TOKEN}", note: "escaped" },
+    { input: "token=${not a valid}", note: "malformed" },
+    { input: "password=hunter2", note: "literal-secret" },
+    { input: "?token=abc", note: "query-literal" },
+  ] as const;
+
+  for (const profile of profiles) {
+    test(`${profile} leaves complete \${IDENT} / \${IDENT?} with boundaries intact`, () => {
+      const redactor = createRedactor(profile);
+      for (const input of completeCases) {
+        const output = redactor.redactString(input);
+        expect(output).toContain("${");
+        expect(output).not.toContain(`${REDACTED}}`);
+        expect(output).toBe(
+          input.includes("npm.example.com") && profile === "telemetry"
+            ? input.replace("npm.example.com", "[host]")
+            : input,
+        );
+        expect(redactor.redactStringBounded?.(input, 4_096) ?? output).toBe(output);
+      }
+    });
+
+    test(`${profile} masks suffix, malformed, quoted, escaped, and literal values`, () => {
+      const redactor = createRedactor(profile);
+      for (const { input, note } of maskedCases) {
+        const output = redactor.redactString(input);
+        expect(output, note).toContain(REDACTED);
+        if (note === "suffix" || note === "escaped") {
+          expect(output, note).not.toMatch(/\$\{[A-Za-z_]/);
+        }
+      }
+    });
+
+    test(`${profile} keeps registered values authoritative over placeholders`, () => {
+      const redactor = createRedactor(profile, {
+        values: ["s3cr3t-token-value"],
+        authoritativeValues: ["auth-authority-token"],
+      });
+      const mixed = "token=s3cr3t-token-value _authToken=${NPM_TOKEN} pin=auth-authority-token";
+      const output = redactor.redactString(mixed);
+      expect(output).toContain("_authToken=${NPM_TOKEN}");
+      expect(output).not.toContain("s3cr3t-token-value");
+      expect(output).not.toContain("auth-authority-token");
+      expect(output).toContain(REDACTED);
+    });
+  }
+
+  test("truncation of an incomplete placeholder stays masked on the secrets path", () => {
+    const redactor = createRedactor("secrets");
+    const input = `token=\${NPM_TOK${LOG_LINE_TRUNCATED_MARKER}`;
+    const output = redactor.redactString(input);
+    expect(output).toContain(REDACTED);
+    expect(output).toContain(LOG_LINE_TRUNCATED_MARKER);
+    expect(output).not.toContain("NPM_TOK");
+  });
+});

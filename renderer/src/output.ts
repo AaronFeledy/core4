@@ -17,6 +17,7 @@ import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
+import { RendererHost } from "./host.ts";
 import { type RendererIO, createStdioRendererIO } from "./io.ts";
 import * as RendererRuntime from "./runtime.ts";
 
@@ -70,11 +71,7 @@ export const layerNotificationConsumerForMode = (
     case "json":
       return RendererRuntime.layerJsonNotification(io);
     case "lando":
-      // Machine result formats keep human narration off both streams.
-      return landoRenderer.makeEventConsumer({
-        writeStderr: () => {},
-        ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
-      });
+      return landoRenderer.makeNotificationConsumer?.(narrationIO(io));
     case "plain":
       return undefined;
     case "verbose":
@@ -94,11 +91,14 @@ export const emitOptionalStderr = (chunk: string | Uint8Array): Effect.Effect<vo
     Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stderr(chunk) : Effect.void)),
   );
 
-export const withOptionalStderrOutput = <A extends { readonly stderr: string }, E, R>(
+export const withOptionalStderrOutput = <A extends { readonly stderr?: string }, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
   effect.pipe(
-    Effect.tap((result) => (result.stderr.length === 0 ? Effect.void : emitOptionalStderr(result.stderr))),
+    Effect.tap((result) => {
+      if (result.stderr) return emitOptionalStderr(result.stderr);
+      return Effect.void;
+    }),
   );
 
 const requireRenderer = Effect.serviceOption(Renderer).pipe(
@@ -130,8 +130,13 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
 export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandResultFormat) {
   const renderer = yield* Renderer;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-  const values = yield* redaction.payloadValues({ sourceEnv: process.env });
+  const sourceEnv = (yield* RendererHost)?.env ?? process.env;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv });
+  const bodyRedactor = yield* redaction.forProfile("secrets", {
+    sourceEnv,
+    excludeWholeTokenValues: true,
+  });
+  const values = yield* redaction.payloadValues({ sourceEnv });
   const encoder = new TextEncoder();
   const states = new Map<
     string,
@@ -154,9 +159,9 @@ export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandR
       if (textChunk.length === 0) return;
       const streamFrameOptions = {
         chunk: textChunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        ...(frame.source === undefined ? {} : { source: frame.source }),
-        redactor,
+        ...(frame.service === undefined ? {} : { service: redactor.redactString(frame.service) }),
+        ...(frame.source === undefined ? {} : { source: redactor.redactString(frame.source) }),
+        redactor: bodyRedactor,
       };
       const line =
         frame._tag === "stdout"

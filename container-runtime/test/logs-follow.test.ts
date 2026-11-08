@@ -8,7 +8,6 @@ import {
   AppId,
   type AppPlan,
   LogSource,
-  type LogSource as LogSourceType,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -58,6 +57,9 @@ const node: ServicePlan = {
   extensions: {},
 };
 
+const FileLogSource = LogSource.members[0];
+type FileLogSource = typeof FileLogSource.Type;
+
 const source = (
   overrides: Partial<{
     readonly id: string;
@@ -65,15 +67,15 @@ const source = (
     readonly strategy: "follow" | "redirect";
     readonly stream: "stdout" | "stderr";
   }> = {},
-): LogSourceType =>
-  Schema.decodeUnknownSync(LogSource)({
+): FileLogSource =>
+  Schema.decodeUnknownSync(FileLogSource)({
     id: overrides.id ?? "app-log",
     path: overrides.path ?? "/var/log/app.log",
     stream: overrides.stream ?? "stderr",
     strategy: overrides.strategy ?? "follow",
   });
 
-const makePlan = (logSources?: ReadonlyArray<LogSourceType>): AppPlan => {
+const makePlan = (logSources?: ReadonlyArray<FileLogSource>): AppPlan => {
   const service: ServicePlan = {
     ...node,
     ...(logSources === undefined ? {} : { logSources }),

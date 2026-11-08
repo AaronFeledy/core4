@@ -8,10 +8,11 @@ import { Effect, Layer } from "effect";
 
 import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
+import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -19,6 +20,7 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 const slowBindCapabilities = {
   ...TestRuntimeProvider.capabilities,
   bindMountPerformance: "slow" as const,
+  fileSyncTargets: "prepared-volume" as const,
 };
 
 test("uses the canonical Windows root when planning a teardown target", async () => {
@@ -89,7 +91,19 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
   try {
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, slowBindCapabilities)).pipe(
-        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                PluginRegistryLayer.layer,
+                FileSyncResolver.layerWithEngine(
+                  { ...TestFileSyncEngine, id: "mutagen" },
+                  { platform: ["linux", "darwin", "win32"] },
+                ),
+              ),
+            ),
+          ),
+        ),
         Effect.provideService(HostProviderOverride, ProviderId.make(TestRuntimeProvider.id)),
       ),
     );

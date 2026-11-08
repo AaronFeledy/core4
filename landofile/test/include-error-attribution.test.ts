@@ -51,7 +51,13 @@ describe("include entry error attribution", () => {
     // When
     const error = await resolveFailure({ includes });
     // Then
-    expect(error).toMatchObject({ path: ["includes", 1], file: join(root, ".lando.yml") });
+    expect(error).toMatchObject({
+      _tag: "LandofileLoadError",
+      failures: [
+        { path: ["includes", 1], file: join(root, ".lando.yml") },
+        { path: ["includes", 0], file: join(root, ".lando.yml") },
+      ],
+    });
   });
 
   test("keeps the innermost fragment's entry and physical file", async () => {
@@ -137,6 +143,7 @@ describe("include entry error attribution", () => {
     expect(result.violations).toEqual([
       expect.objectContaining({
         rule: "landofile.load",
+        reason: "LandofileIncludeError",
         path: ["includes", 0],
         source: { file: join(root, "fragment.yml"), layer: "local", path: ["includes", 0] },
       }),
@@ -168,6 +175,7 @@ describe("include entry error attribution", () => {
       expect(result.violations).toEqual([
         expect.objectContaining({
           rule: "landofile.load",
+          reason: "LandofileIncludeError",
           path: ["includes", 1],
           source: {
             file: join(root, nested ? "fragment.yml" : ".lando.yml"),

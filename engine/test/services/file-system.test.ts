@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Stream } from "effect";
@@ -19,6 +20,27 @@ const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 };
 
 describe("BunFileSystem.layer", () => {
+  test.skipIf(process.platform !== "linux" || !existsSync("/proc/sys/kernel/osrelease"))(
+    "readText reads procfs content when the file reports zero size",
+    async () => {
+      // Given a real, readable procfs file whose stat size is not its content length.
+      const path = "/proc/sys/kernel/osrelease";
+      const expected = await readFile(path, "utf8");
+      expect((await stat(path)).size).toBe(0);
+      expect(expected.length).toBeGreaterThan(0);
+
+      // When the SDK service reads it through the real filesystem layer.
+      const text = await Effect.runPromise(
+        Effect.flatMap(FileSystem, (fileSystem) => fileSystem.readText(path)).pipe(
+          Effect.provide(BunFileSystem.layer),
+        ),
+      );
+
+      // Then the content agrees with an independent native reader.
+      expect(text).toBe(expected);
+    },
+  );
+
   test("writes, reads, stats, lists, and removes files", async () => {
     await withTempDir(async (dir) => {
       const filePath = join(dir, "nested", "hello.txt");
@@ -177,5 +199,26 @@ describe("BunFileSystem.layer", () => {
         }
       }
     });
+  });
+});
+
+test("atomic route writes settle before interruption releases publication ownership", async () => {
+  const child = Bun.spawn([process.execPath, join(import.meta.dir, "fixtures", "atomic-route-cancel.ts")], {
+    cwd: join(import.meta.dir, "../../.."),
+    timeout: 3000,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  expect(stderr).toBe("");
+  expect(code).toBe(0);
+  expect(JSON.parse(stdout)).toMatchObject({
+    interruption: "pending",
+    prematurePolicy: "Failure",
+    final: "withdrawn-B-route",
   });
 });

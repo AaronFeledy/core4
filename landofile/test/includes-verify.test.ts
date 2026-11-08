@@ -6,13 +6,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
+import type { GitTransport } from "@lando/source-acquisition";
 
-import type { GitIncludeCloner } from "../src/includes.ts";
 import { verifyAuthoredIncludes as verifyLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const verifyLandofileIncludes = (options: Parameters<typeof verifyLandofileIncludesPackage>[0]) =>
-  verifyLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
+  verifyLandofileIncludesPackage({
+    ...options,
+    stateStore: options.stateStore ?? makeTestLandofileStateStore(options.cacheRoot),
+  });
 
 const lockfile = (source: string, resolved: string, checksum: string) =>
   [
@@ -28,11 +31,11 @@ const sha256 = (content: string): string => new Bun.CryptoHasher("sha256").updat
 
 const FRAGMENT = "services:\n  database:\n    type: postgres\n";
 
-const clonerFor = (fragment: string, commitSha: string): GitIncludeCloner => ({
-  clone: async ({ stagingDir }) => {
-    await mkdir(stagingDir, { recursive: true });
-    await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-    return { commitSha };
+const gitFor = (fragment: string, commit: string): GitTransport => ({
+  fetch: async ({ dest }) => {
+    await mkdir(dest, { recursive: true });
+    await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+    return { commit };
   },
 });
 
@@ -54,16 +57,34 @@ describe("verifyLandofileIncludes", () => {
     await rm(cacheRoot, { recursive: true, force: true });
   });
 
-  const runVerify = (landofile: LandofileShape, gitCloner?: GitIncludeCloner) =>
+  const runVerify = (landofile: LandofileShape, git?: GitTransport) =>
     Effect.runPromise(
       verifyLandofileIncludes({
         landofile,
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        ...(gitCloner === undefined ? {} : { deps: { gitCloner } }),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
+        ...(git === undefined ? {} : { deps: { git } }),
       }),
     );
+
+  test("keeps a lock mismatch and a load failure without false stale descendants (#1646)", async () => {
+    const source = "github:acme/fragments/postgres.yml";
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      `${lockfile(source, "a".repeat(40), "a".repeat(64))}  - source: github:acme/fragments/unreachable.yml\n    resolved: ${"a".repeat(40)}\n    checksum: ${"b".repeat(64)}\n`,
+    );
+    const report = await runVerify(
+      { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }, "./missing.yml"] },
+      gitFor(FRAGMENT, "a".repeat(40)),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.mismatches).toHaveLength(1);
+    expect(report.mismatches[0]).toMatchObject({ _tag: "LandofileLockMismatchError", source });
+    expect(report.failures).toMatchObject([{ _tag: "LandofileIncludeError", path: ["includes", 1] }]);
+    expect(report.entries.map((entry) => entry.status)).toEqual(["mismatch"]);
+  });
 
   test("a Landofile with no remote includes verifies ok with no entries", async () => {
     const report = await runVerify({ name: "demo", recipe: "lamp" });
@@ -82,7 +103,7 @@ describe("verifyLandofileIncludes", () => {
 
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "a".repeat(40)),
+      gitFor(FRAGMENT, "a".repeat(40)),
     );
 
     expect(report.ok).toBe(true);
@@ -111,7 +132,7 @@ describe("verifyLandofileIncludes", () => {
 
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "a".repeat(40)),
+      gitFor(FRAGMENT, "a".repeat(40)),
     );
 
     expect(report.ok).toBe(false);
@@ -141,7 +162,7 @@ describe("verifyLandofileIncludes", () => {
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
       {
-        clone: async () => {
+        fetch: async () => {
           throw new Error("missing pins must not acquire");
         },
       },

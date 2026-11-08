@@ -65,11 +65,12 @@ export const shellFailureCases = [
     kind: "interrupt",
     effect: () => Effect.interrupt,
     failureTag: "Interrupted",
-    text: `All fibers interrupted without errors.\n  ↳ ${internalErrorRemediation}\ncode: LandoInternalError`,
+    // CLI projection is distinct from the preserved Effect rejection below.
+    text: "Command interrupted.\n  ↳ Run the command again when ready.\ncode: CommandInterruptedError",
     error: {
-      _tag: "LandoInternalError",
-      message: "All fibers interrupted without errors.",
-      remediation: internalErrorRemediation,
+      _tag: "CommandInterruptedError",
+      message: "Command interrupted.",
+      remediation: "Run the command again when ready.",
     },
     rejectionName: "Error",
     rejectionMessage: "All fibers interrupted without error",

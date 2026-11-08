@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -15,6 +16,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = {
   resultSchema: RecipesDescribeResultSchema,
   id: "meta:recipes:describe",
+  onlineAcquisition: true,
   mcpAllowed: true,
   summary: "Print a recipe's prompts and metadata without running it.",
   namespace: "meta",
@@ -35,7 +37,7 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
         }),
       );
     }
-    return recipesDescribe(ref, { cwd: process.cwd() });
+    return Effect.flatMap(CliInvocation, ({ cwd }) => recipesDescribe(ref, { cwd }));
   },
-  render: (result) => renderRecipesDescribeResult(result as RecipesDescribeResult),
+  render: (result) => renderRecipesDescribeResult(result),
 };

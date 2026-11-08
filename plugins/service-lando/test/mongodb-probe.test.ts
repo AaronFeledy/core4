@@ -84,7 +84,7 @@ test.skipIf(process.platform === "win32")(
     });
     const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     expect(exit).toBe(1);
-    expect(stderr.trim()).toBe("Mongo listener unavailable");
+    expect(stderr.trim()).toBe("Lando's TCP probe could not connect to 127.0.0.1:1");
   },
 );
 

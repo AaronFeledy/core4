@@ -17,13 +17,14 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { execApp } from "../../src/operations/exec.ts";
 import { infoApp } from "../../src/operations/info.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
@@ -75,13 +76,15 @@ const fixture = () => {
   let global = Schema.decodeUnknownSync(GlobalConfig)({});
   const calls: CommandSpec[] = [];
   const provider = {
-    ...TestRuntimeProvider,
+    ...makeTestRuntimeProvider(),
     execStream: (_target: ExecTarget, spec: CommandSpec) => {
       calls.push(spec);
       return Stream.make({ exitCode: 0 });
     },
   };
+  Effect.runSync(Effect.scoped(provider.apply(plan, { reconcile: true })));
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     testEnvironmentResolverLayer,
     PrivateFileAccessService.layer,
     ProviderExecToolingEngine.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),

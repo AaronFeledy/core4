@@ -28,6 +28,15 @@ export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFound
 export class LandofileParseError extends Schema.TaggedError<LandofileParseError>()("LandofileParseError", {
   message: Schema.String,
   filePath: Schema.String,
+  sourcePath: Schema.optional(ValidationIssuePath).annotate({
+    description: "Authored destination of a failed load expression.",
+  }),
+  sourceFile: Schema.optional(Schema.String).annotate({
+    description: "Document declaring a failed eager expression, when different from its referenced file.",
+  }),
+  layer: Schema.optional(LandofileLayer).annotate({
+    description: "Declaring layer of a failed load expression.",
+  }),
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
@@ -106,6 +115,8 @@ export class LandofileExpressionEvalError extends Schema.TaggedError<LandofileEx
 export class LandofileLoadOutsideRootError extends Schema.TaggedError<LandofileLoadOutsideRootError>()(
   "LandofileLoadOutsideRootError",
   {
+    path: Schema.optional(ValidationIssuePath).annotate({ description: "Authored expression destination." }),
+    layer: Schema.optional(LandofileLayer).annotate({ description: "Layer declaring the expression." }),
     message: Schema.String.annotate({ description: "Human-readable outside-root failure message." }),
     sourcePath: Schema.String.annotate({
       description: "Landofile or fragment containing the expression.",
@@ -122,6 +133,8 @@ export class LandofileLoadOutsideRootError extends Schema.TaggedError<LandofileL
 export class LandofileLoadLimitError extends Schema.TaggedError<LandofileLoadLimitError>()(
   "LandofileLoadLimitError",
   {
+    path: Schema.optional(ValidationIssuePath).annotate({ description: "Authored expression destination." }),
+    layer: Schema.optional(LandofileLayer).annotate({ description: "Layer declaring the expression." }),
     message: Schema.String.annotate({
       description: "Human-readable Landofile load-limit failure message.",
     }),
@@ -173,6 +186,10 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
     file: Schema.String,
     cause: Schema.optional(Schema.Unknown),
     issues: Schema.Array(ValidationIssue),
+    context: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)).annotate({
+      description:
+        "Machine-readable identifiers from an underlying configuration failure, excluding arbitrary values and native causes.",
+    }),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
       description: "Action required to correct the authored configuration.",
     }),

@@ -56,10 +56,19 @@ describe("HostProxyRequest", () => {
     ).toThrow();
   });
 
-  test("union membership is exactly openUrl, openPath, runLando, runBun", () => {
+  test("union membership is exactly openUrl, openPath, runLando", () => {
     expect([...HOST_PROXY_REQUEST_TAGS].sort().join(",")).toBe(
-      ["openPath", "openUrl", "runBun", "runLando"].sort().join(","),
+      ["openPath", "openUrl", "runLando"].sort().join(","),
     );
+  });
+
+  test("rejects the unserved runBun request", () => {
+    // Given
+    const request = { _tag: "runBun", argv: ["info"], cwd: "/app", tty: false };
+    // When
+    const decoded = Schema.decodeUnknownResult(HostProxyRequest)(request);
+    // Then
+    expect(decoded._tag).toBe("Failure");
   });
 
   test("rejects a runLando request missing cwd", () => {

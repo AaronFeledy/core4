@@ -2,9 +2,9 @@ import { createServer } from "node:http";
 import { Effect, type Scope } from "effect";
 
 import { type HostProxySocketStaleError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
-import type { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { writeHostProxyCredentials } from "./credentials-file.ts";
 import { type HostProxyInFlightRequest, makeHostProxyRunLandoHandler } from "./transport-handler.ts";
 import { closeHostProxyServer, removeSessionState } from "./transport-lifecycle.ts";
 import { listenHostProxyServer } from "./transport-listener.ts";
@@ -45,13 +45,14 @@ export const createHostProxyRunLandoSession = (
 ): Effect.Effect<
   HostProxyRunLandoSession,
   HostProxySocketStaleError | HostProxyTransportUnavailableError,
-  EventService | RedactionService
+  RedactionService
 > => {
   const paths = sessionPaths(options);
   let socketOwned = false;
+  let stateOwned = false;
   let closePromise: Promise<void> | undefined;
   return Effect.gen(function* () {
-    const runtimeContext = yield* Effect.context<EventService | RedactionService>();
+    const runtimeContext = yield* Effect.context<RedactionService>();
     const sessionId = makeHostProxyToken();
     const token = makeHostProxyToken();
     const controlToken = options.controlToken ?? makeHostProxyToken();
@@ -73,8 +74,10 @@ export const createHostProxyRunLandoSession = (
     const inFlight = new Set<HostProxyInFlightRequest>();
     const shutdownRef: { current?: () => Promise<void> } = {};
 
-    yield* installHostProxyShim(shimArtifact, paths.shimPath);
     const session = { appId: options.app.id, sessionId, token, controlToken };
+    yield* writeHostProxyCredentials(paths.stateDir, { app: session.appId, session: sessionId, token });
+    stateOwned = true;
+    yield* installHostProxyShim(shimArtifact, paths.shimPath);
     const server = createServer(
       makeHostProxyRunLandoHandler({
         ...options,
@@ -90,6 +93,7 @@ export const createHostProxyRunLandoSession = (
           ...(options.providerId === undefined ? {} : { providerId: options.providerId }),
           ...(options.configure === undefined ? {} : { configure: options.configure }),
           pid: process.pid,
+          bridgeState: options.bridgeState ?? (() => "none" as const),
           shutdown: () => shutdownRef.current?.() ?? Promise.resolve(),
         },
         concurrency,
@@ -126,7 +130,7 @@ export const createHostProxyRunLandoSession = (
     };
   }).pipe(
     Effect.catch((failure) =>
-      removeSessionState(paths, socketOwned).pipe(
+      (stateOwned ? removeSessionState(paths, socketOwned) : Effect.void).pipe(
         Effect.catch(() => Effect.void),
         Effect.andThen(Effect.fail(failure)),
       ),
@@ -139,7 +143,7 @@ export const scopedHostProxyRunLandoSession = (
 ): Effect.Effect<
   HostProxyRunLandoSession,
   HostProxySocketStaleError | HostProxyTransportUnavailableError,
-  EventService | RedactionService | Scope.Scope
+  RedactionService | Scope.Scope
 > =>
   Effect.acquireRelease(createHostProxyRunLandoSession(options), (session) =>
     Effect.promise(() => session.close()),

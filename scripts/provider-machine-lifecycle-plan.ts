@@ -17,7 +17,7 @@ const bunTest = (testNamePattern: string): readonly string[] => [
 const managedMachineChecks = [
   {
     id: "machine-lifecycle",
-    label: "Managed Podman machine start, stop, restart, and destroy",
+    label: "Managed Podman machine native init, start, stop, restart, and destroy",
     command: bunTest("managed machine start stop destroy"),
   },
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
@@ -30,7 +30,7 @@ const managedWindowsMachineChecks = [
 const systemMachineChecks = [
   {
     id: "machine-lifecycle",
-    label: "System Podman machine start, stop, restart, and destroy",
+    label: "System Podman machine native init, start, stop, restart, and destroy",
     command: bunTest("system Podman machine start stop destroy"),
   },
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];

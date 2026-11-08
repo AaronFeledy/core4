@@ -1,12 +1,17 @@
 import { renderPlainLine } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
-import { csi } from "./task-tree-frame.ts";
+import { type TerminalPalette, terminalPalette } from "@lando/renderer/palette";
 import { truncateToWidth, wrapWordsToWidth } from "./terminal-width.ts";
 
 export * from "@lando/sdk/renderer";
 
-const renderNotice = (body: string, severity: "info" | "warn", columns?: number): string => {
+const renderNotice = (
+  body: string,
+  severity: "info" | "warn",
+  columns: number | undefined,
+  csi: TerminalPalette,
+): string => {
   const label = severity === "info" ? "INFO" : "WARNING";
   const accent = severity === "info" ? csi.cyan : csi.amber;
   const terminalWidth = columns !== undefined && Number.isFinite(columns) ? Math.trunc(columns) : 80;
@@ -31,7 +36,8 @@ const renderNotice = (body: string, severity: "info" | "warn", columns?: number)
 export const renderLandoLine = (
   event: LandoEvent,
   isTTY: boolean,
-  terminalColumns?: number,
+  terminalColumns: number | undefined,
+  color: boolean,
 ): string | null => {
   if (isTTY && (event._tag === "message.info" || event._tag === "message.warn")) {
     const body = Reflect.get(event, "body");
@@ -39,6 +45,7 @@ export const renderLandoLine = (
       typeof body === "string" ? body : "",
       event._tag === "message.info" ? "info" : "warn",
       terminalColumns,
+      terminalPalette(color),
     );
   }
   return renderPlainLine(event);

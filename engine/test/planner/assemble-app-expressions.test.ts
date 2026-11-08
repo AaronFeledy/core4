@@ -13,11 +13,11 @@ import { ConfigExpressionError } from "@lando/sdk/errors";
 import { AbsolutePath, type LoadScopedLandofile, ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Result, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 const serviceType: ServiceType = {
   id: "expression-database",
@@ -38,14 +38,8 @@ const serviceType: ServiceType = {
 const plan = Effect.fnUntraced(function* (landofile: LoadScopedLandofile) {
   const registry = yield* PluginRegistry;
   return yield* planApp(
-    { ...registry, loadServiceType: () => Effect.succeed(serviceType) },
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    landofile,
-    TestRuntimeProvider.capabilities,
+    { landofile, providerCapabilities: TestRuntimeProvider.capabilities },
+    Layer.succeed(PluginRegistry, { ...registry, loadServiceType: () => Effect.succeed(serviceType) }),
   );
 }, Effect.provide(PluginRegistryLayer.layer));
 
@@ -59,7 +53,7 @@ test.each([
     const file = join(root, ".lando.yml");
     await writeFile(
       file,
-      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}\n`,
+      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n    ${field}\n`,
     );
     const loaded = await Effect.runPromise(
       loadLandofileFile(file, {
@@ -95,7 +89,7 @@ test.each([
     const file = join(root, ".lando.yml");
     await writeFile(
       file,
-      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}: "{{ ${expression} }}"\n`,
+      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n    ${field}: "{{ ${expression} }}"\n`,
     );
     const loaded = await Effect.runPromise(loadLandofileFile(file));
     // When
@@ -114,6 +108,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
     services: {
       [ServiceName.make("database")]: {
         type: serviceType.id,
+        image: "alpine:3.22",
         database: "{{ eq(app.name, 'x') }}",
       },
     },
@@ -123,7 +118,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
     compileTestLandofile(landofile).pipe(Effect.flatMap(plan), Effect.flip),
   );
   // Then
-  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.database.database" });
+  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "database", "database"] });
   expect(error.message).toContain("Expected string");
 });
 
@@ -137,6 +132,7 @@ test("materializes app and proxy expressions before service resolution and tooli
           services: {
             [ServiceName.make("database")]: {
               type: serviceType.id,
+              image: "alpine:3.22",
               home: false as const,
               database: "{{ app.name }}",
             },
@@ -191,6 +187,7 @@ test("expands app.name inside Backdrop settings JSON without changing the author
         services: {
           [ServiceName.make("appserver")]: {
             type: serviceType.id,
+            image: "alpine:3.22",
             home: false as const,
             environment: { BACKDROP_SETTINGS: deferred },
           },
@@ -217,6 +214,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
         services: {
           [ServiceName.make("database")]: {
             type: serviceType.id,
+            image: "alpine:3.22",
             home: false as const,
             database: "{{ app.nope }}",
           },
@@ -233,7 +231,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
     expect(result.failure).toMatchObject({
       _tag: "ConfigExpressionError",
       expression: "{{ app.nope }}",
-      path: "services.database.database",
+      path: ["services", "database", "database"],
       filePath: `${root}/.lando.yml`,
     });
   } finally {

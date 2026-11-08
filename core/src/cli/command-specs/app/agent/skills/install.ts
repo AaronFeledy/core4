@@ -14,5 +14,5 @@ export const appAgentSkillsInstallSpec: LandoCommandSpec<AgentSkillsResult, Agen
   topLevelAlias: true,
   bootstrap: "minimal",
   run: () => installAgentSkills(),
-  render: (result) => renderAgentSkillsResult(result as AgentSkillsResult),
+  render: (result) => renderAgentSkillsResult(result),
 };

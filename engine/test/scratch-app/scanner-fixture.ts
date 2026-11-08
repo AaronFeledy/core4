@@ -12,7 +12,7 @@ export const service = {
   app: AppId.make(scratchId),
   service: ServiceName.make("app"),
   providerId: ProviderId.make("other"),
-  status: "running",
+  status: "running" as const,
   publications: { status: "unknown" as const },
   containerId: "observed-container",
   labels,

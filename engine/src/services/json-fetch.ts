@@ -21,12 +21,15 @@ export interface HttpJsonResult {
 }
 
 export interface HttpJsonOptions {
+  readonly redactionTokens?: ReadonlyArray<string>;
   /** Extra request headers (e.g. `accept: application/json`). */
   readonly headers?: ReadonlyArray<{ readonly name: string; readonly value: string }>;
   /** Redirect mode; defaults to following redirects like the prior fetch calls. */
   readonly redirect?: "follow" | "error" | "manual";
   /** Optional overall deadline applied with `Effect.timeout` around get + body. */
   readonly timeoutMs?: number;
+  /** Abort the in-flight get + body collection when aborted. */
+  readonly signal?: AbortSignal;
 }
 
 const collectBytes = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
@@ -55,8 +58,9 @@ export const httpJsonFetch = async (
   url: string,
   options: HttpJsonOptions = {},
   client?: HttpClient.HttpClient,
-): Promise<HttpJsonResult> =>
-  Effect.runPromise(
+): Promise<HttpJsonResult> => {
+  options.signal?.throwIfAborted();
+  return Effect.runPromise(
     Effect.fn("HttpClient.jsonFetch")(
       function* () {
         const client = yield* HttpClient.HttpClient;
@@ -64,6 +68,7 @@ export const httpJsonFetch = async (
         const get = client.get(url, headers === undefined ? undefined : { headers }).pipe(
           Effect.provideService(RequestPolicy, {
             redirect: options.redirect ?? "follow",
+            ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
           }),
         );
         const response = yield* get;
@@ -75,4 +80,6 @@ export const httpJsonFetch = async (
         : Effect.timeout(Duration.millis(options.timeoutMs)),
       Effect.provide(client === undefined ? httpClientLayer : Layer.succeed(HttpClient.HttpClient, client)),
     )(),
+    options.signal === undefined ? undefined : { signal: options.signal },
   );
+};

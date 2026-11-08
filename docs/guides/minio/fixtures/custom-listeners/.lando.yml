@@ -1,0 +1,11 @@
+name: minio-custom-listeners
+services:
+  object-store:
+    type: minio
+    image: registry.example.com/team/minio:approved
+    appMount: false
+    port: 9001
+    consolePort: 19001
+    routes:
+      - hostname: console.minio-custom-listeners.lndo.site
+        endpoint: console

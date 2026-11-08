@@ -26,7 +26,7 @@ export const violationsFromSchema = (
   rejections: readonly ComposeRejectionMatch[] = [],
 ): readonly ConfigLintViolation[] =>
   landofileIssuesFromSchema(issue, parsed)
-    .map((issue) => ({ ...issue, rule: "landofile.validation", severity: "error" as const }))
+    .map((issue): ConfigLintViolation => ({ ...issue, rule: "landofile.validation", severity: "error" }))
     // Rejection analysis belongs to a single source document, not the merged effective value.
     .filter(
       (violation) =>

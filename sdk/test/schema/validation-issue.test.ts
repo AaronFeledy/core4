@@ -27,7 +27,7 @@ describe("validation issues", () => {
       rule: "landofile.event",
       path: ["events", "pre-buidl"],
       message: "Unknown app event pre-buidl.",
-    };
+    } satisfies ValidationIssue;
     const error = new LandofileValidationError({
       file: ".lando.yml",
       message: "Invalid events.",
@@ -52,6 +52,21 @@ describe("validation issues", () => {
     // When
     const decoded = Schema.decodeUnknownSync(ConfigLintViolation)(finding, authoredDecode);
     // Then
+    expect(Schema.encodeSync(ConfigLintViolation)(decoded)).toEqual(finding);
+  });
+  test("round-trips a load finding's machine-readable reason", () => {
+    // Given
+    const finding = {
+      rule: "landofile.load",
+      reason: "unsupported-secret-reference",
+      severity: "error",
+      path: ["services", "app", "build", "args", "TOKEN"],
+      message: "Secret references are not supported at services.app.build.args.TOKEN.",
+    } satisfies typeof ConfigLintViolation.Encoded;
+    // When
+    const decoded = Schema.decodeUnknownSync(ConfigLintViolation)(finding, authoredDecode);
+    // Then
+    expect(decoded.reason).toBe("unsupported-secret-reference");
     expect(Schema.encodeSync(ConfigLintViolation)(decoded)).toEqual(finding);
   });
   test("preserves an issue's authored source independently of its effective path", () => {
@@ -171,8 +186,8 @@ describe("schema issue traversal", () => {
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
     expect(messages).toEqual([
-      { path: [], message: "Left member" },
-      { path: [], message: "Right member" },
+      { path: [], message: "Left member", kind: "type" },
+      { path: [], message: "Right member", kind: "type" },
     ]);
   });
 
@@ -225,8 +240,8 @@ describe("schema issue traversal", () => {
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
     expect(messages).toEqual([
-      { path: ["tooling", "foo", "extra"], message: "Expected no excess property" },
-      { path: ["tooling", "foo", "value"], message: "Missing key" },
+      { path: ["tooling", "foo", "extra"], message: "Expected no excess property", kind: "unexpected" },
+      { path: ["tooling", "foo", "value"], message: "Missing key", kind: "missing" },
     ]);
   });
 
@@ -265,6 +280,7 @@ describe("schema issue traversal", () => {
     expect(messages).toEqual([
       {
         path: ["setting", "value", "imgae"],
+        kind: "unexpected",
         message: "Expected no excess property",
         suggestion: 'Did you mean "image"?',
       },
@@ -301,7 +317,7 @@ describe("schema issue traversal", () => {
     // When
     const messages = validationIssuesFromSchemaIssue(issuesFor(schema, { enabled: "maybe" }));
     // Then
-    expect(messages).toEqual([{ path: ["enabled"], message: "Expected boolean" }]);
+    expect(messages).toEqual([{ path: ["enabled"], message: "Expected boolean", kind: "type" }]);
   });
 
   test.each([
@@ -316,7 +332,7 @@ describe("schema issue traversal", () => {
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
     expect(messages).toEqual([
-      { path: ["services", "api", "primary"], message: `boolean authoring site: ${detail}` },
+      { path: ["services", "api", "primary"], message: `boolean authoring site: ${detail}`, kind: "value" },
     ]);
   });
 });

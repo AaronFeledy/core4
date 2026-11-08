@@ -2,6 +2,7 @@ import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import type { AppRef } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { workerSessionLifetime } from "../detached-worker/lifecycle.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import type { AgentRelaySession } from "./session.ts";
 import { sshAgentSessionPaths } from "./session.ts";
@@ -63,29 +64,25 @@ export const reuseAgentRelayWorker = Effect.fnUntraced(
       default:
         return record.mount satisfies never;
     }
-    let closePromise: Promise<void> | undefined;
-    const closed = Promise.withResolvers<void>();
     return {
       appId: record.appId,
       sessionId: record.sessionId,
       kind: record.kind,
       socketName: record.socketName,
       mount: record.mount,
-      closed: closed.promise,
-      close: () => {
-        closePromise ??= Effect.runPromise(
+      ...workerSessionLifetime(() =>
+        Effect.runPromise(
           withAgentRelayWorkerLock(
             app,
             options,
-            Effect.gen(function* () {
+            Effect.fnUntraced(function* (claim) {
               const current = yield* readAgentRelayWorkerRecord(app, options);
               if (current?.sessionId === record.sessionId && current.pid === record.pid)
-                yield* disposeAgentRelayWorker(app, options);
+                yield* disposeAgentRelayWorker(claim, app, options);
             }),
           ),
-        ).finally(closed.resolve);
-        return closePromise;
-      },
+        ),
+      ),
     } satisfies AgentRelaySession;
   },
   Effect.catch(() => Effect.succeed(undefined)),

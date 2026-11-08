@@ -23,6 +23,7 @@ import {
   AppPlanner,
   DeprecationService,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   SecretStore,
@@ -30,15 +31,17 @@ import {
   ShellRunner,
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/config/agent-env";
+import { makeLandoPaths } from "@lando/paths";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
-import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.ts";
+import { DEFAULT_SERVICE_LOGIN_SHELL, SESSION_NO_HISTORY_ENV } from "../../src/cli/service-login-shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
+import { withEnvVar } from "../_support/temp-cwd.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -51,6 +54,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -176,6 +180,7 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
       LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, plan.root)) }),
@@ -207,6 +212,7 @@ const layer = (
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -428,6 +434,58 @@ describe("shellApp — shell modes", () => {
 
     expect(captured).toEqual({ CLAUDECODE: "1" });
   });
+
+  test.each([
+    { noHistory: undefined, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: false, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: true, serviceEnv: {}, env: {}, expected: "" },
+    {
+      noHistory: true,
+      serviceEnv: Object.fromEntries(
+        Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/service/history"]),
+      ),
+      env: {},
+      expected: "",
+    },
+    {
+      noHistory: true,
+      serviceEnv: { HISTFILE: "/home/node/service-history" },
+      env: {
+        ...Object.fromEntries(Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/exec/history"])),
+        KEEP: "value",
+      },
+      expected: "",
+    },
+  ])(
+    "service mode applies the session history policy %j",
+    async ({ noHistory, serviceEnv, env, expected }) => {
+      const appPlan = { ...plan, services: { [web.name]: { ...web, environment: serviceEnv } } };
+      const calls: Array<Readonly<Record<string, string>> | undefined> = [];
+      const provider = fakeProvider({
+        execStream: (_target, command) => {
+          calls.push(command.env);
+          return Stream.make({ exitCode: 0 });
+        },
+      });
+
+      await Effect.runPromise(
+        shellApp({
+          service: "web",
+          ...(noHistory === undefined ? {} : { noHistory }),
+          env,
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(appPlan, provider))),
+      );
+
+      expect(calls).toHaveLength(1);
+      if (expected === undefined) {
+        for (const key of Object.keys(SESSION_NO_HISTORY_ENV)) expect(calls[0] ?? {}).not.toHaveProperty(key);
+      } else {
+        expect(calls[0]).toMatchObject(SESSION_NO_HISTORY_ENV);
+        if ("KEEP" in env) expect(calls[0]?.KEEP).toBe("value");
+      }
+    },
+  );
 
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {
     let stdout = "";
@@ -799,6 +857,27 @@ describe("shellApp — shell modes", () => {
     expect(spec.cwd).toBe("/tmp/other");
   });
 
+  test.each([undefined, "caller-pwd", ""])(
+    "host mode leaves inheritance to ShellRunner while preserving explicit PWD %j",
+    async (pwd) => {
+      // Given
+      const env = { CALLER_VALUE: "kept", ...(pwd === undefined ? {} : { PWD: pwd }) };
+      // When
+      const spec = await withEnvVar("PWD", "/inherited-launch-directory", () =>
+        hostSpec({ cwd: "/tmp/other", env }),
+      );
+      // Then
+      expect(spec.cwd).toBe("/tmp/other");
+      expect(spec.env?.PWD).toBe(pwd);
+      expect(spec.env?.CALLER_VALUE).toBe("kept");
+      expect(
+        Object.keys(spec.env ?? {})
+          .filter((key) => !key.startsWith("LANDO_") && key !== "LANDO")
+          .sort(),
+      ).toEqual(Object.keys(env).sort());
+    },
+  );
+
   test("reserved LANDO_* env wins over caller options.env", async () => {
     const spec = await hostSpec({
       env: {
@@ -827,6 +906,7 @@ describe("shellApp — shell modes", () => {
   test("default host mode persists history under a per-app HISTFILE path", async () => {
     const spec = await hostSpec();
     expect(spec.historyFile).toMatch(/[/\\]shell[/\\].+[/\\]history$/);
+    expect(spec.historyFile).toStartWith("/tmp/shell-configured-data/");
     expect(spec.env?.HISTFILE).toBeUndefined();
   });
 

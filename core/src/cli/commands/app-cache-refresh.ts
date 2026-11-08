@@ -3,14 +3,14 @@ import { Effect, Schema } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
-  CacheError,
   CommandAliasConflictError,
   CommandAliasTargetError,
+  EventError,
   LandoCommandError,
   PluginManifestError,
   SubscriberLevelMismatchError,
 } from "@lando/sdk/errors";
-import { ToolingCompileError } from "@lando/sdk/errors";
+import { type CacheError, ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   LandofileService,
@@ -24,10 +24,11 @@ import { commandAliasRegistrationError } from "../command-alias-policy";
 
 import { compileAppCommands } from "@lando/engine/cache/command-compiler";
 import {
+  readDataIdentityFingerprint,
   writeAppCommandCacheStrict,
-  writePluginCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
+import { publishHostShellWarnings } from "@lando/engine/operations/host-shell-warnings";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import {
   type BunShellScriptDiscoveryError,
@@ -45,14 +46,12 @@ export interface AppCacheRefreshResult {
   readonly app: string;
   readonly commandsCompiled: number;
   readonly appCommandCachePath?: string;
-  readonly pluginCommandCachePath?: string;
 }
 
 export const AppCacheRefreshResultSchema = Schema.Struct({
   app: Schema.String,
   commandsCompiled: Schema.Number,
   appCommandCachePath: Schema.optionalKey(Schema.String),
-  pluginCommandCachePath: Schema.optionalKey(Schema.String),
 });
 
 type AppCacheRefreshError =
@@ -65,6 +64,7 @@ type AppCacheRefreshError =
   | CommandAliasConflictError
   | CommandAliasTargetError
   | CacheError
+  | EventError
   | LandoCommandError;
 
 type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | RuntimeProviderRegistry;
@@ -82,38 +82,44 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
 
   const landofile = yield* loadUserLandofile(landofileService);
   const capabilities = yield* registry.capabilities;
+  const dataIdentityFingerprint = yield* readDataIdentityFingerprint(landofile.context.appRoot);
   const plan = yield* planner.plan(landofile, capabilities);
+  yield* publishHostShellWarnings(plan);
 
   const cwd = options.cwd ?? (yield* discoveryCwd());
   const scripts = yield* discoverBunShellScripts({ appRoot: plan.root });
   const entries = yield* Effect.try({
     try: () => compileAppCommands(landofile.document, scripts, effectiveToolingForPlan(plan)),
     catch: (cause) => {
-      if (cause instanceof ToolingCompileError) return cause;
+      if (cause instanceof ToolingCompileError)
+        return new ToolingCompileError({
+          message: cause.message,
+          tool: cause.tool,
+          source: cause.source ?? { path: plan.metadata.source, task: cause.tool },
+          remediation: cause.remediation,
+        });
       throw cause;
     },
   });
+  const manifests = yield* pluginRegistry.list;
   const aliasError = commandAliasRegistrationError(
     landofile.document.commandAliases,
     entries.map((entry) => entry.id),
     entries,
+    manifests.flatMap((manifest) => (manifest.contributes?.commands ?? []).map((command) => command.id)),
   );
   if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
-  const manifests = yield* pluginRegistry.list;
   yield* makeSubscriberRegistrationClosure(manifests).close({
     builtIns: BUILT_IN_COMMAND_IDS,
     appCommandIds: entries.map((entry) => entry.id),
   });
 
   const appCachePath = yield* writeAppCommandCacheStrict({
+    dataIdentityFingerprint,
     landofile: landofile.document,
     entries,
     cwd,
-    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-  });
-  const pluginCachePath = yield* writePluginCommandCacheStrict({
-    manifests,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   });
 
@@ -121,6 +127,5 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
     app: plan.name,
     commandsCompiled: entries.length,
     ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
-    pluginCommandCachePath: pluginCachePath,
   };
 });

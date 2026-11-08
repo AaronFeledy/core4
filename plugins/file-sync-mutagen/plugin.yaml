@@ -10,7 +10,18 @@ entry: ./src/index.ts
 
 contributes:
   fileSyncEngines:
-    - mutagen
+    - id: mutagen
+      supports:
+        platform: [win32]
+      capabilities:
+        modes: [two-way-safe, two-way-resolved, one-way-safe, one-way-replica]
+        remoteAgentDeployment: auto
+        exclusionPatterns: true
+        conflictReporting: true
+        progressReporting: true
+      defaultFor:
+        platform: [win32]
+        bindMountPerformance: [slow]
 
 requires:
   "@lando/core": "^4.0.0"

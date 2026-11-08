@@ -1,11 +1,13 @@
+import { NetworkTrust, resolveTrust } from "@lando/http-client/network-trust";
 import {
   Downloader,
-  type LandofileService,
+  LandofileService,
   type ManagedFileTransactionGuard,
   PathsService,
+  ProcessRunner,
   StateStore,
 } from "@lando/sdk/services";
-import { Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, type Scope } from "effect";
 
 import {
   type ResolveLandofileIncludesOptions,
@@ -20,9 +22,11 @@ import { lintLandofileSnapshot as lintLandofileSnapshotPackage } from "@lando/la
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
   type LandofileFinalizeOverrides,
+  acquireLandofileReplacement as acquireLandofileReplacementPackage,
   findDiscoveredLandofilePath,
   loadLandofileFile as loadLandofileFilePackage,
   loadLandofileLayers as loadLandofileLayersPackage,
+  prepareLandofileReplacement as prepareLandofileReplacementPackage,
   validateLandofileReplacement as validateLandofileReplacementPackage,
 } from "@lando/landofile/service";
 import * as LandofileServiceLayer from "@lando/landofile/service";
@@ -31,8 +35,19 @@ import {
   buildTemplateEngineRegistry,
   renderLandofileTemplate as renderLandofileTemplatePackage,
 } from "@lando/landofile/template-render";
+import { RedactionService } from "@lando/redaction/service";
 import * as HttpClient from "effect/http/HttpClient";
 import { landofileRuntimeInputs, landofileSourcePorts } from "../composition.ts";
+import { hostConfigReadPolicy } from "./config.ts";
+
+const ReadOnlyLandofile = Context.Reference<boolean>("@lando/engine/ReadOnlyLandofile", {
+  defaultValue: () => false,
+});
+
+export const withReadOnlyLandofile = <A, E, R>(
+  body: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, Exclude<R, Scope.Scope>> =>
+  body.pipe(Effect.provideService(ReadOnlyLandofile, true), Effect.scoped);
 
 export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs> = Effect.gen(function* () {
   const inputs = landofileRuntimeInputs();
@@ -40,14 +55,32 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const stateStore = yield* Effect.serviceOption(StateStore);
   const client = yield* Effect.serviceOption(HttpClient.HttpClient);
   const downloader = yield* Effect.serviceOption(Downloader);
+  const processRunner = yield* Effect.serviceOption(ProcessRunner);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const readPolicy = yield* hostConfigReadPolicy;
+  const requestContext = yield* Effect.context<never>();
+  const injectedTrust = Context.get(requestContext, NetworkTrust);
+  const trustEnv = readPolicy?.env ?? { ...process.env };
+  const resolveNetworkTrust = () => Effect.runPromise(resolveTrust(requestContext, injectedTrust, trustEnv));
+  const runtime = {
+    requestContext,
+    ...(Option.isSome(processRunner) ? { processRunner: processRunner.value } : {}),
+    ...(Option.isSome(redaction)
+      ? {
+          registerSecrets: (values: ReadonlyArray<string>) =>
+            Effect.runPromise(redaction.value.registerValues(values)),
+        }
+      : {}),
+    ...(readPolicy === undefined ? {} : { readPolicy }),
+    resolveNetworkTrust,
+  };
   return {
     ...inputs,
+    readOnly: yield* ReadOnlyLandofile,
     ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
     ports: {
       ...inputs.ports,
-      ...(Option.isSome(client) && Option.isSome(downloader)
-        ? landofileSourcePorts(client.value, downloader.value)
-        : {}),
+      ...landofileSourcePorts(Option.getOrUndefined(client), Option.getOrUndefined(downloader), runtime),
       ...(Option.isNone(paths)
         ? {}
         : {
@@ -124,6 +157,16 @@ export const validateLandofileReplacement = (
     validateLandofileReplacementPackage(replacement, { ...inputs, overrides }),
   );
 
+export const acquireLandofileReplacement = (
+  replacement: Parameters<typeof acquireLandofileReplacementPackage>[0],
+  overrides?: LandofileFinalizeOverrides,
+) =>
+  Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+    inputs.readOnly
+      ? prepareLandofileReplacementPackage(replacement, { ...inputs, overrides })
+      : acquireLandofileReplacementPackage(replacement, { ...inputs, overrides }),
+  );
+
 export const loadLandofileFile = (
   filePath: string,
   context?: Parameters<typeof loadLandofileFilePackage>[1],
@@ -157,7 +200,20 @@ export const layer = (
 ): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard | StateStore> =>
   LandofileServiceLayer.layer(inputs);
 
-/** Default layer: resolves scoped runtime inputs then builds the Landofile service. */
-export const layerDefault = Layer.unwrap(
-  Effect.map(scopedLandofileRuntimeInputs, LandofileServiceLayer.layer),
+/** Retains runtime services while resolving source ports in each discover caller's context. */
+export const layerDefault = Layer.effect(
+  LandofileService,
+  Effect.gen(function* () {
+    const runtime = yield* Effect.context<ManagedFileTransactionGuard | StateStore>();
+    return LandofileService.of({
+      discover: Effect.gen(function* () {
+        const caller = yield* Effect.context<never>();
+        return yield* Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+          Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+            Effect.provide(LandofileServiceLayer.layer(inputs)),
+          ),
+        ).pipe(Effect.provide(Context.merge(runtime, caller)));
+      }),
+    });
+  }),
 );

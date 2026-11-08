@@ -1,4 +1,4 @@
-import { mkdir, open, rm, stat } from "node:fs/promises";
+import { mkdir, open, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Cause, DateTime, Effect, Exit, Schema } from "effect";
@@ -10,10 +10,10 @@ import {
   mergeFailure,
   resolveCommandCompletion,
 } from "@lando/sdk/command-result";
-import { FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { FileIoError, PluginManifestError } from "@lando/sdk/errors";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
-import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { bunSelfRun } from "./bun-self-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import {
   PluginBuildMixedTreeError,
@@ -24,6 +24,7 @@ import {
 import {
   commandError,
   declarationRootDir,
+  declarationTsconfigContents,
   entriesFromExports,
   readPackageJson,
   writeDistPackageJson,
@@ -34,7 +35,6 @@ export { PluginBuildMixedTreeError };
 
 export interface PluginBuildOptions {
   readonly cwd?: string;
-  readonly spawner?: BunSelfSpawner;
   readonly execPath?: string;
 }
 
@@ -64,39 +64,7 @@ const declarationConfigError = (path: string, action: string, cause: unknown): F
     remediation: `Inspect ${path} and the plugin directory permissions, then retry the build.`,
   });
 
-const fileExists = async (path: string): Promise<boolean> =>
-  stat(path).then(
-    (entry) => entry.isFile(),
-    () => false,
-  );
-
-const declarationTsconfigContents = async (
-  pluginRoot: string,
-  entries: ReadonlyArray<{ readonly source: string }>,
-): Promise<string> => {
-  const hasBaseTsconfig = await fileExists(join(pluginRoot, "tsconfig.json"));
-  const config = {
-    ...(hasBaseTsconfig ? { extends: "./tsconfig.json" } : {}),
-    compilerOptions: {
-      composite: false,
-      incremental: false,
-      declaration: true,
-      emitDeclarationOnly: true,
-      outDir: "./dist",
-      rootDir: declarationRootDir(entries),
-      noEmit: false,
-    },
-    include: entries.map((entry) => entry.source),
-  };
-  return `${JSON.stringify(config, null, 2)}\n`;
-};
-
-export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
-  options: PluginBuildOptions = {},
-): Effect.fn.Return<
-  PluginBuildResult,
-  NotImplementedError | FileIoError | PluginManifestError | PluginBuildMixedTreeError
-> {
+export const pluginBuild = Effect.fn("PluginBuild.build")(function* (options: PluginBuildOptions = {}) {
   const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:build");
   const { manifest } = yield* Effect.tryPromise({
     try: () => validatePluginManifest(pluginRoot),
@@ -172,7 +140,6 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
     cwd: pluginRoot,
     verb: "build",
     callerSubsystem,
-    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
     ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   });
   let declarationExitCode = 0;
@@ -207,7 +174,6 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
             cwd: pluginRoot,
             verb: "build",
             callerSubsystem,
-            ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
             ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
           });
         }),
@@ -260,13 +226,14 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
     exitCode,
     timestamp: DateTime.formatIso(yield* DateTime.now),
   });
-  return {
+  const completed: PluginBuildResult = {
     pluginName: manifest.name,
     pluginRoot,
     entrypoints: entries.map((entry) => entry.source),
     outputs,
     exitCode,
   };
+  return completed;
 });
 
 export const renderPluginBuildResult = (result: PluginBuildResult): string =>

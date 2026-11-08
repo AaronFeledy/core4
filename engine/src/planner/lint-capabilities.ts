@@ -34,6 +34,7 @@ import type { PlannerIssue } from "./resolved-validation.ts";
 import {
   agentSocketCapabilityErrors,
   assertRouteNetworkingSupported,
+  assertServiceInitSupported,
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
   serviceResourceCapabilityErrors,
@@ -41,7 +42,7 @@ import {
 
 type CapabilityIssue = PlannerIssue & { readonly severity?: "error" | "warning" };
 
-const capabilityPath = (
+export const capabilityPath = (
   error: CapabilityError | PublicationUnsupportedError,
   resolution: ResolvedLandofile,
 ): ValidationIssuePath => {
@@ -70,6 +71,7 @@ const capabilityPath = (
     bindMounts: "appMount",
     persistentStorage: "storage",
     sharedCrossAppNetwork: "routes",
+    serviceInit: "init",
   }[error.capability];
   return field === undefined ? prefix : [...prefix, field];
 };
@@ -84,7 +86,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         rule: "landofile.capability",
         severity: "warning",
         path: ["provider"],
-        message: `Provider ${provider} has no offline capability declaration; capability checks run at lando start.`,
+        message: `Provider ${provider} has no offline capability declaration; final planning and capability checks run at lando start.`,
         suggestion:
           "Install or select a provider with an offline capability declaration, or run lando start to check runtime capabilities.",
       },
@@ -120,6 +122,20 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         yield* check(assertComposePreservedPathsSupported(provider, capabilities, services));
       }
     const config = seed.resolution.normalizedConfig;
+    yield* check(
+      assertServiceInitSupported(provider, capabilities, {
+        [name]: { name, init: config.init },
+      }),
+    );
+    if (config.init === undefined && capabilities.serviceInit !== true)
+      issues.push({
+        rule: "landofile.capability",
+        severity: "warning",
+        path: ["services", name, "init"],
+        message: `Provider ${provider} does not declare native init support; effective init for service ${name} depends on feature contributions.`,
+        suggestion:
+          "Final planning validates effective init after earlier lint errors are resolved. Set init: false to explicitly opt out, or select a provider with native init support.",
+      });
     const compiledMounts = compileAuthoredMounts(
       {
         appRoot: resolution.appRoot,
@@ -130,7 +146,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       config,
       seed.service.storage,
     );
-    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts;
+    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts.mounts;
     const projection = resolution.endpointProjection.services.get(seed.name);
     const endpoints = projection?.endpoints;
     const publicationError = publicationCapabilityError(provider, capabilities, {

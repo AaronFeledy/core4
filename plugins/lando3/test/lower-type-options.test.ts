@@ -3,6 +3,7 @@ import { lowerTypeOptions } from "../src/lower-type-options.ts";
 import { type ServiceLoweringContext, emptyPatch } from "../src/lowering-contract.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: {},
   serviceName: "example",
   keyPath: ["services", "example"],
   fallbackSourceId: "primary",
@@ -21,12 +22,17 @@ const diagnostic = (kind: string, key: string) =>
 
 describe("lowerTypeOptions", () => {
   for (const catalogId of ["mysql", "mariadb"]) {
-    it(`writes authentication into 99-lando.cnf when ${catalogId} sets authentication`, () => {
+    it(`accounts for authentication according to its Lando 3 owner on ${catalogId}`, () => {
       // Given
       const service = { authentication: "mysql_native_password" };
       // When
       const result = lowerTypeOptions(catalogId, service, ctx);
       // Then
+      if (catalogId === "mariadb") {
+        expect(result.patch).toEqual({});
+        expect(result.diagnostics).toEqual([diagnostic("dropped", "authentication")]);
+        return;
+      }
       const directive = "default_authentication_plugin=mysql_native_password";
       expect(result.diagnostics).toEqual([diagnostic("rewritten", "authentication")]);
       expect(result.patch).toEqual({
@@ -188,7 +194,7 @@ describe("lowerTypeOptions", () => {
       // When
       const result = lowerTypeOptions(id, service, ctx);
       // Then
-      expect(result).toEqual({ patch, diagnostics });
+      expect(result).toEqual({ patch, claims: expect.any(Array), diagnostics });
     });
   }
 
@@ -199,6 +205,10 @@ describe("lowerTypeOptions", () => {
     const result = lowerTypeOptions("varnish", service, ctx);
     // Then
     expect(result).toEqual({
+      claims: [
+        ["backends", 0],
+        ["backends", 1],
+      ],
       patch: {},
       blocked: true,
       diagnostics: [diagnostic("unsupported", "backends")],
@@ -211,7 +221,7 @@ describe("lowerTypeOptions", () => {
     // When
     const result = lowerTypeOptions("tomcat", service, ctx);
     // Then
-    expect(result).toEqual(emptyPatch);
+    expect(result).toEqual({ ...emptyPatch, claims: [] });
   });
 
   for (const id of [
@@ -227,7 +237,7 @@ describe("lowerTypeOptions", () => {
     "nginx",
     "apache",
   ]) {
-    it(`ignores other lowerers' keys when processing ${id}`, () => {
+    it(`diagnoses foreign PHP options when processing ${id}`, () => {
       // Given
       const service = {
         type: id,
@@ -248,7 +258,11 @@ describe("lowerTypeOptions", () => {
       // When
       const result = lowerTypeOptions(id, service, ctx);
       // Then
-      expect(result).toEqual(emptyPatch);
+      expect(result.patch).toEqual(id === "varnish" ? { backend: "appserver" } : {});
+      expect(result.diagnostics.map(({ kind, keyPath }) => [kind, keyPath.at(-1)])).toEqual([
+        ...(id === "varnish" ? [["rewritten", "type"]] : []),
+        ...["via", "xdebug", "composer", "db_client"].map((key) => ["dropped", key]),
+      ]);
     });
   }
 });

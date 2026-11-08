@@ -1,18 +1,18 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { ProxyError } from "@lando/sdk/errors";
+import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { AbsolutePath, type HostPlatform } from "@lando/sdk/schema";
 import {
   type CertificateAuthority,
   ConfigService,
   EventService,
   type FileSystem,
-  type GlobalAppService,
+  GlobalAppService,
   ManagedFileService,
   PathsService,
-  type RouterService,
+  RouterService,
   StateStore,
 } from "@lando/sdk/services";
 
@@ -20,11 +20,13 @@ import { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { bundledPluginModules } from "../../composition.ts";
+import { type GlobalMutationServices, withGlobalMutation } from "../../global-app/mutation.ts";
 import { makePublishRender } from "../../lifecycle/publish-render.ts";
-import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";
+import { indexContributions } from "../../plugins/capability-registry.ts";
 import { makeLandoPluginContext } from "../../plugins/context.ts";
 import * as UnavailableRouterService from "./api.ts";
 import * as DeferredCertificateAuthority from "./deferred-certificate-authority.ts";
+import { selectRouterContribution } from "./selection.ts";
 
 export type RouterServiceLayer = Layer.Layer<
   RouterService,
@@ -92,43 +94,19 @@ interface MakeRouterServiceRegistryOptions {
   readonly platform: HostPlatform;
 }
 
-const selectionError = (message: string, proxyId: string): ProxyError =>
-  new ProxyError({
-    message,
-    proxyId,
-    remediation: "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
-  });
-
 export const makeRouterServiceRegistry = (
   options: MakeRouterServiceRegistryOptions,
 ): RouterServiceRegistryShape => {
   const byId = new Map(options.registrations.map((registration) => [registration.id, registration]));
-  const selectId = (id: string): Effect.Effect<RouterServiceRegistration, ProxyError> =>
-    selectRegistration({
-      registrations: byId,
-      id,
-      onMissing: (missingId) => selectionError(`Router service ${missingId} is not installed.`, missingId),
-    }).pipe(Effect.map((selected) => selected.registration));
 
   return {
     list: Effect.succeed([...byId.keys()]),
     select: Effect.fn("RouterServiceRegistry.select")(function* (selection = {}) {
-      if (selection.explicit !== undefined) return yield* selectId(selection.explicit);
-
-      const configured = yield* options.configured;
-      if (configured !== undefined) return yield* selectId(configured);
-
-      const defaults = options.registrations.filter((registration) =>
-        registration.defaultFor?.platform?.includes(hostPlatformFamily(options.platform)),
-      );
-      const matchedDefault = defaults[0];
-      if (defaults.length === 1 && matchedDefault !== undefined) return matchedDefault;
-      const soleRegistration = options.registrations[0];
-      if (options.registrations.length === 1 && soleRegistration !== undefined) return soleRegistration;
-
-      return yield* Effect.fail(
-        selectionError("No RouterService plugin could be selected unambiguously.", "unknown"),
-      );
+      return yield* selectRouterContribution({
+        contributions: options.registrations,
+        configured: selection.explicit ?? (yield* options.configured),
+        platform: options.platform,
+      });
     }),
   };
 };
@@ -205,13 +183,45 @@ export const layerSelected = Layer.unwrap(
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0
         ? Effect.succeed(UnavailableRouterService.layerUnavailable)
-        : registry
-            .select()
-            .pipe(
-              Effect.map((selected) =>
-                selected.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer)),
+        : registry.select().pipe(
+            Effect.flatMap((selected) =>
+              Effect.map(Effect.context<GlobalMutationServices>(), (captured) =>
+                Layer.effect(
+                  RouterService,
+                  Effect.gen(function* () {
+                    const router = yield* RouterService;
+                    return RouterService.of({
+                      ...router,
+                      // Router plugins may hold a route lock while ensuring global services.
+                      // Acquire the global lock first, as explicit global lifecycle commands do.
+                      setup: Effect.fn("RouterService.setupWithGlobalMutation")((config, options) =>
+                        withGlobalMutation(router.setup(config, options)).pipe(
+                          Effect.provide(
+                            Context.pick(
+                              GlobalAppService,
+                              PathsService,
+                              StateStore,
+                              PrivateFileAccessService,
+                            )(captured),
+                          ),
+                          Effect.catchTag("GlobalAppError", (cause) =>
+                            Effect.fail(
+                              new ProxySetupError({
+                                proxyId: router.id,
+                                message: "Unable to coordinate router setup with global service changes.",
+                                remediation: cause.remediation,
+                                cause,
+                              }),
+                            ),
+                          ),
+                        ),
+                      ),
+                    });
+                  }),
+                ).pipe(Layer.provide(selected.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer)))),
               ),
             ),
+          ),
     ),
   ),
 );

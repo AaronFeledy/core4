@@ -63,7 +63,7 @@ describe("Linux Podman source build", () => {
     const sources = parseRuntimeBundleSources(
       JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")),
     );
-    expect(sources.runtimeVersion).toBe("0.1.7");
+    expect(sources.runtimeVersion).toBe("0.1.8");
 
     for (const hostKey of ["linux-x64", "linux-arm64"]) {
       const podman = sources.bundles[hostKey]?.components.find((component) => component.name === "podman");

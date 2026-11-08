@@ -50,8 +50,8 @@ lando open --print
 `lando open` launches the current app URL in your browser; `--print` just prints it. The front page and `/user/login` should both render with HTTP 200. On the default Apache stack, check both pages from inside `appserver`, without a browser or the proxy:
 
 ```sh
-lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/
-lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/user/login
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/user/login
 ```
 
 Each prints `200`. Anything else means Drupal didn't render the page, so check `lando logs -s appserver`.
@@ -105,8 +105,8 @@ For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guid
     </Step>
     <Step name="install-cms">
       <Run command="lando drupal-cms-install" />
-      <Verify command="lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/" expect={{ stdout: { regex: "^200$" } }} />
-      <Verify command="lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/user/login" expect={{ stdout: { regex: "^200$" } }} />
+      <Verify command="lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/" expect={{ stdout: { regex: "^200$" } }} />
+      <Verify command="lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/user/login" expect={{ stdout: { regex: "^200$" } }} />
     </Step>
     <Step name="check-drush">
       <Run command="lando drush --version" />
@@ -132,6 +132,7 @@ For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guid
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.5\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"sites/\\*/files\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
     </Step>
   </Scenario>

@@ -2,7 +2,7 @@
 id: drupal-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, drupal, php, mariadb]
+tags: [docs, recipes, drupal, php, mariadb]
 ---
 
 # Run the Drupal recipe
@@ -66,7 +66,7 @@ lando open --print
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, `--answer=database=postgres:16`, or `--answer=drupal=10` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
 
-Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use `lando psql` instead of `lando mariadb`.
+Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). Both webserver choices set `uploadDirs: [sites/*/files]` on the service serving PHP to keep code out of Drupal's uploads. For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use `lando psql` instead of `lando mariadb`.
 
 ## Connect Drupal to the database
 

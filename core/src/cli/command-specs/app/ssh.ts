@@ -4,19 +4,21 @@ import { Args, Flags } from "../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
-import { StreamFrame } from "@lando/sdk/schema";
+import { type ExecAppError, type ExecAppServices, execApp } from "@lando/engine/operations/exec";
+import { isStdioRendererIO } from "@lando/renderer/io";
+import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { serviceLoginShellCommand } from "../../service-login-shell";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../../service-login-shell";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { execInputUsesCliHostIo } from "./exec";
 
-export const sshSpec: LandoCommandSpec<ExecAppResult> = {
-  resultSchema: EmptyResultSchema,
+export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplementedError, ExecAppServices> = {
+  resultSchema: ExecAppResult,
   id: "app:ssh",
   helpGroup: "common",
   summary:
@@ -29,6 +31,9 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   flags: {
     service: Flags.string({ char: "s", description: "Service to open a shell in." }),
     user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
+    "no-history": Flags.boolean({
+      description: "Do not persist shell or client history for this session.",
+    }),
     subsystem: Flags.string({
       description: "SSH subsystem to invoke; not supported.",
     }),
@@ -44,28 +49,38 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   },
   streaming: StreamFrame,
   streamingMode: "live",
-  run: (input) => {
+  run: Effect.fn("SshCommand.run")(function* (input: unknown) {
+    const invocation = yield* CliInvocation;
     const flags = specFlagsOf(input);
     const parsedArgv = extractSpecParsedArgv(input);
-    if (stringFlag(flags, "subsystem") !== undefined) return Effect.fail(subsystemDeferred("subsystem"));
-    if (booleanFlag(flags, "sidecar")) return Effect.fail(subsystemDeferred("sidecar"));
+    if (stringFlag(flags, "subsystem") !== undefined)
+      return yield* Effect.fail(subsystemDeferred("subsystem"));
+    if (booleanFlag(flags, "sidecar")) return yield* Effect.fail(subsystemDeferred("sidecar"));
     const format = stringFlag(flags, "format");
     const service = stringFlag(flags, "service");
     const user = stringFlag(flags, "user");
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
       command: serviceLoginShellCommand(parsedArgv),
+      ...(booleanFlag(flags, "no-history") ? { env: withSessionNoHistoryEnv({}) } : {}),
       ...(service === undefined ? {} : { service }),
       ...(user === undefined ? {} : { user }),
     };
-    if (!execInputUsesCliHostIo(input)) return execApp({ ...base, interactive: false, tty: false });
-    if (envelope) return execApp(attachExecHostIo({ ...base, interactive: false, tty: false }));
-    const interactive = process.stdin.isTTY === true;
+    if (!execInputUsesCliHostIo(input)) return yield* execApp({ ...base, interactive: false, tty: false });
+    if (!isStdioRendererIO(invocation.io))
+      return yield* execApp({
+        ...base,
+        tty: !envelope && invocation.io.stdoutIsTTY === true,
+        interactive: !envelope && invocation.io.stdinIsTTY === true,
+        ...(invocation.io.stdin === undefined ? {} : { stdinStream: invocation.io.stdin }),
+      });
+    if (envelope) return yield* execApp(attachExecHostIo({ ...base, interactive: false, tty: false }));
+    const interactive = invocation.io.stdinIsTTY === true;
     const attached = attachExecHostIo({ ...base, tty: true, interactive });
-    return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
-  },
+    return yield* withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
+  }),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderExecAppResult(result as ExecAppResult),
+  render: (result) => renderExecAppResult(result),
 };
 
 const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =>

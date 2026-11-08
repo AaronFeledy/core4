@@ -10,7 +10,7 @@ const cases = [
   ["dual", "app:config", "app:config", "LandofileFormConflictError", 1],
   ["parse", "start", "app:start", "LandofileParseError", 1],
   ["parse", "info", "app:info", "LandofileParseError", 1],
-  ["parse", "hello", "app:hello", "ToolingCompileError", 1],
+  ["parse", "hello", "app:hello", "LandofileParseError", 1],
   ["parse", "stop", "app:stop", null, 0],
   ["parse", "app:config", "app:config", "LandofileParseError", 1],
   ["missing", "start", "app:start", "LandofileNotFoundError", 1],

@@ -11,6 +11,7 @@ export interface AppFeatureServiceDraft extends DraftServicePlan {
   readonly framework?: string | undefined;
   readonly featureIds: readonly string[];
   readonly normalizedConfig: ServiceConfig;
+  readonly resolutionMetadata?: AppFeatureServiceView["resolutionMetadata"];
 }
 export interface ComposeAppFeature {
   readonly id: string;
@@ -69,5 +70,6 @@ export const viewOf = (view: AppFeatureServiceView): AppFeatureServiceView => ({
   primary: view.primary,
   featureIds: view.featureIds,
   normalizedConfig: view.normalizedConfig,
+  resolutionMetadata: view.resolutionMetadata,
   connection: view.connection,
 });

@@ -2,21 +2,17 @@
  * `lando app:destroy` — native command metadata adapter.
  */
 import { resolve } from "node:path";
-import { ProviderId } from "@lando/sdk/schema";
+import { destroyApp, destroyAppAtRoot } from "@lando/engine/operations/destroy";
+import { DestroyAppResult, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { yesFlag } from "../../spec/confirmation-flag";
-import { Flags } from "../../spec/metadata";
-
-import {
-  type DestroyAppResult,
-  DestroyAppResultSchema,
-  destroyApp,
-  destroyAppAtRoot,
-} from "@lando/engine/operations/destroy";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { renderDestroyAppResult } from "../../commands/destroy";
+import { publishShutdownWarnings } from "../../commands/shutdown-summary";
 import { requireConfirmation } from "../../require-confirmation";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 /**
  * Prompts render as a one-line title, so the data loss comes first and the (possibly long) folder
@@ -41,7 +37,7 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
   const flags = specFlagsOf(input);
   const volumes = booleanFlag(flags, "volumes") || booleanFlag(flags, "purge");
   const rootFlag = stringFlag(flags, "root");
-  const root = rootFlag === undefined ? undefined : resolve(process.cwd(), rootFlag);
+  const root = rootFlag === undefined ? undefined : resolve((yield* CliInvocation).cwd, rootFlag);
   yield* requireConfirmation({
     yes: booleanFlag(flags, "yes"),
     message: destroyConfirmation(root, {
@@ -59,11 +55,13 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
     purgeSnapshots: booleanFlag(flags, "purge"),
     yes: booleanFlag(flags, "yes"),
   };
-  return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
+  const result = yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
+  yield* publishShutdownWarnings(result);
+  return result;
 });
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
-  resultSchema: DestroyAppResultSchema,
+  resultSchema: DestroyAppResult,
   id: "app:destroy",
   helpGroup: "common",
   summary: "Destroy the current Lando app (preserves named volumes unless --purge or --volumes).",
@@ -91,5 +89,5 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
     yes: yesFlag("Skip the confirmation prompt."),
   },
   run: runDestroyCommand,
-  render: (result) => renderDestroyAppResult(result as DestroyAppResult),
+  render: (result) => renderDestroyAppResult(result),
 };

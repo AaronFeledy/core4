@@ -15,6 +15,7 @@ const flags = {
   follow: { type: "boolean", char: "f" },
   shell: { type: "option", options: ["posix", "powershell", "pwsh"] },
   tail: Flags.integer(),
+  days: Flags.integer({ min: 0 }),
   answer: { type: "option", multiple: true },
   yes: { type: "boolean" },
 } as const;
@@ -25,6 +26,7 @@ describe("CLI flag-value validation", () => {
     ["option before a recognized flag", ["--provider", "--yes"], "missing"],
     ["empty equals value", ["--provider="], "empty"],
     ["non-integer tail", ["--tail=12x"], "invalid_integer"],
+    ["integer below its minimum", ["--days=-1"], "invalid_integer"],
     ["repeated non-repeatable option", ["--provider", "podman", "--provider=docker"], "repeated"],
     ["truncated short bundle", ["-fs"], "missing"],
     ["undeclared option value", ["--shell=private-shell"], "invalid_option"],
@@ -37,12 +39,21 @@ describe("CLI flag-value validation", () => {
     expect(error).toMatchObject({ _tag: "MalformedCliFlagValueError", issue });
   });
 
+  test("names the minimum in the remediation for an integer below it", () => {
+    expect(validateCliFlagValues(["--days=-3"], flags)).toMatchObject({
+      flag: "days",
+      remediation: "Supply --days with a whole integer of at least 0.",
+    });
+  });
+
   test.each([
     ["separated values", ["--provider", "podman"]],
     ["equals values", ["--provider=podman"]],
     ["repeatable values", ["--answer", "php=8.3", "--answer=database=mysql"]],
     ["short boolean bundle with attached option value", ["-fsappserver"]],
     ["declared option value", ["--shell=pwsh"]],
+    ["integer at its minimum", ["--days", "0"]],
+    ["negative integer without a minimum", ["--tail=-1"]],
     ["unknown flags", ["--future", "value"]],
   ])("accepts %s", (_name, argv) => {
     expect(validateCliFlagValues(argv, flags)).toBeUndefined();

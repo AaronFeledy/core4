@@ -22,11 +22,16 @@ import {
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import type { RootOverrides } from "@lando/paths";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
-import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
+import { detachStdioWrites, isStdioRendererIO } from "@lando/renderer/io";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AgentSocketUpstream, type AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect, Layer, Match, Option, Schema } from "effect";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../../runtime/invocation-context";
 
 export interface AgentRelayWorkerOptions {
   readonly platform?: string;
@@ -176,7 +181,8 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
   });
 });
 
-const defaultAgentRelayRuntime = async (input: AgentRelayWorkerInput) => {
+export const defaultAgentRelayRuntime = async (input: AgentRelayWorkerInput) => {
+  await import("../../runtime/bundled-plugins");
   const { makeLandoRuntime } = await import("../../runtime/layer");
   return makeLandoRuntime(
     cliRuntimeOptions({
@@ -206,6 +212,7 @@ const defaultAgentRelayRuntime = async (input: AgentRelayWorkerInput) => {
 
 export const runAgentRelayWorkerProcess = async (
   options: AgentRelayWorkerOptions & {
+    readonly context?: CliInvocationContext;
     readonly runtime?: Layer.Layer<RuntimeProviderRegistry, unknown>;
     readonly readInput?: () => Promise<string>;
     readonly loadRuntime?: (
@@ -223,10 +230,11 @@ export const runAgentRelayWorkerProcess = async (
   signals.once("SIGTERM", onSignal);
   signals.once("SIGINT", onSignal);
   const owner = makeRedactionOwner();
-  const sourceEnv = { ...process.env };
+  const context = options.context ?? processInvocationContext();
+  const sourceEnv = context.env;
   const redactionLayer = Layer.succeed(RedactionService, owner.service);
   try {
-    const readInput = options.readInput ?? (() => Bun.stdin.text());
+    const readInput = options.readInput ?? (() => new Response(context.io.stdin).text());
     const input = await Effect.runPromise(
       Schema.decodeUnknownEffect(Schema.fromJsonString(AgentRelayWorkerInput))(await readInput()).pipe(
         Effect.mapError(workerError("worker")),
@@ -242,8 +250,8 @@ export const runAgentRelayWorkerProcess = async (
       Effect.gen(function* () {
         const ready = yield* scopedAgentRelayWorker(input, options);
         yield* Effect.sync(() => {
-          writeStdioLine("stdout", JSON.stringify(Schema.encodeSync(AgentRelayWorkerReady)(ready)));
-          detachStdioWrites();
+          context.io.writeStdout(`${JSON.stringify(Schema.encodeSync(AgentRelayWorkerReady)(ready))}\n`);
+          if (isStdioRendererIO(context.io)) detachStdioWrites();
         });
         yield* Effect.promise(() => shutdown.promise);
       }),
@@ -253,6 +261,7 @@ export const runAgentRelayWorkerProcess = async (
     await Effect.runPromise(
       withRuntime.pipe(
         Effect.provide(redactionLayer),
+        Effect.provideService(CliInvocation, context),
         Effect.raceFirst(Effect.promise(() => shutdown.promise)),
       ),
     );

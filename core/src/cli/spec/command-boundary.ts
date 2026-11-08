@@ -1,6 +1,7 @@
 import { Effect, Layer, Schema } from "effect";
 
 import type { RendererIO } from "@lando/renderer/io";
+import type { CliInvocationContext } from "../../runtime/invocation-context";
 import { type RendererMode, formatBugReport } from "../bug-report";
 import { validateCommandCliFlags } from "../flag-value-validation";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
@@ -35,12 +36,16 @@ export interface PreCommandFailureInput {
   readonly failureExitCode?: number;
   readonly deprecationWarnings?: boolean;
   readonly io?: RendererIO;
+  readonly context?: CliInvocationContext;
+  /** A dash argument reserved stdout for the payload, so a machine failure goes to stderr. */
+  readonly payloadStdout?: boolean;
   readonly setExitCode?: (code: number) => void;
 }
 
 export const renderPreCommandFailure = async (input: PreCommandFailureInput): Promise<void> => {
   const exitCode = input.failureExitCode ?? 1;
   await runWithRendererHandling(Effect.fail(input.error), {
+    ...(input.context === undefined ? {} : { context: input.context }),
     runtime: Layer.empty,
     rendererMode: input.rendererMode,
     resultFormat: input.resultFormat,
@@ -48,11 +53,13 @@ export const renderPreCommandFailure = async (input: PreCommandFailureInput): Pr
     resultSchema: input.resultSchema ?? EmptyPreCommandResultSchema,
     ...(input.deprecationWarnings === undefined ? {} : { deprecationWarnings: input.deprecationWarnings }),
     ...(input.io === undefined ? {} : { io: input.io }),
+    ...(input.payloadStdout === true ? { payloadStdout: true } : {}),
     ...(input.setExitCode === undefined ? {} : { setExitCode: input.setExitCode }),
     failureExitCode: () => exitCode,
     formatError: (failure, redactor) =>
       formatBugReport({
         ...failure,
+        ...(input.context === undefined ? {} : { sourceEnv: input.context.env }),
         redactor,
         context: { commandId: input.commandId },
         rendererMode: input.rendererMode,

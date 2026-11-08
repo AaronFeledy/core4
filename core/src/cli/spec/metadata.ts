@@ -4,6 +4,8 @@ export type FlagConfig<T> = {
   readonly default?: T;
   readonly description?: string;
   readonly helpValue?: string;
+  /** Smallest accepted value for an integer flag; enforced before the command runs. */
+  readonly min?: number;
   readonly multiple?: boolean;
   readonly options?: readonly string[];
   readonly parse?: (input: string) => T | Promise<T>;

@@ -22,7 +22,6 @@ const PUBLISHED_COMPOSE_SERVICE_KNOB_KEY_ORDER = [
   "dns_search",
   "dns_opt",
   "extra_hosts",
-  "init",
   "stop_signal",
   "stop_grace_period",
   "security_opt",

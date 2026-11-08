@@ -16,17 +16,34 @@ import {
   type ServiceConfig,
   ServiceName,
 } from "@lando/core/schema";
-import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  GlobalAppService,
+  PluginRegistry,
+  RouterService,
+  RuntimeProviderRegistry,
+  type StateStore,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
+import { type FileSystem, PathsService } from "@lando/sdk/services";
+import { makeTestRouterService } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
 
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+
 const provider = { ...TestRuntimeProvider, id: "lando" };
 
 const globalAppLayer = Layer.mergeAll(
+  BunFileSystem.layer,
+  PrivateFileAccessService.layer,
+  Layer.sync(PathsService, () => makeLandoPaths({ env: process.env })),
+  Layer.succeed(RouterService, makeTestRouterService()),
+  testStateStoreLayer,
   GlobalAppServiceLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
   ),
@@ -82,7 +99,15 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-type GlobalAppHarnessServices = GlobalAppService | PluginRegistry | RuntimeProviderRegistry;
+type GlobalAppHarnessServices =
+  | GlobalAppService
+  | PluginRegistry
+  | RuntimeProviderRegistry
+  | StateStore
+  | FileSystem
+  | PathsService
+  | PrivateFileAccessService
+  | RouterService;
 
 const runWithGlobalApp = <A, E>(effect: Effect.Effect<A, E, GlobalAppHarnessServices>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(globalAppLayer)));
@@ -513,15 +538,15 @@ describe("globalInstall command operation", () => {
     });
   });
 
-  test("fails plugin-specific enablement with a tagged remediation", async () => {
+  test("rejects an unknown global contribution with a tagged remediation", async () => {
     await withTempRoots(async () => {
-      const { globalInstall } = await import("@lando/engine/operations/global-install");
-      const exit = await runWithGlobalAppExit(globalInstall({ plugin: "x" }));
+      const { globalEnable } = await import("@lando/engine/operations/global-policy");
+      const exit = await runWithGlobalAppExit(globalEnable({ selectors: ["x"] }));
       const failure = failureOf(exit);
 
       expect(failure).toBeInstanceOf(GlobalAppError);
-      expect((failure as GlobalAppError).operation).toBe("install");
-      expect((failure as GlobalAppError).remediation).toContain("lando global:install");
+      expect((failure as GlobalAppError).operation).toBe("policy");
+      expect((failure as GlobalAppError).remediation).toContain("lando global:list");
     });
   });
 });

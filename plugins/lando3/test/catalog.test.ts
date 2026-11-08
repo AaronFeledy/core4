@@ -5,31 +5,71 @@ import {
   COMPOSE_KEY_RENAMES,
   dispositionOf,
 } from "../src/compose-disposition-of.ts";
+import { testPorts } from "./fixtures/test-ports.ts";
 
 const phpVersions = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"];
 const cases: ReadonlyArray<readonly [string, CatalogResolution]> = [
-  ["php", { _tag: "unsupported-version", id: "php", version: "", supported: phpVersions }],
+  [
+    "php",
+    { _tag: "unsupported-version", id: "php", version: "", supported: phpVersions, lando3Default: "7.4" },
+  ],
   ["php:8.3", { _tag: "resolved", id: "php", version: "8.3", v4Type: "php:8.3" }],
   ["php:7.4", { _tag: "unsupported-version", id: "php", version: "7.4", supported: phpVersions }],
-  ["mysql", { _tag: "resolved", id: "mysql", v4Type: "mysql" }],
+  ["mysql", { _tag: "resolved", id: "mysql", v4Type: "mysql", lando3Default: "5.7" }],
   ["mysql:8.0", { _tag: "resolved", id: "mysql", version: "8.0", v4Type: "mysql:8.0" }],
   ["mongo:7", { _tag: "resolved", id: "mongodb", version: "7", v4Type: "mongodb:7", renamedFrom: "mongo" }],
-  ["mongo", { _tag: "resolved", id: "mongodb", v4Type: "mongodb", renamedFrom: "mongo" }],
+  [
+    "mongo",
+    { _tag: "resolved", id: "mongodb", v4Type: "mongodb", renamedFrom: "mongo", lando3Default: "4.2" },
+  ],
   ["memcached:1.6", { _tag: "unsupported-version", id: "memcached", version: "1.6", supported: [] }],
   ["apache:2.4", { _tag: "unsupported-version", id: "apache", version: "2.4", supported: [] }],
   ["frobnicator", { _tag: "unknown-type", id: "frobnicator" }],
   ["constructor", { _tag: "unknown-type", id: "constructor" }],
   ["php:8.3:extra", { _tag: "unsupported-version", id: "php", version: "8.3:extra", supported: phpVersions }],
   ["mysql:", { _tag: "unsupported-version", id: "mysql", version: "", supported: ["8.0", "8.4", "9.7"] }],
-  ["go", { _tag: "unsupported-version", id: "go", version: "", supported: ["1.22", "1.23"] }],
-  ["python", { _tag: "unsupported-version", id: "python", version: "", supported: ["3.12"] }],
-  ["ruby", { _tag: "unsupported-version", id: "ruby", version: "", supported: ["3.3"] }],
+  [
+    "go",
+    {
+      _tag: "unsupported-version",
+      id: "go",
+      version: "",
+      supported: ["1.22", "1.23"],
+      lando3Default: "1.26",
+    },
+  ],
+  [
+    "python",
+    { _tag: "unsupported-version", id: "python", version: "", supported: ["3.12"], lando3Default: "3.7" },
+  ],
+  [
+    "ruby",
+    { _tag: "unsupported-version", id: "ruby", version: "", supported: ["3.3"], lando3Default: "2.7" },
+  ],
+  ["php:8.2.10", { _tag: "resolved", id: "php", version: "8.2", v4Type: "php:8.2", narrowedFrom: "8.2.10" }],
+  [
+    "mysql:8.0.36",
+    { _tag: "resolved", id: "mysql", version: "8.0", v4Type: "mysql:8.0", narrowedFrom: "8.0.36" },
+  ],
+  [
+    "lamp-php:8.3",
+    { _tag: "resolved", id: "php", version: "8.3", v4Type: "php:8.3", renamedFrom: "lamp-php" },
+  ],
+  [
+    "drupal-mongo:7",
+    { _tag: "resolved", id: "mongodb", version: "7", v4Type: "mongodb:7", renamedFrom: "drupal-mongo" },
+  ],
+  ["pantheon-php:8.3", { _tag: "unknown-type", id: "pantheon-php" }],
+  [
+    "mysql:5.7.44",
+    { _tag: "unsupported-version", id: "mysql", version: "5.7.44", supported: ["8.0", "8.4", "9.7"] },
+  ],
 ];
 
 describe("local service catalog", () => {
   test.each(cases)("resolves %s against published types", (input, expected) => {
     // Given / When
-    const result = resolveCatalogType(input);
+    const result = resolveCatalogType(input, testPorts().serviceFacts);
     // Then
     expect(result).toEqual(expected);
   });
@@ -39,10 +79,8 @@ describe("local service catalog", () => {
     const entry = CATALOG.mysql;
     // Then
     expect(entry).toEqual({
-      versions: ["8.0", "8.4", "9.7"],
-      containerPort: 3306,
       configKeys: { database: "server" },
-      configDestination: "/etc/mysql/my.cnf",
+      lando3Default: "5.7",
     });
     expect(LEGACY_TYPE_ALIASES).toEqual({ mongo: "mongodb" });
     expect(Object.keys(CATALOG)).toHaveLength(31);

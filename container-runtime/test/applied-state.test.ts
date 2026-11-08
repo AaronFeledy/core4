@@ -11,7 +11,15 @@ import {
 } from "@lando/container-runtime/applied-state";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, AppPlan, MountPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  AppPlan,
+  MountPlan,
+  ProviderId,
+  ServiceName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { legacyPlan, service } from "./fixtures/environment-values.ts";
@@ -103,6 +111,75 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  for (const layout of ["per-app", "record"] as const) {
+    test.each([true, false, undefined, "off"])(
+      `${layout} migrates v2 init %s without changing ownership`,
+      async (init) => {
+        // Given
+        const plan = { ...legacyPlan(), services: { [currentService.name]: currentService } };
+        const encoded = Schema.encodeSync(AppPlan)(plan);
+        const legacy = {
+          ...encoded,
+          services: {
+            web: {
+              ...encoded.services[currentService.name],
+              extensions: { compose: { restart: "no", ...(init === undefined ? {} : { init }) } },
+            },
+          },
+        };
+        const raw: unknown = JSON.parse(
+          JSON.stringify(layout === "per-app" ? legacy : { [plan.id]: legacy }),
+        );
+        const before = JSON.stringify(raw);
+        const state: PluginStateStore = {
+          open: (spec) =>
+            Effect.succeed({
+              path: AbsolutePath.make("/tmp/applied-init.json"),
+              get: Effect.sync(() => {
+                if (typeof spec.onVersionMismatch !== "function") throw new Error("missing migrator");
+                return spec.onVersionMismatch(raw, 2);
+              }),
+              exists: Effect.succeed(true),
+              set: () => Effect.die("unexpected write"),
+              update: () => Effect.die("unexpected update"),
+              mutate: () => Effect.die("this fixture does not support mutate"),
+              transition: () => Effect.die("this fixture does not support transition"),
+              modify: () => Effect.die("unexpected modify"),
+              remove: Effect.die("unexpected delete"),
+            }),
+          withLock: (_key, body) => body,
+        };
+        const store =
+          layout === "per-app"
+            ? makeAppliedPlanStore({ providerId: "docker", layout })
+            : makeAppliedPlanStore({ providerId: "podman", layout });
+        // When
+        const observed = await Effect.runPromise(store.loadAppliedPlanStrict(state, plan.id));
+        // Then
+        expect(observed?.services[currentService.name]?.init).toBe(init === "off" ? false : init);
+        expect(observed?.services[currentService.name]?.extensions.compose).toEqual({ restart: "no" });
+        if (observed === undefined) throw new Error("missing migrated plan");
+        expect(planAppIdentity(observed)).toEqual(planAppIdentity(plan));
+        expect(JSON.stringify(raw)).toBe(before);
+      },
+    );
+
+    test(`${layout} refuses malformed historical init without modifying the source`, () => {
+      // Given
+      const raw = {
+        ...v1PlanBase,
+        services: { web: { ...v1ServiceBase, extensions: { compose: { init: "maybe" } } } },
+      };
+      const before = JSON.stringify(raw);
+      // When
+      const result =
+        layout === "per-app" ? migrateAppliedPlan(raw, 2) : migrateAppliedPlansRecord({ values: raw }, 2);
+      // Then
+      expect(result).toBeNull();
+      expect(JSON.stringify(raw)).toBe(before);
+    });
+  }
+
   test.each(["per-app", "record"] as const)(
     "%s layout reads historical identity without inventing execution authority",
     async (layout) => {
@@ -136,6 +213,8 @@ describe("applied plan state layouts", () => {
             exists: Effect.succeed(true),
             set: () => Effect.die("read-only fixture"),
             update: () => Effect.die("read-only fixture"),
+            mutate: () => Effect.die("this fixture does not support mutate"),
+            transition: () => Effect.die("this fixture does not support transition"),
             modify: () => Effect.die("read-only fixture"),
             remove: Effect.die("read-only fixture"),
           }),
@@ -157,7 +236,7 @@ describe("applied plan state layouts", () => {
     },
   );
 
-  test("per-app layout preserves the namespaced file format at version 2", async () => {
+  test("per-app layout preserves the namespaced file format at version 4", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
     const appId = AppId.make("example");
@@ -175,13 +254,13 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(2);
+    expect(calls[0]?.version).toBe(4);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
     expect(appliedPlansDir("/tmp/plugin-state/")).toBe("/tmp/plugin-state/applied-plans");
     expect(appliedPlanPath("/tmp/plugin-state", appId)).toBe("/tmp/plugin-state/applied-plans/example.json");
   });
 
-  test("record layout preserves the single-file collection format at version 2", async () => {
+  test("record layout preserves the single-file collection format at version 4", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "podman", layout: "record" });
 
@@ -197,7 +276,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(2);
+    expect(calls[0]?.version).toBe(4);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
   });
 });
@@ -486,6 +565,8 @@ describe("applied plan records", () => {
             written.push(value);
           }),
         update: () => Effect.die("not used"),
+        mutate: () => Effect.die("this fixture does not support mutate"),
+        transition: () => Effect.die("this fixture does not support transition"),
         modify: <B>(f: (cur: A | null) => readonly [B, A]) =>
           Effect.sync(() => {
             const [result, next] = f(null);
@@ -533,6 +614,31 @@ describe("applied plan records", () => {
 
     expect(written).toEqual([record]);
   });
+
+  test.each(["per-app", "record"] as const)(
+    "%s persistence retains committed digests when removing events without an injected sanitizer",
+    async (layout) => {
+      const written: unknown[] = [];
+      const annotated = {
+        ...plan,
+        services: {
+          [service.name]: {
+            ...currentService,
+            name: service.name,
+            environment: { API_TOKEN: "private-token" },
+          },
+        },
+        committedLiteralDigests: ["a".repeat(64), "b".repeat(64)],
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "lando", layout: "per-app" })
+          : makeAppliedPlanStore({ providerId: "lando", layout: "record" });
+      await Effect.runPromise(store.persistAppliedPlan(writingStateStore(written), annotated));
+      const { events: _events, ...expected } = annotated;
+      expect(written).toEqual([layout === "per-app" ? expected : { [plan.id]: expected }]);
+    },
+  );
 
   test("the record layout persists the plan without its Landofile events", async () => {
     const written: unknown[] = [];

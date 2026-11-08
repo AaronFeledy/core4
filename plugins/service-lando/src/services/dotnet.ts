@@ -3,13 +3,26 @@ import { Effect, Schema } from "effect";
 import { PortablePath } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  applicationAuthority,
+  assertListenerConfig,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const DEFAULT_PORT = 5000;
-const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
+export const DEFAULT_PORT = 5000;
+export const DOTNET_LISTENER = {
+  port: DEFAULT_PORT,
+  daemon: "ASP.NET Core",
+  when: "All .NET services; application-owned listener",
+  variables: ["ASPNETCORE_HTTP_PORTS"],
+} as const satisfies ListenerContract;
+export const APP_MOUNT_TARGET = "/app";
+const DEFAULT_COMMAND = ["tail", "-f", "/dev/null"] as const;
 const VERSIONS = ["8.0", "9.0"] as const;
 const ARTIFACTS = {
   "8.0": "mcr.microsoft.com/dotnet/sdk:8.0",
@@ -30,6 +43,9 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["9.0"] });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
+  const port = plannedPort(service, DOTNET_LISTENER);
+  ctx.addEnv("ASPNETCORE_HTTP_PORTS", String(port));
+  ctx.setListenerAuthority(applicationAuthority(DOTNET_LISTENER, port));
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,
@@ -43,9 +59,16 @@ export const dotnetServiceFeature: ServiceFeatureDefinition = {
   id: DOTNET_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: serviceFeatureValidateEffective(DOTNET_FEATURE_ID, (ctx) => {
+    assertListenerConfig(ctx.normalizedConfig, DOTNET_LISTENER);
+    return { handledServiceFields: [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, DOTNET_LISTENER),
+        protocol: "http",
+      }),
     ),
   apply: serviceFeatureApply(DOTNET_FEATURE_ID, "dotnet service feature failed to apply", applyDotnetFeature),
 };
@@ -68,7 +91,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
         certs: input.service.certs ?? true,
         storage: [...(input.service.storage ?? []), NUGET_CACHE],
       },
-      features: [{ id: DOTNET_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
+      features: [{ id: DOTNET_FEATURE_ID }, { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } }],
     });
   },
 });

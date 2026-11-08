@@ -1,22 +1,24 @@
 /** Update manifest location, decoding, version policy, and freshness state. */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
-import { Effect, Layer, Result, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
+import { DownloadFetchError, StateStoreError } from "@lando/sdk/errors";
 import {
+  AbsolutePath,
   type UpdateChannel,
-  UpdateChannel as UpdateChannelSchema,
   type UpdateManifestSchema as UpdateManifest,
   UpdateManifestSchema,
+  UpdateManifestSemver,
 } from "@lando/sdk/schema";
-import { Downloader } from "@lando/sdk/services";
+import { Downloader, StateStore, type StateWrite } from "@lando/sdk/services";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
-import { writeFileAtomicViaRename } from "../cache/atomic";
-import { resolveUserCacheRoot } from "../cache/paths";
+import { resolveUserDataRoot } from "../config/roots";
 import * as LandoEventService from "../services/event-service";
 import {
   UpdateDowngradeError,
@@ -26,7 +28,7 @@ import {
 } from "./errors.ts";
 import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
 
-export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
+export type UpdateManifestFetcher = (url: string, signal?: AbortSignal) => Promise<Uint8Array>;
 
 import { CoreUpdateFailureSchema } from "./errors.ts";
 
@@ -43,7 +45,7 @@ export const UpdateResultSchema = Schema.Struct({
 
 const UPDATE_BASE_URL = "https://update.lando.dev/v4";
 export const updateManifestStatePath = (): string =>
-  join(resolveUserCacheRoot(), "update-manifest-state.json");
+  join(resolveUserDataRoot(), "update-manifest-state.json");
 
 export const resolveUpdateManifestUrl = (channel: UpdateChannel): string =>
   `${UPDATE_BASE_URL}/${channel}.json`;
@@ -93,8 +95,10 @@ export const isPlaceholderBinary = (
 export const defaultFetchManifestBytes = (
   url: string,
   retainedDownloader?: typeof Downloader.Service,
+  requestContext: Context.Context<never> = Context.empty(),
+  signal?: AbortSignal,
 ): Promise<Uint8Array> =>
-  Effect.runPromise(
+  Effect.runPromiseExit(
     Effect.scoped(
       Effect.gen(function* () {
         const directory = yield* Effect.acquireRelease(
@@ -116,21 +120,32 @@ export const defaultFetchManifestBytes = (
               )
             : Layer.succeed(Downloader, retainedDownloader),
         ),
+        Effect.provide(requestContext),
       ),
     ),
-  );
+    { signal },
+  ).then((exit) => {
+    if (Exit.isSuccess(exit)) return exit.value;
+    throw Cause.squash(exit.cause);
+  });
 
 export const fetchBytes = (
   fetcher: UpdateManifestFetcher,
   url: string,
 ): Effect.Effect<Uint8Array, UpdateNetworkError> =>
   Effect.tryPromise({
-    try: () => fetcher(url),
+    try: (signal) => fetcher(url, signal),
     catch: (cause) =>
       new UpdateNetworkError({
-        message: `Failed to fetch update metadata from ${url}.`,
+        message:
+          cause instanceof DownloadFetchError
+            ? cause.message
+            : `Failed to download ${url} for \`lando update\`.`,
         url,
-        remediation: `Check network access to ${url}, then retry \`lando update\`.`,
+        remediation:
+          cause instanceof DownloadFetchError
+            ? `${cause.remediation} Then run \`lando update\` again.`
+            : `Check network access to ${url}, then retry \`lando update\`.`,
         cause,
       }),
   });
@@ -289,97 +304,222 @@ const UpdateFailureCategorySchema = Schema.Literals([
   "permission_failure",
   "network_failure",
 ]);
-type UpdateFailureCategory = typeof UpdateFailureCategorySchema.Type;
 
-interface UpdateManifestStateEntry {
-  readonly latest: string;
-  readonly lastFailure?:
-    | {
-        readonly category: UpdateFailureCategory;
-        readonly targetVersion: string;
-        readonly platform: string;
-      }
-    | undefined;
-}
+// The floor is a security record: a key it doesn't define (a misspelled channel, a field from
+// another build) must fail the read instead of decoding to an empty, lowerable floor.
+const knownKeysOnly = <S extends Schema.Top>(schema: S, keys: ReadonlyArray<string>) =>
+  Schema.Unknown.check(
+    Schema.makeFilter(
+      (input: unknown) =>
+        typeof input === "object" &&
+        input !== null &&
+        !Array.isArray(input) &&
+        Object.keys(input).every((key) => keys.includes(key)),
+      { expected: `an object with only ${keys.join(", ")}` },
+    ),
+  ).pipe(Schema.decodeTo(schema));
 
-const UpdateManifestStateSchema = Schema.Record(
-  UpdateChannelSchema,
-  Schema.optionalKey(
-    Schema.Struct({
-      latest: Schema.String,
-      lastFailure: Schema.optionalKey(
-        Schema.Struct({
-          category: UpdateFailureCategorySchema,
-          targetVersion: Schema.String,
-          platform: Schema.String,
-        }),
-      ),
-    }),
-  ),
-);
-type DecodedUpdateManifestState = typeof UpdateManifestStateSchema.Type;
-type UpdateManifestState = Partial<Record<UpdateChannel, UpdateManifestStateEntry>>;
-
-const normalizeUpdateManifestState = (state: DecodedUpdateManifestState): UpdateManifestState => ({
-  ...(state.stable === undefined ? {} : { stable: state.stable }),
-  ...(state.next === undefined ? {} : { next: state.next }),
-  ...(state.dev === undefined ? {} : { dev: state.dev }),
+const UpdateManifestFailureSchema = Schema.Struct({
+  category: UpdateFailureCategorySchema,
+  targetVersion: UpdateManifestSemver,
+  platform: Schema.String,
 });
 
+const UpdateManifestChannelEntryFields = Schema.Struct({
+  latest: UpdateManifestSemver,
+  lastFailure: Schema.optionalKey(
+    knownKeysOnly(UpdateManifestFailureSchema, ["category", "targetVersion", "platform"]),
+  ),
+});
+const UpdateManifestChannelEntrySchema = knownKeysOnly(UpdateManifestChannelEntryFields, [
+  "latest",
+  "lastFailure",
+]).check(
+  Schema.makeFilter(
+    (entry) =>
+      entry.lastFailure === undefined || compareVersions(entry.lastFailure.targetVersion, entry.latest) <= 0,
+    { expected: "a last failure target at or below the observed version floor" },
+  ),
+);
+type UpdateManifestStateEntry = typeof UpdateManifestChannelEntryFields.Type;
+
+export const UpdateManifestStateSchema = knownKeysOnly(
+  Schema.Struct({
+    stable: Schema.optionalKey(UpdateManifestChannelEntrySchema),
+    next: Schema.optionalKey(UpdateManifestChannelEntrySchema),
+    dev: Schema.optionalKey(UpdateManifestChannelEntrySchema),
+  }),
+  ["stable", "next", "dev"],
+);
+type UpdateManifestState = typeof UpdateManifestStateSchema.Type;
+
+const LegacyUpdateManifestStateSchema = knownKeysOnly(
+  Schema.Struct({
+    stable: Schema.optionalKey(knownKeysOnly(UpdateManifestChannelEntryFields, ["latest", "lastFailure"])),
+    next: Schema.optionalKey(knownKeysOnly(UpdateManifestChannelEntryFields, ["latest", "lastFailure"])),
+    dev: Schema.optionalKey(knownKeysOnly(UpdateManifestChannelEntryFields, ["latest", "lastFailure"])),
+  }),
+  ["stable", "next", "dev"],
+);
+
+export const UPDATE_MANIFEST_STATE_VERSION = 2;
 const emptyUpdateManifestState: UpdateManifestState = {};
 
-export const readUpdateManifestState = (
-  path: string,
-): Effect.Effect<UpdateManifestState, UpdateNetworkError> =>
-  Effect.tryPromise({
-    try: async () => {
-      try {
-        return JSON.parse(await readFile(path, "utf8")) as unknown;
-      } catch (cause) {
-        if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return null;
-        throw cause;
-      }
-    },
-    catch: (cause) =>
-      new UpdateNetworkError({
+const normalizeUpdateManifestState = (state: UpdateManifestState | null | undefined): UpdateManifestState => {
+  if (state === null || state === undefined) return emptyUpdateManifestState;
+  return {
+    ...(state.stable === undefined ? {} : { stable: state.stable }),
+    ...(state.next === undefined ? {} : { next: state.next }),
+    ...(state.dev === undefined ? {} : { dev: state.dev }),
+  };
+};
+
+/** Observation-derived monotonic register, not a finite lifecycle. Every writer
+ * merges under the bucket's advisory lock: latest never falls. lastFailure is
+ * the last recorded attempt (including delayed older attempts), not current
+ * health; success retains it. Its target cannot exceed latest. Admission reads
+ * latest only. Migration also uses this merge, conservatively raising old floors.
+ */
+const mergeChannelLatest = (
+  current: UpdateManifestStateEntry | undefined,
+  candidateLatest: string,
+  lastFailure?: UpdateManifestStateEntry["lastFailure"],
+): UpdateManifestStateEntry => {
+  const latest =
+    current?.latest !== undefined && compareVersions(current.latest, candidateLatest) > 0
+      ? current.latest
+      : candidateLatest;
+  const failure = lastFailure !== undefined ? lastFailure : current?.lastFailure;
+  return failure === undefined ? { latest } : { latest, lastFailure: failure };
+};
+
+const mergeChannel = (
+  current: UpdateManifestState | null,
+  channel: UpdateChannel,
+  candidateLatest: string,
+  lastFailure?: UpdateManifestStateEntry["lastFailure"],
+): UpdateManifestState => {
+  const state = normalizeUpdateManifestState(current);
+  return { ...state, [channel]: mergeChannelLatest(state[channel], candidateLatest, lastFailure) };
+};
+
+const manifestReplayError = (channel: UpdateChannel, cachedVersion: string, manifestVersion: string) =>
+  new UpdateManifestReplayError({
+    message: `Update manifest ${channel} channel version ${manifestVersion} is older than previously observed signed version ${cachedVersion}. Refusing possible manifest replay.`,
+    channel,
+    cachedVersion,
+    manifestVersion,
+    remediation:
+      "Use a trusted channel whose signed manifest is at least as new as the last verified version; wait for a newer signed release and retry `lando update` without disabling freshness checks.",
+  });
+
+const freshnessCorruptError = (path: string, cause: unknown): UpdateNetworkError =>
+  new UpdateNetworkError({
+    message: `Update manifest freshness state at ${path} failed schema validation.`,
+    url: path,
+    remediation: `Remove the corrupt freshness file at ${path}, then retry \`lando update\`.`,
+    cause,
+  });
+
+const freshnessIoError = (path: string, operation: "read" | "write", cause: unknown): UpdateNetworkError =>
+  operation === "read"
+    ? new UpdateNetworkError({
         message: `Failed to read update manifest freshness state at ${path}.`,
         url: path,
         remediation: `Fix permissions on ${path} or remove the corrupt freshness file, then retry \`lando update\`.`,
         cause,
-      }),
-  }).pipe(
-    Effect.flatMap((raw) => {
-      if (raw === null) return Effect.succeed({});
-      const decoded = Schema.decodeUnknownResult(UpdateManifestStateSchema)(raw, {
-        onExcessProperty: "error",
-      });
-      return Result.isSuccess(decoded)
-        ? Effect.succeed(normalizeUpdateManifestState(decoded.success))
-        : Effect.fail(
-            new UpdateNetworkError({
-              message: `Update manifest freshness state at ${path} failed schema validation.`,
-              url: path,
-              remediation: `Remove the corrupt freshness file at ${path}, then retry \`lando update\`.`,
-              cause: decoded.failure,
-            }),
-          );
-    }),
-  );
-
-export const writeUpdateManifestState = (
-  path: string,
-  state: UpdateManifestState,
-): Effect.Effect<void, UpdateNetworkError> =>
-  Effect.tryPromise({
-    try: () => writeFileAtomicViaRename(path, `${JSON.stringify(state, null, 2)}\n`),
-    catch: (cause) =>
-      new UpdateNetworkError({
+      })
+    : new UpdateNetworkError({
         message: `Failed to write update manifest freshness state at ${path}.`,
         url: path,
         remediation: `Ensure the parent of ${path} is writable, then retry \`lando update\`.`,
         cause,
-      }),
-  });
+      });
+
+const mapFreshnessStoreError = (path: string, cause: StateStoreError): UpdateNetworkError => {
+  if (cause.reason === "decode" || cause.reason === "version") return freshnessCorruptError(path, cause);
+  return freshnessIoError(
+    path,
+    cause.operation === "set" || cause.operation === "update" || cause.operation === "mutate"
+      ? "write"
+      : "read",
+    cause,
+  );
+};
+
+const updateManifestStateBucketSpec = (statePath: string) =>
+  ({
+    root: { path: AbsolutePath.make(dirname(statePath)) },
+    key: basename(statePath),
+    schema: UpdateManifestStateSchema,
+    version: UPDATE_MANIFEST_STATE_VERSION,
+    codec: "json" as const,
+    mode: 0o600,
+    lock: "advisory" as const,
+    onCorrupt: "fail" as const,
+    // Migration preserves both observations; unknown versions still fail closed.
+    onVersionMismatch: (raw: unknown, fromVersion: number): UpdateManifestState => {
+      if (fromVersion === 1) {
+        const legacy = Schema.decodeUnknownSync(LegacyUpdateManifestStateSchema)(raw);
+        return Schema.decodeUnknownSync(UpdateManifestStateSchema)(
+          Object.fromEntries(
+            (["stable", "next", "dev"] as const).flatMap((channel) => {
+              const entry = legacy[channel];
+              return entry === undefined
+                ? []
+                : [[channel, mergeChannelLatest(entry, entry.lastFailure?.targetVersion ?? entry.latest)]];
+            }),
+          ),
+        );
+      }
+      throw new StateStoreError({
+        reason: "version",
+        operation: "get",
+        path: statePath,
+        remediation: `Unsupported update manifest freshness state version ${fromVersion}; remove the corrupt freshness file.`,
+      });
+    },
+    default: emptyUpdateManifestState,
+  }) as const;
+
+const withDefaultStateStore = <A, E>(body: Effect.Effect<A, E, StateStore>): Effect.Effect<A, E> =>
+  Effect.serviceOption(StateStore).pipe(
+    Effect.flatMap((option) =>
+      Option.isSome(option)
+        ? body.pipe(Effect.provideService(StateStore, option.value))
+        : body.pipe(Effect.provide(StateStoreLayer.layer)),
+    ),
+  );
+
+const openUpdateManifestStateBucket = (statePath: string) =>
+  withDefaultStateStore(
+    Effect.gen(function* () {
+      const store = yield* StateStore;
+      return yield* store.open(updateManifestStateBucketSpec(statePath));
+    }),
+  );
+
+export const readUpdateManifestState = (
+  path: string,
+): Effect.Effect<UpdateManifestState, UpdateNetworkError> =>
+  openUpdateManifestStateBucket(path).pipe(
+    Effect.flatMap((bucket) => bucket.get),
+    Effect.map((state) => normalizeUpdateManifestState(state)),
+    Effect.mapError((cause) => mapFreshnessStoreError(path, cause)),
+  );
+
+/** Merge a verified channel floor without ever lowering `latest`; preserves other channels. */
+export const recordUpdateManifestSuccess = Effect.fn("Update.recordUpdateManifestSuccess")(function* (
+  path: string,
+  channel: UpdateChannel,
+  latest: string,
+): Effect.fn.Return<void, UpdateNetworkError> {
+  yield* openUpdateManifestStateBucket(path).pipe(
+    Effect.flatMap((bucket) => bucket.update((current) => mergeChannel(current, channel, latest))),
+    Effect.asVoid,
+    Effect.mapError((cause) => mapFreshnessStoreError(path, cause)),
+  );
+});
 
 export const writeUpdateFailureState = Effect.fn("Update.writeUpdateFailureState")(function* ({
   category,
@@ -394,17 +534,15 @@ export const writeUpdateFailureState = Effect.fn("Update.writeUpdateFailureState
   readonly targetVersion: string;
   readonly platform: string;
 }): Effect.fn.Return<void, never> {
-  const state = yield* readUpdateManifestState(path).pipe(
-    Effect.catch(() => Effect.succeed(emptyUpdateManifestState)),
+  // Best effort: never substitute `{}` after a failed read (corruption/io). Skip the write entirely.
+  yield* openUpdateManifestStateBucket(path).pipe(
+    Effect.flatMap((bucket) =>
+      bucket.update((current) =>
+        mergeChannel(current, channel, targetVersion, { category, targetVersion, platform }),
+      ),
+    ),
+    Effect.catch(() => Effect.void),
   );
-  const current = state[channel];
-  yield* writeUpdateManifestState(path, {
-    ...state,
-    [channel]: {
-      latest: current?.latest ?? targetVersion,
-      lastFailure: { category, targetVersion, platform },
-    },
-  }).pipe(Effect.catch(() => Effect.void));
 });
 
 export const failureOutcomeFromError = (
@@ -419,25 +557,27 @@ export const enforceManifestFreshness = Effect.fn("Update.enforceManifestFreshne
   statePath: string,
   options: { readonly persist: boolean },
 ): Effect.fn.Return<void, UpdateNetworkError | UpdateManifestReplayError> {
-  const state = yield* readUpdateManifestState(statePath);
-  const cached = state[manifest.channel];
-  if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0) {
-    return yield* Effect.fail(
-      new UpdateManifestReplayError({
-        message: `Update manifest ${manifest.channel} channel version ${manifest.latest} is older than previously observed signed version ${cached.latest}. Refusing possible manifest replay.`,
-        channel: manifest.channel,
-        cachedVersion: cached.latest,
-        manifestVersion: manifest.latest,
-        remediation:
-          "Use a trusted channel whose signed manifest is at least as new as the last verified version; wait for a newer signed release and retry `lando update` without disabling freshness checks.",
-      }),
-    );
+  if (!options.persist) {
+    const cached = (yield* readUpdateManifestState(statePath))[manifest.channel];
+    if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0)
+      return yield* Effect.fail(manifestReplayError(manifest.channel, cached.latest, manifest.latest));
+    return;
   }
 
-  if (!options.persist) return;
-
-  yield* writeUpdateManifestState(statePath, {
-    ...state,
-    [manifest.channel]: { ...cached, latest: manifest.latest },
-  });
+  // Compare-and-advance under one advisory lock; a replay fails before anything is written.
+  yield* openUpdateManifestStateBucket(statePath).pipe(
+    Effect.flatMap((bucket) =>
+      bucket.mutate((current) => {
+        const cached = normalizeUpdateManifestState(current)[manifest.channel];
+        return cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0
+          ? Effect.fail(manifestReplayError(manifest.channel, cached.latest, manifest.latest))
+          : Effect.succeed<StateWrite<UpdateManifestState, void>>({
+              _tag: "Set",
+              value: mergeChannel(current, manifest.channel, manifest.latest),
+              result: undefined,
+            });
+      }),
+    ),
+    Effect.catchTag("StateStoreError", (cause) => Effect.fail(mapFreshnessStoreError(statePath, cause))),
+  );
 });

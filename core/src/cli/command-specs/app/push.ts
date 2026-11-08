@@ -13,6 +13,7 @@ import {
 
 export const pushSpec: LandoCommandSpec<SyncResultType> = {
   id: "app:push",
+  onlineAcquisition: true,
   summary: "Push local datasets to a remote.",
   namespace: "app",
   topLevelAlias: true,
@@ -21,6 +22,5 @@ export const pushSpec: LandoCommandSpec<SyncResultType> = {
   args: { env: remoteEnvArg },
   resultSchema: SyncResult,
   run: (input) => appPush(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
-  render: (result, input, ctx) =>
-    renderSyncResult(result as SyncResultType, remoteFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderSyncResult(result, remoteFormatFromInput(input), ctx),
 };

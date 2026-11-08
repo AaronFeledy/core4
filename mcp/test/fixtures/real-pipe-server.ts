@@ -2,6 +2,7 @@ import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import * as RendererStdio from "@lando/renderer/stdio";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { testAppGenerations } from "../../src/testing.ts";
 import { TestMcpCommandExecutor } from "../executor";
 
 // Diagnostics are a test-only side channel; stdout belongs exclusively to MCP.
@@ -54,9 +55,11 @@ const services = McpService.layer.pipe(
           },
         ],
         defaultAllowlist: ["app:logs", "app:info", "app:exec"],
-        runtimeLayer: Layer.effectDiscard(
-          Effect.addFinalizer(() =>
-            Effect.yieldNow.pipe(Effect.andThen(record({ event: "finalized", kind: "runtime" }))),
+        apps: testAppGenerations(
+          Layer.effectDiscard(
+            Effect.addFinalizer(() =>
+              Effect.yieldNow.pipe(Effect.andThen(record({ event: "finalized", kind: "runtime" }))),
+            ),
           ),
         ),
         resources: [

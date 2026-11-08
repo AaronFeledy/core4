@@ -26,6 +26,10 @@ export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>
   message: Schema.String,
   feature: Schema.String,
   cause: Schema.optional(Schema.Unknown),
+  issues: Schema.optional(Schema.Array(ValidationIssue)).annotate({
+    description:
+      "Offending fields with paths relative to the service's own config; absent or empty means the whole service.",
+  }),
   remediation: Remediation,
 }) {}
 
@@ -104,7 +108,14 @@ export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHost
  */
 export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtpBaseFamilyError>()(
   "MailpitMsmtpBaseFamilyError",
-  { message: Schema.String, feature: Schema.String, remediation: Remediation },
+  {
+    message: Schema.String,
+    feature: Schema.String,
+    service: Schema.String,
+    reason: Schema.Literals(["replacement-build", "unproven-image-family"]),
+    image: Schema.optionalKey(Schema.String),
+    remediation: Remediation,
+  },
 ) {}
 
 export type AppFeatureError =

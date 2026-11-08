@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { StartAppResultSchema } from "@lando/engine/operations/start";
+import { StartAppResult } from "@lando/sdk/schema";
 import { Effect, Exit, Fiber, Schema } from "effect";
 
 import {
@@ -15,7 +15,7 @@ import {
 const envelope = Schema.Struct({
   ok: Schema.Boolean,
   warnings: Schema.Array(Schema.Unknown),
-  result: StartAppResultSchema,
+  result: StartAppResult,
 });
 
 describe.serial("live start scanner", () => {

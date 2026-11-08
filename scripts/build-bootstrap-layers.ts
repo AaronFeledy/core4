@@ -54,12 +54,11 @@ const renderPlugins = (): string =>
     'import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";',
     'import * as PluginContributionGraphLayer from "@lando/engine/plugins/contribution-graph";',
     'import * as PluginRegistryLayer from "@lando/engine/plugins/registry";',
-    'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
     'import * as BuiltInCommandCatalogLayer from "../../../cli/built-in-command-catalog-live.ts";',
-    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    'import { type MinimalBootstrapLayerInputs, minimalBootstrapLayerFor } from "./minimal.ts";',
     "",
-    "export const makePluginsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {",
-    "  const minimalRuntimeGraph = makeMinimalBootstrapLayer(inputs);",
+    "export const makePluginsBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInputs) => {",
+    "  const minimalRuntimeGraph = minimalBootstrapLayerFor(inputs);",
     "  const minimalRuntimeLayer = Layer.suspend(() => minimalRuntimeGraph);",
     "  const contributionGraphLayer = PluginContributionGraphLayer.PluginContributionGraph.layer({",
     "    layers: inputs.pluginLayers,",
@@ -166,7 +165,7 @@ const renderScratch = (): string =>
     "    globalAppRuntimeLayer,",
     "    routerRegistryLayer,",
     "    routerServiceLayer,",
-    "    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(providerBase)),",
+    "    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(providerBase)),",
     "    ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(providerBase)),",
     "    ScratchInitAppPortLayer.layer,",
     "  ).pipe(Layer.provideMerge(scratchBase));",
@@ -189,19 +188,16 @@ const renderApp = (): string =>
     'import { bundledPluginModules } from "@lando/engine/composition";',
     'import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";',
     'import * as GlobalAppRuntimeLayer from "@lando/engine/global-app/runtime";',
-    'import * as BundledFileSyncEngine from "@lando/engine/plugins/file-sync-from-modules";',
     'import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";',
     'import * as AppPlannerLayer from "@lando/engine/services/planner";',
-    'import * as BunShellRunner from "@lando/engine/services/shell-runner";',
     'import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";',
     'import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";',
-    'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
     'import { BUILT_IN_COMMAND_IDS } from "../../../cli/generated/command-ids.ts";',
     'import * as EventCommandExecutorLayer from "../../../cli/event-command-executor.ts";',
-    'import { makeProcessShellReplIO } from "../../../cli/host-shell-terminal.ts";',
+    'import type { MinimalBootstrapLayerInputs } from "./minimal.ts";',
     'import { makeProviderBootstrapBaseLayer } from "./provider.ts";',
     "",
-    "export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "export const makeAppBootstrapLayer = (inputs: MinimalBootstrapLayerInputs) => {",
     "  const providerGraph = makeProviderBootstrapBaseLayer(inputs);",
     "  const providerBase = Layer.suspend(() => providerGraph);",
     "  const buildOrchestratorLayer = Layer.suspend(() => BuildOrchestratorLayer.layer.pipe(Layer.provide(providerBase)));",
@@ -210,8 +206,6 @@ const renderApp = (): string =>
     "    buildOrchestratorLayer,",
     "    AppPlannerLayer.layer.pipe(Layer.provide(providerBase)),",
     "    ProviderExecToolingEngine.layer.pipe(Layer.provide(providerBase)),",
-    "    BunShellRunner.layerWithPrivateFileAccess(makeProcessShellReplIO).pipe(Layer.provide(providerBase)),",
-    "    BundledFileSyncEngine.layerWith(bundledPluginModules()).pipe(Layer.provide(providerBase)),",
     "  );",
     "  const routerRegistryLayer = Layer.fromBuildMemo((memoMap, scope) => Layer.buildWithMemoMap(RouterServiceRegistryLayer.RouterServiceRegistry.layerWith(bundledPluginModules()).pipe(",
     "    Layer.provide(appBase),",
@@ -253,6 +247,29 @@ const renderNone = (): string =>
     "",
   ].join("\n");
 
+const renderGeneration = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import type { InteractionService } from "@lando/sdk/services";',
+    'import { withPluginLayerOverrides } from "@lando/engine/plugins/contribution-graph";',
+    'import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";',
+    'import { superviseBootstrapLayer } from "@lando/engine/runtime/bootstrap-lifecycle";',
+    'import { makeAppBootstrapLayer } from "./app.ts";',
+    'import { type MinimalBootstrapLayerInputs, makeMinimalBootstrapLayer } from "./minimal.ts";',
+    "",
+    "/** The retained session host: the minimal tier once, with the session's interaction service. */",
+    "export const makeGenerationHostBootstrapLayer = (",
+    "  inputs: BootstrapLayerInputs,",
+    "  interaction: Layer.Layer<InteractionService>,",
+    ") => superviseBootstrapLayer(Layer.merge(makeMinimalBootstrapLayer(inputs), interaction), inputs.lifecycle);",
+    "",
+    "/** One app contribution generation: the app tier over an already-built host minimal tier. */",
+    "export const makeGenerationAppBootstrapLayer = (inputs: MinimalBootstrapLayerInputs) =>",
+    "  withPluginLayerOverrides(makeAppBootstrapLayer(inputs));",
+    "",
+  ].join("\n");
+
 const renderers: Record<string, () => string> = {
   none: renderNone,
   minimal: renderMinimal,
@@ -263,13 +280,14 @@ const renderers: Record<string, () => string> = {
   global: renderGlobal,
   scratch: renderScratch,
   app: renderApp,
+  generation: renderGeneration,
   index: renderIndex,
 };
 
 const main = async (): Promise<void> => {
   await mkdir(OUTPUT_DIR, { recursive: true });
 
-  const files = [...levelOrder, "index"];
+  const files = [...levelOrder, "generation", "index"];
   for (const name of files) {
     const render = renderers[name];
     if (render === undefined) throw new Error(`No bootstrap layer renderer for ${name}`);

@@ -12,7 +12,7 @@ import { basename, join } from "node:path";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import {
@@ -35,6 +35,8 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { AppResolveError, ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
+import { definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
@@ -392,8 +394,30 @@ describe("@lando/core App-handle library contract", () => {
   test("runtime-scope close tears down App-handle start resources", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingFileSyncEngine();
+      const manifest = Schema.decodeUnknownSync(PluginManifest)({
+        name: "@test/app-handle-sync",
+        version: "1.0.0",
+        api: 4,
+        contributes: {
+          fileSyncEngines: [
+            {
+              id: tracking.engine.id,
+              supports: { platform: ["linux", "darwin", "win32"] },
+              capabilities: tracking.engine.capabilities,
+            },
+          ],
+        },
+      });
+      const entry = definePlugin({
+        name: manifest.name,
+        manifest,
+        fileSyncEngines: new Map([
+          [tracking.engine.id, { make: () => Layer.succeed(FileSyncEngine, tracking.engine) }],
+        ]),
+      });
       const acceleratedProvider = RuntimeProvider.of({
         ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, fileSyncTargets: "prepared-volume" },
         inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
         prepareFileSyncTargets: (syncPlan: AppPlan) =>
           Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
@@ -403,6 +427,7 @@ describe("@lando/core App-handle library contract", () => {
           openLandoRuntime({
             plugins: {
               policy: "bundled-only",
+              manifests: [{ manifest, entry }],
               layers: [
                 Layer.succeed(RuntimeProvider, acceleratedProvider),
                 Layer.succeed(
@@ -421,7 +446,6 @@ describe("@lando/core App-handle library contract", () => {
                   AppPlanner,
                   AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                 ),
-                Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
               ],
             },
           }).pipe(

@@ -31,7 +31,11 @@ export const teardownHostMaintainers = (
   registry: HostMaintenanceRegistryShape,
   input: { readonly paths: HostRuntimePaths; readonly platform: HostPlatform },
 ): Effect.Effect<HostTeardownResult> =>
-  Effect.forEach(registry.maintainers, (maintainer) => maintainer.teardown(input)).pipe(
+  Effect.forEach(registry.maintainers, (maintainer) =>
+    maintainer.teardown === undefined
+      ? Effect.succeed({ terminated: false } satisfies HostTeardownResult)
+      : maintainer.teardown(input),
+  ).pipe(
     Effect.map((results) => {
       const resultWithPid = results.find((result) => result.pid !== undefined);
       return {

@@ -7,6 +7,14 @@ export const configOutputLandofile = (schema: JsonSchema): JsonSchema => {
   if (!Array.isArray(schema.anyOf) || schema.properties !== undefined) {
     throw new Error("Expected an unambiguous config output union");
   }
+  // An arm without a Landofile (such as `describe`) is no embedding; one remaining arm is the direct output.
+  const embeddings = schema.anyOf.filter(
+    (branch) => !isJsonObject(branch) || !isJsonObject(branch.properties) || "landofile" in branch.properties,
+  );
+  const [direct] = embeddings;
+  if (embeddings.length === 1 && embeddings.length < schema.anyOf.length && isJsonObject(direct)) {
+    return configOutputLandofile(direct);
+  }
   const candidates = schema.anyOf.filter((branch) => {
     if (!isJsonObject(branch) || !isJsonObject(branch.properties)) return false;
     const properties = branch.properties;

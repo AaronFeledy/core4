@@ -143,6 +143,9 @@ const overlaidPlan = (): AppPlan => {
           socketPath: "/tmp/host-proxy.sock",
           url: "http://127.0.0.1:9",
         }).apply({
+          addExtension: (name, value) => {
+            extensions[name] = value;
+          },
           addEnv: (name, value) => {
             environment[name] = value;
           },
@@ -170,6 +173,7 @@ const makePodmanApi = (): PodmanApiClient => {
   const running = new Set<string>();
   const request = (input: EngineHttpRequest) =>
     Effect.sync(() => {
+      if (input.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
       if (input.method === "GET" && input.path.includes("/images/") && input.path.endsWith("/json")) {
         return {
           status: 200,
@@ -247,7 +251,10 @@ test("an overlaid plan applied through provider-podman is persisted without the 
   // Then
   const persisted = await Effect.runPromise(loadAppliedPlan(state, appId));
   expect(overlaid.services[serviceName]?.environment.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
-  expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBe("proxy-token");
+  expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+  expect(overlaid.services[serviceName]?.mounts).toContainEqual(
+    expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+  );
   expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect(persisted).toEqual(basePlan);
 });

@@ -6,7 +6,7 @@ Install dependencies through the generated tooling before serving the app.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Install dependencies
 
@@ -35,9 +35,10 @@ service-owned `/app/.venv` overlay, not the host mount. Restart and a plain
 - `lando uvicorn …`: uvicorn inside the web service's venv.
 - `lando pip …`: pip inside the web service's venv.
 
-## Alpha limitations
+## Limitations
 
 - The recipe writes a Landofile only; create application files yourself and
   install dependencies through the generated tooling.
-- Alembic migrations, ASGI lifespan tooling, and SSE/WebSocket-specific
-  presets are deferred to Beta.
+- The recipe does not configure Alembic migrations, ASGI lifespan tooling, or
+  SSE/WebSocket presets. Install and wire those through `lando pip` and your
+  application code.

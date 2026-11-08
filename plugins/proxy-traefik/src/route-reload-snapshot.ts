@@ -1,4 +1,4 @@
-import type { AppId } from "@lando/sdk/schema";
+import type { AppRouteOwner } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
   appCertificateFiles,
@@ -20,13 +20,13 @@ export const readOptional = (dependencies: TraefikProxyDependencies, path: strin
 
 export const routeReloadSnapshot = (
   dependencies: TraefikProxyDependencies,
-  app: AppId,
+  owner: AppRouteOwner,
   defaultDomain: string,
 ) => {
-  const certificates = appCertificateFiles(dependencies.paths, app);
+  const certificates = appCertificateFiles(dependencies.paths, owner);
   const defaults = defaultCertificateFiles(dependencies.paths, defaultDomain);
   return Effect.all([
-    readOptional(dependencies, routeFile(dependencies.paths, app)),
+    readOptional(dependencies, routeFile(dependencies.paths, owner)),
     readOptional(dependencies, certificates.cert),
     readOptional(dependencies, certificates.key),
     readOptional(dependencies, defaults.cert),

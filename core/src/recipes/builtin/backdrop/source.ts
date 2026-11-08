@@ -13,12 +13,18 @@ export const source = {
     services: {
       appserver: {
         framework: "backdrop",
+        uploadDirs: ["files"],
         allowOverride: true,
-        environment: { BACKDROP_SETTINGS: backdropSettings("{{ app.name }}") },
+        environment: { BACKDROP_SETTINGS: backdropSettings("{{ services.database.creds.database }}") },
       },
     },
     tooling: {
-      bee: { service: "appserver", description: "Run Bee inside the appserver service.", cmds: ["bee"] },
+      bee: {
+        service: "appserver",
+        description: "Run Bee inside the appserver service.",
+        cmds: ["bee"],
+        wrapper: true,
+      },
     },
   },
   postInit: [

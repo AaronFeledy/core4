@@ -9,6 +9,7 @@ import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 const runtimeLayerFactoryLive = Layer.succeed(
@@ -19,19 +20,11 @@ const runtimeLayerFactoryLive = Layer.succeed(
 const runResilientDoctor = (env: Readonly<Record<string, string>>) =>
   Effect.runPromise(resilientDoctorReport({ env }).pipe(Effect.provide(runtimeLayerFactoryLive)));
 
-const withUserDataRoot = async <A>(userDataRoot: string, run: () => Promise<A>): Promise<A> => {
-  const priorDataRoot = process.env.LANDO_USER_DATA_ROOT;
-  try {
-    process.env.LANDO_USER_DATA_ROOT = userDataRoot;
-    return await run();
-  } finally {
-    if (priorDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
-    else process.env.LANDO_USER_DATA_ROOT = priorDataRoot;
-  }
-};
+const withUserDataRoot = <A>(userDataRoot: string, run: () => Promise<A>): Promise<A> =>
+  withEnvVar("LANDO_USER_DATA_ROOT", userDataRoot, run);
 
 describe("doctor installed-plugin metadata health", () => {
-  test("validates package metadata without importing the plugin entry", async () => {
+  test("keeps valid metadata healthy when runtime discovery skips a throwing entry", async () => {
     // Given a valid plugin manifest whose entry would fail if imported
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-plugin-valid-metadata-"));
     const pluginsRoot = join(userDataRoot, "plugins");
@@ -52,7 +45,7 @@ describe("doctor installed-plugin metadata health", () => {
     );
     await writeFile(
       join(packageRoot, "index.js"),
-      'throw new Error("entry must not be imported by doctor");\n',
+      'throw new Error("runtime discovery skips this entry");\n',
     );
 
     try {
@@ -95,9 +88,14 @@ describe("doctor installed-plugin metadata health", () => {
       expect(metadataCheck?.context.pluginId).toBe("@example/[redacted]");
       expect(metadataCheck?.context.pluginPath?.length).toBeLessThanOrEqual(2_000);
       expect((metadataCheck?.context.message ?? "").length).toBeLessThanOrEqual(2_000);
-      expect(metadataCheck?.solutions.some((solution) => solution.command === "lando plugin list")).toBe(
-        true,
+      expect(metadataCheck?.solutions).toContainEqual(
+        expect.objectContaining({
+          description: expect.stringContaining("lando plugin:remove <name>"),
+        }),
       );
+      expect(metadataCheck?.solutions.some((solution) => solution.command?.includes("plugin"))).toBe(false);
+      expect(JSON.stringify(metadataCheck?.solutions)).not.toContain("lando plugin list");
+      expect(JSON.stringify(metadataCheck?.solutions)).toContain("lando plugin:add <spec>");
       expect(JSON.stringify(report)).not.toContain(secret);
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
@@ -160,10 +158,42 @@ describe("doctor installed-plugin metadata health", () => {
         context: { pluginId: "registry" },
       });
       expect(metadataCheck?.context.metadataPath).toBe(join(pluginsRoot, "registry.json"));
+      expect(metadataCheck?.solutions).toContainEqual(
+        expect.objectContaining({
+          description: expect.stringContaining("Repair the registry file at the reported metadataPath"),
+        }),
+      );
+      expect(JSON.stringify(metadataCheck?.solutions)).not.toContain("plugin:remove");
+      expect(JSON.stringify(report)).not.toContain("lando plugin list");
       expect(report.subsystems.checks.length).toBeGreaterThan(0);
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+  test("attributes invalid registry entries to registry repair instead of package removal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-doctor-registry-entry-"));
+    const pluginsRoot = join(root, "plugins");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      JSON.stringify({
+        "@example/broken": { name: "@example/broken", version: 42, path: "/unsafe/$(touch sentinel)" },
+      }),
+    );
+    try {
+      const report = await withUserDataRoot(root, () => runResilientDoctor(SHORT_BUDGET_ENV));
+      const check = report.self?.checks.find((entry) => entry.section === "plugin-metadata");
+      expect(check?.context.pluginId).toBe("@example/broken");
+      expect(check?.context.metadataPath).toBe(join(pluginsRoot, "registry.json"));
+      expect(check?.solutions).toContainEqual(
+        expect.objectContaining({ description: expect.stringContaining("Repair the registry file") }),
+      );
+      expect(JSON.stringify(check?.solutions)).not.toContain("plugin:remove");
+      expect(JSON.stringify(check?.solutions)).not.toContain("touch sentinel");
+      expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

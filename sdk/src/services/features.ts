@@ -26,9 +26,11 @@ import type {
   EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
+  ListenerAuthority,
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
+  ServiceFeatureValidationResult,
   TmpfsMountPlan,
   VolumeMountPlan,
 } from "../schema/index.ts";
@@ -127,6 +129,8 @@ export interface ServiceFeatureContext {
   readonly primary: boolean;
   /** The app name, when known. */
   readonly appName?: string | undefined;
+  /** Derive persisted defaults (databases, passwords, buckets) from this name so they survive a rename. Defaults to appName. */
+  readonly dataName?: string | undefined;
   /** Absolute host path of the app root. */
   readonly appRoot: string;
   /** Host identity facts (os/user/uid/gid/home), when the planner supplied them. */
@@ -137,6 +141,8 @@ export interface ServiceFeatureContext {
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
 
+  /** The name of a data store that belongs to this service alone. */
+  serviceStoreName(role: string): string;
   /** Add or overwrite an environment variable on the draft. */
   addEnv(name: string, value: EnvironmentValue): void;
   /** Add a mount (without a realization decision). */
@@ -166,12 +172,16 @@ export interface ServiceFeatureContext {
   setHealthcheck(healthcheck: HealthcheckPlan): void;
   /** Set startup readiness independently from ongoing health. */
   setReadiness(readiness: HealthcheckPlan): void;
+  /** Set structured listener ownership and configuration advice, not an observed failure cause. */
+  setListenerAuthority(authority: ListenerAuthority): void;
   /** Set the service certificate plan. */
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */
   setEntrypoint(entrypoint: CommandSpec): void;
   /** Set the default command. */
   setCommand(command: CommandSpec): void;
+  /** Set native container init intent. Authored init takes precedence. */
+  setInit(init: boolean): void;
   /** Set the artifact (image ref or build spec). */
   setArtifact(artifact: ArtifactRef | ArtifactBuildSpec): void;
   /** Set the in-container user. */
@@ -192,6 +202,10 @@ export interface ServiceFeatureDefinition {
   readonly schema?: Schema.Codec<unknown>;
   readonly priority: number;
   readonly requires?: ReadonlyArray<keyof ProviderCapabilities>;
+  /** Validate final inherited facts with Original decoded config, no mutators or runtime IO. */
+  readonly validateEffective?: (
+    ctx: ServiceEndpointContext,
+  ) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>;
   /** Declare listeners without applying features or acquiring runtime resources. */
   readonly declareEndpoints?: (
     ctx: ServiceEndpointContext,
@@ -207,6 +221,7 @@ export type ServiceEndpointContext = Pick<
   | "base"
   | "primary"
   | "appName"
+  | "dataName"
   | "appRoot"
   | "host"
   | "normalizedConfig"

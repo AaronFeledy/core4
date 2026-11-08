@@ -2,7 +2,7 @@
 id: flags-and-args
 provider: test
 timeout: 60000
-tags: [beta, docs, tooling, flags]
+tags: [docs, tooling, flags]
 ---
 
 # Declare flags and args on a tooling task
@@ -31,14 +31,16 @@ tooling:
     cmd: echo greeting
 ```
 
-Save the file and run `lando app:cache:refresh` from the app directory. Check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
+Save the file. From the app directory, check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
 
 ```sh
 lando greet dev -n team
 lando greet prod --loud
 ```
 
-## Flags
+Host `.bun.sh` scripts support the same nested input declarations in their comment front matter. Use `LANDO_FLAG_<NAME>` and `LANDO_ARG_<NAME>` inside those scripts to read the resolved values. See [Declare flags and read inputs by name](../bun-shell-scripts/#declare-flags-and-read-inputs-by-name) for a working host example; service-targeted scripts still require a Landofile task.
+
+## Declare flags
 
 Each key under `flags:` is one `--flag`. Every option is optional; an empty object still declares the flag.
 
@@ -48,12 +50,28 @@ Each key under `flags:` is one `--flag`. Every option is optional; an empty obje
 | `default` | Value used when the flag isn't passed |
 | `choices` | Allowed values; anything else is rejected |
 | `required` | Fails the run when the flag is missing and there's no default |
-| `boolean` | Switch with no value: present means `true` |
+| `boolean` | Boolean input: `--flag` means `true`; `--flag=true` and `--flag=false` set it explicitly |
 | `description` | Help text for `lando <task> --help` |
+| `sensitive` | `true` protects supplied values in Lando output, errors, events, and traces |
 
-A `boolean` flag can't take `choices` or a string `default`. Give it `default: true` if you want it on unless the user says otherwise.
+A `boolean` flag can't take `choices` or a string `default`. Explicit false overrides a true default, both on the CLI and in named JSON input. For example, to default `loud` to true in the task above, use:
 
-## Args
+```yaml
+flags:
+  loud:
+    boolean: true
+    default: true
+```
+
+With that change saved, `lando greet dev --loud=false` binds `loud` to false. `--loud` and `--loud=true` bind it to true; repeated flags use the last occurrence. Lando does not generate `--no-loud`. The space-separated spelling `--loud false` sets `loud` to true and leaves `false` as a positional token, not a boolean value.
+
+For a command that accepts only argv, Lando forwards value flags as `--name=value`, true as `--name`, and false by omitting the positive switch. This is a forwarding rule, not a promise to turn off the child program's own default. Lando does not invent a downstream negation flag. A `.bun.sh` script receives the actual boolean through `LANDO_INPUT` and `LANDO_FLAG_LOUD`, so it can implement either branch directly.
+
+MCP, structured event, and library calls keep declared inputs as named maps until an execution adapter needs argv. Defaults and validation run once against the resolved task, after normal task precedence and late connection-client resolution. Omitted values, empty strings, and false are distinct; a supplied false or empty string is not replaced by a default.
+
+Retained callers carry the discovered input revision. Changes to names, aliases, order, types, defaults, choices, requiredness, sensitivity, or raw-argument policy cause `ToolingInputError` before execution. Refresh command metadata and reconnect the MCP client, or resolve the event's command again, before retrying. Description and body changes do not change the input revision. There is no automatic catalog reload or replay.
+
+## Declare arguments
 
 Positional input goes under `args:`. `order` fixes the position, starting at `0`, and Lando reads positionals in that order no matter how you list the keys in YAML.
 
@@ -68,13 +86,13 @@ args:
     default: latest
 ```
 
-`choices`, `default`, `required`, and `description` behave the same as they do for flags. A few layout rules apply on top:
+`choices`, `default`, `required`, `description`, and `sensitive` behave the same as they do for flags. A few layout rules apply on top:
 
 - Either every arg declares `order` or none do. Leave them all out and the order follows the YAML key order; mix the two and the Landofile is rejected.
 - Two args can't share an `order`. Gaps are fine: `0` and `5` work, `0` and `0` don't.
 - A required arg can't come after an optional one.
 
-Positions are never compacted. Slot `0` is `$1`, slot `1` is `$2`, and so on. A trailing optional arg can always be left off. An arg with no value (nothing typed, no `default`) that sits in front of an arg that does have a value can't be spelled on a command line, so Lando refuses to run it and fails with `ToolingInputError`. That includes a later arg filled from its own `default`:
+Named arguments retain their names; order matters when reading or producing argv. A trailing optional argument can be left off. For an argv-only task, an absent argument before a later value creates a gap that argv cannot represent. Lando refuses that projection with `ToolingInputError` rather than moving the later value into the wrong slot. A later default can create the same gap:
 
 ```yaml
 tooling:
@@ -92,27 +110,46 @@ tooling:
     cmd: echo tagging
 ```
 
-`lando tag v1` runs with `channel=stable`, and `lando tag v1 beta` runs with `channel=beta`. Plain `lando tag` fails: `channel` picks up `stable` from its default while `label` has nothing, and the error names `label` in its `field`:
+`lando tag v1` runs with `channel=stable`, and `lando tag v1 beta` runs with `channel=beta`. Plain `lando tag` fails: `channel` picks up `stable` from its default while `label` has nothing, and the error names `label` in its `field`. Supply the label, give it a default, or remove the later default if omission is intended.
 
-```text
-Positional argument label cannot be omitted because a later positional argument has a value.
-Supply argument label or change the tooling declaration so no later positional value follows it.
-```
+A `.bun.sh` script is map-capable instead: MCP can send only `args.channel` and the script receives that value in `LANDO_ARG_CHANNEL` while `label` stays absent from `LANDO_INPUT.args`. No positional gap is compacted and no argv is synthesized. Required arguments still must be supplied. See [Drive Lando through MCP](../../agent-native/mcp/).
 
-Fix the declaration, not the caller: give `label` a `default`, mark it `required` so the help text says so, or drop the `default` on `channel`. Sending positionals by name through MCP follows the same rule and returns the same error; see [Drive Lando through MCP](../agent-native/mcp.mdx).
+## Protect sensitive values
 
-## Tasks without declared input
+Set `sensitive: true` on a flag or argument, including one named `note` or another name that does not suggest a credential. The existing secret-name heuristic also marks inputs sensitive; `sensitive: false` is not an opt-out. Lando rejects defaults and choices on effectively sensitive declarations so credential literals cannot enter cached metadata or catalogs. The declaration exposes sensitivity safely, including `writeOnly: true` in MCP's input schema.
 
-Declaring input is opt-in. A task with no `flags:` or `args:` forwards everything you type straight to the command, unparsed:
+Values remain literal: this annotation does not enable expressions or secret-provider lookup. Lando redacts supplied sensitive values before its output, errors, events, or traces become observable, including invalid, stale, and disabled calls. It cannot protect arbitrary files or external logs written by your command. Use the [fake-value script example](../bun-shell-scripts/#mark-sensitive-inputs) to verify the boundary without exposing a real credential.
+
+## Forward undeclared input
+
+Declaring input is opt-in. A task with no `flags:` or `args:` forwards your input straight to the command. Set `wrapper: true` when the task is a thin wrapper around one CLI tool, so help and version requests reach it too:
 
 ```yaml
 tooling:
   npm:
     service: web
     cmd: npm
+    wrapper: true
 ```
 
-`lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. Add `flags:` only when you want Lando to check the input first.
+`lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. Add `flags:` only when you want Lando to check the input first. Raw tails are for undeclared passthrough, not a way to fill gaps in named arguments. Do not mix declared named input with a raw tail; Lando rejects the ambiguous call. Prefer named maps for declared MCP, event, and library inputs.
+
+With `wrapper: true`, `lando npm --help`, `lando npm -h`, and `lando npm --version` go to npm. A wrapper must have exactly one command (`cmd`, including an argv list, or one entry in `cmds`), no declared flags or args, and must not set `arguments: false`. A wrapper that breaks these rules fails with `ToolingCompileError`; move the extra steps to another task or drop `wrapper: true`.
+
+Without `wrapper: true`, Lando answers `-h` and `--help` itself and does not run the task, even when the task is a single command. Either spelling works anywhere before the first `--`. A declared flag named `help` or aliased to `h` owns both spellings instead. `lando help <task>` shows Lando's help for any enabled task, including a wrapper.
+
+To pass help to a non-wrapper task, put it after a leading `--`. For example, with this task in your Landofile:
+
+```yaml
+tooling:
+  build:
+    service: web
+    cmd: npm run build
+```
+
+Run `lando build -- --help`. Lando consumes only the `--` right after the task name; everything after it, including another `--`, reaches the command unchanged.
+
+A lone `lando build --version` fails with `ToolingInputError` before execution because a project task has no version of its own. Run `lando version` for Lando's version, or `lando build -- --version` to pass the option to the command. A declared flag named `version` owns that input instead. `--version` with other tokens is ordinary input. `.bun.sh` scripts follow the same help and lone-version rules; `wrapper` is not a front-matter key.
 
 ## Pick the service from a flag
 
@@ -158,13 +195,39 @@ tooling:
 
 This object can merge with an object task from a lower config layer. An authored task always replaces a service-type task of the same name, so this does not preserve a service type's definition. Deleting the key lets an inherited task return; use `false` when it must stay off.
 
+For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. From the next invocation on, it is hidden from listings, help, and the MCP tooling catalog, and direct calls fail with `ToolingDisabledError` without running the body.
+
 <Guide>
+  <Scenario id="raw-help-forwarding" render={false} reason="Only explicit wrappers forward help; a single script command must not run">
+    <Step name="prepare-forwarding">
+      <UseFixture name="help-forwarding" />
+    </Step>
+    <Step name="show-task-help">
+      <Verify command="lando plain --help --format=json" expect={{ stdout: { regex: "app:plain" } }} />
+      <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "absent\\\\n" } }} />
+    </Step>
+    <Step name="forward-wrapper-help">
+      <Verify command="lando wrapped --help --format=json" expect={{ stdout: { regex: "forwarded --help" } }} />
+    </Step>
+    <Step name="cleanup-forwarding">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-invalid-wrapper" render={false} reason="A wrapper cannot execute multiple commands">
+    <Step name="prepare-invalid-wrapper">
+      <UseFixture name="invalid-wrapper" />
+    </Step>
+    <Step name="reject-multiple-commands">
+      <Verify command="lando invalid --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingCompileError[\\s\\S]*exactly one command" } }} />
+    </Step>
+    <Step name="cleanup-invalid-wrapper">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="run-with-flag-alias-and-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
+      <Run command="lando start" />
     </Step>
     <Step name="greet-help">
       <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
@@ -182,9 +245,6 @@ This object can merge with an object task from a lower config layer. An authored
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
     </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
-    </Step>
     <Step name="run-greet-with-bad-target">
       <Run command="lando greet staging --format=json" expectExit={1} />
       <Verify errorTag="ToolingInputError" expect={{ regex: "Argument target must match a declared choice" }} />
@@ -197,9 +257,7 @@ This object can merge with an object task from a lower config layer. An authored
   <Scenario id="reject-omitted-leading-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-tag-without-label">
       <Run command="lando tag --format=json" expectExit={1} />
@@ -216,9 +274,7 @@ This object can merge with an object task from a lower config layer. An authored
   <Scenario id="select-service-from-flag" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-deploy-in-worker">
       <Verify command="lando deploy -s worker --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"deploy\"[\\s\\S]*\"service\":\\s*\"worker\"" } }} />
@@ -234,9 +290,6 @@ This object can merge with an object task from a lower config layer. An authored
   <Scenario id="refuse-disabled-task" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-legacy">
       <Run command="lando legacy --format=json" expectExit={1} />
@@ -254,9 +307,6 @@ This object can merge with an object task from a lower config layer. An authored
   <Scenario id="hide-and-refuse-false-task" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="hide-retired-task">
       <Verify command="lando --help" expect={{ stdout: { not: { regex: "retired-shorthand" } } }} />

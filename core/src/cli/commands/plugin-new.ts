@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Effect } from "effect";
 
@@ -199,17 +200,19 @@ const targetMustNotExist = async (destination: string): Promise<void> => {
 export const pluginNew = (
   options: PluginNewOptions,
 ): Effect.Effect<PluginNewResult, NotImplementedError, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const resolved = await resolvePluginNewOptions(options);
-      await targetMustNotExist(resolved.destination);
-      return await materializePluginScaffold(resolved);
-    },
-    catch: (error) =>
-      error instanceof NotImplementedError
-        ? error
-        : commandError("Unable to scaffold plugin.", causeMessage(error)),
-  });
+  Effect.flatMap(CliInvocation, (invocation) =>
+    Effect.tryPromise({
+      try: async () => {
+        const resolved = await resolvePluginNewOptions({ ...options, cwd: options.cwd ?? invocation.cwd });
+        await targetMustNotExist(resolved.destination);
+        return await materializePluginScaffold(resolved);
+      },
+      catch: (error) =>
+        error instanceof NotImplementedError
+          ? error
+          : commandError("Unable to scaffold plugin.", causeMessage(error)),
+    }),
+  );
 
 export const renderPluginNewResult = (result: PluginNewResult): string =>
   [

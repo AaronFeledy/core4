@@ -1,11 +1,11 @@
 import type { AppPlan, LandofileEvents } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
-import { planApp } from "../src/planner/assemble.ts";
+import { Effect, Layer } from "effect";
 import { effectiveToolingForPlan } from "../src/planner/effective-tooling.ts";
 import * as Registry from "../src/plugins/registry.ts";
 import { compileTestLandofile } from "./compiled-landofile.ts";
+import { planApp } from "./plan-app.ts";
 
 export const compileAuthoredEventPlan = (plan: AppPlan, events: LandofileEvents) =>
   Effect.runPromise(
@@ -17,14 +17,8 @@ export const compileAuthoredEventPlan = (plan: AppPlan, events: LandofileEvents)
       );
       const registry = yield* PluginRegistry;
       const compiled = yield* planApp(
-        registry,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        loaded,
-        TestRuntimeProvider.capabilities,
+        { landofile: loaded, providerCapabilities: TestRuntimeProvider.capabilities },
+        Layer.succeed(PluginRegistry, registry),
       );
       return {
         ...plan,

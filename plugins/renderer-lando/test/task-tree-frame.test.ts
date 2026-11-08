@@ -53,7 +53,7 @@ const assertLeftRail = (lines: ReadonlyArray<string>, columns: number): void => 
 
 describe("task-tree framing below 60 columns", () => {
   test("40-column ASCII tree stays bordered and within display width", () => {
-    const painter = new TaskTreeViewModel({ terminalColumns: 40 });
+    const painter = new TaskTreeViewModel({ color: true, terminalColumns: 40 });
     painter.apply(treeStart("Starting application services now", ["appserver", "database"]));
     painter.apply(start("appserver", "appserver bootstrapping the runtime"));
     painter.apply(detail("appserver", "listening on 0.0.0.0:8080 for incoming requests"));
@@ -61,7 +61,7 @@ describe("task-tree framing below 60 columns", () => {
   });
 
   test("40-column CJK tree counts wide glyphs and stays bordered within display width", () => {
-    const painter = new TaskTreeViewModel({ terminalColumns: 40 });
+    const painter = new TaskTreeViewModel({ color: true, terminalColumns: 40 });
     painter.apply(treeStart("한글 애플리케이션 시작 중입니다 지금", ["웹서버"]));
     painter.apply(start("웹서버", "웹서버 런타임을 부팅하는 중"));
     painter.apply(detail("웹서버", "포트 8080 에서 수신 대기 중입니다 지금"));
@@ -102,7 +102,7 @@ describe("task-tree open-right left-rail chrome", () => {
   });
 
   test("TaskTreeViewModel top/body/bottom stay open on the right at 80 columns", () => {
-    const painter = new TaskTreeViewModel({ terminalColumns: 80 });
+    const painter = new TaskTreeViewModel({ color: true, terminalColumns: 80 });
     painter.apply(treeStart("Starting app", ["appserver", "database"]));
     painter.apply(start("appserver", "appserver"));
     const lines = painter.snapshot().frameLines;

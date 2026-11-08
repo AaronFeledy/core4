@@ -3,14 +3,16 @@ import { Context, Effect, Inspectable, Layer, Redactable } from "effect";
 import {
   type CreateRedactorOptions,
   REDACTED,
+  type RedactionMatch,
   type RedactionProfile,
   type Redactor,
+  type TieredRedactionValues,
   type TranscriptRedactionEnv,
   createRedactor,
 } from "@lando/sdk/secrets";
 
 import { expandRedactionValues } from "./exact-values.ts";
-import { collectSecretEnvValues, nonEmpty } from "./heuristic-values.ts";
+import { collectSecretEnvValues } from "./heuristic-values.ts";
 
 export {
   collectPublicCredentialValues,
@@ -20,6 +22,9 @@ export {
 
 export interface RedactionForProfileOptions {
   readonly redactionTokens?: Iterable<string> | undefined;
+  readonly wholeTokenValues?: Iterable<string> | undefined;
+  /** Already byte-redacted framed bodies only; metadata still needs full matching. */
+  readonly excludeWholeTokenValues?: boolean;
   /** Exact values masked like resolved secrets; an unusable one suppresses any text that contains it. */
   readonly authoritativeTokens?: Iterable<string> | undefined;
   readonly sourceEnv?: Record<string, string | undefined> | undefined;
@@ -28,9 +33,14 @@ export interface RedactionForProfileOptions {
 }
 
 export interface RedactionServiceShape {
-  readonly registerValues: (values: ReadonlyArray<string>) => Effect.Effect<void>;
+  readonly registerValues: (
+    values: ReadonlyArray<string>,
+    options?: { readonly match?: RedactionMatch },
+  ) => Effect.Effect<void>;
   /** Read this runtime's registrations live without performing secret lookups. */
-  readonly payloadValues: (options?: RedactionForProfileOptions) => Effect.Effect<() => Iterable<string>>;
+  readonly payloadValues: (
+    options?: RedactionForProfileOptions,
+  ) => Effect.Effect<() => TieredRedactionValues>;
   readonly forProfile: (
     profile: RedactionProfile,
     options?: RedactionForProfileOptions,
@@ -92,18 +102,27 @@ export class RedactionValues extends Inspectable.Class implements Redactable.Red
   }
 }
 
-const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined): string[] => {
-  if (proxyUrls === undefined) return [];
+/** Extract only authored URL userinfo; malformed escapes retain their encoded exact value. */
+export const collectUrlCredentialValues = (urls: Iterable<string | undefined> | undefined): string[] => {
   const values: string[] = [];
-  for (const proxyUrl of proxyUrls) {
-    if (proxyUrl === undefined) continue;
+  for (const url of urls ?? []) {
+    if (url === undefined) continue;
+    let parsed: URL;
     try {
-      const parsed = new URL(proxyUrl);
-      if (nonEmpty(parsed.password)) values.push(parsed.password);
-      if (nonEmpty(parsed.username)) values.push(parsed.username);
+      parsed = new URL(url);
     } catch (error) {
       if (error instanceof TypeError) continue;
       throw error;
+    }
+    for (const component of [parsed.password, parsed.username]) {
+      if (component.length === 0) continue;
+      values.push(component);
+      try {
+        const decoded = decodeURIComponent(component);
+        if (decoded.length > 0) values.push(decoded);
+      } catch (error) {
+        if (!(error instanceof URIError)) throw error;
+      }
     }
   }
   return values;
@@ -111,22 +130,30 @@ const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined)
 
 const collectOptionValues = (options: RedactionForProfileOptions | undefined): string[] => [
   ...collectSecretEnvValues(options?.sourceEnv),
-  ...collectProxyValues(options?.proxyUrls),
+  ...collectUrlCredentialValues(options?.proxyUrls),
   ...(options?.redactionTokens ?? []),
 ];
 
 /**
- * Explicit values (registrations, authoritative tokens) are authoritative: an
+ * Substring registrations and authoritative tokens are authoritative: an
  * unusable one suppresses any string that contains it. Heuristic sources drop public defaults
  * when they are collected, never here.
  */
 const makeRedactorOptions = (
-  secretValues: Iterable<string>,
+  secretValues: TieredRedactionValues,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => {
-  const authoritativeValues = [...secretValues, ...(options?.authoritativeTokens ?? [])];
+  const authoritativeValues = [...secretValues.substring, ...(options?.authoritativeTokens ?? [])];
+  const values = expandRedactionValues([...collectOptionValues(options), ...authoritativeValues]);
+  const substring = new Set(values);
   return {
-    values: expandRedactionValues([...collectOptionValues(options), ...authoritativeValues]),
+    values,
+    wholeTokenValues: options?.excludeWholeTokenValues
+      ? []
+      : expandRedactionValues(
+          [...secretValues.wholeToken, ...(options?.wholeTokenValues ?? [])],
+          "whole-token",
+        ).filter((value) => !substring.has(value)),
     authoritativeValues,
     ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
   };
@@ -147,6 +174,7 @@ const compileRedactor = (
   const key = JSON.stringify([
     profile,
     [...(options.values ?? [])],
+    [...(options.wholeTokenValues ?? [])],
     [...(options.authoritativeValues ?? [])],
   ]);
   const cached = cache.get(key);
@@ -169,7 +197,7 @@ const standaloneCompiled: CompiledRedactors = new Map();
 
 const makeRegisteredRedactor = (
   profile: RedactionProfile,
-  registry: { readonly values: Iterable<string>; readonly generation: () => number },
+  registry: TieredRedactionValues & { readonly generation: () => number },
   options: RedactionForProfileOptions | undefined,
   cache: CompiledRedactors,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => {
@@ -179,7 +207,7 @@ const makeRegisteredRedactor = (
   const current = (): Redactor => {
     if (redactor === undefined || generation !== registry.generation()) {
       generation = registry.generation();
-      redactor = compileRedactor(cache, profile, makeRedactorOptions(registry.values, options));
+      redactor = compileRedactor(cache, profile, makeRedactorOptions(registry, options));
     }
     return redactor;
   };
@@ -204,34 +232,44 @@ export const createStandaloneRedactor = (
   profile: RedactionProfile,
   options?: RedactionForProfileOptions,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable =>
-  makeRegisteredRedactor(profile, { values: [], generation: () => 0 }, options, standaloneCompiled);
+  makeRegisteredRedactor(
+    profile,
+    { substring: [], wholeToken: [], generation: () => 0 },
+    options,
+    standaloneCompiled,
+  );
 
 export const createPayloadValues = (
-  secretValues: Iterable<string>,
+  secretValues: Iterable<string> | TieredRedactionValues,
   options?: RedactionForProfileOptions,
-): (() => Iterable<string>) => {
-  const authoritative = [...secretValues, ...(options?.authoritativeTokens ?? [])].filter(
-    (v) => v.length > 0,
+): (() => TieredRedactionValues) => {
+  const tiers = "substring" in secretValues ? secretValues : { substring: secretValues, wholeToken: [] };
+  const compiled = makeRedactorOptions(tiers, options);
+  const substring = [...(compiled.values ?? []), ...(compiled.authoritativeValues ?? [])].filter(
+    (value) => value.length > 0,
   );
-  const values = new RedactionValues([
-    ...expandRedactionValues([...collectOptionValues(options), ...authoritative]),
-    ...authoritative,
-  ]);
+  const values = {
+    substring: new RedactionValues(substring),
+    wholeToken: new RedactionValues(compiled.wholeTokenValues),
+  };
   return () => values;
 };
 
 /** Explicit host owner; dispose only after all output and producer finalizers drain. */
 export const makeRedactionOwner = () => {
   const values = new RedactionValues();
+  const wholeToken = new RedactionValues();
   let generation = 0;
-  const registry = { values, generation: () => generation };
+  const registry = { substring: values, wholeToken, generation: () => generation };
   const compiled: CompiledRedactors = new Map();
   const service: RedactionServiceShape = {
-    registerValues: (incoming) =>
+    registerValues: (incoming, options) =>
       Effect.sync(() => {
+        const target = options?.match === "whole-token" ? wholeToken : values;
         for (const value of incoming) {
-          if (value.length === 0 || values.has(value)) continue;
-          values.add(value);
+          if (value.length === 0 || target.has(value) || (target === wholeToken && values.has(value)))
+            continue;
+          target.add(value);
           generation += 1;
         }
       }),
@@ -241,7 +279,7 @@ export const makeRedactionOwner = () => {
         let supplier = createPayloadValues([], options);
         return () => {
           if (previous !== generation) {
-            supplier = createPayloadValues(values, options);
+            supplier = createPayloadValues(registry, options);
             previous = generation;
           }
           return supplier();
@@ -254,6 +292,7 @@ export const makeRedactionOwner = () => {
     service,
     dispose: () => {
       values.clear();
+      wholeToken.clear();
       compiled.clear();
       generation += 1;
     },

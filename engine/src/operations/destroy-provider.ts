@@ -1,27 +1,33 @@
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, ServiceShutdownObservation } from "@lando/sdk/schema";
 import { EventService, PathsService, RouterService, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { TaskTreeController } from "@lando/sdk/task-progress";
 import { DateTime, Effect, Option } from "effect";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import type { TeardownPlan } from "./destroy-plan.ts";
+import { mergeShutdownObservations } from "./shutdown-observations.ts";
 
 const removeStrayAppContainers = Effect.fnUntraced(function* (provider: RuntimeProviderShape, plan: AppPlan) {
-  if (plan.id === "global") return;
+  if (plan.id === "global") return undefined;
   const observed = yield* provider
     .list({ app: plan.id, includeUnplanned: true })
     .pipe(Effect.catch(() => Effect.succeed([])));
+  const sources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
   for (const service of observed) {
     if (
       service.containerId !== undefined &&
       service.app === plan.id &&
       service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
       !Object.hasOwn(plan.services, service.service)
-    )
-      yield* provider.removeObservedService(service);
+    ) {
+      const removal = yield* provider.removeObservedService(service);
+      sources.push(removal.shutdownObservations);
+    }
   }
+  return mergeShutdownObservations(...sources);
 });
 
 export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProvider")(function* (
@@ -30,8 +36,8 @@ export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProv
 ) {
   const target = teardown.target;
   yield* verifyActiveVolumeCoordination(provider);
-  yield* removeStrayAppContainers(provider, target.plan);
-  return yield* provider.destroy(
+  const strayObservations = yield* removeStrayAppContainers(provider, target.plan);
+  const outcome = yield* provider.destroy(
     { app: target.plan.id, plan: target.plan },
     {
       volumes: teardown.options.volumes === true,
@@ -39,6 +45,16 @@ export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProv
       removeState: true,
     },
   );
+  const shutdownObservations = mergeShutdownObservations(strayObservations, outcome.shutdownObservations);
+  return shutdownObservations === undefined ? outcome : { ...outcome, shutdownObservations };
+});
+
+export const cleanupAppWorkers = Effect.fn("AppOperation.cleanupAppWorkers")(function* (app: AppRef) {
+  const paths = yield* PathsService;
+  const roots = { ...paths.roots, platform: paths.platform };
+  yield* cleanupAgentRelayState(app, roots, "ssh");
+  yield* cleanupAgentRelayState(app, roots, "gpg");
+  yield* cleanupHostProxyRunLandoState(app, roots);
 });
 
 export const cleanupDestroyWorkers = Effect.fn("AppOperation.cleanupDestroyWorkers")(function* (
@@ -47,12 +63,8 @@ export const cleanupDestroyWorkers = Effect.fn("AppOperation.cleanupDestroyWorke
 ) {
   const target = teardown.target;
   if (target === undefined) return;
-  const paths = yield* PathsService;
-  const roots = { ...paths.roots, platform: paths.platform };
   yield* tree.startTask("host-proxy");
-  yield* cleanupAgentRelayState(target.app, roots, "ssh");
-  yield* cleanupAgentRelayState(target.app, roots, "gpg");
-  yield* cleanupHostProxyRunLandoState(target.app, roots);
+  yield* cleanupAppWorkers(target.app);
   yield* tree.completeTask("host-proxy");
 });
 
@@ -66,7 +78,9 @@ export const cleanupDestroyHostState = Effect.fn("AppOperation.cleanupDestroyHos
   const proxy = yield* Effect.serviceOption(RouterService);
   if (Option.isSome(proxy)) {
     yield* tree.startTask("routes");
-    yield* proxy.value.removeRoutes(target.plan.id).pipe(Effect.tapError(() => tree.failTask("routes")));
+    yield* proxy.value
+      .removeRoutes(routeOwnerFromPlan(target.plan))
+      .pipe(Effect.tapError(() => tree.failTask("routes")));
     yield* tree.completeTask("routes");
   } else {
     const events = yield* EventService;

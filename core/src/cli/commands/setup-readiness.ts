@@ -1,61 +1,69 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { causeMessage } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Option, Schema } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 
-export type SetupReadinessStepStatus =
-  | "deferred"
-  | "failed"
-  | "installed"
-  | "satisfied"
-  | "skipped"
-  | "unavailable";
+export const SetupReadinessStep = Schema.Struct({
+  id: Schema.String,
+  status: Schema.Literals(["deferred", "failed", "installed", "satisfied", "skipped", "unavailable"]),
+  evidence: Schema.String,
+  remediation: Schema.optionalKey(Schema.String),
+});
+export type SetupReadinessStep = typeof SetupReadinessStep.Type;
+export type SetupReadinessStepStatus = SetupReadinessStep["status"];
 
-export interface SetupReadinessStep {
-  readonly id: string;
-  readonly status: SetupReadinessStepStatus;
-  readonly evidence: string;
-  readonly remediation?: string;
-}
+export const SetupReadinessRuntimeService = Schema.Struct({
+  running: Schema.Boolean,
+  socketPath: Schema.String,
+  pid: Schema.optionalKey(Schema.Number),
+  runtimeVersion: Schema.optionalKey(Schema.String),
+});
+export type SetupReadinessRuntimeService = typeof SetupReadinessRuntimeService.Type;
 
-export interface SetupReadinessRuntimeService {
-  readonly running: boolean;
-  readonly socketPath: string;
-  readonly pid?: number;
-  readonly runtimeVersion?: string;
-}
-
-export interface SetupReadinessSummary {
-  readonly status: "deferred" | "failed" | "ready";
-  readonly providerId: string;
-  readonly updatedAt: string;
-  readonly steps: ReadonlyArray<SetupReadinessStep>;
-  readonly runtimeService?: SetupReadinessRuntimeService;
-}
-
-export const setupReadinessPath = (userDataRoot: string): string =>
-  join(userDataRoot, "setup", "readiness.json");
-
-const summaryStatus = (steps: ReadonlyArray<SetupReadinessStep>): SetupReadinessSummary["status"] => {
+export const completedSetupReadinessStatus = (steps: ReadonlyArray<SetupReadinessStep>) => {
   if (steps.some((step) => step.status === "failed" || step.status === "unavailable")) return "failed";
   if (steps.some((step) => step.status === "deferred")) return "deferred";
   return "ready";
 };
 
+export const SetupReadinessSummary = Schema.Struct({
+  status: Schema.Literals(["in-progress", "deferred", "failed", "ready"]),
+  providerId: Schema.String,
+  updatedAt: Schema.String,
+  steps: Schema.Array(SetupReadinessStep),
+  runtimeService: Schema.optionalKey(SetupReadinessRuntimeService),
+}).check(
+  Schema.makeFilter(
+    (summary) =>
+      summary.status === "in-progress" ||
+      summary.status === "failed" ||
+      summary.status === completedSetupReadinessStatus(summary.steps),
+  ),
+);
+export type SetupReadinessSummary = typeof SetupReadinessSummary.Type;
+
+export const setupReadinessPath = (userDataRoot: string): string =>
+  join(userDataRoot, "setup", "readiness.json");
+
 export const writeSetupReadiness = Effect.fnUntraced(function* (
   userDataRoot: string | undefined,
   providerId: string,
-  steps: ReadonlyArray<SetupReadinessStep>,
-  runtimeService?: SetupReadinessRuntimeService | null,
+  snapshot: {
+    readonly status: SetupReadinessSummary["status"];
+    readonly steps: ReadonlyArray<SetupReadinessStep>;
+    readonly runtimeService?: SetupReadinessRuntimeService | null | undefined;
+  },
 ): Effect.fn.Return<void, never> {
   if (userDataRoot === undefined) return;
+  const { status, steps, runtimeService } = snapshot;
   const service = yield* Effect.serviceOption(RedactionService);
-  const sourceEnv = { ...process.env };
+  const sourceEnv = (yield* CliInvocation).env;
   const redactor = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", { sourceEnv })
     : createStandaloneRedactor("secrets", { sourceEnv });
@@ -69,7 +77,7 @@ export const writeSetupReadiness = Effect.fnUntraced(function* (
         ? {}
         : { runtimeService };
   const summary: SetupReadinessSummary = {
-    status: summaryStatus(steps),
+    status,
     providerId,
     updatedAt: DateTime.formatIso(yield* DateTime.now),
     steps: steps.map((step) => ({
@@ -93,7 +101,7 @@ export const readSetupReadiness = (
       Effect.gen(function* () {
         if (summary === undefined) return undefined;
         const service = yield* Effect.serviceOption(RedactionService);
-        const sourceEnv = { ...process.env };
+        const sourceEnv = (yield* CliInvocation).env;
         const redactor = Option.isSome(service)
           ? yield* service.value.forProfile("secrets", { sourceEnv })
           : createStandaloneRedactor("secrets", { sourceEnv });
@@ -107,11 +115,14 @@ const readSetupReadinessRaw = (
   userDataRoot: string | undefined,
 ): Effect.Effect<SetupReadinessSummary | undefined, never> => {
   if (userDataRoot === undefined) return Effect.succeed(undefined);
+  // Missing, unreadable, malformed, and schema-invalid records are all absent evidence.
   return Effect.tryPromise({
-    try: async () =>
-      JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as SetupReadinessSummary,
+    try: () => readFile(setupReadinessPath(userDataRoot), "utf-8"),
     catch: () => undefined,
-  }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+  }).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(SetupReadinessSummary))),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
 };
 
 const redactSetupReadinessSummary = (

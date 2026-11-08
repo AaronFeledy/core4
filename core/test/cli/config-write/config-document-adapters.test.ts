@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type EditorRunner, config } from "@lando/engine/operations/config";
 import { GlobalConfigSources } from "@lando/engine/services/config";
-import type { StateStore } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { appConfigEdit, appConfigSet, appConfigUnset } from "../../../src/cli/commands/app-config.ts";
 import {
@@ -12,7 +11,7 @@ import {
   globalConfigSet,
   globalConfigUnset,
 } from "../../../src/cli/commands/meta/global-config.ts";
-import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
+import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 interface Mutation {
   readonly subcommand: "set" | "unset" | "edit";
@@ -42,7 +41,7 @@ interface MutationAdapter {
   readonly invoke: (
     root: string,
     options: Mutation,
-  ) => Effect.Effect<MutationObservation, MutationError, StateStore>;
+  ) => Effect.Effect<MutationObservation, MutationError, GlobalConfigTestServices>;
 }
 const adapters: readonly MutationAdapter[] = [
   {
@@ -134,7 +133,7 @@ for (const adapter of adapters) {
       };
       // When the real command adapter executes against that file.
       const result = await Effect.runPromise(
-        adapter.invoke(root, options()).pipe(Effect.result, Effect.provide(testStateStoreLayer)),
+        adapter.invoke(root, options()).pipe(Effect.result, Effect.provide(globalConfigLayer(root))),
       );
       // Then no-op/preview/failure paths preserve file identity; writes preserve exact editor text.
       if (scenario === "invalid" || scenario === "editor-failed") {

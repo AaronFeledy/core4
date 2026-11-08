@@ -249,6 +249,9 @@ const makeFakeApi = () => {
         if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
           return { status: 200, body: "[]" };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
@@ -302,7 +305,7 @@ describe("provider-lando bringDown", () => {
       request: (request) =>
         Effect.sync(() => {
           if (request.method === "GET" && request.path.endsWith("/json")) {
-            const global = request.path === "/containers/lando-global-node/json";
+            const global = request.path === "/containers/lando-global--node/json";
             return {
               status: 200,
               body: JSON.stringify({
@@ -319,6 +322,9 @@ describe("provider-lando bringDown", () => {
           }
           if (request.method === "POST" && request.path.endsWith("/stop")) {
             return { status: 500, body: "stop failed" };
+          }
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+            return { status: 200, body: "[]" };
           }
           return { status: 500, body: `unexpected ${request.method} ${request.path}` };
         }),
@@ -377,6 +383,9 @@ describe("provider-lando bringDown", () => {
             return { status: 204, body: "" };
           }
           if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
+            return { status: 200, body: "[]" };
+          }
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
             return { status: 200, body: "[]" };
           }
           return { status: 500, body: `unexpected ${request.method} ${request.path}` };

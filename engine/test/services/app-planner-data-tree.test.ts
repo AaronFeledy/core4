@@ -97,7 +97,9 @@ describe("Planned-user ownership of volume-backed data trees", () => {
     await withAppRoot(async (appRoot) => {
       const appPlan = await plan(
         appRoot,
-        landofile({ store: { type: "minio", user: "10001", home: false } }),
+        landofile({
+          store: { type: "minio", image: "example.test/minio:fixture", user: "10001", home: false },
+        }),
       );
       const command = ownershipCommand(appPlan, "store");
       expect(command).toContain("mkdir -p '/data'");
@@ -124,7 +126,10 @@ describe("Planned-user ownership of volume-backed data trees", () => {
 
   test("Given minio running as root, When planned, Then no ownership step is added", async () => {
     await withAppRoot(async (appRoot) => {
-      const appPlan = await plan(appRoot, landofile({ store: { type: "minio", user: "root" } }));
+      const appPlan = await plan(
+        appRoot,
+        landofile({ store: { type: "minio", image: "example.test/minio:fixture", user: "root" } }),
+      );
       expect(ownershipCommand(appPlan, "store")).toBe("");
     });
   });
@@ -151,14 +156,16 @@ describe("Planned-user ownership of volume-backed data trees", () => {
     await withAppRoot(async (appRoot) => {
       const failure = await planFailure(
         appRoot,
-        landofile({ store: { type: "minio", user: "minio-user", home: false } }),
+        landofile({
+          store: { type: "minio", image: "example.test/minio:fixture", user: "minio-user", home: false },
+        }),
       );
       expect(failure).toBeInstanceOf(DataTreeOwnershipCapabilityError);
       expect(failure).toMatchObject({
         _tag: "DataTreeOwnershipCapabilityError",
         service: "store",
         target: "/data",
-        option: "services.store.user",
+        option: "services.store.image",
       });
     });
   });

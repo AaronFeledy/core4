@@ -1,6 +1,7 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -81,7 +82,7 @@ export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFa
 ) {}
 
 /**
- * Service identities that indicate the subsystem is not yet wired to a real
+ * Service identities that indicate the subsystem is not wired to a real
  * implementation (fallback/disabled stubs).
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);
@@ -161,8 +162,8 @@ export const SCANNER_SPEC: SubsystemSpec = {
     "The endpoint scanner is not ready. Run `lando setup` to provision the runtime provider it depends on.",
 };
 
-export const HOST_PROXY_SPEC: SubsystemSpec = {
-  name: "host-proxy",
+export const HOST_DNS_SPEC: SubsystemSpec = {
+  name: "host-dns",
   recovery: "manual",
   manualCommand: null,
   manualRemediation:
@@ -175,7 +176,7 @@ const SUBSYSTEM_SPECS: ReadonlyArray<SubsystemSpec> = [
   SSH_SPEC,
   HEALTHCHECK_SPEC,
   SCANNER_SPEC,
-  HOST_PROXY_SPEC,
+  HOST_DNS_SPEC,
 ];
 
 const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(
@@ -246,7 +247,7 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
   cause?: unknown,
   refreshContext?: () => Effect.Effect<Record<string, string>, never>,
 ): Effect.fn.Return<DoctorSubsystemCheck, never> {
-  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
   const serviceId = baseContext.subsystemId ?? "unknown";
 
   if (fix && spec.recovery === "automatic" && runSetup !== undefined) {

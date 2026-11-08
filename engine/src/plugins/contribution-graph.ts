@@ -1,6 +1,10 @@
 import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
-import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
+import {
+  LandoRuntimeBootstrapError,
+  PluginDescriptorMismatchError,
+  PluginLoadError,
+} from "@lando/sdk/errors";
 import type {
   CertificateAuthorityContributionLayer,
   ExecutableCommandLoader,
@@ -11,22 +15,28 @@ import {
   PluginManifest,
   type ResolvedPluginInput,
 } from "@lando/sdk/schema";
-import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";
+import { CertificateAuthority, PathsService } from "@lando/sdk/services";
 
-import { findAppRoot } from "@lando/landofile/discovery";
 import { bundledPluginModules } from "../composition.ts";
+import { resolveGraphCommands } from "./command-contributions.ts";
+import type { PluginImplementation } from "./implementation-identity.ts";
+import { loadInstalledPluginImplementation } from "./installed-plugin-loader.ts";
+export { pluginCommandCandidates } from "./command-contributions.ts";
+import { PluginManifestResolution, resolvePluginManifests } from "./manifest-resolution.ts";
+import { type ManifestDiagnostic, selectPluginManifests } from "./manifest-selection.ts";
 import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";
-import {
-  type DiscoveredPlugin,
-  discoverInstalledPlugins,
-  systemPluginsFromModules,
-} from "./plugin-discovery.ts";
+import { type DiscoveredPlugin, systemPluginsFromModules } from "./plugin-discovery.ts";
+import { pluginSelectionDirectories } from "./selection.ts";
 
 export type PluginContributionSource = "bundled" | "system" | "user" | "app" | "explicit";
 
 export interface LoadedPluginContribution extends DiscoveredPlugin {
   readonly source: PluginContributionSource;
   readonly entry?: LandoPluginModule;
+  readonly implementation?: PluginImplementation;
+  readonly implementationStable?: boolean;
+  /** Why this selected plugin's entry failed to import; only its own contributions fail. */
+  readonly loadFailure?: PluginLoadError;
 }
 
 export type CertificateAuthorityAcquisition =
@@ -47,15 +57,43 @@ export interface GraphCommandCandidate {
   readonly pluginName: string;
   readonly source: PluginContributionSource;
   readonly load: ExecutableCommandLoader;
+  readonly descriptor: import("@lando/sdk/schema").CommandContribution;
 }
 
 export interface PluginContributionGraphShape {
+  readonly diagnostics?: readonly ManifestDiagnostic[];
   readonly plugins: ReadonlyArray<LoadedPluginContribution>;
   readonly globalPlugins: ReadonlyArray<LoadedPluginContribution>;
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
   readonly commands: ReadonlyArray<GraphCommandCandidate>;
   readonly hostContext: Context.Context<never>;
 }
+
+/**
+ * Implementation coordinates of the plugins this graph imported, for keying persisted plans, and
+ * whether a plan built from them may be cached: a plugin that failed to load or whose code changed
+ * while it loaded makes the loaded implementation unknowable.
+ */
+export const loadedPluginImplementations = (graph: PluginContributionGraphShape | undefined) => {
+  const plugins = graph === undefined ? [] : [...graph.plugins, ...graph.globalPlugins];
+  return {
+    coordinates: plugins.flatMap(({ manifest, source, implementation }) =>
+      implementation === undefined
+        ? []
+        : [
+            {
+              name: String(manifest.name),
+              source,
+              realpath: implementation.realpath,
+              identity: implementation.identity,
+            },
+          ],
+    ),
+    cacheable: plugins.every(
+      (plugin) => plugin.loadFailure === undefined && plugin.implementationStable !== false,
+    ),
+  };
+};
 
 export class PluginContributionGraph extends Context.Service<
   PluginContributionGraph,
@@ -69,8 +107,7 @@ export class PluginContributionGraph extends Context.Service<
       this,
       Effect.gen(function* () {
         const paths = yield* PathsService;
-        const loggerOption = yield* Effect.serviceOption(Logger);
-        const logger = Option.getOrUndefined(loggerOption);
+        const resolutionOption = yield* Effect.serviceOption(PluginManifestResolution);
         const scope = yield* Scope.Scope;
         let rawContext = Context.empty();
         const rawCandidates: GraphCertificateAuthorityCandidate[] = [];
@@ -93,46 +130,92 @@ export class PluginContributionGraph extends Context.Service<
         const bundled = policy.discovery.bundled
           ? systemPluginsFromModules(modules).map((plugin, index) => ({
               ...plugin,
-              entry: modules[index],
+              ...(modules[index] === undefined ? {} : { entry: modules[index] }),
             }))
           : [];
-        const external = policy.externalImports;
-        const system =
-          external && policy.discovery.system
-            ? yield* discoverInstalledPlugins("system", paths.systemPluginsDir, logger)
-            : [];
-        const user =
-          external && policy.discovery.user
-            ? yield* discoverInstalledPlugins("user", paths.pluginsDir, logger)
-            : [];
-        const appRoot = external && policy.discovery.app ? yield* findAppRoot(policy.cwd) : undefined;
-        const app =
-          appRoot === undefined
-            ? []
-            : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
-        const explicit = yield* Effect.forEach(policy.manifests, (input) =>
-          Result.match(validateResolvedPlugin(input), {
-            onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-            onSuccess: Effect.succeed,
-          }),
+        const validationDiagnostics: ManifestDiagnostic[] = [];
+        const explicit = policy.manifests.map(
+          (input): LoadedPluginContribution =>
+            Result.match(validateResolvedPlugin(input), {
+              onFailure: (cause) => {
+                validationDiagnostics.push({
+                  _tag: cause._tag,
+                  message: cause.message,
+                  remediation: cause.remediation,
+                  loser: { pluginName: String(input.manifest.name), source: "explicit" },
+                });
+                return { manifest: input.manifest, source: "explicit" };
+              },
+              onSuccess: (plugin) => plugin,
+            }),
         );
-        const globalPlugins = mergeLoadedPluginSources(
-          [bundled, system, user, explicit],
-          policy.discovery.disable,
+        const suppliedResolution = Option.isSome(resolutionOption)
+          ? resolutionOption
+          : Context.getOption(rawContext, PluginManifestResolution);
+        const selected = Option.isSome(suppliedResolution)
+          ? suppliedResolution.value
+          : yield* resolvePluginManifests({
+              bundled,
+              explicit,
+              directories: pluginSelectionDirectories(policy, paths, undefined),
+              ...(policy.externalImports && policy.discovery.app ? { cwd: policy.cwd } : {}),
+              disable: policy.discovery.disable,
+            });
+        const diagnostics = [...validationDiagnostics, ...selected.diagnostics].slice(0, 100);
+        const loadedPlugins = yield* Effect.forEach(
+          [
+            ...selected.plugins,
+            ...selected.globalPlugins.filter((plugin) => !selected.plugins.includes(plugin)),
+          ],
+          (plugin) => {
+            const loaded = [...explicit, ...bundled].find(
+              (entry) => entry.source === plugin.source && entry.manifest.name === plugin.manifest.name,
+            );
+            if (loaded !== undefined) return Effect.succeed({ ...loaded, manifest: plugin.manifest });
+            return Effect.tryPromise({
+              try: async (): Promise<LoadedPluginContribution> => {
+                const imported = await loadInstalledPluginImplementation(plugin.path ?? "", plugin.manifest);
+                return {
+                  ...plugin,
+                  implementation: imported.implementation,
+                  implementationStable: imported.stable,
+                  ...(imported.value === undefined ? {} : { module: imported.value }),
+                };
+              },
+              catch: (cause) =>
+                cause instanceof PluginLoadError
+                  ? cause
+                  : new PluginLoadError({
+                      message: `Failed to load plugin ${String(plugin.manifest.name)}: ${String(cause)}`,
+                      pluginName: String(plugin.manifest.name),
+                      remediation: "Repair the plugin entry.",
+                    }),
+            }).pipe(
+              Effect.catch((loadFailure) => {
+                diagnostics.push({
+                  _tag: loadFailure._tag,
+                  message: loadFailure.message,
+                  remediation: loadFailure.remediation,
+                  loser: { pluginName: String(plugin.manifest.name), source: plugin.source },
+                });
+                return Effect.succeed({ ...plugin, loadFailure });
+              }),
+            );
+          },
         );
-        const merged = mergeLoadedPluginSources(
-          [bundled, system, user, app, explicit],
-          policy.discovery.disable,
+        const merged = loadedPlugins.filter((plugin) =>
+          selected.plugins.some((entry) => entry.manifest === plugin.manifest),
         );
-        const commands = yield* Result.match(pluginCommandCandidates(merged), {
-          onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-          onSuccess: Effect.succeed,
-        });
+        const globalPlugins = loadedPlugins.filter((plugin) =>
+          selected.globalPlugins.some((entry) => entry.manifest === plugin.manifest),
+        );
+        const resolvedCommands = resolveGraphCommands(merged, selected.commands);
         const graph: PluginContributionGraphShape = {
           plugins: merged,
           globalPlugins,
           certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
-          commands,
+          commands: resolvedCommands.commands,
+          diagnostics: [...diagnostics, ...resolvedCommands.diagnostics].slice(0, 100),
           hostContext: rawContext,
         };
         return PluginContributionGraph.of(graph);
@@ -164,12 +247,7 @@ export const mergeLoadedPluginSources = (
   sources: ReadonlyArray<ReadonlyArray<LoadedPluginContribution>>,
   disable: ReadonlyArray<string>,
 ): ReadonlyArray<LoadedPluginContribution> => {
-  const merged = new Map<string, LoadedPluginContribution>();
-  for (const source of sources) {
-    for (const plugin of source) merged.set(plugin.manifest.name, plugin);
-  }
-  const disabled = new Set(disable);
-  return [...merged.values()].filter((plugin) => !disabled.has(plugin.manifest.name));
+  return selectPluginManifests(sources, disable).plugins;
 };
 
 const validateResolvedPlugin = (
@@ -233,66 +311,6 @@ const manifestCandidates = (
       };
     }),
   );
-
-const commandLoaders = (plugin: LoadedPluginContribution): ReadonlyMap<string, ExecutableCommandLoader> => {
-  const direct = plugin.entry?.commands ?? plugin.module?.commands;
-  if (direct instanceof Map) return direct;
-  const nested = plugin.module !== undefined && "plugin" in plugin.module ? plugin.module.plugin : undefined;
-  if (
-    typeof nested === "object" &&
-    nested !== null &&
-    "commands" in nested &&
-    nested.commands instanceof Map
-  ) {
-    return nested.commands;
-  }
-  return new Map();
-};
-
-export const pluginCommandCandidates = (
-  plugins: ReadonlyArray<LoadedPluginContribution>,
-): Result.Result<ReadonlyArray<GraphCommandCandidate>, PluginDescriptorMismatchError> => {
-  const candidates: GraphCommandCandidate[] = [];
-  const owners = new Map<string, string>();
-  for (const plugin of plugins) {
-    const declared = (plugin.manifest.contributes?.commands ?? []).map((value) =>
-      typeof value === "string" ? value : value.id,
-    );
-    const loaders = commandLoaders(plugin);
-    const provided = [...loaders.keys()];
-    const declaredIds = new Set(declared);
-    if (provided.some((id) => !declaredIds.has(id))) {
-      return Result.fail(
-        new PluginDescriptorMismatchError({
-          pluginName: String(plugin.manifest.name),
-          kind: "commands",
-          declared,
-          provided,
-          message: `Plugin ${String(plugin.manifest.name)} manifest and descriptor disagree for commands.`,
-          remediation: `Align ${String(plugin.manifest.name)}'s manifest command ids with its executable command loaders.`,
-        }),
-      );
-    }
-    for (const [id, load] of loaders) {
-      const owner = owners.get(id);
-      if (owner !== undefined) {
-        return Result.fail(
-          new PluginDescriptorMismatchError({
-            pluginName: String(plugin.manifest.name),
-            kind: "commands",
-            declared: [id],
-            provided: [id],
-            message: `Plugin ${String(plugin.manifest.name)} duplicates command id ${id} from ${owner}.`,
-            remediation: `Rename or remove the duplicate command ${id}.`,
-          }),
-        );
-      }
-      owners.set(id, String(plugin.manifest.name));
-      candidates.push({ id, pluginName: String(plugin.manifest.name), source: plugin.source, load });
-    }
-  }
-  return Result.succeed(candidates);
-};
 
 const bootstrapFailure = (message: string, cause: unknown) =>
   new LandoRuntimeBootstrapError({

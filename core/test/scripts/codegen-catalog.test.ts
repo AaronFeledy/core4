@@ -91,6 +91,7 @@ const expectedCatalogRows = [
     ["core-service-env-catalog"],
   ],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
+  ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
@@ -103,7 +104,20 @@ const expectedCatalogRows = [
     "repo",
     ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
-  ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
+  [
+    "bundled-command-descriptors",
+    "derived",
+    "build-bundled-command-descriptors.ts",
+    "repo",
+    ["bundled-plugins", "setup-plugin-flags"],
+  ],
+  [
+    "mcp-allowlist",
+    "derived",
+    "build-mcp-allowlist.ts",
+    "repo",
+    ["setup-plugin-flags", "bundled-command-descriptors"],
+  ],
   [
     "host-proxy-allowlist",
     "derived",
@@ -118,7 +132,13 @@ const expectedCatalogRows = [
     "derived",
     "build-command-registry-manifest.ts",
     "core",
-    ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
+    [
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "schema-deprecations",
+      "bundled-command-descriptors",
+      "host-proxy-allowlist",
+    ],
   ],
   ["compiled-decoders", "derived", "build-compiled-decoders.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -127,6 +147,7 @@ const expectedCatalogRows = [
     "build-schema-snapshot.ts",
     "repo",
     [
+      "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
       "bootstrap-layers",
@@ -137,7 +158,20 @@ const expectedCatalogRows = [
       "command-registry-manifest",
     ],
   ],
-  ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
+  [
+    "persisted-schema-snapshot",
+    "derived",
+    "build-persisted-schema-snapshot.ts",
+    "repo",
+    ["core-service-env-catalog"],
+  ],
+  [
+    "command-reference",
+    "derived",
+    "build-command-reference.ts",
+    "repo",
+    ["command-registry-manifest", "bundled-plugins", "bundled-command-descriptors"],
+  ],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
   [
     "service-type-reference",
@@ -145,6 +179,20 @@ const expectedCatalogRows = [
     "build-service-type-reference.ts",
     "repo",
     ["php-msmtp-pins", "tomcat-catalog"],
+  ],
+  [
+    "service-listener-reference",
+    "derived",
+    "build-service-listener-reference.ts",
+    "repo",
+    ["php-msmtp-pins", "tomcat-catalog"],
+  ],
+  [
+    "config-lint-rule-reference",
+    "derived",
+    "build-config-lint-rule-reference.ts",
+    "repo",
+    ["core-service-env-catalog"],
   ],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo", ["core-service-env-catalog"]],
@@ -310,7 +358,12 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"];
+    const expectedCommittedPins = [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "github-actions-pins",
+    ];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
@@ -336,13 +389,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(37);
+    expect(catalog).toHaveLength(42);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(13);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(25);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -381,6 +434,8 @@ describe("codegen catalog", () => {
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("build-guide-scenarios"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));
+    // The manifest builder imports the command graph, which reads the generated host-proxy allowlist.
+    expect(waveOf("host-proxy-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );

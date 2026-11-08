@@ -9,6 +9,7 @@ import { shareFlags, shareFormatFromInput, shareOptionsFromInput } from "./share
 
 export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
   id: "app:share",
+  onlineAcquisition: true,
   summary: "Start a public tunnel for the current app.",
   namespace: "app",
   topLevelAlias: true,
@@ -16,6 +17,5 @@ export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
   flags: shareFlags,
   resultSchema: TunnelSession,
   run: (input) => Effect.scoped(appShare(shareOptionsFromInput(input))),
-  render: (result, input, ctx) =>
-    renderShareResult(result as TunnelSessionType, shareFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderShareResult(result, shareFormatFromInput(input), ctx),
 };

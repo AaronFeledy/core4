@@ -9,7 +9,9 @@
  * compiled CLI into scope.
  */
 import { McpToolInputError } from "@lando/sdk/errors";
-import type { CommandCompletion } from "@lando/sdk/schema";
+import type { CommandCompletion, ToolingInputDeclaration } from "@lando/sdk/schema";
+import { appPathInputSchema, toolingInputSchema } from "./tooling-input-schema";
+export { appPathInputSchema } from "./tooling-input-schema";
 
 import type { Effect, Schema } from "effect";
 import { Predicate } from "effect";
@@ -20,8 +22,11 @@ export interface McpCommandSpec {
   readonly summary: string;
   readonly description?: string;
   readonly mcpAllowed?: boolean;
+  readonly bindInput?: (input: McpRunInput) => Effect.Effect<McpRunInput, unknown>;
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
+  readonly toolingInput?: ToolingInputDeclaration;
+  readonly inputRedactionTokens?: (input: unknown) => readonly string[];
   readonly run: (input: McpRunInput) => Effect.Effect<unknown, unknown, unknown>;
   readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly streamFrames?: (result: unknown) => ReadonlyArray<McpProgressFrame>;
@@ -32,8 +37,17 @@ export interface McpCommandSpec {
 }
 
 /** A single command projected as an MCP tool. */
+export type McpPluginProvenance = "bundled" | "system" | "user" | "app" | "explicit";
+
 export interface McpCommandEntry {
   readonly spec: McpCommandSpec;
+  readonly plugin?: {
+    readonly name: string;
+    /** Authorization class: only reviewed bundled contributions inherit default allowance. */
+    readonly source: "bundled" | "external";
+    /** Discovery tier the selected contribution came from. */
+    readonly provenance?: McpPluginProvenance;
+  };
   /** True only for tooling-task tools (projection); false for command tools. */
   readonly tooling?: boolean;
 }
@@ -48,7 +62,9 @@ export interface McpInputMemberView {
   readonly required?: boolean;
   readonly multiple?: boolean;
   readonly valueType?: "string" | "integer";
+  readonly min?: number;
   readonly options?: ReadonlyArray<string>;
+  readonly stdio?: "stdin" | "stdout";
 }
 
 /** A JSON-Schema-shaped object (the value carried in `McpToolDescriptor.inputSchema`). */
@@ -74,12 +90,18 @@ const optionEnum = (view: McpInputMemberView): JsonSchemaObject => {
 };
 
 const memberSchema = (view: McpInputMemberView): JsonSchemaObject => {
-  const enumerated = optionEnum(view);
-  const base: JsonSchemaObject =
-    view.multiple === true
-      ? { type: "array", items: { type: memberType(view), ...enumerated } }
-      : { type: memberType(view), ...enumerated };
-  return view.description === undefined ? base : { ...base, description: view.description };
+  const scalar: JsonSchemaObject = {
+    type: memberType(view),
+    ...optionEnum(view),
+    ...(memberType(view) === "integer" && view.min !== undefined ? { minimum: view.min } : {}),
+  };
+  const base: JsonSchemaObject = view.multiple === true ? { type: "array", items: scalar } : scalar;
+  let description = view.description;
+  if (view.stdio !== undefined) {
+    const sentence = "A filesystem path is required; - is CLI-only.";
+    description = description ? `${description} ${sentence}` : sentence;
+  }
+  return description === undefined ? base : { ...base, description };
 };
 
 const groupSchema = (members: Readonly<Record<string, unknown>> | undefined): JsonSchemaObject => {
@@ -96,23 +118,27 @@ const groupSchema = (members: Readonly<Record<string, unknown>> | undefined): Js
 
 /**
  * Derive the JSON-Schema-shaped input object for a command tool from its
- * declared `flags`/`args`. Commands that declare neither get a closed object
- * with empty `flags`/`args` groups.
+ * declared `flags`/`args`, plus the shared `appPath` selector. Commands that
+ * declare neither get a closed object with empty `flags`/`args` groups.
  */
-export const deriveToolInputSchema = (spec: McpCommandSpec): JsonSchemaObject => ({
-  type: "object",
-  properties: {
-    flags: groupSchema(spec.flags),
-    args: groupSchema(spec.args),
-  },
-  additionalProperties: false,
-});
+export const deriveToolInputSchema = (spec: McpCommandSpec): JsonSchemaObject =>
+  spec.toolingInput === undefined
+    ? {
+        type: "object",
+        properties: {
+          flags: groupSchema(spec.flags),
+          args: groupSchema(spec.args),
+          appPath: appPathInputSchema(),
+        },
+        additionalProperties: false,
+      }
+    : toolingInputSchema(spec.toolingInput);
 
 /** The `{ flags?, args? }` payload an MCP tool call carries. */
 export interface McpToolInput {
   readonly flags?: Record<string, unknown>;
   readonly args?: Record<string, unknown>;
-  /** Optional app path used for per-call app resolution; not part of the derived schema. */
+  /** App directory this call targets; resolved against the session directory. */
   readonly appPath?: string;
 }
 
@@ -123,7 +149,9 @@ const scalarTypeMatches = (view: McpInputMemberView, value: unknown): boolean =>
     case "number":
       return typeof value === "number" && Number.isFinite(value);
     case "integer":
-      return typeof value === "number" && Number.isInteger(value);
+      return (
+        typeof value === "number" && Number.isInteger(value) && (view.min === undefined || value >= view.min)
+      );
     default:
       return typeof value === "string";
   }
@@ -169,6 +197,14 @@ const validateGroup = (
       });
     }
     const view = asView(declared[name]);
+    if (group === "args" && view.stdio !== undefined && value === "-") {
+      throw new McpToolInputError({
+        message: `Argument ${name} on tool ${toolId} cannot use -; process streams are CLI-only.`,
+        toolId,
+        path: `args.${name}`,
+        remediation: `Provide args.${name} as a filesystem path, or use - with the CLI.`,
+      });
+    }
     if (!typeMatches(view, value)) {
       throw new McpToolInputError({
         message: `Invalid type for ${group}.${name} on tool ${toolId}; expected ${jsonTypeFor(view)}.`,
@@ -200,9 +236,16 @@ const validateGroup = (
   }
 };
 
-const validateTopLevelInput = (toolId: string, input: McpToolInput | undefined): void => {
+const validateTopLevelInput = (spec: McpCommandSpec, input: McpToolInput | undefined): void => {
+  const toolId = spec.id;
   for (const key of Object.keys(input ?? {})) {
     if (key === "flags" || key === "args" || key === "appPath") continue;
+    if (spec.toolingInput !== undefined)
+      throw new McpToolInputError({
+        toolId,
+        message: "Unknown tooling input property.",
+        remediation: 'Tool input accepts only "flags", "args", and "appPath"; remove other properties.',
+      });
     throw new McpToolInputError({
       message: `Unknown input property "${key}" for tool ${toolId}.`,
       toolId,
@@ -221,10 +264,24 @@ export const validateToolInput = (
   spec: McpCommandSpec,
   input: McpToolInput | undefined,
 ): { readonly flags: Record<string, unknown>; readonly args: Record<string, unknown> } => {
-  validateTopLevelInput(spec.id, input);
+  validateTopLevelInput(spec, input);
+  if (spec.toolingInput !== undefined) {
+    for (const group of ["flags", "args"] as const) {
+      const value = input?.[group];
+      if (value !== undefined && !Predicate.isObject(value))
+        throw new McpToolInputError({
+          toolId: spec.id,
+          path: group,
+          message: `Tooling ${group} must be an object.`,
+          remediation: `Supply named ${group} as an object.`,
+        });
+    }
+  }
   const flags = input?.flags ?? {};
   const args = input?.args ?? {};
-  validateGroup(spec.id, "flags", spec.flags, flags);
-  validateGroup(spec.id, "args", spec.args, args);
+  if (spec.toolingInput === undefined) {
+    validateGroup(spec.id, "flags", spec.flags, flags);
+    validateGroup(spec.id, "args", spec.args, args);
+  }
   return { flags, args };
 };

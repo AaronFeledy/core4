@@ -3,8 +3,7 @@ import { ROUTE_PRIORITY_DIAGNOSTIC } from "@lando/sdk/schema";
 export const TRAEFIK_DIAGNOSTICS_ID = "traefik-diagnostics" as const;
 export const TRAEFIK_DIAGNOSTICS_HOSTNAME = `${TRAEFIK_DIAGNOSTICS_ID}.global.internal` as const;
 export const TRAEFIK_DIAGNOSTICS_PORT = 8080;
-export const TRAEFIK_DIAGNOSTICS_SOURCE = "./proxy-traefik/diagnostic" as const;
-export const TRAEFIK_DIAGNOSTICS_CONTAINER_DIR = "/etc/lando/diagnostics" as const;
+export const TRAEFIK_DIAGNOSTICS_CONTAINER_DIR = "/tmp/lando-traefik-diagnostics" as const;
 
 // An Accept parameter value may be an RFC 9110 quoted-string, where commas,
 // semicolons, and backslash-escaped quotes are literal text rather than list
@@ -52,10 +51,13 @@ export const renderTraefikDiagnosticHtml = (): string => `<!doctype html>
 export const renderTraefikDiagnosticNginxConfig = (): string =>
   [
     "worker_processes auto;",
-    "pid /tmp/nginx.pid;",
+    `pid ${TRAEFIK_DIAGNOSTICS_CONTAINER_DIR}/nginx.pid;`,
     "error_log /dev/stderr notice;",
     "events { worker_connections 1024; }",
     "http {",
+    ...["client_body", "proxy", "fastcgi", "uwsgi", "scgi"].map(
+      (kind) => `  ${kind}_temp_path ${TRAEFIK_DIAGNOSTICS_CONTAINER_DIR}/${kind}_temp;`,
+    ),
     "  access_log /dev/stdout;",
     "  include /etc/nginx/mime.types;",
     '  map "$request_method:$http_accept" $lando_error_uri {',

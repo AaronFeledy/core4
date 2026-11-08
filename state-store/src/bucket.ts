@@ -1,6 +1,7 @@
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
-import type { StateBucket, StateBucketSpec } from "@lando/sdk/services";
+import type { StateBucket, StateBucketSpec, StateTransition, StateWrite } from "@lando/sdk/services";
+import { planTransition } from "@lando/sdk/transitions";
 import { Clock, Effect } from "effect";
 import { type DecodedFrame, decodeFrame, encodeFrame, isCustomCodec, makeSchemaCodec } from "./codec.ts";
 
@@ -134,30 +135,65 @@ export const buildStateBucket = <A, I>(
   ): Effect.Effect<B, E | StateStoreError> =>
     lockMode === "advisory" ? backend.withLock(file, operation, effect) : effect;
 
+  const applyWrite = <B>(write: StateWrite<A, B>): Effect.Effect<B, StateStoreError> => {
+    switch (write._tag) {
+      case "Keep":
+        return Effect.succeed(write.result);
+      case "Set":
+        return writeValue(write.value).pipe(Effect.as(write.result));
+      case "Remove":
+        return backend.remove(file).pipe(Effect.as(write.result));
+    }
+  };
+
+  const lockedWrite = <B, E>(
+    operation: string,
+    f: (cur: A | null) => Effect.Effect<StateWrite<A, B>, E>,
+  ): Effect.Effect<B, E | StateStoreError> =>
+    lock(operation, get.pipe(Effect.flatMap(f), Effect.flatMap(applyWrite)));
+
+  const mutate = Effect.fn("StateBucket.mutate")(
+    <B, E>(f: (cur: A | null) => Effect.Effect<StateWrite<A, B>, E>): Effect.Effect<B, E | StateStoreError> =>
+      lockedWrite("mutate", f),
+  );
+
+  const transition = Effect.fn("StateBucket.transition")(
+    <State extends string, Operation extends string, E>(
+      t: StateTransition<A, State, Operation, E>,
+    ): Effect.Effect<A | null, E | StateStoreError> =>
+      lockedWrite("transition", (current): Effect.Effect<StateWrite<A, A | null>, E> => {
+        const plan = planTransition(t.transitions, t.operation, t.state(current), (to) =>
+          t.next(to, current),
+        );
+        switch (plan._tag) {
+          case "Keep":
+            return Effect.succeed({ _tag: "Keep", result: current });
+          case "Illegal":
+            return Effect.fail(t.illegal(plan.verdict));
+          case "Write":
+            return Effect.succeed(
+              plan.value === null
+                ? { _tag: "Remove", result: null }
+                : { _tag: "Set", value: plan.value, result: plan.value },
+            );
+        }
+      }),
+  );
+
   const modify = Effect.fn("StateBucket.modify")(
     <B>(f: (cur: A | null) => readonly [B, A]): Effect.Effect<B, StateStoreError> =>
-      lock(
-        "modify",
-        get.pipe(
-          Effect.flatMap((current) => {
-            const [result, next] = f(current);
-            return writeValue(next).pipe(Effect.as(result));
-          }),
-        ),
-      ),
+      lockedWrite("modify", (current) => {
+        const [result, value] = f(current);
+        return Effect.succeed({ _tag: "Set", value, result } as const);
+      }),
   );
 
   const update = Effect.fn("StateBucket.update")(
     (f: (cur: A | null) => A): Effect.Effect<A, StateStoreError> =>
-      lock(
-        "update",
-        get.pipe(
-          Effect.flatMap((current) => {
-            const next = f(current);
-            return writeValue(next).pipe(Effect.as(next));
-          }),
-        ),
-      ),
+      lockedWrite("update", (current) => {
+        const value = f(current);
+        return Effect.succeed({ _tag: "Set", value, result: value } as const);
+      }),
   );
 
   const set = Effect.fn("StateBucket.set")(
@@ -173,6 +209,8 @@ export const buildStateBucket = <A, I>(
     set,
     update,
     modify,
+    mutate,
+    transition,
     remove: remove.pipe(Effect.withSpan("StateBucket.remove")),
     exists: exists.pipe(Effect.withSpan("StateBucket.exists")),
   } satisfies StateBucket<A>;

@@ -1,5 +1,5 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
-import type { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import { type LandofileShape, type PluginManifest, type ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
@@ -13,6 +13,7 @@ import { planServicePrimary } from "./effective-events.ts";
 import { type ServiceEndpointProjection, unavailable } from "./endpoint-availability.ts";
 import { bindRoute } from "./endpoint-routes.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
+import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { declaredServiceFeatures, loadServiceFeatures } from "./service-feature-input.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { servicePlanError } from "./service-types.ts";
@@ -24,6 +25,8 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   readonly manifests: readonly PluginManifest[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly appName: string;
+  readonly dataName?: string;
+  readonly appSlug: string;
   readonly appRoot: string;
   readonly provider: ProviderId;
   readonly host: ServiceTypeHostFacts | undefined;
@@ -75,27 +78,65 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       },
       baseKind: resolution.base,
       appName: input.appName,
+      dataName: input.dataName,
+      appSlug: input.appSlug,
       appRoot: input.appRoot,
       host: input.host,
       normalizedConfig: resolution.normalizedConfig,
+      resolutionMetadata: resolution.metadata,
     });
-    const declared = yield* declarePreparedServiceEndpoints(prepared).pipe(
-      Effect.mapError((error) => servicePlanError(input.appRoot, name, error)),
-      Effect.result,
-    );
-    if (Result.isFailure(declared)) {
-      const failure = unavailable(record(declared.failure));
+    const declared = yield* declarePreparedServiceEndpoints(prepared);
+    if (declared.errors.length > 0) {
+      const failure = unavailable(
+        declared.errors.flatMap((error) => record(servicePlanError(input.appRoot, name, error))),
+      );
       rows.set(name, {
-        preparation: { _tag: "Available", value: prepared },
+        preparation: { _tag: "Available", value: declared.prepared },
         contributions: failure,
         endpoints: failure,
       });
-    } else
+    } else {
+      const substituted = plannerSeededFeatureIds(resolution.base);
+      const claims = new Set(
+        declared.prepared.features
+          .filter((feature) => !substituted.has(feature.id))
+          .flatMap((feature) => feature.validation?.handledServiceFields ?? []),
+      );
+      for (const field of ["webroot", "consolePort", "uploadDirs"] as const) {
+        if (seed.authoredService[field] === undefined || claims.has(field)) continue;
+        if (field === "uploadDirs" && seed.authoredService.uploadDirs?.length === 0) continue;
+        const { message, remediation } = {
+          webroot: {
+            message: `Service ${name} sets webroot, but nothing in this service uses it.`,
+            remediation:
+              "Remove webroot from this service, or set it on the service that serves your app's files.",
+          },
+          consolePort: {
+            message: `Service ${name} sets consolePort, but nothing in this service uses it.`,
+            remediation:
+              "Remove consolePort. Only services with a separate console listener, such as MinIO, use it.",
+          },
+          uploadDirs: {
+            message: `Service ${name} lists uploadDirs, but Lando can't keep PHP out of them on this service.`,
+            remediation:
+              "Set uploadDirs on the service that serves PHP: an nginx service with a PHP-FPM backend, or a php service using via: apache, with Lando's generated server configuration. Otherwise remove it or set uploadDirs: [], and block PHP in those directories in your own server configuration.",
+          },
+        }[field];
+        record(
+          new LandofileValidationError({
+            file: `${input.appRoot}/.lando.yml`,
+            message,
+            remediation,
+            issues: [{ path: ["services", name, field], message, suggestion: remediation }],
+          }),
+        );
+      }
       rows.set(name, {
-        preparation: { _tag: "Available", value: declared.success.prepared },
-        contributions: { _tag: "Available", value: declared.success.contributions },
+        preparation: { _tag: "Available", value: declared.prepared },
+        contributions: { _tag: "Available", value: declared.contributions },
         endpoints: { _tag: "Available", value: [] },
       });
+    }
   }
   const app = yield* declareAppEndpoints({ ...input, rows });
   issues.push(...app.issues);

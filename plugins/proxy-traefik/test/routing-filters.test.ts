@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { type RoutePlan, ServiceName } from "@lando/sdk/schema";
 
 import { DEFAULT_AUTHORITY_PORTS, persistedAuthorities, renderTraefikDynamicConfig } from "../src/routing.ts";
+import { routeMetadataLine, routeObjectName, routeOwner } from "./route-owner-fixture.ts";
 
-const app = AppId.make("demo");
+const app = routeOwner("demo");
 const base: RoutePlan = {
   hostname: "api.demo.lndo.site",
   priority: 2,
@@ -12,14 +13,17 @@ const base: RoutePlan = {
   service: ServiceName.make("api"),
   backend: { service: ServiceName.make("api"), protocol: "http", port: 8080 },
 };
+const svc0 = routeObjectName(app, 0);
+const routerHttp = `${svc0}-http`;
+const routerHttps = `${svc0}-https`;
 const router = {
   priority: 2,
   rule: 'Host("api.demo.lndo.site")',
   entryPoints: ["web"],
-  service: "route-demo-0",
+  service: svc0,
 } as const;
 const services = {
-  "route-demo-0": { loadBalancer: { servers: [{ url: "http://api.demo.internal:8080" }] } },
+  [svc0]: { loadBalancer: { servers: [{ url: "http://api.demo.internal:8080" }] } },
 } as const;
 const filters = [
   { type: "stripPrefix", prefix: "/old" },
@@ -29,20 +33,20 @@ const filters = [
   { type: "redirect", to: "https://example.com/new?q=one#two", permanent: true },
 ] as const;
 const names = [
-  "route-demo-0-f0-stripPrefix",
-  "route-demo-0-f1-addPrefix",
-  "route-demo-0-f2-requestHeader",
-  "route-demo-0-f3-responseHeader",
-  "route-demo-0-f4-redirect",
+  `${svc0}-f0-stripPrefix`,
+  `${svc0}-f1-addPrefix`,
+  `${svc0}-f2-requestHeader`,
+  `${svc0}-f3-responseHeader`,
+  `${svc0}-f4-redirect`,
 ] as const;
 const middlewares = {
-  "route-demo-0-f0-stripPrefix": { stripPrefix: { prefixes: ["/old"] } },
-  "route-demo-0-f1-addPrefix": { addPrefix: { prefix: "/new" } },
-  "route-demo-0-f2-requestHeader": {
+  [`${svc0}-f0-stripPrefix`]: { stripPrefix: { prefixes: ["/old"] } },
+  [`${svc0}-f1-addPrefix`]: { addPrefix: { prefix: "/new" } },
+  [`${svc0}-f2-requestHeader`]: {
     headers: { customRequestHeaders: { "X-Request": 'yes: "quoted"\nnext' } },
   },
-  "route-demo-0-f3-responseHeader": { headers: { customResponseHeaders: { "X-Response": "false" } } },
-  "route-demo-0-f4-redirect": {
+  [`${svc0}-f3-responseHeader`]: { headers: { customResponseHeaders: { "X-Response": "false" } } },
+  [`${svc0}-f4-redirect`]: {
     redirectRegex: { regex: "^.*$", replacement: "https://example.com/new?q=one#two", permanent: true },
   },
 } as const;
@@ -55,9 +59,9 @@ describe("Traefik route filter YAML", () => {
     const parsed = Bun.YAML.parse(renderTraefikDynamicConfig([route], app));
     // Then
     expect(parsed).toEqual({
-      http: { routers: { "route-demo-0-http": { ...router, middlewares: names } }, services, middlewares },
+      http: { routers: { [routerHttp]: { ...router, middlewares: names } }, services, middlewares },
     });
-    expect(parsed).toHaveProperty("http.routers.route-demo-0-http.middlewares", names);
+    expect(parsed).toHaveProperty(`http.routers.${routerHttp}.middlewares`, names);
   });
 
   test("attaches the same middleware list to the http and https routers of a both-scheme route", () => {
@@ -69,8 +73,8 @@ describe("Traefik route filter YAML", () => {
     expect(parsed).toEqual({
       http: {
         routers: {
-          "route-demo-0-http": { ...router, middlewares: names },
-          "route-demo-0-https": { ...router, entryPoints: ["websecure"], tls: {}, middlewares: names },
+          [routerHttp]: { ...router, middlewares: names },
+          [routerHttps]: { ...router, entryPoints: ["websecure"], tls: {}, middlewares: names },
         },
         services,
         middlewares,
@@ -82,30 +86,32 @@ describe("Traefik route filter YAML", () => {
     "namespaces middleware names per app, route index, and filter index (%s)",
     (appName) => {
       // Given
-      const ns = appName === "demo" ? "demo" : "team%40app%2Fother";
+      const owner = routeOwner(appName);
+      const n0 = routeObjectName(owner, 0);
+      const n1 = routeObjectName(owner, 1);
       const routes: readonly RoutePlan[] = [base, { ...base, filters: [filters[1], filters[1]] }];
       // When
-      const parsed = Bun.YAML.parse(renderTraefikDynamicConfig(routes, AppId.make(appName)));
+      const parsed = Bun.YAML.parse(renderTraefikDynamicConfig(routes, owner));
       // Then
       expect(parsed).toEqual({
         http: {
           routers: {
-            [`route-${ns}-0-http`]: { ...router, service: `route-${ns}-0` },
-            [`route-${ns}-1-http`]: {
+            [`${n0}-http`]: { ...router, service: n0 },
+            [`${n1}-http`]: {
               ...router,
-              service: `route-${ns}-1`,
-              middlewares: [`route-${ns}-1-f0-addPrefix`, `route-${ns}-1-f1-addPrefix`],
+              service: n1,
+              middlewares: [`${n1}-f0-addPrefix`, `${n1}-f1-addPrefix`],
             },
           },
           services: Object.fromEntries(
             [0, 1].map((index) => [
-              `route-${ns}-${index}`,
+              routeObjectName(owner, index),
               { loadBalancer: { servers: [{ url: `http://api.${appName}.internal:8080` }] } },
             ]),
           ),
           middlewares: {
-            [`route-${ns}-1-f0-addPrefix`]: { addPrefix: { prefix: "/new" } },
-            [`route-${ns}-1-f1-addPrefix`]: { addPrefix: { prefix: "/new" } },
+            [`${n1}-f0-addPrefix`]: { addPrefix: { prefix: "/new" } },
+            [`${n1}-f1-addPrefix`]: { addPrefix: { prefix: "/new" } },
           },
         },
       });
@@ -132,7 +138,7 @@ describe("Traefik route filter YAML", () => {
     // Then
     expect(parsed).toEqual({
       http: {
-        routers: { "route-demo-0-http": { ...router, rule: `${rule} && PathPrefix("/v1")` } },
+        routers: { [routerHttp]: { ...router, rule: `${rule} && PathPrefix("/v1")` } },
         services,
       },
     });
@@ -168,10 +174,10 @@ describe("Traefik route filter YAML", () => {
     // Then
     expect(parsed).toEqual({
       http: {
-        routers: { "route-demo-0-http": { ...router, middlewares: ["route-demo-0-f0-redirect"] } },
+        routers: { [routerHttp]: { ...router, middlewares: [`${svc0}-f0-redirect`] } },
         services,
         middlewares: {
-          "route-demo-0-f0-redirect": {
+          [`${svc0}-f0-redirect`]: {
             redirectRegex: {
               regex: "^.*$",
               replacement: '/new: "quoted"\n#fragment',
@@ -191,18 +197,19 @@ describe("Traefik route filter YAML", () => {
       // When
       const yaml = renderTraefikDynamicConfig([route], app);
       // Then
-      expect(Bun.YAML.parse(yaml)).toEqual({ http: { routers: { "route-demo-0-http": router }, services } });
+      expect(Bun.YAML.parse(yaml)).toEqual({ http: { routers: { [routerHttp]: router }, services } });
       expect(yaml).toBe(
         [
+          routeMetadataLine(app),
           "http:",
           "  routers:",
-          "    route-demo-0-http:",
+          `    ${routerHttp}:`,
           '      rule: "Host(\\"api.demo.lndo.site\\")"',
           "      entryPoints: [web]",
           "      priority: 2",
-          "      service: route-demo-0",
+          `      service: ${svc0}`,
           "  services:",
-          "    route-demo-0:",
+          `    ${svc0}:`,
           "      loadBalancer:",
           "        servers:",
           "          - url: http://api.demo.internal:8080",
@@ -220,7 +227,7 @@ describe("Traefik route filter YAML", () => {
     // Then
     expect(parsed).toEqual({
       http: {
-        routers: { "route-demo-0-http": { ...router, rule: `${router.rule} && PathPrefix("/v1")` } },
+        routers: { [routerHttp]: { ...router, rule: `${router.rule} && PathPrefix("/v1")` } },
         services,
       },
     });

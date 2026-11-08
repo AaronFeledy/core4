@@ -3,6 +3,7 @@ import type { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { effectiveReadiness } from "@lando/sdk/schema";
 import type { HealthcheckRunnerShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Duration, Effect, Fiber, Ref, Result } from "effect";
+import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { makeHealthcheckRunner } from "../subsystems/healthcheck/runner-factory.ts";
 import { failReadiness, inspectReadinessRuntime } from "./service-readiness-error.ts";
 import { makeReadinessProgress } from "./service-readiness-progress.ts";
@@ -23,6 +24,7 @@ export const waitForServiceReadiness = Effect.fn("ServiceReadiness.wait")(functi
     options.runner ??
     makeHealthcheckRunner({
       exec: options.provider.exec,
+      runners: yield* captureHostProbeRunners,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   const targets = yield* Effect.forEach(

@@ -3,7 +3,7 @@
 > **Part 1 of 20** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
-This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Release stages and sequencing live only in the [ROADMAP](./ROADMAP.md).
+This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Implementation status and release bars live only in the [ROADMAP](./ROADMAP.md); release stages never put specified work out of scope.
 
 §1 and §14 are paired because they define what Lando v4 is and is not.
 
@@ -108,28 +108,25 @@ The forms ship from the same source at the same version and MUST NOT drift.
 ### 14.1 Non-goals
 
 - v3 execution/emulation, automatic conversion, resource adoption, legacy state import, retired image manufacture, or Lando 3 binary management.
-- Hoster-specific synchronization logic in core; §10.12 specifies generic orchestration, not a core vendor connector or a claim of shipped implementation.
+- Hoster-specific synchronization logic in core; §10.12 specifies generic orchestration, not a core vendor connector.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
-- File-sync engines beyond passthrough and bundled Mutagen, or file-sync-owned TCP/UDP forwarding (§10.6).
+- Bundled file-sync engines beyond Mutagen (`passthrough` is a no-session policy, not an engine), or file-sync-owned TCP/UDP forwarding (§10.6).
 - Copy-on-write scratch isolation, scratch fleets, fork-source hot reload, or scratch apps as expression sources (§21.15).
 - Foreign automation dialects/protocols and the execution-platform features excluded by §22.1.
 
 ### 14.2 Open decisions
 
-| Decision | Required resolution |
-|---|---|
-| Telemetry inventory and privacy | Finalize events, redaction, retention, and disablement controls. |
-| Renderer wiring at the CLI boundary | Route command output through `Renderer`, add renderer config, and enforce the output boundary. |
+No product decisions are open.
 
-Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher.
+Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher; telemetry has an event inventory gate, allowlisted redaction, a retention policy, and a `telemetry.enabled` switch; command output routes through `Renderer` with renderer config and an enforced output boundary.
 
 The following extension constraints apply without committing to an implementation schedule:
 
 | Capability | Constraint |
 |---|---|
-| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
+| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app host-proxy worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
 | Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
 | Service-type `topLevelAlias` enforcement | Enforce once the tooling schema lifts the current catalog-wide rejection of `topLevelAlias` (§6.11, §8.5). |
 | OS-keychain credential backend | Add a keychain-backed writable `SecretStore` (macOS Keychain, Windows Credential Manager, Secret Service) as a peer of the file-backed `lando` store once its threat model (§9.5.1) proves insufficient; the file store stays the default until then. |

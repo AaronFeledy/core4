@@ -1,13 +1,10 @@
-import { existsSync } from "node:fs";
-
 import { Effect, Schema } from "effect";
 
 import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { isPluginUnlinkNotLinkedCause, revertPluginLink } from "@lando/engine/operations/plugin-link";
-import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { resolvePluginsRoot } from "./plugin-roots";
 
 export class PluginUnlinkNotLinkedError extends Schema.TaggedError<PluginUnlinkNotLinkedError>()(
@@ -30,15 +27,13 @@ export interface PluginUnlinkOptions {
 export interface PluginUnlinkResult {
   readonly pluginName: string;
   readonly registryEntry: string;
-  readonly action: "restored" | "removed";
-  readonly restoredPath?: string;
+  readonly action: "removed";
 }
 
 export const PluginUnlinkResultSchema = Schema.Struct({
   pluginName: Schema.String,
   registryEntry: Schema.String,
-  action: Schema.Literals(["restored", "removed"]),
-  restoredPath: Schema.optionalKey(Schema.String),
+  action: Schema.Literal("removed"),
 });
 
 const notLinkedRemediation =
@@ -54,72 +49,41 @@ export const pluginUnlink = Effect.fn("PluginUnlink.unlink")(function* (
   const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:unlink");
   const pluginName = options.name;
 
-  if (!existsSync(pluginsRoot)) {
-    yield* Effect.tryPromise({
-      try: () => revertPluginLink({ pluginsRoot, name: pluginName }),
-      catch: (cause) =>
-        isPluginUnlinkNotLinkedCause(cause)
-          ? new PluginUnlinkNotLinkedError({
-              message: cause.message,
-              commandId: "meta:plugin:unlink",
-              pluginName: cause.pluginName,
-              remediation: notLinkedRemediation,
-            })
-          : cause instanceof PluginManifestError
-            ? cause
-            : new NotImplementedError({
-                message: `Plugin unlink failed for ${pluginName}: ${String(cause)}`,
-                commandId: "meta:plugin:unlink",
-                remediation: "Check the linked plugin state under <userDataRoot>/plugins and retry.",
-              }),
-    });
-  }
-
-  const result = yield* withPluginMutationLock(
-    pluginsRoot,
-    "meta:plugin:unlink",
-    Effect.gen(function* () {
-      const revertedResult = yield* Effect.tryPromise({
-        try: async (): Promise<PluginUnlinkResult> => {
-          const reverted = await revertPluginLink({ pluginsRoot, name: pluginName });
-          return {
-            pluginName,
-            registryEntry: reverted.registryEntry,
-            action: reverted.action,
-            ...(reverted.restoredPath === undefined ? {} : { restoredPath: reverted.restoredPath }),
-          };
-        },
-        catch: (cause) => {
-          if (cause instanceof PluginUnlinkNotLinkedError || cause instanceof PluginManifestError)
-            return cause;
-          if (isPluginUnlinkNotLinkedCause(cause)) {
-            return new PluginUnlinkNotLinkedError({
-              message: cause.message,
-              commandId: "meta:plugin:unlink",
-              pluginName: cause.pluginName,
-              remediation: notLinkedRemediation,
-            });
-          }
-          return new NotImplementedError({
-            message: `Plugin unlink failed for ${pluginName}: ${String(cause)}`,
-            commandId: "meta:plugin:unlink",
-            remediation: "Check the linked plugin state under <userDataRoot>/plugins and retry.",
-          });
-        },
+  const revertedResult = yield* Effect.tryPromise({
+    try: async (): Promise<PluginUnlinkResult> => {
+      const reverted = await revertPluginLink({ pluginsRoot, name: pluginName });
+      return {
+        pluginName,
+        registryEntry: reverted.registryEntry,
+        action: reverted.action,
+      };
+    },
+    catch: (cause) => {
+      if (cause instanceof PluginUnlinkNotLinkedError || cause instanceof PluginManifestError) return cause;
+      if (isPluginUnlinkNotLinkedCause(cause)) {
+        return new PluginUnlinkNotLinkedError({
+          message: cause.message,
+          commandId: "meta:plugin:unlink",
+          pluginName: cause.pluginName,
+          remediation: notLinkedRemediation,
+        });
+      }
+      return new NotImplementedError({
+        message: `Plugin unlink failed for ${pluginName}: ${String(cause)}`,
+        commandId: "meta:plugin:unlink",
+        remediation: "Check the linked plugin state under <userDataRoot>/plugins and retry.",
       });
-      yield* invalidatePluginCommandCache({
-        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-      });
-      return revertedResult;
-    }),
-  );
-  return result;
+    },
+  });
+  yield* invalidateAppToolingCaches({
+    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+  });
+  return revertedResult;
 });
 
 export const renderPluginUnlinkResult = (result: PluginUnlinkResult): string =>
   [
     `plugin-unlink: ${result.pluginName}`,
     `registry-entry: ${result.registryEntry}`,
-    ...(result.restoredPath === undefined ? [] : [`restored-path: ${result.restoredPath}`]),
     `result: ${result.action}`,
   ].join("\n");

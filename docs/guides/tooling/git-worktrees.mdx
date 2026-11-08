@@ -2,7 +2,7 @@
 id: git-worktrees
 provider: test
 timeout: 60000
-tags: [beta, docs, tooling, git, database]
+tags: [docs, tooling, git, database]
 ---
 
 # Run a git worktree as its own Lando app
@@ -41,7 +41,7 @@ git worktree add ../shop-feature -b feature
 cd ../shop-feature
 ```
 
-The worktree has the same `.lando.yml`, so it also claims `name: shop`. Start it like that and Lando stops with a `VolumeOperationError` that says the two apps share an app name. Two checkouts don't get to fight over one database.
+The worktree has the same `.lando.yml`, so it also claims `name: shop`. Start it like that and Lando stops with a `VolumeOperationError`: the main checkout's folder already owns the volumes for that name. Two checkouts don't get to fight over one database.
 
 ## Rename the worktree in `.lando.local.yml`
 
@@ -51,7 +51,7 @@ Save this as `.lando.local.yml` in the worktree. The committed Landofile stays u
 name: shop-feature
 ```
 
-The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs. In a worktree, `.git` is a one-line file that points at the main checkout's `.git` directory; on Linux, Lando mounts that directory into the container at the same path, so `git` works at `/app` like it does in the main checkout. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx#git).
+The new name gives the worktree its own containers, volumes, database, and hostname. That's the only change a worktree needs. In a worktree, `.git` is a one-line file that points at the main checkout's `.git` directory; on Linux, Lando mounts that directory into the container at the same path, so `git` works at `/app` like it does in the main checkout. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx#keep-git-metadata-available).
 
 Check the layer took:
 
@@ -70,7 +70,7 @@ lando info
 
 The worktree serves at `web.shop-feature.lndo.site` while the main checkout keeps `web.shop.lndo.site`. Both run at the same time. Open the URLs `lando info` prints.
 
-The database name defaults to the app name, so the worktree's database is `shop-feature`. `DB_NAME` comes from the resolved credentials, so it follows along:
+The database name defaults to the folder's data name, which starts as the app name, so this new worktree's database is `shop-feature`. Later renames keep that database name. `DB_NAME` comes from the resolved credentials:
 
 ```sh
 lando exec web -- printenv DB_NAME

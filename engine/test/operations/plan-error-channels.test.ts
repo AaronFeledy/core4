@@ -10,16 +10,21 @@ import type {
   CapabilityError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
+  DebuggerHostUnavailableError,
   EventError,
+  FileSyncSelectionError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   GlobalServiceMissingError,
+  HealthcheckTargetUnsupportedError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
   LandofileValidationError,
+  LandofileWriteValidationError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginManifestError,
@@ -62,6 +67,11 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | import("@lando/sdk/errors").AppDataIdentityError
+  | GlobalServiceCollisionError
+  | PluginManifestError
+  | HealthcheckTargetUnsupportedError
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
   | LandofileRootLoadError
@@ -80,6 +90,9 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | import("@lando/sdk/errors").AppDataIdentityError
+  | HealthcheckTargetUnsupportedError
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
@@ -98,7 +111,10 @@ type LegacyOrphanTeardownError =
   | AppLockTimeoutError
   | StateStoreError;
 
-type LegacyGlobalInstallChannel =
+type ExpectedGlobalInstallError =
+  | Exclude<LandofileRootLoadError, LandofileValidationError>
+  | LandofileWriteValidationError
+  | ManagedFileTransactionError
   | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
@@ -110,6 +126,13 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | import("@lando/sdk/errors").AppDataIdentityError
+  | AppResolveError
+  | DebuggerHostUnavailableError
+  | StateStoreError
+  | LandofileWriteValidationError
+  | ManagedFileTransactionError
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
   | LandofileRootLoadError
@@ -140,6 +163,9 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | import("@lando/sdk/errors").AppDataIdentityError
+  | HealthcheckTargetUnsupportedError
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | RemoteSyncError
   | UserLandofileError
@@ -152,6 +178,9 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | import("@lando/sdk/errors").AppDataIdentityError
+  | HealthcheckTargetUnsupportedError
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | UserLandofileError
   | CapabilityError
@@ -190,6 +219,8 @@ describe("Engine plan-carrying error channels", () => {
         | GlobalAppError
         | AppPlacementError
         | LandofileParseError
+        | GlobalServiceCollisionError
+        | PluginManifestError
       >
     >(true);
     expect(true).toBe(true);
@@ -212,8 +243,8 @@ describe("Engine plan-carrying error channels", () => {
     expect(true).toBe(true);
   });
 
-  test("globalInstall retains its pre-refactor error members", () => {
-    assertType<Equal<ErrOf<ReturnType<typeof globalInstall>>, LegacyGlobalInstallChannel>>(true);
+  test("globalInstall carries prepared compilation and publication failures", () => {
+    assertType<Equal<ErrOf<ReturnType<typeof globalInstall>>, ExpectedGlobalInstallError>>(true);
     expect(true).toBe(true);
   });
 
@@ -222,6 +253,7 @@ describe("Engine plan-carrying error channels", () => {
     assertType<
       Equal<
         EnsureGlobalServicesError,
+        | DebuggerHostUnavailableError
         | ServiceNotReadyError
         | LoadGlobalPlanError
         | BuildError
@@ -234,6 +266,9 @@ describe("Engine plan-carrying error channels", () => {
         | SecretStoreUnavailableError
         | SecretReferenceInvalidError
         | ToolingExecError
+        | Effect.Error<ReturnType<typeof globalInstall>>
+        | AppResolveError
+        | StateStoreError
       >
     >(true);
     expect(true).toBe(true);

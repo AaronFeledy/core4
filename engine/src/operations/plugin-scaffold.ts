@@ -103,7 +103,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
       },
       devDependencies: {
         "@types/bun": "^1.4.0",
-        typescript: "^5.9.0",
+        typescript: "^7.0.2",
       },
       scripts: {
         test: "lando meta:plugin:test",

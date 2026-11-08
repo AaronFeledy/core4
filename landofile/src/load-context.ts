@@ -3,9 +3,11 @@ import { ConfigService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/s
 import { type Context, Effect } from "effect";
 import { captureCompilationContext } from "./compilation.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
+import { type LoadFailureRecorder, createLoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 
 export interface LandofileLoadContext {
+  readonly recorder?: LoadFailureRecorder;
   readonly validCanonicalFile?: string;
   readonly pendingSites?: ParsedPendingSite[];
   readonly compilationContext?: CompilationContext;
@@ -27,10 +29,11 @@ const transactionGuard = Effect.fnUntraced(function* (
 
 export const ensureConsistentRoot = Effect.fnUntraced(function* (
   appRoot: string,
-  inputs?: Pick<LandofileRuntimeInputs, "transactionGuard">,
+  inputs?: Pick<LandofileRuntimeInputs, "transactionGuard" | "readOnly">,
 ) {
   const guard = yield* transactionGuard(inputs);
-  if (guard !== undefined) yield* guard.ensureConsistent(appRoot);
+  if (guard !== undefined)
+    yield* inputs?.readOnly ? guard.assertReadable(appRoot) : guard.ensureConsistent(appRoot);
 });
 
 export const assertReadableRoot = Effect.fnUntraced(function* (
@@ -62,6 +65,7 @@ export const loadContext = Effect.fnUntraced(function* (
     appRoot,
     policy,
     pendingSites: [],
+    recorder: createLoadFailureRecorder(),
     compilationContext: captureCompilationContext(appRoot, env),
     ...(logger._tag === "Some" ? { logger: logger.value } : {}),
   };

@@ -109,11 +109,15 @@ describe("doctor provider-bootstrap failure", () => {
         "missing-app-roots",
         "orphaned-volume-snapshots",
         "app-config",
+        "app-listeners",
         "deprecations",
+        "debugger-host",
       ]);
       expect(
         report.skipped?.every(
-          (entry) => entry.status === "skipped" && entry.reason.includes("provider-bootstrap"),
+          (entry) =>
+            entry.status === "skipped" &&
+            (entry.section === "debugger-host" || entry.reason.includes("provider-bootstrap")),
         ),
       ).toBe(true);
       expect(report.provider.checks).toEqual([]);
@@ -126,7 +130,7 @@ describe("doctor provider-bootstrap failure", () => {
       expect(
         report.subsystems.checks.find((check) => check.name === "accelerated-start")?.context.attemptId,
       ).toBe("host-attempt");
-      expect(report.subsystems.checks.find((check) => check.name === "host-proxy")).toMatchObject({
+      expect(report.subsystems.checks.find((check) => check.name === "host-dns")).toMatchObject({
         status: "pass",
         context: { dnsResolved: "true", dnsAddresses: "127.0.0.1" },
       });

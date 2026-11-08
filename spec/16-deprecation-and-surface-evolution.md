@@ -22,6 +22,8 @@ This part defines the single machine-readable deprecation contract for every pub
 
 `AppPlacementError`, required `RuntimeProviderRegistry.appliedPlansFor`, `resolveAppliedPlan`, and `resolveTeardownEvidence` members (§5.3.1), and `GlobalAppService.providerId` (§20.5) are additive pre-release SDK contract changes. Registry implementations MUST supply the required members; consumers MUST preserve the declared placement-error channels, including scratch acquisition. These unreleased contract additions require public-surface fixture updates, not a deprecation cycle or compatibility adapters.
 
+`ListenerAuthority`, `ServicePlan.listenerAuthority`, and `ServiceFeatureContext.setListenerAuthority` replace the unreleased `startupFailureHint` and `setStartupFailureHint` contracts. The replacement requires updated public-surface fixtures, regenerated schema artifacts, and app-plan cache invalidation, not a deprecation cycle or compatibility adapter. Historical applied plans remain readable for observation and teardown without reconstructing authority.
+
 ### 18.2 The `DeprecationNotice` schema
 
 `DeprecationNotice` is an Effect Schema in `@lando/sdk`, re-exported by `@lando/core/schema`, and published through the §13.2 artifact set.
@@ -65,9 +67,9 @@ Subscribers SHOULD use the late priority band. Subscriber failure is logged and 
 | Surface kind | Canonical owner | Declaration mechanism |
 |---|---|---|
 | Built-in command | `LandoCommandSpec` | `deprecated` contract field |
-| Plugin command | Plugin command contribution and spec | Manifest plus contract field |
-| Top-level alias | `LandoCommandSpec.topLevelAlias` | Alias-scoped notice |
-| Namespaced alias | `LandoCommandSpec.aliases[]` | Per-alias notice |
+| Plugin command | Manifest command descriptor `deprecated` | Manifest field |
+| Top-level alias | `LandoCommandSpec.topLevelAlias` or plugin descriptor `topLevelAlias` | Alias-scoped notice |
+| Namespaced alias | `LandoCommandSpec.aliases[]` or plugin descriptor `aliases[]` | Per-alias notice |
 | Command flag | `FlagSpec` | `deprecated` contract field |
 | Command arg | `ArgSpec` | `deprecated` contract field |
 | Tooling task | Tooling schema | Task `deprecated` field |

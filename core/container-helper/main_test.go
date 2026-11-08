@@ -49,7 +49,7 @@ func TestDispatchRoles(t *testing.T) {
 
 func TestCompiledBinaryRolesAndLinkedPolicy(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "lando-container-helper")
-	build := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-X main.forwardPrefixes=LANDO_,LC_ -X main.forwardNames=LANG,GROK_AGENT -X main.blockedNames=LANDO_HOST_PROXY_TOKEN -X main.mustBeOneNames=GROK_AGENT", "-o", binary, ".")
+	build := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-X main.forwardPrefixes=LC_ -X main.forwardNames=LANG,GROK_AGENT -X main.blockedNames=LANDO_HOST_PROXY_TOKEN -X main.mustBeOneNames=GROK_AGENT", "-o", binary, ".")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, output)
@@ -100,7 +100,8 @@ func TestCompiledBinaryRolesAndLinkedPolicy(t *testing.T) {
 	url := strings.Replace(server.URL, "127.0.0.1", "0.0.0.0", 1)
 	cmd := exec.Command(binary)
 	cmd.Args[0] = "/usr/local/bin/lando"
-	cmd.Env = []string{"LANDO_HOST_PROXY_URL=" + url, "LANDO_HOST_PROXY_SESSION=s", "LANDO_HOST_PROXY_APP=a", "LANDO_HOST_PROXY_TOKEN=secret", "LANDO_X=x", "LC_ALL=C", "LANG=en", "GROK_AGENT=true", "OTHER=no", "HTTP_PROXY=http://127.0.0.1:1", "ALL_PROXY=http://127.0.0.1:1"}
+	env := proxyEnv(t)
+	cmd.Env = []string{"LANDO_HOST_PROXY_CREDENTIALS_FILE=" + env["LANDO_HOST_PROXY_CREDENTIALS_FILE"], "LANDO_HOST_PROXY_URL=" + url, "LANDO_X=x", "LC_ALL=C", "LANG=en", "GROK_AGENT=true", "OTHER=no", "HTTP_PROXY=http://127.0.0.1:1", "ALL_PROXY=http://127.0.0.1:1"}
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
@@ -110,7 +111,7 @@ func TestCompiledBinaryRolesAndLinkedPolicy(t *testing.T) {
 		t.Fatalf("streams=%q %q", out.String(), stderr.String())
 	}
 	body := <-requests
-	want := map[string]string{"LANDO_HOST_PROXY_URL": url, "LANDO_HOST_PROXY_SESSION": "s", "LANDO_HOST_PROXY_APP": "a", "LANDO_X": "x", "LC_ALL": "C", "LANG": "en"}
+	want := map[string]string{"LC_ALL": "C", "LANG": "en"}
 	if !reflect.DeepEqual(body.Env, want) || body.Argv == nil || len(body.Argv) != 0 {
 		t.Fatalf("body=%+v", body)
 	}

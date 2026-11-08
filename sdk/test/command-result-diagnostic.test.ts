@@ -1,19 +1,157 @@
 import { expect, test } from "bun:test";
-import {
-  encodeCommandResult,
-  identityRedactor,
-  normalizeDefect,
-  taggedErrorJson,
-} from "@lando/sdk/command-result";
+import { encodeCommandResult, identityRedactor, taggedErrorJson } from "@lando/sdk/command-result";
 import {
   ComposeKeyRejectedError,
-  LandoInternalError,
+  ConfigExpressionError,
+  GlobalAppError,
+  GlobalAutoStartError,
+  LandofileIncludeError,
+  LandofileLoadError,
   LandofileParseError,
   ManagedFileTransactionError,
-  RecipeSourceError,
+  landofileLoadFailures,
 } from "@lando/sdk/errors";
 import { CommandResultEnvelope, TaggedErrorJson } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+
+test("preserves nested tagged causes without stacks (#2063)", () => {
+  const error = new GlobalAutoStartError({
+    app: "app1",
+    services: ["traefik"],
+    message: "Failed to auto-start global services.",
+    cause: new GlobalAppError({
+      message: "Applied state is unreadable.\n    at private-frame",
+      remediation: "Restore the state file.",
+      cause: { _tag: "StateStoreError", message: "Unsupported version.", stack: "private-stack" },
+    }),
+  });
+
+  const projected = taggedErrorJson(error);
+
+  expect(projected.cause).toMatchObject({
+    _tag: "GlobalAppError",
+    message: "Applied state is unreadable.",
+    cause: { _tag: "StateStoreError", message: "Unsupported version." },
+  });
+  expect(JSON.stringify(projected)).not.toMatch(/private-frame|private-stack/u);
+});
+
+test.each([
+  new Error("private"),
+  "private",
+  { message: "private" },
+  { _tag: "Incomplete" },
+  Object.create({ _tag: "Inherited", message: "private" }),
+])("omits a non-tagged cause %j", (cause) => {
+  expect(taggedErrorJson({ _tag: "Outer", message: "Failed.", cause })).not.toHaveProperty("cause");
+});
+
+test("omits cause cycles shared with aggregate failures", () => {
+  const outer = { _tag: "Outer", message: "Failed." };
+  const inner = { _tag: "Inner", message: "Reason.", cause: outer };
+  Object.assign(outer, { cause: inner, failures: [inner] });
+
+  const projected = taggedErrorJson(outer);
+
+  expect(projected.cause).toMatchObject({ _tag: "Inner", message: "Reason." });
+  expect(projected.cause).not.toHaveProperty("cause");
+  expect(projected.failures).toMatchObject([{ _tag: "Inner", message: "Reason." }]);
+  expect(projected).not.toHaveProperty("failures.0.cause");
+});
+
+test("bounds cause and failures recursion together at eight edges", () => {
+  let error: unknown = { _tag: "Leaf", message: "Omitted." };
+  let expected: object = { _tag: "Level8", message: "8" };
+  for (let depth = 8; depth >= 0; depth--) {
+    const fields = { _tag: `Level${depth}`, message: String(depth) };
+    error = { ...fields, ...(depth % 2 === 0 ? { cause: error } : { failures: [error] }) };
+    if (depth < 8)
+      expected = { ...fields, ...(depth % 2 === 0 ? { cause: expected } : { failures: [expected] }) };
+  }
+
+  expect(taggedErrorJson(error)).toMatchObject(expected);
+  expect(JSON.stringify(taggedErrorJson(error))).not.toContain("Omitted.");
+});
+
+test.each(["cause", "_tag", "message"])("does not invoke a cause's %s accessor", (field) => {
+  let calls = 0;
+  const cause = { _tag: "Inner", message: "Reason." };
+  const error = { _tag: "Outer", message: "Failed.", cause };
+  Object.defineProperty(field === "cause" ? error : cause, field, {
+    get: () => {
+      calls++;
+      return "private";
+    },
+  });
+
+  expect(taggedErrorJson(error)).not.toHaveProperty("cause");
+  expect(calls).toBe(0);
+});
+
+test("expression failure provenance preserves literal namespace keys through the diagnostic boundary", () => {
+  const source = {
+    file: "/app/fragment.yml",
+    layer: "local" as const,
+    path: ["toolingIncludes", "docs.v2", "when"],
+  };
+  const error = new ConfigExpressionError({
+    message: "Missing condition value.",
+    expression: "{{ env.MISSING }}",
+    filePath: source.file,
+    path: source.path,
+    source,
+    remediation: "Provide the value or a default.",
+  });
+  const roundTrip = Schema.decodeUnknownSync(ConfigExpressionError)(
+    Schema.encodeSync(ConfigExpressionError)(error),
+  );
+  expect(taggedErrorJson(roundTrip)).toMatchObject({ _tag: "ConfigExpressionError", source });
+});
+
+test("aggregate load failures survive schema round trips and command envelopes (#1646)", () => {
+  const first = new LandofileParseError({
+    message: "Invalid YAML",
+    filePath: "/app/.lando.local.yml",
+    line: 2,
+    column: 3,
+    cause: new Error("private"),
+    remediation: "Fix YAML.",
+  });
+  const second = new LandofileIncludeError({
+    message: "Missing include",
+    file: "/app/.lando.yml",
+    path: ["includes", 1],
+    source: "./missing.yml",
+    kind: "fetch-failed",
+    remediation: "Fix the path.",
+  });
+  const error = new LandofileLoadError({
+    file: "/app/.lando.yml",
+    message: "Two failures",
+    failures: [first, second],
+    remediation: "Fix both.",
+  });
+  const roundTrip = Schema.decodeUnknownSync(LandofileLoadError)(
+    Schema.encodeSync(LandofileLoadError)(error),
+  );
+  const line = Effect.runSync(
+    encodeCommandResult({
+      command: "app:start",
+      resultSchema: Schema.Void,
+      outcome: { _tag: "failure", error, additionalErrors: [] },
+      redactor: identityRedactor,
+    }),
+  );
+  const envelope = JSON.parse(line);
+  expect(roundTrip.failures[0]).toBeInstanceOf(LandofileParseError);
+  expect(landofileLoadFailures(first)).toEqual([first]);
+  expect(envelope.error.failures).toMatchObject([
+    { _tag: "LandofileParseError", line: 2 },
+    { _tag: "LandofileIncludeError", path: ["includes", 1] },
+  ]);
+  expect(envelope.error.failures[0]).not.toHaveProperty("cause");
+  expect(envelope.error.failures[1]).not.toHaveProperty("stack");
+});
 
 test("projects declared non-enumerable error fields without exposing runtime source locations", () => {
   // Given real tagged errors, including fields that collide with Bun's Error metadata.
@@ -42,6 +180,37 @@ test("projects declared non-enumerable error fields without exposing runtime sou
   expect(unrelated).not.toHaveProperty("column");
   expect(projected).not.toHaveProperty("sourceURL");
   expect(projected).not.toHaveProperty("stack");
+});
+
+test("projects failures by field name without exposing member causes or looping over cycles", () => {
+  const member = new LandofileIncludeError({
+    file: "/app/.lando.yml",
+    path: ["includes", 0],
+    source: "./missing.yml",
+    kind: "fetch-failed",
+    message: "Missing fragment.",
+    remediation: "Correct its path.",
+  });
+  const error = {
+    _tag: "CustomAggregate",
+    message: "Failed.",
+    remediation: "Fix members.",
+    failures: [member],
+  };
+  Object.assign(member, { cause: new Error("private"), failures: [error] });
+  const projected = taggedErrorJson(error);
+  expect(projected.failures).toEqual([
+    {
+      _tag: "LandofileIncludeError",
+      file: "/app/.lando.yml",
+      path: ["includes", 0],
+      source: "./missing.yml",
+      kind: "fetch-failed",
+      message: "Missing fragment.",
+      remediation: "Correct its path.",
+      failures: [],
+    },
+  ]);
 });
 
 test.each(["pending-transaction", "blocked"] as const)(
@@ -98,58 +267,4 @@ test("an unencodable success yields a schema-valid actionable fallback", () => {
   const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
   expect(envelope).toMatchObject({ ok: false, error: { _tag: "CommandResultEncodeError" } });
   expect(envelope.error?.remediation).toContain("--debug");
-});
-
-test("typed diagnostic fields never invoke untrusted accessors or proxy traps", () => {
-  let calls = 0;
-  const issue = Object.defineProperty({}, "message", {
-    enumerable: true,
-    get: () => {
-      calls++;
-      return "unsafe";
-    },
-  });
-  const steps = new Proxy([], {
-    get: () => {
-      calls++;
-      return "unsafe";
-    },
-  });
-  const diagnostic = taggedErrorJson({
-    _tag: "Example",
-    message: "Failed",
-    remediation: "Repair configuration.",
-    issues: [issue],
-    steps,
-  });
-  expect(diagnostic).toEqual({ _tag: "Example", message: "Failed", remediation: "Repair configuration." });
-  expect(calls).toBe(0);
-});
-
-test("a tagged error raised as a defect keeps its own tag and remediation", () => {
-  // Given a well-formed tagged error that reached the boundary as a defect.
-  const raised = new RecipeSourceError({
-    kind: "missing-url",
-    source: "git",
-    message: "lando init --source=git requires --url=<git-url>.",
-    remediation: "Pass --url=<git-url> with --source=git.",
-  });
-  // When the boundary normalizes the defect.
-  const normalized = normalizeDefect(raised);
-  // Then it is unchanged, so the user keeps the real tag and guidance.
-  expect(normalized).toBe(raised);
-});
-
-test.each([
-  ["a plain Error", new Error("boom")],
-  ["a string", "boom"],
-  ["an object with a tag but no remediation", { _tag: "SomethingError", message: "boom" }],
-  ["an object with a blank remediation", { _tag: "SomethingError", message: "boom", remediation: "  " }],
-])("%s becomes a LandoInternalError without its stack", (_label, defect) => {
-  // Given an unexpected defect that is not a well-formed tagged error.
-  // When the boundary normalizes it.
-  const normalized = normalizeDefect(defect);
-  // Then it is an internal error with a reporting remediation and no stack text.
-  expect(normalized).toBeInstanceOf(LandoInternalError);
-  expect(JSON.stringify(taggedErrorJson(normalized))).not.toMatch(/\n\s+at /u);
 });

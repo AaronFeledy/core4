@@ -5,7 +5,6 @@ import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "
 
 export const spec = {
   id: "db:snapshot",
-  summary: "Create a named snapshot of a database service.",
   namespace: "db",
   bootstrap: "app",
   flags: {

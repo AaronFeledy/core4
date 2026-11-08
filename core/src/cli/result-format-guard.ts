@@ -1,3 +1,4 @@
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { activeJq, activeJsonControl, activeRendererMode, activeResultFormat } from "./compiled-runtime";
 import {
   type ResultFormat,
@@ -35,9 +36,11 @@ const refusalOutputMode = (
 export const rejectUnsupportedResultFormat = async (
   commandId: string,
   command: ResultFormatCapability | undefined,
+  options: { readonly payloadStdout?: boolean; readonly context?: CliInvocationContext } = {},
 ): Promise<boolean> => {
   if (supportsResultFormat(command, activeResultFormat)) return false;
   await renderPreCommandFailure({
+    ...(options.context === undefined ? {} : { context: options.context }),
     commandId,
     error: unsupportedResultFormatError({
       commandId,
@@ -45,6 +48,7 @@ export const rejectUnsupportedResultFormat = async (
       supported: commandResultFormats(command),
     }),
     ...refusalOutputMode(activeResultFormat),
+    ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
     failureExitCode: 2,
   });
   return true;

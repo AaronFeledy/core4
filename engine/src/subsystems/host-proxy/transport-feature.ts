@@ -1,3 +1,6 @@
+import { dirname, join, win32 } from "node:path";
+import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "@lando/container-runtime/labels";
+import { sha256Hex } from "@lando/sdk/digest";
 import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
 
 import { isHostProxyRunLandoEnvName } from "./session-env.ts";
@@ -8,7 +11,8 @@ export { HOST_PROXY_RUN_LANDO_ENV_NAMES, isHostProxyRunLandoEnvName } from "./se
 
 export const HOST_PROXY_CONTAINER_SOCKET = "/run/lando/host-proxy.sock";
 export const HOST_PROXY_CONTAINER_LANDO = "/usr/local/bin/lando";
-export const HOST_PROXY_TRANSPORT_EXTENSION_KEY = "@lando/core/host-proxy-transport";
+export { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "@lando/container-runtime/labels";
+export const HOST_PROXY_CONTAINER_CREDENTIALS = "/run/lando/host-proxy/credentials";
 
 export interface HostProxyRunLandoFeatureSession extends HostProxyRunLandoConnectionSession {
   readonly shimPath: string;
@@ -18,6 +22,7 @@ export interface HostProxyRunLandoFeatureSession extends HostProxyRunLandoConnec
 
 interface HostProxyRunLandoFeatureMutators {
   addEnv(name: string, value: string): void;
+  addExtension(name: string, value: { readonly sessionDigest: string }): void;
   addMount(mount: {
     readonly type: "bind";
     readonly origin: "integration";
@@ -47,9 +52,21 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
         realization: "passthrough",
       });
     }
-    service.addEnv("LANDO_HOST_PROXY_TOKEN", session.token);
-    service.addEnv("LANDO_HOST_PROXY_SESSION", session.sessionId);
-    service.addEnv("LANDO_HOST_PROXY_APP", session.appId);
+    service.addExtension(HOST_PROXY_TRANSPORT_EXTENSION_KEY, {
+      sessionDigest: sha256Hex(session.sessionId).slice(0, 16),
+    });
+    const path =
+      /^[a-z]:[\\/]/iu.test(session.shimPath) || session.shimPath.startsWith("\\\\")
+        ? win32
+        : { dirname, join };
+    service.addMount({
+      type: "bind",
+      origin: "integration",
+      source: path.join(path.dirname(session.shimPath), "credentials"),
+      target: PortablePath.make(HOST_PROXY_CONTAINER_CREDENTIALS),
+      readOnly: true,
+      realization: "passthrough",
+    });
     service.addEnv("LANDO_HOST_PROXY_DEPTH", "0");
     for (const target of [HOST_PROXY_CONTAINER_LANDO, "/usr/local/bin/xdg-open", "/usr/local/bin/open"])
       service.addMount({
@@ -65,6 +82,7 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
 
 export const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_CONTAINER_CREDENTIALS,
   HOST_PROXY_CONTAINER_LANDO,
   "/usr/local/bin/xdg-open",
   "/usr/local/bin/open",

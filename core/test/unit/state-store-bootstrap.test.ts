@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
-import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
+import { type DurableStateBucketSpec, StateStore } from "@lando/sdk/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
@@ -29,7 +29,9 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const jsonSpec = (overrides: Partial<StateBucketSpec<Doc, Doc>> = {}): StateBucketSpec<Doc, Doc> => ({
+const jsonSpec = (
+  overrides: Partial<DurableStateBucketSpec<Doc, Doc>> = {},
+): DurableStateBucketSpec<Doc, Doc> => ({
   root: { path: dir },
   key: "doc.json",
   schema: Doc,

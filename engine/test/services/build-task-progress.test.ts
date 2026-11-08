@@ -93,6 +93,23 @@ const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
 const parentId = `build-artifact-${String(plan.id)}`;
 
 describe("makeBuildTaskProgress", () => {
+  test("failTask starts an unstarted service before failing it", async () => {
+    const publisher = collectPublisher();
+    const progress = makeBuildTaskProgress(publisher, plan);
+    await Effect.runPromise(progress.startTree);
+
+    await Effect.runPromise(progress.failTask(web));
+
+    expect(
+      publisher.events
+        .filter((event) => event._tag === "task.start" || event._tag === "task.fail")
+        .map((event) => [event._tag, event.taskId]),
+    ).toEqual([
+      ["task.start", "web"],
+      ["task.fail", "web"],
+    ]);
+  });
+
   test("startTree publishes parent identity, label, service-name children, and list mode", async () => {
     // Given
     const publisher = collectPublisher();

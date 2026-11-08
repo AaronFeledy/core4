@@ -10,7 +10,7 @@ import { mergeLogSources } from "../../src/services/log-sources";
 const source = (input: {
   readonly id: string;
   readonly path: string;
-  readonly strategy: LogSource["strategy"];
+  readonly strategy: "redirect" | "follow";
   readonly stream?: LogSource["stream"];
 }): LogSource => ({
   id: LogSourceId.make(input.id),
@@ -42,6 +42,31 @@ const expectFailure = (result: ReturnType<typeof merge>): LandofileValidationErr
 };
 
 describe("mergeLogSources", () => {
+  test("preserves pathless aliases on services without a build phase", () => {
+    // Given a native pipe alias with no filesystem policy.
+    const alias = { id: LogSourceId.make("error"), strategy: "console", stream: "stderr" } as const;
+    // When merging it on a service without a Lando build phase.
+    const result = merge({ base: "l337", typeSources: [alias] });
+    // Then the alias is preserved without file defaults.
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isFailure(result)) throw result.failure;
+    expect(result.success).toEqual([alias]);
+  });
+
+  test("lets an authored follow source override a same-id native alias", () => {
+    // Given a service alias and an explicit user file with the same id.
+    const file = source({ id: "access", path: "/app/access.log", strategy: "follow" });
+    // When applying the established user precedence.
+    const result = merge({
+      typeSources: [{ id: "access", strategy: "console", stream: "stdout" }],
+      userSources: [file],
+    });
+    // Then only the user's real file is followed.
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isFailure(result)) throw result.failure;
+    expect(result.success).toEqual([file]);
+  });
+
   test("lets user logs override service-type sources with the same id", () => {
     const result = merge({
       typeSources: [source({ id: "access", path: "/var/log/service/access.log", strategy: "redirect" })],

@@ -152,6 +152,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
           subscribe: () => Stream.empty,
           subscribeQueue: Effect.die("unused queue"),
           waitFor: () => Effect.never,
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.never,
           query: () => Effect.succeed([]),
         }),

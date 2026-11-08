@@ -1,7 +1,8 @@
 import { Effect, type Scope, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AppId, AppPlan } from "@lando/sdk/schema";
+import type { AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
+import { planDataId } from "@lando/sdk/schema";
 import type {
   AppSelector,
   CommandSpec,
@@ -25,7 +26,11 @@ export interface ResolvedProviderOpsInput {
   readonly resolvePlan: (app: AppId) => Effect.Effect<AppPlan | undefined>;
   readonly beforeMutation?: (app: AppId) => Effect.Effect<void, ProviderUnavailableError>;
   readonly noPlanError: (app: AppId, operation: string) => ProviderError;
-  readonly before?: Effect.Effect<void, ProviderError>;
+  readonly before?: (
+    operation: ResolvedProviderOperation,
+    plan?: AppPlan,
+    service?: ServiceName,
+  ) => Effect.Effect<void, ProviderError>;
   readonly readAppEnvironment: RuntimeProviderShape["readAppEnvironment"];
   readonly service: {
     readonly lifecycle: (
@@ -86,9 +91,11 @@ export type ResolvedProviderOps = Pick<
   | "exportArtifact"
   | "importArtifact"
 >;
+export type ResolvedProviderOperation = keyof ResolvedProviderOps;
 
 export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): ResolvedProviderOps => {
-  const before = input.before ?? Effect.void;
+  const before = (operation: ResolvedProviderOperation, plan?: AppPlan, service?: ServiceName) =>
+    input.before?.(operation, plan, service) ?? Effect.void;
   const beforeMutation = (app: AppId) => input.beforeMutation?.(app) ?? Effect.void;
   const unavailable = (operation: string) =>
     new ProviderUnavailableError({
@@ -97,30 +104,20 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       message: `Provider data-plane operation ${operation} is unavailable.`,
       remediation: input.ctx.remediation,
     });
-  const resolve = <A, E extends ProviderError, R>(
-    app: AppId,
-    operation: string,
-    delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, ProviderError | E, R> =>
-    input
-      .resolvePlan(app)
-      .pipe(
-        Effect.flatMap((plan) =>
-          plan === undefined
-            ? Effect.fail(input.noPlanError(app, operation))
-            : before.pipe(Effect.flatMap(() => delegate(plan))),
-        ),
-      );
   const resolveTarget = <A, E extends ProviderError, R>(
-    target: AppSelector,
-    operation: string,
+    target: AppSelector & { readonly service?: ServiceName },
+    operation: ResolvedProviderOperation,
     delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, ProviderError | E, R> => {
-    const directPlan = target.plan;
-    const resolved =
-      directPlan === undefined
-        ? resolve(target.app, operation, delegate)
-        : before.pipe(Effect.flatMap(() => delegate(directPlan)));
+    const resolved = (
+      target.plan === undefined ? input.resolvePlan(target.app) : Effect.succeed(target.plan)
+    ).pipe(
+      Effect.flatMap((plan) =>
+        plan === undefined
+          ? Effect.fail(input.noPlanError(target.app, operation))
+          : before(operation, plan, target.service).pipe(Effect.flatMap(() => delegate(plan))),
+      ),
+    );
     return operation === "inspect" || operation === "waitForExit" || operation === "observeVolume"
       ? resolved
       : beforeMutation(target.app).pipe(Effect.andThen(resolved));
@@ -133,7 +130,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       : Effect.succeed(target);
   const resolveTargetStream = <A, E extends ProviderError, R>(
     target: AppSelector,
-    operation: string,
+    operation: ResolvedProviderOperation,
     delegate: (plan: AppPlan) => Stream.Stream<A, E, R>,
   ): Stream.Stream<A, ProviderError | E, R> =>
     Stream.unwrap(resolveTarget(target, operation, (plan) => Effect.succeed(delegate(plan))));
@@ -145,7 +142,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
   ): Effect.Effect<Parameters<RuntimeProviderShape["run"]>[0], ProviderError> => {
     const owner = spec.owner;
     return owner === undefined
-      ? before.pipe(Effect.as(spec))
+      ? before(operation).pipe(Effect.as(spec))
       : resolveTarget(owner, operation, (plan) => Effect.succeed({ ...spec, owner: { ...owner, plan } }));
   };
 
@@ -189,7 +186,9 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     }),
     locateVolume: (ref) =>
       requireDataPlane("locateVolume").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.locateVolume(ref)))),
+        Effect.flatMap((dataPlane) =>
+          before("locateVolume").pipe(Effect.flatMap(() => dataPlane.locateVolume(ref))),
+        ),
       ),
     observeVolume: (target, destination) =>
       resolveTarget(
@@ -200,7 +199,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
           const dataPlane = yield* requireDataPlane("observeVolume");
           return yield* dataPlane.observeVolume({
-            app: target.app,
+            app: planDataId(plan),
             containerId: runtime.containerId,
             destination,
           });
@@ -216,7 +215,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           if (!runtime.containerId) return yield* Effect.fail(unavailable("adoptVolume"));
           const dataPlane = yield* requireDataPlane("adoptVolume");
           return yield* dataPlane.adoptVolume({
-            app: target.app,
+            app: planDataId(plan),
             containerId: runtime.containerId,
             destination,
             ownerRoot: plan.identity.appRoot,
@@ -239,7 +238,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       requireDataPlane("snapshotVolume").pipe(
         Effect.flatMap((dataPlane) =>
           beforeMutation(spec.volume.app).pipe(
-            Effect.andThen(before),
+            Effect.andThen(before("snapshotVolume")),
             Effect.flatMap(() => dataPlane.snapshotVolume(spec)),
           ),
         ),
@@ -247,7 +246,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     removeVolumeSnapshot: (snapshot, options) =>
       requireDataPlane("removeVolumeSnapshot").pipe(
         Effect.flatMap((dataPlane) =>
-          (options?.startRuntime === false ? Effect.void : before).pipe(
+          (options?.startRuntime === false ? Effect.void : before("removeVolumeSnapshot")).pipe(
             Effect.flatMap(() => dataPlane.removeVolumeSnapshot(snapshot, options)),
           ),
         ),
@@ -260,20 +259,22 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       requireDataPlane("restoreVolume").pipe(
         Effect.flatMap((dataPlane) =>
           beforeMutation(spec.target.app).pipe(
-            Effect.andThen(before),
+            Effect.andThen(before("restoreVolume")),
             Effect.flatMap(() => dataPlane.restoreVolume(spec)),
           ),
         ),
       ),
     listVolumes: (filter) =>
       requireDataPlane("listVolumes").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.listVolumes(filter)))),
+        Effect.flatMap((dataPlane) =>
+          before("listVolumes").pipe(Effect.flatMap(() => dataPlane.listVolumes(filter))),
+        ),
       ),
     removeVolume: (ref, expectedGeneration) =>
       requireDataPlane("removeVolume").pipe(
         Effect.flatMap((dataPlane) =>
           beforeMutation(ref.app).pipe(
-            Effect.andThen(before),
+            Effect.andThen(before("removeVolume")),
             Effect.flatMap(() => dataPlane.removeVolume(ref, expectedGeneration)),
           ),
         ),
@@ -284,7 +285,9 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           beforeMutation(target.app).pipe(
             Effect.andThen(withOptionalPlan(target)),
             Effect.flatMap((resolved) =>
-              before.pipe(Effect.flatMap(() => dataPlane.copyToService(resolved, spec))),
+              before("copyToService", resolved.plan).pipe(
+                Effect.flatMap(() => dataPlane.copyToService(resolved, spec)),
+              ),
             ),
           ),
         ),
@@ -295,7 +298,9 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           Effect.flatMap((dataPlane) =>
             withOptionalPlan(target).pipe(
               Effect.flatMap((resolved) =>
-                before.pipe(Effect.map(() => dataPlane.copyFromService(resolved, spec))),
+                before("copyFromService", resolved.plan).pipe(
+                  Effect.map(() => dataPlane.copyFromService(resolved, spec)),
+                ),
               ),
             ),
           ),
@@ -304,12 +309,16 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     exportArtifact: (ref) =>
       Stream.unwrap(
         requireDataPlane("exportArtifact").pipe(
-          Effect.flatMap((dataPlane) => before.pipe(Effect.map(() => dataPlane.exportArtifact(ref)))),
+          Effect.flatMap((dataPlane) =>
+            before("exportArtifact").pipe(Effect.map(() => dataPlane.exportArtifact(ref))),
+          ),
         ),
       ),
     importArtifact: (data) =>
       requireDataPlane("importArtifact").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.importArtifact(data)))),
+        Effect.flatMap((dataPlane) =>
+          before("importArtifact").pipe(Effect.flatMap(() => dataPlane.importArtifact(data))),
+        ),
       ),
   };
 };

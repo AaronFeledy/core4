@@ -480,12 +480,12 @@ describe("GlobalServiceMissingError", () => {
       message: "Global service(s) not available in the global app: mailpit.",
       requested: ["mailpit"],
       available: ["traefik"],
-      remediation: "Run lando global:install @lando/proxy-traefik to enable the router service.",
+      remediation: "Run lando global:enable @lando/proxy-traefik to enable the router service.",
     });
 
     expect(Result.isSuccess(decoded)).toBe(true);
     if (Result.isSuccess(decoded)) {
-      expect(decoded.success.remediation).toContain("global:install");
+      expect(decoded.success.remediation).toContain("global:enable");
       expect("missing" in decoded.success).toBe(false);
     }
     const without = Schema.decodeUnknownResult(GlobalServiceMissingError)({
@@ -504,7 +504,7 @@ describe("GlobalAutoStartError", () => {
       message: "Global service(s) not available in the global app: traefik.",
       requested: ["traefik"],
       available: [],
-      remediation: "Run lando global:install @lando/proxy-traefik to enable the router service.",
+      remediation: "Run lando global:enable @lando/proxy-traefik to enable the router service.",
     });
     const error = new GlobalAutoStartError({
       message: "Failed to auto-start global services (traefik) required by test-start.",

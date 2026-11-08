@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { EndpointPlan, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { landoServiceStoreName, normalizeAppSlug } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { type BaseSeed, type DraftServicePlan, makeDraft } from "./draft.ts";
@@ -27,9 +28,12 @@ export interface ComposeServiceInput {
   readonly base: BaseSeed;
   readonly baseKind: ServiceFeatureContext["base"];
   readonly appName?: string | undefined;
+  readonly dataName?: string | undefined;
+  readonly appSlug: string;
   readonly appRoot: ServiceFeatureContext["appRoot"];
   readonly host?: ServiceFeatureContext["host"];
   readonly normalizedConfig: ServiceConfig;
+  readonly resolutionMetadata?: Readonly<NonNullable<ServicePlan["provenance"]>> | undefined;
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
@@ -43,11 +47,18 @@ const makeContext = (
   base: input.baseKind,
   primary: draft.primary,
   appName: input.appName,
+  dataName: input.dataName,
   appRoot: input.appRoot,
   host: input.host,
   normalizedConfig: input.normalizedConfig,
   connection: draft.connection,
   config,
+  serviceStoreName: (role) =>
+    landoServiceStoreName(
+      input.dataName === undefined ? input.appSlug : normalizeAppSlug(input.dataName, input.appRoot),
+      draft.name,
+      role,
+    ),
   addEnv: (name, value) => {
     draft.environment[name] = value;
   },
@@ -83,6 +94,10 @@ const makeContext = (
   },
   setReadiness: (readiness) => {
     draft.readiness = { ...readiness };
+    draft.readinessSource = "contributed";
+  },
+  setListenerAuthority: (authority) => {
+    draft.listenerAuthority = authority;
   },
   setCerts: (certs) => {
     draft.certs = { ...certs };
@@ -92,6 +107,9 @@ const makeContext = (
   },
   setCommand: (command) => {
     draft.command = Array.isArray(command) ? [...command] : command;
+  },
+  setInit: (init) => {
+    draft.init = init;
   },
   setArtifact: (artifact) => {
     draft.artifact = { ...artifact };
@@ -118,6 +136,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
 > {
   const facts = input.prepared.facts;
   const draft = makeDraft({ ...facts.base, defaultFeatures: [] });
+  if (facts.baseKind === "lando") draft.init = true;
   const orderedFeatures = input.prepared.features;
   draft.featureIds = orderedFeatures.map((feature) => feature.id);
   const endpointContributions = input.endpointContributions;
@@ -136,6 +155,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
     { discard: true },
   );
 
+  if (facts.normalizedConfig.init !== undefined) draft.init = facts.normalizedConfig.init;
   const finalized = finalizeDraft(draft);
   if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
   return { plan: finalized, endpointContributions, featureIds: draft.featureIds };
@@ -144,6 +164,21 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
 export const composeServiceWithContributions = Effect.fn("ServiceFeature.composeServiceWithContributions")(
   function* (input: ComposeServiceInput) {
     const declared = yield* declarePreparedServiceEndpoints(prepareServiceComposition(input));
+    const firstError = declared.errors[0];
+    if (declared.errors.length === 1 && firstError !== undefined) return yield* Effect.fail(firstError);
+    if (declared.errors.length > 0)
+      return yield* Effect.fail(
+        new ServiceFeatureError({
+          feature: "composition",
+          message: declared.errors.map((error) => error.message).join("; "),
+          remediation: [...new Set(declared.errors.map((error) => error.remediation))].join(" "),
+          issues: declared.errors.flatMap((error) =>
+            error.issues?.length
+              ? error.issues
+              : [{ path: [], message: error.message, suggestion: error.remediation }],
+          ),
+        }),
+      );
     return yield* applyPreparedService({
       prepared: declared.prepared,
       endpointContributions: declared.contributions,

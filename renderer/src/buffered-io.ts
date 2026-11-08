@@ -12,6 +12,9 @@ export interface BufferedRendererIO extends RendererIO {
 }
 
 export interface BufferedRendererIOOptions {
+  readonly stdin?: string | Uint8Array;
+  readonly stdinIsTTY?: boolean;
+  readonly noColor?: boolean;
   readonly stdoutIsTTY?: boolean;
   readonly stdoutColumns?: number | undefined;
   readonly isTTY?: boolean;
@@ -39,6 +42,20 @@ export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}
   const stderrChunks: Uint8Array[] = [];
   const listeners = new Set<(raw: string) => void>();
   return {
+    stdinIsTTY: options.stdinIsTTY === true,
+    // Only an explicit stdin replaces the host's; buffering output alone leaves stdin inherited.
+    ...(options.stdin === undefined
+      ? {}
+      : {
+          stdin: new ReadableStream<Uint8Array>({
+            start(controller) {
+              const input = options.stdin;
+              if (input !== undefined)
+                controller.enqueue(typeof input === "string" ? new TextEncoder().encode(input) : input);
+              controller.close();
+            },
+          }),
+        }),
     writeStdout: (chunk) => {
       stdoutChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
       return true;
@@ -54,6 +71,7 @@ export const createBufferedRendererIO = (options: BufferedRendererIOOptions = {}
     stdoutLines: () => splitLines(new TextDecoder().decode(concatBytes(stdoutChunks))),
     stderrLines: () => splitLines(new TextDecoder().decode(concatBytes(stderrChunks))),
     ...(options.isTTY === undefined ? {} : { isTTY: options.isTTY }),
+    ...(options.noColor === undefined ? {} : { noColor: options.noColor }),
     ...(options.stdoutIsTTY === undefined ? {} : { stdoutIsTTY: options.stdoutIsTTY }),
     stdoutColumns: options.stdoutColumns,
     terminalColumns: options.terminalColumns,

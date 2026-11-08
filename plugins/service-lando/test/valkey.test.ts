@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { VALKEY_FEATURE_ID, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
@@ -41,7 +42,7 @@ describe("valkey ServiceType", () => {
     expect(plan.command).toEqual(["valkey-server", "--appendonly", "yes", "--port", "6379"]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
@@ -73,7 +74,8 @@ describe("valkey ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6379"],
+      command: tcpProbe(6379, 30).command,
+      target: { port: 6379, transport: "tcp", names: [], primary: false },
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -85,7 +87,7 @@ describe("valkey ServiceType", () => {
     const plan = await planValkeyService({ type: "valkey", port: 16379 });
 
     expect(firstEndpointPort(plan)).toBe(16379);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/16379"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(16379, 30));
   });
 
   test("user environment variables merge into the plan environment", async () => {

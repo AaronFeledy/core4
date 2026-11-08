@@ -139,6 +139,7 @@ describe("provider matrix acceptance reporting", () => {
       "managed-setup-readiness",
       "compose-knobs-transport",
       "storage-lifecycle",
+      "native-init",
       "sdk-provider-contract",
       "lando-bring-up",
       "lando-bring-down",

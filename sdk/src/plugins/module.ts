@@ -9,6 +9,7 @@ import type {
   SshError,
 } from "../errors/index.ts";
 import type { RendererContribution } from "../renderer/index.ts";
+import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
   AppPlan,
   AppliedStateInventory,
@@ -44,6 +45,7 @@ import type {
   SshService,
 } from "../services/index.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
+import type { PrivilegeService } from "../services/process.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";
 import type { LandoPluginContext } from "./index.ts";
@@ -79,10 +81,24 @@ export interface RuntimeProviderContribution {
 
 export interface HostMaintenanceContribution {
   readonly id: string;
-  readonly teardown: (input: {
+  readonly teardown?: (input: {
     readonly paths: HostRuntimePaths;
     readonly platform: HostPlatform;
   }) => Effect.Effect<HostTeardownResult, never>;
+  readonly uninstall?: {
+    readonly plan: (input: HostUninstallInput) => Effect.Effect<ReadonlyArray<HostUninstallStep>, never>;
+    readonly execute: (
+      input: HostUninstallInput & {
+        readonly step: HostUninstallStep;
+        readonly elevate?: PrivilegeService["Service"]["elevate"];
+      },
+    ) => Effect.Effect<HostUninstallOutcome, never>;
+  };
+}
+
+export interface HostUninstallInput {
+  readonly platform: HostPlatform;
+  readonly userDataRoot: string;
 }
 
 export interface HostRuntimePaths {
@@ -145,7 +161,11 @@ export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
  */
 export type ConfigTranslatorLoader = () => Promise<ConfigTranslatorShape>;
 
-export type FileSyncEngineContributionLayer = Layer.Layer<FileSyncEngine, unknown, unknown>;
+export type FileSyncEngineContributionLayer = Layer.Layer<
+  FileSyncEngine,
+  unknown,
+  PathsService | Downloader | ProcessRunner
+>;
 export interface FileSyncEngineContribution {
   readonly make: (ctx: LandoPluginContext) => FileSyncEngineContributionLayer;
 }

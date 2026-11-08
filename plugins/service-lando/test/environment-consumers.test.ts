@@ -77,8 +77,11 @@ test.each([
 test("MinIO retains reference authority with explicit component encoding in its client URL", async () => {
   const { ctx, calls } = recordFeatureContext({
     serviceType: "minio",
-    config: {},
-    normalizedConfig: { environment: { MINIO_ROOT_PASSWORD: reference } },
+    config: { consolePort: 9001 },
+    normalizedConfig: {
+      image: "example.test/minio:fixture",
+      environment: { MINIO_ROOT_PASSWORD: reference },
+    },
   });
   await Effect.runPromise(minioServiceFeature.apply(ctx));
   expect(calls).toContainEqual([

@@ -59,7 +59,10 @@ test("matches an accelerated user bind by mountKey after an internal integration
   };
   const selected: ServicePlan = {
     ...service,
-    environment: { LANDO_HOST_PROXY_SESSION: "session" },
+    extensions: {
+      ...service.extensions,
+      "@lando/core/host-proxy-transport": { sessionDigest: "0123456789abcdef" },
+    },
     mounts: [
       internalMount,
       {

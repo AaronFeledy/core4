@@ -13,5 +13,5 @@ export const appCacheRefreshSpec: LandoCommandSpec<AppCacheRefreshResult> = {
   namespace: "app",
   bootstrap: "app",
   run: () => refreshAppCache(),
-  render: (result) => renderAppCacheRefreshResult(result as AppCacheRefreshResult),
+  render: (result) => renderAppCacheRefreshResult(result),
 };

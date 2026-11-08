@@ -153,6 +153,7 @@ export interface TreeCompleteArgs {
   readonly succeeded: number;
   readonly failed: number;
   readonly durationMs?: number;
+  readonly outcome?: "failure" | "interrupted";
 }
 
 export const publishTreeComplete = Effect.fnUntraced(function* (
@@ -168,6 +169,7 @@ export const publishTreeComplete = Effect.fnUntraced(function* (
       succeeded: args.succeeded,
       failed: args.failed,
       ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
+      ...(args.outcome === undefined ? {} : { outcome: args.outcome }),
       timestamp,
     }),
   );

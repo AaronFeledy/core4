@@ -4,9 +4,10 @@ import { landofileLayerPaths } from "@lando/landofile/layers";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { ConfigTranslateError } from "@lando/sdk/errors";
-import type { ConfigTranslateDocument } from "@lando/sdk/schema";
+import type { ConfigTranslateDiagnostic, ConfigTranslateDocument } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { DocumentSetShape } from "./app-config-translate-document-set.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 
@@ -17,6 +18,7 @@ interface WriteTranslateTargetsRequest {
   readonly documents: ReadonlyArray<ConfigTranslateDocument>;
   readonly privateFileAccess: PrivateFileAccess;
   readonly transactionCheckpoint?: TransactionOptions["checkpoint"];
+  readonly onWriteBlocked?: (diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>) => Effect.Effect<void>;
 }
 
 export const writeTranslateTargets = Effect.fnUntraced(function* ({
@@ -26,6 +28,7 @@ export const writeTranslateTargets = Effect.fnUntraced(function* ({
   documents,
   privateFileAccess,
   transactionCheckpoint,
+  onWriteBlocked,
 }: WriteTranslateTargetsRequest) {
   if (preview.target !== "lando4")
     return yield* Effect.fail(
@@ -37,13 +40,16 @@ export const writeTranslateTargets = Effect.fnUntraced(function* ({
   const blocking = preview.diagnostics.filter(
     (diagnostic) => diagnostic.kind === "unsupported" || diagnostic.kind === "non-portable",
   );
-  if (blocking.length > 0)
+  if (blocking.length > 0) {
+    if (onWriteBlocked !== undefined) yield* onWriteBlocked(preview.diagnostics);
     return yield* Effect.fail(
       new ConfigTranslateError({
         message: `Cannot write translation: ${blocking.map((diagnostic) => `${diagnostic.kind}: ${diagnostic.message}`).join("; ")}`,
         remediation: "Resolve the reported diagnostics before using --write.",
+        diagnostics: preview.diagnostics,
       }),
     );
+  }
   const writable = landofileLayerPaths(appRoot).filter((layer) =>
     shape.writableLayerIds.includes(layer.layer),
   );
@@ -87,8 +93,9 @@ export const writeTranslateTargets = Effect.fnUntraced(function* ({
       },
     ]),
   );
+  const env = (yield* CliInvocation).env;
   const transactions = makeManagedFileTransactions({
-    journalRoot: () => resolveLandoRoots().userDataRoot,
+    journalRoot: () => resolveLandoRoots({ env }).userDataRoot,
     privateFileAccess,
     ...(transactionCheckpoint === undefined ? {} : { checkpoint: transactionCheckpoint }),
   });

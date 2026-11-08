@@ -10,6 +10,7 @@ import {
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
@@ -30,7 +31,7 @@ export const noCommandsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Tooling task ${tool} has no commands to run.`,
     tool,
-    remediation: `Add at least one command under tooling.${tool}, then run \`lando app:cache:refresh\`.`,
+    remediation: `Add at least one command under tooling.${tool}.`,
   });
 
 const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
@@ -96,6 +97,7 @@ const idleStdin = (): AsyncIterable<Uint8Array> => ({
 });
 
 const execSpec = (input: {
+  readonly hostEnv: Readonly<Record<string, string | undefined>>;
   readonly command: ReadonlyArray<string>;
   readonly cwd: string | undefined;
   readonly env: Readonly<Record<string, string>> | undefined;
@@ -110,7 +112,7 @@ const execSpec = (input: {
   // that case to cat, without overriding service or task env.
   const merged = withTerminalEnv({
     tty: input.tty,
-    hostEnv: process.env,
+    hostEnv: input.hostEnv,
     ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
     serviceEnv: input.serviceEnv,
     env: {
@@ -151,9 +153,11 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     return yield* Effect.fail(noCommandsError(invocation.tool));
   }
   const service = yield* resolveService(invocation, plan);
-  const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
+  const host = yield* HostExecutionDefaults;
+  const hostEnv = host?.env ?? process.env;
+  const cwd = resolveContainerCwd(service, invocation.cwd, host?.cwd ?? process.cwd());
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const typedEnv = withAgentContextEnv(invocation.env, process.env, {
+  const typedEnv = withAgentContextEnv(invocation.env, hostEnv, {
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
@@ -174,6 +178,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
       provider.execStream(
         target,
         execSpec({
+          hostEnv,
           command,
           cwd,
           env,
@@ -187,8 +192,8 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
       ),
       sink,
     );
-    stdout += result.stdout;
-    stderr += result.stderr;
+    stdout += result.stdout ?? "";
+    stderr += result.stderr ?? "";
     exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
     if (exitCode !== 0) break;
   }

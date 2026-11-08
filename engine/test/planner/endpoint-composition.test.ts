@@ -3,11 +3,11 @@ import { definePlugin } from "@lando/sdk/plugins";
 import { AppPlan, type EndpointPlan, PluginManifest, ServiceName } from "@lando/sdk/schema";
 import { type AppFeatureDefinition, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { bundledPluginModules } from "../../src/composition.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 const lateHttp: AppFeatureDefinition = {
   id: "test.late-http",
@@ -66,21 +66,18 @@ const plan = (service: Readonly<Record<string, unknown>>) =>
   Effect.gen(function* () {
     const registry = yield* PluginRegistry;
     return yield* planApp(
-      registry,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      yield* compileTestLandofile(
-        {
-          name: "endpoint-replay",
-          services: { web: { home: false, ...service } },
-        },
-        "/srv/endpoint-replay",
-      ),
-      TestRuntimeProvider.capabilities,
-      "/srv/endpoint-replay",
+      {
+        landofile: yield* compileTestLandofile(
+          {
+            name: "endpoint-replay",
+            services: { web: { home: false, ...service } },
+          },
+          "/srv/endpoint-replay",
+        ),
+        providerCapabilities: TestRuntimeProvider.capabilities,
+        appRoot: "/srv/endpoint-replay",
+      },
+      Layer.succeed(PluginRegistry, registry),
     );
   }).pipe(
     Effect.provide(
@@ -95,7 +92,14 @@ test("classifies an earlier publication from a late app-feature HTTP declaration
   const result = await Effect.runPromise(plan(service));
   // Then
   expect(result.services[ServiceName.make("web")]?.endpoints).toEqual([
-    { _tag: "internal", protocol: "http", port: 7000, name: "late", primary: true },
+    {
+      _tag: "internal",
+      protocol: "http",
+      port: 7000,
+      name: "late",
+      primary: true,
+      scan: { path: "/", okCodes: [] },
+    },
     {
       _tag: "published",
       protocol: "http",
@@ -103,6 +107,7 @@ test("classifies an earlier publication from a late app-feature HTTP declaration
       name: "late",
       primary: true,
       publication: { hostPort: 17000 },
+      scan: { path: "/", okCodes: [] },
     },
   ]);
   expect(result.routes[0]?.backend).toEqual({
@@ -141,6 +146,7 @@ test("retains typed credentials and exact declaration identity while replaying l
     port: 7000,
     name: "late",
     publication: { hostPort: 17000 },
+    scan: { path: "/", okCodes: [] },
   });
   expect(database?.endpoints).toContainEqual({
     _tag: "internal",
@@ -167,7 +173,9 @@ test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "http"
     // When
     const result = await Effect.runPromise(plan(service));
     // Then
-    expect(result.services[ServiceName.make("web")]?.endpoints).toEqual(endpoints);
+    expect(result.services[ServiceName.make("web")]?.endpoints).toEqual(
+      endpoints.map((endpoint) => ({ ...endpoint, scan: { path: "/", okCodes: [] } })),
+    );
     expect(result.routes.map((route) => route.backend.port)).toEqual(
       endpoints.map((endpoint) => endpoint.port),
     );
