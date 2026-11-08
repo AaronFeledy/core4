@@ -27,6 +27,7 @@ import { tcpProbe } from "./_tcp-probe.ts";
 import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 export const APACHE_LISTENER = {
@@ -126,6 +127,25 @@ export const apacheDirectivePath = (webroot: string, path: ValidationIssuePath =
 const PID_FILE = "/tmp/lando-httpd.pid";
 
 /**
+ * Apache builds its directory trailing-slash redirect from its own scheme and
+ * port, which behind the router are `http` and the container listener. For a
+ * request the router forwarded, redirect with the browser's scheme and `Host`
+ * instead. The condition admits only `http` and `https`, so the interpolated
+ * header cannot inject anything else into the redirect.
+ */
+export const apacheForwardedDirectoryRedirectDirectives = (
+  mechanism: "alias" | "rewrite",
+): ReadonlyArray<string> => [
+  `<If "%{HTTP:X-Forwarded-Proto} =~ /^https?$/ && -d %{REQUEST_FILENAME} && %{REQUEST_URI} !~ m#/$#">`,
+  // PHP's rewrite variant merges after .htaccess, so it wins over app rules that redirect the same request.
+  // Standalone httpd has no mod_rewrite; inside <If>, as in <Location>, mod_alias reads a lone target as an expression.
+  ...(mechanism === "rewrite"
+    ? ["RewriteEngine On", "RewriteRule ^ %{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/ [R=301,L]"]
+    : ['Redirect permanent "%{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/"']),
+  "</If>",
+];
+
+/**
  * The launcher for a service whose author declared no `command` or `entrypoint`.
  *
  * Every directive is handed to httpd as a repeated `-c` argument instead of
@@ -165,6 +185,8 @@ const apacheStartCommand = (
     "Require all granted",
     "-c",
     "</Directory>",
+    ...apacheForwardedDirectoryRedirectDirectives("alias").flatMap((directive) => ["-c", directive]),
+    ...apacheHiddenPathDirectives().flatMap((directive) => ["-c", directive]),
   ];
 };
 

@@ -35,6 +35,8 @@ export const TRAEFIK_STATIC_FLAGS: ReadonlyArray<string> = [
   "--log.level=INFO",
   "--api.dashboard=true",
   "--api.insecure=true",
+  // No forwardedHeaders trust: Traefik replaces client X-Forwarded-* with its own.
+  // Generated web servers rely on that X-Forwarded-Proto to report HTTPS to PHP.
   "--entrypoints.web.address=:80",
   "--entrypoints.websecure.address=:443",
   "--entrypoints.traefik.address=:8080",

@@ -4,6 +4,18 @@ export const HIDDEN_ASSET = "hidden\n";
 export const PHP_INDEX = "app-index-ok\n";
 export const PHP_ASSET = "php-static-asset-ok\n";
 
+export const HIDDEN_PATH_MARKER = "hidden-path-secret-marker";
+export const WELL_KNOWN_ASSET = "well-known-ok\n";
+const hiddenPathFixtureFiles = {
+  ".env": HIDDEN_PATH_MARKER,
+  ".git/config": HIDDEN_PATH_MARKER,
+  ".HTPASSWD": HIDDEN_PATH_MARKER,
+  ".well-known-extra/secret.txt": HIDDEN_PATH_MARKER,
+  ".well-known/.env": HIDDEN_PATH_MARKER,
+  "nested/.env": HIDDEN_PATH_MARKER,
+  ".well-known/ok.txt": WELL_KNOWN_ASSET,
+} as const;
+
 const phpResponse = (status: 403 | 404, marker: string, cookie: string, body: string | undefined): string =>
   [
     "<?php",
@@ -17,6 +29,9 @@ const phpResponse = (status: 403 | 404, marker: string, cookie: string, body: st
 
 /** Files written under a static app root; the document root is `dist/`. */
 export const staticFixtureFiles: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    Object.entries(hiddenPathFixtureFiles).map(([path, bytes]) => [`dist/${path}`, bytes]),
+  ),
   "dist/index.html": STATIC_INDEX,
   "dist/asset.txt": STATIC_ASSET,
   "dist/noindex/hidden.txt": HIDDEN_ASSET,
@@ -38,9 +53,19 @@ export const PATHINFO_SCRIPT = [
 
 /** Files written under a PHP app root; the app itself owns every `app*.php` status. */
 export const phpFixtureFiles: Readonly<Record<string, string>> = {
+  ...hiddenPathFixtureFiles,
+  ".hidden/x.php": `<?php echo '${HIDDEN_PATH_MARKER}';\n`,
   "index.php": `<?php\nheader('X-App-Marker: index');\necho ${JSON.stringify(PHP_INDEX)};\n`,
   "asset.txt": PHP_ASSET,
   "noindex/hidden.txt": HIDDEN_ASSET,
+  "scheme.php": "<?php echo 'HTTPS=' . ($_SERVER['HTTPS'] ?? '');\n",
+  ...Object.fromEntries(
+    ["secret.PHP", "mixed.Php", ".PHP", "dir/.PhP", "control.php"].map((file) => [
+      file,
+      "<?php echo strrev('DETUCEXE_ESAC'); /* case-source-marker */\n",
+    ]),
+  ),
+  "wp-admin/hidden.txt": HIDDEN_ASSET,
   "app403.php": phpResponse(403, "app403", "app403value", "app-403-body\n"),
   "app403-empty.php": phpResponse(403, "app403-empty", "app403emptyvalue", undefined),
   "app404.php": phpResponse(404, "app404", "app404value", "app-404-body\n"),

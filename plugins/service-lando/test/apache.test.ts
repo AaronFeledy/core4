@@ -7,9 +7,11 @@ import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
   APACHE_FEATURE_ID,
   APACHE_LISTEN_BUILD_STEP_ID,
+  apacheForwardedDirectoryRedirectDirectives,
   apacheServiceFeature,
   apacheServiceType,
 } from "../src/services/apache.ts";
+import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -79,6 +81,26 @@ const composeApachePlan = (raw: unknown, serviceName = "web"): Promise<ServicePl
   });
 
 describe("apache ServiceType", () => {
+  test.each([
+    {
+      mechanism: "alias",
+      redirect: ['Redirect permanent "%{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/"'],
+    },
+    {
+      mechanism: "rewrite",
+      redirect: [
+        "RewriteEngine On",
+        "RewriteRule ^ %{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/ [R=301,L]",
+      ],
+    },
+  ] as const)("redirects forwarded directory requests with $mechanism", ({ mechanism, redirect }) => {
+    expect(apacheForwardedDirectoryRedirectDirectives(mechanism)).toEqual([
+      `<If "%{HTTP:X-Forwarded-Proto} =~ /^https?$/ && -d %{REQUEST_FILENAME} && %{REQUEST_URI} !~ m#/$#">`,
+      ...redirect,
+      "</If>",
+    ]);
+  });
+
   test("plans a default Apache web service with APACHE_DOCUMENT_ROOT env", async () => {
     const plan = await composeApachePlan({ type: "apache" });
 
@@ -178,6 +200,8 @@ describe("apache ServiceType", () => {
       "Require all granted",
       "-c",
       "</Directory>",
+      ...apacheForwardedDirectoryRedirectDirectives("alias").flatMap((directive) => ["-c", directive]),
+      ...apacheHiddenPathDirectives().flatMap((directive) => ["-c", directive]),
     ]);
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });

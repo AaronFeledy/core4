@@ -34,6 +34,7 @@ On a matched host with default `static:nginx`:
 
 - Missing file → **`404 · Lando web server`** / "Page not found"
 - Directory without an index → **`403 · Lando web server`** / "Access denied"
+- Hidden path, any segment starting with `.` such as `/.git/config` or `/.env` → **`403 · Lando web server`**. `/.well-known/` stays served.
 
 Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use the Traefik proxy](../subsystems/proxy-traefik.mdx).
 
