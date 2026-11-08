@@ -40,7 +40,7 @@ import {
 } from "./owned-resource-teardown.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
-import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import { type RetirementReceipt, retireSupersededRealizations } from "./superseded-realizations.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -68,6 +68,19 @@ const unchangedResult = (app: string): StopAppResult => ({
   servicesStopped: [],
 });
 
+const withRetirement = (result: StopAppResult, retired: RetirementReceipt | undefined): StopAppResult =>
+  retired === undefined
+    ? result
+    : withShutdownObservations(
+        {
+          ...result,
+          outcome: "stopped" as const,
+          servicesStopped: [...new Set([...retired.servicesRemoved, ...result.servicesStopped])],
+        },
+        retired.shutdownObservations,
+        result.shutdownObservations,
+      );
+
 const stopAppWithResolvedPlan = (
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
@@ -83,7 +96,7 @@ const stopAppWithResolvedPlan = (
       const context = yield* Effect.context<StopAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      let retired = false;
+      let retired: RetirementReceipt | undefined;
       let validatedTarget = execution.revalidate ? yield* validateResolvedAppTarget(target) : target;
       const placement = yield* resolveAppPlacement(
         execution.reconcileApp ?? validatedTarget.app,
@@ -105,6 +118,7 @@ const stopAppWithResolvedPlan = (
         yield* preflightStopApp(validatedTarget);
         retired = yield* retireSupersededRealizations(validatedTarget, placement.superseded, {
           provider: yield* registry.select(placement.plan ?? placement.superseded[0] ?? validatedTarget.plan),
+          narration: "teardown",
         });
       }
       yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
@@ -135,23 +149,29 @@ const stopAppWithResolvedPlan = (
             break;
           case "orphans":
             return {
-              result: yield* stopOrphans({
-                kind: "orphans",
-                root: validatedTarget.root,
-                groups: evidence.groups,
-                landofilePresent: true,
-              }),
+              result: withRetirement(
+                yield* stopOrphans({
+                  kind: "orphans",
+                  root: validatedTarget.root,
+                  groups: evidence.groups,
+                  landofilePresent: true,
+                }),
+                retired,
+              ),
               plan: validatedTarget.plan,
             };
           case "owned":
           case "absent": {
             const removed = yield* cleanup;
             return {
-              result: {
-                app: validatedTarget.plan.name,
-                outcome: retired || ownedCleanupChanged(removed) ? "stopped" : "unchanged",
-                servicesStopped: removed.servicesRemoved,
-              },
+              result: withRetirement(
+                {
+                  app: validatedTarget.plan.name,
+                  outcome: retired || ownedCleanupChanged(removed) ? "stopped" : "unchanged",
+                  servicesStopped: removed.servicesRemoved,
+                },
+                retired,
+              ),
               plan: validatedTarget.plan,
             };
           }
@@ -176,14 +196,17 @@ const stopAppWithResolvedPlan = (
       const removed = yield* cleanup;
       return {
         ...stopped,
-        result: {
-          ...stopped.result,
-          outcome:
-            stopped.result.outcome !== "unchanged" || ownedCleanupChanged(removed)
-              ? ("stopped" as const)
-              : ("unchanged" as const),
-          servicesStopped: [...new Set([...stopped.result.servicesStopped, ...removed.servicesRemoved])],
-        },
+        result: withRetirement(
+          {
+            ...stopped.result,
+            outcome:
+              stopped.result.outcome !== "unchanged" || ownedCleanupChanged(removed)
+                ? ("stopped" as const)
+                : ("unchanged" as const),
+            servicesStopped: [...new Set([...stopped.result.servicesStopped, ...removed.servicesRemoved])],
+          },
+          retired,
+        ),
       };
     }),
   );

@@ -1,6 +1,6 @@
 import { AppResolveError, FileSyncStartError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type AppPlan, planDataId } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceShutdownObservation, planDataId } from "@lando/sdk/schema";
 import {
   EventService,
   FileSyncEngine,
@@ -21,6 +21,13 @@ import {
   validateDesiredFileSyncEngine,
 } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
+
+export type RetirementReceipt = {
+  readonly servicesRemoved: readonly string[];
+  readonly volumesRemoved: boolean;
+  readonly shutdownObservations?: readonly ServiceShutdownObservation[];
+};
 
 export const validateSelectedRename = (
   target: ResolvedAppTarget,
@@ -48,9 +55,10 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
       readonly selectedServices?: boolean;
       readonly volumes?: boolean;
       readonly purgeCaches?: boolean;
+      readonly narration?: "launch" | "teardown";
     },
   ) {
-    if (superseded.length === 0) return Effect.succeed(false);
+    if (superseded.length === 0) return Effect.succeed<RetirementReceipt | undefined>(undefined);
     yield* validateSelectedRename(target, superseded, execution.selectedServices === true);
     // Read the root-keyed record without validating it against the desired name's plan.
     const { pending, path } = yield* readJournal(target.app);
@@ -99,6 +107,9 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
     >();
     return Effect.gen(function* () {
       yield* guard.ensureConsistent(String(target.root));
+      const servicesRemoved = new Set<string>();
+      let volumesRemoved = false;
+      const observations: Array<readonly ServiceShutdownObservation[] | undefined> = [];
       for (const { old, app, disposal } of prepared) {
         yield* withPlanVolumeCoordination({
           plan: old,
@@ -107,9 +118,10 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
           body: () =>
             Effect.gen(function* () {
               yield* disposal.quiesceRetained;
-              yield* disposal.dispose;
+              const quiesced = yield* disposal.dispose;
+              observations.push(quiesced.shutdownObservations);
               yield* cleanupAppWorkers(app);
-              yield* provider.destroy(
+              const outcome = yield* provider.destroy(
                 { app: old.id, plan: old },
                 {
                   volumes: execution.volumes === true,
@@ -117,6 +129,20 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
                   removeState: true,
                 },
               );
+              observations.push(outcome.shutdownObservations);
+              switch (outcome.kind) {
+                case "destroyed":
+                  for (const service of Object.values(old.services).reverse())
+                    servicesRemoved.add(service.name);
+                  volumesRemoved ||= execution.volumes === true || execution.purgeCaches === true;
+                  break;
+                case "no-op":
+                  break;
+                default: {
+                  const unreachable: never = outcome;
+                  return unreachable;
+                }
+              }
               yield* disposal.complete;
               const carriesData = planDataId(old) === planDataId(target.plan);
               const retained = carriesData
@@ -126,16 +152,22 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
                     .map((store) => store.name);
               yield* events.publish(
                 MessageWarnEvent.make({
-                  body: carriesData
-                    ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
-                    : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
+                  body:
+                    execution.narration === "teardown"
+                      ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && execution.volumes === true ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && execution.purgeCaches === true ? " and removed its cache volumes" : ""}.`
+                      : carriesData
+                        ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
+                        : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
                   timestamp: DateTime.nowUnsafe(),
                 }),
               );
             }).pipe(Effect.provide(context)),
         });
       }
-      return true;
+      return withShutdownObservations(
+        { servicesRemoved: [...servicesRemoved], volumesRemoved },
+        ...observations,
+      ) satisfies RetirementReceipt;
     }).pipe(Effect.provide(context));
   },
 );

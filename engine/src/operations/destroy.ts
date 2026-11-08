@@ -38,7 +38,7 @@ import { executeTeardown } from "./destroy-execute.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import { planUserTeardown } from "./destroy-plan.ts";
 import { resolveMissingDestroyRoot } from "./destroy-resolution.ts";
-import { prepareSupersededRealizations } from "./superseded-realizations.ts";
+import { type RetirementReceipt, prepareSupersededRealizations } from "./superseded-realizations.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -71,7 +71,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
   return yield* withAppMutationLock(
     { id: id ?? root, root, kind: resolution.kind === "applied" ? resolution.target.app.kind : "user" },
     Effect.gen(function* () {
-      let retire: Effect.Effect<boolean, SdkDestroyAppError> | undefined;
+      let retire: Effect.Effect<RetirementReceipt | undefined, SdkDestroyAppError> | undefined;
       if (resolution.kind === "applied" && request.missingRoot !== true)
         yield* validateResolvedAppTarget(resolution.target);
       if (resolution.kind === "applied" && resolution.target.app.kind === "user") {
@@ -94,6 +94,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
             provider,
             volumes: options.volumes === true,
             purgeCaches: options.purgeCaches === true,
+            narration: "teardown",
           });
         }
       }

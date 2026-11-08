@@ -16,6 +16,7 @@ import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
 import { type LandofileEventPlan, resolveLandofileEventPlan } from "./landofile-events.ts";
+import type { RetirementReceipt } from "./superseded-realizations.ts";
 
 /** Read-only evidence for one invocation, never a fabricated desired/applied plan. */
 export type TeardownPlan = {
@@ -37,7 +38,7 @@ export type TeardownPlan = {
   readonly snapshots: ReadonlyArray<SnapshotInfo>;
   readonly followUpOrphans: boolean;
   readonly options: DestroyAppOptions;
-  readonly retire?: Effect.Effect<boolean, DestroyAppError>;
+  readonly retire?: Effect.Effect<RetirementReceipt | undefined, DestroyAppError>;
 };
 
 export const uniqueDestroyRefs = (refs: ReadonlyArray<AppRef>): ReadonlyArray<AppRef> => [
