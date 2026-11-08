@@ -224,6 +224,48 @@ describe("workflow performance runner", () => {
     expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(0);
   });
 
+  test("starts the global services a lane's first measured start would otherwise build", async () => {
+    // Given lanes whose first measured command is their app's first start.
+    const commands: WorkflowPerformanceCommand[] = [];
+    await runWorkflowPerformance({
+      ...options(),
+      runCommand: (command) => {
+        commands.push(command);
+        const appName = command.argv.at(-2);
+        const initTargetExists =
+          command.id === "init" && appName !== undefined && existsSync(join(command.cwd, appName));
+        return Promise.resolve({
+          id: command.id,
+          durationMs: 12,
+          exitCode: initTargetExists ? 1 : 0,
+          stdout: command.id === "prepare:setup" ? setupStdout("satisfied") : "http://app.test",
+          stderr: initTargetExists ? "init destination already exists" : "",
+        });
+      },
+    });
+    const laneCommands = (lane: string) =>
+      commands.filter((command) => command.cwd.includes(`/samples/perf-${lane}-1/`));
+
+    // When preparation finishes, Then each lane's global services are already started.
+    for (const [lane, firstMeasured, services] of [
+      ["cold-first-start", "start", ["ssh-agent"]],
+      ["drupal-journey", "init", ["ssh-agent"]],
+      ["rails-journey", "init", ["ssh-agent"]],
+    ] as const) {
+      const ids = laneCommands(lane).map((command) => command.id);
+      const global = laneCommands(lane).find((command) => command.id === "prepare:global");
+      expect(global?.argv.slice(1)).toEqual([
+        "meta:global:start",
+        ...services.flatMap((service) => ["--service", service]),
+      ]);
+      expect(ids.indexOf("prepare:global")).toBeGreaterThan(ids.lastIndexOf("prepare:pre-pull"));
+      expect(ids.indexOf("prepare:global")).toBeLessThan(ids.indexOf(firstMeasured));
+    }
+    for (const lane of ["warm-stop-start", "mysql-import", "postgres-snapshot-restore"]) {
+      expect(laneCommands(lane).map((command) => command.id)).not.toContain("prepare:global");
+    }
+  });
+
   test("retains a controlled failing fixture and exits nonzero", async () => {
     const report = await runWorkflowPerformance({
       ...options(),
