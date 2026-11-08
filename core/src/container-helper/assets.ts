@@ -58,6 +58,8 @@ const fromFileIfPresent = async (
     throw cause;
   });
   if (info === undefined) return undefined;
+  await chmod(dirname(path), 0o755);
+  if ((Number(info.mode) & 0o777) !== 0o755) await chmod(path, 0o755);
   const identity = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
   const cached = verifiedFiles.get(path);
   if (cached?.identity === identity) return { ...cached.artifact, target };
@@ -108,7 +110,9 @@ export const extractEmbeddedContainerHelper = async (input: {
   const bytes = gunzipSync(new Uint8Array(await match.file.arrayBuffer()));
   if (sha256Hex(bytes) !== match.digest)
     throw new HelperResolveFailure("Embedded container helper failed its checksum.");
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o755 });
+  await chmod(dirname(path), 0o755);
+  await chmod(dirname(dirname(path)), 0o755);
   const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
   try {
     await writeFile(staging, bytes, { flag: "wx", mode: 0o755 });

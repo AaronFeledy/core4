@@ -12,6 +12,7 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import {
+  fixtureHelperOptionsFor,
   installSupervisedExecFixture,
   resolveBuiltContainerHelperForTest,
   supervisedExecFixtureOptions,
@@ -37,6 +38,7 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const textEncoder = new TextEncoder();
 const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]>) =>
   providerLayer({
+    ...fixtureHelperOptionsFor(options.podmanApi),
     resolveContainerHelper: resolveBuiltContainerHelperForTest,
     ...options,
     ...supervisedExecFixtureOptions(options.podmanApi),

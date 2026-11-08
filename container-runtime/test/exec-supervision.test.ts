@@ -1,32 +1,27 @@
-import { describe, expect, test } from "bun:test";
-import {
-  ContainerHelperUnavailableError,
-  ProviderInternalError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { CommandSpec, ExecChunk, ProviderError } from "@lando/sdk/services";
-import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, type Scope, Stream } from "effect";
-import { TestClock } from "effect/testing";
+import { expect, test } from "bun:test";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Deferred, Effect, Exit, Fiber, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { supervisedExecStream as execStream } from "../src/exec-supervision.ts";
+import { execDataFrames, execEofFrame, execSignalFrame } from "../src/exec-control.ts";
+import { supervisedExecStream } from "../src/exec-supervision.ts";
+import { execStream as plainExecStream } from "../src/podman/exec-transport.ts";
+import { rememberExecUmask } from "../src/podman/exec-umask.ts";
 import { execStream as dispatchExecStream } from "../src/podman/exec.ts";
-import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
 
-const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
+const ctx = { providerId: "docker", remediation: "Reconnect the provider.", env: {} };
 const service = ServiceName.make("web");
-const app = AppId.make("supervision-races");
 const provider = ProviderId.make("docker");
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
   source: "exec-supervision.test.ts",
   runtime: 4 as const,
 };
-const plan: AppPlan = {
-  id: app,
-  name: "Supervision races",
-  slug: "supervision-races",
-  root: AbsolutePath.make("/tmp/supervision-races"),
+const plan = {
+  id: AppId.make("exec-supervision"),
+  name: "Exec",
+  slug: "exec-supervision",
+  root: AbsolutePath.make("/tmp/exec-supervision"),
   provider,
   services: {
     [service]: {
@@ -34,7 +29,7 @@ const plan: AppPlan = {
       type: "node",
       provider,
       primary: true,
-      artifact: { kind: "ref", ref: "node:22-alpine" },
+      artifact: { kind: "ref" as const, ref: "node:22" },
       environment: {},
       mounts: [],
       endpoints: [],
@@ -51,825 +46,230 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
-const target = { app, service, user: "1000:1000" };
-const providerFailure = (message: string) =>
-  new ProviderUnavailableError({ ...ctx, operation: "exec", message });
-const frame = (value: string, stream = 1) => {
-  const payload = new TextEncoder().encode(value);
-  const result = new Uint8Array(payload.length + 8);
+const target = { app: plan.id, service };
+const helperTarget = { os: "linux", arch: "x64" } as const;
+const helper = {
+  path: AbsolutePath.make("/fixture/linux-x64/lando-container-helper"),
+  digest: "a".repeat(64),
+  target: helperTarget,
+};
+const frame = (text: string, stream = 1) => {
+  const bytes = new TextEncoder().encode(text);
+  const result = new Uint8Array(8 + bytes.length);
   result[0] = stream;
-  new DataView(result.buffer).setUint32(4, payload.length);
-  result.set(payload, 8);
+  new DataView(result.buffer).setUint32(4, bytes.length);
+  result.set(bytes, 8);
   return result;
 };
-type Stage =
-  | "init-create"
-  | "init-start"
-  | "primary-create"
-  | "primary-start"
-  | "ready"
-  | "launch"
-  | "watch-inspect"
-  | "watch-create"
-  | "watch"
-  | "status"
-  | "cancel"
-  | "collect"
-  | "cleanup";
-interface Hooks {
-  readonly prepareCommand?: Effect.Effect<CommandSpec, ProviderError, Scope.Scope>;
-  readonly launchExitCode?: number;
-  readonly stderr?: string;
-  readonly installError?: ProviderError;
-  readonly before?: (stage: Stage, input: EngineHttpRequest) => Effect.Effect<void, ProviderUnavailableError>;
-  readonly replaceStream?: (
-    stage: Stage,
-    input: EngineHttpRequest,
-  ) => Stream.Stream<Uint8Array, ProviderUnavailableError> | undefined;
-  readonly mainError?: ProviderUnavailableError;
-  readonly exitCode?: number;
-  readonly noOutput?: boolean;
-  readonly watchRunningReplies?: number;
-  readonly watchBeforeEOF?: Promise<void>;
-  readonly onWatchTerminal?: () => void;
-  readonly watchTrailingBytes?: Uint8Array;
-  readonly watchReadyTrailingBytes?: Uint8Array;
-}
-const fixture = (hooks: Hooks = {}) => {
+const fixture = (mounted = true) => {
   const requests: EngineHttpRequest[] = [];
-  const observedChunks: ExecChunk[] = [];
-  const events: Stage[] = [];
-  const commands = new Map<string, readonly string[]>();
-  let primaryStarts = 0;
-  let launches = 0;
-  let watchPulses = 0;
-  const endedWatches = new Set<string>();
-  const pulseWaiters: Array<{ readonly count: number; readonly resolve: () => void }> = [];
-  const eventWaiters: Array<{ readonly stage: Stage; readonly resolve: () => void }> = [];
-  const recordEvent = (stage: Stage): void => {
-    events.push(stage);
-    for (const waiter of eventWaiters) if (waiter.stage === stage) waiter.resolve();
-  };
-  const recordPulse = (): void => {
-    watchPulses++;
-    for (const waiter of pulseWaiters) if (watchPulses >= waiter.count) waiter.resolve();
-  };
+  const input: Uint8Array[] = [];
   const api: EngineHttpApi = {
-    request: (input) =>
+    request: (request) =>
       Effect.sync(() => {
-        if (input.method === "GET" && input.path.startsWith("/containers/") && input.path.endsWith("/json"))
-          return { status: 200, body: JSON.stringify({ Id: "immutable-container-id" }) };
-        if (input.method === "POST" && input.path.endsWith("/exec"))
-          return { status: 201, body: JSON.stringify({ Id: "primary-exec-id" }) };
-        if (input.path === "/exec/primary-exec-id/json")
-          return { status: 200, body: JSON.stringify({ Running: false, ExitCode: hooks.exitCode ?? 0 }) };
-        return { status: 500, body: "unexpected fake engine request" };
+        requests.push(request);
+        return {
+          status: 200,
+          body: JSON.stringify(
+            request.path.startsWith("/containers/") && request.method === "GET"
+              ? {
+                  Id: "container",
+                  Mounts: mounted
+                    ? [{ Source: "/fixture/linux-x64", Destination: "/run/lando/helper", RW: false }]
+                    : [],
+                }
+              : request.method === "POST"
+                ? { Id: "exec" }
+                : { Running: false, ExitCode: 7 },
+          ),
+        };
       }),
-    stream: (input) =>
-      Stream.suspend(() => {
-        input.onResponseHead?.();
-        return hooks.mainError === undefined
-          ? hooks.noOutput === true
-            ? Stream.empty
-            : Stream.make(frame(hooks.stderr ?? "command output\n", hooks.stderr === undefined ? 1 : 2))
-          : Stream.fail(hooks.mainError);
-      }),
-  };
-  const supervised = installSupervisedExecFixture(api, hooks);
-  if (supervised === undefined) throw new TypeError("Fixture was already installed.");
-  const request = api.request;
-  const stream = api.stream;
-  if (request === undefined || stream === undefined) throw new TypeError("Missing fixture transport.");
-  const stageFor = (cmd: readonly string[] | undefined, starting: boolean): Stage | undefined => {
-    if (cmd?.[1] === "exec-prepare") return starting ? "init-start" : "init-create";
-    if (cmd?.[1] === "exec-supervisor") return starting ? "primary-start" : "primary-create";
-    if (cmd?.[1] === "exec-cleanup") return starting ? "cleanup" : undefined;
-    if (cmd?.[1] === "exec-control" && cmd[4] === "watch" && !starting) return "watch-create";
-    if (starting && cmd?.[1] === "exec-control") return cmd[4] as Stage;
-    return undefined;
-  };
-  Object.assign(api, {
-    request: (input: EngineHttpRequest) =>
-      Effect.gen(function* () {
-        requests.push(input);
-        const cmd = (input.body as { Cmd?: readonly string[] } | undefined)?.Cmd;
-        const inspectId = /^\/exec\/([^/]+)\/json$/u.exec(input.path)?.[1];
-        const inspectedCmd = inspectId === undefined ? undefined : commands.get(inspectId);
-        const stage =
-          stageFor(cmd, false) ??
-          (inspectedCmd?.[1] === "exec-control" && inspectedCmd[4] === "watch" ? "watch-inspect" : undefined);
-        if (stage !== undefined) {
-          recordEvent(stage);
-          yield* hooks.before?.(stage, input) ?? Effect.void;
-        }
-        const response = yield* request(input);
-        if (inspectId !== undefined && endedWatches.has(inspectId))
-          return { status: 200, body: JSON.stringify({ Running: false, ExitCode: 0 }) };
-        if (cmd !== undefined && response.status < 300)
-          commands.set((JSON.parse(response.body) as { Id: string }).Id, cmd);
-        return response;
-      }),
-    stream: (input: EngineHttpRequest) =>
+    stream: (request) =>
       Stream.unwrap(
         Effect.gen(function* () {
-          requests.push(input);
-          const id = /^\/exec\/([^/]+)\/start$/u.exec(input.path)?.[1];
-          const stage = stageFor(id === undefined ? undefined : commands.get(id), true);
-          if (stage !== undefined) {
-            recordEvent(stage);
-            yield* hooks.before?.(stage, input) ?? Effect.void;
-            const replacement = hooks.replaceStream?.(stage, input);
-            if (replacement !== undefined) return replacement;
-            if (stage === "primary-start") primaryStarts++;
-            if (stage === "launch") launches++;
-            if (stage === "watch" && hooks.watchRunningReplies !== undefined) {
-              return Stream.fromAsyncIterable(
-                {
-                  async *[Symbol.asyncIterator]() {
-                    input.onResponseHead?.();
-                    let pending = "";
-                    let runningReplies = 0;
-                    let previousSeq = 0;
-                    for await (const chunk of input.stdin ?? []) {
-                      pending += new TextDecoder().decode(chunk);
-                      for (
-                        let newline = pending.indexOf("\n");
-                        newline >= 0;
-                        newline = pending.indexOf("\n")
-                      ) {
-                        const pulse = JSON.parse(pending.slice(0, newline)) as { op?: string; seq?: number };
-                        pending = pending.slice(newline + 1);
-                        if (
-                          pulse.op !== "status" ||
-                          typeof pulse.seq !== "number" ||
-                          !Number.isSafeInteger(pulse.seq) ||
-                          pulse.seq <= previousSeq
-                        )
-                          throw new Error("Unexpected watch pulse.");
-                        previousSeq = pulse.seq;
-                        recordPulse();
-                        if (launches === 0) {
-                          recordEvent("ready");
-                          const ready = frame(
-                            `${JSON.stringify({ ok: true, seq: pulse.seq, state: "ready" })}\n`,
-                          );
-                          yield hooks.watchReadyTrailingBytes === undefined
-                            ? ready
-                            : Buffer.concat([ready, hooks.watchReadyTrailingBytes]);
-                          if (hooks.watchReadyTrailingBytes !== undefined) {
-                            if (id !== undefined) endedWatches.add(id);
-                            return;
-                          }
-                          continue;
-                        }
-                        if (runningReplies++ < (hooks.watchRunningReplies ?? 0)) {
-                          yield frame(`${JSON.stringify({ ok: true, seq: pulse.seq, state: "running" })}\n`);
-                          continue;
-                        }
-                        hooks.onWatchTerminal?.();
-                        supervised.collect(commands.get(id ?? "")?.[2] ?? "");
-                        yield frame(
-                          `${JSON.stringify({ ok: true, seq: pulse.seq, state: "finished", exitCode: hooks.exitCode ?? 0, joined: true })}\n`,
-                        );
-                        if (hooks.watchTrailingBytes !== undefined) yield hooks.watchTrailingBytes;
-                        if (hooks.watchBeforeEOF !== undefined) await hooks.watchBeforeEOF;
-                        if (id !== undefined) endedWatches.add(id);
-                        return;
-                      }
-                    }
-                    if (id !== undefined) endedWatches.add(id);
-                  },
-                },
-                () => providerFailure("controlled-watch-failed"),
-              );
-            }
+          requests.push(request);
+          request.onResponseHead?.();
+          if (request.stdin !== undefined) {
+            const stdin = request.stdin;
+            yield* Effect.promise(async () => {
+              for await (const bytes of stdin) {
+                input.push(bytes);
+                if (bytes[0] === 1) break;
+              }
+            });
           }
-          return stream(input).pipe(
-            Stream.flatMap((chunk) => {
-              if (stage !== "watch" || !new TextDecoder().decode(chunk).includes('"state":"ready"'))
-                return Stream.make(chunk);
-              recordEvent("ready");
-              return Stream.fromEffect(hooks.before?.("ready", input) ?? Effect.void).pipe(
-                Stream.flatMap(() => hooks.replaceStream?.("ready", input) ?? Stream.make(chunk)),
-              );
-            }),
-          );
+          return Stream.make(frame("out\0\n"), frame("err\n", 2));
         }),
       ),
-  });
-  const runEffect = (controller?: AbortController, extra: Partial<CommandSpec> = {}) => {
-    const chunks = observedChunks;
-    const effect = execStream(
-      plan,
-      target,
-      {
-        command: ["test-command"],
-        tty: false,
-        ...(controller === undefined ? {} : { signal: controller.signal }),
-        ...extra,
-      },
-      {
-        api,
-        ctx,
-        ...supervisedExecFixtureOptions(api),
-        ...(hooks.prepareCommand === undefined ? {} : { prepareCommand: hooks.prepareCommand }),
-      },
-    ).pipe(
-      Stream.runForEach((chunk) =>
-        Effect.sync(() => {
-          chunks.push(chunk);
-        }),
-      ),
-      Effect.scoped,
-      Effect.exit,
-    );
-    return effect.pipe(Effect.map((exit) => ({ exit, chunks })));
   };
-  const run = (controller?: AbortController, extra: Partial<CommandSpec> = {}) =>
-    Effect.runPromise(runEffect(controller, extra));
-  const waitForPulses = (count: number) =>
-    watchPulses >= count
-      ? Promise.resolve()
-      : new Promise<void>((resolve) => pulseWaiters.push({ count, resolve }));
-  const waitForEvent = (stage: Stage) =>
-    events.includes(stage)
-      ? Promise.resolve()
-      : new Promise<void>((resolve) => eventWaiters.push({ stage, resolve }));
   return {
     api,
     requests,
-    events,
-    run,
-    runEffect,
-    waitForPulses,
-    waitForEvent,
-    pulseCount: () => watchPulses,
-    chunks: observedChunks,
-    counts: () => ({ primaryStarts, launches }),
+    input,
+    options: { api, ctx, helperTarget, resolveContainerHelper: () => Effect.succeed(helper) },
   };
 };
-const failureText = (exit: Exit.Exit<unknown, unknown>) =>
-  Exit.isFailure(exit) ? Cause.pretty(exit.cause) : "";
-const terminalChunks = (chunks: readonly ExecChunk[]) => chunks.filter((chunk) => "exitCode" in chunk);
-const flushWatchReply = Effect.promise<void>(() => new Promise((resolve) => setImmediate(resolve)));
 
-describe("non-TTY exec supervision lifecycle", () => {
-  test("preparation failure preserves its provider tag before any supervisor can start", async () => {
-    const error = providerFailure("command-preparation-failed");
-    const f = fixture({ prepareCommand: Effect.fail(error) });
-    const { exit, chunks } = await f.run();
-    if (Exit.isSuccess(exit)) throw new Error("Preparation unexpectedly succeeded.");
-    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(error);
-    expect(f.events).toEqual([]);
-    expect(terminalChunks(chunks)).toEqual([]);
-  });
+test("encodes bounded DATA frames and distinct logical EOF and signal frames", () => {
+  const bytes = Uint8Array.from({ length: 65_537 }, (_, index) => index % 256);
+  const frames = [...execDataFrames(bytes)];
+  expect(frames.map((frame) => new DataView(frame.buffer).getUint32(1))).toEqual([65_536, 1]);
+  expect(Buffer.concat(frames.map((frame) => frame.subarray(5)))).toEqual(Buffer.from(bytes));
+  expect([...execEofFrame()]).toEqual([1, 0, 0, 0, 0]);
+  const signal = new AbortController();
+  signal.abort("SIGINT");
+  expect([...execSignalFrame(signal.signal)]).toEqual([2, 0, 0, 0, 1, 2]);
+  expect([...execSignalFrame(undefined)]).toEqual([2, 0, 0, 0, 1, 15]);
+});
 
-  test("cancellation joins pending preparation before returning", async () => {
-    let entered: () => void = () => undefined;
-    const started = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    let stopped = false;
+test("preserves exact output and exit status with no stdin", async () => {
+  const f = fixture();
+  const chunks = await Effect.runPromise(
+    Stream.runCollect(supervisedExecStream(plan, target, { command: ["payload"] }, f.options)),
+  );
+  expect(chunks).toEqual([
+    { kind: "stdout", chunk: new TextEncoder().encode("out\0\n") },
+    { kind: "stderr", chunk: new TextEncoder().encode("err\n") },
+    { exitCode: 7 },
+  ]);
+  expect(f.input).toEqual([execEofFrame()]);
+});
+
+test("fails before payload creation when the mounted helper is absent", async () => {
+  const f = fixture(false);
+  const result = await Effect.runPromise(
+    Stream.runCollect(supervisedExecStream(plan, target, { command: ["payload"] }, f.options)).pipe(
+      Effect.flip,
+    ),
+  );
+  expect(result._tag).toBe("ServiceExecError");
+  expect(result.remediation).toContain("lando start");
+  expect(f.requests.map((request) => request.method)).toEqual(["GET"]);
+});
+
+test("preserves provider failure tags and remediation", async () => {
+  const f = fixture();
+  const failure = new ProviderUnavailableError({ ...ctx, operation: "exec", message: "Offline" });
+  const result = await Effect.runPromise(
+    Stream.runCollect(
+      supervisedExecStream(
+        plan,
+        target,
+        { command: ["payload"] },
+        {
+          ...f.options,
+          api: { ...f.api, request: () => Effect.fail(failure) },
+        },
+      ),
+    ).pipe(Effect.flip),
+  );
+  expect(result).toBe(failure);
+});
+
+test("sends byte-exact DATA followed by logical EOF while retaining control attachment", async () => {
+  const f = fixture();
+  const payload = new Uint8Array([0, 255, 10, 13, 1, 2]);
+  const stdinStream = {
+    async *[Symbol.asyncIterator]() {
+      yield payload;
+    },
+  };
+  await Effect.runPromise(
+    Stream.runDrain(supervisedExecStream(plan, target, { command: ["payload"], stdinStream }, f.options)),
+  );
+  expect(f.input).toEqual([...execDataFrames(payload), execEofFrame()]);
+});
+
+test("a disconnected attach preserves its provider error and confirms the same exec stopped", async () => {
+  const f = fixture();
+  const failure = new ProviderUnavailableError({ ...ctx, operation: "exec", message: "Disconnected" });
+  const api = { ...f.api, stream: () => Stream.fail(failure) };
+  const result = await Effect.runPromise(
+    Stream.runDrain(supervisedExecStream(plan, target, { command: ["payload"] }, { ...f.options, api })).pipe(
+      Effect.flip,
+    ),
+  );
+  expect(result).toBe(failure);
+  expect(f.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+    "GET /containers/lando-exec-supervision--web/json",
+    "POST /containers/container/exec",
+    "GET /exec/exec/json",
+  ]);
+});
+
+test("warm supervision uses exactly the plain transport engine request set", async () => {
+  const supervised = fixture();
+  const plain = fixture();
+  rememberExecUmask(supervised.api, "container", { status: "ok", umask: "0022" });
+  rememberExecUmask(plain.api, "container", { status: "ok", umask: "0022" });
+  await Effect.runPromise(
+    Effect.scoped(
+      Stream.runDrain(dispatchExecStream(plan, target, { command: ["payload"] }, supervised.options)),
+    ),
+  );
+  await Effect.runPromise(
+    Effect.scoped(
+      Stream.runDrain(plainExecStream(plan, target, { command: ["payload"] }, { api: plain.api, ctx })),
+    ),
+  );
+  const execRequests = (requests: readonly EngineHttpRequest[]) =>
+    requests.map(
+      (request) =>
+        `${request.method} ${request.path.replace("/container/", "/lando-exec-supervision--web/")}`,
+    );
+  expect(execRequests(supervised.requests)).toEqual(execRequests(plain.requests));
+  expect(execRequests(supervised.requests)).toEqual([
+    "GET /containers/lando-exec-supervision--web/json",
+    "POST /containers/lando-exec-supervision--web/exec",
+    "POST /exec/exec/start",
+    "GET /exec/exec/json",
+  ]);
+});
+
+test.each(["SIGINT", "SIGTERM"])(
+  "cancellation sends %s and joins the same exec before interruption",
+  async (signal) => {
+    const f = fixture();
+    const started = Deferred.makeUnsafe<void>();
+    const cancelled = Deferred.makeUnsafe<void>();
     const controller = new AbortController();
-    const f = fixture({
-      prepareCommand: Effect.sync(entered).pipe(
-        Effect.andThen(Effect.never),
-        Effect.ensuring(
-          Effect.sync(() => {
-            stopped = true;
+    const api: EngineHttpApi = {
+      ...f.api,
+      stream: (request) =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            request.onResponseHead?.();
+            yield* Deferred.succeed(started, undefined);
+            if (request.stdin === undefined) throw new TypeError("Missing control input");
+            const stdin = request.stdin;
+            yield* Effect.promise(async () => {
+              for await (const bytes of stdin) {
+                f.input.push(bytes);
+                if (bytes[0] === 2) break;
+              }
+            });
+            yield* Deferred.succeed(cancelled, undefined);
+            return Stream.empty;
           }),
         ),
-      ),
-    });
-    const pending = f.run(controller);
-    await started;
-    controller.abort("SIGINT");
-    const { exit, chunks } = await pending;
-    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-    expect(stopped).toBe(true);
-    expect(f.events).toEqual([]);
-    expect(terminalChunks(chunks)).toEqual([]);
-  });
-
-  test.each([127, 126])("launch failure %s completes with stderr and cleans up", async (exitCode) => {
-    const stderr = `lando: test-command: ${exitCode === 127 ? "command not found" : "cannot execute"}\n`;
-    const f = fixture({ exitCode, launchExitCode: exitCode, stderr });
-    const { exit, chunks } = await f.run();
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(terminalChunks(chunks)).toEqual([{ exitCode }]);
-    expect(chunks.filter((chunk) => "kind" in chunk)).toEqual([
-      { kind: "stderr", chunk: new TextEncoder().encode(stderr) },
-    ]);
-    expect(f.events).not.toContain("collect");
-    expect(f.events).toContain("cleanup");
-    expect(f.events).not.toContain("cancel");
-  });
-  test.each(["command", "options"] as const)("raw %s operations use the plain transport", async (rawAt) => {
-    const f = fixture();
-    const chunks = await Effect.runPromise(
-      dispatchExecStream(
-        plan,
-        target,
-        {
-          command: ["echo", "hi"],
-          ...(rawAt === "command" ? { raw: true } : {}),
-        },
-        {
-          api: f.api,
-          ctx,
-          ...supervisedExecFixtureOptions(f.api),
-          ...(rawAt === "options" ? { raw: true } : {}),
-        },
-      ).pipe(Stream.runCollect, Effect.scoped),
-    );
-    expect(terminalChunks(chunks)).toEqual([{ exitCode: 0 }]);
-    expect(f.events).toEqual([]);
-    expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
-  });
-  test.each([0, 7, 143])(
-    "preserves immediate command exit %s only after joining and cleanup",
-    async (exitCode) => {
-      const f = fixture({ exitCode });
-      const { exit, chunks } = await f.run();
-      expect(Exit.isSuccess(exit)).toBe(true);
-      expect(terminalChunks(chunks)).toEqual([{ exitCode }]);
-      expect(f.events).toContain("watch");
-      expect(f.events).not.toContain("collect");
-      expect(f.events).toContain("cleanup");
-      expect(f.counts()).toEqual({ primaryStarts: 1, launches: 1 });
-      const actions = f.requests.filter(
-        (request) => request.path.startsWith("/containers/") && !request.path.endsWith("/json"),
-      );
-      expect(actions.every((request) => request.path.startsWith("/containers/immutable-container-id/"))).toBe(
-        true,
-      );
-      const creates = actions.filter((request) => request.path.endsWith("/exec"));
-      expect(
-        creates.every((request) => {
-          const body = request.body as { User?: string; Cmd?: readonly string[] };
-          return body.User === (body.Cmd?.[1] === "exec-prepare" ? "0" : target.user);
-        }),
-      ).toBe(true);
-      const watch = creates.find(
-        (request) => (request.body as { Cmd?: readonly string[] }).Cmd?.[4] === "watch",
-      );
-      expect(watch?.body).toMatchObject({ AttachStdin: true, AttachStdout: true, Tty: false });
-    },
-  );
-
-  test("pre-aborted commands issue no provider actions or terminal status", async () => {
-    const f = fixture();
-    const controller = new AbortController();
-    controller.abort("SIGINT");
-    const { exit, chunks } = await f.run(controller);
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-    expect(f.requests).toHaveLength(0);
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
-  });
-
-  test.each(["init-start", "ready", "watch-inspect"] as const)(
-    "local abort at completed %s boundary stays a pure interruption",
-    async (stopAt) => {
-      const controller = new AbortController();
-      let intercepted = false;
-      const f = fixture({
-        before: (stage) =>
-          stage === stopAt && !intercepted
-            ? Effect.sync(() => {
-                intercepted = true;
-                controller.abort("SIGTERM");
-              })
-            : Effect.void,
-      });
-      const { exit, chunks } = await f.run(controller);
-      expect(intercepted).toBe(true);
-      expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-      expect(terminalChunks(chunks)).toHaveLength(0);
-      expect(f.events).toContain("cleanup");
-    },
-  );
-
-  test("remote cancelled readiness without local abort remains a provider failure", async () => {
-    const f = fixture({
-      replaceStream: (stage) =>
-        stage === "ready"
-          ? Stream.make(frame(`${JSON.stringify({ ok: true, seq: 1, state: "cancelled", joined: true })}\n`))
-          : undefined,
-    });
-    const { exit, chunks } = await f.run();
-    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(false);
-    expect(failureText(exit)).toContain("terminal-before-launch");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-  });
-
-  test.each([
-    "init-create",
-    "init-start",
-    "primary-create",
-    "primary-start",
-    "ready",
-    "watch-create",
-    "watch",
-    "launch",
-  ] as const)(
-    "cancellation during %s cannot release the child or report terminal success",
-    async (stopAt) => {
-      const controller = new AbortController();
-      let intercepted = false;
-      const f = fixture({
-        before: (stage) =>
-          stage === stopAt && !intercepted
-            ? Effect.sync(() => {
-                intercepted = true;
-                controller.abort("SIGINT");
-              }).pipe(Effect.andThen(Effect.never))
-            : Effect.void,
-      });
-      const { exit, chunks } = await f.run(controller);
-      expect(intercepted).toBe(true);
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(terminalChunks(chunks)).toHaveLength(0);
-      expect(f.counts().launches).toBe(0);
-      expect(f.events).toContain("cancel");
-      if (["watch-create", "launch"].includes(stopAt))
-        expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-      if (stopAt === "watch" || stopAt === "ready") {
-        expect(failureText(exit)).toContain("cleanup-unconfirmed");
-        expect(f.events).not.toContain("cleanup");
-      } else {
-        expect(f.events).toContain("collect");
-        if (stopAt === "watch-create") {
-          expect(failureText(exit)).not.toContain("cleanup-unconfirmed");
-          expect(f.events).toContain("cleanup");
-        }
-      }
-      const cancel = f.requests.find((request) => {
-        const cmd = (request.body as { Cmd?: readonly string[] } | undefined)?.Cmd;
-        return cmd?.[1] === "exec-control" && cmd[4] === "cancel";
-      });
-      expect((cancel?.body as { Cmd?: readonly string[] } | undefined)?.Cmd?.[5]).toBe("SIGINT");
-      if (stopAt === "primary-create" || stopAt === "primary-start")
-        expect(failureText(exit)).toContain("cleanup-unconfirmed");
-    },
-    25_000,
-  );
-
-  test("preserves a genuine primary attach failure through successful cleanup", async () => {
-    const error = providerFailure("distinct-primary-transport-failure");
-    const f = fixture({ mainError: error });
-    const { exit, chunks } = await f.run();
-    expect(failureText(exit)).toContain(error.message);
-    expect(failureText(exit)).not.toContain("cleanup-unconfirmed");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.events).toContain("cancel");
-    expect(f.events).toContain("cleanup");
-  });
-
-  test("successful cancellation can join beyond the former two-second control deadline", async () => {
-    const controller = new AbortController();
-    const f = fixture({
-      before: (stage) => {
-        if (stage === "launch") return Effect.sync(() => controller.abort("SIGTERM"));
-        if (stage === "cancel") return Effect.sleep("4 seconds");
-        return Effect.void;
-      },
-    });
+    };
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(f.runEffect(controller));
-        yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.millis(100));
-        yield* Effect.promise(() => f.waitForEvent("cancel"));
-        yield* flushWatchReply;
-        yield* TestClock.adjust(Duration.seconds(4));
-        return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer())),
+        const child = yield* Stream.runDrain(
+          supervisedExecStream(
+            plan,
+            target,
+            { command: ["payload"], signal: controller.signal },
+            { ...f.options, api },
+          ),
+        ).pipe(Effect.forkChild);
+        yield* Deferred.await(started);
+        controller.abort(signal);
+        return yield* Fiber.await(child);
+      }),
     );
-    expect(Exit.isFailure(result.exit) && Cause.hasInterruptsOnly(result.exit.cause)).toBe(true);
-    expect(f.events).toContain("cleanup");
-    expect(terminalChunks(result.chunks)).toEqual([]);
-  });
-
-  test("a missing completion receipt cannot produce terminal success", async () => {
-    let missing = false;
-    const f = fixture({
-      replaceStream: (stage) => {
-        if (stage !== "watch" || missing) return undefined;
-        missing = true;
-        return Stream.empty;
-      },
-    });
-    const { exit, chunks } = await f.run();
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(failureText(exit)).toContain("watch");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.events).toContain("cancel");
-  });
-
-  test.each(["init-create", "init-start"] as const)(
-    "a provider error at %s preserves failure and blocks the child",
-    async (failedStage) => {
-      const error = providerFailure("distinct-init-control-failure");
-      const f = fixture({ before: (stage) => (stage === failedStage ? Effect.fail(error) : Effect.void) });
-      const { exit, chunks } = await f.run();
-      expect(failureText(exit)).toContain(error.message);
-      if (Exit.isSuccess(exit)) throw new Error("Provider failure unexpectedly succeeded.");
-      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(error);
-      expect(terminalChunks(chunks)).toHaveLength(0);
-      expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
-      expect(f.events).toContain("cancel");
-      expect(f.events).toContain("cleanup");
-    },
-  );
-
-  test.each([
-    providerFailure("Helper installation transport unavailable."),
-    new ProviderInternalError({
-      ...ctx,
-      operation: "exec.installHelper",
-      message: "Unsafe helper installation.",
-    }),
-  ])("helper installation preserves $_tag provider failures", async (error) => {
-    const f = fixture({ installError: error });
-    const { exit, chunks } = await f.run();
-    if (Exit.isSuccess(exit)) throw new Error("Helper installation unexpectedly succeeded.");
-    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(error);
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
-  });
-
-  test("an unconfirmed cleanup remains an explicit failure beside the primary failure", async () => {
-    const f = fixture({
-      mainError: providerFailure("primary-error-before-uncertain-cleanup"),
-      before: (stage) => {
-        return stage === "cancel" || stage === "status"
-          ? Effect.fail(providerFailure("cleanup-channel-down"))
-          : Effect.void;
-      },
-    });
-    const { exit, chunks } = await f.run();
-    const text = failureText(exit);
-    expect(text).toContain("primary-error-before-uncertain-cleanup");
-    expect(text).toContain("ProviderUnavailableError: cleanup-channel-down");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.events).not.toContain("cleanup");
-  }, 25_000);
-
-  test("hundreds of acknowledged heartbeats use one persistent control exec", async () => {
-    const f = fixture({
-      watchRunningReplies: 200,
-      noOutput: true,
-      before: (stage) =>
-        stage === "launch"
-          ? Effect.promise(() => f.waitForPulses(2)).pipe(Effect.andThen(flushWatchReply))
-          : Effect.void,
-    });
-    const countCreates = () =>
-      f.requests.filter((request) => {
-        if (request.method !== "POST" || !request.path.endsWith("/exec")) return false;
-        const cmd = (request.body as { Cmd?: readonly string[] }).Cmd;
-        // Collection and session removal happen after the steady observation interval.
-        return cmd?.[1] !== "exec-cleanup" && cmd?.[4] !== "collect";
-      }).length;
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(f.runEffect());
-        yield* Effect.promise(() => f.waitForEvent("ready"));
-        yield* TestClock.adjust(Duration.millis(100));
-        yield* Effect.promise(() => f.waitForPulses(1));
-        yield* flushWatchReply;
-        // Launch confirmation must wake observation without advancing the pacing clock.
-        yield* Effect.promise(() => f.waitForPulses(3));
-        yield* flushWatchReply;
-        expect(f.pulseCount()).toBe(3);
-        const steadyCreates = countCreates();
-        for (let pulse = 4; pulse <= 202; pulse++) {
-          yield* TestClock.adjust(Duration.millis(500));
-          yield* Effect.promise(() => f.waitForPulses(pulse));
-          yield* flushWatchReply;
-          expect(f.pulseCount()).toBe(pulse);
-          expect(countCreates()).toBe(steadyCreates);
-        }
-        yield* TestClock.adjust(Duration.millis(500));
-        return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer())),
-    );
-    expect(Exit.isSuccess(result.exit)).toBe(true);
-    expect(terminalChunks(result.chunks)).toEqual([{ exitCode: 0 }]);
-    expect(f.pulseCount()).toBe(203);
-    const operations = f.requests
-      .filter((request) => request.method === "POST" && request.path.endsWith("/exec"))
-      .map((request) => (request.body as { Cmd?: readonly string[] }).Cmd?.[4]);
-    expect(operations.filter((operation) => operation === "watch")).toHaveLength(1);
-    expect(operations.filter((operation) => operation === "status")).toHaveLength(0);
-    expect(result.chunks.filter((chunk) => "kind" in chunk)).toHaveLength(0);
-  }, 10_000);
-
-  test("a command producing no output completes through its watched receipt", async () => {
-    const f = fixture({ noOutput: true, exitCode: 23 });
-    const { exit, chunks } = await f.run();
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(chunks).toEqual([{ exitCode: 23 }]);
-    expect(f.events.filter((stage) => stage === "watch")).toHaveLength(1);
-    expect(f.events.filter((stage) => stage === "status")).toHaveLength(0);
-  });
-
-  test("loss of heartbeat acknowledgement fails before launching an unmonitored command", async () => {
-    const f = fixture({
-      noOutput: true,
-      replaceStream: (stage, input) =>
-        stage === "watch"
-          ? Stream.suspend(() => {
-              input.onResponseHead?.();
-              return Stream.never;
-            })
-          : undefined,
-    });
-    const { exit, chunks } = await Effect.runPromise(
-      Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(f.runEffect());
-        yield* Effect.promise(() => f.waitForEvent("watch"));
-        yield* flushWatchReply;
-        yield* TestClock.adjust(Duration.seconds(30));
-        return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer())),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(failureText(exit)).toContain("watch");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.counts().launches).toBe(0);
-    expect(f.events).toContain("cancel");
-  }, 10_000);
-
-  test("heartbeat acknowledgement loss after launch cannot fabricate command completion", async () => {
-    let markRunning: () => void = () => undefined;
-    const running = new Promise<void>((resolve) => {
-      markRunning = resolve;
-    });
-    const f = fixture({
-      noOutput: true,
-      replaceStream: (stage, input) => {
-        if (stage !== "watch") return undefined;
-        const replies = Stream.fromAsyncIterable(
-          {
-            async *[Symbol.asyncIterator]() {
-              input.onResponseHead?.();
-              let pending = "";
-              let replies = 0;
-              for await (const chunk of input.stdin ?? []) {
-                pending += new TextDecoder().decode(chunk);
-                for (let newline = pending.indexOf("\n"); newline >= 0; newline = pending.indexOf("\n")) {
-                  const pulse = JSON.parse(pending.slice(0, newline)) as { seq: number };
-                  pending = pending.slice(newline + 1);
-                  yield frame(
-                    `${JSON.stringify({ ok: true, seq: pulse.seq, state: replies++ === 0 ? "ready" : "running" })}\n`,
-                  );
-                  if (replies === 2) {
-                    markRunning();
-                    return;
-                  }
-                }
-              }
-            },
-          },
-          () => providerFailure("watch-pulse-read-failed"),
-        );
-        return Stream.concat(replies, Stream.never);
-      },
-    });
-    const { exit, chunks } = await Effect.runPromise(
-      Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(f.runEffect());
-        yield* Effect.promise(() => f.waitForEvent("watch"));
-        yield* flushWatchReply;
-        yield* Effect.promise(() => running);
-        yield* flushWatchReply;
-        yield* TestClock.adjust(Duration.seconds(30));
-        return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer())),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(failureText(exit)).toContain("watch");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.counts().launches).toBe(1);
-    expect(f.events).toContain("cancel");
-    expect(f.events).toContain("collect");
-  }, 10_000);
-
-  test("terminal watch receipt waits for EOF and the watcher exit inspection", async () => {
-    let releaseEOF: () => void = () => undefined;
-    const beforeEOF = new Promise<void>((resolve) => {
-      releaseEOF = resolve;
-    });
-    let markTerminal: () => void = () => undefined;
-    const terminal = new Promise<void>((resolve) => {
-      markTerminal = resolve;
-    });
-    let releaseInspect: () => void = () => undefined;
-    const beforeInspect = new Promise<void>((resolve) => {
-      releaseInspect = resolve;
-    });
-    let markInspect: () => void = () => undefined;
-    const inspecting = new Promise<void>((resolve) => {
-      markInspect = resolve;
-    });
-    const f = fixture({
-      watchRunningReplies: 0,
-      watchBeforeEOF: beforeEOF,
-      onWatchTerminal: markTerminal,
-      before: (stage) =>
-        stage === "watch-inspect"
-          ? Effect.sync(markInspect).pipe(Effect.andThen(Effect.promise(() => beforeInspect)))
-          : Effect.void,
-    });
-    const pending = f.run();
-    try {
-      await terminal;
-      expect(terminalChunks(f.chunks)).toHaveLength(0);
-      expect(f.events).not.toContain("collect");
-      expect(f.events).not.toContain("watch-inspect");
-      releaseEOF();
-      await inspecting;
-      expect(terminalChunks(f.chunks)).toHaveLength(0);
-      expect(f.events).not.toContain("collect");
-      releaseInspect();
-      const { exit, chunks } = await pending;
-      expect(Exit.isSuccess(exit)).toBe(true);
-      expect(terminalChunks(chunks)).toEqual([{ exitCode: 0 }]);
-      expect(f.events.indexOf("cleanup")).toBeGreaterThan(f.events.indexOf("watch-inspect"));
-    } finally {
-      releaseEOF();
-      releaseInspect();
-    }
-  });
-
-  test("a valid terminal receipt followed by a partial Docker header cannot report success", async () => {
-    const f = fixture({ watchRunningReplies: 0, watchTrailingBytes: new Uint8Array([1, 0, 0]) });
-    const { exit, chunks } = await f.run();
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(failureText(exit)).toContain("watch");
-    expect(terminalChunks(chunks)).toHaveLength(0);
-    expect(f.events).toContain("cancel");
-  });
-
-  test.each([new Uint8Array([1, 0, 0]), new Uint8Array([9, 0, 0, 0, 0, 0, 0, 1, 0])])(
-    "a READY receipt followed by an invalid Docker header cannot launch the command %s",
-    async (trailing) => {
-      const f = fixture({ watchRunningReplies: 0, watchReadyTrailingBytes: trailing });
-      const { exit, chunks } = await f.run();
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(f.counts().launches).toBe(0);
-      expect(terminalChunks(chunks)).toHaveLength(0);
-      expect(failureText(exit)).toContain("watch");
-      expect(f.events).toContain("cancel");
-    },
-    10_000,
-  );
-
-  test("missing helper capabilities fail closed before issuing a process", async () => {
-    const f = fixture();
-    const exit = await Effect.runPromiseExit(
-      execStream(plan, target, { command: ["test-command"] }, { api: f.api, ctx }).pipe(
-        Stream.runDrain,
-        Effect.scoped,
-      ),
-    );
-    expect(failureText(exit)).toContain("helper-unavailable");
-    expect(f.requests).toHaveLength(0);
-  });
-
-  test("unsupported helper resolution retains its actionable error and never starts a process", async () => {
-    const f = fixture();
-    const error = new ContainerHelperUnavailableError({
-      target: { os: "linux", arch: "x64" },
-      message: "Helper architecture unsupported.",
-      remediation: "Select a supported architecture.",
-    });
-    const exit = await Effect.runPromiseExit(
-      execStream(
-        plan,
-        target,
-        { command: ["test-command"] },
-        {
-          api: f.api,
-          ctx,
-          helperTarget: { os: "linux", arch: "x64" },
-          resolveContainerHelper: () => Effect.fail(error),
-        },
-      ).pipe(Stream.runDrain, Effect.scoped),
-    );
-    expect(failureText(exit)).toContain("Helper architecture unsupported.");
-    if (Exit.isSuccess(exit)) throw new Error("Unsupported helper unexpectedly executed.");
-    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).remediation).toBe(
-      "Select a supported architecture.",
-    );
-    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
-      _tag: "ServiceExecError",
-      cause: error,
-    });
-    expect(f.events).toHaveLength(0);
-    expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0);
-  });
-});
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(await Effect.runPromise(Deferred.isDone(cancelled))).toBe(true);
+    expect(f.input.at(-1)).toEqual(execSignalFrame(controller.signal));
+  },
+);

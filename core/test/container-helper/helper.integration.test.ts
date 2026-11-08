@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Effect, Layer, Predicate, Stream } from "effect";
 
-import { logFileHelperCleanupArgv, logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
+import { logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
@@ -227,16 +227,6 @@ describe.skipIf(process.platform !== "linux")("log-file role", () => {
       eof: true,
     });
     expect(close).toEqual({ ok: true });
-  });
-
-  test("refuses to clean up a path outside its install directory", async () => {
-    const proc = Bun.spawn({
-      cmd: [...logFileHelperCleanupArgv(await helperPath(), "/tmp")],
-      stdout: "pipe",
-    });
-    const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toEqual({ ok: false, code: "EPROTO", message: "invalid helper cleanup path" });
   });
 });
 

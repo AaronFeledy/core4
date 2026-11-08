@@ -11,11 +11,10 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp, withServiceStartLogTail } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
 import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
+import { bringUp, commonContainerLabels, withServiceStartLogTail } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 

@@ -773,7 +773,7 @@ const assembleRuntimeProvider = (
             ctx: PODMAN_CTX,
             ...execHelper,
           }),
-        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
+        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX, ...execHelper }),
       },
     });
 

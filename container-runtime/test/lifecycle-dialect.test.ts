@@ -12,9 +12,9 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-dialect-app");

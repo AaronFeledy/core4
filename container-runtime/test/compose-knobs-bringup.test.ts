@@ -12,7 +12,9 @@ import {
 } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { fixtureHelperMount } from "./support/exec-supervision.ts";
+import { bringUp } from "./support/service-creation.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -198,7 +200,10 @@ describe("Podman Compose knob bring-up realization", () => {
     expect(field(host, "PortBindings")).toEqual({
       "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "18080" }],
     });
-    expect(field(host, "Binds")).toEqual(["/tmp/lando-compose-knob-bind:/workspace"]);
+    expect(field(host, "Binds")).toEqual([
+      "/tmp/lando-compose-knob-bind:/workspace",
+      `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+    ]);
     expect(field(host, "Mounts")).toEqual([
       {
         Type: "bind",
@@ -331,6 +336,12 @@ describe("Podman Compose knob bring-up realization", () => {
     // Then
     const create = findCreateRequest(fake.calls);
     expect(create?.path).toBe("/containers/create?name=lando-compose-knob-bringup--web");
-    expect(JSON.stringify(create?.body)).toBe(BASELINE_CREATE_BODY_JSON);
+    const expected = JSON.parse(BASELINE_CREATE_BODY_JSON);
+    const plan = planWithCompose();
+    const service = Object.values(plan.services)[0];
+    if (service === undefined) throw new TypeError("Missing fixture service");
+    expected.Labels = commonContainerLabels(plan, service);
+    expected.HostConfig.Binds.push(`${fixtureHelperMount.source}:/run/lando/helper:ro`);
+    expect(create?.body).toEqual(expected);
   });
 });

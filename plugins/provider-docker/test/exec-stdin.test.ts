@@ -146,7 +146,7 @@ describe("provider-docker exec AttachStdin", () => {
     expect(createBody(fake.calls)).toMatchObject({ AttachStdin: true });
   });
 
-  test("sets AttachStdin false when command has no stdin source", async () => {
+  test("keeps control stdin attached when command has no stdin source", async () => {
     // Given
     const fake = makeFakeApi();
 
@@ -154,7 +154,7 @@ describe("provider-docker exec AttachStdin", () => {
     await runExec(fake.api, { command: ["true"] });
 
     // Then
-    expect(createBody(fake.calls)).toMatchObject({ AttachStdin: false });
+    expect(createBody(fake.calls)).toMatchObject({ AttachStdin: true });
   });
 });
 

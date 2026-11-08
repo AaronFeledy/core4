@@ -26,7 +26,7 @@ export const execStream = (
       return transportExecStream(plan, target, command, options);
     return supervisedExecStream(plan, target, command, {
       ...options,
-      prepareCommand: prepareExecCommand(plan, target, command, options),
+      prepareCommand: (containerId) => prepareExecCommand(plan, target, command, { ...options, containerId }),
     });
   }).pipe(Stream.withSpan("RuntimeProvider.execStream"));
 

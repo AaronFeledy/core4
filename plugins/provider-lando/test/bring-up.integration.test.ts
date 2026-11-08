@@ -9,7 +9,11 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { bringUp, makePodmanApiClient } from "@lando/provider-lando";
+import {
+  containerHelperTestOptions,
+  fixtureHelperMount,
+} from "@lando/container-runtime/testing/exec-supervision";
+import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -25,6 +29,7 @@ import {
 import { type LandoEvent, RuntimeProvider } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { decodeNetworkCreate } from "./network-fixture.ts";
+import { bringUp } from "./provider-fixture.ts";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
@@ -406,7 +411,10 @@ describe("provider-lando bringUp", () => {
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.Cmd).toEqual(nodeCommand);
-    expect(nodeCreateBody?.HostConfig?.Binds).toEqual([`${appRoot}:/app`]);
+    expect(nodeCreateBody?.HostConfig?.Binds).toEqual([
+      `${appRoot}:/app`,
+      `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+    ]);
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
       "lando-bringupapp": { Aliases: ["node"] },
       lando_bridge_network: { Aliases: ["node.bringupapp.internal"] },
@@ -611,6 +619,7 @@ describe("provider-lando bringUp", () => {
     expect(body?.HostConfig?.Binds).toEqual([
       "BringUp-App-node-app-mount:/app",
       "BringUp-App-node-mount-cace0001:/cache:ro",
+      `${fixtureHelperMount.source}:/run/lando/helper:ro`,
     ]);
   });
 
@@ -932,7 +941,8 @@ describe("provider-lando bringUp", () => {
         throw new Error("missing request client");
       }
       try {
-        const result = await Effect.runPromise(bringUp(plan, { api }));
+        const helper = await Effect.runPromise(containerHelperTestOptions(api));
+        const result = await Effect.runPromise(bringUp(plan, { api, ...helper }));
         expect(result.changed).toBe(true);
 
         for (const service of Object.values(plan.services)) {

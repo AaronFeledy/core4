@@ -439,7 +439,7 @@ const resolveExecCommand = Effect.fnUntraced(function* (
     return command;
   }
 
-  const containerId = yield* inspectContainerId(session, plan);
+  const containerId = options.containerId ?? (yield* inspectContainerId(session, plan));
   const umaskResult = yield* resolveExecUmask(session, plan, target, options, containerId);
   if (umaskResult.status !== "ok" || !isWorldWritableUmask(umaskResult.umask)) {
     return command;

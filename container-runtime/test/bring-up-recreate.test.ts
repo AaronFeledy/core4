@@ -14,9 +14,8 @@ import {
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { APPLY_REMEDIATION, bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;

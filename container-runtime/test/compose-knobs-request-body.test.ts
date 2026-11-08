@@ -11,8 +11,8 @@ import {
 } from "@lando/sdk/schema";
 import { type LifecycleDialect, dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";

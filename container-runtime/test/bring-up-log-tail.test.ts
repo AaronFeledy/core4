@@ -16,11 +16,11 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { serviceContainerName } from "../src/plan.ts";
-import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
 import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
+import { APPLY_REMEDIATION, bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;

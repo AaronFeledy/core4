@@ -1125,7 +1125,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               }),
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
-          const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
+          const runtime = yield* runtimeInspect(physical, target, {
+            ...apiOptions,
+            ctx: LANDO_CTX,
+            ...execHelper,
+          });
           if (physical === plan) return runtime;
           const logicalRuntime = {
             ...runtime,

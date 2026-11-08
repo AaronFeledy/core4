@@ -1,36 +1,38 @@
-import { randomBytes } from "node:crypto";
-import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
 import { ServiceExecError } from "@lando/sdk/errors";
-import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
-import { type Cause, Deferred, Duration, Effect, Fiber, Queue, type Scope, Stream } from "effect";
-import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
-import { verifiedExecHelper } from "./exec-helper-artifact.ts";
-import { installExecHelper } from "./exec-helper-install.ts";
-import { execTiming } from "./exec-timing.ts";
-import { type OwnedExecWatch, startExecWatch } from "./exec-watch.ts";
+import { type Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, type Scope, Stream } from "effect";
+import { containerHelperDelivery } from "./container-helper.ts";
+import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { execDataFrames, execEofFrame, execSignalFrame } from "./exec-control.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
 import { serviceContainerName } from "./plan.ts";
 import { interruptOnSignal, execStream as transportExecStream } from "./podman/exec-transport.ts";
-import { makeAttachDecoder } from "./streams.ts";
 
 export interface ExecSupervisionOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
   readonly resolveContainerHelper?: ResolveContainerHelper | undefined;
   readonly helperTarget?: ContainerHelperTarget | undefined;
-  readonly prepareCommand?: Effect.Effect<CommandSpec, ProviderError, Scope.Scope>;
+  readonly prepareCommand?: (containerId: string) => Effect.Effect<CommandSpec, ProviderError, Scope.Scope>;
 }
-interface Receipt {
-  readonly state: "initialized" | "ready" | "running" | "finished" | "cancelled" | "collected";
-  readonly exitCode?: number;
-  readonly joined?: boolean;
-}
-const decoder = new TextDecoder();
-const signalName = (signal: AbortSignal | undefined) => (signal?.reason === "SIGINT" ? "SIGINT" : "SIGTERM");
 
-/** Owns the attach through main completion, or through tree termination on cancellation. */
+const Container = Schema.Struct({
+  Id: Schema.NonEmptyString,
+  Mounts: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        Source: Schema.String,
+        Destination: Schema.String,
+        RW: Schema.Boolean,
+      }),
+    ),
+  ),
+});
+const ExecState = Schema.Struct({ Running: Schema.Boolean });
+
+/** The detached attach stays owned until cancellation has joined the helper. */
 export const supervisedExecStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -39,428 +41,169 @@ export const supervisedExecStream = (
 ): Stream.Stream<ExecChunk, ProviderError> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const failure = (
-        stage: string,
-        details?: { readonly status?: number; readonly category?: string; readonly helperCode?: string },
-        cause?: unknown,
-      ) =>
+      const failure = (stage: string, cause?: unknown) =>
         new ServiceExecError({
           providerId: options.ctx.providerId,
           operation: "exec",
           service: target.service,
           message: `Container command supervision failed (${stage}).`,
-          ...(details === undefined ? {} : { details }),
-          ...(cause === undefined ? {} : { cause }),
           remediation:
-            "Check the service container and provider connection before retrying. If cleanup could not be confirmed, restart the service.",
+            stage === "helper-mount-missing"
+              ? "Run lando start to recreate the service with its container helper mount, then retry."
+              : "Check the service container and provider connection, then retry.",
+          ...(cause === undefined ? {} : { cause }),
         });
-      const api = options.api;
-      const resolveHelper = options.resolveContainerHelper;
-      const helperTarget = options.helperTarget;
+      const { api, resolveContainerHelper, helperTarget } = options;
       if (
         api?.request === undefined ||
         api.stream === undefined ||
-        resolveHelper === undefined ||
+        resolveContainerHelper === undefined ||
         helperTarget === undefined
       )
         return yield* Effect.fail(failure("helper-unavailable"));
       if (command.signal?.aborted) return yield* Effect.interrupt;
-      const awaitSignal = interruptOnSignal(command.signal);
-      const abortBeforeOwnership = awaitSignal.pipe(Effect.andThen(Effect.interrupt));
-      const beforeOwnership = <A>(effect: Effect.Effect<A, ProviderError>) =>
-        effect.pipe(
-          Effect.timeout("10 seconds"),
-          Effect.mapError((error) =>
-            error._tag === "TimeoutError" ? failure("acquisition-timeout", undefined, error) : error,
-          ),
-          Effect.raceFirst(abortBeforeOwnership),
-        );
-      const preparation = yield* beforeOwnership(
-        Effect.scoped(options.prepareCommand ?? Effect.succeed(command)),
-      ).pipe(Effect.forkChild);
-      const requestApi = api.request;
-      const streamApi = api.stream;
-      const request = (input: EngineHttpRequest) =>
-        requestApi(input).pipe(
-          Effect.flatMap((response) =>
-            response.status >= 200 && response.status < 300
-              ? Effect.succeed(response)
-              : Effect.fail(failure("provider-request", { status: response.status })),
-          ),
-        );
-      const inspect = yield* beforeOwnership(
-        request({
-          method: "GET",
-          path: `/containers/${encodeURIComponent(serviceContainerName(plan, target.service))}/json`,
-        }),
-      );
-      let container: string;
-      let configuredUser: string | undefined;
-      try {
-        const value = JSON.parse(inspect.body) as { Id?: unknown; Config?: { User?: unknown } };
-        if (typeof value.Id !== "string" || value.Id.length === 0)
-          return yield* Effect.fail(failure("container-identity"));
-        container = value.Id;
-        const user = value.Config?.User;
-        if (user !== undefined && typeof user !== "string")
-          return yield* Effect.fail(failure("container-user"));
-        configuredUser = user;
-      } catch {
-        return yield* Effect.fail(failure("container-identity"));
-      }
-      const helper = yield* beforeOwnership(
-        resolveHelper(helperTarget).pipe(
-          Effect.mapError(
-            (error) =>
-              new ServiceExecError({
-                providerId: options.ctx.providerId,
-                operation: "exec",
-                service: target.service,
-                message: error.message,
-                remediation: error.remediation,
-                details: { category: error._tag },
-                cause: error,
-              }),
-          ),
+      const request = api.request;
+      const response = yield* request({
+        method: "GET",
+        path: `/containers/${encodeURIComponent(serviceContainerName(plan, target.service))}/json`,
+      });
+      if (response.status < 200 || response.status >= 300)
+        return yield* Effect.fail(failure("container-inspect"));
+      const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
+        response.body,
+      ).pipe(Effect.mapError((cause) => failure("container-inspect", cause)));
+      const helper = yield* resolveContainerHelper(helperTarget).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServiceExecError({
+              providerId: options.ctx.providerId,
+              operation: "exec",
+              service: target.service,
+              message: cause.message,
+              remediation: cause.remediation,
+              cause,
+            }),
         ),
       );
-      if (helper.target.os !== helperTarget.os || helper.target.arch !== helperTarget.arch)
-        return yield* Effect.fail(failure("helper-architecture"));
-      const { bytes, digest } = yield* beforeOwnership(verifiedExecHelper(helper, failure));
-      const helperPath = yield* beforeOwnership(
-        installExecHelper(api, options.ctx, container, { bytes, digest }),
-      );
-      const preparedCommand = yield* Fiber.join(preparation);
-      const nonce = randomBytes(16).toString("hex");
-      const directory = `/tmp/lando-exec-session-${nonce}`;
-      const inspectExit = (id: string) =>
-        request({ method: "GET", path: `/exec/${encodeURIComponent(id)}/json` }).pipe(
-          Effect.flatMap((response) => {
-            try {
-              const state = JSON.parse(response.body) as { Running?: unknown; ExitCode?: unknown };
-              return state.Running === false &&
-                typeof state.ExitCode === "number" &&
-                Number.isInteger(state.ExitCode)
-                ? Effect.succeed(state.ExitCode)
-                : Effect.fail(failure("exec-not-joined"));
-            } catch {
-              return Effect.fail(failure("exec-status"));
-            }
-          }),
-        );
-      const runControl = (argv: ReadonlyArray<string>, user = target.user) =>
+      const delivery = containerHelperDelivery(helper);
+      if (
+        !container.Mounts?.some(
+          (mount) => mount.Destination === delivery.target && mount.Source === delivery.source && !mount.RW,
+        )
+      )
+        return yield* Effect.fail(failure("helper-mount-missing"));
+      const prepared =
+        options.prepareCommand === undefined ? command : yield* options.prepareCommand(container.Id);
+      const input = yield* Queue.bounded<Uint8Array, Cause.Done>(1);
+      const output = yield* Queue.bounded<ExecChunk, ProviderError | Cause.Done>(16);
+      const finished = yield* Deferred.make<void, ProviderError>();
+      const stdin = yield* Stream.toAsyncIterableEffect(Stream.fromQueue(input));
+      const disconnect = new AbortController();
+      let completed = false;
+      let execId: string | undefined;
+      const owned: { producer?: Fiber.Fiber<void, never>; attach?: Fiber.Fiber<void, never> } = {};
+      yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
-          const created = yield* request({
-            method: "POST",
-            path: `/containers/${encodeURIComponent(container)}/exec`,
-            body: {
-              Cmd: [helperPath, ...argv],
-              AttachStdout: true,
-              AttachStderr: false,
-              AttachStdin: false,
-              Tty: false,
-              ...(user === undefined ? {} : { User: user }),
-            },
-          });
-          let id: string;
-          try {
-            const value = JSON.parse(created.body) as { Id?: unknown };
-            if (typeof value.Id !== "string" || value.Id.length === 0)
-              return yield* Effect.fail(failure("control-id"));
-            id = value.Id;
-          } catch {
-            return yield* Effect.fail(failure("control-id"));
-          }
-          const decode = makeAttachDecoder();
-          let output = "";
-          yield* streamApi({
-            method: "POST",
-            path: `/exec/${encodeURIComponent(id)}/start`,
-            body: { Detach: false, Tty: false },
+          if (owned.producer !== undefined) yield* Fiber.interrupt(owned.producer);
+          const drain = yield* Stream.runDrain(Stream.fromQueue(output)).pipe(
+            Effect.ignore,
+            Effect.forkDetach,
+          );
+          const cleanup = Effect.gen(function* () {
+            if (completed || execId === undefined) return;
+            yield* Queue.clear(input);
+            const joined = yield* Effect.exit(
+              Queue.offer(input, execSignalFrame(command.signal)).pipe(
+                Effect.andThen(Deferred.await(finished)),
+                Effect.interruptible,
+                Effect.timeout("5 seconds"),
+              ),
+            );
+            if (Exit.isSuccess(joined)) return;
+            disconnect.abort();
+            if (owned.attach !== undefined) yield* Fiber.interrupt(owned.attach);
+            const observed = yield* request({
+              method: "GET",
+              path: `/exec/${encodeURIComponent(execId)}/json`,
+            });
+            const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(
+              observed.body,
+            ).pipe(Effect.mapError((cause) => failure("cleanup-inspect", cause)));
+            if (state.Running) return yield* Effect.fail(failure("cleanup-unconfirmed"));
           }).pipe(
-            Stream.runForEach((chunk) =>
+            Effect.interruptible,
+            Effect.timeout("6 seconds"),
+            Effect.catchTag("TimeoutError", (cause) => Effect.fail(failure("cleanup-timeout", cause))),
+          );
+          const result = yield* Effect.exit(cleanup);
+          disconnect.abort();
+          if (owned.attach !== undefined) yield* Fiber.interrupt(owned.attach);
+          yield* Fiber.interrupt(drain);
+          yield* Queue.shutdown(input);
+          yield* Queue.shutdown(output);
+          if (Exit.isFailure(result))
+            return yield* Effect.failCause(failureDefectCause(annotateFailureRole(result.cause, "cleanup")));
+        }),
+      );
+      owned.producer = yield* Effect.gen(function* () {
+        if (prepared.stdinStream !== undefined) {
+          yield* Stream.fromAsyncIterable(prepared.stdinStream, (cause) => failure("stdin", cause)).pipe(
+            Stream.runForEach((bytes) =>
               Effect.gen(function* () {
-                for (const frame of decode(chunk)) {
-                  if (frame.stream !== "stdout") continue;
-                  if (output.length + frame.payload.length > 4096)
-                    return yield* Effect.fail(failure("control-frame-limit"));
-                  output += decoder.decode(frame.payload);
-                }
+                for (const frame of execDataFrames(bytes)) yield* Queue.offer(input, frame);
               }),
             ),
           );
-          const code = yield* inspectExit(id);
-          try {
-            const receipt = JSON.parse(output) as Receipt & { ok?: unknown };
-            if (receipt.ok !== true) {
-              const helperCode =
-                "error" in receipt &&
-                typeof receipt.error === "string" &&
-                /^[a-z-]{1,64}$/.test(receipt.error)
-                  ? receipt.error
-                  : "invalid-error";
-              return yield* Effect.fail(failure("control-rejected", { helperCode }));
-            }
-            if (
-              code !== 0 ||
-              !["initialized", "ready", "running", "finished", "cancelled", "collected"].includes(
-                receipt.state,
-              )
-            )
-              return yield* Effect.fail(failure("control-receipt"));
-            if (
-              receipt.exitCode !== undefined &&
-              (!Number.isInteger(receipt.exitCode) || receipt.exitCode < 0 || receipt.exitCode > 255)
-            )
-              return yield* Effect.fail(failure("control-exit-status"));
-            return receipt;
-          } catch {
-            return yield* Effect.fail(failure("control-receipt"));
-          }
-        }).pipe(
-          Effect.timeout(execTiming.control),
-          Effect.catchTag("TimeoutError", (error) =>
-            Effect.fail(failure("control-unavailable", { category: error._tag }, error)),
-          ),
-        );
-      const control = (op: string, signal?: string) =>
-        runControl(["exec-control", directory, nonce, op, ...(signal === undefined ? [] : [signal])]);
-      const cleanupSession = yield* Effect.cached(runControl(["exec-cleanup", directory, nonce]));
-      const poll = (
-        id: string,
-        operation: Effect.Effect<Receipt, ProviderError>,
-        done: (receipt: Receipt) => boolean,
-      ) =>
-        Effect.gen(function* () {
-          let observed: Receipt | undefined;
-          let lastFailure: ProviderError | undefined;
-          const result = yield* runProbe(
-            {
-              id,
-              policy: {
-                maxAttempts: 50,
-                delay: Duration.millis(100),
-                timeout: Duration.seconds(6),
-              },
-              classify: {
-                success: () => (observed !== undefined && done(observed) ? "green" : "yellow"),
-                failure: () => "yellow",
-              },
-            },
-            operation.pipe(
-              Effect.tap((receipt) =>
-                Effect.sync(() => {
-                  observed = receipt;
-                  lastFailure = undefined;
-                }),
-              ),
-              Effect.tapError((error) =>
-                Effect.sync(() => {
-                  lastFailure = error;
-                }),
-              ),
-            ),
-          );
-          if (result.outcome !== "green" || observed === undefined || !done(observed))
-            return yield* Effect.fail(lastFailure ?? failure(id));
-          return observed;
-        }).pipe(Effect.catchTag("ProbeError", (error) => Effect.fail(failure(id, undefined, error))));
-      let completed = false;
-      let mainStarted = false;
-      let mainExecId: string | undefined;
-      let cancelling = false;
-      const receipt = yield* Deferred.make<Receipt, ProviderError>();
-      const output = yield* Queue.bounded<ExecChunk, ProviderError | Cause.Done>(16);
-      // The release is registered before any potentially ambiguous supervisor start.
-      const owned = yield* Effect.acquireRelease(
-        Effect.succeed({
-          attach: undefined as Fiber.Fiber<void, never> | undefined,
-          monitor: undefined as Fiber.Fiber<void, never> | undefined,
-          signalWatcher: undefined as Fiber.Fiber<void, never> | undefined,
-          watch: undefined as OwnedExecWatch | undefined,
-        }),
-        (owned) =>
-          Effect.gen(function* () {
-            cancelling = true;
-            yield* Effect.sync(() => {
-              owned.monitor?.interruptUnsafe();
-              owned.signalWatcher?.interruptUnsafe();
-            });
-            const drain = yield* Stream.runDrain(Stream.fromQueue(output)).pipe(
-              Effect.ignore,
-              Effect.forkDetach,
-            );
-            let watchFailure: Cause.Cause<ProviderError> | undefined;
-            const cleanup = Effect.gen(function* () {
-              if (!completed) {
-                // Persist the requested signal before permitting a paused watch to renew.
-                if (owned.watch !== undefined) yield* owned.watch.prepareCancel;
-                const cancelled = yield* control("cancel", signalName(command.signal));
-                if (owned.watch !== undefined) yield* owned.watch.resumeAfterCancel;
-                const noWatchStarted = owned.watch === undefined ? true : yield* owned.watch.stopBeforeStart;
-                const observed =
-                  owned.watch === undefined || noWatchStarted
-                    ? undefined
-                    : yield* Effect.exit(
-                        owned.watch.finished.pipe(
-                          Effect.timeout(execTiming.watchObservation),
-                          Effect.catchTag("TimeoutError", (cause) =>
-                            Effect.fail(failure("watch-observation-unconfirmed", undefined, cause)),
-                          ),
-                        ),
-                      );
-                let final: Receipt;
-                if (observed?._tag === "Success") final = observed.value;
-                else {
-                  if (observed?._tag === "Failure") watchFailure = observed.cause;
-                  if (owned.watch !== undefined) yield* owned.watch.stopInput;
-                  // Recovery is finite and used only when observation was absent or failed.
-                  final =
-                    cancelled.joined === true
-                      ? cancelled
-                      : yield* poll(
-                          "cleanup-unconfirmed",
-                          control("status"),
-                          (state) =>
-                            state.joined === true &&
-                            (state.state === "finished" || state.state === "cancelled"),
-                        );
-                }
-                if (final.state === "finished" && final.exitCode === undefined)
-                  return yield* Effect.fail(failure("cleanup-status-missing"));
-                if (final.state === "finished") yield* Deferred.succeed(receipt, final);
-                else yield* Deferred.fail(receipt, failure("cancelled-before-launch"));
-                yield* control("collect");
-              }
-              if (owned.attach !== undefined) yield* Fiber.join(owned.attach);
-              if (owned.monitor !== undefined) yield* Fiber.await(owned.monitor);
-              if (owned.signalWatcher !== undefined) yield* Fiber.await(owned.signalWatcher);
-              if (owned.watch !== undefined) {
-                yield* owned.watch.stopInput;
-                yield* owned.watch.join;
-              }
-              if (owned.attach === undefined) {
-                yield* cleanupSession;
-                return;
-              }
-              if (!mainStarted || mainExecId === undefined)
-                return yield* Effect.fail(failure("primary-start-uncertain"));
-              if (!completed) yield* inspectExit(mainExecId);
-              yield* cleanupSession;
-            }).pipe(
-              Effect.interruptible,
-              Effect.timeout(execTiming.cleanup),
-              Effect.catchTag("TimeoutError", (error) =>
-                Effect.fail(failure("cleanup-unconfirmed", undefined, error)),
-              ),
-            );
-            const result = yield* Effect.exit(cleanup);
-            yield* Effect.sync(() => {
-              owned.attach?.interruptUnsafe();
-              owned.monitor?.interruptUnsafe();
-              owned.signalWatcher?.interruptUnsafe();
-              owned.watch?.interruptUnsafe();
-              drain.interruptUnsafe();
-            });
-            yield* Queue.shutdown(output);
-            watchFailure ??= owned.watch?.failureCause();
-            if (result._tag === "Failure")
-              return yield* Effect.failCause(
-                failureDefectCause(
-                  watchFailure === undefined
-                    ? annotateFailureRole(result.cause, "cleanup")
-                    : mergeFailure(watchFailure, result.cause, "cleanup"),
-                ),
-              );
-            if (watchFailure !== undefined)
-              return yield* Effect.failCause(
-                failureDefectCause(annotateFailureRole(watchFailure, "cleanup")),
-              );
-          }),
-      );
-      owned.signalWatcher = yield* awaitSignal.pipe(
-        Effect.andThen(Queue.interrupt(output)),
+        }
+        yield* Queue.offer(input, execEofFrame());
+      }).pipe(
+        Effect.catch((error) => Queue.fail(output, error)),
         Effect.asVoid,
         Effect.forkDetach,
       );
-      yield* runControl(["exec-prepare", directory, nonce, target.user ?? configuredUser ?? "", digest], "0");
-      if (command.signal?.aborted) return yield* Effect.interrupt;
-      const supervise = Effect.gen(function* () {
-        const watch = yield* startExecWatch(plan, target, {
-          api,
-          ctx: options.ctx,
-          container,
-          helperPath,
-          directory,
-          nonce,
-          inspectExit,
-          acquire: (watch) => {
-            owned.watch = watch;
+      const { signal: _signal, ...payload } = prepared;
+      owned.attach = yield* Effect.scoped(
+        transportExecStream(
+          plan,
+          target,
+          {
+            ...payload,
+            command: [delivery.executable, "exec-run", "--", ...prepared.command],
+            raw: true,
+            tty: false,
+            stdinStream: stdin,
+            signal: disconnect.signal,
           },
-        });
-        yield* watch.ready.pipe(
-          Effect.timeout(execTiming.watchReady),
-          Effect.catchTag("TimeoutError", (cause) =>
-            Effect.fail(failure("watch-not-ready", undefined, cause)),
-          ),
-        );
-        if (command.signal?.aborted) return yield* Effect.interrupt;
-        yield* watch.beginLaunch;
-        const launched = yield* control("launch");
-        if (
-          launched.state !== "running" &&
-          !(launched.state === "finished" && launched.joined === true && launched.exitCode !== undefined)
-        )
-          return yield* Effect.fail(failure("launch-not-confirmed"));
-        yield* watch.confirmLaunch;
-        const finished = yield* watch.finished;
-        if (finished.exitCode === undefined) return yield* Effect.fail(failure("root-status-missing"));
-        yield* Deferred.succeed(receipt, finished);
-      }).pipe(
-        Effect.catch((error) =>
-          Deferred.fail(receipt, error).pipe(Effect.andThen(Queue.fail(output, error)), Effect.asVoid),
-        ),
-      );
-      const { signal: _signal, ...payloadCommand } = preparedCommand;
-      const supervisedCommand: CommandSpec = {
-        ...payloadCommand,
-        command: [helperPath, "exec-supervisor", directory, nonce, "--", ...preparedCommand.command],
-        raw: true,
-        tty: false,
-      };
-      const attach = Effect.scoped(
-        transportExecStream(plan, target, supervisedCommand, {
-          api,
-          ctx: options.ctx,
-          raw: true,
-          containerId: container,
-          onExecCreated: (id) => {
-            mainExecId = id;
+          {
+            api,
+            ctx: options.ctx,
+            raw: true,
+            containerId: container.Id,
+            onExecCreated: (id) => {
+              execId = id;
+            },
           },
-          onExecStarted: () => {
-            mainStarted = true;
-          },
-        }).pipe(
+        ).pipe(
           Stream.runForEach((chunk) =>
             Effect.gen(function* () {
-              if ("exitCode" in chunk) {
-                const final = yield* Deferred.await(receipt);
-                if (!mainStarted || final.exitCode !== chunk.exitCode || final.joined !== true)
-                  return yield* Effect.fail(failure("terminal-status-mismatch"));
-                if (mainExecId === undefined) return yield* Effect.fail(failure("primary-start-uncertain"));
-                completed = true;
-                if (!cancelling) yield* cleanupSession;
-              }
-              if (!cancelling) yield* Queue.offer(output, chunk);
+              if ("exitCode" in chunk) completed = true;
+              yield* Queue.offer(output, chunk);
             }),
           ),
-          Effect.andThen(Queue.end(output)),
-          Effect.catch((error) => Queue.fail(output, error)),
-          Effect.asVoid,
         ),
+      ).pipe(
+        Effect.onExit((exit) =>
+          Effect.gen(function* () {
+            yield* Deferred.done(finished, exit);
+            if (Exit.isFailure(exit)) yield* Queue.failCause(output, exit.cause);
+            else yield* Queue.end(output);
+          }),
+        ),
+        Effect.ignore,
+        Effect.forkDetach,
       );
-      owned.attach = yield* attach.pipe(Effect.forkDetach);
-      owned.monitor = yield* supervise.pipe(Effect.forkDetach);
-      return Stream.fromQueue(output);
+      return Stream.fromQueue(output).pipe(
+        Stream.interruptWhen(interruptOnSignal(command.signal).pipe(Effect.andThen(Effect.interrupt))),
+      );
     }),
   );

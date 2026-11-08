@@ -30,6 +30,7 @@ import {
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
@@ -1056,7 +1057,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
-  const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
+  const prepared = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
+  const plan = yield* prepareContainerHelperMounts(prepared, options);
   const deps: BringUpDeps = {
     api,
     options,
