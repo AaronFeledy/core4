@@ -29,12 +29,12 @@ import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../
 import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { hostProxyEligibleServices } from "../subsystems/host-proxy/worker-service-plan.ts";
-import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { infoLogSources } from "./info-log-sources.ts";
 import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
+import { resolveInfoTarget } from "./info-target.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -138,7 +138,13 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     hostProxyEligibleServices(plan).length === 0
       ? undefined
       : (hostProxyPlanExtension(plan) ?? { runLando: { availability: "available" as const } });
-  const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
+  const applied = yield* registry.resolveAppliedPlan(
+    completionPlan.identity?.appRoot ?? completionPlan.root,
+    {
+      kind: "user",
+      id: completionPlan.id,
+    },
+  );
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
   return {
@@ -157,7 +163,7 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   let plan: AppPlan;
   let landofile: LoadScopedLandofile | undefined;
-  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  const observedTarget = target ?? (yield* resolveInfoTarget);
   if (observedTarget !== undefined) {
     plan = observedTarget.plan;
     if (options?.deep === true) {
