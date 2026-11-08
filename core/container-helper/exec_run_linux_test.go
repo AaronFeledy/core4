@@ -21,9 +21,9 @@ func TestExecRunProcess(t *testing.T) {
 	}
 	for i, arg := range os.Args {
 		if arg == "--" {
-			scan := execDirectChildren
+			scan := execDescendants
 			if root := os.Getenv("LANDO_TEST_EXEC_PROC_ROOT"); root != "" {
-				scan = func() ([]int, error) { return execDirectChildrenAt(root, 73) }
+				scan = func() ([]int, error) { return execDescendantsAt(root, 73) }
 			}
 			os.Exit(runExecRunWithScan(os.Args[i:], helperIO{os.Stdin, os.Stdout, os.Stderr, nil}, scan))
 		}
@@ -40,7 +40,7 @@ type execRunFixture struct {
 
 func execRunStart(t *testing.T, argv ...string) *execRunFixture {
 	t.Helper()
-	if _, err := execDirectChildren(); err != nil {
+	if _, err := execDescendants(); err != nil {
 		t.Skip("kernel does not expose process children: ", err)
 	}
 	binary, err := os.Executable()

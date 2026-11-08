@@ -17,7 +17,7 @@ const (
 )
 
 func runExecRun(args []string, streams helperIO) int {
-	return runExecRunWithScan(args, streams, execDirectChildren)
+	return runExecRunWithScan(args, streams, execDescendants)
 }
 
 func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, error)) int {
@@ -90,8 +90,6 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 	var cancelAt time.Time
 	var cancelSignal syscall.Signal = syscall.SIGTERM
 	delivered := make(map[int]syscall.Signal)
-	var groupDelivered syscall.Signal
-	group := true
 	mainReaped := false
 	code := 0
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -129,7 +127,6 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 			delete(delivered, pid)
 			if pid == mainPID {
 				mainReaped = true
-				group = false
 				if !cancelling {
 					code = execStatusCode(status)
 					return true
@@ -142,8 +139,8 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 		if now.Sub(cancelAt) >= execCancelGrace {
 			sig = syscall.SIGKILL
 		}
-		if err := execSignalTree(mainPID, group, sig, delivered, &groupDelivered, scan); err != nil {
-			groupDelivered = 0
+		if err := execSignalTree(sig, delivered, scan); err != nil {
+			return
 		}
 	}
 

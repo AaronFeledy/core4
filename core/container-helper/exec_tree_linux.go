@@ -58,13 +58,11 @@ func execProcNamespaceStatus(data string, selfPID int) error {
 	return nil
 }
 
-// Only the owner loop calls Wait4. Direct children cannot have their PIDs
-// recycled until this owner reaps them. Never retain a discovered PID across a reap.
-func execDirectChildren() ([]int, error) {
-	return execDirectChildrenAt("/proc", os.Getpid())
+func execDescendants() ([]int, error) {
+	return execDescendantsAt("/proc", os.Getpid())
 }
 
-func execDirectChildrenAt(procRoot string, selfPID int) ([]int, error) {
+func execDescendantsAt(procRoot string, selfPID int) ([]int, error) {
 	// NStgid starts at the procfs mount's PID namespace. Multiple values
 	// identify an ancestor mount even when numeric self PIDs coincide.
 	status, err := os.ReadFile(filepath.Join(procRoot, "self", "status"))
@@ -87,7 +85,7 @@ func execDirectChildrenAt(procRoot string, selfPID int) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	var children []int
+	children := make(map[int][]int)
 	foundSelf := false
 	for _, entry := range entries {
 		pid, e := strconv.Atoi(entry.Name())
@@ -108,29 +106,34 @@ func execDirectChildrenAt(procRoot string, selfPID int) ([]int, error) {
 		if pid == selfPID {
 			foundSelf = true
 		}
-		if parent == selfPID {
-			children = append(children, pid)
-		}
+		children[parent] = append(children[parent], pid)
 	}
 	if !foundSelf {
 		return nil, errors.New("proc-unavailable")
 	}
-	return children, nil
+	owned := []int{selfPID}
+	for i := 0; i < len(owned); i++ {
+		owned = append(owned, children[owned[i]]...)
+	}
+	return owned[1:], nil
 }
 
-func execSignalTree(main int, group bool, sig syscall.Signal, delivered map[int]syscall.Signal, groupDelivered *syscall.Signal, scan func() ([]int, error)) error {
+func execSignalTree(sig syscall.Signal, delivered map[int]syscall.Signal, scan func() ([]int, error)) error {
 	children, err := scan()
 	if err != nil {
 		return err
 	}
-	if group && main > 0 && *groupDelivered != sig {
-		if e := syscall.Kill(-main, sig); e != nil && e != syscall.ESRCH {
-			return e
+	current := make(map[int]bool, len(children))
+	for _, pid := range children {
+		current[pid] = true
+	}
+	for pid := range delivered {
+		if !current[pid] {
+			delete(delivered, pid)
 		}
-		*groupDelivered = sig
 	}
 	for _, pid := range children {
-		if delivered[pid] == sig || (group && pid == main) {
+		if delivered[pid] == sig {
 			continue
 		}
 		if e := syscall.Kill(pid, sig); e != nil && e != syscall.ESRCH {
