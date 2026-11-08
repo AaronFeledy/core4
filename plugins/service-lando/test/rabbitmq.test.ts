@@ -136,12 +136,30 @@ describe("rabbitmq ServiceType", () => {
         expect(String(volumes[0]?.target)).toBe("/var/lib/rabbitmq");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
-          RABBITMQ_NODENAME: "rabbit@localhost",
+          RABBITMQ_NODENAME: "rabbit@lando-myapp--queue",
           RABBITMQ_DEFAULT_USER: "lando",
           RABBITMQ_DEFAULT_PASS: "lando",
         });
         expect(plan.healthcheck).toEqual(rabbitmqProbes(5672).healthcheck);
         expect(plan.readiness).toEqual(rabbitmqProbes(5672).readiness);
+      });
+
+      test("keeps the node name of the folder's data after a rename", async () => {
+        const plan = await planRabbitMQService(serviceType, { type: id });
+        expect(plan.hostAliases).toEqual([]);
+
+        const renamed = await composeServicePlan({
+          serviceType,
+          service: serviceConfig({ type: id }),
+          appRoot: "/srv/apps/myapp",
+          appName: "renamed",
+          dataName: "myapp",
+          serviceName: "queue",
+          metadata,
+          featureOverrides,
+        });
+        expect(renamed.environment).toMatchObject({ RABBITMQ_NODENAME: "rabbit@lando-myapp--queue" });
+        expect(renamed.hostAliases).toEqual([{ hostname: "lando-myapp--queue", ip: "127.0.0.1" }]);
       });
 
       test("resolves default tooling", async () => {

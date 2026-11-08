@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec } from "@lando/provider-lando";
-import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import { ServiceName, appIdentityKey, normalizeAppSlug } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rabbitmqServiceType } from "../src/services/rabbitmq.ts";
 import { composeCatalogConfigPlan } from "./support/catalog-config-app.ts";
@@ -31,9 +31,10 @@ describe("RabbitMQ data across container recreation", () => {
           Effect.gen(function* () {
             // Given: a broker holding a persistent message in a durable queue.
             const appRoot = yield* acquireTempAppRoot("lando-rabbit-recreate-");
+            const slug = normalizeAppSlug(basename(appRoot), appRoot);
             const plan = yield* composeCatalogConfigPlan({
               serviceType: rabbitmqServiceType,
-              slug: basename(appRoot),
+              slug,
               serviceName: "queue",
               appRoot,
               service: { type: rabbitmqServiceType.id },
@@ -63,16 +64,18 @@ describe("RabbitMQ data across container recreation", () => {
             const before = yield* containerId(app, name);
 
             // When: a renamed runtime reuses the recorded data volume.
+            const renamedPlan = yield* composeCatalogConfigPlan({
+              serviceType: rabbitmqServiceType,
+              slug: `${slug}-renamed`,
+              dataName: slug,
+              serviceName: "queue",
+              appRoot,
+              service: { type: rabbitmqServiceType.id },
+              source: "rabbitmq-recreate.integration.test",
+            });
             const renamed = {
-              ...plan,
-              id: AppId.make(`${plan.id}-renamed`),
-              name: `${plan.name}-renamed`,
-              slug: `${plan.slug}-renamed`,
-              identity: {
-                appRoot: plan.root,
-                ownerKey: appIdentityKey("owner", plan.root),
-                dataName: plan.name,
-              },
+              ...renamedPlan,
+              identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root), dataName: slug },
             };
             yield* bringDown(plan, { api: app.api });
             yield* Effect.acquireRelease(bringUp(renamed, { api: app.api }), () =>
