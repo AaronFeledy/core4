@@ -4,6 +4,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { ExecTarget, ProviderError } from "@lando/sdk/services";
 import { Cause, Deferred, Duration, Effect, Fiber, Queue, Stream } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { execTiming } from "./exec-timing.ts";
 import { ExecWatchAttachDecoder, ExecWatchProtocol, type ExecWatchReceipt } from "./exec-watch-protocol.ts";
 import { execStream as transportExecStream } from "./podman/exec-transport.ts";
 
@@ -11,7 +12,8 @@ export interface OwnedExecWatch {
   readonly ready: Effect.Effect<void, ProviderError>;
   /** Completes only after strict EOF validation and the known-started watch exits zero. */
   readonly finished: Effect.Effect<ExecWatchReceipt, ProviderError>;
-  readonly resumeAfterLaunch: Effect.Effect<void, ProviderError>;
+  /** Authorize observation before sending launch, including while its acknowledgement is pending. */
+  readonly beginLaunch: Effect.Effect<void, ProviderError>;
   readonly prepareCancel: Effect.Effect<void>;
   /** Call only after the requested cancellation has been persisted. */
   readonly resumeAfterCancel: Effect.Effect<void>;
@@ -74,7 +76,7 @@ export const startExecWatch = (
     const handle: OwnedExecWatch = {
       ready: Deferred.await(ready),
       finished: Deferred.await(finished),
-      resumeAfterLaunch: Effect.try({
+      beginLaunch: Effect.try({
         try: () => protocol.markLaunched(),
         catch: (cause) => failure("watch-launch-order", cause),
       }).pipe(Effect.andThen(Deferred.succeed(resume, undefined)), Effect.asVoid),
@@ -100,7 +102,11 @@ export const startExecWatch = (
         const result = yield* runProbe(
           {
             id: "exec-watch-stop",
-            policy: { maxAttempts: 40, delay: Duration.millis(100), timeout: Duration.millis(3500) },
+            policy: {
+              maxAttempts: 40,
+              delay: Duration.millis(100),
+              timeout: Duration.millis(execTiming.watchJoinMillis),
+            },
           },
           options.inspectExit(watchId).pipe(
             Effect.tap(() =>
@@ -135,7 +141,7 @@ export const startExecWatch = (
       for (;;) {
         if (!first) {
           yield* Deferred.await(resume);
-          if (launched) yield* Effect.sleep("500 millis");
+          if (launched) yield* Effect.sleep(execTiming.heartbeatInterval);
           launched = true;
         }
         first = false;
@@ -146,7 +152,7 @@ export const startExecWatch = (
         });
         yield* Queue.offer(input, bytes);
         const receipt = yield* Deferred.await(pending).pipe(
-          Effect.timeout("2 seconds"),
+          Effect.timeout(execTiming.heartbeatReply),
           Effect.mapError((cause) => failure("watch-heartbeat", cause)),
         );
         if (receipt.joined === true) return;

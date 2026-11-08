@@ -26,7 +26,7 @@ export class ExecWatchProtocol {
   private used = 0;
   private nextSequence = 1;
   private pendingSequence: number | undefined;
-  private phase: "ready" | "running" | "cancelling" = "ready";
+  private phase: "ready" | "launching" | "running" | "cancelling" = "ready";
   private ready = false;
   private terminal: ExecWatchReceipt | undefined;
   private closed = false;
@@ -51,7 +51,7 @@ export class ExecWatchProtocol {
       this.terminal !== undefined
     )
       invalid("launch-without-ready");
-    this.phase = "running";
+    this.phase = "launching";
   }
 
   beginCancel(): void {
@@ -151,6 +151,7 @@ export class ExecWatchProtocol {
       if ("exitCode" in value || "joined" in value) invalid("invalid-running-receipt");
       if (this.phase === "ready" && value.state !== "ready") invalid("running-before-launch");
       if (this.phase === "running" && value.state !== "running") invalid("ready-after-launch");
+      if (this.phase === "launching" && value.state === "running") this.phase = "running";
       return { ok: true, seq: value.seq, state: value.state };
     }
     if (this.phase === "ready") invalid("terminal-before-launch");

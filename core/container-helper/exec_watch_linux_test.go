@@ -319,7 +319,7 @@ func TestExecWatchStalledOutputHasBoundedPulseLifetime(t *testing.T) {
 	started := time.Now()
 	code := runExecWatch(dir, helperIO{stdin: inRead, stdout: outWrite})
 	elapsed := time.Since(started)
-	if code != 1 || elapsed > 2500*time.Millisecond {
+	if code != 1 || elapsed > 3500*time.Millisecond {
 		t.Fatalf("stalledwatch code%d elapsed%v", code, elapsed)
 	}
 	if count.Load() != 1 {

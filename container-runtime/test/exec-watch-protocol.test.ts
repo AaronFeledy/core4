@@ -140,12 +140,14 @@ describe("private exec watch request and receipt ordering", () => {
     expect(() => h.protocol.markLaunched()).toThrow(ExecWatchProtocolError);
   });
 
-  test("requires READY before launch and rejects READY after launch", () => {
+  test("requires READY before launch and rejects READY after observing running", () => {
     const initial = harness();
     initial.protocol.request();
     expect(() => initial.protocol.feed(line(running(1)))).toThrow(ExecWatchProtocolError);
     const afterLaunch = launched();
-    expect(() => afterLaunch.protocol.feed(line(ready(2)))).toThrow(ExecWatchProtocolError);
+    afterLaunch.protocol.feed(line(running(2)));
+    afterLaunch.protocol.request();
+    expect(() => afterLaunch.protocol.feed(line(ready(3)))).toThrow(ExecWatchProtocolError);
   });
 
   test("cancellation accepts joined cancellation before READY or a joined result after launch", () => {

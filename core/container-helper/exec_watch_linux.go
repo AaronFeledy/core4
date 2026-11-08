@@ -12,6 +12,7 @@ import (
 )
 
 const execWatchIdle = 3 * time.Second
+const execWatchPulseBudget = 3 * time.Second
 
 // A watch owns no autonomous heartbeat. Each host pulse authorizes one local
 // status request, and therefore one renewal of the supervisor's existing lease.
@@ -141,10 +142,10 @@ func execWatchLoop(dir string, output io.Writer, read func([]byte) (int, error),
 				if e != nil && e != syscall.EAGAIN && e != syscall.EWOULDBLOCK && e != io.EOF {
 					return execWatchEmit(output, execFailure("watch-input-failed"), expectedSeq)
 				}
-				// Share a two-second pulse budget between the local exchange and
+				// Share a three-second pulse budget between both local exchanges and
 				// its output write; a stalled peer cannot extend watch ownership.
 				if writer, ok := output.(*execWatchWriter); ok {
-					writer.deadline = time.Now().Add(2 * time.Second)
+					writer.deadline = time.Now().Add(execWatchPulseBudget)
 				}
 				op := "status"
 				if seq == 1 {

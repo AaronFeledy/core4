@@ -8,6 +8,7 @@ import { type Cause, Deferred, Duration, Effect, Fiber, Queue, type Scope, Strea
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { verifiedExecHelper } from "./exec-helper-artifact.ts";
 import { installExecHelper } from "./exec-helper-install.ts";
+import { execTiming } from "./exec-timing.ts";
 import { type OwnedExecWatch, startExecWatch } from "./exec-watch.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
 import { serviceContainerName } from "./plan.ts";
@@ -229,8 +230,7 @@ export const supervisedExecStream = (
             return yield* Effect.fail(failure("control-receipt"));
           }
         }).pipe(
-          // The helper can spend five seconds joining a cancelled tree, plus transport overhead.
-          Effect.timeout("7 seconds"),
+          Effect.timeout(execTiming.control),
           Effect.catchTag("TimeoutError", (error) =>
             Effect.fail(failure("control-unavailable", { category: error._tag }, error)),
           ),
@@ -315,7 +315,7 @@ export const supervisedExecStream = (
                     ? undefined
                     : yield* Effect.exit(
                         owned.watch.finished.pipe(
-                          Effect.timeout("7 seconds"),
+                          Effect.timeout(execTiming.watchObservation),
                           Effect.catchTag("TimeoutError", (cause) =>
                             Effect.fail(failure("watch-observation-unconfirmed", undefined, cause)),
                           ),
@@ -361,7 +361,7 @@ export const supervisedExecStream = (
               yield* cleanupSession;
             }).pipe(
               Effect.interruptible,
-              Effect.timeout("20 seconds"),
+              Effect.timeout(execTiming.cleanup),
               Effect.catchTag("TimeoutError", (error) =>
                 Effect.fail(failure("cleanup-unconfirmed", undefined, error)),
               ),
@@ -425,19 +425,19 @@ export const supervisedExecStream = (
           },
         });
         yield* watch.ready.pipe(
-          Effect.timeout("6 seconds"),
+          Effect.timeout(execTiming.watchReady),
           Effect.catchTag("TimeoutError", (cause) =>
             Effect.fail(failure("watch-not-ready", undefined, cause)),
           ),
         );
         if (command.signal?.aborted) return yield* Effect.interrupt;
+        yield* watch.beginLaunch;
         const launched = yield* control("launch");
         if (
           launched.state !== "running" &&
           !(launched.state === "finished" && launched.joined === true && launched.exitCode !== undefined)
         )
           return yield* Effect.fail(failure("launch-not-confirmed"));
-        yield* watch.resumeAfterLaunch;
         const finished = yield* watch.finished;
         if (finished.exitCode === undefined) return yield* Effect.fail(failure("root-status-missing"));
         yield* Deferred.succeed(receipt, finished);
