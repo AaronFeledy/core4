@@ -255,7 +255,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       return ownership === "exact" ? appRoot === lookupRoot : isSameOrDescendantPath(appRoot, lookupRoot);
     })
     .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
-  const selected = matches[0];
+  let selected = matches[0];
   const selectedRoot = selected?.identity?.appRoot;
   if (
     selected !== undefined &&
@@ -264,18 +264,25 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const sameRoot = matches.filter((plan) => plan.identity?.appRoot === selectedRoot);
     const providerIds = [...new Set(sameRoot.map((plan) => plan.provider))];
     const renamed = app.kind === "user" && providerIds.length === 1;
-    return yield* Effect.fail(
-      new AppResolveError({
-        message: renamed
-          ? `App folder ${selectedRoot} has multiple applied app names: ${sameRoot.map((plan) => plan.name).join(", ")}.`
-          : `Multiple providers claim applied state for ${selectedRoot}: ${providerIds.join(", ")}.`,
-        reason: "ambiguous",
-        detail: "applied-state",
-        remediation: renamed
-          ? `Run \`lando start\` in ${selectedRoot} to retire the app names its Landofile no longer selects, then retry.`
-          : `From ${selectedRoot}, remove unwanted realizations with ${providerIds.map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
-      }),
-    );
+    const named =
+      renamed && new Set(sameRoot.map((plan) => plan.id)).size === sameRoot.length
+        ? sameRoot.find((plan) => plan.id === app.id)
+        : undefined;
+    if (named !== undefined) selected = named;
+    else {
+      return yield* Effect.fail(
+        new AppResolveError({
+          message: renamed
+            ? `App folder ${selectedRoot} has multiple applied app names: ${sameRoot.map((plan) => plan.name).join(", ")}.`
+            : `Multiple providers claim applied state for ${selectedRoot}: ${providerIds.join(", ")}.`,
+          reason: "ambiguous",
+          detail: "applied-state",
+          remediation: renamed
+            ? `Run \`lando start\`, \`lando stop\`, or \`lando destroy\` in ${selectedRoot} to reconcile the app names its Landofile no longer selects.`
+            : `From ${selectedRoot}, remove unwanted realizations with ${providerIds.map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
+        }),
+      );
+    }
   }
   if (ownership === "ancestor" && selected !== undefined) return { kind: "applied", plan: selected };
   const ownershipHints = ownership === "ancestor" ? yield* readOwnership : teardownOwnership;

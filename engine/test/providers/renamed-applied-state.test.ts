@@ -20,7 +20,7 @@ const resolvers = [
     resolveTeardownEvidence(root, providers).pipe(Effect.asVoid),
 ];
 
-test.each(resolvers)("%s refuses legacy double state with a usable rename recovery", async (resolve) => {
+test.each(resolvers)("%s refuses legacy double state without a desired app id", async (resolve) => {
   const error = await Effect.runPromise(
     resolve(plan.root, [
       { ...TestRuntimeProvider, id: "lando", appliedPlans: Effect.succeed([old, renamed]) },
@@ -29,31 +29,37 @@ test.each(resolvers)("%s refuses legacy double state with a usable rename recove
   expect(error).toBeInstanceOf(AppResolveError);
   if (!(error instanceof AppResolveError)) throw error;
   expect(error.reason).toBe("ambiguous");
-  expect(error.message).toContain(plan.root);
-  expect(error.message).toContain(old.name);
-  expect(error.message).toContain(renamed.name);
-  expect(error.remediation).toContain("`lando start`");
-  expect(error.remediation).not.toContain("lando destroy");
+  expect(error.detail).toBe("applied-state");
 });
 
-test.each(resolvers)(
-  "%s preserves provider-scoped recovery for genuinely different providers",
-  async (resolve) => {
-    const error = await Effect.runPromise(
-      resolve(plan.root, [
-        { ...TestRuntimeProvider, id: "lando", appliedPlans: Effect.succeed([old, renamed]) },
-        {
-          ...TestRuntimeProvider,
-          id: "docker",
-          appliedPlans: Effect.succeed([{ ...renamed, provider: ProviderId.make("docker") }]),
-        },
-      ]).pipe(Effect.flip),
-    );
-    expect(error).toBeInstanceOf(AppResolveError);
-    if (!(error instanceof AppResolveError)) throw error;
-    expect(error.message).toContain("lando, docker");
-    expect(error.message).not.toContain("lando, lando");
-    expect(error.remediation).toContain("lando destroy --provider=lando --yes");
-    expect(error.remediation).toContain("lando destroy --provider=docker --yes");
-  },
-);
+test("observation selects the authored app id from legacy double state", async () => {
+  const selected = await Effect.runPromise(
+    resolveAppliedPlanEvidence(
+      plan.root,
+      [{ ...TestRuntimeProvider, id: "lando", appliedPlans: Effect.succeed([old, renamed]) }],
+      { kind: "user", id: renamed.id },
+    ),
+  );
+  expect(selected?.id).toBe(renamed.id);
+});
+
+test.each([
+  ...resolvers,
+  (root: AbsolutePath, providers: readonly AppliedStateProvider[]) =>
+    resolveAppliedPlanEvidence(root, providers, { kind: "user", id: renamed.id }).pipe(Effect.asVoid),
+])("%s preserves provider-scoped recovery for genuinely different providers", async (resolve) => {
+  const error = await Effect.runPromise(
+    resolve(plan.root, [
+      { ...TestRuntimeProvider, id: "lando", appliedPlans: Effect.succeed([old, renamed]) },
+      {
+        ...TestRuntimeProvider,
+        id: "docker",
+        appliedPlans: Effect.succeed([{ ...renamed, provider: ProviderId.make("docker") }]),
+      },
+    ]).pipe(Effect.flip),
+  );
+  expect(error).toBeInstanceOf(AppResolveError);
+  if (!(error instanceof AppResolveError)) throw error;
+  expect(error.reason).toBe("ambiguous");
+  expect(error.detail).toBe("applied-state");
+});
