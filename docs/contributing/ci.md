@@ -360,7 +360,7 @@ Each cell writes a last-30-run trend table to the job summary and uploads `repor
 
 Samples pull images from Docker Hub anonymously, and each job posts a notice saying so. Add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets to log in and raise the pull limit; no workflow change is needed.
 
-Each sample's fresh roots mean its `lando setup` downloads mkcert from GitHub releases again. When GitHub release downloads fail, samples fail at `prepare:setup` while earlier samples in the run still pass; dispatch again once downloads recover.
+Each job restores the current-commit runtime bundle from the same Actions cache the `ci` workflow fills and assembles it only when bundle inputs changed. Each sample's fresh roots still mean its `lando setup` downloads mkcert from GitHub releases again. When GitHub release downloads fail, samples fail at `prepare:setup` while earlier samples in the run still pass; dispatch again once downloads recover.
 
 ## npm dev package publishing
 

@@ -64,8 +64,29 @@ describe("workflow performance rendering", () => {
 
   test("keeps setup, fixture preparation, and image pulls outside measured commands", async () => {
     const workflow = await renderWorkflow();
-    expect(workflow).toContain("Assemble current-commit linux-x64 runtime bundle");
-    expect(workflow).toContain("Assemble current-commit linux-arm64 runtime bundle");
+    for (const cell of WORKFLOW_PERFORMANCE_CELLS) {
+      const label = cell.bundleKey.replace("linux-", "Linux ");
+      expect(Bun.YAML.parse(workflow)).toMatchObject({
+        jobs: {
+          [`workflow-performance-${cell.id}`]: {
+            steps: expect.arrayContaining([
+              expect.objectContaining({
+                name: `Restore assembled ${label} runtime bundle`,
+                id: "runtime-bundle-cache",
+                with: {
+                  path: `dist/cache/runtime-bundle/lando-runtime-${cell.bundleKey}.tar.gz`,
+                  key: "${{ steps.runtime-bundle-key.outputs.key }}",
+                },
+              }),
+              expect.objectContaining({
+                name: `Assemble current-commit ${label} runtime bundle`,
+                if: "steps.runtime-bundle-cache.outputs.cache-hit != 'true'",
+              }),
+            ]),
+          },
+        },
+      });
+    }
     expect(workflow).not.toContain("build:host-proxy-shim");
     expect(workflow).not.toContain("build:log-file-helper");
     expect(workflow).not.toContain("core/dist/host-proxy");

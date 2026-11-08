@@ -571,6 +571,28 @@ const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRun
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
+// Restores the assembled bundle from the Actions cache and assembles it only when its build context changed,
+// so unchanged runs make no upstream release downloads.
+export const restoreOrAssembleRuntimeBundleSteps = (hostKey: string): string => {
+  const label = hostKey.replace("linux-", "Linux ");
+  return `      - name: Derive ${label} runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled ${label} runtime bundle
+        id: runtime-bundle-cache
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
+          key: \${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit ${label} runtime bundle
+        if: ${linuxRuntimeBundleCacheMiss}
+        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}`;
+};
+
 export const linuxRuntimeBundleJob = (hostKey: "linux-x64" | "linux-arm64"): string => {
   const platform = CI_PLATFORMS.find((candidate) => candidate.id === hostKey);
   if (platform === undefined) throw new TypeError(`CI_PLATFORMS is missing ${hostKey}`);
@@ -591,22 +613,7 @@ ${timingStartStep}
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Derive ${label} runtime bundle cache key from its build context
-        id: runtime-bundle-key
-        run: |
-          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key)"
-          echo "key=$KEY" >> "$GITHUB_OUTPUT"
-
-      - name: Restore assembled ${label} runtime bundle
-        id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
-          key: \${{ steps.runtime-bundle-key.outputs.key }}
-
-      - name: Assemble current-commit ${label} runtime bundle
-        if: ${linuxRuntimeBundleCacheMiss}
-        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}
+${restoreOrAssembleRuntimeBundleSteps(hostKey)}
 
       - name: Upload current-commit ${label} runtime bundle
         uses: actions/upload-artifact@v6

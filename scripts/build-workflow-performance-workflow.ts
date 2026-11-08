@@ -6,7 +6,7 @@ import {
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 
-import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
+import { landoRootlessPrereqSteps, restoreOrAssembleRuntimeBundleSteps } from "./build-ci-workflow.ts";
 import { CI_PLATFORMS, type CiPlatform, type PlatformReadinessCell } from "./ci-platforms.ts";
 import { WORKFLOW_PERFORMANCE_CELLS } from "./workflow-performance-plan.ts";
 
@@ -58,8 +58,7 @@ ${containerHelperDownloadStep}
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./${binary} --version "$VERSION" --minify --sourcemap=external
 
-      - name: Assemble current-commit ${cell.bundleKey} runtime bundle
-        run: bun run scripts/assemble-runtime-bundle.ts --platform ${cell.bundleKey}
+${restoreOrAssembleRuntimeBundleSteps(cell.bundleKey)}
 
       - name: Build local runtime bundle manifest
         run: |
