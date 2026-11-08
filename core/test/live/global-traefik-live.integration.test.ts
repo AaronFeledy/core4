@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema } from "effect";
 
 import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -180,6 +181,7 @@ describe("global Traefik routing — live integration", () => {
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
       const shopPlan = appPlan("shop", nginxService());
       const contribution = globalServices.get("traefik");
       if (contribution === undefined) throw new Error("Missing bundled Traefik service");
@@ -194,10 +196,10 @@ describe("global Traefik routing — live integration", () => {
       await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
 
       try {
-        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api }));
+        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api, ...helperOptions }));
         expect(shopApplied.changed).toBe(true);
 
-        const traefikApplied = await Effect.runPromise(bringUp(traefikPlan, { api }));
+        const traefikApplied = await Effect.runPromise(bringUp(traefikPlan, { api, ...helperOptions }));
         expect(traefikApplied.changed).toBe(true);
 
         const ready = await Effect.runPromise(

@@ -4,7 +4,7 @@ import { basename, relative, resolve } from "node:path";
 
 import { $ } from "bun";
 
-import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
+import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
 import {
   type DeprecationReleaseOffender,
   type DeprecationReleaseResult,

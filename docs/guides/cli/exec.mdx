@@ -108,6 +108,16 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 `app:exec` sets its own command exit code to the executed command's `exitCode`. A non-zero result is mirrored onto the CLI process, so `lando exec` propagates the target command's failure to the shell.
 
+## Interrupt a command
+
+At a terminal, Ctrl-C reaches the command through its terminal, the same as in any shell.
+
+Without a terminal, when a script, editor task, CI step, or agent runs `lando exec` and sends it `SIGINT` or `SIGTERM`, Lando stops the command inside the container along with everything it started, waits for them to exit, and then exits `130` for `SIGINT` or `143` for `SIGTERM` with a `CommandInterruptedError`. A port the command was listening on is free for the next run, so you don't need to hunt down leftover processes or restart the service. When the command exits on its own, processes it deliberately backgrounded keep running, as with `docker exec`.
+
+If Lando cannot set up that supervision for a command, it fails with a tagged error and remediation before the command runs rather than running it unsupervised. On native Windows with the default `lando` provider, non-TTY exec does not yet get this cleanup.
+
+The same rules apply to tooling commands, `lando ssh -- <command>`, and `lando run`.
+
 ## Masked output
 
 Human modes for `lando exec`, tooling, and `lando run` mask only known secret values on the live byte stream. Pattern classes stay off that path so binary dumps keep their shape. `lando logs` and other structured surfaces still use the full secrets profile. The service itself still gets the real value.

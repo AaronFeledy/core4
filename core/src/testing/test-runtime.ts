@@ -2,13 +2,13 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
-import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
 import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
 import {

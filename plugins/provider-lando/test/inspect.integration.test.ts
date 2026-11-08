@@ -8,7 +8,8 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { bringDown, bringUp, inspect, makePodmanApiClient } from "@lando/provider-lando";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
+import { bringDown, inspect, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -20,6 +21,7 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { decodeNetworkCreate } from "./network-fixture.ts";
+import { bringUp } from "./provider-fixture.ts";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
@@ -230,7 +232,8 @@ describe("provider-lando inspect", () => {
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 
-      await Effect.runPromise(bringUp(plan, { api }));
+      const helper = await Effect.runPromise(containerHelperTestOptions(api));
+      await Effect.runPromise(bringUp(plan, { api, ...helper }));
       try {
         const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 

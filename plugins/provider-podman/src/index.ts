@@ -710,6 +710,10 @@ const assembleRuntimeProvider = (
   return Effect.gen(function* () {
     yield* conflictCheck;
     const { serverVersion, capabilities: resolvedCapabilities, logSourceBinding } = yield* gatedRuntime;
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const agentBridge = yield* resolvePodmanAgentBridge({ ...options, platform });
     const planState = makeProviderPlanState({
       ctx: PODMAN_CTX,
@@ -757,10 +761,19 @@ const assembleRuntimeProvider = (
             dialect: libpodWaitDialect,
             ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           }),
-        exec: (plan, target, command) => exec(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+        exec: (plan, target, command) =>
+          exec(plan, target, command, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            ...execHelper,
+          }),
         execStream: (plan, target, command) =>
-          execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
-        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
+          execStream(plan, target, command, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            ...execHelper,
+          }),
+        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX, ...execHelper }),
       },
     });
 
@@ -821,6 +834,7 @@ const assembleRuntimeProvider = (
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: podmanApi,
           ctx: PODMAN_CTX,
+          ...execHelper,
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
           platform,
           daemonUrl: socketPath,

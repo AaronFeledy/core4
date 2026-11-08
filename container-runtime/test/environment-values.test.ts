@@ -7,9 +7,9 @@ import {
 import { AppPlan, CurrentExecutableAppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { containerCreateBodyFragment, mergeAppliedPlan } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { renderCompose } from "../src/podman/compose.ts";
 import { ctx, fakeEngine, legacyPlan, plan, service, withService } from "./fixtures/environment-values.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const bindingService = {
   ...service,

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { bringDown, bringUp, exec, makePodmanApiClient, pullImage } from "@lando/provider-lando";
 import {
   TRAEFIK_DIAGNOSTICS_COMMAND,
@@ -197,7 +198,8 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
     for (const image of [BACKEND_IMAGE, TRAEFIK_DIAGNOSTICS_IMAGE, TRAEFIK_IMAGE]) {
       await Effect.runPromise(pullImage(api, image));
     }
-    const applied = await Effect.runPromise(bringUp(plan, { api }));
+    const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+    const applied = await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
     expect(applied.changed).toBe(true);
     await waitForMatchedRoute(matchedHostname, 120_000);
   } catch (error) {
@@ -208,12 +210,13 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
 };
 
 export const expectEmittedConfigPassesNginxTest = async (stack: ProxyDiagnosticsStack): Promise<void> => {
+  const helperOptions = await Effect.runPromise(containerHelperTestOptions(stack.api));
   const result = await Effect.runPromise(
     exec(
       stack.plan,
       { app: stack.plan.id, service: ServiceName.make(TRAEFIK_DIAGNOSTICS_ID) },
       { command: ["nginx", "-t", "-c", `${TRAEFIK_DIAGNOSTICS_CONTAINER_DIR}/nginx.conf`] },
-      { api: stack.api },
+      { api: stack.api, ...helperOptions },
     ),
   );
   expect(result.stderr, result.stdout).toContain("test is successful");

@@ -10,7 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const plan: AppPlan = {
   valueModel: 1,

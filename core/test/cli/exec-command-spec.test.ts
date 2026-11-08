@@ -63,7 +63,9 @@ describe("exec command spec", () => {
     { command: "exec", stdinTTY: true, stdoutTTY: false, tty: false },
   ])("applies CLI terminal rules for %j", async (scenario) => {
     // Given
+    const controller = new AbortController();
     const commands: Array<{
+      readonly signal?: AbortSignal;
       readonly tty?: boolean;
       readonly stdin?: string;
       readonly env?: Readonly<Record<string, string>>;
@@ -83,6 +85,7 @@ describe("exec command spec", () => {
         run: () =>
           spec.run({
             hostIo: "cli",
+            signal: controller.signal,
             parsedArgv: ["cat"],
             flags: { interactive: true, format: scenario.format },
           }),
@@ -134,6 +137,7 @@ describe("exec command spec", () => {
     }
 
     // Then
+    expect(commands[0]?.signal).toBe(controller.signal);
     expect(commands[0]?.tty === true).toBe(scenario.tty);
     expect(commands[0]?.stdin).toBe("inherit");
     if (!scenario.tty) {
@@ -150,7 +154,9 @@ describe("exec command spec", () => {
     "isolates %s exec on an attached terminal",
     async (mode) => {
       // Given
+      const controller = new AbortController();
       const commands: Array<{
+        readonly signal?: AbortSignal;
         readonly stdin?: "inherit" | "ignore";
         readonly tty?: boolean;
         readonly env?: Readonly<Record<string, string>>;
@@ -191,6 +197,7 @@ describe("exec command spec", () => {
                     })
                   : ((mode.startsWith("ssh") ? sshSpec : execSpec)
                       .run({
+                        signal: controller.signal,
                         argv: [],
                         parsedArgv: ["cat"],
                         flags: { interactive: true, format: mode.split(" ")[1] },
@@ -215,6 +222,7 @@ describe("exec command spec", () => {
 
       // Then
       expect(commands).toHaveLength(1);
+      if (mode !== "default event") expect(commands[0]?.signal).toBe(controller.signal);
       expect(commands[0]?.stdin).toBeUndefined();
       expect(commands[0]?.tty).not.toBe(true);
       expect(commands[0]?.env ?? {}).not.toHaveProperty("TERM");

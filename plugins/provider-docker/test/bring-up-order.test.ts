@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
 
-import { commonContainerLabels } from "@lando/container-runtime/plan";
+import { fixtureContainerLabels as commonContainerLabels } from "@lando/container-runtime/testing/exec-supervision";
 import type { DockerApiClient, DockerHttpResponse } from "@lando/provider-docker";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServicePlan } from "@lando/sdk/schema";
