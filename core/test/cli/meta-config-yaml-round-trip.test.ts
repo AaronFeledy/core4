@@ -10,6 +10,7 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const yamlGet = (value: unknown): ConfigResult => ({
   subcommand: "get",
+  key: "example",
   format: "yaml",
   value,
 });

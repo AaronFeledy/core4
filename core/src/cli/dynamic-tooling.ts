@@ -244,10 +244,10 @@ export const routeResolvedTooling = async (
     case "built-in":
     case "plugin":
     case "alias-disabled":
+    case "unknown-tooling":
       return false;
     case "cache-miss":
-    case "unknown-tooling":
-      if (route._tag === "cache-miss" && route.reason === "rebuild-failed") {
+      if (route.reason === "rebuild-failed") {
         prepareDynamicToolingInvocation(route.name, context);
         await renderPreCommandFailure({
           ...(context === undefined ? {} : { context }),

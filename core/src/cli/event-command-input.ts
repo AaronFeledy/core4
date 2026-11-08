@@ -5,6 +5,7 @@ import type {
   ExecutableCommandInput,
 } from "@lando/sdk/plugins";
 import { Effect } from "effect";
+import { commandInputOptionError } from "./command-input-options";
 
 /**
  * Structural subset of `ExecutableCommandSpec` this parser actually reads.
@@ -112,26 +113,6 @@ const parseConfiguredValue = (
   });
 };
 
-const validateOptions = (
-  target: string,
-  kind: InputKind,
-  field: string,
-  value: unknown,
-  definition: InputDefinition,
-): Effect.Effect<unknown, CommandInputValidationError> =>
-  definition.options === undefined || (typeof value === "string" && definition.options.includes(value))
-    ? Effect.succeed(value)
-    : Effect.fail(
-        failure(
-          target,
-          kind,
-          field,
-          "option",
-          `${kind} ${field} for ${target} must be one of: ${definition.options.join(", ")}.`,
-          `Choose a declared value for ${field}.`,
-        ),
-      );
-
 const parseOccurrence = (
   target: string,
   kind: InputKind,
@@ -141,7 +122,10 @@ const parseOccurrence = (
 ): Effect.Effect<unknown, CommandInputValidationError> =>
   convertPrimitive(target, kind, field, value, definition).pipe(
     Effect.flatMap((converted) => parseConfiguredValue(target, kind, field, converted, definition)),
-    Effect.flatMap((parsed) => validateOptions(target, kind, field, parsed, definition)),
+    Effect.flatMap((parsed) => {
+      const error = commandInputOptionError({ target, kind, field }, parsed, definition.options);
+      return error === undefined ? Effect.succeed(parsed) : Effect.fail(error);
+    }),
   );
 
 const parseValue = (

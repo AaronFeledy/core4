@@ -1,144 +1,51 @@
-import { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
+import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 
-export const GLOBAL_COMMAND_VERBS = new Set([
-  "config",
-  "destroy",
-  "info",
-  "install",
-  "list",
-  "logs",
-  "rebuild",
-  "restart",
-  "start",
-  "status",
-  "stop",
-  "uninstall",
-]);
+const compatibilityHeads = [
+  ["scratch"],
+  ["recipes"],
+  ["share"],
+  ["global"],
+  ["meta", "recipes"],
+  ["meta", "global"],
+  ["apps", "scratch"],
+  ["app", "config"],
+  ["app", "includes"],
+  ["app", "agent", "skills"],
+  ["agent", "skills"],
+] as const;
 
-export const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate", "describe"]);
-
-export const RECIPES_COMMAND_VERBS = new Set(["list", "describe", "validate"]);
-
-export const SCRATCH_COMMAND_VERBS = new Set([
-  "start",
-  "stop",
-  "destroy",
-  "list",
-  "info",
-  "logs",
-  "gc",
-  "run",
-]);
-export const SHARE_COMMAND_VERBS = new Set(["list", "stop"]);
-
-export const AGENT_SKILLS_COMMAND_VERBS = new Set(["install", "update", "remove"]);
+const commandIdsByToken: ReadonlyMap<string, string> = new Map(
+  Object.values(COMMAND_REGISTRY_MANIFEST.commands).flatMap(({ spec, aliases }) =>
+    [spec.id, ...aliases].map((token) => [token, spec.id] as const),
+  ),
+);
 
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
   if (argv[0] === "app:config" && argv[1] === "describe") return ["app:config:describe", ...argv.slice(2)];
   if ((argv[0] === "global:config" || argv[0] === "meta:global:config") && argv[1] === "describe")
     return ["meta:global:config:describe", ...argv.slice(2)];
-  if (argv[0] === "scratch") {
-    const verb = argv[1];
-    if (verb !== undefined && SCRATCH_COMMAND_VERBS.has(verb)) {
-      return [`apps:scratch:${verb}`, ...argv.slice(2)];
-    }
-    return argv;
-  }
-  if (argv[0] === "recipes") {
-    const verb = argv[1];
-    if (verb !== undefined && RECIPES_COMMAND_VERBS.has(verb)) {
-      return [`meta:recipes:${verb}`, ...argv.slice(2)];
-    }
-    return argv;
-  }
-  if (argv[0] === "share") {
-    const verb = argv[1];
-    if (verb !== undefined && SHARE_COMMAND_VERBS.has(verb)) {
-      return [`app:share:${verb}`, ...argv.slice(2)];
-    }
-    return argv;
-  }
-
-  if (argv[0] === "apps" && argv[1] === "scratch" && argv[2] === "run") {
-    return ["apps:scratch:run", ...argv.slice(3)];
-  }
-
-  if (argv[0] === "meta" && argv[1] === "recipes") {
-    const verb = argv[2];
-    if (verb === undefined || !RECIPES_COMMAND_VERBS.has(verb)) return argv;
-    return [`meta:recipes:${verb}`, ...argv.slice(3)];
-  }
-
-  if (argv[0] === "meta" && argv[1] === "global") {
-    const verb = argv[2];
-    if (verb === undefined || !GLOBAL_COMMAND_VERBS.has(verb)) return argv;
-    if (verb === "config") {
-      const configVerb = argv[3];
-      if (configVerb !== undefined && GLOBAL_CONFIG_VERBS.has(configVerb)) {
-        return [`meta:global:config:${configVerb}`, ...argv.slice(4)];
-      }
-    }
-    return [`meta:global:${verb}`, ...argv.slice(3)];
-  }
-
-  if (argv[0] === "global") {
-    const verb = argv[1];
-    if (verb === undefined || !GLOBAL_COMMAND_VERBS.has(verb)) return argv;
-    if (verb === "config") {
-      const configVerb = argv[2];
-      if (configVerb === "describe") return ["meta:global:config:describe", ...argv.slice(3)];
-      if (configVerb !== undefined && GLOBAL_CONFIG_VERBS.has(configVerb)) {
-        return [`global:config:${configVerb}`, ...argv.slice(3)];
-      }
-    }
-    return [`global:${verb}`, ...argv.slice(2)];
-  }
-
   if (argv[0] === "app:agent:skills" || argv[0] === "agent:skills") {
     const verb = argv[1];
-    if (verb !== undefined && AGENT_SKILLS_COMMAND_VERBS.has(verb)) {
+    if (verb === "install" || verb === "update" || verb === "remove") {
       return [`app:agent:skills:${verb}`, ...argv.slice(2)];
     }
     return argv;
   }
-  if (argv[0] === "agent" && argv[1] === "skills") {
-    const verb = argv[2];
-    if (verb !== undefined && AGENT_SKILLS_COMMAND_VERBS.has(verb)) {
-      return [`app:agent:skills:${verb}`, ...argv.slice(3)];
-    }
-    return argv;
-  }
-  if (argv[0] === "app" && argv[1] === "agent" && argv[2] === "skills") {
-    const verb = argv[3];
-    if (verb !== undefined && AGENT_SKILLS_COMMAND_VERBS.has(verb)) {
-      return [`app:agent:skills:${verb}`, ...argv.slice(4)];
-    }
-    return argv;
-  }
 
-  if (argv[0] !== "app") return argv;
-  if (argv[1] === "includes") {
-    if (argv[2] === "update") return ["app:includes:update", ...argv.slice(3)];
-    if (argv[2] === "verify") return ["app:includes:verify", ...argv.slice(3)];
-    return argv;
+  const head = compatibilityHeads.find((words) => words.every((word, index) => argv[index] === word));
+  if (head === undefined) return argv;
+  const flagIndex = argv.findIndex((token) => token.startsWith("-"));
+  const end = flagIndex === -1 ? argv.length : flagIndex;
+  for (let length = end; length > head.length; length--) {
+    const token = argv.slice(0, length).join(":");
+    const commandId = commandIdsByToken.get(token);
+    if (commandId !== undefined) {
+      // Preserve the existing short global spellings, except the describe projection.
+      const outputId =
+        argv[0] === "global" && commandId !== "meta:global:config:describe" ? token : commandId;
+      return [outputId, ...argv.slice(length)];
+    }
   }
-  if (argv[1] !== "config") return argv;
-  if (argv[2] === "describe") return ["app:config:describe", ...argv.slice(3)];
-  if (argv[2] === "translate") return ["app:config:translate", ...argv.slice(3)];
-  if (argv[2] === "lint") return ["app:config:lint", ...argv.slice(3)];
-  if (argv[2] === "explain") return ["app:config:explain", ...argv.slice(3)];
-  if (argv[2] === "migrate") return ["app:config:migrate", ...argv.slice(3)];
-  if (argv[2] === "set") return ["app:config:set", ...argv.slice(3)];
-  if (argv[2] === "unset") return ["app:config:unset", ...argv.slice(3)];
-  if (argv[2] === "edit") return ["app:config:edit", ...argv.slice(3)];
-  if (argv[2] === "validate") return ["app:config:validate", ...argv.slice(3)];
-  return ["app:config", ...argv.slice(2)];
-};
-
-export const normalizeCompiledScratchRunArgvForUniversalFlags = (
-  argv: ReadonlyArray<string>,
-): ReadonlyArray<string> => {
-  const head = argv[0];
-  if (head !== "run" && head !== "scratch:run" && head !== "apps:scratch:run") return argv;
-  return [head, ...normalizeScratchRunArgvForParsing(argv.slice(1))];
+  if (argv[0] === "app" && argv[1] === "config") return ["app:config", ...argv.slice(2)];
+  return argv;
 };

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
 import {
-  MalformedCliFlagValueError,
-  UnknownCliFlagError,
   validateCliFlagValues,
   validateCommandCliFlags,
   validateUnknownCliFlags,
@@ -128,6 +127,39 @@ describe("CLI flag-value validation", () => {
         argv: ["appserver", "sh", "-c", "echo hi"],
         definitions: flags,
         allowUnknownFlags: true,
+        commandTail: true,
+      }),
+    ).toBeUndefined();
+  });
+  test.each([
+    ["-c", ["-c", "echo hi"]],
+    ["--image", ["--image=private", "--", "sh"]],
+    ["--typo", ["--provider", "podman", "--typo", "sh"]],
+  ])("rejects the unknown prefix flag %s before a command tail", (flag, argv) => {
+    const error = validateCommandCliFlags({
+      commandId: "app:exec",
+      argv,
+      definitions: flags,
+      allowUnknownFlags: true,
+      commandTail: true,
+    });
+    expect(error).toMatchObject({ _tag: "UnknownCliFlagError", flag });
+    expect(JSON.stringify(error)).not.toContain("private");
+  });
+
+  test.each([
+    [["sh", "-s"]],
+    [["--", "sh", "-s"]],
+    [["--service", "web", "sh", "--tail=bad"]],
+    [["-fsweb", "sh", "-s"]],
+  ])("validates values only in the command prefix: %j", (argv) => {
+    expect(
+      validateCommandCliFlags({
+        commandId: "app:exec",
+        argv,
+        definitions: flags,
+        allowUnknownFlags: true,
+        commandTail: true,
       }),
     ).toBeUndefined();
   });

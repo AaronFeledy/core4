@@ -26,6 +26,7 @@ export type FlagDefinition = OptionFlag | BooleanFlag;
 export type FlagDefinitions = Readonly<Record<string, FlagDefinition>>;
 
 export type ArgConfig = {
+  readonly options?: readonly string[];
   readonly description?: string;
   readonly ignoreStdin?: boolean;
   readonly multiple?: boolean;

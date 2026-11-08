@@ -364,6 +364,11 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         })
       )(code);
     };
+    // The process exit code and the lifecycle `-error` event report the same code.
+    const errorExitCode = (error: unknown): number =>
+      error instanceof JqExpressionError || error instanceof CommandInputValidationError
+        ? 2
+        : (commandStdioExitCode(error) ?? options.failureExitCode?.(error) ?? 1);
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
         if (Cause.hasInterruptsOnly(cause)) {
@@ -375,15 +380,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(1);
           return;
         }
-        const failure = failureOutcomeFromCause(cause, normalizeDefect);
-        if (
-          failure.error instanceof JqExpressionError ||
-          failure.error instanceof CommandInputValidationError
-        ) {
-          setExitCode(2);
-          return;
-        }
-        setExitCode(commandStdioExitCode(failure.error) ?? options.failureExitCode?.(failure.error) ?? 1);
+        setExitCode(errorExitCode(failureOutcomeFromCause(cause, normalizeDefect).error));
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
@@ -437,7 +434,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
               invocation,
               onInitialized: initStage.end(Exit.void),
               ...(options.completion === undefined ? {} : { completion: options.completion }),
-              ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
+              failureExitCode: errorExitCode,
               interruptionExitCode: () =>
                 options.suppressInterruptionDiagnostics === true
                   ? 0

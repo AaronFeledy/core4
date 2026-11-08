@@ -437,6 +437,12 @@ scripts can branch on both. The tagged error exposes a machine `_tag` plus
 a required `message` and nonblank `remediation`, so an agent can react to the failure class without
 scraping prose.
 
+Exit `2` means Lando was called wrong and nothing ran: an unknown command
+(`UnknownCommandError`, with ranked `suggestions`), an unknown or malformed flag
+(`UnknownCliFlagError`, `MalformedCliFlagValueError`), an argument outside its
+declared choices (`CommandInputValidationError`), or an output format the
+command does not support. Fix the invocation rather than retrying it.
+
 If rollback, cleanup, or another step also fails, `error` still describes the
 primary failure and determines the exit code. `error.additionalErrors` contains
 the other failures in cause order, each with its own `_tag`, `message`, required

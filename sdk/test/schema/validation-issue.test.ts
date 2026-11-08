@@ -10,6 +10,7 @@ import {
   LandofileShape,
   ValidationIssue,
   authoringExpressionSlot,
+  closestKeys,
   deriveAuthoringAst,
   formatValidationIssueLine,
   parseValidationIssuePath,
@@ -118,6 +119,17 @@ describe("validation issues", () => {
   test("suggests image for imgae and stays silent past distance 2", () => {
     expect(suggestionForUnknownKey("imgae", ["image", "type"])).toBe('Did you mean "image"?');
     expect(suggestionForUnknownKey("zzzzzz", ["image", "type"])).toBeUndefined();
+  });
+
+  test("closestKeys ranks candidates within the distance cap, ties lexically", () => {
+    expect(closestKeys("strat", ["start", "status", "stop", "strat"])).toEqual(["start"]);
+    expect(closestKeys("stp", ["stop", "ssh"], 1)).toEqual(["stop"]);
+    expect(closestKeys("sart", ["start", "sort"], 1)).toEqual(["sort", "start"]);
+    expect(closestKeys("ls", ["ssh", "x"], 1)).toEqual([]);
+    expect(closestKeys("abcdef", ["a", "ab", "abc", "abcd"], Number.POSITIVE_INFINITY, 2)).toEqual([
+      "abcd",
+      "abc",
+    ]);
   });
 
   test("matches Standard Schema paths and messages for the same decode options", () => {

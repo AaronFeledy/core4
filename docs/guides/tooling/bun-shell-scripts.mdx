@@ -157,14 +157,9 @@ A fast rebuild prints nothing. In a terminal, one that takes longer than about h
 
 If the rebuild fails because of broken YAML, invalid config, a bad tooling definition, or malformed script front matter, the command fails with that error: `LandofileParseError`, `LandofileValidationError`, `BunShellScriptFrontMatterError`, and so on, as `error._tag` in `--format=json`. Fix it and run the command again; Lando does not cache the failure.
 
-Unavailable command metadata produces `ToolingCommandUnavailableError`. Its `reason` tells you what to do:
+A name that matches no script, task, or other command fails with `UnknownCommandError`, the same error you get for any mistyped command. When a command is spelled close to what you typed, Lando names it: `lando gret` suggests `lando greet`, and `--format=json` lists the suggestions, best first, in `error.suggestions`.
 
-| `reason` | Next action |
-| --- | --- |
-| `unknown-command` | Check the name and aliases with `lando help`; the app has no matching command |
-| `missing-cache`, `stale-cache`, `invalid-cache` | The app changed while Lando was reading it. Run the command again |
-
-The error also carries `commandId`, `tool`, and `remediation`, with `staleReason` and `sourcePath` when available. Help does not start a provider or fall back to live discovery. To inspect status, run:
+`ToolingCommandUnavailableError` means Lando could not read this app's command metadata. Its `reason` is `missing-cache`, `stale-cache`, or `invalid-cache`, and it only happens when the app changed while Lando was reading it, so run the command again. The error also carries `commandId`, `tool`, and `remediation`, with `staleReason` and `sourcePath` when available. Help does not start a provider or fall back to live discovery. To inspect status, run:
 
 ```sh
 lando help --format=json

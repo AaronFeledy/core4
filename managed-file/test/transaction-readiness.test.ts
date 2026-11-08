@@ -61,6 +61,21 @@ test("readiness admits a clean root without creating journal state", async () =>
   expect(await readdir(dataRoot)).toEqual([]);
 });
 
+test("readiness admits an app root that does not exist yet", async () => {
+  // Given
+  const { appRoot, dataRoot } = await fixture();
+  const guard = makeManagedFileTransactionGuard({
+    journalRoot: () => dataRoot,
+    privateFileAccess: ownerOnlyFileAccess,
+  });
+  // When
+  const report = await Effect.runPromise(guard.pending(join(appRoot, "not-created")));
+  await Effect.runPromise(guard.assertReadable(join(appRoot, "not-created")));
+  // Then
+  expect(report).toBeNull();
+  expect(await readdir(dataRoot)).toEqual([]);
+});
+
 test("ordinary readiness recovers a prepared transaction", async () => {
   // Given
   const { appRoot, dataRoot, transactions } = await fixture();

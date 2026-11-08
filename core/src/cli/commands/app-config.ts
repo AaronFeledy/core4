@@ -5,7 +5,6 @@ import * as Writes from "@lando/engine/operations/app-config-write";
 import { collectAuthoredRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -136,7 +135,8 @@ export const renderAppConfigResult = (
 };
 
 export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfigOptions = {}) {
-  switch (options.subcommand ?? "view") {
+  const subcommand = options.subcommand ?? "view";
+  switch (subcommand) {
     case "describe":
       return yield* describeAppConfig(options);
     case "set":
@@ -164,14 +164,9 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfi
       });
       return { ...result, ...(hostEvents.length === 0 ? {} : { hostEvents }) };
     }
-    default:
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: `Unknown \`app config\` subcommand: "${options.subcommand}".`,
-          file: "",
-          issues: [],
-          remediation: "Usage: `lando app config [view|get|set|unset|edit|validate]`.",
-        }),
-      );
+    default: {
+      const exhaustive: never = subcommand;
+      return exhaustive;
+    }
   }
 });
