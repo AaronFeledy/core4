@@ -27,6 +27,11 @@ describe("Tomcat paired catalog configuration live compatibility", () => {
               Effect.gen(function* () {
                 const appRoot = yield* acquireTempAppRoot("lando-tomcat-config-");
                 yield* writeFixture(appRoot, "public/index.html", expected);
+                yield* writeFixture(
+                  appRoot,
+                  "public/scheme.jsp",
+                  '<%@ page contentType="text/plain" %>secure=<%= request.isSecure() %> url=<%= request.getRequestURL() %>',
+                );
                 const plan = yield* composeCatalogConfigPlan({
                   serviceType,
                   slug: `tc-${crypto.randomUUID().slice(0, 8)}`,
@@ -95,6 +100,19 @@ describe("Tomcat paired catalog configuration live compatibility", () => {
                   accept: (result) => result.exitCode === 0,
                   timeoutMs: 120_000,
                 });
+                // The router's forwarded headers, as Traefik sends them for https://x.lndo.site:8443.
+                const forwarded = yield* app.exec("web", [
+                  "curl",
+                  "--fail",
+                  "--silent",
+                  "--header",
+                  "Host: x.lndo.site:8443",
+                  "--header",
+                  "X-Forwarded-Proto: https",
+                  "--header",
+                  "X-Forwarded-Port: 8443",
+                  `http://127.0.0.1:${selectedPort}/scheme.jsp`,
+                ]);
                 const startup = yield* app.exec("web", [
                   "sh",
                   "-c",
@@ -104,12 +122,16 @@ describe("Tomcat paired catalog configuration live compatibility", () => {
                   port === undefined
                     ? undefined
                     : yield* app.exec("web", ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
-                return { response, startup, oldPort };
+                return { response, forwarded, startup, oldPort };
               }),
             ),
           );
           // Then
           expect(observed.response.stdout).toBe(expected);
+          expect(observed.forwarded).toMatchObject({
+            exitCode: 0,
+            stdout: "secure=true url=https://x.lndo.site:8443/scheme.jsp",
+          });
           expect(observed.startup).toMatchObject({ exitCode: 0, stdout: "entrypointcommand" });
           if (port !== undefined) expect(observed.oldPort?.exitCode).toBe(1);
         },
