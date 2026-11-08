@@ -44,6 +44,8 @@ Pipe a script in, and the shell runs it without a terminal, then exits at the en
 lando ssh < setup.sh
 ```
 
+Interrupting a non-terminal `lando ssh -- <command>` with `SIGINT` or `SIGTERM` stops the command inside the service and everything it started, then exits `130` or `143`. See [Interrupt a command](./exec.mdx#interrupt-a-command).
+
 ## SSH identities
 
 By default the bundled SSH-agent sidecar loads keys from the host `~/.ssh` directory (`id_rsa`, `id_ed25519`, and the other `ssh-add` defaults). Passphrase-protected keys are skipped. Every service sees the agent at `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock`.

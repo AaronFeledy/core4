@@ -51,8 +51,6 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly examples?: ReadonlyArray<string>;
   /** Optional USAGE tail after the typeable command name, e.g. `[SERVICE] -- [COMMAND...]`. */
   readonly usage?: string;
-  /** Reject unknown flags before command argv starts, while preserving the command's own flags. */
-  readonly commandArgvRemediation?: string;
   readonly helpGroup?: LandoHelpGroup;
   readonly hidden?: boolean;
   readonly deferred?: DeferredCommandPlan;
