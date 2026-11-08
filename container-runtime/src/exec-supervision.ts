@@ -171,7 +171,7 @@ export const supervisedExecStream = (
               Effect.gen(function* () {
                 const response = yield* request({
                   method: "GET",
-                    path: inspectPath,
+                  path: inspectPath,
                 });
                 if (response.status < 200 || response.status >= 300) return yield* Effect.fail(unavailable());
                 const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(
