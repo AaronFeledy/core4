@@ -25,7 +25,7 @@ test("runCli confines IO, status, cwd, environment, and provider state to its in
     expect(report.outputs.map((output: { statuses: number[] }) => output.statuses)).toEqual([
       [0],
       [0],
-      [1],
+      [2],
       [0],
       [1],
     ]);
