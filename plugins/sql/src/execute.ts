@@ -210,9 +210,15 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     }
     if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
       const scope = yield* resolveSnapshotSource({
-        app: deps.plan.id,
+        plan: deps.plan,
+        appliedPlans: deps.appliedPlans,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
+        ...(deps.plan.identity?.repoGroupKey === undefined
+          ? {}
+          : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+        ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
+        ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
         service: target.name,
         hostCwd: input.hostCwd ?? process.cwd(),
         canonicalizePath: deps.canonicalizeSourcePath,
@@ -224,7 +230,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
     if (action === "prune") {
       const filter = yield* resolveSnapshotSource({
-        app: deps.plan.id,
+        plan: deps.plan,
+        appliedPlans: deps.appliedPlans,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -358,7 +365,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       }
       case "snapshots": {
         const filter = yield* resolveSnapshotSource({
-          app: deps.plan.id,
+          plan: deps.plan,
+          appliedPlans: deps.appliedPlans,
           ...(store === undefined ? {} : { store: store.store }),
           ownerKey: owner.ownerKey,
           ...(deps.plan.identity?.repoGroupKey === undefined
