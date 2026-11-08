@@ -24,9 +24,6 @@ Merge these keys into the generated `.lando.yml`. Keep its `recipe:` block: `web
 services:
   appserver:
     allowOverride: true
-    build:
-      artifact:
-        - "docker-php-ext-install -j\"$(nproc)\" bcmath"
 tooling:
   craft:
     service: appserver
@@ -37,7 +34,6 @@ tooling:
 ```
 
 - `allowOverride: true` lets Apache read the `web/.htaccess` Craft ships, so control-panel and front-end URLs rewrite to `index.php`.
-- The build step adds `bcmath` to Lando's stock PHP image. Craft requires it; Composer refuses to install `craftcms/cms` without it.
 - `lando craft` runs the CLI as `www-data`, the user Apache runs as. Caches and project config it writes stay writable by the site.
 
 Then start the app:
@@ -120,7 +116,7 @@ lando craft clear-caches/all
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4` with `bcmath`, Apache on port `80`, webroot `web`, `.htaccess` on, depends on `database` |
+| `appserver` | `php:8.4`, Apache on port `80`, webroot `web`, `.htaccess` on, depends on `database` |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando craft` as `www-data`, `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -179,7 +175,7 @@ For a plain `.sql` file, use `lando mariadb < craft.sql`. Run `lando craft clear
     </Step>
   </Scenario>
 
-  <Scenario id="craft-keys" render={false} reason="Regression for this guide's Apache, bcmath, and Craft CLI keys">
+  <Scenario id="craft-keys" render={false} reason="Regression for this guide's Apache and Craft CLI keys">
     <Step name="scaffold">
       <UseFixture name="craft-demo" />
     </Step>
@@ -190,7 +186,6 @@ For a plain `.sql` file, use `lando mariadb < craft.sql`. Run `lando craft clear
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"allowOverride\":\\s*true" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bcmath" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"user\":\\s*\"www-data\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
@@ -215,5 +210,5 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 ## Next
 
 - [Change a LAMP stack after init](./lamp-stack-variants.mdx)
-- [Customize PHP](../services/php-customization.mdx) for extra extensions and `build.artifact`
+- [Customize PHP](../services/php-customization.mdx) for extra extensions
 - [Exclude paths from the app mount](../setup/file-sync-excludes.mdx) when you want `vendor/` on the host

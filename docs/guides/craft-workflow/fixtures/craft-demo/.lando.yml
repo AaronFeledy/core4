@@ -7,9 +7,6 @@ services:
     webroot: web
     composer: "2"
     allowOverride: true
-    build:
-      artifact:
-        - "docker-php-ext-install -j\"$(nproc)\" bcmath"
     port: 80
     primary: true
     dependsOn:
