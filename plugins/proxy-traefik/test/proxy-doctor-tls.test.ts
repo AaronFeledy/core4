@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { type RoutePlan, ServiceName } from "@lando/sdk/schema";
 
 import {
   containerTlsFiles,
@@ -14,8 +14,9 @@ import {
   writeHttpsRoute,
 } from "./proxy-doctor-tls-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
-const httpApp = AppId.make("http-only-app");
+const httpApp = routeOwner("http-only-app");
 const httpRoutes: ReadonlyArray<RoutePlan> = [
   {
     hostname: "http-only.lndo.site",

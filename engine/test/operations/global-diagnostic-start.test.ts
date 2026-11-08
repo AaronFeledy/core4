@@ -83,22 +83,20 @@ for (const failBuild of [false, true]) {
             service: ServiceName.make(service),
             containerId: `global-${service}`,
             status: "running" as const,
-            state: "running" as const,
             publications: { status: "unknown" as const },
           })),
         ),
       inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
         TestRuntimeProvider.inspect(target).pipe(
-          Effect.map((runtime) => ({
+          Effect.map(({ status: _status, health: _health, exitCode: _exitCode, ...runtime }) => ({
             ...runtime,
             appRoot: target.app === globalPlan.id ? globalRoot : root,
             ...(target.app === globalPlan.id
               ? {
-                  status: running.has(target.service) ? ("running" as const) : ("stopped" as const),
-                  state: running.has(target.service) ? ("running" as const) : ("stopped" as const),
+                  status: running.has(target.service) ? ("running" as const) : ("exited" as const),
                   containerId: `global-${target.service}`,
                 }
-              : {}),
+              : { status: "running" as const }),
             lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           })),
         ),
@@ -122,6 +120,7 @@ for (const failBuild of [false, true]) {
                 }),
               waitForExit: () => Effect.succeed({ exitCode: 0 }),
             }).pipe(
+              Effect.tap(() => TestRuntimeProvider.apply(applied, { reconcile: true })),
               Effect.tap(() =>
                 Effect.sync(() => {
                   appliedGlobal = {
@@ -132,7 +131,7 @@ for (const failBuild of [false, true]) {
               ),
               Effect.as({ changed: true }),
             )
-          : Effect.succeed({ changed: true }),
+          : TestRuntimeProvider.apply(applied, { reconcile: true }),
     };
     const globalApp: typeof GlobalAppService.Service = {
       id: "global",

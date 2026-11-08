@@ -42,7 +42,7 @@ import {
 
 type CapabilityIssue = PlannerIssue & { readonly severity?: "error" | "warning" };
 
-const capabilityPath = (
+export const capabilityPath = (
   error: CapabilityError | PublicationUnsupportedError,
   resolution: ResolvedLandofile,
 ): ValidationIssuePath => {
@@ -86,7 +86,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         rule: "landofile.capability",
         severity: "warning",
         path: ["provider"],
-        message: `Provider ${provider} has no offline capability declaration; capability checks run at lando start.`,
+        message: `Provider ${provider} has no offline capability declaration; final planning and capability checks run at lando start.`,
         suggestion:
           "Install or select a provider with an offline capability declaration, or run lando start to check runtime capabilities.",
       },
@@ -132,9 +132,9 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         rule: "landofile.capability",
         severity: "warning",
         path: ["services", name, "init"],
-        message: `Provider ${provider} does not declare native init support; effective init for service ${name} depends on feature contributions and is unknown offline.`,
+        message: `Provider ${provider} does not declare native init support; effective init for service ${name} depends on feature contributions.`,
         suggestion:
-          "Final planning validates effective init at lando start. Set init: false to explicitly opt out, or select a provider with native init support.",
+          "Final planning validates effective init after earlier lint errors are resolved. Set init: false to explicitly opt out, or select a provider with native init support.",
       });
     const compiledMounts = compileAuthoredMounts(
       {
@@ -146,7 +146,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       config,
       seed.service.storage,
     );
-    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts;
+    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts.mounts;
     const projection = resolution.endpointProjection.services.get(seed.name);
     const endpoints = projection?.endpoints;
     const publicationError = publicationCapabilityError(provider, capabilities, {

@@ -1,9 +1,10 @@
 import { Clock, Effect, Option } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 
 import type { ToolingResult } from "@lando/sdk/app";
-import { ToolingExecError } from "@lando/sdk/errors";
+import { ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 import type { Environment, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
-import { EnvironmentValueResolver, EventService } from "@lando/sdk/services";
+import { EnvironmentValueResolver, EventService, ShellRunner } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { readBunShellScript } from "@lando/landofile/bun-sh-script";
@@ -59,7 +60,20 @@ const executePreparedBunShellScript = Effect.fnUntraced(function* (
   const cwd = options.cwd ?? appRoot;
   const session = yield* (yield* EnvironmentValueResolver).openSession();
   const resolved = options.env === undefined ? {} : yield* session.resolveEnvironment(options.env);
-  const env = bunShellScriptEnvironment(prepared, process.env, resolved);
+  const env = bunShellScriptEnvironment(
+    prepared,
+    (yield* HostExecutionDefaults)?.env ?? process.env,
+    resolved,
+  );
+  const shell = yield* Effect.serviceOption(ShellRunner);
+  if (Option.isNone(shell))
+    return yield* Effect.fail(
+      new ToolingCompileError({
+        message: `ShellRunner is unavailable for script-backed tooling task ${script.id}.`,
+        tool: script.id,
+        remediation: "Provide the selected ShellRunner in the host tooling runtime.",
+      }),
+    );
   const result = yield* runHostScript(script.path, [appRoot], {
     cwd,
     argv: prepared.argv,
@@ -67,6 +81,7 @@ const executePreparedBunShellScript = Effect.fnUntraced(function* (
     ...(options.hostIo === undefined ? {} : { hostIo: options.hostIo }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   }).pipe(
+    Effect.provideService(ShellRunner, shell.value),
     Effect.catchTag("ShellExecError", (shellError) =>
       shellError.exitCode !== undefined || options.signal?.aborted === true
         ? Effect.succeed({

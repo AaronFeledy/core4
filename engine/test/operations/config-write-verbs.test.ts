@@ -3,7 +3,7 @@ import { Effect, Result, Schema } from "effect";
 
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { ConfigError } from "@lando/sdk/errors";
-import { validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
+import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import { runSetVerb, runUnsetVerb } from "../../src/config-write/verbs.ts";
 import { writeValidationErrorFromIssues } from "../../src/config-write/write-core.ts";
 
@@ -76,34 +76,167 @@ describe("config write verbs", () => {
     expect(writes).toEqual([]);
   });
 
-  test("labels unique issues and deduplicates shared issues when neither interpretation validates", async () => {
-    // Given
+  test.each(["type", "value", undefined] as const)(
+    "filters only known kind mismatches (%s)",
+    async (kind) => {
+      // Given
+      const { io } = fixture();
+      const shared = validationIssue(["name"], "Existing invalid name");
+      const decode = (tree: unknown) =>
+        Result.fail([
+          shared,
+          shared,
+          ...(typeof tree === "object" && tree !== null && "port" in tree && typeof tree.port === "string"
+            ? [
+                {
+                  path: ["port"],
+                  message: "Rejected text",
+                  ...(kind === undefined ? {} : { kind }),
+                } satisfies ValidationIssue,
+              ]
+            : [{ path: ["port"], message: "Port out of range", kind: "value" } satisfies ValidationIssue]),
+        ]);
+      // When
+      const result = await Effect.runPromise(
+        Effect.result(runSetVerb({ ...io, decode, key: "port", raw: "90", dryRun: true })),
+      );
+      // Then
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure.path).toBe("port");
+        expect(result.failure.issues).toEqual(
+          kind === "type"
+            ? [{ path: ["port"], message: "Port out of range", kind: "value" }]
+            : [
+                {
+                  path: ["port"],
+                  message: "as text: Rejected text",
+                  ...(kind === undefined ? {} : { kind }),
+                },
+                { path: ["port"], message: "as number: Port out of range", kind: "value" },
+              ],
+        );
+        expect(result.failure.remediation.includes("--type")).toBe(kind !== "type");
+      }
+    },
+  );
+
+  test("reports identical issue sets once without parsing advice", async () => {
     const { io } = fixture();
-    const shared = validationIssue(["name"], "Existing invalid name");
-    const decode = (tree: unknown) =>
-      Result.fail([
-        shared,
-        shared,
-        validationIssue(
-          ["port"],
-          typeof tree === "object" && tree !== null && "port" in tree && typeof tree.port === "string"
-            ? "Expected number"
-            : "Port out of range",
-        ),
-      ]);
-    // When
+    const issue = validationIssue(["port"], "Port is unavailable");
     const result = await Effect.runPromise(
-      Effect.result(runSetVerb({ ...io, decode, key: "port", raw: "90", dryRun: true })),
+      Effect.result(
+        runSetVerb({
+          ...io,
+          decode: () => Result.fail([issue, issue]),
+          key: "port",
+          raw: "90",
+          dryRun: true,
+        }),
+      ),
     );
-    // Then
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
-      expect(result.failure.path).toBe("port");
+      expect(result.failure.issues).toEqual([issue]);
+      expect(result.failure.remediation).not.toContain("--type");
+    }
+  });
+
+  test("names what the written key takes when the document schema describes it", async () => {
+    const { io } = fixture();
+    const issue = {
+      path: ["router", "httpPort"],
+      message: "Expected a value between 1 and 65535",
+      kind: "value",
+    } as const;
+    const result = await Effect.runPromise(
+      Effect.result(
+        runSetVerb({
+          ...io,
+          schema: "GlobalConfig",
+          decode: () => Result.fail([issue]),
+          key: "router.httpPort",
+          raw: "99999999",
+          type: "number",
+          dryRun: true,
+        }),
+      ),
+    );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure.remediation).toBe(
+        "`router.httpPort` takes an integer from 1 to 65535. Fix the reported issue(s), then retry the write. The file was left unchanged.",
+      );
+  });
+
+  test("labels disagreeing refinements when both interpreted kinds are accepted", async () => {
+    const { io } = fixture();
+    const schema = Schema.Struct({
+      port: Schema.Union([
+        Schema.String.check(Schema.isPattern(/^auto$/)),
+        Schema.Number.check(Schema.isGreaterThan(100)),
+      ]),
+    });
+    const result = await Effect.runPromise(
+      Effect.result(
+        runSetVerb({
+          ...io,
+          decode: (input) =>
+            Schema.decodeUnknownResult(schema)(input).pipe(
+              Result.mapError((cause) => validationIssuesFromCause(cause, { input })),
+            ),
+          key: "port",
+          raw: "90",
+          dryRun: true,
+        }),
+      ),
+    );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
       expect(result.failure.issues).toEqual([
-        validationIssue(["port"], "as text: Expected number"),
-        validationIssue(["port"], "as number: Port out of range"),
+        expect.objectContaining({ kind: "value", message: expect.stringMatching(/^as text:/) }),
+        expect.objectContaining({ kind: "value", message: expect.stringMatching(/^as number:/) }),
       ]);
       expect(result.failure.remediation).toContain("--type");
+    }
+  });
+
+  test("retains a descendant type failure when the written key itself accepted the kind", async () => {
+    const { io } = fixture();
+    const schema = Schema.Struct({
+      value: Schema.Union([
+        Schema.String.check(Schema.isPattern(/^auto$/)),
+        Schema.Struct({ port: Schema.Number }),
+      ]),
+    });
+    const result = await Effect.runPromise(
+      Effect.result(
+        runSetVerb({
+          ...io,
+          decode: (input) =>
+            Schema.decodeUnknownResult(schema)(input).pipe(
+              Result.mapError((cause) => validationIssuesFromCause(cause, { input })),
+            ),
+          key: "value",
+          raw: '{"port":"bad"}',
+          dryRun: true,
+        }),
+      ),
+    );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.issues).toEqual([
+        expect.objectContaining({
+          path: ["value"],
+          kind: "value",
+          message: expect.stringMatching(/^as text:/),
+        }),
+        expect.objectContaining({
+          path: ["value", "port"],
+          kind: "type",
+          message: expect.stringMatching(/^as JSON:/),
+        }),
+      ]);
     }
   });
 

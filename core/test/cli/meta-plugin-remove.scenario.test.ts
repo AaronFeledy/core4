@@ -9,13 +9,13 @@ import { Cause, Effect, type Exit, Layer } from "effect";
 
 import { FileIoError, PluginPackageOperationError, ProcessExecError } from "@lando/sdk/errors";
 import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { processRunnerFor } from "../_support/process-runner.ts";
 
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import type { NpmPackument, NpmRegistryTransport } from "@lando/source-acquisition";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
-import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
-import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 
 let userDataRoot: string;
 
@@ -36,9 +36,10 @@ const fakeConfigService = (dataRoot: string) =>
   );
 
 const pluginAddLayer = (dataRoot: string) =>
-  Layer.merge(
+  Layer.mergeAll(
     fakeConfigService(dataRoot),
     Layer.succeed(PluginTrustStore, makePluginTrustStore(join(dataRoot, "plugin-trust.yml"))),
+    makeTestStateStore().layer,
   );
 
 const makeNpmTarball = async (files: Readonly<Record<string, string>>): Promise<Uint8Array> => {
@@ -80,17 +81,20 @@ const packumentFor = (packageName: string, bytes: Uint8Array, version = "1.2.3")
   },
 });
 
-const clientFor = (packument: NpmPackument | undefined, calls?: Array<string>): NpmRegistryClient => ({
-  fetchPackument: async (name) => {
+const clientFor = (
+  packument: NpmPackument | undefined,
+  tarball: Uint8Array,
+  calls?: Array<string>,
+  tarballCalls?: Array<string>,
+): NpmRegistryTransport => ({
+  registryFor: () => "https://registry.example/",
+  packument: async (name) => {
     calls?.push(name);
     return packument;
   },
-});
-
-const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetcher => ({
-  fetch: async (url) => {
-    calls?.push(url);
-    return bytes;
+  tarball: async (input) => {
+    tarballCalls?.push(input.dist.tarball);
+    return tarball;
   },
 });
 
@@ -333,7 +337,7 @@ describe("meta:plugin:remove command", () => {
     }
   });
 
-  test("does not overwrite a corrupt installed registry during removal", async () => {
+  test("preserves plugin files and a corrupt installed registry during removal", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     const pluginDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
     const registryPath = join(pluginsRoot, "registry.json");
@@ -348,7 +352,8 @@ describe("meta:plugin:remove command", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    expect(await exists(pluginDir)).toBe(false);
+    expect(await exists(pluginDir)).toBe(true);
+    expect(await Bun.file(join(pluginDir, "package.json")).text()).toBe(`{"name":"@lando/plugin-php"}`);
     expect(await Bun.file(registryPath).text()).toBe("not json");
   });
 
@@ -453,8 +458,7 @@ describe("meta:plugin:remove command", () => {
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: true,
-        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
-        fetcher: fetcherFor(bytes, []),
+        npmRegistry: clientFor(packumentFor("@lando/plugin-php", bytes), bytes, []),
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -496,8 +500,7 @@ describe("meta:plugin:remove command", () => {
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: true,
-        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
-        fetcher: fetcherFor(bytes, []),
+        npmRegistry: clientFor(packumentFor("@lando/plugin-php", bytes), bytes, []),
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );

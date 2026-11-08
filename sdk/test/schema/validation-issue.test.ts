@@ -10,6 +10,7 @@ import {
   LandofileShape,
   ValidationIssue,
   authoringExpressionSlot,
+  closestKeys,
   deriveAuthoringAst,
   formatValidationIssueLine,
   parseValidationIssuePath,
@@ -27,7 +28,7 @@ describe("validation issues", () => {
       rule: "landofile.event",
       path: ["events", "pre-buidl"],
       message: "Unknown app event pre-buidl.",
-    };
+    } satisfies ValidationIssue;
     const error = new LandofileValidationError({
       file: ".lando.yml",
       message: "Invalid events.",
@@ -120,6 +121,17 @@ describe("validation issues", () => {
     expect(suggestionForUnknownKey("zzzzzz", ["image", "type"])).toBeUndefined();
   });
 
+  test("closestKeys ranks candidates within the distance cap, ties lexically", () => {
+    expect(closestKeys("strat", ["start", "status", "stop", "strat"])).toEqual(["start"]);
+    expect(closestKeys("stp", ["stop", "ssh"], 1)).toEqual(["stop"]);
+    expect(closestKeys("sart", ["start", "sort"], 1)).toEqual(["sort", "start"]);
+    expect(closestKeys("ls", ["ssh", "x"], 1)).toEqual([]);
+    expect(closestKeys("abcdef", ["a", "ab", "abc", "abcd"], Number.POSITIVE_INFINITY, 2)).toEqual([
+      "abcd",
+      "abc",
+    ]);
+  });
+
   test("matches Standard Schema paths and messages for the same decode options", () => {
     const input = {
       name: "demo",
@@ -186,8 +198,8 @@ describe("schema issue traversal", () => {
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
     expect(messages).toEqual([
-      { path: [], message: "Left member" },
-      { path: [], message: "Right member" },
+      { path: [], message: "Left member", kind: "type" },
+      { path: [], message: "Right member", kind: "type" },
     ]);
   });
 
@@ -240,8 +252,8 @@ describe("schema issue traversal", () => {
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
     expect(messages).toEqual([
-      { path: ["tooling", "foo", "extra"], message: "Expected no excess property" },
-      { path: ["tooling", "foo", "value"], message: "Missing key" },
+      { path: ["tooling", "foo", "extra"], message: "Expected no excess property", kind: "unexpected" },
+      { path: ["tooling", "foo", "value"], message: "Missing key", kind: "missing" },
     ]);
   });
 
@@ -280,6 +292,7 @@ describe("schema issue traversal", () => {
     expect(messages).toEqual([
       {
         path: ["setting", "value", "imgae"],
+        kind: "unexpected",
         message: "Expected no excess property",
         suggestion: 'Did you mean "image"?',
       },
@@ -316,7 +329,7 @@ describe("schema issue traversal", () => {
     // When
     const messages = validationIssuesFromSchemaIssue(issuesFor(schema, { enabled: "maybe" }));
     // Then
-    expect(messages).toEqual([{ path: ["enabled"], message: "Expected boolean" }]);
+    expect(messages).toEqual([{ path: ["enabled"], message: "Expected boolean", kind: "type" }]);
   });
 
   test.each([
@@ -331,7 +344,7 @@ describe("schema issue traversal", () => {
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
     expect(messages).toEqual([
-      { path: ["services", "api", "primary"], message: `boolean authoring site: ${detail}` },
+      { path: ["services", "api", "primary"], message: `boolean authoring site: ${detail}`, kind: "value" },
     ]);
   });
 });

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { type RendererIO, type RendererNarrationIO, narrationIO } from "@lando/sdk/renderer";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 test("renderer IO keeps stdout structurally outside the narration contract", async () => {
   const fixture = await Bun.file(new URL("../fixtures/sdk-public-surface.json", import.meta.url)).json();

@@ -1,4 +1,6 @@
-import { DateTime, Effect, Ref, Schema } from "effect";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
+import { DateTime, Effect, Schema } from "effect";
 
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
@@ -9,11 +11,13 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { hostProxyWorkerEntry } from "../../composition.ts";
+import { acquireWorker, terminateWorker, workerSessionLifetime } from "../detached-worker/lifecycle.ts";
 import { DetachedWorkerLogError } from "../detached-worker/log.ts";
 import {
   DetachedWorkerExitedBeforeReadyError,
   DetachedWorkerStartupError,
 } from "../detached-worker/process.ts";
+import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
 import {
@@ -25,12 +29,13 @@ import {
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 import { registerHostProxyCredentials, reuseHostProxyWorker } from "./worker-reuse.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
+import { publishWorkerRecord } from "./worker-state-file.ts";
 import {
+  readWorkerRecord,
   removeOwnedHostProxyWorkerState,
   replaceExistingHostProxyWorker,
   withWorkerRecordLock,
   workerStatePath,
-  writeWorkerRecord,
 } from "./worker-state.ts";
 
 export interface DetachedHostProxyWorkerOptions {
@@ -67,7 +72,7 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
   return yield* withWorkerRecordLock(
     options.app,
     options.paths,
-    Effect.gen(function* () {
+    Effect.fnUntraced(function* (claim) {
       const landoPaths = makeLandoPaths(options.paths);
       const publish = options.publish ?? (() => Effect.void);
       const input = {
@@ -90,29 +95,26 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
           ),
         }),
       );
-      const reused = yield* reuseHostProxyWorker(options, configDigest);
-      if (reused !== undefined) return yield* publish(reused).pipe(Effect.as(reused));
-      const keepWorker = yield* Ref.make(false);
-      return yield* Effect.acquireUseRelease(
-        Effect.gen(function* () {
-          yield* replaceExistingHostProxyWorker(options.app, {
-            ...(options.paths === undefined ? {} : { paths: options.paths }),
-            ...(options.terminateProcess === undefined ? {} : { terminateProcess: options.terminateProcess }),
-            privateFileAccess: options.privateFileAccess,
-          });
-          const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
-          return yield* Effect.tryPromise({
-            try: async () =>
-              spawnWorker({
-                redactor,
-                argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
-                logsDir: makeLandoPaths(options.paths).logsDir,
-                privateFileAccess: options.privateFileAccess,
-              }),
-            catch: (cause) => cause,
-          });
+      return yield* acquireWorker({
+        claim,
+        reuse: reuseHostProxyWorker(options, configDigest),
+        publish,
+        replace: replaceExistingHostProxyWorker(claim, options.app, {
+          ...(options.paths === undefined ? {} : { paths: options.paths }),
+          ...(options.terminateProcess === undefined ? {} : { terminateProcess: options.terminateProcess }),
+          privateFileAccess: options.privateFileAccess,
+        }).pipe(Effect.uninterruptible),
+        spawn: Effect.tryPromise({
+          try: async () =>
+            (options.spawnWorker ?? defaultSpawnWorker)({
+              redactor,
+              argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
+              logsDir: makeLandoPaths(options.paths).logsDir,
+              privateFileAccess: options.privateFileAccess,
+            }),
+          catch: (cause) => cause,
         }),
-        (worker) =>
+        prepare: (worker) =>
           Effect.tryPromise({
             try: async () => {
               await worker.writeStdin(`${JSON.stringify({ ...input, configDigest })}\n`);
@@ -136,11 +138,6 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                 const probeServices = hostProxyEligibleServices(options.plan).map((service) =>
                   String(service.name),
                 );
-                let terminatePromise: Promise<void> | undefined;
-                let resolveClosed: () => void = () => undefined;
-                const closed = new Promise<void>((resolveClosedPromise) => {
-                  resolveClosed = resolveClosedPromise;
-                });
                 const session: HostProxyRunLandoSession & { readonly reused: false } = {
                   appId: ready.appId,
                   sessionId: ready.sessionId,
@@ -152,16 +149,33 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                   shimPath: ready.shimPath,
                   transport,
                   reused: false,
-                  close: () => {
-                    terminatePromise ??= worker.terminate().finally(resolveClosed);
-                    return terminatePromise;
-                  },
-                  closed,
+                  ...workerSessionLifetime(() =>
+                    Effect.runPromise(
+                      withWorkerRecordLock(
+                        options.app,
+                        options.paths,
+                        Effect.fnUntraced(function* (closing) {
+                          const current = yield* readWorkerRecord(options.app, options.paths);
+                          if (current?.sessionId !== ready.sessionId || current.pid !== worker.pid) return;
+                          yield* terminateWorker({
+                            claim: closing,
+                            owned: isOwnerOnlyRecordFile(closing.path, options.privateFileAccess),
+                            shutdown: Effect.promise(() => worker.terminate()),
+                            remove: Effect.promise(() =>
+                              rm(dirname(closing.path), { recursive: true, force: true }),
+                            ),
+                          });
+                        }),
+                        options.privateFileAccess,
+                      ),
+                    ),
+                  ),
                 };
-                return yield* Effect.uninterruptible(
-                  writeWorkerRecord(
-                    options.app,
-                    options.paths,
+                const startedAt = DateTime.formatIso(yield* DateTime.now);
+                return {
+                  session,
+                  persist: publishWorkerRecord(
+                    claim,
                     {
                       appId: options.app.id,
                       appRoot: options.app.root,
@@ -177,16 +191,12 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                       configDigest,
                       sessionId: ready.sessionId,
                       token: ready.token,
-                      startedAt: DateTime.formatIso(yield* DateTime.now),
+                      startedAt,
                       controlToken: ready.controlToken,
                     },
                     options.privateFileAccess,
-                  ).pipe(
-                    Effect.andThen(Ref.set(keepWorker, true)),
-                    Effect.andThen(publish(session)),
-                    Effect.as(session),
                   ),
-                );
+                };
               }),
             ),
             Effect.mapError((cause) =>
@@ -199,11 +209,7 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                   }),
             ),
           ),
-        (worker) =>
-          Ref.get(keepWorker).pipe(
-            Effect.flatMap((keep) => (keep ? Effect.void : Effect.promise(() => worker.terminate()))),
-          ),
-      );
+      });
     }),
     options.privateFileAccess,
   ).pipe(

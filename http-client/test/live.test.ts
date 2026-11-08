@@ -15,6 +15,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
+import { testCaPem } from "@lando/sdk/test";
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
 
@@ -458,7 +459,7 @@ describe("HttpClient network trust", () => {
   test("self-resolves proxy and CA from ConfigService when NetworkTrust is absent", async () => {
     const dir = await makeTempDir();
     const caPath = join(dir, "custom.pem");
-    const fromConfig = "-----BEGIN CERTIFICATE-----\nFROMCONFIG\n-----END CERTIFICATE-----";
+    const fromConfig = testCaPem(0);
     await writeFile(caPath, fromConfig);
 
     const config: GlobalConfig = {

@@ -9,7 +9,7 @@ import { runStorageLifecycle, storageLifecycleClient } from "./support/storage-l
 const recordingApi = (respond: (input: EngineHttpRequest) => EngineHttpResponse) => {
   const calls: EngineHttpRequest[] = [];
   const api: EngineApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ Architecture: "amd64" }),
     request: (input) =>
       Effect.sync(() => {
         calls.push(input);

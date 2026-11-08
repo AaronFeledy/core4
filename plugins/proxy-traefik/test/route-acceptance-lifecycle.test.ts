@@ -8,6 +8,7 @@ import { makeTraefikRouterService } from "../src/proxy.ts";
 import { makeAckStore } from "./observe-routes-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";
+import { routeMetadataLine } from "./route-owner-fixture.ts";
 
 const first = httpsRoutes[0];
 if (first === undefined) throw new Error("route fixture missing");
@@ -130,7 +131,7 @@ test.each(["linux", "win32"] as const)(
         restartRunningService: () => Effect.succeed(false),
       },
     });
-    fixture.files.set(routeFile(paths, app), "persisted route");
+    fixture.files.set(routeFile(paths, app), `${routeMetadataLine(app)}\npersisted route`);
     fixture.files.delete(acquisitionStateFile(paths));
 
     await Effect.runPromise(service.applyRoutes([], app));

@@ -674,8 +674,23 @@ const acceptedValues = (
 const formattedJsonValue = (value: unknown): string =>
   typeof value === "string" ? String(value) : JSON.stringify(value);
 
-const defaultValue = (jsonSchema: JsonObject | undefined): string =>
-  Object.hasOwn(jsonSchema ?? {}, "default") ? codeValue(formattedJsonValue(jsonSchema?.default)) : "—";
+const jsonSchemaDefault = (jsonSchema: JsonObject | undefined): unknown => {
+  if (jsonSchema === undefined) return undefined;
+  if (Object.hasOwn(jsonSchema, "default")) return jsonSchema.default;
+  // withDefaultKey publishes default as an annotation-only allOf member.
+  if (Array.isArray(jsonSchema.allOf)) {
+    for (const member of jsonSchema.allOf) {
+      const object = jsonObject(member);
+      if (object !== undefined && Object.hasOwn(object, "default")) return object.default;
+    }
+  }
+  return undefined;
+};
+
+const defaultValue = (jsonSchema: JsonObject | undefined): string => {
+  const value = jsonSchemaDefault(jsonSchema);
+  return value !== undefined ? codeValue(formattedJsonValue(value)) : "—";
+};
 
 const exampleValue = (value: unknown): string =>
   typeof value === "string" ? codeValue(value) : codeValue(JSON.stringify(value));
@@ -696,7 +711,8 @@ const defaultValues = (
         jsonSchema === undefined
           ? undefined
           : (resolveLocalSchemaRef(jsonSchema, jsonSchemaRoot) ?? jsonSchema);
-      return Object.hasOwn(resolved ?? {}, "default") ? [formattedJsonValue(resolved?.default)] : [];
+      const found = jsonSchemaDefault(resolved);
+      return found !== undefined ? [formattedJsonValue(found)] : [];
     }),
   );
   return values.length > 0 ? values.map(codeValue).join(", ") : "—";

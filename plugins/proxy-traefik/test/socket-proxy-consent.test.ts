@@ -13,6 +13,7 @@ const harness = (isInteractive: boolean) => {
   const files = new Map<string, string>();
   const socketProxy: SocketProxyDependencies = {
     user: "test",
+    userDataRoot: "/lando",
     hasHostSystemd: () => true,
     exists: (path) => Effect.succeed(PROXYD_CANDIDATES.some((candidate) => candidate === path)),
     readText: () => Effect.succeed(""),

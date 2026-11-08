@@ -142,6 +142,8 @@ describe("applied plan state layouts", () => {
               exists: Effect.succeed(true),
               set: () => Effect.die("unexpected write"),
               update: () => Effect.die("unexpected update"),
+              mutate: () => Effect.die("this fixture does not support mutate"),
+              transition: () => Effect.die("this fixture does not support transition"),
               modify: () => Effect.die("unexpected modify"),
               remove: Effect.die("unexpected delete"),
             }),
@@ -211,6 +213,8 @@ describe("applied plan state layouts", () => {
             exists: Effect.succeed(true),
             set: () => Effect.die("read-only fixture"),
             update: () => Effect.die("read-only fixture"),
+            mutate: () => Effect.die("this fixture does not support mutate"),
+            transition: () => Effect.die("this fixture does not support transition"),
             modify: () => Effect.die("read-only fixture"),
             remove: Effect.die("read-only fixture"),
           }),
@@ -232,7 +236,7 @@ describe("applied plan state layouts", () => {
     },
   );
 
-  test("per-app layout preserves the namespaced file format at version 3", async () => {
+  test("per-app layout preserves the namespaced file format at version 4", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
     const appId = AppId.make("example");
@@ -250,13 +254,13 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(3);
+    expect(calls[0]?.version).toBe(4);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
     expect(appliedPlansDir("/tmp/plugin-state/")).toBe("/tmp/plugin-state/applied-plans");
     expect(appliedPlanPath("/tmp/plugin-state", appId)).toBe("/tmp/plugin-state/applied-plans/example.json");
   });
 
-  test("record layout preserves the single-file collection format at version 3", async () => {
+  test("record layout preserves the single-file collection format at version 4", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "podman", layout: "record" });
 
@@ -272,7 +276,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(3);
+    expect(calls[0]?.version).toBe(4);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
   });
 });
@@ -561,6 +565,8 @@ describe("applied plan records", () => {
             written.push(value);
           }),
         update: () => Effect.die("not used"),
+        mutate: () => Effect.die("this fixture does not support mutate"),
+        transition: () => Effect.die("this fixture does not support transition"),
         modify: <B>(f: (cur: A | null) => readonly [B, A]) =>
           Effect.sync(() => {
             const [result, next] = f(null);

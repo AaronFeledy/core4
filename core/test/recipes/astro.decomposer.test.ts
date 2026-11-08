@@ -67,8 +67,9 @@ describe("astro decomposition", () => {
           service: "web",
           description: "Run the Astro CLI inside the web service.",
           cmds: ["npx astro"],
+          wrapper: true,
         },
-        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"] },
+        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"], wrapper: true },
       },
     });
     expect<unknown>(result.fragment).toEqual({

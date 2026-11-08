@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StateStore } from "@lando/sdk/services";
+import type { SourceTransports } from "@lando/source-acquisition";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import { installEngineComposition } from "../../src/composition.ts";
@@ -20,28 +21,38 @@ test("planner-stage invalid lint does not publish acquired include pins", async 
       join(root, ".lando.yml"),
       "name: inspect\nincludes:\n  - source: github:acme/shared\n    path: fragment.yml\n",
     );
+    const sources: SourceTransports = {
+      git: {
+        fetch: async ({ dest }) => {
+          clones++;
+          await mkdir(dest, { recursive: true });
+          await writeFile(join(dest, "fragment.yml"), "events:\n  pre-unknown-task:\n    - echo wrong\n");
+          return { commit: "a".repeat(40) };
+        },
+      },
+    };
     installEngineComposition({
       ...previous,
+      landofileSourcePorts: () => ({ sources }),
       landofileRuntimeInputs: {
         ...previous.landofileRuntimeInputs,
         ports: {
           ...previous.landofileRuntimeInputs.ports,
           resolveUserCacheRoot: () => join(root, "cache"),
           resolveUserIncludesDir: () => join(root, "includes"),
-          git: {
-            clone: async ({ dest }) => {
-              clones++;
-              await mkdir(dest, { recursive: true });
-              await writeFile(join(dest, "fragment.yml"), "events:\n  pre-unknown-task:\n    - echo wrong\n");
-              return { commitSha: "a".repeat(40) };
-            },
-          },
-          publication: { publish: rename },
+          sources,
         },
       },
     });
+    const cacheRoot = join(root, "cache");
     const store = makeStateStore({
       privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+      roots: {
+        userConfRoot: cacheRoot,
+        userCacheRoot: cacheRoot,
+        userDataRoot: cacheRoot,
+        systemPluginRoot: cacheRoot,
+      },
     });
 
     // When

@@ -789,7 +789,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
-    hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
+    hostnames: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Extra provider-network aliases for this service. Other services use these names to reach this one.",
+    }),
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
@@ -937,6 +940,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * - `cmd:` — single command (string or string array).
  * - `cmds:` — sequential shell commands or command steps with execution overrides.
  * - `arguments: false` — reject caller-supplied positional arguments.
+ * - `wrapper:` — mark a thin wrapper around one CLI tool.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
  * - `vars:` — accepted `ToolingVar` forms only.
@@ -977,6 +981,10 @@ export const ToolingTaskShape = Schema.Struct({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
   ...ToolingAuthoredInputFields,
+  wrapper: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Mark this task as a thin wrapper around one CLI tool. -h, --help, and --version go to that tool instead of Lando. Requires one command and no declared flags or args.",
+  }),
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",
   }),

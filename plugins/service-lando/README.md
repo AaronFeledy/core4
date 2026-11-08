@@ -17,10 +17,9 @@ they supply defaults you can change in the Landofile. Port-bearing listener
 variables are derived from `port:` and must not disagree with it; ordinary
 host and framework environment defaults remain overridable.
 
-The Beta scope is intentionally narrower than the canonical GA-target catalog
-(full version sets and framework coverage for every service type). New
-framework presets ship post-GA; the table below tracks what
-`@lando/service-lando` ships today. The generated [service type version reference](../../docs/reference/service-types.mdx)
+The table below lists the `framework:` values `@lando/service-lando` ships
+presets for today. Python, Ruby, and Go reject values outside their list; PHP
+and Node accept other names without adding a preset. The generated [service type version reference](../../docs/reference/service-types.mdx)
 lists the shipped runtime matrix and pinned artifacts directly from ServiceType metadata.
 
 | Type       | Supported `framework:` values        | Notes                                                                                                                       |
@@ -29,7 +28,7 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
 | `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets set port (django/fastapi 8000, flask 5000) and environment defaults. |
 | `ruby`     | `rails`, `none`                      | `rails` defaults to `webroot: public`; `none` defaults to `.`. Set `webroot:` directly to override either context default. Rails also supplies development environment defaults. |
-| `go`       | `none`                               | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
+| `go`       | `none`                               | Only `framework: none` is accepted. There are no presets for Echo, Fiber, Gin, Chi, or other Go web frameworks; author `port:`, `environment:`, and `command:` for them directly.    |
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
 | `mssql`    | n/a                                  | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
 | `phpmyadmin` | n/a                                | Serves phpMyAdmin and wires it to app-local MySQL or MariaDB services unless `hosts:` is set. |
@@ -123,22 +122,22 @@ Canonical upstream
 `php:` images ending in `-bookworm` or `-bullseye` remain supported without a
 contextual build; additive build scripts alone do not change that selection.
 
-## Beta scope vs. the GA-target catalog
+## Catalog boundaries
 
-The canonical catalog target for v4.0 GA distinguishes new service types from
-new versions of existing types. Adding or removing a canonical `type:` changes
-that catalog; versions within an existing entry can follow upstream releases.
-`@lando/service-lando` ships a subset of that target catalog through Beta:
+Adding or removing a canonical `type:` changes the service catalog; versions
+within an existing entry follow upstream releases. What the bundled catalog
+does and does not cover:
 
 - PHP ships 8.1-8.6. Official Hub currently publishes 8.6 as RC bookworm tags.
   PHP uses explicit `webroot:` and `allowOverride:` parameters. Its WordPress
   preset installs WP-CLI on stock images without changing the webroot.
-- Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA;
-  `go:<version>` accepts only `framework: none` today.
-- New canonical service types (Drupal/Laravel/Symfony framework presets
-  outside `php:*`) are not added in Beta beyond what Alpha already shipped.
+- `go:<version>` accepts only `framework: none`. There are no Go framework
+  presets (Echo, Fiber, Gin, Chi).
+- There are no standalone Drupal, Laravel, or Symfony service types. Those
+  frameworks run on `php:*`; the bundled recipes set `framework:` and the
+  webroot on the PHP service for you.
 
-Plugins can still contribute additional `ServiceType` implementations that
+Plugins can contribute additional `ServiceType` implementations that
 compose with these presets through the feature priority list; a name collision
 with a canonical type is rejected at plugin load with
 `ServiceTypeCollisionError`.

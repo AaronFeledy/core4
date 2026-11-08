@@ -36,6 +36,7 @@ test.each([
       },
       baseKind: "lando",
       appRoot: "/srv/app",
+      appSlug: "app",
       normalizedConfig,
       features: [],
     }),

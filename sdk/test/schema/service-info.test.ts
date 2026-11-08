@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { CertificatePlan, ServiceInfo, ServiceState, StartedService } from "@lando/sdk/schema";
+import {
+  CertificatePlan,
+  ServiceInfo,
+  ServiceInfoConsistent,
+  ServiceState,
+  StartedService,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 import { Schema } from "effect";
 
@@ -122,6 +128,42 @@ test("round trips safe service metadata and JSON provider details", () => {
     providerInfo: { observation: "limited", retries: 2, labels: ["safe"] },
   } as const;
   expect(Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input))).toEqual(input);
+});
+
+test.each([
+  ["running", "healthy", true],
+  ["running", "starting", true],
+  ["running", "unhealthy", true],
+  ["healthy", "healthy", true],
+  ["unhealthy", "unhealthy", true],
+  ["stopped", "unknown", true],
+  ["stopped", "not-monitored", true],
+  ["stopped", "healthy", false],
+  ["error", "unhealthy", false],
+  ["paused", "starting", false],
+  ["healthy", "unhealthy", false],
+  ["healthy", "starting", false],
+  ["unhealthy", "healthy", false],
+  ["unhealthy", "starting", false],
+  ["starting", "healthy", false],
+  ["starting", "unhealthy", false],
+  ["ready", "unhealthy", false],
+  ["ready", "starting", false],
+  ["ready", "healthy", true],
+] as const)("status %s with health.state %s is consistent=%s", (status, healthState, consistent) => {
+  const input = { ...service, status, health: { state: healthState } };
+  expect(Schema.decodeUnknownResult(ServiceInfoConsistent)(input)._tag === "Success").toBe(consistent);
+  if (consistent) {
+    expect(ServiceInfoConsistent.make(input)).toEqual(input);
+  } else {
+    expect(() => ServiceInfoConsistent.make(input)).toThrow();
+  }
+});
+
+test("the published ServiceInfo struct stays free of the cross-field check", () => {
+  const input = { ...service, status: "stopped", health: { state: "healthy" } };
+  expect(Schema.decodeUnknownResult(ServiceInfo)(input)._tag).toBe("Success");
+  expect(Schema.decodeUnknownResult(ServiceInfoConsistent)(input)._tag).toBe("Failure");
 });
 
 test("rejects non-JSON provider details", () => {

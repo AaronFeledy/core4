@@ -12,3 +12,11 @@ tooling:
     env:
       CHANNEL: deploys
     cmd: 'echo "posting to $CHANNEL" 1>&2'
+  seed-posix:
+    description: A loop written for sh
+    service: ":host"
+    cmd: "for name in one two; do echo seeding $name; done"
+  seed:
+    description: The same loop as a Bun program
+    service: ":host"
+    cmd: bun ./scripts/seed.ts

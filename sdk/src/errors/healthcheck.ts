@@ -8,6 +8,9 @@ export class HealthcheckTargetUnsupportedError extends Schema.TaggedError<Health
     message: Schema.String,
     service: Schema.String,
     target: Schema.Literals(["service", "host"]),
+    role: Schema.optionalKey(Schema.Literals(["healthcheck", "readiness"])).annotate({
+      description: "Probe the configuration belongs to, when known.",
+    }),
     remediation: Remediation,
   },
 ) {}

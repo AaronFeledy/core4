@@ -1,4 +1,4 @@
-import type { AppId, RouteEvidence, RoutePlan } from "@lando/sdk/schema";
+import type { AppRouteOwner, RouteEvidence, RoutePlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { readLiveRouteSnapshot } from "./live-route-snapshot.ts";
 import { readAcquisitionState } from "./port-acquisition-state.ts";
@@ -12,7 +12,7 @@ import { normalizeDefaultDomain } from "./tls.ts";
 
 export const observeRoutes = Effect.fn("TraefikRouter.observeRoutes")(function* (
   dependencies: TraefikProxyDependencies,
-  app: AppId,
+  owner: AppRouteOwner,
   requestedRoutes: ReadonlyArray<RoutePlan>,
 ): Effect.fn.Return<RouteEvidence> {
   const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
@@ -29,7 +29,7 @@ export const observeRoutes = Effect.fn("TraefikRouter.observeRoutes")(function* 
   if (snapshot === undefined) return unknown;
   const matches = requestedRoutes.flatMap((route) =>
     routeSchemes(route).map((scheme) => ({
-      matched: matchesLiveRoute(snapshot, app, { route, scheme }),
+      matched: matchesLiveRoute(snapshot, owner, { route, scheme }),
       publication: { route, authority: { hostname: route.hostname, scheme, port: ports[scheme] } },
     })),
   );
@@ -46,21 +46,21 @@ export const makeRouteObserver = (
   pendingReload: ReadonlySet<string>,
 ) =>
   Effect.fn("TraefikRouter.observeRouteEvidence")(function* (
-    app: AppId,
+    owner: AppRouteOwner,
     requestedRoutes: ReadonlyArray<RoutePlan>,
   ) {
-    const evidence = yield* observeRoutes(dependencies, app, requestedRoutes);
+    const evidence = yield* observeRoutes(dependencies, owner, requestedRoutes);
     if (dependencies.paths.platform !== "win32" || evidence.observation.status !== "present") return evidence;
     const unknown: RouteEvidence = {
       configuredAuthorities: evidence.configuredAuthorities,
       observation: { status: "unknown" },
     };
     const stateStore = dependencies.stateStore;
-    if (stateStore === undefined || pendingReload.has(String(app))) return unknown;
+    if (stateStore === undefined || pendingReload.has(owner.ownerKey)) return unknown;
     const acknowledged = yield* Effect.gen(function* () {
       const domain = yield* dependencies.fileSystem.readText(defaultDomainFile(dependencies.paths));
-      const snapshot = yield* routeReloadSnapshot(dependencies, app, normalizeDefaultDomain(domain));
-      return yield* isAcknowledged(stateStore, app, routeReloadDigest(snapshot));
+      const snapshot = yield* routeReloadSnapshot(dependencies, owner, normalizeDefaultDomain(domain));
+      return yield* isAcknowledged(stateStore, owner.ownerKey, routeReloadDigest(snapshot));
     }).pipe(Effect.catch(() => Effect.succeed(false)));
     return acknowledged ? evidence : unknown;
   });

@@ -28,6 +28,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
+import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
@@ -97,10 +98,26 @@ const buildConfigService = (
   });
 };
 
+// The report must not depend on the host's inotify budget; filesystem-watch diagnoses have their own tests.
+const healthyFilesystemWatch = Layer.succeed(
+  FilesystemWatchIO,
+  FilesystemWatchIO.of({
+    observe: Effect.succeed({
+      limits: { max_user_watches: "65536", max_user_instances: "128", max_queued_events: "16384" },
+      allocation: { stage: "complete" },
+      cleanup: "complete",
+      eventDelivery: "confirmed",
+    }),
+  }),
+);
+
 const buildLayers = (
   provider: typeof TestRuntimeProvider,
-): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService> =>
+): Layer.Layer<
+  ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService | FilesystemWatchIO
+> =>
   Layer.mergeAll(
+    healthyFilesystemWatch,
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(
@@ -209,7 +226,7 @@ describe("meta:doctor combined report", () => {
           ...(withError
             ? [
                 {
-                  rule: "env-file.read",
+                  rule: "env-file.read" as const,
                   severity: "error" as const,
                   path: ["env_file", 1],
                   message: "Missing env file",

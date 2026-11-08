@@ -3,7 +3,17 @@ import { Context, Effect } from "effect";
 import type { AppPlan } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
 
-export type GlobalRouterStartupPlan = Pick<AppPlan, "services">;
+export type GlobalRouterStartupPlan = Pick<AppPlan, "services" | "router" | "requires">;
+
+/**
+ * Global services that back the active router. A plan that recorded its router carries the
+ * router's declared services in `requires`; an older plan only knew the router by its id.
+ */
+export const routerBackingServices = (
+  plan: Pick<AppPlan, "router" | "requires">,
+  routerId: string,
+): ReadonlyArray<string> =>
+  plan.router?.id === undefined ? [routerId] : (plan.requires?.globalServices ?? []);
 
 const GlobalRouterStartupPlanObserver = Context.Reference<
   ((plan: GlobalRouterStartupPlan) => Effect.Effect<void>) | undefined
@@ -27,7 +37,8 @@ export const revalidateAppliedGlobalRouterStartup = Effect.fn("GlobalApp.revalid
   plan: GlobalRouterStartupPlan | undefined,
 ) {
   const router = yield* RouterService;
-  if (!Object.values(plan?.services ?? {}).some((service) => service.name === router.id)) {
+  const backing = plan === undefined ? [] : routerBackingServices(plan, router.id);
+  if (!Object.values(plan?.services ?? {}).some((service) => backing.includes(service.name))) {
     // Implementations can invalidate stale readiness evidence after observing a
     // stopped router; this does not run setup or a startup probe.
     yield* Effect.result(router.status);

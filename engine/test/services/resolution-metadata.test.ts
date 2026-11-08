@@ -21,6 +21,7 @@ test("direct composition projects resolution facts into declarations, applicatio
     },
     baseKind: resolution.base,
     appRoot: "/srv/metadata",
+    appSlug: "metadata",
     normalizedConfig: resolution.normalizedConfig,
     resolutionMetadata: metadata,
     features: [],

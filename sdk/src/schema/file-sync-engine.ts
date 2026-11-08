@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { defineTransitions } from "../transitions/index.ts";
+
 import { NetworkConfig } from "./config.ts";
 import { FileSyncMode as FileSyncModeSchema } from "./file-sync.ts";
 import { AppRef } from "./networking.ts";
@@ -198,3 +200,96 @@ export const FileSyncEventChunk = Schema.Union([
   }),
 ]);
 export type FileSyncEventChunk = Schema.Schema.Type<typeof FileSyncEventChunk>;
+
+// ====================================================================
+// App disposal lifecycle
+// ====================================================================
+
+/**
+ * Where an app stands in a durable file-sync engine's disposal lifecycle, as
+ * reported by `FileSyncEngine.appLifecycle.disposalPhase`.
+ *
+ * - `absent`: the engine holds no sessions and no disposal receipt.
+ * - `active`: sessions exist and may sync (a drain is not settled).
+ * - `drained`: every session is flushed and paused; the app is restartable.
+ * - `disposing`: disposal began and may be resumed; the drained state is gone.
+ * - `completed`: sessions and provider targets are gone; the completion receipt
+ *   survives retries until creating a session for the app clears it.
+ */
+export const FileSyncDisposalPhase = Schema.Literals([
+  "absent",
+  "active",
+  "drained",
+  "disposing",
+  "completed",
+]);
+export type FileSyncDisposalPhase = typeof FileSyncDisposalPhase.Type;
+
+/**
+ * The one declared edge table for the app disposal lifecycle. Keys are the
+ * `appLifecycle` operations plus `createSession`, the only other operation that
+ * moves the phase. `settledIn` lists phases with nothing left for the operation
+ * to do. An engine may keep a finer private ledger, but its projection onto
+ * these phases must agree with every edge here.
+ */
+export const fileSyncDisposalTransitions = defineTransitions<FileSyncDisposalPhase>()({
+  createSession: { from: ["absent", "active", "completed"], to: "active" },
+  invalidateDrain: { from: ["active", "drained"], to: "active", settledIn: ["absent", "completed"] },
+  drain: { from: ["active", "drained"], to: "drained" },
+  dispose: { from: ["drained", "disposing"], to: "disposing" },
+  completeDisposal: { from: ["disposing"], to: "completed", settledIn: ["completed"] },
+});
+export type FileSyncDisposalOperation = keyof typeof fileSyncDisposalTransitions.edges;
+
+/** The lifecycle operations an orchestrator runs, in order, to retire an app's sessions. */
+export type FileSyncDisposalStep = Extract<
+  FileSyncDisposalOperation,
+  "drain" | "dispose" | "completeDisposal"
+>;
+
+const DISPOSAL_STEPS: ReadonlyArray<FileSyncDisposalStep> = ["drain", "dispose", "completeDisposal"];
+
+/**
+ * Operations still owed to reach `completed` from `phase`, in execution order.
+ * Resume semantics fall out of the table: a step the phase has already passed
+ * is not planned, and a step whose edge re-accepts the phase (`drain` from
+ * `drained`, `dispose` from `disposing`) is re-run. `absent` and `completed`
+ * owe nothing. Provider target cleanup must succeed before `completeDisposal`.
+ */
+export const planFileSyncDisposal = (phase: FileSyncDisposalPhase): ReadonlyArray<FileSyncDisposalStep> => {
+  const planned: Array<FileSyncDisposalStep> = [];
+  let current = phase;
+  for (const operation of DISPOSAL_STEPS) {
+    const verdict = fileSyncDisposalTransitions.step(operation, current);
+    switch (verdict._tag) {
+      case "Advance":
+        planned.push(operation);
+        current = verdict.to;
+        break;
+      case "Settled":
+      case "Illegal":
+        break;
+      default: {
+        const exhaustive: never = verdict;
+        return exhaustive;
+      }
+    }
+  }
+  return planned;
+};
+
+/**
+ * True once disposal can no longer be abandoned for a restart: the engine is
+ * `disposing` or `completed`. Derived from the table, as the phases that are
+ * neither `absent` nor open to `drain`.
+ */
+export const fileSyncDisposalCommitted = (phase: FileSyncDisposalPhase): boolean =>
+  phase !== "absent" && fileSyncDisposalTransitions.step("drain", phase)._tag !== "Advance";
+
+/**
+ * Whether a start must call `invalidateDrain`. An app that owns sessions always
+ * invalidates; otherwise only a phase the table does not settle does, so a
+ * bare `absent` or `completed` app is left alone.
+ */
+export const fileSyncInvalidationRequired = (phase: FileSyncDisposalPhase, ownsSessions: boolean): boolean =>
+  ownsSessions || fileSyncDisposalTransitions.step("invalidateDrain", phase)._tag !== "Settled";

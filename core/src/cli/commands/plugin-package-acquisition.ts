@@ -1,20 +1,16 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
   NotImplementedError,
   PluginManifestError,
   PluginPackageOperationError,
-  RecipeSourceError,
+  isErrnoCode,
 } from "@lando/sdk/errors";
-import {
-  defaultNpmRegistryClient,
-  parseNpmPackageSpec,
-  resolveNpmPackageVersion,
-  verifyNpmPackageDistIntegrity,
-} from "../../recipes/npm-source";
-import { defaultTarballRecipeExtractor, defaultTarballRecipeFetcher } from "../../recipes/tarball-source";
+import type { SourceAcquisitionError, SourceSession } from "@lando/source-acquisition";
+import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
+import { Effect, Scope } from "effect";
 import type { PluginAddOptions } from "./plugin-add-options";
 
 export const ensurePluginsRoot = async (root: string): Promise<void> => {
@@ -26,121 +22,134 @@ export const ensurePluginsRoot = async (root: string): Promise<void> => {
       `${JSON.stringify({ name: "lando-plugin-root", private: true, version: "0.0.0", description: "Managed by Lando." }, null, 2)}\n`,
     );
 };
-
 export const packageDeclaresPostinstall = async (packageDir: string): Promise<boolean> => {
-  const packageJson: unknown = await readFile(join(packageDir, "package.json"), "utf8").then(
-    (text) => {
-      try {
-        return JSON.parse(text);
-      } catch (cause) {
-        if (cause instanceof SyntaxError) return undefined;
-        throw cause;
-      }
-    },
-    () => undefined,
-  );
+  const packageJson: unknown = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
   if (typeof packageJson !== "object" || packageJson === null || !("scripts" in packageJson)) return false;
   const scripts: unknown = packageJson.scripts;
   if (typeof scripts !== "object" || scripts === null || !("postinstall" in scripts)) return false;
   return typeof scripts.postinstall === "string" && scripts.postinstall.trim() !== "";
 };
-
-interface AcquiredPluginPackage {
-  readonly created: boolean;
-  readonly packageDir: string;
-  readonly targetDir?: string;
-  readonly stagingRoot?: string;
-}
-
-const acquisitionIssue = (message: string, spec: string) =>
-  new NotImplementedError({
-    message,
-    commandId: "meta:plugin:add",
-    remediation: `Check the npm package spec and registry metadata, then retry \`lando plugin:add ${spec}\`.`,
-  });
-
-const assertSafeInstallSegment = (value: string, label: string, spec: string): void => {
-  const slashPath = value.replace(/\\/gu, "/");
-  if (
-    value.trim() === "" ||
-    isAbsolute(value) ||
-    slashPath.startsWith("/") ||
-    value.includes("\\") ||
-    slashPath.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
-  ) {
-    throw acquisitionIssue(`Resolved npm plugin ${label} escapes the plugin root: ${value}`, spec);
+const sourceOperation = (
+  kind: SourceAcquisitionError["kind"],
+  phase: "resolve" | "materialize",
+): PluginPackageOperationError["operation"] => {
+  switch (kind) {
+    case "integrity-mismatch":
+    case "integrity-missing":
+      return "verify";
+    case "extract-failed":
+      return "extract";
+    case "invalid-locator":
+    case "not-found":
+    case "version-not-found":
+      return "resolve";
+    case "checksum-mismatch":
+    case "offline-miss":
+    case "cache":
+    case "auth":
+    case "fetch-failed":
+      return phase === "resolve" ? "resolve" : "download";
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
   }
 };
-
-export const acquirePluginPackage = async (
-  options: PluginAddOptions,
-  pluginsRoot: string,
-): Promise<AcquiredPluginPackage> => {
-  let operation: PluginPackageOperationError["operation"] = "resolve";
-  try {
-    const parsed = parseNpmPackageSpec(options.spec);
-    const registryUrl = options.registryUrl;
-    const client = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
-    const packument = await client.fetchPackument(parsed.name);
-    if (packument === undefined)
-      throw acquisitionIssue(
-        `npm package "${parsed.name}" was not found in the registry ${registryUrl}.`,
-        options.spec,
-      );
-    const version = resolveNpmPackageVersion(packument, parsed.version, options.spec);
-    const dist = packument.versions?.[version]?.dist;
-    if (dist === undefined || dist.tarball === undefined || dist.tarball.trim() === "")
-      throw acquisitionIssue(
-        `npm package "${parsed.name}@${version}" has no published tarball URL.`,
-        options.spec,
-      );
-    assertSafeInstallSegment(parsed.name, "name", options.spec);
-    assertSafeInstallSegment(version, "version", options.spec);
-    const packageDir = join(pluginsRoot, parsed.name, version);
-    const rel = relative(pluginsRoot, packageDir);
-    if (rel === "" || rel === ".." || rel.startsWith("../") || isAbsolute(rel))
-      throw acquisitionIssue(
-        `Resolved npm plugin install path escapes the plugin root: ${packageDir}`,
-        options.spec,
-      );
-    const exists = await stat(packageDir).then(
-      () => true,
-      () => false,
-    );
-    if (options.expectedActivation === undefined && exists) return { created: false, packageDir };
-    operation = "download";
-    const archiveBytes =
-      client.fetchTarball === undefined
-        ? await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(dist.tarball)
-        : await client.fetchTarball({ packageName: parsed.name, dist }, options.fetcher);
-    operation = "verify";
-    verifyNpmPackageDistIntegrity(archiveBytes, dist, dist.tarball);
-    operation = "extract";
-    const finalParent = dirname(packageDir);
-    await mkdir(finalParent, { recursive: true });
-    const stagingRoot = await mkdtemp(join(finalParent, ".staging-"));
-    try {
-      await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingRoot);
-      const extractedPackageDir = join(stagingRoot, "package");
-      await validatePluginManifest(extractedPackageDir);
-      return { created: true, packageDir: extractedPackageDir, targetDir: packageDir, stagingRoot };
-    } catch (cause) {
-      await rm(stagingRoot, { recursive: true, force: true });
-      throw cause;
-    }
-  } catch (cause) {
-    if (cause instanceof PluginManifestError) throw cause;
-    throw new PluginPackageOperationError({
+export const acquirePluginPackage = Effect.fn("PluginAdd.acquirePackage")(function* (input: {
+  readonly options: PluginAddOptions;
+  readonly pluginsRoot: string;
+  readonly session: SourceSession;
+  readonly installScope: Scope.Scope;
+}) {
+  const { options, pluginsRoot, session, installScope } = input;
+  const failure = (
+    operation: PluginPackageOperationError["operation"],
+    cause: unknown,
+    remediation = "Correct the reported package acquisition failure and retry plugin installation.",
+  ) =>
+    new PluginPackageOperationError({
       message: `Plugin package ${operation} failed for ${options.spec}.`,
       commandId: "meta:plugin:add",
       operation,
       packageSpec: options.spec,
       cwd: pluginsRoot,
       detail: cause instanceof Error ? cause.message : String(cause),
-      remediation:
-        cause instanceof RecipeSourceError
-          ? cause.remediation
-          : "Correct the reported package acquisition failure and retry plugin installation.",
+      remediation,
     });
-  }
-};
+  const mapSource = (phase: "resolve" | "materialize") => (error: SourceAcquisitionError) =>
+    failure(sourceOperation(error.kind, phase), error, error.remediation);
+  const parsed = yield* Effect.try({
+    try: () => parseNpmPackageSpec(options.spec),
+    catch: (cause) => failure("resolve", cause),
+  });
+  const pin = yield* session
+    .resolveNpm({ name: parsed.name, ...(parsed.version === undefined ? {} : { selector: parsed.version }) })
+    .pipe(Effect.mapError(mapSource("resolve")));
+  const packageDir = yield* Effect.try({
+    try: () => {
+      for (const [label, value] of [
+        ["name", pin.name],
+        ["version", pin.version],
+      ]) {
+        if (
+          value === undefined ||
+          value.trim() === "" ||
+          isAbsolute(value) ||
+          value.includes("\\") ||
+          value.split("/").some((part) => part === "" || part === "." || part === "..")
+        ) {
+          throw new NotImplementedError({
+            message: `Resolved npm plugin ${label} escapes the plugin root: ${value}`,
+            commandId: "meta:plugin:add",
+            remediation: `Check the npm package spec and registry metadata, then retry \`lando plugin:add ${options.spec}\`.`,
+          });
+        }
+      }
+      const path = join(pluginsRoot, pin.name, pin.version);
+      const rel = relative(pluginsRoot, path);
+      if (rel === "" || rel === ".." || rel.startsWith("../") || isAbsolute(rel))
+        throw failure("resolve", "Resolved plugin path escapes the install root.");
+      return path;
+    },
+    catch: (cause) =>
+      cause instanceof NotImplementedError || cause instanceof PluginPackageOperationError
+        ? cause
+        : failure("resolve", cause),
+  });
+  const exists = yield* Effect.tryPromise({
+    try: () =>
+      stat(packageDir)
+        .then(() => true)
+        .catch((cause: unknown) => {
+          if (isErrnoCode(cause, "ENOENT")) return false;
+          throw cause;
+        }),
+    catch: (cause) => failure("resolve", cause),
+  });
+  if (options.expectedActivation === undefined && exists)
+    return { created: false, packageDir, stagingRoot: undefined, targetDir: undefined };
+  const snapshot = yield* session.materializeNpm(pin).pipe(Effect.mapError(mapSource("materialize")));
+  const stagingRoot = yield* Effect.tryPromise({
+    try: async () => {
+      const parent = dirname(packageDir);
+      await mkdir(parent, { recursive: true });
+      return mkdtemp(join(parent, ".staging-"));
+    },
+    catch: (cause) => failure("extract", cause),
+  });
+  yield* Scope.addFinalizer(
+    installScope,
+    Effect.promise(() => rm(stagingRoot, { recursive: true, force: true })),
+  );
+  const extractedPackageDir = join(stagingRoot, "package");
+  yield* Effect.tryPromise({
+    try: () =>
+      cp(join(snapshot.root, "package"), extractedPackageDir, { recursive: true, errorOnExist: true }),
+    catch: (cause) => failure("extract", cause),
+  });
+  yield* Effect.tryPromise({
+    try: () => validatePluginManifest(extractedPackageDir),
+    catch: (cause) => (cause instanceof PluginManifestError ? cause : failure("extract", cause)),
+  });
+  return { created: true, packageDir: extractedPackageDir, targetDir: packageDir, stagingRoot };
+});

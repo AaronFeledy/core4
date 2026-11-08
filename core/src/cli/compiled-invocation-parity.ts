@@ -7,6 +7,7 @@
  * `invocationParityError` is the pure diagnostic used by compatibility tests.
  */
 import { Schema } from "effect";
+import { type CliInvocationContext, processInvocationContext } from "../runtime/invocation-context";
 
 import {
   argDefinitionsForCommand,
@@ -41,7 +42,10 @@ export const invocationParityError = (commandId: string, argv: ReadonlyArray<str
   if (command === undefined) return undefined;
   const flagDefinitions = flagDefinitionsForCommand(command);
   const flagTokens = flagNameByToken(flagDefinitions);
-  const maxPositionals = Object.keys(argDefinitionsForCommand(command)).length;
+  const argDefinitions = argDefinitionsForCommand(command);
+  const maxPositionals = Object.values(argDefinitions).some((definition) => definition.multiple === true)
+    ? Number.POSITIVE_INFINITY
+    : Object.keys(argDefinitions).length;
   const positionals: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -93,12 +97,13 @@ export const invocationParityError = (commandId: string, argv: ReadonlyArray<str
 export const rejectInvalidInvocation = async (
   commandId: string,
   argv: ReadonlyArray<string>,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<boolean> => {
   const diagnostic = invocationParityError(commandId, argv);
   if (diagnostic === undefined) return false;
-  await emitDiagnosticLine(diagnostic);
+  await emitDiagnosticLine(diagnostic, context);
   const example = commandStructureExample(commandId);
-  if (example !== undefined) await emitDiagnosticLine(`  ↳ Example: ${example}`);
-  process.exitCode = 2;
+  if (example !== undefined) await emitDiagnosticLine(`  ↳ Example: ${example}`, context);
+  context.setExitCode(2);
   return true;
 };

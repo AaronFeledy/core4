@@ -3,10 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  readAppCommandCacheForCwdDetailed,
-  writeAppCommandCacheStrict,
-} from "@lando/engine/cache/command-index-writer";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -16,24 +13,33 @@ import { renderColdAllHelp, renderColdRootHelp } from "../../src/cli/cold-path-o
 import { HelpCatalogResult, buildHelpCatalog } from "../../src/cli/compiled-help.ts";
 import { renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts";
 import { toolingMetadataStatus } from "../../src/cli/tooling-cache-status.ts";
+import { readCliAppCommandCache } from "../../src/cli/tooling-command-cache.ts";
 import {
   resolveToolingRoute,
   toolingHelpRequested,
-  toolingRouteError,
+  toolingRouteFailure,
 } from "../../src/cli/tooling-router.ts";
 
 const states = ["missing", "stale", "invalid", "unknown"] as const;
 type State = (typeof states)[number];
-const reasons = {
-  missing: "missing-cache",
-  stale: "stale-cache",
-  invalid: "invalid-cache",
-  unknown: "unknown-command",
+// Every non-fresh index rebuilds; the unparseable Landofile makes that rebuild fail, so the
+// rebuild's own error (not a cache-state error) proves the rebuild ran.
+const failures = {
+  missing: { _tag: "LandofileParseError" },
+  stale: { _tag: "LandofileParseError" },
+  invalid: { _tag: "LandofileParseError" },
+  // A fresh index that lacks the task is an ordinary unknown command.
+  unknown: { _tag: "UnknownCommandError", commandToken: "app:absent" },
 } as const;
+const failureCommand = (state: State) => (state === "unknown" ? "cli:unknown-command" : "app:absent");
 
-test.each([true, false])(
-  "uses argument policy for empty declarations (acceptsArguments=%s)",
-  (acceptsArguments) => {
+test.each([
+  { acceptsArguments: true, wrapper: true, expected: false },
+  { acceptsArguments: true, wrapper: false, expected: true },
+  { acceptsArguments: false, wrapper: false, expected: true },
+])(
+  "routes help for empty declarations by wrapper policy ($acceptsArguments, wrapper=$wrapper)",
+  ({ acceptsArguments, wrapper, expected }) => {
     // Given
     const input = Result.getOrThrowWith(
       normalizeToolingInput("empty", acceptsArguments ? {} : { arguments: false }),
@@ -41,11 +47,19 @@ test.each([true, false])(
     );
     // When
     const requested = toolingHelpRequested(
-      { _tag: "tooling", commandId: "app:empty", name: "empty", summary: "", hidden: false, input },
+      {
+        _tag: "tooling",
+        commandId: "app:empty",
+        name: "empty",
+        summary: "",
+        hidden: false,
+        input,
+        ...(wrapper ? { wrapper: true as const } : {}),
+      },
       ["--help"],
     );
     // Then
-    expect(requested).toBe(!acceptsArguments);
+    expect(requested).toBe(expected);
   },
 );
 
@@ -85,8 +99,8 @@ const withCache = async (state: State, run: (cwd: string, cacheRoot: string) => 
   }
 };
 
-test.each(states)(
-  "renders %s recovery with structural machine fields and zero live services",
+test.each(["missing", "stale", "invalid"] as const)(
+  "renders %s recovery without using caller-provided services",
   async (state) => {
     await withCache(state, async (cwd, cacheRoot) => {
       // Given
@@ -110,9 +124,8 @@ test.each(states)(
           }),
         ),
       );
-      if (route._tag !== "cache-miss" && route._tag !== "unknown-tooling")
-        throw new TypeError(`Unexpected route ${route._tag}`);
-      const error = toolingRouteError(route);
+      if (route._tag !== "cache-miss") throw new TypeError(`Unexpected route ${route._tag}`);
+      const error = toolingRouteFailure(route);
       const io = createBufferedRendererIO();
       let exitCode = 0;
       // When
@@ -130,50 +143,44 @@ test.each(states)(
       expect(exitCode).toBe(1);
       expect(JSON.parse(io.stdout())).toMatchObject({
         ok: false,
-        error: {
-          _tag: "ToolingCommandUnavailableError",
-          reason: reasons[state],
-          commandId: "app:absent",
-          tool: "absent",
-          ...(state === "stale" ? { staleReason: "source" } : {}),
-        },
+        command: "app:absent",
+        error: failures[state],
       });
       expect(calls).toEqual({ plan: 0, provider: 0, registry: 0 });
       expect(io.stdout()).not.toContain("credential");
-      expect(error.remediation.includes("app:cache:refresh")).toBe(state !== "unknown");
+      expect(io.stdout()).not.toContain("app:cache:refresh");
     });
   },
 );
 
-test.each(states)(
-  "keeps built-ins available and omits unavailable schemas in %s root help",
-  async (state) => {
-    await withCache(state, async (cwd, cacheRoot) => {
-      // Given
-      const receipt = await Effect.runPromise(readAppCommandCacheForCwdDetailed({ cwd, cacheRoot }));
-      const metadata = toolingMetadataStatus(receipt);
-      const cache = receipt.status === "fresh" ? receipt.payload : null;
-      // When
-      const catalog = buildHelpCatalog(cache, metadata);
-      const root = renderColdRootHelp(undefined, { style: false, toolingMetadata: metadata });
-      const all = renderColdAllHelp({ style: false, toolingMetadata: metadata });
-      // Then
-      expect(Schema.is(HelpCatalogResult)(catalog)).toBe(true);
-      expect(catalog.all.some((row) => row.canonicalId === "app:start")).toBe(true);
-      expect(catalog.sections.thisApp.length).toBe(state === "unknown" ? 1 : 0);
-      expect(catalog.toolingMetadata).toMatchObject(
-        state === "unknown" ? { status: "fresh" } : { status: "unavailable", reason: reasons[state] },
-      );
-      for (const text of [root, all]) {
-        expect(text).toContain("app:start");
-        expect(text).not.toContain("credential");
-        if (state !== "unknown") expect(text).toContain(reasons[state]);
-      }
-    });
-  },
-);
+test.each(states)("keeps built-ins available and reflects %s metadata in root help", async (state) => {
+  await withCache(state, async (cwd, cacheRoot) => {
+    // Given
+    const receipt = await Effect.runPromise(readCliAppCommandCache({ cwd, cacheRoot, rebuildNotice: false }));
+    const metadata = toolingMetadataStatus(receipt);
+    const cache = receipt.status === "fresh" ? receipt.payload : null;
+    // When
+    const catalog = buildHelpCatalog(cache, metadata);
+    const root = renderColdRootHelp(undefined, { style: false, toolingMetadata: metadata });
+    const all = renderColdAllHelp({ style: false, toolingMetadata: metadata });
+    // Then
+    expect(Schema.is(HelpCatalogResult)(catalog)).toBe(true);
+    expect(catalog.all.some((row) => row.canonicalId === "app:start")).toBe(true);
+    expect(catalog.sections.thisApp.length).toBe(state === "unknown" ? 1 : 0);
+    expect(catalog.toolingMetadata).toMatchObject(
+      state === "unknown"
+        ? { status: "fresh" }
+        : { status: "unavailable", reason: "rebuild-failed", error: { _tag: "LandofileParseError" } },
+    );
+    for (const text of [root, all]) {
+      expect(text).toContain("app:start");
+      expect(text).not.toContain("credential");
+      expect(text.includes("This app's commands are unavailable: ")).toBe(state !== "unknown");
+    }
+  });
+});
 
-test.each(states)("direct help adapter emits actionable %s recovery without executing", async (state) => {
+test.each(states)("direct help adapter reports the %s lookup failure", async (state) => {
   await withCache(state, async (cwd, cacheRoot) => {
     // Given
     const runtime = pathToFileURL(join(import.meta.dirname, "../../src/cli/compiled-runtime.ts")).href;
@@ -199,11 +206,11 @@ test.each(states)("direct help adapter emits actionable %s recovery without exec
       new Response(child.stderr).text(),
     ]);
     // Then
-    expect(code, stderr).toBe(1);
+    expect(code, stderr).toBe(state === "unknown" ? 2 : 1);
     expect(JSON.parse(stdout)).toMatchObject({
       ok: false,
-      command: "app:absent",
-      error: { _tag: "ToolingCommandUnavailableError", reason: reasons[state] },
+      command: failureCommand(state),
+      error: { ...failures[state], remediation: expect.stringMatching(/\S/u) },
     });
     expect(stderr).toBe("");
   });

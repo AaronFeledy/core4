@@ -12,7 +12,7 @@ import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
@@ -41,7 +41,11 @@ export const MONGODB_FEATURE_ID = "service-lando.mongodb";
 export const MONGODB_CONFIG_TARGET = PortablePath.make("/etc/lando/mongod.conf");
 
 const credsFor = (
-  input: { readonly appName?: string | undefined; readonly appRoot: string },
+  input: {
+    readonly appName?: string | undefined;
+    readonly dataName?: string | undefined;
+    readonly appRoot: string;
+  },
   service: ServiceConfig,
 ): ServiceCreds => {
   const creds = service.creds;
@@ -58,7 +62,7 @@ const credsFor = (
           },
         }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
-    defaults: { user: "lando", password: DEFAULT_PASSWORD, database: appNameFor(input) },
+    defaults: { user: "lando", password: DEFAULT_PASSWORD, database: dataNameFor(input) },
     ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
@@ -79,7 +83,6 @@ const connectMongo =
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -88,7 +91,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     ...landoDbEnvFor(creds, port),
   });
   ctx.addStorage({
-    store: `${appName}-mongodb-data`,
+    store: ctx.serviceStoreName("mongodb-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -144,6 +147,7 @@ const mongodbToolingForConnection: NonNullable<ServiceType["toolingForConnection
             `for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval '${connectMongo}' "$@";; esac; done; exec mongosh --nodb --eval '${connectMongo}' --shell "$@"`,
             "mongosh",
           ],
+          wrapper: true,
           env: { MONGO_URI: mongoUri(connection.creds, connection.port) },
         },
       };

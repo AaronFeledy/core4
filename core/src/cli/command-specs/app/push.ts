@@ -13,6 +13,7 @@ import {
 
 export const pushSpec: LandoCommandSpec<SyncResultType> = {
   id: "app:push",
+  onlineAcquisition: true,
   summary: "Push local datasets to a remote.",
   namespace: "app",
   topLevelAlias: true,

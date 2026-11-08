@@ -13,7 +13,6 @@ import {
   type SetupReadinessRecorder,
   makeSetupReadinessRecorder,
   runFileSyncSetupStep,
-  setupDeferredFileSyncPath,
 } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import type { ResolvedSetupNetworkTrust } from "../../src/cli/commands/setup-network-trust.ts";
 import { type SetupReadinessStep, setupReadinessPath } from "../../src/cli/commands/setup-readiness.ts";
@@ -117,14 +116,8 @@ describe("file-sync setup step", () => {
             recorder,
           }),
         );
-        const marker: unknown = JSON.parse(await readFile(setupDeferredFileSyncPath(userDataRoot), "utf-8"));
 
         expect(status).toBe("deferred");
-        expect(marker).toEqual({
-          status: "deferred",
-          ...(defaultEngine === undefined ? {} : { engineId: defaultEngine }),
-          resumeCommand: "lando setup",
-        });
         expect(steps.map((step) => step.status)).toEqual(["deferred"]);
       } finally {
         await rm(userDataRoot, { recursive: true, force: true });
@@ -165,7 +158,7 @@ describe("setup readiness recorder", () => {
       // Then: inspect the persisted bytes, not the redacting read helper.
       const persisted: unknown = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8"));
       expect(persisted).toMatchObject({
-        status: "failed",
+        status: "in-progress",
         providerId: "podman",
         steps: [
           {

@@ -2,10 +2,12 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 
-import { ConfigError } from "@lando/sdk/errors";
+import { ConfigError, type StateStoreError } from "@lando/sdk/errors";
 import { PathsService, type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
+import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 
@@ -95,34 +97,51 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
       catch: (cause) => configError(path, "Failed to write plugin trust store.", cause),
     });
 
+  // Concurrent plugin commands each read, change, and rewrite the whole file, so
+  // one lock spans the read and the write or the second writer drops the first change.
+  const changeState = (change: (state: PluginTrustState) => PluginTrustState) => {
+    const locked = (access: typeof PrivateFileAccessService.Service) =>
+      withAdvisoryLockUsing(access, { expireLiveOwner: false })(
+        path,
+        "plugin-trust",
+        readState.pipe(Effect.flatMap((state) => writeState(change(state)))),
+      ).pipe(
+        Effect.mapError((cause: ConfigError | StateStoreError) =>
+          cause instanceof ConfigError
+            ? cause
+            : configError(path, "Failed to lock the plugin trust store for writing.", cause),
+        ),
+      );
+    return Effect.serviceOption(PrivateFileAccessService).pipe(
+      Effect.flatMap((access) =>
+        Option.isSome(access)
+          ? locked(access.value)
+          : Effect.scoped(PrivateFileAccessService.pipe(Effect.flatMap(locked))).pipe(
+              Effect.provide(PrivateFileAccessService.layer),
+            ),
+      ),
+    );
+  };
+
   return PluginTrustStore.of({
     read: readState,
     isPluginTrusted: (name) => readState.pipe(Effect.map((state) => state.trustedPlugins.includes(name))),
     trustPlugin: (name) =>
-      readState.pipe(
-        Effect.flatMap((state) =>
-          writeState({ ...state, trustedPlugins: uniqueSorted([...state.trustedPlugins, name]) }),
-        ),
-      ),
+      changeState((state) => ({ ...state, trustedPlugins: uniqueSorted([...state.trustedPlugins, name]) })),
     untrustPlugin: (name) =>
-      readState.pipe(
-        Effect.flatMap((state) =>
-          writeState({ ...state, trustedPlugins: state.trustedPlugins.filter((entry) => entry !== name) }),
-        ),
-      ),
+      changeState((state) => ({
+        ...state,
+        trustedPlugins: state.trustedPlugins.filter((entry) => entry !== name),
+      })),
     isAuthoringRootTrusted: (pathToCheck) =>
       readState.pipe(
         Effect.map((state) => state.trustedAuthoringRoots.some((root) => containsPath(root, pathToCheck))),
       ),
     trustAuthoringRoot: (root) =>
-      readState.pipe(
-        Effect.flatMap((state) =>
-          writeState({
-            ...state,
-            trustedAuthoringRoots: uniqueSorted([...state.trustedAuthoringRoots, resolve(root)]),
-          }),
-        ),
-      ),
+      changeState((state) => ({
+        ...state,
+        trustedAuthoringRoots: uniqueSorted([...state.trustedAuthoringRoots, resolve(root)]),
+      })),
   });
 };
 

@@ -13,8 +13,20 @@ import type { Root } from "mdast";
 import type { MdxNode } from "./mdx.ts";
 
 export type GuideStepComponent = (
-  | { readonly kind: "Run"; readonly props: RunProps; readonly line: number }
-  | { readonly kind: "Verify"; readonly props: VerifyProps; readonly line: number }
+  | {
+      readonly kind: "Run";
+      readonly props: RunProps;
+      readonly line: number;
+      /** Shell-word argv of `props.command`; set on the resolved execution projection. */
+      readonly argv?: ReadonlyArray<string>;
+    }
+  | {
+      readonly kind: "Verify";
+      readonly props: VerifyProps;
+      readonly line: number;
+      /** Shell-word argv of `props.command`; set on the resolved execution projection. */
+      readonly argv?: ReadonlyArray<string>;
+    }
   | { readonly kind: "Cleanup"; readonly props: CleanupProps; readonly line: number }
   | { readonly kind: "Variable"; readonly props: VariableProps; readonly line: number }
   | { readonly kind: "UseFixture"; readonly props: UseFixtureProps; readonly line: number }

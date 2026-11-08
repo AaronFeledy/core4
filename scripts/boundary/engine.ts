@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve } from "node:path";
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { BOUNDARY_RULES } from "./registry.ts";
 import { fileMatchesScope, walkFiles } from "./scope.ts";

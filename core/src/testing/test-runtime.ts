@@ -2,13 +2,13 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
-import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
 import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
@@ -67,13 +67,15 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  * Re-export of Effect's deterministic test clock utilities for callers using this test runtime.
  */
 export { TestClock } from "effect/testing";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   ScratchRegistry,
   type ScratchRegistryEntry,
   type ScratchRegistryEnvelope,
+  type ScratchRegistryService,
+  planScratchRegistryWrite,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 
@@ -388,7 +390,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const files = new Map(Object.entries(options.files ?? {}));
   const directories = new Set<string>();
   const config = options.config ?? defaultGlobalConfig;
-  const runtimeProvider = options.with?.RuntimeProvider ?? TestRuntimeProvider;
+  const runtimeProvider = options.with?.RuntimeProvider ?? makeTestRuntimeProvider();
   const providerId = providerIdFrom(runtimeProvider);
   let pluginTrustState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
   const secrets = new Map<string, string>();
@@ -731,9 +733,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       base: AbsolutePath.make("/test-runtime/scratch"),
       instanceRoot,
       root: AbsolutePath.make(`${instanceRoot}/root`),
-      planCache: AbsolutePath.make(`${instanceRoot}/plan.json`),
-      infoCache: AbsolutePath.make(`${instanceRoot}/info.json`),
-      buildResults: AbsolutePath.make(`${instanceRoot}/build-results`),
+      planCache: AbsolutePath.make(`${instanceRoot}/plan.bin`),
     };
   };
   const scratchRegistryEntryFromSummary = (
@@ -810,13 +810,15 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchRegistryService = ScratchRegistry.of({
     read: () =>
       Effect.succeed({
-        version: 1,
+        version: 2,
         entries: registryEntriesFrom(scratchRegistryEntries),
       } satisfies ScratchRegistryEnvelope),
-    upsert: (entry) =>
-      Effect.sync(() => {
-        scratchRegistryEntries.set(entry.id, entry);
-      }),
+    upsert: Effect.fn("TestScratchRegistry.upsert")(function* (
+      ...write: Parameters<ScratchRegistryService["upsert"]>
+    ) {
+      const plan = yield* planScratchRegistryWrite(scratchRegistryEntries.get(write[1].id), ...write);
+      if (plan._tag === "Set") scratchRegistryEntries.set(plan.value.id, plan.value);
+    }),
     remove: (id) =>
       Effect.sync(() => {
         scratchRegistryEntries.delete(id);

@@ -12,7 +12,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -95,7 +94,7 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv(LOCALSTACK_LISTENER.listVariable, gatewayListen);
   ctx.addEnv("PERSISTENCE", service.environment?.PERSISTENCE ?? "1");
   ctx.addStorage({
-    store: `${appNameFor(ctx)}-localstack-data`,
+    store: ctx.serviceStoreName("localstack-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -147,7 +146,7 @@ export const localstackServiceType: ServiceType = {
       normalizedConfig: { ...input.service, type: "localstack" },
       features: [{ id: LOCALSTACK_FEATURE_ID }],
       tooling: {
-        awslocal: { service: input.name, cmd: "awslocal" },
+        awslocal: { service: input.name, cmd: "awslocal", wrapper: true },
       },
     }),
 };

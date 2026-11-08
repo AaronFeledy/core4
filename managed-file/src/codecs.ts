@@ -28,7 +28,7 @@ export interface MergeOptions {
   readonly operation?: ManagedFileOperation;
 }
 
-const DEFERRED_TO_4X = "Structured keys-mode merge is deferred to 4.x.";
+const KEYS_MODE_UNSUPPORTED = "Structured keys-mode merge is not supported. Use `file` or `block` mode.";
 
 const fail = (
   reason: ManagedFileError["reason"],
@@ -105,7 +105,7 @@ const decodeEnv = (text: string): Record<string, string> => {
  * `typescript` are written verbatim, `json` is pretty-printed, `env` becomes
  * `KEY=value` lines, and `yaml`/`landofile` delegate to the canonical
  * `@lando/sdk/landofile` serializer. `toml`/`ini` are reserved and fail with
- * `reason: "format"` because they are not implemented yet.
+ * `reason: "format"` because they are not implemented.
  */
 export const encode = (
   format: FileFormat,
@@ -155,7 +155,7 @@ export const encode = (
     case "toml":
     case "ini":
       return fail("format", operation, {
-        remediation: `\`${format}\` encoding is deferred to 4.x.`,
+        remediation: `\`${format}\` encoding is not supported. Use \`json\`, \`yaml\`, \`env\`, or \`text\`.`,
       });
   }
 };
@@ -165,7 +165,7 @@ export const encode = (
  * structured value. `text`/`javascript`/`typescript` are returned verbatim,
  * `json` is parsed, `env` is read into a string map, and `yaml`/`landofile`
  * delegate to the canonical `@lando/sdk/landofile` parser. `toml`/`ini` are
- * reserved and not implemented yet.
+ * reserved and not implemented.
  */
 export const decode = (
   format: FileFormat,
@@ -208,14 +208,14 @@ export const decode = (
     case "toml":
     case "ini":
       return fail("format", operation, {
-        remediation: `\`${format}\` decoding is deferred to 4.x.`,
+        remediation: `\`${format}\` decoding is not supported. Use \`json\`, \`yaml\`, \`env\`, or \`text\`.`,
       });
   }
 };
 
 /**
  * Merge an owned structured subtree into existing content (keys mode).
- * Not implemented yet: every format fails with `reason: "format"` and the
+ * Not implemented: every format fails with `reason: "format"` and the
  * established remediation so callers get a clear error instead of a no-op.
  */
 export const mergeManaged = (
@@ -225,4 +225,4 @@ export const mergeManaged = (
   _marker: string,
   opts: MergeOptions = {},
 ): Effect.Effect<string, ManagedFileError> =>
-  fail("format", opts.operation ?? "apply", { remediation: DEFERRED_TO_4X });
+  fail("format", opts.operation ?? "apply", { remediation: KEYS_MODE_UNSUPPORTED });

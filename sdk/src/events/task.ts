@@ -83,6 +83,10 @@ export const TaskTreeCompleteEvent = Schema.TaggedStruct("task.tree.complete", {
   succeeded: Schema.Number,
   failed: Schema.Number,
   durationMs: Schema.optional(Schema.Number),
+  outcome: Schema.optional(Schema.Literals(["failure", "interrupted"])).annotate({
+    description:
+      "Set when the tree's work failed or was interrupted, even if no child failed; absent means the tree succeeded.",
+  }),
   timestamp: Timestamp,
 });
 export type TaskTreeCompleteEvent = typeof TaskTreeCompleteEvent.Type;

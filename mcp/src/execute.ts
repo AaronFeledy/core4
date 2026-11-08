@@ -11,7 +11,7 @@ import { Cause, type Context, Effect, Exit } from "effect";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import { withAppDiscovery } from "@lando/landofile/operation-discovery";
+import { OperationDiscovery, withAppDiscovery, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import {
   type CommandResultOutcome,
   type CompletedCommandResult,
@@ -54,7 +54,10 @@ export const makeNestedExecute = (
         runInput.appPath === undefined
           ? command
           : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
-      const exit = yield* withAppDiscovery(
+      // Reuse the call's discovery memo; without one, this execution owns a fresh memo.
+      const callDiscovery = yield* Effect.serviceOption(OperationDiscovery);
+      const discover = callDiscovery._tag === "Some" ? withDiscoveryCwd : withAppDiscovery;
+      const exit = yield* discover(
         cwd,
         executor.execute(
           rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),

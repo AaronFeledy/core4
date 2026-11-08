@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkNpmPackageDistIntegrity } from "@lando/landofile/npm-integrity";
+import { checkNpmPackageDistIntegrity } from "@lando/source-acquisition/integrity";
 import { Effect } from "effect";
 import { resolveAuthoredIncludes } from "./include-pipeline.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+import { makeNpmPackageTarball, makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const bytes = new TextEncoder().encode("archive");
 const sri = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
@@ -40,33 +40,34 @@ for (const [label, metadata, remediation] of [
   test(`npm include rejects ${label} before extraction or lock publication`, async () => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-npm-integrity-"));
-    let extracts = 0;
     try {
+      const good = makeNpmPackageTarball({ "web.yml": "services:\n  web:\n    type: php\n" });
+      const payload = label === "tampered archive" ? new TextEncoder().encode("tampered") : good;
+      const npmRegistry = {
+        registryFor: () => "https://registry.npmjs.org",
+        packument: async () => ({
+          "dist-tags": { latest: "1.0.0" },
+          versions: {
+            "1.0.0": {
+              dist: {
+                tarball: "https://example.test/pkg.tgz",
+                ...metadata,
+              },
+            },
+          },
+        }),
+        tarball: async () => payload,
+      };
       // When
       const error = await Effect.runPromise(
         Effect.flip(
           resolveAuthoredIncludes({
             appRoot: root,
             cacheRoot: join(root, "cache"),
-            ports: makeTestLandofilePorts(join(root, "cache")),
-            stateStore: makeTestLandofileStateStore(),
+            ports: makeTestLandofilePorts(join(root, "cache"), join(root, "cache"), { npmRegistry }),
+            stateStore: makeTestLandofileStateStore(join(root, "cache")),
             landofile: { includes: [{ source: "npm:fragments", path: "web.yml" }] },
-            deps: {
-              npmRecipeSource: {
-                fetchTarball: async () => new TextEncoder().encode("tampered"),
-                resolve: async () => ({
-                  packageName: "fragments",
-                  version: "1.0.0",
-                  dist: { tarball: "https://example.test/pkg.tgz", ...metadata },
-                }),
-              },
-              npmFetcher: { fetch: async () => new TextEncoder().encode("tampered") },
-              npmExtractor: {
-                extract: async () => {
-                  extracts++;
-                },
-              },
-            },
+            deps: { npmRegistry },
           }),
         ),
       );
@@ -76,7 +77,6 @@ for (const [label, metadata, remediation] of [
         kind: "fetch-failed",
         remediation: expect.stringContaining(remediation),
       });
-      expect(extracts).toBe(0);
       expect(await Bun.file(join(root, ".lando.lock.yml")).exists()).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });

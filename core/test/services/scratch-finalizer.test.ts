@@ -47,23 +47,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      fetchTarball: async () => {
-        throw new Error("Unexpected npm download");
-      },
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -247,8 +231,11 @@ const makeRecordingLayer = (
   );
   const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
     admissionLayer,
     environmentResolverLayer(),
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.effect(
       EventService,
       Effect.map(EventService, (events) =>
@@ -269,7 +256,7 @@ const makeRecordingLayer = (
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
@@ -347,7 +334,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -379,7 +366,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
                   app: target.app,
                   service: target.service,
                   providerId,
-                  status: "stopped",
+                  status: "exited" as const,
                   exitCode: 17,
                   publications: { status: "present", bindings: [] },
                 }),
@@ -392,7 +379,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -430,7 +417,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -460,7 +447,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
       expect(
         await directoryExists(
-          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
+          join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
         ),
       ).toBe(keepOnFailure);
     });
@@ -478,7 +465,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           ),
         )
           .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events })))
-          .pipe(Effect.map((id) => join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id))),
+          .pipe(Effect.map((id) => join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", id))),
       );
 
       expect(appliedPlans).toHaveLength(1);
@@ -520,7 +507,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
             const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
             const registry = yield* ScratchRegistry;
             yield* registry.remove(handle.id);
-            return join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", handle.id);
+            return join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", handle.id);
           }),
         ).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events }))),
       );
@@ -566,7 +553,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           ),
         )
           .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls)))
-          .pipe(Effect.map((id) => join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id))),
+          .pipe(Effect.map((id) => join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", id))),
       );
 
       expect(appliedPlans).toHaveLength(1);

@@ -54,6 +54,7 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
         recorder: context.recorder,
         loadScope,
         ...(evaluation.inputs?.ports === undefined ? {} : { ports: evaluation.inputs.ports }),
+        ...(evaluation.inputs?.stateStore === undefined ? {} : { stateStore: evaluation.inputs.stateStore }),
         ...(logger._tag === "None"
           ? {}
           : {

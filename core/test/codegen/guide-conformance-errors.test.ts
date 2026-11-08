@@ -47,6 +47,23 @@ const invalidCases = [
     code: "guide.variable.hidden-reference",
   },
   {
+    name: "unterminated quote after interpolation",
+    body: step('<Variable name="name" value="private-value\'" /><Run command="lando info {{name}}" />'),
+    code: "guide.command.syntax",
+  },
+  {
+    name: "unquoted shell operator",
+    body: step('<Run command="lando info --format=json | jq .result" />'),
+    code: "guide.command.syntax",
+  },
+  {
+    name: "display projection a shell would interpret",
+    body: step(
+      '<Variable name="name" value="private-value" display="a|b" /><Run command="lando info {{name}}" />',
+    ),
+    code: "guide.command.syntax",
+  },
+  {
     name: "mixed cleanup mode",
     body: `${step('<Run command="lando version" />')}<Hidden reason="Internal cleanup coverage">${step('<Cleanup /><Run runtime="library" code="private-value" displayCode="shown" />', "cleanup")}</Hidden>`,
     code: "guide.runtime.mixed",
@@ -158,6 +175,19 @@ describe("canonical guide rejection", () => {
     for (const consumer of consumers) expect(() => consumer.run(source)).toThrow();
 
     expect(lintGuideContent(SOURCE, source).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  test("rejects event verification in an e2e scenario", () => {
+    const source = document(
+      scenario(step('<Cleanup /><Run command="lando start" /><Verify event="post-start" />')),
+      "defaultLayer: e2e\n",
+    );
+
+    for (const consumer of consumers) expect(() => consumer.run(source)).toThrow(GuideSemanticError);
+
+    expect(lintGuideContent(SOURCE, source).diagnostics).toMatchObject([
+      { code: "guide.event.e2e", line: expect.any(Number) },
+    ]);
   });
 
   test("rejects e2e library mode even in a skipped cell", () => {

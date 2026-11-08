@@ -115,7 +115,8 @@ test("atomic completed tombstone permits a fresh attempt while stale owners cann
   const first = await Effect.runPromise(
     beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
   );
-  await Effect.runPromise(first.advance("sessions-ready"));
+  await Effect.runPromise(first.advance("record-sessions"));
+  await Effect.runPromise(first.advance("record-apply-intent"));
   await Effect.runPromise(first.complete);
   expect(
     await Effect.runPromise(readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer))),
@@ -124,7 +125,7 @@ test("atomic completed tombstone permits a fresh attempt while stale owners cann
     beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
   );
   expect(second.attemptId).not.toBe(first.attemptId);
-  expect(Exit.isFailure(await Effect.runPromiseExit(first.advance("apply-intent")))).toBe(true);
+  expect(Exit.isFailure(await Effect.runPromiseExit(first.advance("record-apply-intent")))).toBe(true);
   const pending = await Effect.runPromise(
     readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
   );
@@ -136,12 +137,44 @@ test("replayed advances are idempotent and never move a resumed phase backwards"
   const resumed = await Effect.runPromise(
     beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
   );
-  await Effect.runPromise(resumed.advance("preparing"));
-  await Effect.runPromise(resumed.advance("sessions-ready"));
+  await Effect.runPromise(resumed.advance("record-sessions"));
+  await Effect.runPromise(resumed.advance("record-apply-intent"));
   const pending = await Effect.runPromise(
     readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
   );
   expect(pending?.phase).toBe("apply-intent");
+});
+
+test("advance refuses to skip a phase and leaves the recorded phase unchanged", async () => {
+  // Given
+  const harness = await Effect.runPromise(recoveryHarness({ phase: "preparing" }));
+  const resumed = await Effect.runPromise(
+    beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
+  );
+  // When
+  const skipped = await Effect.runPromiseExit(resumed.advance("record-apply-intent"));
+  // Then
+  expect(Exit.isFailure(skipped)).toBe(true);
+  const pending = await Effect.runPromise(
+    readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
+  );
+  expect(pending?.phase).toBe("preparing");
+});
+
+test("start cannot complete an attempt before the provider applied it", async () => {
+  // Given an attempt that has prepared sessions but not recorded its apply intent.
+  const harness = await Effect.runPromise(recoveryHarness({ phase: "sessions-ready" }));
+  const resumed = await Effect.runPromise(
+    beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
+  );
+  // When start tries to complete it.
+  const completed = await Effect.runPromiseExit(resumed.complete);
+  // Then the attempt stays open for resume or for stop/destroy to abandon.
+  expect(Exit.isFailure(completed)).toBe(true);
+  const pending = await Effect.runPromise(
+    readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
+  );
+  expect(pending?.phase).toBe("sessions-ready");
 });
 
 test("a pending attempt for one root does not block another app with the same ID", async () => {

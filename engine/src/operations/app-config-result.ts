@@ -5,6 +5,7 @@ import {
   LandofileSourceValue,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import { ConfigDescribeResultSchema } from "../config-write/key-schema.ts";
 
 export const HostEventAppStatus = Schema.Struct({
   event: Schema.String,
@@ -32,6 +33,7 @@ const write = { filePath: Schema.String, dryRun: Schema.optionalKey(Schema.Boole
 const fullView = { path: Schema.optionalKey(Schema.Never), subcommand: Schema.optionalKey(Schema.Never) };
 
 export const AppConfigResultSchema = Schema.Union([
+  ConfigDescribeResultSchema,
   Schema.Struct({
     app: metadata.app,
     source: Schema.Literal("resolved"),

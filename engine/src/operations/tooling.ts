@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { Clock, Effect, Option, Result } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
@@ -171,8 +172,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       new ToolingCompileError({
         message: `Unknown tooling command: ${options.name}.`,
         tool: options.name,
-        remediation:
-          "Verify the tooling task name, then run `lando app:cache:refresh` after changing tooling configuration.",
+        remediation: "Check the task name with `lando help`.",
       }),
     );
   }
@@ -183,7 +183,10 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
     task: toolingLookupKey,
   };
-  const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+  const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(
+    landofile.agentEnv,
+    (yield* HostExecutionDefaults)?.env ?? process.env,
+  );
   const client = yield* resolveConnectionClientTask({
     plan,
     name: toolingLookupKey,

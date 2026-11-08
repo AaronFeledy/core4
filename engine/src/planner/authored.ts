@@ -91,10 +91,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       service,
     );
     const build = service.build;
-    const authoredArtifact =
+    const composeArtifact =
       build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
-    const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
-    const appScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
+    const authoredArtifact =
+      composeArtifact ??
+      (service.image === undefined ? undefined : { kind: "ref" as const, ref: service.image });
+    const artifactScripts = composeArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
+    const appScripts = composeArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
     const servicePlan: ServicePlan =
       artifactScripts.length === 0 && appScripts.length === 0
         ? authoredServicePlan

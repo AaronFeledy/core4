@@ -40,9 +40,10 @@ export const source = {
         service: "appserver",
         description: "Run a Laravel Artisan command inside the appserver service.",
         cmds: ["php artisan"],
+        wrapper: true,
       },
       composer: composerTool,
-      npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"] },
+      npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"], wrapper: true },
     },
   },
   variants: [

@@ -58,6 +58,7 @@ export const parseComposeFixtureArgs = (argv: ReadonlyArray<string>): ComposeFix
   let ref: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === undefined) continue;
     if (arg === "--ref") {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {

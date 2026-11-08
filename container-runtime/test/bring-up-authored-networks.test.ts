@@ -5,8 +5,8 @@ import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.t
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
+import { APPLY_REMEDIATION, bringUp } from "./support/service-creation.ts";
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
 test("omits listener advice on network-connect failure", async () => {
@@ -77,6 +77,9 @@ test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
       request: (request: EngineHttpRequest) =>
         Effect.sync(() => {
           removals.push(request);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+            return { status: 200, body: "[]" };
+          }
           if (request.method === "GET" && request.path.startsWith("/networks/")) {
             const name = decodeURIComponent(request.path.slice("/networks/".length));
             return privateNames.includes(name)
@@ -267,14 +270,14 @@ test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
                 ([name, endpoint]): EngineHttpRequest => ({
                   method: "POST",
                   path: `/networks/${encodeURIComponent(name)}/connect`,
-                  body: { Container: "lando-networks-web", EndpointConfig: endpoint },
+                  body: { Container: "lando-networks--web", EndpointConfig: endpoint },
                 }),
               ),
             {
               method: "POST",
               path: "/networks/lando_bridge_network/connect",
               body: {
-                Container: "lando-networks-worker",
+                Container: "lando-networks--worker",
                 EndpointConfig: { Aliases: ["worker.networks.internal"] },
               },
             },

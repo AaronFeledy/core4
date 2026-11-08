@@ -1,8 +1,19 @@
 import type { AppCommandCacheReadResult } from "@lando/engine/cache/command-index-writer";
 import type { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 
+/** A typed failure from the automatic index rebuild; the original tagged error instance. */
+export interface ToolingRebuildFailure {
+  readonly _tag: string;
+  readonly message: string;
+  readonly remediation?: string | undefined;
+}
+
+export type CliAppCommandCacheReadResult =
+  | AppCommandCacheReadResult
+  | { readonly status: "rebuild-failed"; readonly sourcePath: string; readonly error: ToolingRebuildFailure };
+
 type CacheRecovery = {
-  readonly reason: Exclude<ToolingCommandUnavailableError["reason"], "unknown-command">;
+  readonly reason: ToolingCommandUnavailableError["reason"];
   readonly remediation: string;
   readonly staleReason?: ToolingCommandUnavailableError["staleReason"];
   readonly sourcePath?: string;
@@ -10,7 +21,14 @@ type CacheRecovery = {
 
 export type ToolingMetadataStatus =
   | { readonly status: "fresh" | "not-app" }
-  | ({ readonly status: "unavailable" } & CacheRecovery);
+  | ({ readonly status: "unavailable" } & CacheRecovery)
+  | {
+      readonly status: "unavailable";
+      readonly reason: "rebuild-failed";
+      readonly sourcePath?: string;
+      readonly remediation: string;
+      readonly error: { readonly _tag: string; readonly message: string };
+    };
 
 export const toolingCacheRecovery = (
   receipt: Exclude<AppCommandCacheReadResult, { readonly status: "fresh" }>,
@@ -21,30 +39,37 @@ export const toolingCacheRecovery = (
       return {
         ...source,
         reason: "missing-cache",
-        remediation: "Tooling metadata has not been cached. Run `lando app:cache:refresh` in this app.",
+        remediation:
+          "Run the command from the app directory on your host; Lando builds this app's command list automatically.",
       };
     case "stale":
       return {
         ...source,
         reason: "stale-cache",
         staleReason: receipt.staleReason,
-        remediation:
-          "Tooling metadata no longer matches this app. Run `lando app:cache:refresh` before retrying.",
+        remediation: "The app changed while Lando was reading it. Retry the command.",
       };
     case "invalid":
       return {
         ...source,
         reason: "invalid-cache",
-        remediation:
-          "Tooling metadata cannot be decoded by this Lando version. Run `lando app:cache:refresh` to replace it.",
+        remediation: "Retry the command; Lando rebuilds this app's command list automatically.",
       };
     default:
       return receipt satisfies never;
   }
 };
 
-export const toolingMetadataStatus = (receipt: AppCommandCacheReadResult): ToolingMetadataStatus => {
+export const toolingMetadataStatus = (receipt: CliAppCommandCacheReadResult): ToolingMetadataStatus => {
   switch (receipt.status) {
+    case "rebuild-failed":
+      return {
+        status: "unavailable",
+        reason: "rebuild-failed",
+        sourcePath: receipt.sourcePath,
+        remediation: receipt.error.remediation ?? "Fix the reported problem, then run the command again.",
+        error: { _tag: receipt.error._tag, message: receipt.error.message },
+      };
     case "fresh":
       return { status: "fresh" };
     case "missing":
@@ -58,10 +83,16 @@ export const toolingMetadataStatus = (receipt: AppCommandCacheReadResult): Tooli
   }
 };
 
-export const toolingMetadataNotice = (metadata?: ToolingMetadataStatus): readonly string[] =>
-  metadata?.status === "unavailable"
-    ? [
-        "",
-        `Tooling metadata unavailable (${metadata.reason}${metadata.staleReason === undefined ? "" : `: ${metadata.staleReason}`}): ${metadata.remediation}`,
-      ]
-    : [];
+export const toolingMetadataNotice = (metadata?: ToolingMetadataStatus): readonly string[] => {
+  if (metadata?.status !== "unavailable") return [];
+  if (metadata.reason === "rebuild-failed")
+    return [
+      "",
+      `This app's commands are unavailable: ${metadata.error.message}`,
+      `  ↳ ${metadata.remediation}`,
+    ];
+  return [
+    "",
+    `Tooling metadata unavailable (${metadata.reason}${metadata.staleReason === undefined ? "" : `: ${metadata.staleReason}`}): ${metadata.remediation}`,
+  ];
+};

@@ -6,8 +6,12 @@ import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } fro
 import type { ServiceType } from "@lando/sdk/services";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
-import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
+import {
+  APACHE_LISTEN_BUILD_STEP_ID,
+  apacheForwardedDirectoryRedirectDirectives,
+} from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
+import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
 import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
 import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import {
@@ -490,7 +494,13 @@ describe("php serving modes (via:)", () => {
       "AllowOverride None",
       "Require all granted",
       "</Directory>",
+      'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+      '<FilesMatch "\\.(?!php$)(?i:php)$">',
+      "Require all denied",
+      "</FilesMatch>",
+      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
+      ...apacheHiddenPathDirectives(),
       "</VirtualHost>",
     ]);
 
@@ -518,7 +528,13 @@ describe("php serving modes (via:)", () => {
       "AllowOverride None",
       "Require all granted",
       "</Directory>",
+      'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+      '<FilesMatch "\\.(?!php$)(?i:php)$">',
+      "Require all denied",
+      "</FilesMatch>",
+      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
+      ...apacheHiddenPathDirectives(),
     ]);
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });

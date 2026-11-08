@@ -4,15 +4,14 @@ import { join } from "node:path";
 
 import {
   type BaseSchemaArtifacts,
+  SCHEMA_ARTIFACT_FAMILIES,
   type SchemaArtifactFamily,
   type SchemaArtifactSet,
   SchemaCompatibilityInputError,
   loadWorkingSchemaArtifacts,
 } from "./schema-compatibility-artifacts.ts";
 
-export const SCHEMA_SNAPSHOT_GENERATOR_PATH = "scripts/build-schema-snapshot.ts";
-
-const UNAVAILABLE_FAMILIES = ["sdk", "command"] as const satisfies ReadonlyArray<SchemaArtifactFamily>;
+export const SCHEMA_SNAPSHOT_GENERATOR_PATH = SCHEMA_ARTIFACT_FAMILIES.sdk.generatorPath;
 
 interface RegenerationRequest {
   readonly baseRef: string;
@@ -66,10 +65,10 @@ const resolveBaseRef = async (request: RegenerationRequest): Promise<string> =>
     )
   ).stdout.trim();
 
-const hasSchemaSnapshotGenerator = async (
+const unavailableSchemaFamilies = async (
   request: RegenerationRequest,
   commitSha: string,
-): Promise<boolean> => {
+): Promise<ReadonlyArray<SchemaArtifactFamily>> => {
   const output = await requireSuccess(
     {
       command: [
@@ -81,13 +80,17 @@ const hasSchemaSnapshotGenerator = async (
         commitSha,
         "--",
         SCHEMA_SNAPSHOT_GENERATOR_PATH,
+        SCHEMA_ARTIFACT_FAMILIES.persisted.generatorPath,
       ],
       cwd: request.repoRoot,
       env: request.env ?? Bun.env,
     },
     `Could not inspect schema compatibility base ${request.baseRef} for ${SCHEMA_SNAPSHOT_GENERATOR_PATH}.`,
   );
-  return output.stdout.length > 0;
+  const paths = new Set(output.stdout.split("\0"));
+  return (["sdk", "command", "persisted"] as const).filter(
+    (family) => !paths.has(SCHEMA_ARTIFACT_FAMILIES[family].generatorPath),
+  );
 };
 
 const removeWorktree = async (
@@ -113,8 +116,9 @@ export const regenerateBaseSchemaArtifacts = async (
   request: RegenerationRequest,
 ): Promise<BaseSchemaArtifacts> => {
   const commitSha = await resolveBaseRef(request);
-  if (!(await hasSchemaSnapshotGenerator(request, commitSha))) {
-    return { artifacts: new Map(), unavailableFamilies: UNAVAILABLE_FAMILIES };
+  const unavailableFamilies = await unavailableSchemaFamilies(request, commitSha);
+  if (unavailableFamilies.length === Object.keys(SCHEMA_ARTIFACT_FAMILIES).length) {
+    return { artifacts: new Map(), unavailableFamilies };
   }
 
   const env = request.env ?? Bun.env;
@@ -152,11 +156,11 @@ export const regenerateBaseSchemaArtifacts = async (
       },
       `Could not regenerate schema compatibility baseline for ${request.baseRef}.`,
     );
-    artifacts = await loadWorkingSchemaArtifacts(worktreeRoot);
+    artifacts = await loadWorkingSchemaArtifacts(worktreeRoot, unavailableFamilies);
   } catch (error) {
     await removeWorktree(request, tempRoot, worktreeRoot);
     throw error;
   }
   await removeWorktree(request, tempRoot, worktreeRoot);
-  return { artifacts, unavailableFamilies: [] };
+  return { artifacts, unavailableFamilies };
 };

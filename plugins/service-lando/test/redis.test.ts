@@ -73,7 +73,7 @@ describe("redis ServiceType", () => {
     expect(plan.command).toEqual(["redis-server", "--appendonly", "yes"]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-redis-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--redis-data");
     expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
@@ -126,7 +126,11 @@ describe("redis ServiceType", () => {
       }),
     );
 
-    expect(resolution.tooling?.["redis-cli"]).toEqual({ service: "cache", cmd: ["redis-cli"] });
+    expect(resolution.tooling?.["redis-cli"]).toEqual({
+      service: "cache",
+      cmd: ["redis-cli"],
+      wrapper: true,
+    });
   });
 
   test("sets launcher listener authority when an authored command replaces the Lando port launcher", async () => {

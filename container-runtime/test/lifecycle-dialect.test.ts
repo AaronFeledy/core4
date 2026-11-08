@@ -12,9 +12,9 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-dialect-app");
@@ -65,6 +65,9 @@ const makeBringUpApi = (
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
@@ -79,7 +82,7 @@ const makeBringUpApi = (
             ? {
                 status: 200,
                 body: JSON.stringify({
-                  Id: "lando-lifecycle-dialect-app-web-id",
+                  Id: "lando-lifecycle-dialect-app--web-id",
                   Config: { Labels: commonContainerLabels(options.plan ?? plan, service) },
                   State: { Running: true, Status: "running" },
                 }),
@@ -186,7 +189,7 @@ describe("lifecycle dialect", () => {
       method: "POST",
       path: "/networks/lando_bridge_network/connect",
       body: {
-        Container: "lando-lifecycle-dialect-app-web",
+        Container: "lando-lifecycle-dialect-app--web",
         EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
       },
     });
@@ -282,7 +285,7 @@ describe("lifecycle dialect", () => {
         method: "POST",
         path: "/networks/lando_bridge_network/connect",
         body: {
-          Container: "lando-lifecycle-dialect-app-web",
+          Container: "lando-lifecycle-dialect-app--web",
           EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
         },
       },
@@ -316,7 +319,7 @@ describe("lifecycle dialect", () => {
         method: "POST",
         path: "/networks/lando_bridge_network/connect",
         body: {
-          Container: "lando-global-web",
+          Container: "lando-global--web",
           EndpointConfig: { Aliases: ["web.global.internal"] },
         },
       },
@@ -387,6 +390,9 @@ describe("lifecycle dialect", () => {
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+            return { status: 200, body: "[]" };
+          }
           return { status: 404, body: "{}" };
         }),
     };

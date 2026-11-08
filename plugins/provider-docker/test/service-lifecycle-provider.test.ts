@@ -24,7 +24,7 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-lifecycle-app-web";
+const containerName = "lando-lifecycle-app--web";
 const lifecycleActions = ["start", "stop", "restart"] as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),

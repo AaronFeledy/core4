@@ -14,7 +14,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -71,7 +70,6 @@ const elasticsearchListener = (service: ServiceConfig): ListenerContract => {
 
 const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, elasticsearchListener(service));
   const port = plannedPort(service, ELASTICSEARCH_LISTENER);
   const transport = transportPort(service);
@@ -83,7 +81,7 @@ const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("transport.port", String(transport));
   ctx.addEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m");
   ctx.addStorage({
-    store: `${appName}-elasticsearch-data`,
+    store: ctx.serviceStoreName("elasticsearch-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

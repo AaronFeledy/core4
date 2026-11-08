@@ -3,7 +3,7 @@ id: host-open
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, host-proxy]
+tags: [docs, subsystems, host-proxy]
 ---
 
 # Open host URLs and reveal app files from a container
@@ -52,11 +52,11 @@ The host proxy accepts `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insid
 To allow another scheme, set the additional schemes from your host terminal:
 
 ```sh
-lando config set hostProxy.allowedSchemes '["figma","slack"]' --type=json
+lando config set hostProxy.allowedSchemes '["figma","slack"]'
 lando config get hostProxy.allowedSchemes --format=json
 ```
 
-The lookup should include `figma` and `slack`. This list extends the defaults, and scheme comparisons ignore case. Set every additional scheme you want to keep because setting the array replaces the previous array. The change applies to the next call without restarting the app. `file:` URLs are always forbidden, including mixed-case spellings and config entries. Reveal an app file by path instead. Other schemes fail with `scheme-not-allowed` and a command to allow the scheme. See [global config](../config/global-config.mdx#allow-additional-host-url-schemes) for configuration precedence.
+The lookup should include `figma` and `slack`. This list extends the defaults, and scheme comparisons ignore case. Set every additional scheme you want to keep because setting the array replaces the previous array. The change applies to the next call without restarting the app. `file:` URLs are always forbidden, including mixed-case spellings and config entries. Reveal an app file by path instead. Other schemes fail with `scheme-not-allowed` and a `lando config set` command that allows the scheme while keeping the schemes you already added. See [global config](../config/global-config.mdx#allow-additional-host-url-schemes) for configuration precedence.
 
 ## Verify the host callback
 
@@ -82,7 +82,7 @@ Run doctor on the host to inspect those checks. A stale generated allowlist prod
     <Step name="inspect">
       <Run command="lando doctor --format=json" />
       <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "apiVersion.:.v4.*provider.*checks" } }} />
-      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "^(?!.*host-proxy-allowlist)" } }} />
+      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "^(?!.*\"name\"\\s*:\\s*\"host-proxy-allowlist\")" } }} />
     </Step>
   </Scenario>
 </Guide>

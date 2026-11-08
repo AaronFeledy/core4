@@ -32,9 +32,13 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 
 import { makeLandoPaths } from "@lando/paths";
-const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
+const testStateStoreLayer = Layer.merge(
+  layerTransactionGuard,
+  Layer.succeed(StateStore, makeTestStateStore().service),
+);
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -251,8 +255,7 @@ const makeStopLayer = (
         app: plannedApp.id,
         service: target.service,
         providerId,
-        status: stopped.has(target.service) ? "stopped" : "running",
-        state: stopped.has(target.service) ? "stopped" : "running",
+        status: stopped.has(target.service) ? ("exited" as const) : ("running" as const),
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
@@ -513,8 +516,7 @@ describe("lando stop", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "stopped",
-          state: "stopped",
+          status: "exited" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -798,8 +800,7 @@ describe("lando stop", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "stopped",
-          state: "stopped",
+          status: "exited" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),

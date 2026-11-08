@@ -3,7 +3,7 @@ id: doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, doctor, diagnostics]
+tags: [docs, subsystems, doctor, diagnostics]
 ---
 
 # Run lando doctor
@@ -55,6 +55,7 @@ inspection is available. Certificate selection errors still appear as findings.
 | provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
 | host-dns | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-dns.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
+| legacy-route-files | A router file doesn't use the current per-app layout, so its hostnames stay published. Delete the listed files (on Windows, then run `lando global:restart`), then republish what you still need with the owning app's start command. See [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check). |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
@@ -65,7 +66,7 @@ inspection is available. Certificate selection errors still appear as findings.
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
+If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Inspect leftover snapshot images
 
@@ -186,7 +187,9 @@ The router has its own, separate watcher record. That one reports what the Traef
 lando doctor --app
 ```
 
-That adds Landofile lint, version-constraint checks, and a point-in-time TCP
+That adds Landofile lint (the same pass as
+[`lando app:config:lint`](../landofile/config-lint.mdx), including its offline
+final-planning stage), version-constraint checks, and a point-in-time TCP
 listener check for this app. A missing or invalid Landofile shows up as its own
 section. The rest of the report still runs.
 

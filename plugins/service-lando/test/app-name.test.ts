@@ -43,7 +43,7 @@ describe("app-name consumers", () => {
       `lando-${createHash("sha256").update(`${input.expected}:db:root`).digest("hex").slice(0, 24)}`,
     );
     expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
-      `${input.expected}-db-mysql-data`,
+      `lando-${input.expected}--db--mysql-data`,
     );
   });
 });

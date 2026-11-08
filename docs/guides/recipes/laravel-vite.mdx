@@ -2,7 +2,7 @@
 id: laravel-vite
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, laravel, php, node, vite, hmr]
+tags: [docs, recipes, laravel, php, node, vite, hmr]
 ---
 
 # Run Vite HMR with the Laravel recipe
@@ -129,16 +129,6 @@ Open `https://vite-demo.lndo.site` in a browser. In developer tools, check for a
 Stop Vite with Ctrl+C in its terminal. The plugin deletes `public/hot` on a normal exit, including handled termination signals. Laravel then uses `public/build/manifest.json` if a build exists; otherwise, build the assets below. If an unhandled termination leaves `public/hot` behind, delete that stale file.
 
 ## Build and verify assets
-
-Lando's proxy talks to Apache over HTTP. Without trusted forwarded headers, Laravel can generate `http://` asset URLs even when the browser requested HTTPS, causing mixed-content errors. Tell Laravel to trust the proxy's forwarded headers. In `bootstrap/app.php`, inside `withMiddleware`:
-
-```php
-->withMiddleware(function (Middleware $middleware): void {
-    $middleware->trustProxies(at: '*');
-})
-```
-
-Trusting every proxy fits local development behind Lando. In production, list your real proxy addresses instead.
 
 With Vite stopped:
 

@@ -64,9 +64,7 @@ for (const kind of ["ssh", "gpg"] as const) {
     try {
       // When host-proxy cleanup encounters that shared-root entry.
       await Effect.runPromise(
-        withAgentRelayWorkerLock(
-          app,
-          { paths: { userDataRoot: root }, kind, privateFileAccess },
+        withAgentRelayWorkerLock(app, { paths: { userDataRoot: root }, kind, privateFileAccess }, () =>
           terminateOwnedHostProxyWorkersInRoot(root, { privateFileAccess }),
         ),
       );

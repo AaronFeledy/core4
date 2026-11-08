@@ -99,7 +99,6 @@ const observedProvider: RuntimeProviderShape = {
       service: target.service,
       providerId: ProviderId.make("test"),
       status: "running",
-      state: "running",
       publications: { status: "present", bindings: [] },
     }),
 };

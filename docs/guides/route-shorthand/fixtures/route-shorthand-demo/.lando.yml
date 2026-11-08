@@ -8,8 +8,12 @@ services:
       - app.lndo.site
       - "*.app.lndo.site"
       - "*-app.lndo.site"
-      - "wild.*.app.lndo.site"
-      - "lets.combine.*.lndo.site:8080/everything/for-real"
+      - hostname: "wild.*.app.lndo.site"
+        scheme: http
+      - hostname: "lets.combine.*.lndo.site"
+        scheme: http
+        endpoint: 8080
+        pathPrefix: /everything/for-real
       - hostname: api.lndo.site
         scheme: https
         endpoint: 8080

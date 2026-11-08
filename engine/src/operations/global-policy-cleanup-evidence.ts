@@ -1,5 +1,5 @@
 import { GlobalAppError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import type { GlobalResolution } from "../global-app/resolution.ts";
 
@@ -22,8 +22,7 @@ export const confirmedMissingGlobalService = (
   row.providerId === plan.provider &&
   Object.values(plan.services).some((service) => service.name === row.service) &&
   row.containerId === undefined &&
-  row.status === "stopped" &&
-  row.state === "stopped" &&
+  row.status === "absent" &&
   row.mounts?.status === "missing" &&
   row.publications?.status === "missing";
 
@@ -45,7 +44,7 @@ export const classifyGlobalCleanupInventory = (input: {
           row.appRoot === root &&
           row.providerId === plan.provider &&
           row.containerId !== undefined &&
-          ["running", "paused", "restarting"].includes(row.status),
+          isActiveRunStatus(row.status),
       )
       .map((row) => String(row.service)),
   );
@@ -58,10 +57,7 @@ export const classifyGlobalCleanupInventory = (input: {
           (row.containerId === undefined && !confirmedMissingGlobalService(row, plan, root)))));
   const uncertainSelected = observations.some((row) => selected.has(String(row.service)) && uncertain(row));
   const unknownObserved = observations.some(
-    (row) =>
-      !selected.has(String(row.service)) &&
-      uncertain(row) &&
-      ["running", "paused", "restarting"].includes(row.status),
+    (row) => !selected.has(String(row.service)) && uncertain(row) && isActiveRunStatus(row.status),
   );
   const blockers = input.dependencyBlockers({
     ...plan,

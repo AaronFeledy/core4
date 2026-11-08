@@ -21,7 +21,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
@@ -66,7 +66,11 @@ const defaultRootPassword = (appName: string, serviceName: string): string =>
   `lando-${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
 
 const mariadbCreds = (
-  input: { readonly appName?: string | undefined; readonly appRoot: string },
+  input: {
+    readonly appName?: string | undefined;
+    readonly dataName?: string | undefined;
+    readonly appRoot: string;
+  },
   serviceName: string,
   service: {
     readonly creds?: ServiceCreds | undefined;
@@ -74,7 +78,7 @@ const mariadbCreds = (
     readonly database?: string | undefined;
   },
 ): ServiceCreds => {
-  const appName = appNameFor(input);
+  const appName = dataNameFor(input);
   const creds = service.creds;
   return resolveServiceCreds({
     family: "mariadb",
@@ -101,7 +105,6 @@ const mariadbCreds = (
 
 const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -111,7 +114,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
     MYSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
-    store: `${appName}-mariadb-data`,
+    store: ctx.serviceStoreName("mariadb-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -170,6 +173,7 @@ const mariadbToolingForConnection: NonNullable<ServiceType["toolingForConnection
             connection.creds.user,
             connection.creds.database,
           ],
+          wrapper: true,
           env: { MYSQL_PWD: connection.creds.password },
         },
       };

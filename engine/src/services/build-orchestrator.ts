@@ -168,30 +168,30 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
   readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }) {
   const { events, paths, progress, provider, plan, redactionTokens, service, stateStore } = input;
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  const redactor =
-    redaction._tag === "Some"
-      ? yield* redaction.value.forProfile("secrets", {
-          sourceEnv: process.env,
-          redactionTokens,
-        })
-      : identityRedactor;
-  const context = redactedBuildContext(redactor, plan, service);
-  const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
-    refresh: input.refresh,
-    events,
-    redactor,
-  });
-  const resolvedService = serviceWithResolvedDigest(service, sourceArtifact);
-  const step = yield* buildStepFor(provider, resolvedService);
-  const resolvedPlan =
-    resolvedService === service
-      ? plan
-      : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
-  const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
-  const started = performance.now();
-  yield* progress.startTask(service, transcriptPath);
   return yield* Effect.gen(function* () {
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactor =
+      redaction._tag === "Some"
+        ? yield* redaction.value.forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens,
+          })
+        : identityRedactor;
+    const context = redactedBuildContext(redactor, plan, service);
+    const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
+      refresh: input.refresh,
+      events,
+      redactor,
+    });
+    const resolvedService = serviceWithResolvedDigest(service, sourceArtifact);
+    const step = yield* buildStepFor(provider, resolvedService);
+    const resolvedPlan =
+      resolvedService === service
+        ? plan
+        : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
+    const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
+    const started = performance.now();
+    yield* progress.startTask(service, transcriptPath);
     const bucket = isScratchPlan(plan)
       ? yield* openScratchBuildResults(stateStore).pipe(
           Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),

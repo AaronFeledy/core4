@@ -30,6 +30,7 @@ import {
 } from "./command-index.ts";
 import { commandScriptFingerprints } from "./command-script-freshness.ts";
 import { appCommandCachePath, appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
+export { readDataIdentityFingerprint } from "./command-index-source.ts";
 
 export {
   type AppCommandCacheReadResult,
@@ -63,6 +64,7 @@ export const invalidateAppToolingCaches = (
   }).pipe(Effect.ignore);
 
 export interface WriteAppCommandCacheOptions {
+  readonly dataIdentityFingerprint?: string;
   readonly landofile: LandofileShape;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
   readonly cwd?: string;
@@ -229,7 +231,13 @@ export const writeAppCommandCacheStrict = (
       source === undefined
         ? Effect.succeed(undefined)
         : Effect.tryPromise({
-            try: () => writeAppCommandCacheTask(options, source),
+            try: () =>
+              writeAppCommandCacheTask(
+                options,
+                options.dataIdentityFingerprint === undefined
+                  ? source
+                  : { ...source, dataIdentityFingerprint: options.dataIdentityFingerprint },
+              ),
             catch: (cause) =>
               cause instanceof CacheError
                 ? cause

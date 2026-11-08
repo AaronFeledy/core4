@@ -167,8 +167,8 @@ test("accepts plugin-contributed notify command ids", () => {
   expect(result._tag).toBe("Success");
 });
 
-test("strict validation flags hostEvents :host text Bun Shell can't run, after Lando's own expansion", () => {
-  // Given a step Bun Shell rejects, one whose ${NAME} Lando fills in, and one whose $${NAME} reaches Bun Shell
+test("strict validation flags hostEvents ${NAME}, which Lando never expands, and :host text Bun Shell can't run", () => {
+  // Given a step Bun Shell rejects, one with ${NAME}, and one whose $${NAME} reaches Bun Shell
   const hostEvents = {
     "post-start": [
       { cmd: "echo hi >&2", service: ":host" },
@@ -183,9 +183,46 @@ test("strict validation flags hostEvents :host text Bun Shell can't run, after L
   if (result._tag !== "Failure") return;
   expect(result.failure.issues?.map((issue) => issue.path.join("."))).toEqual([
     "hostEvents.post-start.0.cmd",
+    "hostEvents.post-start.1.cmd",
     "hostEvents.post-start.2.cmd",
   ]);
   expect(result.failure.message).toContain("Column 9: Bun Shell needs an explicit source descriptor in >&2.");
+  expect(result.failure.issues?.[1]).toMatchObject({
+    message: "Lando does not expand ${NAME} in hostEvents.",
+    suggestion:
+      "Write $NAME for the host shell to read it when the step runs, or {{ env.NAME }} for your host's value when Lando plans the app. Edit hostEvents in config.yml directly or use `lando config edit`.",
+  });
+});
+
+test("strict validation flags ${NAME} forms and unreadable expressions in every hostEvents step", () => {
+  // Given a container string step, a :host step with an operator form, and an unreadable expression
+  const hostEvents = {
+    "post-stop": ["echo ${HOME}"],
+    "pre-start": [
+      { cmd: "echo ${TAG:-latest}", service: ":host" },
+      { cmd: "echo {{ env.USER", service: ":host" },
+    ],
+  };
+  // When
+  const issues = hostEventsShellConfigError(hostEvents, join(root, "config.yml"))?.issues ?? [];
+  // Then
+  expect(issues.map((issue) => [issue.path.join("."), issue.message, issue.suggestion])).toEqual([
+    [
+      "hostEvents.post-stop.0",
+      "Lando does not expand ${HOME} in hostEvents.",
+      "Write $HOME for the service shell to read it when the step runs, or {{ env.HOME }} for your host's value when Lando plans the app.",
+    ],
+    [
+      "hostEvents.pre-start.0.cmd",
+      "Lando does not expand ${TAG...} in hostEvents.",
+      "Write $TAG for the host shell to read it when the step runs, or {{ default(env.TAG, 'fallback') }} for your host's value when Lando plans the app.",
+    ],
+    [
+      "hostEvents.pre-start.1.cmd",
+      "Unterminated interpolation expression.",
+      "Fix the {{ }} expression, or write {{{{ to keep {{ as text.",
+    ],
+  ]);
 });
 
 test("runtime config decoding ignores hostEvents host-shell findings so other commands keep working", () => {

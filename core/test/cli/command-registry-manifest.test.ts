@@ -139,6 +139,9 @@ describe("embedded command registry manifest", () => {
     expect(Object.keys(manifest.topics).sort()).toEqual(Object.keys(COMMAND_TOPICS).sort());
     expect(manifest.version).toBe("0.0.0");
     expect(manifestIds).toEqual(registryIds);
+    expect(manifest.commands["meta:config"]?.args.subcommand).toMatchObject({
+      options: ["view", "get", "set", "unset", "edit", "validate", "describe", "telemetry", "translate"],
+    });
     for (const id of [
       "meta:config",
       "app:config",
@@ -188,5 +191,8 @@ describe("embedded command registry manifest", () => {
       "| `command` | Command argv after `--`. An optional service name may come first. |",
     );
     expect(reference).toContain("| `--follow, -f` | Stream new log lines until interrupted. |");
+    expect(reference).toContain(
+      "| `subcommand` | Subcommand to run (default: view). (one of `view`, `get`, `set`, `unset`, `edit`, `validate`, `describe`, `telemetry`, `translate`) |",
+    );
   });
 });

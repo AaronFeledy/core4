@@ -47,12 +47,13 @@ const inputs = () => ({
 
 const runningSidecar = {
   ...TestRuntimeProvider,
+  exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   inspect: () =>
     Effect.succeed({
       app: AppId.make("global"),
       service: ServiceName.make("ssh-agent"),
       providerId: ProviderId.make("lando"),
-      status: "running",
+      status: "running" as const,
       publications: { status: "unknown" as const },
     }),
 };
@@ -416,7 +417,7 @@ describe("SSH agent doctor posture", () => {
             app: AppId.make("global"),
             service: ServiceName.make("ssh-agent"),
             providerId: ProviderId.make("lando"),
-            status: started ? "running" : "exited",
+            status: started ? ("running" as const) : ("exited" as const),
             publications: { status: "present" as const, bindings: [] },
           })),
         exec: () =>

@@ -21,6 +21,8 @@ import { composeServicePlan } from "./compose-harness.ts";
 export const composeCatalogConfigPlan = (args: {
   readonly serviceType: ServiceType;
   readonly slug: string;
+  /** The data name a renamed folder keeps; defaults to the slug. */
+  readonly dataName?: string;
   readonly serviceName: string;
   readonly appRoot: string;
   readonly service: Record<string, unknown>;
@@ -39,6 +41,7 @@ export const composeCatalogConfigPlan = (args: {
       service,
       appRoot: args.appRoot,
       appName: args.slug,
+      ...(args.dataName === undefined ? {} : { dataName: args.dataName }),
       serviceName: args.serviceName,
       metadata: { resolvedAt: "2026-05-28T00:00:00Z", source: args.source, runtime: 4 },
     });

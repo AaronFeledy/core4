@@ -4,16 +4,19 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { LandofileValidationError, RouteProviderMismatchError, causeMessage } from "@lando/sdk/errors";
+import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
+  type AppIdentity,
+  type AppRef,
   type CurrentExecutableAppPlan,
   type LoadScopedLandofile,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
   landoNetworkingPlan,
+  normalizeAppSlug,
 } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
@@ -35,6 +38,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import { PluginContributionGraph, loadedPluginImplementations } from "../plugins/contribution-graph.ts";
 import { FileSyncPolicy, fileSyncOrdinaryReason } from "../plugins/file-sync-policy.ts";
 import { applyPreparedAppFeatures } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
@@ -72,27 +76,35 @@ import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
-import { resolveKnownEventSet } from "./event-set.ts";
+import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
+import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
-import { decodeAppPlan } from "./plan-decode.ts";
+import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
 import {
   agentSocketCapabilityErrors,
   assertRouteNetworkingSupported,
   assertServiceInitSupported,
 } from "./resource-capabilities.ts";
+import { resolvePlanRouter } from "./router-plan.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
+import { hasServiceArtifacts } from "./service-artifact.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
 import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
 
 export interface PlanAppInput {
+  readonly identity?: AppIdentity;
+  readonly dataName?: string;
+  readonly kind?: AppRef["kind"];
   readonly landofile: LoadScopedLandofile;
   readonly providerCapabilities: ProviderCapabilities;
   readonly appRoot: string;
+  readonly mode?: "validate";
+  readonly resolution?: ResolvedLandofile;
 }
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
@@ -100,6 +112,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
   const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
   const pluginRegistry = yield* PluginRegistry;
+  const plugins = loadedPluginImplementations(
+    Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph)),
+  );
   const policyOwner = yield* FileSyncPolicy;
   const cacheService = Option.getOrUndefined(yield* Effect.serviceOption(CacheService));
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
@@ -129,15 +144,19 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     topLevelEnvFiles,
     routes: resolvedRoutes,
     endpointProjection,
-  } = yield* resolveKnownEventSet({
-    pluginRegistry,
-    configService,
-    fileSystem,
-    pathsService,
-    landofile: authoredLandofile,
-    capabilities: providerCapabilities,
-    ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
-  });
+  } = yield* resolveKnownEventSet(
+    {
+      pluginRegistry,
+      configService,
+      fileSystem,
+      pathsService,
+      landofile: authoredLandofile,
+      ...(input.dataName === undefined ? {} : { dataName: input.dataName }),
+      capabilities: providerCapabilities,
+      ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
+    },
+    input.resolution,
+  );
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -147,6 +166,12 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     resolvedAt: DateTime.makeUnsafe(encodedMetadata.resolvedAt),
   };
   const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
+  const router = yield* resolvePlanRouter({
+    enabled: routerEnabled,
+    manifests,
+    configured: globalConfig?.defaultRouterService,
+    platform: policyOwner.platform,
+  });
   const networkPlan = yield* Effect.try({
     try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
     catch: (cause) =>
@@ -183,10 +208,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     globalConfig.defaultFileSyncEngine !== "passthrough"
   )
     yield* selectFileSyncEngine;
-  const cacheRoot = resolveUserCacheRoot();
-  const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
+  const cacheRoot = pathsService?.roots.userCacheRoot ?? resolveUserCacheRoot();
+  const sourceFingerprint =
+    input.mode === "validate"
+      ? undefined
+      : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
+          Effect.catch(() => Effect.succeed(undefined)),
+        );
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
 
@@ -248,6 +276,20 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             routes: routes ?? [],
             defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
             resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
+            ...(input.mode === "validate"
+              ? {
+                  validation: {
+                    authorities: manifests.flatMap((manifest) =>
+                      (manifest.contributes?.certificateAuthorities ?? []).map((authority) => ({
+                        ...authority,
+                        pluginName: String(manifest.name),
+                        source: "manifest",
+                      })),
+                    ),
+                    platform: policyOwner.platform,
+                  },
+                }
+              : {}),
             fileSystem,
           })
         : undefined;
@@ -299,13 +341,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(hostEvents === undefined ? {} : { hostEvents }),
     skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
   };
-  const executableSites = yield* compilePlanInvocationSites({
-    sites: invocationSites,
-    hostEvents,
-    env: authoredLandofile.context.env,
-  });
   // Every hostEvents name is a lifecycle event, so a bad host step stops this app's plan like a
-  // project lifecycle step would; commands that only read config are unaffected.
+  // project lifecycle step would; commands that only read config are unaffected. Checked before
+  // the steps compile, so an unreadable expression is reported against config.yml.
   if (hostEvents !== undefined && !hostEventCompileBase.skipHostEvents) {
     const configFile = pathsService?.configFile ?? "config.yml";
     const hostShellIssues = hostEventsShellIssues(hostEvents).map((issue) => ({
@@ -315,11 +353,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     if (hostShellIssues.length > 0)
       return yield* Effect.fail(
         landofileValidationError(configFile, hostShellIssues, {
-          headline: "Global config hostEvents has host commands Bun Shell cannot run",
+          headline: "Global config hostEvents has steps that cannot run as written",
           remediation: "Fix each listed hostEvents step in config.yml, then rerun the command.",
         }),
       );
   }
+  const executableSites = yield* compilePlanInvocationSites({
+    sites: invocationSites,
+    hostEvents: hostEventCompileBase.skipHostEvents ? undefined : hostEvents,
+    env: authoredLandofile.context.env,
+  });
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
   const planServices = (services: Readonly<Record<string, unknown>>) =>
@@ -331,11 +374,14 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const cacheKey = deriveAppPlanCacheKey({
+    dataName: input.dataName ?? appName,
+    kind: input.kind ?? "user",
     hostProvider,
     appRoot,
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
+    pluginImplementations: plugins.coordinates,
     appFeatureEnv: preparedApp.environment.bindings,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
@@ -346,20 +392,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
     versionConstraints,
     serviceInputs: {
-      fileSyncPolicy: {
-        ...fileSyncPolicy,
-        bindMounts: providerCapabilities.bindMounts,
-        bindMountPerformance: providerCapabilities.bindMountPerformance,
-        persistentStorage: providerCapabilities.persistentStorage,
-        candidates: fileSyncCandidates.map(({ id, capabilities, supports, defaultFor }) => ({
-          id,
-          supports,
-          modes: capabilities.modes,
-          exclusionPatterns: capabilities.exclusionPatterns,
-          remoteAgentDeployment: capabilities.remoteAgentDeployment,
-          defaultFor,
-        })),
-      },
+      router: router.selected ?? null,
+      fileSyncPolicy: fileSyncCacheInput(fileSyncPolicy, providerCapabilities, fileSyncCandidates),
       pendingSites: authoredLandofile.pendingSites,
       environment: environmentCacheInput(authoredLandofile),
       invocationSites: executableSites,
@@ -382,7 +416,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       },
     },
   });
-  if (cacheService !== undefined) {
+  // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
+  const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
+  if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
       cacheRoot,
       appName: appSlug,
@@ -390,7 +426,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       key: cacheKey,
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
-    if (cached !== null) {
+    if (cached !== null && hasServiceArtifacts(cached)) {
+      yield* assertRoutesCertificateCoverable(appRoot, cached.routes);
       yield* validateServiceProbes(cached);
       if (cached.fileSync.length > 0) yield* selectFileSyncEngine;
       yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
@@ -433,12 +470,14 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
 
   const finalized = yield* finalizeServices({
+    manifests,
     configs: landofile.configs,
     plannedServiceDrafts,
     appId,
     appRoot,
     appSlug,
     appName,
+    dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
     defaultDomain,
     provider,
     providerCapabilities,
@@ -450,16 +489,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     }),
     fileSystem,
   });
-  if (routerEnabled && finalized.routes.length > 0 && provider !== hostProvider) {
-    return yield* Effect.fail(
-      new RouteProviderMismatchError({
-        message: `App provider ${provider} differs from host router provider ${hostProvider}.`,
-        providerId: provider,
-        hostProviderId: hostProvider,
-        remediation: `Run lando setup --provider=${provider} to move the global app and router there; remove provider: from the Landofile so the app follows the host provider; or set router.enabled: false and use published host ports.`,
-      }),
-    );
-  }
+  yield* router.requireRoutable(finalized.routes.length, provider, hostProvider);
   yield* assertRouteNetworkingSupported(
     provider,
     providerCapabilities,
@@ -497,7 +527,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   };
   const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
   const requiredGlobalServices = [
-    ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
+    ...router.globalServices(finalized.routes.length),
     ...appFeatureResult.requires.globalServices,
   ];
   const plan = attachCompiledInvocationPlan(
@@ -508,8 +538,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         name: appName,
         slug: appSlug,
         root: AbsolutePath.make(appRoot),
+        ...(input.identity === undefined ? {} : { identity: input.identity }),
         provider,
-        router: { enabled: routerEnabled },
+        router: router.field(finalized.routes.length),
         services: finalized.services,
         routes: finalized.routes,
         ...(networking !== undefined ? { networking } : {}),
@@ -547,10 +578,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);
-  if (
-    cacheService !== undefined &&
-    !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
-  ) {
+  if (planCache !== undefined && !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) {
     yield* writeCachedAppPlan({
       cacheRoot,
       appName: appSlug,
@@ -561,7 +589,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       shadowHostChecks: finalized.shadowHostChecks,
       gitHostChecks: finalized.gitHostChecks,
     }).pipe(
-      Effect.provideService(CacheService, cacheService),
+      Effect.provideService(CacheService, planCache),
       Effect.catch(() => Effect.void),
     );
   }

@@ -1,13 +1,12 @@
-import { join } from "node:path";
+import { lstat } from "node:fs/promises";
 import type { ManagedFileTransactionPendingReport } from "@lando/sdk/services";
-import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
 import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { finishLinkedCreate, publishCreate } from "./transaction-create-link.ts";
 import { ensureDirectoryPolicy } from "./transaction-create-path.ts";
 import { type ManagedFileTransactionError, transactionError, transactionIO } from "./transaction-error.ts";
 import { canonicalRoot, finishAppliedMode, mutateEntry, removeRecordedStage } from "./transaction-fs.ts";
-import { type Journal, openJournal } from "./transaction-journal.ts";
+import { type Journal, type JournalStore, type TransactionLock, openJournal } from "./transaction-journal.ts";
 import { preflight } from "./transaction-preflight.ts";
 
 export type RecoveryAction = "recovered" | "cleaned";
@@ -20,8 +19,6 @@ export interface RecoveryOptions {
   readonly checkpoint?: (point: string, index: number) => Effect.Effect<void, ManagedFileTransactionError>;
   readonly privateFileAccess: PrivateFileAccess;
 }
-
-type JournalStore = Effect.Success<ReturnType<typeof openJournal>>;
 
 const blocking = new Set<ManagedFileTransactionError["reason"]>(["conflict", "path"]);
 
@@ -46,13 +43,26 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
       createDirectory,
       privateFileAccess: options.privateFileAccess,
     });
-    return { root, dir: store.directory, store };
+    return { root, store };
   });
+
+  // A root that does not exist yet (the global app before its first write) holds no transaction.
+  const rootExists = (appRoot: string) =>
+    transactionIO("inspect", () =>
+      lstat(appRoot).then(
+        () => true,
+        (cause: unknown) => {
+          if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false;
+          throw cause;
+        },
+      ),
+    );
 
   /** Read-only dry run. Acquires no lock and creates, mutates, or removes nothing. */
   const pending = Effect.fn("ManagedFileTransactionGuard.pending")(function* (
     appRoot: string,
   ): Effect.fn.Return<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError> {
+    if (!(yield* rootExists(appRoot))) return null;
     const { store } = yield* locate(appRoot, false);
     const journal = yield* store.read;
     if (journal === null) return null;
@@ -75,8 +85,9 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
     root: string,
     journal: Journal,
     store: JournalStore,
+    lock: TransactionLock,
   ) {
-    if (journal.state === "prepared") yield* store.write({ ...journal, state: "committing" });
+    yield* store.beginCommit(lock);
     yield* checkpoint("recovering");
     yield* transactionIO("recover", () => ensureDirectoryPolicy(root, journal.directoryPolicy, "recover"));
     const classified = yield* transactionIO("recover", async () => {
@@ -106,36 +117,32 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
         yield* transactionIO("recover", () => finishLinkedCreate(root, entry)).pipe(Effect.uninterruptible);
       yield* checkpoint("after-recovery-mutation", index);
     }
-    yield* store.write({ ...journal, state: "committed" });
+    yield* store.finishCommit(lock);
     yield* checkpoint("recovered");
   });
 
   const recover = Effect.fn("ManagedFileTransactions.recover")(function* (appRoot: string) {
-    const { root, dir, store } = yield* locate(appRoot, true);
-    yield* Effect.acquireRelease(
-      acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
-        expireLiveOwner: false,
-        privateFileAccess: options.privateFileAccess,
-      }).pipe(Effect.mapError(() => transactionError("lock", "recover"))),
-      (lock) => lock.release,
-    );
+    const { root, store } = yield* locate(appRoot, true);
+    const lock = yield* store.acquireLock("recover");
     const journal = yield* store.read;
     if (journal === null) return null;
     if (journal.state === "blocked") return yield* Effect.fail(transactionError("blocked", "recover"));
     if (journal.state === "committed") {
       yield* cleanupStages(journal);
-      yield* store.removeCommitted;
+      yield* store.removeCommitted(lock);
       return { id: journal.id, action: "cleaned" } satisfies RecoveryOutcome;
     }
-    yield* rollForward(root, journal, store).pipe(
+    yield* rollForward(root, journal, store, lock).pipe(
       Effect.catchIf(
         (error) => blocking.has(error.reason),
         (error) =>
-          store.block.pipe(Effect.andThen(Effect.fail(transactionError("blocked", "recover", error.path)))),
+          store
+            .block(lock)
+            .pipe(Effect.andThen(Effect.fail(transactionError("blocked", "recover", error.path)))),
       ),
     );
     yield* cleanupStages(journal);
-    yield* store.removeCommitted;
+    yield* store.removeCommitted(lock);
     return { id: journal.id, action: "recovered" } satisfies RecoveryOutcome;
   });
 

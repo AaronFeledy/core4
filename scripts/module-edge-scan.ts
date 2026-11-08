@@ -9,7 +9,7 @@
  * edges from a TypeScript source file in one AST pass so every gate applies
  * the same escape-hatch coverage.
  */
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export type ModuleEdgeKind = "import" | "dynamic-import" | "require" | "re-export";
 

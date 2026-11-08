@@ -28,6 +28,7 @@ describe("toSqlPlan", () => {
         appRoot: "/workspace/app",
         ownerKey: "owner-key",
         repoGroupKey: "repo-key",
+        dataName: "original",
       },
       services: {},
     };

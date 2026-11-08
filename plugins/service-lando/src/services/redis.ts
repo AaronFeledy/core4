@@ -5,7 +5,6 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
@@ -28,7 +27,6 @@ export const REDIS_FEATURE_ID = "service-lando.redis";
 
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const port = plannedPort(service, REDIS_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -47,7 +45,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   }
   if (service.persist !== false)
     ctx.addStorage({
-      store: `${appName}-redis-data`,
+      store: ctx.serviceStoreName("redis-data"),
       target: DATA_TARGET,
       readOnly: false,
     });
@@ -128,6 +126,7 @@ export const redisServiceType: ServiceType = {
               ? []
               : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
           ],
+          wrapper: true,
           ...(password === undefined ? {} : { env: auth }),
         },
       },

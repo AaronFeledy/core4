@@ -2,7 +2,7 @@
 id: home-and-host
 provider: test
 timeout: 60000
-tags: [beta, docs, service, home, host]
+tags: [docs, service, home, host]
 ---
 
 # Keep a service home across rebuilds and reach your host
@@ -72,20 +72,21 @@ The php image ships `/var/www` owned by root. Lando creates it for `www-data` in
 
 ### One volume per user
 
-The store belongs to that one service in that one app, and to the user it was planned for. Its name is `lando-<app>-<service>-home-<user>-<8-hex digest>`; only an explicit `home.path` on a service with no known user drops the user part and gets `lando-<app>-<service>-home`. Planning the app again reuses the volume instead of stacking a second copy.
+The store belongs to that one service in that one app folder, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is built from the folder's **data name** (the name this folder's data was first created under, usually the current app name) and the service key, as `lando-<data slug>--<service>`. Running containers use the current app name in their own names; home and other data stores keep the data-name form so a rename does not orphan them. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
 
 Changing `user:` changes the home. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
 
-When a service stops keeping its home, for example because you added your own `image:`, the next `lando start`, `lando rebuild`, or `lando restart` warns once:
+### Read a volume transition notice
 
-```text
-Service web will no longer keep its home at /home/node: its image now comes from your Landofile.
-Lando leaves lando-<app>-web-home-node-<digest> untouched. To mount it at its previous location, set storage: [{ store: "<that volume>", target: "/home/node" }] under services.web in your Landofile.
-```
+Before applying a changed plan, `lando start`, `lando rebuild`, and `lando restart` warn once for each service target whose data volume changes. This includes persisted homes, service-type data such as a database directory, and data volumes you declare in `storage:`. An upgrade that changes generated volume names or an edit to storage can therefore produce a notice even when the target directory stays the same. A replacement volume starts empty if it doesn't already exist; Lando does not copy the previous volume's contents.
 
-When the home moved instead, say after a `user:` change, the warning names both volumes: `Service web will use home volume <new volume> at <target> (previously <old volume> at <old target>).` You get no warning for `home: false` or when you mount something at the home path yourself.
+The notice names the previous and replacement volumes and their container targets. If you remove a data mount without replacing it at that target, the notice says it is no longer mounted. Lando leaves the previous volume untouched. Selected-service rebuilds and restarts report only the services selected for that command. Cache volumes, exclude shadows, global-scope stores, and host-directory binds do not produce these notices.
 
-To reattach the old volume, declare it as storage with the name from the warning:
+For a persisted home, Lando also warns when it can no longer determine the home path, for example after you add your own `image:`. The notice explains why. A `user:` or `home.path` change can move the home to another volume or target. You get no automatic-home warning for `home: false` or when you mount something at the home path yourself.
+
+When the service type stays the same, the notice includes a `storage:` declaration to reattach the previous volume at its previous target. If you change the service type, export the data from the old service first and import it using the new service's supported tools. Mounting one database engine's data directory into another is not a data conversion, so Lando does not suggest reattachment for a type change.
+
+To reattach an old home volume when the service type is unchanged, declare it as storage with the complete name from the notice. Replace the example `store:` value below with that name in your app's `.lando.yml`:
 
 ```yaml
 services:
@@ -94,9 +95,13 @@ services:
     image: my-org/web:dev
     user: node
     storage:
-      - store: lando-<app>-web-home-node-<digest>
+      - store: lando-<data-name>--web--home--node-<digest>
         target: /home/node
 ```
+
+An explicit `store:` keeps the name you write verbatim, so use the complete volume name from the warning.
+
+Run `lando app:config:lint`, then `lando start` and `lando info --format=json` from the app directory. Check that the service's mount at `/home/node` names the store you declared. The same declaration works for another data volume when you use its target and the service type is unchanged.
 
 To get rid of it instead, `lando destroy --volumes` removes the app's volumes, old homes included.
 
@@ -148,8 +153,8 @@ Home contents stay out of build keys. Filling up `~/.npm` will not trigger a reb
 Containers get `host.lando.internal` pointing at your host machine, plus `LANDO_HOST_IP` holding that name so your code does not have to hardcode it. Use it for a service you run outside Lando:
 
 ```sh
-lando ssh -s app -c 'curl -sf http://host.lando.internal:5000/'
-lando ssh -s app -c 'echo $LANDO_HOST_IP'
+lando ssh -s app -- curl -sf http://host.lando.internal:5000/
+lando ssh -s app -- sh -c 'echo $LANDO_HOST_IP'
 ```
 
 Both exist only when your provider says it can reach the host. A provider that cannot is not an error: you simply get neither the alias nor the variable, so check for `LANDO_HOST_IP` rather than assuming it.
@@ -227,4 +232,4 @@ If the request is refused, see [Reach host services and sibling stacks](../subsy
 ## Next
 
 - Naming the user a build step runs as: [Run build steps as root or as your app user](./build-steps.mdx)
-- Refreshing a stale plan: [App plan cache refresh](../cli/cache-refresh.mdx)
+- Checking a plan without starting services: [Check that your app plans without starting it](../cli/cache-refresh.mdx)

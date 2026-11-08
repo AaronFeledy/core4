@@ -36,14 +36,17 @@ describe("P5 env-hub redaction", () => {
     process.env[ENV_KEY] = SECRET;
     try {
       await Effect.runPromise(
-        writeSetupReadiness(userDataRoot, "lando", [
-          {
-            id: "provider",
-            status: "failed",
-            evidence: `provider setup failed: ${SECRET}`,
-            remediation: `fix ${SECRET}`,
-          },
-        ]),
+        writeSetupReadiness(userDataRoot, "lando", {
+          status: "failed",
+          steps: [
+            {
+              id: "provider",
+              status: "failed",
+              evidence: `provider setup failed: ${SECRET}`,
+              remediation: `fix ${SECRET}`,
+            },
+          ],
+        }),
       );
       const raw = await readFile(setupReadinessPath(userDataRoot), "utf-8");
       expect(raw).not.toContain(SECRET);

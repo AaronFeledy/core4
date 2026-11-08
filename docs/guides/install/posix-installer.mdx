@@ -3,33 +3,60 @@ id: posix-installer
 provider: test
 platforms: [linux, darwin, wsl]
 timeout: 60000
-tags: [beta, docs, installer]
+tags: [docs, installer]
 ---
 
 # Install with the POSIX installer
 
-> **Alpha status:** The POSIX installer and channel manifests described below are **not yet available**. The hosts `get.lando.dev` and `update.lando.dev` are not yet serving v4 artifacts. See [alpha install and bug reports](../../alpha-install-and-bug-reports.md) for current install options.
->
-> The installer script exists in this repository at `scripts/install.sh`, but it requires live channel manifests to function.
+The POSIX installer downloads the Lando binary for your host, verifies its signed checksum, installs it under your Lando data directory, and offers to run `lando setup`. Run it in a Linux, macOS, or WSL shell:
 
-Once those hosts are up, the installer maps your host to a release artifact:
+```sh
+curl -fsSL https://get.lando.dev/install.sh | sh
+```
+
+The script needs `curl` or `wget`, `gpg`, and `sha256sum` (`shasum` on macOS). It fails before downloading anything when one of them is missing.
+
+The installer maps your host to a release artifact:
 
 | Host | Artifact |
 | --- | --- |
 | Linux x86_64, glibc | `linux-x64` |
 | Linux arm64, glibc | `linux-arm64` |
+| macOS Intel | `darwin-x64` |
+| macOS Apple silicon | `darwin-arm64` |
 | Linux, musl libc | unsupported; fails before any binary downloads |
 
 ## Pick a channel
 
-`stable` will be the default channel manifest, resolved from `https://update.lando.dev/v4/stable.json`. Set `LANDO_CHANNEL=next` or `LANDO_CHANNEL=dev` to install from a different channel once these are available.
+`stable` is the default channel, resolved from `https://update.lando.dev/v4/stable.json`. Set `LANDO_CHANNEL=next` or `LANDO_CHANNEL=dev` to install from another channel. Any other value fails before download. [Update channels and manifests](../update/channels-and-manifests.mdx) explains what each channel carries.
 
 ## Verify and install
 
-The installer will download the binary, a `SHA256SUMS` checksum manifest, and `SHA256SUMS.asc` (its GPG signature) for your detected platform, then verify the manifest against the installer-vendored GPG trust root:
+The installer reads the channel manifest, then downloads the binary for your platform, the `SHA256SUMS` checksum manifest, and `SHA256SUMS.asc`, its detached GPG signature. It verifies the signature against the GPG trust root embedded in the script, then checks the binary against the verified manifest:
 
 ```sh
 gpg --homedir <installer-trust-root> --verify SHA256SUMS.asc SHA256SUMS
 ```
 
-Only a verified binary gets installed. It lands at `${LANDO_INSTALL_DIR:-<userDataRoot>/bin}/lando`, creating the directory if it does not exist.
+Only a verified binary gets installed. It lands at `${LANDO_INSTALL_DIR:-<userDataRoot>/bin}/lando`, creating the directory if it does not exist. The data root is `~/.local/share/lando` on Linux (or `$XDG_DATA_HOME/lando`) and `~/Library/Application Support/Lando` on macOS.
+
+The installer refuses to overwrite a `lando` it did not install. It replaces an existing file only when the install record at `<userDataRoot>/install/record.json` names that path and the file still matches the recorded size and SHA-256. A symlink or an unrecorded binary at the destination stops the install with a message asking you to back it up or set `LANDO_INSTALL_DIR`.
+
+## Finish on PATH and run setup
+
+After installing, the script prints the channel, platform, and installed path, then the command that puts the install directory on PATH:
+
+```sh
+eval "$(<installed-path> shellenv)"
+```
+
+Add that line to your shell profile to keep `lando` available in new terminals. On a terminal, the installer then asks `Run lando setup now? [y/N]`. Answer `y` to run `lando setup --yes`, or run `lando setup` later yourself. Set `LANDO_INSTALL_RUN_SETUP=1` to run setup without the prompt, or `LANDO_INSTALL_SKIP_SETUP=1` to skip it. Without a terminal, the installer skips setup and prints the command to run.
+
+Verify the result:
+
+```sh
+lando --version
+lando doctor
+```
+
+For a release you downloaded by hand instead, follow [Install from a GitHub release](./github-releases.mdx).

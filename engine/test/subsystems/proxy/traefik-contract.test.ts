@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 
 import { makeTraefikRouterService } from "@lando/proxy-traefik";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 import { makeTestCertificateAuthority, runRouterServiceContractSuite } from "@lando/sdk/test";
 import * as BunFileSystem from "../../../src/services/file-system.ts";
@@ -116,7 +116,10 @@ test("real filesystem status sees configured routing and stop removes route and 
           ]),
       },
     });
-    const app = AppId.make("real-filesystem");
+    const owner = {
+      id: AppId.make("real-filesystem"),
+      ownerKey: appIdentityKey("owner", "/apps/real-filesystem"),
+    };
     await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
     await Effect.runPromise(
       service.applyRoutes(
@@ -129,7 +132,7 @@ test("real filesystem status sees configured routing and stop removes route and 
             backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
           },
         ],
-        app,
+        owner,
       ),
     );
 
@@ -146,17 +149,17 @@ test("real filesystem status sees configured routing and stop removes route and 
 
     // Then
     expect(status.state).toBe("running");
-    expect(status.configuredApps).toEqual([app]);
+    expect(status.configuredApps).toEqual([owner.id]);
     const dynamic = join(root, "proxy-traefik", "dynamic");
-    expect(await fileSystem.exists(join(dynamic, "routes-real-filesystem.yml")).pipe(Effect.runPromise)).toBe(
-      false,
-    );
+    expect(
+      await fileSystem.exists(join(dynamic, `routes-${owner.ownerKey}.yml`)).pipe(Effect.runPromise),
+    ).toBe(false);
     expect(await fileSystem.exists(join(dynamic, "tls-default.yml")).pipe(Effect.runPromise)).toBe(false);
     expect(
-      await fileSystem.exists(join(dynamic, "certs", "real-filesystem.crt")).pipe(Effect.runPromise),
+      await fileSystem.exists(join(dynamic, "certs", `${owner.ownerKey}.crt`)).pipe(Effect.runPromise),
     ).toBe(false);
     expect(
-      await fileSystem.exists(join(dynamic, "certs", "real-filesystem.key")).pipe(Effect.runPromise),
+      await fileSystem.exists(join(dynamic, "certs", `${owner.ownerKey}.key`)).pipe(Effect.runPromise),
     ).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });

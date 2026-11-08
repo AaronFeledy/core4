@@ -11,8 +11,9 @@ import type {
   EventStep,
   EventStepPlan,
   LandofileEventName,
+  ServiceRunStatus,
 } from "@lando/sdk/schema";
-import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretStructuralValues } from "@lando/redaction/service";
@@ -87,20 +88,19 @@ const hostStepService = (step: EventStep, primary: string | undefined): string |
   return primary;
 };
 
-const STOPPED_CONTAINER_STATUSES = new Set(["exited", "stopped", "created", "dead", "paused"]);
-
-const isStoppedStatus = (status: string | undefined): boolean =>
-  status !== undefined && STOPPED_CONTAINER_STATUSES.has(status.toLowerCase());
+/** A paused or departing container cannot run a step, so the step is skipped rather than failed. */
+const isStoppedStatus = (status: ServiceRunStatus | undefined): boolean =>
+  status !== undefined && (status === "paused" || status === "removing" || isIdleRunStatus(status));
 
 const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service: string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry)) return undefined;
   const provider = yield* registry.value.select(plan);
   return yield* provider.inspect({ app: plan.id, service: ServiceName.make(service), plan }).pipe(
-    Effect.map((info) => info.status ?? info.state),
+    Effect.map((info) => info.status),
     Effect.catch((error) =>
       typeof error === "object" && error !== null && "_tag" in error && error._tag === "ServiceNotFoundError"
-        ? Effect.succeed("missing" as const)
+        ? Effect.succeed("absent" as const)
         : Effect.fail(error),
     ),
   );
@@ -129,9 +129,9 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
         eventError(error, event, entry.step, redactor, entry.source, entry.sourceIndex),
       ),
     );
-    if (status === "missing" || isStoppedStatus(status)) {
+    if (isStoppedStatus(status)) {
       const reason =
-        status === "missing" ? `service ${service} is not running` : `service ${service} is ${status}`;
+        status === "absent" ? `service ${service} is not running` : `service ${service} is ${status}`;
       resolved.push({ ...entry, status: "skipped", skipReason: reason });
       continue;
     }

@@ -1,10 +1,15 @@
-import type { ConfigLintViolation, LandofileShape, ValidationIssue } from "@lando/sdk/schema";
+import type {
+  ConfigLintRuleId,
+  ConfigLintViolation,
+  LandofileShape,
+  ValidationIssue,
+} from "@lando/sdk/schema";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import { getLandofileValueSource } from "./validation.ts";
 
 export const attributeEffectiveLintIssue = (
   landofile: LandofileShape,
-  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
+  issue: ValidationIssue & { readonly rule: ConfigLintRuleId; readonly severity?: "error" | "warning" },
 ): ConfigLintViolation => {
   const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
   return attributeLintIssue(
@@ -44,8 +49,13 @@ export const sourceCoordinates = (source: SourceDocument, path: readonly (string
   return {};
 };
 
+// A finding is classified by rule and severity. The decoder kind is not part of that contract, and
+// scopes decode different inputs, so keeping it would split one defect into per-scope findings.
 export const attributeLintIssue = (
-  issue: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "reason" | "severity">>,
+  {
+    kind: _kind,
+    ...issue
+  }: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "reason" | "severity">>,
   scope: "fragment" | "effective",
   documents: readonly SourceDocument[],
 ): ConfigLintViolation => {

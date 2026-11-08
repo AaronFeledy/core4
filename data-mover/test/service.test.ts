@@ -72,6 +72,7 @@ import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 import { makeDataMoverService } from "../src/service.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -837,12 +838,14 @@ describe("BunDataMover.layer", () => {
 
   test("removes a staged volume payload when the helper is interrupted", async () => {
     await withTempDir(async (dir) => {
-      // Given: a verified payload staged in the configured scratch directory.
+      // Given: a verified payload staged under transferStagingDir, not scratchDir.
       const source = join(dir, "interrupt-volume.sql");
       const scratchDir = join(dir, "scratch");
+      const transferStagingDir = join(dir, "transfer-staging");
+      await mkdir(scratchDir, { recursive: true });
       await writeFile(source, "interrupt-volume-payload");
       const helperStarted = await Effect.runPromise(Deferred.make<void>());
-      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir });
+      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir, transferStagingDir });
       const transfer = Effect.scoped(
         Effect.gen(function* () {
           const dataMover = yield* DataMover;
@@ -878,11 +881,16 @@ describe("BunDataMover.layer", () => {
       // When: the transfer is interrupted after the provider helper starts.
       const fiber = Effect.runFork(transfer);
       await Effect.runPromise(Deferred.await(helperStarted));
-      expect((await readdir(scratchDir)).some((name) => name.startsWith(".lando-stage-volume-"))).toBe(true);
+      expect(
+        (await readdir(transferStagingDir)).some((name) => name.startsWith(".lando-stage-volume-")),
+      ).toBe(true);
+      expect(await readdir(scratchDir)).toEqual([]);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
       // Then: scoped cleanup removes both staged and in-progress files.
-      expect((await readdir(scratchDir)).filter((name) => name.includes("lando-stage-volume"))).toEqual([]);
+      expect(
+        (await readdir(transferStagingDir)).filter((name) => name.includes("lando-stage-volume")),
+      ).toEqual([]);
     });
   });
 
@@ -3577,7 +3585,7 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
@@ -3633,7 +3641,7 @@ test("serviceCmd whole-token secrets mask whole tokens only on failure tails", a
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
@@ -3689,7 +3697,7 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({

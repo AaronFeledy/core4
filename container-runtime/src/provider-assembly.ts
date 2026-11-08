@@ -10,6 +10,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { refuseOtherAppsResources } from "./foreign-owner.ts";
 import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -44,6 +45,18 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
     readonly api?: ProviderDataPlaneOptions["api"];
   };
 
+const makeOwnership = (options: ProviderPlanStateOptions) => {
+  const store = makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState);
+  return {
+    ...store,
+    prepare: (plan: AppPlan, previous?: AppPlan) =>
+      refuseOtherAppsResources(plan, previous, {
+        ctx: options.ctx,
+        ...(options.api === undefined ? {} : { api: options.api }),
+      }).pipe(Effect.andThen(store.prepare(plan, previous))),
+  };
+};
+
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
   removeOrphanedNetworks: (plan: AppPlan, previous: AppPlan | undefined) =>
     removeOrphanedNetworks(plan, previous, {
@@ -51,7 +64,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
       ...(options.api === undefined ? {} : { api: options.api }),
       store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
     }),
-  ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+  ownership: makeOwnership(options),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
     checkAppliedState: (app) =>
       options.appliedPlanState === undefined
@@ -123,7 +136,7 @@ export const notImplementedError = (providerId: string, operation: string) =>
   new ProviderUnavailableError({
     providerId,
     operation,
-    message: `provider-${providerId} does not implement ${operation} yet.`,
+    message: `provider-${providerId} does not implement ${operation}.`,
     remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 

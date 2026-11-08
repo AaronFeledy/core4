@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringUp, exec, makePodmanApiClient, pullImage } from "@lando/provider-lando";
 import {
@@ -137,15 +138,18 @@ test.skipIf(socket === undefined)(
       }),
     };
     const api = makePodmanApiClient(socket);
+    const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
     const request = api.request;
     if (request === undefined) throw new TypeError("Missing live API request");
     const shell = (command: readonly string[]) =>
-      Effect.runPromise(exec(plan, { app: plan.id, service: service.name }, { command }, { api }));
+      Effect.runPromise(
+        exec(plan, { app: plan.id, service: service.name }, { command }, { api, ...helperOptions }),
+      );
     const container = serviceContainerName(plan, service.name);
     try {
       await Effect.runPromise(pullImage(api, "docker.io/library/alpine:3.20", { policy: "missing" }));
       // When
-      await Effect.runPromise(bringUp(plan, { api, userDataRoot: join(root, "data") }));
+      await Effect.runPromise(bringUp(plan, { api, ...helperOptions, userDataRoot: join(root, "data") }));
       const response = await Effect.runPromise(
         request({ method: "GET", path: `/containers/${container}/json` }),
       );

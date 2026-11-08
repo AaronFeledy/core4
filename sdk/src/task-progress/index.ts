@@ -38,3 +38,4 @@ export type {
   TaskTreeSummaries,
 } from "./controller.ts";
 export { makeTaskTree, runWithTaskTree, startChildTaskId } from "./controller.ts";
+export { CurrentTaskDetail, withCurrentTaskDetail } from "./current-detail.ts";

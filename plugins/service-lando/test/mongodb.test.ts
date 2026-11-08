@@ -126,7 +126,7 @@ describe("mongodb ServiceType", () => {
     });
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-mongodb-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--mongodb-data");
     expect(String(volumes[0]?.target)).toBe("/data/db");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
@@ -154,7 +154,9 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.environment.MONGO_INITDB_DATABASE).toBe("otherapp");
-    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe("otherapp-mongodb-data");
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
+      "lando-otherapp--db--mongodb-data",
+    );
   });
 
   test("respects user, database, image, port, and runtime overrides", async () => {
@@ -260,6 +262,7 @@ describe("mongodb ServiceType", () => {
     // Then
     expect(resolution.tooling).toEqual({
       mongosh: {
+        wrapper: true,
         service: "db",
         cmd: expect.any(Array),
         env: {

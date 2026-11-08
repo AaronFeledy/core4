@@ -26,6 +26,7 @@ import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec";
 import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -254,6 +255,67 @@ const makeLayer = (options: {
   );
 
 describe("execApp — provider-exec scenarios (US-022)", () => {
+  test.each([
+    { argv: ["-s", "database", "--", "psql"], service: "database", command: ["psql"] },
+    { argv: ["--service", "database", "--", "psql"], service: "database", command: ["psql"] },
+    { argv: ["database", "--", "psql"], service: "database", command: ["psql"] },
+    { argv: ["database", "psql"], service: "database", command: ["psql"] },
+    { argv: ["-s", "database", "web", "--", "psql"], service: "database", command: ["web", "psql"] },
+    { argv: ["database", "--user", "root", "--", "psql"], service: "database", command: ["psql"] },
+    { argv: ["web", "--", "-tool"], service: "web", command: ["-tool"] },
+    { argv: ["-s", "web", "--", "-tool"], service: "web", command: ["-tool"] },
+    { argv: ["ls", "-la"], service: "web", command: ["ls", "-la"] },
+    // A `--` before the first word makes that word the program, even when a service has its name.
+    { argv: ["--", "database", "--version"], service: "web", command: ["database", "--version"] },
+  ])("#2171 routes CLI exec argv $argv literally to $service", async ({ argv, service, command }) => {
+    const plan = makePlan([makeService("web", true), makeService("database")]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const input = compiledCommandInputFromArgv("app:exec", argv);
+
+    const result = await Effect.runPromise(
+      execSpec
+        .run({ ...input, interaction: "non-interactive" })
+        .pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.service).toBe(service);
+    expect(calls[0]?.command).toEqual(command);
+  });
+
+  test.each([[["web", "-c", "echo hi"]], [["web", "--user", "root", "whoami"]]])(
+    "#2171 rejects %j: a dash command right after a positional service",
+    async (argv) => {
+      const plan = makePlan([makeService("web", true)]);
+      const { provider, calls } = makeProvider([]);
+      const input = compiledCommandInputFromArgv("app:exec", argv);
+
+      const error = await Effect.runPromise(
+        execSpec
+          .run({ ...input, interaction: "non-interactive" })
+          .pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })), Effect.flip),
+      );
+
+      expect(error._tag).toBe("ToolingExecError");
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  test("#2171 preserves dash command argv for library calls without CLI provenance", async () => {
+    const plan = makePlan([makeService("web", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    const result = await Effect.runPromise(
+      execApp({ command: ["web", "-tool", "--literal"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(calls[0]?.command).toEqual(["-tool", "--literal"]);
+  });
+
   test("executes the named MCP argument vector without shell reparsing", async () => {
     // Given: a real command spec and a provider recording exact argument boundaries.
     const plan = makePlan([makeService("appserver", true)]);

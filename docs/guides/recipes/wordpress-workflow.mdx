@@ -2,7 +2,7 @@
 id: wordpress-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, wordpress, php, mariadb]
+tags: [docs, recipes, wordpress, php, mariadb]
 ---
 
 # Run the WordPress recipe
@@ -35,16 +35,6 @@ lando mariadb -e 'SELECT 1 AS ok;'
 lando wp core download
 lando wp config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check
 ```
-
-Lando's proxy ends HTTPS and forwards plain HTTP to Apache, so WordPress can't tell the request was secure. Open `wp-config.php` and add this above the `That's all, stop editing!` line:
-
-```php
-if ( ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) === 'https' ) {
-    $_SERVER['HTTPS'] = 'on';
-}
-```
-
-Skip it and the HTTPS page requests its CSS and JS over `http://`, which the browser blocks.
 
 Use the HTTPS endpoint from `lando info` for `--url`, including any fallback port. Leave `--admin_password` off: WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
 
@@ -115,7 +105,7 @@ Run init in the directory that holds `wp-config.php`. The `.` writes `.lando.yml
 lando init . --recipe wordpress --name=my-site --yes
 ```
 
-Add the HTTPS snippet from [Download and install WordPress](#download-and-install-wordpress) to `wp-config.php`. Then start, [confirm the tools](#confirm-the-tools), and point WordPress at MariaDB:
+Then start, [confirm the tools](#confirm-the-tools), and point WordPress at MariaDB:
 
 ```sh
 lando start

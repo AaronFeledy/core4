@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@lando/core/cli/operations";
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
-import type { GitIncludeCloner } from "@lando/landofile/includes";
+import type { GitTransport } from "@lando/source-acquisition";
 import { appIncludesVerifySpec } from "../../src/cli/command-specs/app/includes/verify.ts";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
@@ -105,9 +105,21 @@ test("verifies locked sources from both base and canonical include trees", async
         join(dir, source.layer),
         `includes:\n  - source: github:acme/${source.repo}\n    path: fragment.yml\n`,
       );
-      const cached = join(cacheRoot, "includes", "git", source.commit);
+      const entryRoot = join(cacheRoot, "sources", "git", source.commit);
+      const cached = join(entryRoot, "tree");
       await mkdir(cached, { recursive: true });
       await writeFile(join(cached, "fragment.yml"), fragment);
+      await writeFile(
+        join(entryRoot, "entry.json"),
+        JSON.stringify({
+          version: 1,
+          format: 1,
+          kind: "git",
+          id: source.commit,
+          treeDigest: "0".repeat(64),
+          provenance: { source: "fixture" },
+        }),
+      );
     }
     await writeFile(
       join(dir, ".lando.lock.yml"),
@@ -118,15 +130,15 @@ test("verifies locked sources from both base and canonical include trees", async
         )
         .join("")}`,
     );
-    const gitCloner: GitIncludeCloner = {
-      clone: async () => {
+    const git: GitTransport = {
+      fetch: async () => {
         throw new Error("warm verify must stay offline");
       },
     };
     await withEnvVar("LANDO_USER_CACHE_ROOT", cacheRoot, async () => {
       // When
       const report = await Effect.runPromise(
-        appIncludesVerify({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+        appIncludesVerify({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
       );
       // Then
       expect(report.ok).toBe(true);

@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { Effect, Schema, Scope } from "effect";
 
@@ -73,7 +74,7 @@ const planAt = Effect.fnUntraced(function* (
   dir: string | undefined,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
-  const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
+  const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : (yield* CliInvocation).cwd);
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofileAt(landofileService, root);
   return yield* planResolvedLandofile(landofile, root);

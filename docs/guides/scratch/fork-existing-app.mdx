@@ -3,15 +3,16 @@ id: fork-existing-app
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, scratch, fork]
+tags: [docs, scratch, fork]
 ---
 
 # Fork the current app into a scratch
 
 From an app root, run `lando scratch --fork` to start a scratch using that app's
-Landofile. The example below shares the source tree: code edits are visible to
-both apps. It creates separate containers and does not stop or rename the
-original app. Outside an app root, the command fails before creating a scratch.
+Landofile. By default the fork works on its own copy of your project, so its
+edits never touch your files. It creates separate containers and does not stop
+or rename the original app. Outside an app root, the command fails before
+creating a scratch.
 
 ```sh
 lando scratch --fork --detach
@@ -34,11 +35,17 @@ lando scratch --fork --name review --detach
 
 `--name` is only the base for the generated id (`scratch-<base>-<6hex>`). The source Landofile is not rewritten.
 
-## What stays shared
+## Choose a copy or a shared tree
 
-The fork keeps the source app root. Code edits show up in both apps. No project files are copied into the scratch cache.
+By default a fork uses `--isolate=full`: Lando copies your project into the scratch's own directory under the user data root and mounts that copy. Edits inside the fork stay in the copy, and edits to your project after startup don't reach the fork. The copy skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`; see [Control a full fork copy](./mount-and-share-flags.mdx#control-a-full-fork-copy) for more exclusions.
 
-Isolation is containers, networks, DNS, and derived volume names. It is not a second copy of your tree.
+To work on the same files from both apps instead, share the directory you run the command from:
+
+```sh
+lando scratch --fork --detach --isolate=cwd
+```
+
+With `--isolate=cwd` (or `--mount-cwd`), Lando copies nothing and code edits show up in both apps.
 
 ## What stays separate
 

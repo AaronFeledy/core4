@@ -182,7 +182,7 @@ Step: run (Variable, Run)
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("code: NotImplementedError");
     expect(result.stderr).toContain("--variant is not implemented for docs:scenario");
-    expect(result.stderr).toContain("not supported yet");
+    expect(result.stderr).toContain("not supported");
     expect(result.stderr).not.toContain("Alpha 2");
   });
 });

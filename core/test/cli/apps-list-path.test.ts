@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
 import { appliedPlansDirectory, listServices } from "../../src/cli/commands/list.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
-import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 

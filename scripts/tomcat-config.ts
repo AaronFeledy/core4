@@ -27,6 +27,7 @@ export const sha256 = (bytes: string | Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 export const activeConfig = (xml: string): string => xml.replace(/<!--[\s\S]*?-->/gu, "");
 export const HTTP_CONNECTOR = '<Connector port="8080" protocol="HTTP/1.1"';
+export const ENGINE_OPENING = '<Engine name="Catalina" defaultHost="localhost">';
 
 /** A deliberately closed contract for the reviewed Apache server.xml layout, not an XML parser. */
 export const validateTomcatConfig = (xml: string, major: TomcatMajor): void => {
@@ -62,7 +63,8 @@ export const validateTomcatConfig = (xml: string, major: TomcatMajor): void => {
     xml.includes("{{HTTP_PORT}}") ||
     required.some((part) => !active.includes(part)) ||
     active.split(HTTP_CONNECTOR).length !== 2 ||
-    xml.split(HTTP_CONNECTOR).length !== 2
+    xml.split(HTTP_CONNECTOR).length !== 2 ||
+    xml.split(ENGINE_OPENING).length !== 2
   ) {
     throw new TomcatUpdateError(`Tomcat ${major}: upstream server.xml defaults need review`);
   }

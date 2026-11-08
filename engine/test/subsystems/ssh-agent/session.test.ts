@@ -59,7 +59,7 @@ test.each([0, 2])("running agent exec exit %s distinguishes ready from starting"
         app: AppId.make("global"),
         service: ServiceName.make("ssh-agent"),
         providerId: ProviderId.make("lando"),
-        status: "running",
+        status: "running" as const,
         publications: { status: "unknown" as const },
       }),
     exec: () => Effect.succeed({ exitCode, stdout: "", stderr: "" }),
@@ -135,7 +135,7 @@ test.each([false, true])(
               app: AppId.make("global"),
               service: ServiceName.make("ssh-agent"),
               providerId: ProviderId.make("lando"),
-              status: "running",
+              status: "running" as const,
               publications: { status: "unknown" as const },
             })
           : Effect.never,
@@ -175,7 +175,7 @@ test("wait exhausts its budget when a running agent never answers", async () => 
         app: AppId.make("global"),
         service: ServiceName.make("ssh-agent"),
         providerId: ProviderId.make("lando"),
-        status: "running",
+        status: "running" as const,
         publications: { status: "unknown" as const },
       }),
     exec: () =>
@@ -226,12 +226,13 @@ test("omits bind-only fields when the socket uses a volume", () => {
 
 const runningProvider = {
   ...TestRuntimeProvider,
+  exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   inspect: () =>
     Effect.succeed({
       app: AppId.make("global"),
       service: ServiceName.make("ssh-agent"),
       providerId: ProviderId.make("lando"),
-      status: "running",
+      status: "running" as const,
       publications: { status: "unknown" as const },
     }),
 };

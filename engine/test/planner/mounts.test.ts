@@ -208,12 +208,12 @@ test("named mounts volumes register an owned store", async () => {
   const app = await plan({ mounts: [{ type: "volume", source: "named", target: "/named" }] });
   expect(wireMounts(app)).toContainEqual({
     type: "volume",
-    store: "mountapp-named",
+    store: "lando-mountapp_named",
     origin: "authored",
     target: "/named",
     readOnly: false,
   });
-  expect(app.stores).toContainEqual({ name: "mountapp-named", scope: "service", kind: "data" });
+  expect(app.stores).toContainEqual({ name: "lando-mountapp_named", scope: "app", kind: "data" });
 });
 
 test("authored bind replaces type data volume and removes its ownership tree", async () => {

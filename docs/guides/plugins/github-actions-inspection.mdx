@@ -3,7 +3,7 @@ id: github-actions-inspection
 provider: test
 platforms: [darwin, linux, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, github-actions]
+tags: [docs, plugins, github-actions]
 ---
 
 # Inspect GitHub Actions workflows with Lando
@@ -16,15 +16,15 @@ run a workflow, simulate an event, resolve expressions, fetch a reusable
 workflow, or tell you whether a workflow would run under Lando.
 
 The command comes from the optional `@lando/github-actions` plugin. That plugin
-is not bundled with Lando and is not published to npm yet, so you build its
+is not bundled with Lando and is not published to npm, so you build its
 artifact from a source checkout and link that artifact.
 
 ## Link the plugin from a source checkout
 
 You need two things on the host:
 
-- An installed `lando` binary. Follow [Alpha install and bug reports](../../alpha-install-and-bug-reports.md) if you don't have one.
-- A clone of the Lando repository with dependencies installed and sources generated. Run `bun install` and `bun run codegen` in the clone, as in the [source-build steps](../../alpha-install-and-bug-reports.md#option-2-build-from-source). You don't need to compile Lando from that clone; the installed binary loads the plugin from it.
+- An installed `lando` binary. Follow [Install with the POSIX installer](../install/posix-installer.mdx) or [Install Lando on Windows](../install/windows-installer.mdx) if you don't have one.
+- A clone of the Lando repository with dependencies installed and sources generated. Run `bun install` and `bun run codegen` in the clone, as in the [source-build steps](../../contributing/repository.md#build-from-source). You don't need to compile Lando from that clone; the installed binary loads the plugin from it.
 
 Bun prepares the checkout and builds the plugin. From the clone's root, run:
 

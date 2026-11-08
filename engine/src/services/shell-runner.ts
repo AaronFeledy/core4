@@ -26,7 +26,10 @@ import { REDACTED, type Redactor, isSecretFieldName } from "@lando/sdk/secrets";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { bunShellDialectIssues, bunShellScriptIssue, describeBunShellIssue } from "./bun-shell-dialect.ts";
-import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
+import {
+  type CapturedHostExecutionContext,
+  captureScopedHostExecutionContext,
+} from "./host-execution-context.ts";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
 import { quoteShellPath } from "./shell-quote.ts";
@@ -35,9 +38,12 @@ import { environmentForRedaction } from "./tooling-input-environment.ts";
 
 export type ShellRedactionCarrier = RunnerRedactionCarrier;
 
-const ShellRedactionTokens = Context.Reference<ShellRedactionCarrier>("@lando/engine/ShellRedactionTokens", {
-  defaultValue: (): ShellRedactionCarrier => ({ substring: [] }),
-});
+export const ShellRedactionTokens = Context.Reference<ShellRedactionCarrier>(
+  "@lando/engine/ShellRedactionTokens",
+  {
+    defaultValue: (): ShellRedactionCarrier => ({ substring: [] }),
+  },
+);
 
 const shellError = (
   command: string,
@@ -182,7 +188,10 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* <Options extends 
           ...(options.env === undefined ? {} : { env: { ...options.env } }),
           ...(options.argv === undefined ? {} : { argv: [...options.argv] }),
         };
-  const context = captureHostExecutionContext({ ...snapshot, env: { ...snapshot?.env, BUN_BE_BUN: "1" } });
+  const context = yield* captureScopedHostExecutionContext({
+    ...snapshot,
+    env: { ...snapshot?.env, BUN_BE_BUN: "1" },
+  });
   const redactor = yield* redactorForOptions(context);
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "Some") {

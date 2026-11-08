@@ -3,29 +3,42 @@ import { DateTime, Effect, Stream, absurd, flow } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlRecoveryOperationError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import {
+  SqlConfirmRequiredError,
+  SqlRecoveryOperationError,
+  SqlSeedSourceError,
+  SqlServiceNotFoundError,
+} from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
-import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
+import {
+  exportCompression,
+  hostFile,
+  parseCount,
+  resolveDumpStdio,
+  secretTokens,
+  validateExportCompression,
+} from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
-import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
-import { ensureReadableDump } from "./dump-file.ts";
+import { ensureDumpFile, prepareImportDump } from "./dump-file.ts";
 import {
   SqlEnvironmentSession,
   classifySqlPlan,
   protectSqlEnvironment,
   registerSqlLiteralCredentials,
 } from "./environment.ts";
-import { countCommand } from "./families.ts";
+import { ensureExportDestination } from "./export-destination.ts";
+import { countCommand, dumpCompleteness } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
+import { precheckSeedEligibility } from "./seed-eligibility.ts";
 import { resolveSeedSource } from "./seed-source.ts";
 import { executeSeed } from "./seed.ts";
 import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
@@ -43,7 +56,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   rawDeps: SqlCommandDeps,
   input: DbCommandInput,
 ) {
-  yield* validateExportCompressionLevel(input);
+  yield* validateExportCompression(input);
+  const dumpStdio = yield* resolveDumpStdio(input);
   const rawSession = yield* rawDeps.environmentResolver.openSession();
   const redaction = yield* RedactionService;
   const resolved = resolveSqlTarget(rawDeps.plan, input.service);
@@ -121,13 +135,6 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     if (action === "snapshots" || action === "prune")
       yield* registerSqlLiteralCredentials(classifySqlPlan(deps.plan), selectedCredentials);
     let restoreSource: SnapshotInfo | undefined;
-    const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
-    const dump =
-      action === "import" || (action === "seed" && input.file !== undefined)
-        ? yield* ensureReadableDump(file, deps.plan.root)
-        : undefined;
-    const expectedDigest = dump?.digest;
-    const compression = dump?.compression ?? compressionFromExportPath(file);
     const steps: DbCommandStep[] = [
       {
         id: action,
@@ -137,15 +144,42 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       },
     ];
 
-    if (action === "import") {
+    // Stdin carries the dump, so a stdin import cannot prompt. Refuse before reading stdin.
+    if (action === "import" && file === "-" && !input.yes) {
+      return yield* Effect.fail(
+        new SqlConfirmRequiredError({
+          message: `Import from stdin into ${target.name} requires --yes.`,
+          service: target.name,
+          steps,
+          remediation: "Pass --yes. Stdin carries the dump, so Lando cannot prompt for confirmation.",
+        }),
+      );
+    }
+    if (action === "export" && dumpStdio === undefined) yield* ensureExportDestination(file);
+
+    const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
+    const readsDump = action === "import" || (action === "seed" && input.file !== undefined);
+    // Missing or unreadable files fail before the count probe and confirmation prompt.
+    if (readsDump && dumpStdio === undefined) yield* ensureDumpFile(file, deps.plan.root);
+    const countTables = Effect.suspend(() => {
       const command = countCommand(target.family, creds);
-      const counted = yield* checkedSqlExecution(deps.exec(target.name, command, env), {
+      return checkedSqlExecution(deps.exec(target.name, command, env), {
         service: target.name,
         command,
         env,
         secrets: protectedEnvironment.secrets,
+      }).pipe(Effect.map((counted) => parseCount(counted.stdout)));
+    });
+    if (action === "seed" && readsDump)
+      yield* precheckSeedEligibility(deps, {
+        plan: deps.plan,
+        service,
+        serviceName: target.name,
+        count: countTables,
       });
-      const count = parseCount(counted.stdout);
+
+    if (action === "import") {
+      const count = yield* countTables;
       yield* confirmOrFail(
         input,
         deps.confirm,
@@ -176,9 +210,15 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     }
     if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
       const scope = yield* resolveSnapshotSource({
-        app: deps.plan.id,
+        plan: deps.plan,
+        appliedPlans: deps.appliedPlans,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
+        ...(deps.plan.identity?.repoGroupKey === undefined
+          ? {}
+          : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+        ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
+        ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
         service: target.name,
         hostCwd: input.hostCwd ?? process.cwd(),
         canonicalizePath: deps.canonicalizeSourcePath,
@@ -190,7 +230,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
     if (action === "prune") {
       const filter = yield* resolveSnapshotSource({
-        app: deps.plan.id,
+        plan: deps.plan,
+        appliedPlans: deps.appliedPlans,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -224,6 +265,18 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
 
     const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
 
+    // The whole dump is read (stdin, decompression, completeness, digest) after confirmation and
+    // before the recovery snapshot, so a bad dump fails without touching the database.
+    const prepared = readsDump
+      ? yield* prepareImportDump({
+          file,
+          appRoot: deps.plan.root,
+          stagingDir: deps.stagingDir,
+          privateFileAccess: deps.privateFileAccess,
+          completeness: dumpCompleteness(target.family),
+          ...(dumpStdio?._tag === "stdin" ? { stdin: dumpStdio.stream } : {}),
+        })
+      : undefined;
     const io = {
       plan: deps.plan,
       service: target.name,
@@ -231,10 +284,11 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       creds,
       env,
       secrets: protectedEnvironment.secrets,
-      file,
-      compression,
+      file: prepared?.path ?? file,
+      destination: dumpStdio?._tag === "stdout" ? dumpStdio : ({ _tag: "file", path: file } as const),
+      compression: exportCompression(input),
       ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
-      ...(expectedDigest === undefined ? {} : { expectedDigest }),
+      ...(prepared === undefined ? {} : { expectedDigest: prepared.digest }),
     };
     let snapshotId: string | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
@@ -311,7 +365,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       }
       case "snapshots": {
         const filter = yield* resolveSnapshotSource({
-          app: deps.plan.id,
+          plan: deps.plan,
+          appliedPlans: deps.appliedPlans,
           ...(store === undefined ? {} : { store: store.store }),
           ownerKey: owner.ownerKey,
           ...(deps.plan.identity?.repoGroupKey === undefined
@@ -409,7 +464,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           : protectedEnvironment.tokens()),
         ...(seedSource?.redactionTokens ?? []),
       ],
-      ...(action === "import" || action === "export" ? { file } : {}),
+      ...(action === "import" || action === "export" || (action === "seed" && input.file !== undefined)
+        ? { file }
+        : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
       ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
       ...(pruneCandidates === undefined

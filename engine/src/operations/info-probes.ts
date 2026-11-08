@@ -4,7 +4,8 @@ import {
   type ServicePlan,
   effectiveReadiness,
 } from "@lando/sdk/schema";
-import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import type { ObservedService } from "./connection-collector.ts";
+import { serviceStateOf } from "./connection-state.ts";
 
 type ProbeInfo = NonNullable<NonNullable<ServiceInfo["health"]>["check"]>;
 
@@ -40,14 +41,16 @@ const describeProbe = (
   configPath: ["services", String(service.name), field],
 });
 
-export const projectServiceProbes = (
+export const projectServiceObservation = (
   service: ServicePlan,
-  runtimeHealth: ServiceRuntimeInfo["health"],
-): Pick<ServiceInfo, "health" | "readiness"> => {
+  observed: ObservedService,
+): Pick<ServiceInfo, "status" | "health" | "readiness"> => {
+  const { runtime } = observed;
   const readiness = effectiveReadiness(service);
   return {
+    status: serviceStateOf(runtime, observed.state === "completed"),
     health: {
-      state: service.healthcheck?.kind === "none" ? "not-monitored" : (runtimeHealth ?? "unknown"),
+      state: service.healthcheck?.kind === "none" ? "not-monitored" : (runtime.health ?? "unknown"),
       ...(service.healthcheck === undefined
         ? {}
         : { check: describeProbe(service.healthcheck, service, "healthcheck") }),

@@ -2,7 +2,7 @@
 id: flags-and-args
 provider: test
 timeout: 60000
-tags: [beta, docs, tooling, flags]
+tags: [docs, tooling, flags]
 ---
 
 # Declare flags and args on a tooling task
@@ -31,7 +31,7 @@ tooling:
     cmd: echo greeting
 ```
 
-Save the file and run `lando app:cache:refresh` from the app directory. Check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
+Save the file. From the app directory, check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
 
 ```sh
 lando greet dev -n team
@@ -63,7 +63,7 @@ flags:
     default: true
 ```
 
-After refreshing the command cache, `lando greet dev --loud=false` binds `loud` to false. `--loud` and `--loud=true` bind it to true; repeated flags use the last occurrence. Lando does not generate `--no-loud`. The space-separated spelling `--loud false` sets `loud` to true and leaves `false` as a positional token, not a boolean value.
+With that change saved, `lando greet dev --loud=false` binds `loud` to false. `--loud` and `--loud=true` bind it to true; repeated flags use the last occurrence. Lando does not generate `--no-loud`. The space-separated spelling `--loud false` sets `loud` to true and leaves `false` as a positional token, not a boolean value.
 
 For a command that accepts only argv, Lando forwards value flags as `--name=value`, true as `--name`, and false by omitting the positive switch. This is a forwarding rule, not a promise to turn off the child program's own default. Lando does not invent a downstream negation flag. A `.bun.sh` script receives the actual boolean through `LANDO_INPUT` and `LANDO_FLAG_LOUD`, so it can implement either branch directly.
 
@@ -122,16 +122,34 @@ Values remain literal: this annotation does not enable expressions or secret-pro
 
 ## Forward undeclared input
 
-Declaring input is opt-in. A task with no `flags:` or `args:` forwards everything you type straight to the command, unparsed:
+Declaring input is opt-in. A task with no `flags:` or `args:` forwards your input straight to the command. Set `wrapper: true` when the task is a thin wrapper around one CLI tool, so help and version requests reach it too:
 
 ```yaml
 tooling:
   npm:
     service: web
     cmd: npm
+    wrapper: true
 ```
 
 `lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. Add `flags:` only when you want Lando to check the input first. Raw tails are for undeclared passthrough, not a way to fill gaps in named arguments. Do not mix declared named input with a raw tail; Lando rejects the ambiguous call. Prefer named maps for declared MCP, event, and library inputs.
+
+With `wrapper: true`, `lando npm --help`, `lando npm -h`, and `lando npm --version` go to npm. A wrapper must have exactly one command (`cmd`, including an argv list, or one entry in `cmds`), no declared flags or args, and must not set `arguments: false`. A wrapper that breaks these rules fails with `ToolingCompileError`; move the extra steps to another task or drop `wrapper: true`.
+
+Without `wrapper: true`, Lando answers `-h` and `--help` itself and does not run the task, even when the task is a single command. Either spelling works anywhere before the first `--`. A declared flag named `help` or aliased to `h` owns both spellings instead. `lando help <task>` shows Lando's help for any enabled task, including a wrapper.
+
+To pass help to a non-wrapper task, put it after a leading `--`. For example, with this task in your Landofile:
+
+```yaml
+tooling:
+  build:
+    service: web
+    cmd: npm run build
+```
+
+Run `lando build -- --help`. Lando consumes only the `--` right after the task name; everything after it, including another `--`, reaches the command unchanged.
+
+A lone `lando build --version` fails with `ToolingInputError` before execution because a project task has no version of its own. Run `lando version` for Lando's version, or `lando build -- --version` to pass the option to the command. A declared flag named `version` owns that input instead. `--version` with other tokens is ordinary input. `.bun.sh` scripts follow the same help and lone-version rules; `wrapper` is not a front-matter key.
 
 ## Pick the service from a flag
 
@@ -177,15 +195,39 @@ tooling:
 
 This object can merge with an object task from a lower config layer. An authored task always replaces a service-type task of the same name, so this does not preserve a service type's definition. Deleting the key lets an inherited task return; use `false` when it must stay off.
 
-For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and refresh the command cache. It is hidden from listings, help, and the MCP tooling catalog, and direct calls fail with `ToolingDisabledError` without running the body.
+For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. From the next invocation on, it is hidden from listings, help, and the MCP tooling catalog, and direct calls fail with `ToolingDisabledError` without running the body.
 
 <Guide>
+  <Scenario id="raw-help-forwarding" render={false} reason="Only explicit wrappers forward help; a single script command must not run">
+    <Step name="prepare-forwarding">
+      <UseFixture name="help-forwarding" />
+    </Step>
+    <Step name="show-task-help">
+      <Verify command="lando plain --help --format=json" expect={{ stdout: { regex: "app:plain" } }} />
+      <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "absent\\\\n" } }} />
+    </Step>
+    <Step name="forward-wrapper-help">
+      <Verify command="lando wrapped --help --format=json" expect={{ stdout: { regex: "forwarded --help" } }} />
+    </Step>
+    <Step name="cleanup-forwarding">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-invalid-wrapper" render={false} reason="A wrapper cannot execute multiple commands">
+    <Step name="prepare-invalid-wrapper">
+      <UseFixture name="invalid-wrapper" />
+    </Step>
+    <Step name="reject-multiple-commands">
+      <Verify command="lando invalid --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingCompileError[\\s\\S]*exactly one command" } }} />
+    </Step>
+    <Step name="cleanup-invalid-wrapper">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="run-with-flag-alias-and-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
+      <Run command="lando start" />
     </Step>
     <Step name="greet-help">
       <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
@@ -203,9 +245,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
     </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
-    </Step>
     <Step name="run-greet-with-bad-target">
       <Run command="lando greet staging --format=json" expectExit={1} />
       <Verify errorTag="ToolingInputError" expect={{ regex: "Argument target must match a declared choice" }} />
@@ -218,9 +257,7 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="reject-omitted-leading-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-tag-without-label">
       <Run command="lando tag --format=json" expectExit={1} />
@@ -237,9 +274,7 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="select-service-from-flag" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-deploy-in-worker">
       <Verify command="lando deploy -s worker --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"deploy\"[\\s\\S]*\"service\":\\s*\"worker\"" } }} />
@@ -255,9 +290,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="refuse-disabled-task" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-legacy">
       <Run command="lando legacy --format=json" expectExit={1} />
@@ -275,9 +307,6 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block and
   <Scenario id="hide-and-refuse-false-task" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
-    </Step>
-    <Step name="compile-tooling">
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="hide-retired-task">
       <Verify command="lando --help" expect={{ stdout: { not: { regex: "retired-shorthand" } } }} />

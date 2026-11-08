@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import type { ServiceRuntimeFields, ServiceRuntimeInfo } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import type { VolumeSelectorClass } from "../src/podman/volume-prune.ts";
@@ -17,7 +17,7 @@ import {
 const ctx = { providerId: "podman", remediation: "Repair podman and retry.", env: {} } as const;
 
 const observed = (
-  overrides: Partial<Omit<ServiceRuntimeInfo, "containerId">> & { readonly withoutContainer?: true } = {},
+  overrides: Partial<Omit<ServiceRuntimeFields, "containerId">> & { readonly withoutContainer?: true } = {},
 ): ServiceRuntimeInfo => {
   const { withoutContainer, ...rest } = overrides;
   return {

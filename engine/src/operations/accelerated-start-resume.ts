@@ -1,6 +1,6 @@
 import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import { type AppPlan, type AppRef, fileSyncInvalidationRequired } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
@@ -109,7 +109,7 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef
   if (engine.appLifecycle !== undefined) {
     const phase = yield* engine.appLifecycle.disposalPhase(app);
     // A new replacement journal may exist before its first session. Creation clears the completed marker.
-    if (sessions.length > 0 || (phase !== "completed" && phase !== "absent"))
+    if (fileSyncInvalidationRequired(phase, sessions.length > 0))
       yield* engine.appLifecycle.invalidateDrain(app);
   }
   return prepared.targets;

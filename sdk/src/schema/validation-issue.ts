@@ -7,13 +7,15 @@ import {
   directiveValue,
   isExpressionSlot,
 } from "./authoring-issue-metadata.ts";
+import { ConfigLintRuleId } from "./config-lint-rules.ts";
 import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { validationExpectation } from "./validation-expectation.ts";
+import { schemaIssueKind } from "./validation-issue-kind.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
 
-export { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
+export { closestKeys, suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 
 /**
  * Location of a validation issue inside an authored document: object keys
@@ -56,11 +58,15 @@ export const ValidationIssueSource = Schema.Union([
 export type ValidationIssueSource = typeof ValidationIssueSource.Type;
 
 export const ValidationIssue = Schema.Struct({
-  rule: Schema.optionalKey(Schema.String).annotate({
+  rule: Schema.optionalKey(ConfigLintRuleId).annotate({
     description:
-      "Stable diagnostic rule identifier, using the same identifiers as config lint when available.",
+      "Registered diagnostic rule identifier. Plugins must use a registered identifier or omit rule.",
   }),
   path: ValidationIssuePath,
+  kind: Schema.optionalKey(Schema.Literals(["type", "value", "missing", "unexpected"])).annotate({
+    description:
+      "Decoder classification: type means the value has the wrong JSON kind for every accepted form; value means the kind fits but a literal, enum, range, pattern, or other check rejects it; missing means a required key is absent; unexpected means the key is not allowed. Omitted when unknown.",
+  }),
   message: Schema.String.annotate({ description: "Human-readable description of the problem." }),
   suggestion: Schema.optionalKey(Schema.String).annotate({
     description: "Likely fix, such as the closest allowed key for an unknown key.",
@@ -117,7 +123,7 @@ export const formatValidationIssueLine = (issue: ValidationIssue): string => {
 export interface SchemaValidationIssueOptions {
   readonly fallback?: string;
   readonly extraAllowedKeys?: (path: ValidationIssuePath) => readonly string[];
-  /** The decoded input, used only to tell which union member an authored object meant. */
+  /** The decoded input, used for union selection and JSON-kind classification. */
   readonly input?: unknown;
 }
 
@@ -137,6 +143,7 @@ export const SchemaIssueLeaf = Schema.Struct({
   path: Schema.Array(Schema.PropertyKey),
   message: Schema.String,
   suggestion: Schema.optionalKey(Schema.String),
+  kind: ValidationIssue.fields.kind,
 });
 export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
 
@@ -191,7 +198,7 @@ const directivePayloadIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.
 const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<SchemaIssueLeaf> => {
   const seen = new Set<string>();
   return leaves.filter((leaf) => {
-    const key = JSON.stringify([leaf._tag, leaf.path.map(String), leaf.message, leaf.suggestion]);
+    const key = JSON.stringify([leaf._tag, leaf.path.map(String), leaf.message, leaf.suggestion, leaf.kind]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -205,6 +212,19 @@ export const schemaIssueLeaves = (
   options?: SchemaValidationIssueOptions,
 ): ReadonlyArray<SchemaIssueLeaf> => {
   const walk = (child: SchemaIssue.Issue) => schemaIssueLeaves(child, path, options);
+  const kind = schemaIssueKind(
+    issue,
+    options !== undefined && Object.hasOwn(options, "input")
+      ? { input: valueAt(options.input, path) }
+      : undefined,
+  );
+  const classification = kind === undefined ? {} : { kind };
+  const unionLeaves = (children: readonly SchemaIssue.Issue[]) =>
+    distinctLeaves(selectByKeyPresence(children, valueAt(options?.input, path)).flatMap(walk)).map((leaf) => {
+      if (leaf.path.length !== path.length) return leaf;
+      const { kind: _kind, ...rest } = leaf;
+      return { ...rest, ...classification };
+    });
   switch (issue._tag) {
     case "Pointer":
       return schemaIssueLeaves(issue.issue, [...path, ...issue.path], options);
@@ -224,15 +244,12 @@ export const schemaIssueLeaves = (
         const children = issue.issues.filter((child) => !authoringNonCandidate(child));
         const candidates = diagnosticUnionCandidates(issue.ast, children);
         const message = unionValueMessage(issue.ast, candidates);
-        if (message !== undefined) return [{ _tag: "Type", path, message }];
-        return candidates.length === 0
-          ? walk(expectationIssue(issue.ast, issue))
-          : distinctLeaves(selectByKeyPresence(candidates, valueAt(options?.input, path)).flatMap(walk));
+        if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
+        return candidates.length === 0 ? walk(expectationIssue(issue.ast, issue)) : unionLeaves(candidates);
       }
       const message = unionValueMessage(issue.ast, issue.issues);
-      if (message !== undefined) return [{ _tag: "Type", path, message }];
-      if (issue.issues.length > 0)
-        return distinctLeaves(selectByKeyPresence(issue.issues, valueAt(options?.input, path)).flatMap(walk));
+      if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
+      if (issue.issues.length > 0) return unionLeaves(issue.issues);
       break;
     }
     case "InvalidType":
@@ -240,7 +257,7 @@ export const schemaIssueLeaves = (
       break;
     case "Filter":
       if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
-        return walk(issue.issue);
+        return walk(issue.issue).map((leaf) => ({ ...leaf, kind: "value" }));
       }
       break;
     case "UnexpectedKey":
@@ -254,7 +271,7 @@ export const schemaIssueLeaves = (
   }
   const normalizedPath = propertyKeyPath(path);
   if (issue._tag === "InvalidType" || issue._tag === "AnyOf") {
-    return [{ _tag: "Type", path, message: validationExpectation(issue.ast) }];
+    return [{ _tag: "Type", path, message: validationExpectation(issue.ast), ...classification }];
   }
   const unknownKey = normalizedPath.at(-1);
   const suggestion =
@@ -268,6 +285,7 @@ export const schemaIssueLeaves = (
     _tag: issue._tag === "UnexpectedKey" ? "Unexpected" : issue._tag === "MissingKey" ? "Missing" : "Type",
     path,
     message: formatted.message,
+    ...classification,
     ...(suggestion === undefined ? {} : { suggestion }),
   }));
 };
@@ -277,9 +295,10 @@ export const validationIssuesFromSchemaIssue = (
   issue: SchemaIssue.Issue,
   options?: SchemaValidationIssueOptions,
 ): readonly ValidationIssue[] => {
-  return schemaIssueLeaves(issue, [], options).map((leaf) =>
-    validationIssue(propertyKeyPath(leaf.path), leaf.message, leaf.suggestion),
-  );
+  return schemaIssueLeaves(issue, [], options).map(({ _tag, path, ...leaf }) => ({
+    ...leaf,
+    path: propertyKeyPath(path),
+  }));
 };
 
 export const validationIssuesFromCause = (

@@ -1,6 +1,10 @@
 import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
-import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
+import {
+  LandoRuntimeBootstrapError,
+  PluginDescriptorMismatchError,
+  PluginLoadError,
+} from "@lando/sdk/errors";
 import type {
   CertificateAuthorityContributionLayer,
   ExecutableCommandLoader,
@@ -15,18 +19,24 @@ import { CertificateAuthority, PathsService } from "@lando/sdk/services";
 
 import { bundledPluginModules } from "../composition.ts";
 import { resolveGraphCommands } from "./command-contributions.ts";
-import { loadInstalledPluginEntry } from "./installed-plugin-loader.ts";
+import type { PluginImplementation } from "./implementation-identity.ts";
+import { loadInstalledPluginImplementation } from "./installed-plugin-loader.ts";
 export { pluginCommandCandidates } from "./command-contributions.ts";
 import { PluginManifestResolution, resolvePluginManifests } from "./manifest-resolution.ts";
 import { type ManifestDiagnostic, selectPluginManifests } from "./manifest-selection.ts";
 import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";
 import { type DiscoveredPlugin, systemPluginsFromModules } from "./plugin-discovery.ts";
+import { pluginSelectionDirectories } from "./selection.ts";
 
 export type PluginContributionSource = "bundled" | "system" | "user" | "app" | "explicit";
 
 export interface LoadedPluginContribution extends DiscoveredPlugin {
   readonly source: PluginContributionSource;
   readonly entry?: LandoPluginModule;
+  readonly implementation?: PluginImplementation;
+  readonly implementationStable?: boolean;
+  /** Why this selected plugin's entry failed to import; only its own contributions fail. */
+  readonly loadFailure?: PluginLoadError;
 }
 
 export type CertificateAuthorityAcquisition =
@@ -58,6 +68,32 @@ export interface PluginContributionGraphShape {
   readonly commands: ReadonlyArray<GraphCommandCandidate>;
   readonly hostContext: Context.Context<never>;
 }
+
+/**
+ * Implementation coordinates of the plugins this graph imported, for keying persisted plans, and
+ * whether a plan built from them may be cached: a plugin that failed to load or whose code changed
+ * while it loaded makes the loaded implementation unknowable.
+ */
+export const loadedPluginImplementations = (graph: PluginContributionGraphShape | undefined) => {
+  const plugins = graph === undefined ? [] : [...graph.plugins, ...graph.globalPlugins];
+  return {
+    coordinates: plugins.flatMap(({ manifest, source, implementation }) =>
+      implementation === undefined
+        ? []
+        : [
+            {
+              name: String(manifest.name),
+              source,
+              realpath: implementation.realpath,
+              identity: implementation.identity,
+            },
+          ],
+    ),
+    cacheable: plugins.every(
+      (plugin) => plugin.loadFailure === undefined && plugin.implementationStable !== false,
+    ),
+  };
+};
 
 export class PluginContributionGraph extends Context.Service<
   PluginContributionGraph,
@@ -121,14 +157,7 @@ export class PluginContributionGraph extends Context.Service<
           : yield* resolvePluginManifests({
               bundled,
               explicit,
-              directories: policy.externalImports
-                ? [
-                    ...(policy.discovery.system
-                      ? [{ source: "system" as const, path: paths.systemPluginsDir }]
-                      : []),
-                    ...(policy.discovery.user ? [{ source: "user" as const, path: paths.pluginsDir }] : []),
-                  ]
-                : [],
+              directories: pluginSelectionDirectories(policy, paths, undefined),
               ...(policy.externalImports && policy.discovery.app ? { cwd: policy.cwd } : {}),
               disable: policy.discovery.disable,
             });
@@ -145,19 +174,31 @@ export class PluginContributionGraph extends Context.Service<
             if (loaded !== undefined) return Effect.succeed({ ...loaded, manifest: plugin.manifest });
             return Effect.tryPromise({
               try: async (): Promise<LoadedPluginContribution> => {
-                const module = await loadInstalledPluginEntry(plugin.path ?? "", plugin.manifest);
-                return { ...plugin, ...(module === undefined ? {} : { module }) };
+                const imported = await loadInstalledPluginImplementation(plugin.path ?? "", plugin.manifest);
+                return {
+                  ...plugin,
+                  implementation: imported.implementation,
+                  implementationStable: imported.stable,
+                  ...(imported.value === undefined ? {} : { module: imported.value }),
+                };
               },
-              catch: (cause) => cause,
+              catch: (cause) =>
+                cause instanceof PluginLoadError
+                  ? cause
+                  : new PluginLoadError({
+                      message: `Failed to load plugin ${String(plugin.manifest.name)}: ${String(cause)}`,
+                      pluginName: String(plugin.manifest.name),
+                      remediation: "Repair the plugin entry.",
+                    }),
             }).pipe(
-              Effect.catch((cause) => {
+              Effect.catch((loadFailure) => {
                 diagnostics.push({
-                  _tag: "PluginLoadError",
-                  message: String(cause),
-                  remediation: "Repair the plugin entry.",
+                  _tag: loadFailure._tag,
+                  message: loadFailure.message,
+                  remediation: loadFailure.remediation,
                   loser: { pluginName: String(plugin.manifest.name), source: plugin.source },
                 });
-                return Effect.succeed(plugin);
+                return Effect.succeed({ ...plugin, loadFailure });
               }),
             );
           },

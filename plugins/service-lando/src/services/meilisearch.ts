@@ -15,7 +15,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -52,7 +51,6 @@ export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed s
 
 const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const port = plannedPort(service, MEILISEARCH_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -61,7 +59,7 @@ const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("MEILI_ENV", "development");
   ctx.addEnv("MEILI_HTTP_ADDR", `0.0.0.0:${port}`);
   ctx.addStorage({
-    store: `${appName}-meilisearch-data`,
+    store: ctx.serviceStoreName("meilisearch-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

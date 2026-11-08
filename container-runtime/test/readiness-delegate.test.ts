@@ -3,9 +3,8 @@ import { ServiceExecError } from "@lando/sdk/errors";
 import { AppPlan, type HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result, Schema, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const probe = {
   kind: "command",
@@ -57,6 +56,9 @@ const fixture = (plan: AppPlan) => {
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.path.startsWith("/networks/"))
           return {
             status: 200,

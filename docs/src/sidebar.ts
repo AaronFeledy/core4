@@ -108,7 +108,8 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "Everyday commands", slug: "guides/cli/everyday-commands" },
-          { label: "Refresh a stale app cache", slug: "guides/cli/cache-refresh" },
+          { label: "Check an app plan", slug: "guides/cli/cache-refresh" },
+          { label: "Clean up the remote source cache", slug: "guides/cli/sources-gc" },
           { label: "See more CLI output", slug: "guides/cli/verbosity-and-debug" },
           { label: "Trace a slow command", slug: "guides/cli/trace-a-command" },
           { label: "Export traces", slug: "guides/cli/export-traces" },

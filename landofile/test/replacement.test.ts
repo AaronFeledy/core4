@@ -25,6 +25,20 @@ const replace = (content: string) =>
     },
   );
 
+test("preserves the decoder kind through replacement validation", async () => {
+  const result = await Effect.runPromiseExit(
+    replace("services:\n  web:\n    image: nginx\n    primary: maybe\n"),
+  );
+  expect(Exit.isFailure(result)).toBe(true);
+  if (Exit.isFailure(result)) {
+    const error = Cause.findErrorOption(result.cause);
+    expect(error._tag === "Some" ? error.value : undefined).toMatchObject({
+      _tag: "LandofileWriteValidationError",
+      issues: [expect.objectContaining({ path: ["services", "web", "primary"], kind: "type" })],
+    });
+  }
+});
+
 test("does not acquire removed dependencies or parse old target bytes", async () => {
   await writeFile(join(root, ".lando.yml"), "name: old\nincludes: [missing.yml]\n");
   await Effect.runPromise(replace("name: repaired\n"));

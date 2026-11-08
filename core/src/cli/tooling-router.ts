@@ -1,4 +1,6 @@
+import { resolveLandoRoots } from "@lando/paths";
 import { Effect } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import {
   type BunShellScriptEmptyError,
@@ -12,10 +14,7 @@ import {
 } from "@lando/sdk/errors";
 
 import { compileBunShellScriptCommand } from "@lando/engine/cache/command-compiler";
-import {
-  readAppCommandCacheForCwdDetailed,
-  readFreshAppCommandCacheForCwd,
-} from "@lando/engine/cache/command-index-writer";
+import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
 import { findAppRoot } from "@lando/landofile/discovery";
 import {
@@ -28,11 +27,15 @@ import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { toolingCacheRecovery } from "./tooling-cache-status";
+import { readCliAppCommandCache } from "./tooling-command-cache";
 import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
-export { type ToolingRoute, type NormalizedToolingRoute, toolingHelpRequested } from "./tooling-route";
-
-const UNKNOWN_REMEDIATION = "Check the task name with `lando help` or inspect the app's tooling definitions.";
+export {
+  type ToolingRoute,
+  type NormalizedToolingRoute,
+  toolingHelpRequested,
+  toolingVersionRequested,
+} from "./tooling-route";
 
 const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId);
@@ -40,6 +43,9 @@ const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;
+  readonly rebuild?: boolean;
+  /** Allow the slow-rebuild stderr notice; callers that resolve before output modes are set decide here. */
+  readonly rebuildNotice?: boolean;
   /** The invocation's plugin catalog; routing never acquires a second one. */
   readonly catalog?: PluginCommandCatalog;
 }
@@ -52,9 +58,11 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
 > {
   const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return undefined;
+  const roots = resolveLandoRoots({ env: (yield* CliInvocation).env });
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
-    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+    cacheRoot: options.cacheRoot ?? roots.userCacheRoot,
+    roots,
   }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
   if (cache === null) return undefined;
   const catalog = options.catalog ?? createPluginCommandCatalog();
@@ -94,8 +102,12 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return { _tag: "not-tooling" } as const;
 
-  const receipt = yield* readAppCommandCacheForCwdDetailed({
+  const receipt = yield* readCliAppCommandCache({
     cwd: appRoot,
+    // A non-fresh index already yields to a built-in alias below; rebuilding first would only run
+    // app compile side effects (include pinning) ahead of a command that owns its own policy.
+    rebuild: options.rebuild !== false && resolveBuiltInCommand(token) === undefined,
+    ...(options.rebuildNotice === undefined ? {} : { rebuildNotice: options.rebuildNotice }),
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(
     // A built-in owns its Landofile policy (teardown tolerates the conflict, start reports it),
@@ -115,6 +127,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     }
     if (name === undefined) return { _tag: "not-tooling" } as const;
     const commandId = `app:${name}`;
+    if (receipt?.status === "rebuild-failed") {
+      const { sourcePath, error } = receipt;
+      return { _tag: "cache-miss", reason: "rebuild-failed", commandId, name, sourcePath, error } as const;
+    }
     return {
       _tag: "cache-miss",
       commandId,
@@ -162,12 +178,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     const customEntry = cache.entries.find((candidate) => candidate.id === custom);
     const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
     if (customEntry === undefined)
-      return {
-        _tag: "unknown-tooling",
-        commandId: custom,
-        name: customName,
-        remediation: UNKNOWN_REMEDIATION,
-      } as const;
+      return { _tag: "unknown-tooling", commandId: custom, name: customName } as const;
     if (customEntry.source === "bun-script") {
       return bunScriptRoute(customEntry, appRoot, cache);
     }
@@ -202,12 +213,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
       const entry = yield* Effect.fromResult(compileBunShellScriptCommand(script));
       return { ...bunScriptRoute(entry, appRoot, cache), relativePath: script.relativePath };
     }
-    return {
-      _tag: "unknown-tooling",
-      commandId,
-      name,
-      remediation: UNKNOWN_REMEDIATION,
-    } as const;
+    return { _tag: "unknown-tooling", commandId, name } as const;
   }
 
   if (entry.source === "bun-script") {
@@ -216,19 +222,24 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);
 });
 
+type ToolingCacheMiss = Extract<ToolingRoute, { readonly _tag: "cache-miss" }>;
+
+export const toolingRouteFailure = (route: ToolingCacheMiss, hint?: string): unknown => {
+  if (route.reason === "rebuild-failed") return route.error;
+  return toolingRouteError(
+    hint === undefined ? route : { ...route, remediation: `${route.remediation} ${hint}` },
+  );
+};
+
 export const toolingRouteError = (
-  route: Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>,
+  route: Exclude<ToolingCacheMiss, { readonly reason: "rebuild-failed" }>,
 ): ToolingCommandUnavailableError =>
   new ToolingCommandUnavailableError({
-    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable (${route._tag === "unknown-tooling" ? "unknown-command" : route.reason}).`,
+    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable (${route.reason}).`,
     commandId: route.commandId,
     tool: route.name,
-    reason: route._tag === "unknown-tooling" ? "unknown-command" : route.reason,
-    ...(route._tag === "cache-miss" && route.staleReason !== undefined
-      ? { staleReason: route.staleReason }
-      : {}),
-    ...(route._tag === "cache-miss" && route.sourcePath !== undefined
-      ? { sourcePath: route.sourcePath }
-      : {}),
+    reason: route.reason,
+    ...(route.staleReason === undefined ? {} : { staleReason: route.staleReason }),
+    ...(route.sourcePath === undefined ? {} : { sourcePath: route.sourcePath }),
     remediation: route.remediation,
   });

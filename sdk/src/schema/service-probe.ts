@@ -39,6 +39,7 @@ export const probeTargetError = (
   return new HealthcheckTargetUnsupportedError({
     service: String(service),
     target: probe.executionTarget ?? "service",
+    role,
     message: nativeUnsupported
       ? "Native healthcheck cannot select a host target or an explicit user."
       : "Host readiness requires its own command without a container user or listener.",
