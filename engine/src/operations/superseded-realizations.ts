@@ -1,12 +1,17 @@
 import { AppResolveError, FileSyncStartError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { type AppPlan, planDataId } from "@lando/sdk/schema";
-import { EventService, FileSyncEngine, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
+import {
+  EventService,
+  FileSyncEngine,
+  ManagedFileTransactionGuard,
+  type RuntimeProviderShape,
+  StateStore,
+} from "@lando/sdk/services";
 import { quoteYamlScalar } from "@lando/sdk/yaml";
 import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
+import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { readJournal } from "./accelerated-start-journal.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
@@ -17,27 +22,35 @@ import {
 } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 
+export const validateSelectedRename = (
+  target: ResolvedAppTarget,
+  superseded: readonly AppPlan[],
+  selected: boolean,
+) =>
+  selected && superseded.length > 0
+    ? Effect.fail(
+        new AppResolveError({
+          reason: "mismatch",
+          detail: "applied-state",
+          message: `App folder ${target.root} has an earlier name: ${superseded.map((plan) => plan.name).join(", ")}. Selected services cannot reconcile a rename.`,
+          remediation: "Run `lando start` or whole-app `lando rebuild` first.",
+        }),
+      )
+    : Effect.void;
+
 /** Runs under the root mutation lock, before acquiring any desired-plan volume locks. */
 export const retireSupersededRealizations = Effect.fn("AppOperation.retireSupersededRealizations")(function* (
   target: ResolvedAppTarget,
   superseded: readonly AppPlan[],
   execution: {
-    readonly provider: PreparedRuntimeProvider;
+    readonly provider: RuntimeProviderShape;
     readonly selectedServices?: boolean;
     readonly volumes?: boolean;
     readonly purgeCaches?: boolean;
   },
 ) {
   if (superseded.length === 0) return false;
-  if (execution.selectedServices === true)
-    return yield* Effect.fail(
-      new AppResolveError({
-        reason: "mismatch",
-        detail: "applied-state",
-        message: `App folder ${target.root} has an earlier name: ${superseded.map((plan) => plan.name).join(", ")}. Selected services cannot reconcile a rename.`,
-        remediation: "Run `lando start` or whole-app `lando rebuild` first.",
-      }),
-    );
+  yield* validateSelectedRename(target, superseded, execution.selectedServices === true);
   // Read the root-keyed record without validating it against the desired name's plan.
   const { pending, path } = yield* readJournal(target.app);
   if (pending !== null && pending.phase !== "completed") {
@@ -84,7 +97,7 @@ export const retireSupersededRealizations = Effect.fn("AppOperation.retireSupers
     const context = yield* Effect.context<
       Effect.Services<typeof disposal.dispose> | Effect.Services<ReturnType<typeof cleanupAppWorkers>>
     >();
-    yield* withLaunchVolumeCoordination({
+    yield* withPlanVolumeCoordination({
       plan: old,
       provider,
       stateStore,

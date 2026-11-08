@@ -68,7 +68,7 @@ import {
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
-import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
 import {
   publishPlacementVolumeTransitionNotices,
   publishVolumeTransitionNotices,
@@ -296,10 +296,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         const plan = resolvedTarget.plan;
         const scoped = options.services !== undefined && options.services.length > 0;
         const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
+        const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
+        yield* validateSelectedRename(resolvedTarget, placement.superseded, scoped);
         const provider = yield* selectPreparedProvider(plan);
         const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(resolvedTarget, provider);
         const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
-        const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
         if (!scoped) yield* claimDataIdentityBeforeRetirement(resolvedTarget, placement.superseded, provider);
         const retired = yield* retireSupersededRealizations(resolvedTarget, placement.superseded, {
           provider,

@@ -24,7 +24,6 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
-import { selectPreparedProvider } from "../providers/prepared.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
@@ -104,9 +103,7 @@ const stopAppWithResolvedPlan = (
         });
         yield* preflightStopApp(validatedTarget);
         retired = yield* retireSupersededRealizations(validatedTarget, placement.superseded, {
-          provider: yield* selectPreparedProvider(
-            placement.plan ?? placement.superseded[0] ?? validatedTarget.plan,
-          ),
+          provider: yield* registry.select(placement.plan ?? placement.superseded[0] ?? validatedTarget.plan),
         });
       }
       yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;

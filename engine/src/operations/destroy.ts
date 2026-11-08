@@ -27,7 +27,6 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
-import { selectPreparedProvider } from "../providers/prepared.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -90,9 +89,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
             ...target.app,
             id: placement.plan?.id ?? placement.superseded[0]?.id ?? target.app.id,
           });
-          const provider = yield* selectPreparedProvider(
-            placement.plan ?? placement.superseded[0] ?? target.plan,
-          );
+          const provider = yield* registry.select(placement.plan ?? placement.superseded[0] ?? target.plan);
           yield* prepareDestroyFileSync(target, provider);
           retired = yield* retireSupersededRealizations(target, placement.superseded, {
             provider,

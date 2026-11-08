@@ -61,7 +61,7 @@ import {
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
-import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
 import {
   publishPlacementVolumeTransitionNotices,
   withVolumeTransitionNotices,
@@ -202,12 +202,13 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
         const plan = resolvedTarget.plan;
         const selectedPlan = yield* selectRebuildPlan(plan, options.services);
         const scoped = options.services !== undefined && options.services.length > 0;
+        const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
+        yield* validateSelectedRename(resolvedTarget, placement.superseded, scoped);
         const provider = yield* selectPreparedProvider(plan);
         const preparedOverlays = yield* prepareStartOverlays(
           { ...resolvedTarget, plan: selectedPlan },
           provider,
         );
-        const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
         if (!scoped) yield* claimDataIdentityBeforeRetirement(resolvedTarget, placement.superseded, provider);
         const retired = yield* retireSupersededRealizations(resolvedTarget, placement.superseded, {
           provider,
