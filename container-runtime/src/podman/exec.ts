@@ -12,19 +12,6 @@ import {
 
 export interface ExecOptions extends TransportOptions, ExecSupervisionOptions {}
 
-const interrupted = (signal: AbortSignal | undefined): Effect.Effect<never> =>
-  signal === undefined
-    ? Effect.never
-    : Effect.callback((resume) => {
-        if (signal.aborted) {
-          resume(Effect.interrupt);
-          return;
-        }
-        const abort = () => resume(Effect.interrupt);
-        signal.addEventListener("abort", abort, { once: true });
-        return Effect.sync(() => signal.removeEventListener("abort", abort));
-      });
-
 export const execStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -37,11 +24,10 @@ export const execStream = (
     if (options.api === undefined) return Stream.fail(missingApi(options.ctx, "exec"));
     if (command.tty === true || command.raw === true || options.raw === true)
       return transportExecStream(plan, target, command, options);
-    return Stream.unwrap(
-      Effect.raceFirst(prepareExecCommand(plan, target, command, options), interrupted(command.signal)).pipe(
-        Effect.map((prepared) => supervisedExecStream(plan, target, prepared, options)),
-      ),
-    );
+    return supervisedExecStream(plan, target, command, {
+      ...options,
+      prepareCommand: prepareExecCommand(plan, target, command, options),
+    });
   }).pipe(Stream.withSpan("RuntimeProvider.execStream"));
 
 export const exec = Effect.fn("RuntimeProvider.exec")(function* (

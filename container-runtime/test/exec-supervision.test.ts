@@ -6,7 +6,7 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ProviderError } from "@lando/sdk/services";
-import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Stream } from "effect";
+import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, type Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { supervisedExecStream as execStream } from "../src/exec-supervision.ts";
@@ -77,6 +77,7 @@ type Stage =
   | "collect"
   | "cleanup";
 interface Hooks {
+  readonly prepareCommand?: Effect.Effect<CommandSpec, ProviderError, Scope.Scope>;
   readonly launchExitCode?: number;
   readonly stderr?: string;
   readonly installError?: ProviderError;
@@ -267,7 +268,12 @@ const fixture = (hooks: Hooks = {}) => {
         ...(controller === undefined ? {} : { signal: controller.signal }),
         ...extra,
       },
-      { api, ctx, ...supervisedExecFixtureOptions(api) },
+      {
+        api,
+        ctx,
+        ...supervisedExecFixtureOptions(api),
+        ...(hooks.prepareCommand === undefined ? {} : { prepareCommand: hooks.prepareCommand }),
+      },
     ).pipe(
       Stream.runForEach((chunk) =>
         Effect.sync(() => {
@@ -308,6 +314,43 @@ const terminalChunks = (chunks: readonly ExecChunk[]) => chunks.filter((chunk) =
 const flushWatchReply = Effect.promise<void>(() => new Promise((resolve) => setImmediate(resolve)));
 
 describe("non-TTY exec supervision lifecycle", () => {
+  test("preparation failure preserves its provider tag before any supervisor can start", async () => {
+    const error = providerFailure("command-preparation-failed");
+    const f = fixture({ prepareCommand: Effect.fail(error) });
+    const { exit, chunks } = await f.run();
+    if (Exit.isSuccess(exit)) throw new Error("Preparation unexpectedly succeeded.");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(error);
+    expect(f.events).toEqual([]);
+    expect(terminalChunks(chunks)).toEqual([]);
+  });
+
+  test("cancellation joins pending preparation before returning", async () => {
+    let entered: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let stopped = false;
+    const controller = new AbortController();
+    const f = fixture({
+      prepareCommand: Effect.sync(entered).pipe(
+        Effect.andThen(Effect.never),
+        Effect.ensuring(
+          Effect.sync(() => {
+            stopped = true;
+          }),
+        ),
+      ),
+    });
+    const pending = f.run(controller);
+    await started;
+    controller.abort("SIGINT");
+    const { exit, chunks } = await pending;
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    expect(stopped).toBe(true);
+    expect(f.events).toEqual([]);
+    expect(terminalChunks(chunks)).toEqual([]);
+  });
+
   test.each([127, 126])("launch failure %s completes with stderr and cleans up", async (exitCode) => {
     const stderr = `lando: test-command: ${exitCode === 127 ? "command not found" : "cannot execute"}\n`;
     const f = fixture({ exitCode, launchExitCode: exitCode, stderr });

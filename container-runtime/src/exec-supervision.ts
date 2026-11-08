@@ -4,7 +4,7 @@ import { ServiceExecError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
-import { type Cause, Deferred, Duration, Effect, Fiber, Queue, Stream } from "effect";
+import { type Cause, Deferred, Duration, Effect, Fiber, Queue, type Scope, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { verifiedExecHelper } from "./exec-helper-artifact.ts";
 import { installExecHelper } from "./exec-helper-install.ts";
@@ -19,6 +19,7 @@ export interface ExecSupervisionOptions {
   readonly ctx: ProviderErrorContext;
   readonly resolveContainerHelper?: ResolveContainerHelper | undefined;
   readonly helperTarget?: ContainerHelperTarget | undefined;
+  readonly prepareCommand?: Effect.Effect<CommandSpec, ProviderError, Scope.Scope>;
 }
 interface Receipt {
   readonly state: "initialized" | "ready" | "running" | "finished" | "cancelled" | "collected";
@@ -85,6 +86,9 @@ export const supervisedExecStream = (
           ),
           Effect.raceFirst(abortBeforeOwnership),
         );
+      const preparation = yield* beforeOwnership(
+        Effect.scoped(options.prepareCommand ?? Effect.succeed(command)),
+      ).pipe(Effect.forkChild);
       const requestApi = api.request;
       const streamApi = api.stream;
       const request = (input: EngineHttpRequest) =>
@@ -137,6 +141,7 @@ export const supervisedExecStream = (
       const helperPath = yield* beforeOwnership(
         installExecHelper(api, options.ctx, container, { bytes, digest }),
       );
+      const preparedCommand = yield* Fiber.join(preparation);
       const nonce = randomBytes(16).toString("hex");
       const directory = `/tmp/lando-exec-session-${nonce}`;
       const inspectExit = (id: string) =>
@@ -441,10 +446,10 @@ export const supervisedExecStream = (
           Deferred.fail(receipt, error).pipe(Effect.andThen(Queue.fail(output, error)), Effect.asVoid),
         ),
       );
-      const { signal: _signal, ...payloadCommand } = command;
+      const { signal: _signal, ...payloadCommand } = preparedCommand;
       const supervisedCommand: CommandSpec = {
         ...payloadCommand,
-        command: [helperPath, "exec-supervisor", directory, nonce, "--", ...command.command],
+        command: [helperPath, "exec-supervisor", directory, nonce, "--", ...preparedCommand.command],
         raw: true,
         tty: false,
       };

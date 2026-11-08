@@ -139,35 +139,37 @@ export const installExecHelper = (
         const container = encodeURIComponent(containerId);
         const directory = `lando-exec-${artifact.digest}`;
         const path = `/tmp/${directory}`;
-        // Stop after the first header: never collect the recursively archived contents of /tmp.
-        let prefixLength = 0;
-        const prefix: Uint8Array[] = [];
-        yield* stream({ method: "GET", path: `/containers/${container}/archive?path=/tmp` }).pipe(
-          Stream.map((chunk) => {
-            const part = chunk.subarray(0, TAR_BLOCK_SIZE - prefixLength);
-            prefix.push(part);
-            prefixLength += part.length;
-            return prefixLength;
-          }),
-          Stream.takeUntil((length) => length === TAR_BLOCK_SIZE),
-          Stream.runDrain,
-        );
-        const tmpHeader = new Uint8Array(prefixLength);
-        let prefixOffset = 0;
-        for (const part of prefix) {
-          tmpHeader.set(part, prefixOffset);
-          prefixOffset += part.length;
-        }
-        const tmp = headerMetadata(tmpHeader);
-        if (
-          !tmp.valid ||
-          tmp.name !== "tmp/" ||
-          tmp.type !== 53 ||
-          tmp.size !== 0 ||
-          tmp.uid !== 0 ||
-          (tmp.mode !== 0o1777 && tmp.mode !== 0o755)
-        )
-          return yield* Effect.fail(failure("unsafe-tmp-directory"));
+        const validateTmp = Effect.gen(function* () {
+          // Stop after the first header: never collect the recursively archived contents of /tmp.
+          let prefixLength = 0;
+          const prefix: Uint8Array[] = [];
+          yield* stream({ method: "GET", path: `/containers/${container}/archive?path=/tmp` }).pipe(
+            Stream.map((chunk) => {
+              const part = chunk.subarray(0, TAR_BLOCK_SIZE - prefixLength);
+              prefix.push(part);
+              prefixLength += part.length;
+              return prefixLength;
+            }),
+            Stream.takeUntil((length) => length === TAR_BLOCK_SIZE),
+            Stream.runDrain,
+          );
+          const tmpHeader = new Uint8Array(prefixLength);
+          let prefixOffset = 0;
+          for (const part of prefix) {
+            tmpHeader.set(part, prefixOffset);
+            prefixOffset += part.length;
+          }
+          const tmp = headerMetadata(tmpHeader);
+          if (
+            !tmp.valid ||
+            tmp.name !== "tmp/" ||
+            tmp.type !== 53 ||
+            tmp.size !== 0 ||
+            tmp.uid !== 0 ||
+            (tmp.mode !== 0o1777 && tmp.mode !== 0o755)
+          )
+            return yield* Effect.fail(failure("unsafe-tmp-directory"));
+        });
 
         let observations = verified.get(api);
         if (observations === undefined) {
@@ -228,7 +230,8 @@ export const installExecHelper = (
           if (!trusted) return yield* Effect.fail(failure("untrusted-existing-helper"));
           return true;
         });
-        if (!(yield* verify)) {
+        const [, exists] = yield* Effect.all([validateTmp, verify], { concurrency: "unbounded" });
+        if (!exists) {
           observations.delete(key);
           const response = yield* request({
             method: "PUT",
