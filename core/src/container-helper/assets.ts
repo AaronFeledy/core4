@@ -106,7 +106,10 @@ export const extractEmbeddedContainerHelper = async (input: {
     throw new HelperResolveFailure("Expected exactly one embedded container helper for this architecture.");
   const path = join(input.cacheRoot, `linux-${input.target.arch}`, match.digest, CONTAINER_HELPER_FILE);
   const cached = await fromFileIfPresent(input.target, path);
-  if (cached?.digest === match.digest) return cached;
+  if (cached?.digest === match.digest) {
+    await chmod(dirname(dirname(path)), 0o755);
+    return cached;
+  }
   const bytes = gunzipSync(new Uint8Array(await match.file.arrayBuffer()));
   if (sha256Hex(bytes) !== match.digest)
     throw new HelperResolveFailure("Embedded container helper failed its checksum.");

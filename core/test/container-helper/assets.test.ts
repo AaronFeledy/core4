@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -156,8 +156,10 @@ describe("extractEmbeddedContainerHelper", () => {
     const files = [embedded(`lando-container-helper-linux-x64-${digest}.gz`, bytes)];
     const first = await extractEmbeddedContainerHelper({ target, files, cacheRoot });
     const before = (await stat(first.path)).mtimeMs;
+    await chmod(join(cacheRoot, "linux-x64"), 0o700);
     const second = await extractEmbeddedContainerHelper({ target, files, cacheRoot });
     expect(second).toEqual(first);
     expect((await stat(second.path)).mtimeMs).toBe(before);
+    expect((await stat(join(cacheRoot, "linux-x64"))).mode & 0o777).toBe(0o755);
   });
 });
