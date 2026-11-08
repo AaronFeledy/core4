@@ -21,6 +21,7 @@ import {
   renderPluginOwnedCommandHelp,
   tryPluginOwnedCommand,
 } from "../../src/cli/run-plugin-owned-command.ts";
+import { processInvocationContext } from "../../src/runtime/invocation-context.ts";
 
 const DbImportResult = Schema.Struct({
   imported: Schema.Boolean,
@@ -179,6 +180,7 @@ describe("plugin-owned command dispatch", () => {
   test("interrupts a pending async flag parser before the command runs", async () => {
     // Given a plugin command whose flag parser never settles.
     const parsing = Promise.withResolvers<void>();
+    const exitCodes: number[] = [];
     let ran = false;
     const spec: ExecutableCommandSpec = {
       id: "fixture:hang",
@@ -200,22 +202,25 @@ describe("plugin-owned command dispatch", () => {
           ran = true;
         }),
     };
-    const catalog = createPluginCommandCatalog(undefined, () =>
-      Effect.succeed({
-        commands: [
-          {
-            id: spec.id,
-            descriptor: { id: spec.id, summary: "Hang while parsing." },
-            load: async () => spec,
-            pluginName: "@example/hang",
-            source: "explicit",
-          },
-        ],
-        plugins: [],
-        globalPlugins: [],
-        certificateAuthorities: [],
-        hostContext: Context.empty(),
-      }),
+    const catalog = createPluginCommandCatalog(
+      undefined,
+      () =>
+        Effect.succeed({
+          commands: [
+            {
+              id: spec.id,
+              descriptor: { id: spec.id, summary: "Hang while parsing." },
+              load: async () => spec,
+              pluginName: "@example/hang",
+              source: "explicit",
+            },
+          ],
+          plugins: [],
+          globalPlugins: [],
+          certificateAuthorities: [],
+          hostContext: Context.empty(),
+        }),
+      { ...processInvocationContext(), setExitCode: (code) => exitCodes.push(code) },
     );
     const controller = new AbortController();
 
@@ -227,6 +232,7 @@ describe("plugin-owned command dispatch", () => {
     // Then dispatch settles without running the command.
     expect(await dispatched).toBe(true);
     expect(ran).toBe(false);
+    expect(exitCodes).toEqual([130]);
   });
 
   test("loads a compliant confirmation flag and passes -y through execution to run", async () => {
