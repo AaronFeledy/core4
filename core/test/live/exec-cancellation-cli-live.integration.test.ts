@@ -75,6 +75,7 @@ for (const variant of variants.flatMap((entry) =>
           DOCKER_HOST: "unix:///var/run/docker.sock",
           LANDO_AGENT_ENV: "0",
           LANDO_TELEMETRY_ENABLED: "false",
+          LANDO_CONTAINER_HELPER_DIR: resolve(import.meta.dir, "../../container-helper/dist"),
         };
         const cli = (args: string[]) =>
           Bun.spawn([...command, ...args], {
@@ -97,6 +98,15 @@ for (const variant of variants.flatMap((entry) =>
         let id: string | undefined;
         let active: ReturnType<typeof cli> | undefined;
         try {
+          const script = [
+            "echo $$ >/tmp/cli-payload",
+            "trap 'echo TERM >/tmp/cli-signal' TERM",
+            "trap 'echo INT >/tmp/cli-int' INT",
+            "setsid sh -c 'trap \"\" TERM INT; sh -c \"$1\"' sh 'nc -lk -p 31337 -e cat </dev/null >/dev/null 2>&1 & echo $! >/tmp/cli-escaped'",
+            "while ! nc -z 127.0.0.1 31337; do sleep 0.05; done",
+            "echo CLI_PAYLOAD_READY",
+            "while :; do sleep 313; done",
+          ].join("; ");
           await Bun.write(
             join(root, ".lando.yml"),
             [
@@ -119,6 +129,14 @@ for (const variant of variants.flatMap((entry) =>
               "    command:",
               "      - sleep",
               "      - '300'",
+              "tooling:",
+              "  serve:",
+              "    service: web",
+              `    user: ${JSON.stringify(user)}`,
+              "    cmd:",
+              "      - sh",
+              "      - -c",
+              `      - ${JSON.stringify(script)}`,
               "",
             ].join("\n"),
           );
@@ -134,6 +152,8 @@ for (const variant of variants.flatMap((entry) =>
             "none",
             "--name",
             serviceContainerName(plan, "web"),
+            "--mount",
+            `type=bind,src=${env.LANDO_CONTAINER_HELPER_DIR}/linux-${process.arch},dst=/run/lando/helper,readonly`,
             "alpine:3.20",
             "sleep",
             "300",
@@ -146,17 +166,29 @@ for (const variant of variants.flatMap((entry) =>
           );
           expect(natural.exitCode, natural.stdout + natural.stderr).toBe(23);
           expect(natural.stdout).toBe("natural");
+          const missing = await complete(cli(["exec", "--user", user, "web", "--", "lando-no-such-command"]));
+          expect(missing.exitCode, missing.stderr).toBe(127);
+          await inside(["sh", "-c", "printf bad >/tmp/cli-nonexec; chmod 600 /tmp/cli-nonexec"]);
+          const denied = await complete(cli(["exec", "--user", user, "web", "--", "/tmp/cli-nonexec"]));
+          expect(denied.exitCode, denied.stderr).toBe(126);
+          const background = await complete(
+            cli([
+              "exec",
+              "--user",
+              user,
+              "web",
+              "--",
+              "sh",
+              "-c",
+              "sleep 319 </dev/null >/dev/null 2>&1 & echo $!; exit 7",
+            ]),
+          );
+          expect(background.exitCode, background.stderr).toBe(7);
+          expect(
+            await inside(["sh", "-c", `kill -0 ${Number(background.stdout.trim())} && echo alive`]),
+          ).toBe("alive");
           await inside(["sh", "-c", "sleep 317 </dev/null >/dev/null 2>&1 & echo $! >/tmp/cli-sentinel"]);
-          const script = [
-            "echo $$ >/tmp/cli-payload",
-            "trap 'echo TERM >/tmp/cli-signal' TERM",
-            "trap 'echo INT >/tmp/cli-int' INT",
-            "setsid sh -c 'trap \"\" TERM INT; sh -c \"$1\"' sh 'nc -lk -p 31337 -e cat </dev/null >/dev/null 2>&1 & echo $! >/tmp/cli-escaped'",
-            "while ! nc -z 127.0.0.1 31337; do sleep 0.05; done",
-            "echo CLI_PAYLOAD_READY",
-            "while :; do sleep 313; done",
-          ].join("; ");
-          active = cli(["exec", "--format=json", "--user", user, "web", "--", "sh", "-c", script]);
+          active = cli(["serve", "--format=json"]);
           const running = active;
           let stdout = "";
           let stderr = "";
@@ -201,10 +233,10 @@ for (const variant of variants.flatMap((entry) =>
           );
           const owned = execs.filter((exec) =>
             [exec.ProcessConfig.entrypoint, ...exec.ProcessConfig.arguments].some(
-              (arg) => arg === "exec-supervisor" || arg === "exec-control",
+              (arg) => arg === "exec-run",
             ),
           );
-          expect(owned).toHaveLength(2);
+          expect(owned).toHaveLength(1);
           expect(owned.every((exec) => exec.Running)).toBe(true);
           const identities = await inside([
             "sh",
@@ -257,7 +289,7 @@ for (const variant of variants.flatMap((entry) =>
             await inside([
               "sh",
               "-c",
-              "kill -0 $(cat /tmp/cli-sentinel) || exit 1; for file in /tmp/cli-payload /tmp/cli-escaped; do test ! -e /proc/$(cat $file) || exit 2; done; ps -o args | grep -E 'exec-supervisor|exec-control|^sleep 313$' | grep -v grep || true",
+              "kill -0 $(cat /tmp/cli-sentinel) || exit 1; for file in /tmp/cli-payload /tmp/cli-escaped; do test ! -e /proc/$(cat $file) || exit 2; done; ps -o args | grep -E 'exec-run|^sleep 313$' | grep -v grep || true",
             ]),
           ).toBe("");
           expect(
