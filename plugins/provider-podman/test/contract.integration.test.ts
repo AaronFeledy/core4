@@ -604,6 +604,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         return Stream.make(attachBytesFrame(1, containers.get(name)?.stdout ?? new Uint8Array()));
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
+        request.onResponseHead?.();
         const name = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/attach?")),
         );
@@ -628,7 +629,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             ) {
               volumes.set(volume, await collectAsyncBytes(request.stdin));
             }
-            return Stream.empty;
+            return Stream.make(attachBytesFrame(1, container?.stdout ?? new Uint8Array()));
           }),
         );
       }
