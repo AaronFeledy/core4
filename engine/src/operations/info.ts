@@ -149,6 +149,9 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
   return {
     app: plan.name,
+    ...(plan.identity?.dataName === undefined || plan.identity.dataName === plan.name
+      ? {}
+      : { dataName: plan.identity.dataName }),
     services,
     fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices),
     ...(hostProxy === undefined ? {} : { hostProxy }),

@@ -43,6 +43,13 @@ test.each(
       ...old,
       id: AppId.make("renamed"),
       name: "renamed",
+      // Start reconciles a rename to the data name the folder already uses.
+      identity: {
+        ...old.identity,
+        appRoot: plan.root,
+        ownerKey: appIdentityKey("owner", plan.root),
+        dataName: "previous",
+      },
       services: {
         [web.name]: {
           ...web,

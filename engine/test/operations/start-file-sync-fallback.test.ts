@@ -25,6 +25,7 @@ import {
   PortablePath,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
   fileSyncVolumeName,
   serviceAppMount,
 } from "@lando/sdk/schema";
@@ -1606,6 +1607,7 @@ describe("pre-apply accelerated mount preparation", () => {
       name: "other-app",
       slug: "other-app",
       root: otherRoot,
+      identity: { appRoot: otherRoot, ownerKey: appIdentityKey("owner", otherRoot), dataName: "other-app" },
       services: {
         [web.name]: {
           ...acceleratedService,

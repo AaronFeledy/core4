@@ -1,6 +1,6 @@
 import { AppResolveError, FileSyncStartError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, planDataId } from "@lando/sdk/schema";
 import { EventService, FileSyncEngine, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { quoteYamlScalar } from "@lando/sdk/yaml";
 import { DateTime, Effect } from "effect";
@@ -102,12 +102,17 @@ export const retireSupersededRealizations = Effect.fn("AppOperation.retireSupers
             },
           );
           yield* disposal.complete;
-          const retained = old.stores
-            .filter((store) => store.kind === "data" && store.scope !== "global")
-            .map((store) => store.name);
+          const carriesData = planDataId(old) === planDataId(target.plan);
+          const retained = carriesData
+            ? []
+            : old.stores
+                .filter((store) => store.kind === "data" && store.scope !== "global")
+                .map((store) => store.name);
           yield* events.publish(
             MessageWarnEvent.make({
-              body: `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
+              body: carriesData
+                ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
+                : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
               timestamp: DateTime.nowUnsafe(),
             }),
           );

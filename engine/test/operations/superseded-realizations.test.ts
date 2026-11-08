@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { AppId, type AppPlan, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import { AppId, type AppPlan, LoadScopedLandofile, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { openJournal } from "../../src/operations/accelerated-start-journal.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -19,6 +19,12 @@ const old: AppPlan = {
 };
 const desired: AppPlan = {
   ...old,
+  identity: {
+    ...old.identity,
+    appRoot: old.root,
+    ownerKey: appIdentityKey("owner", old.root),
+    dataName: old.name,
+  },
   id: AppId.make("renamed"),
   name: "renamed",
   slug: "renamed",
@@ -31,6 +37,12 @@ const target = {
   app: { kind: "user" as const, id: desired.id, root: desired.root },
   root: desired.root,
   plan: desired,
+  landofile: LoadScopedLandofile.make({
+    stage: "load-scoped",
+    document: { name: desired.name },
+    pendingSites: [],
+    context: { appRoot: desired.root, env: {} },
+  }),
 };
 
 test("destroy --volumes after rename reaches old and new names through root ownership", async () => {
@@ -129,7 +141,7 @@ test.each(
         (event) => event.body.includes(old.name) && event.body.includes("renamed"),
       );
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]?.body).toContain("old-data");
+      expect(warnings[0]?.body).not.toContain("old-data");
       expect(warnings[0]?.body).not.toContain("shared-cache");
       expect(byTag(harness.events, "pre-destroy")).toEqual([]);
     } finally {

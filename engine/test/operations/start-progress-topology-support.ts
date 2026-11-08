@@ -19,6 +19,8 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -102,6 +104,11 @@ export const plan: AppPlan = {
   name: "test-start",
   slug: "test-start",
   root: AbsolutePath.make(testAppRoot),
+  identity: {
+    appRoot: AbsolutePath.make(testAppRoot),
+    ownerKey: appIdentityKey("owner", testAppRoot),
+    dataName: "test-start",
+  },
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
@@ -368,11 +375,18 @@ export const makeHarness = (
     Layer.succeed(
       AppPlanner,
       AppPlanner.of({
-        plan: (landofile) =>
+        plan: (landofile, _capabilities, options) =>
           Effect.succeed(
             landofile.document.name === "global"
               ? globalAdmission.globalPlan
-              : { ...plannedApp, valueModel: 1 as const },
+              : {
+                  ...plannedApp,
+                  valueModel: 1 as const,
+                  identity: {
+                    ...planAppIdentity(plannedApp),
+                    dataName: options?.dataName ?? plannedApp.identity?.dataName ?? plannedApp.name,
+                  },
+                },
           ),
       }),
     ),

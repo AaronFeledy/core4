@@ -50,6 +50,8 @@ import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
+import { claimAppDataIdentity, claimDataIdentityBeforeRetirement } from "./data-identity-claim.ts";
+import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
@@ -283,19 +285,22 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     managed?: StartManagedScope,
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
-    const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
-    const plan = resolvedTarget.plan;
-    const scoped = options.services !== undefined && options.services.length > 0;
-    const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
+    const initialTarget = target ?? (yield* resolveDesiredAppTarget);
     const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
-    const provider = yield* selectPreparedProvider(plan);
-    const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(resolvedTarget, provider);
-    const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
     return yield* withAppMutationLock(
-      appLockTarget(plan),
+      appLockTarget(initialTarget.plan),
       Effect.gen(function* () {
+        // FIRST under root lock: reconcile before overlays, placement, retirement, or mutation.
+        const resolvedTarget = yield* reconcileAppDataIdentity(initialTarget);
+        const plan = resolvedTarget.plan;
+        const scoped = options.services !== undefined && options.services.length > 0;
+        const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
+        const provider = yield* selectPreparedProvider(plan);
+        const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(resolvedTarget, provider);
+        const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
         const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
+        if (!scoped) yield* claimDataIdentityBeforeRetirement(resolvedTarget, placement.superseded, provider);
         const retired = yield* retireSupersededRealizations(resolvedTarget, placement.superseded, {
           provider,
           selectedServices: scoped,
@@ -305,6 +310,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           provider,
           stateStore,
           body: Effect.fnUntraced(function* () {
+            yield* claimAppDataIdentity(resolvedTarget);
             const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
             if (pending !== null)
               yield* startApp(

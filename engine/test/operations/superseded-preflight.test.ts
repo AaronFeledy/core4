@@ -40,6 +40,12 @@ test.each(
   async ({ operation, failure }) => {
     const desired = {
       ...acceleratedPlan,
+      // Start reconciles a rename to the data name the folder already uses.
+      identity: {
+        appRoot: acceleratedPlan.root,
+        ownerKey: appIdentityKey("owner", acceleratedPlan.root),
+        dataName: "previous",
+      },
       fileSync: acceleratedPlan.fileSync.map((entry) => ({
         ...entry,
         engineId: failure === "engine" ? "unavailable" : TestFileSyncEngine.id,
