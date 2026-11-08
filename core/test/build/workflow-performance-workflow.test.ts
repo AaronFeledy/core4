@@ -45,6 +45,20 @@ describe("workflow performance rendering", () => {
     expect(workflow).not.toContain("gh api --paginate");
     expect(workflow).toContain("Enforce workflow correctness");
     expect(workflow).not.toContain("continue-on-error");
+    for (const cell of WORKFLOW_PERFORMANCE_CELLS) {
+      const ran = "always() && steps.performance.outcome != 'skipped'";
+      expect(Bun.YAML.parse(workflow)).toMatchObject({
+        jobs: {
+          [`workflow-performance-${cell.id}`]: {
+            steps: expect.arrayContaining([
+              expect.objectContaining({ name: "Render last-30-run trend", if: ran }),
+              expect.objectContaining({ name: "Upload workflow performance report and trend", if: ran }),
+              expect.objectContaining({ name: "Enforce workflow correctness", if: "always()" }),
+            ]),
+          },
+        },
+      });
+    }
     expect(workflow).not.toContain("git push");
   });
 

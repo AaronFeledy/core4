@@ -202,7 +202,7 @@ jobs:
           done < "$ROOT/history-index.tsv"
 
       - name: Render last-30-run trend
-        if: always()
+        if: always() && steps.performance.outcome != 'skipped'
         run: |
           ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
           bun run scripts/workflow-performance-history-cli.ts \
@@ -213,7 +213,7 @@ jobs:
             --markdown "$ROOT/history-summary.md"
 
       - name: Upload workflow performance report and trend
-        if: always()
+        if: always() && steps.performance.outcome != 'skipped'
         uses: actions/upload-artifact@v6
         with:
           name: workflow-performance-linux-x64
@@ -368,7 +368,7 @@ jobs:
           done < "$ROOT/history-index.tsv"
 
       - name: Render last-30-run trend
-        if: always()
+        if: always() && steps.performance.outcome != 'skipped'
         run: |
           ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
           bun run scripts/workflow-performance-history-cli.ts \
@@ -379,7 +379,7 @@ jobs:
             --markdown "$ROOT/history-summary.md"
 
       - name: Upload workflow performance report and trend
-        if: always()
+        if: always() && steps.performance.outcome != 'skipped'
         uses: actions/upload-artifact@v6
         with:
           name: workflow-performance-linux-arm64

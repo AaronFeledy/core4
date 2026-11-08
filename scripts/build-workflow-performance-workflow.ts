@@ -134,7 +134,7 @@ ${landoRootlessPrereqSteps}
           done < "$ROOT/history-index.tsv"
 
       - name: Render last-30-run trend
-        if: always()
+        if: always() && steps.performance.outcome != 'skipped'
         run: |
           ROOT="$RUNNER_TEMP/workflow-performance-${cell.id}"
           bun run scripts/workflow-performance-history-cli.ts \\
@@ -145,7 +145,7 @@ ${landoRootlessPrereqSteps}
             --markdown "$ROOT/history-summary.md"
 
       - name: Upload workflow performance report and trend
-        if: always()
+        if: always() && steps.performance.outcome != 'skipped'
         uses: actions/upload-artifact@v6
         with:
           name: workflow-performance-${cell.id}
