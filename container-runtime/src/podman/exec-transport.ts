@@ -746,6 +746,8 @@ export const exec = Effect.fn("RuntimeProvider.exec")(function* (
     }
   }
 
+  // A signal-cut stream is cancellation, not a broken exec.
+  if (exitCode === undefined && command.signal?.aborted === true) return yield* Effect.interrupt;
   if (exitCode === undefined)
     return yield* Effect.fail(
       new ServiceExecError({

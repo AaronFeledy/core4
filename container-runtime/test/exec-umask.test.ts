@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { DateTime, Effect, Stream } from "effect";
+import { Cause, DateTime, Effect, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -386,13 +386,13 @@ describe("exec umask compensation", () => {
         return Stream.never;
       },
     };
-    const pending = runExec(api, { command: ["id"], signal: controller.signal });
+    const pending = Effect.runPromiseExit(
+      exec(plan, target, { command: ["id"], signal: controller.signal }, { api, ctx }),
+    );
     await started;
     controller.abort();
-    await expect(pending).rejects.toMatchObject({
-      _tag: "ServiceExecError",
-      message: "Container exec ended without an observed exit status.",
-    });
+    const exit = await pending;
+    expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND]]);
   });
   test("does not reuse shell availability or warnings after container recreation", async () => {
