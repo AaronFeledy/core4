@@ -49,6 +49,7 @@ export interface ServiceSeedInput {
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly appRoot: string;
   readonly appName: string;
+  readonly dataName?: string;
   readonly appDefaults: UserAppDefaults;
   readonly registeredServiceTypeIds: ReadonlyArray<string>;
   readonly metadata: ServiceTypeInput["metadata"];
@@ -133,6 +134,7 @@ const resolveSeed = Effect.fnUntraced(function* (
       service: pinnedService,
       appRoot,
       appName,
+      ...(input.dataName === undefined ? {} : { dataName: input.dataName }),
       primary: name === "web",
       metadata: input.metadata,
       ...(input.host === undefined ? {} : { host: input.host }),
@@ -163,7 +165,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
-  const appSlug = normalizeAppSlug(landofile.name ?? "app", appRoot);
+  const appSlug = normalizeAppSlug(input.dataName ?? landofile.name ?? "app", appRoot);
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const attributed = error.issues.map((issue) =>

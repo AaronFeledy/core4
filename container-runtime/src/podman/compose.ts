@@ -15,6 +15,7 @@ import {
   type ServicePlan,
   landoServiceNetworkAttachments,
   landoSharedNetworkName,
+  planDataId,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
@@ -192,7 +193,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
     ...plan.stores.map(
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
         const labels = {
-          [APP_LABEL]: plan.id,
+          [APP_LABEL]: planDataId(plan),
           [PROVIDER_LABEL]: plan.provider,
           [STORE_LABEL]: store.name,
           [STORAGE_SCOPE_LABEL]: store.scope,

@@ -249,7 +249,11 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
   const pruneServices = { paths, privateFileAccess, stateStore } satisfies PruneServices;
   return yield* listServicesInternal({ ...options, prune: true }, ({ discoverEvidence, entry }) =>
     withAppMutationLock(
-      { id: entry.appId, root: entry.appRoot },
+      {
+        id: entry.appId,
+        root: entry.appRoot,
+        kind: entry.scratch === true ? "scratch" : entry.appId === "global" ? "global" : "user",
+      },
       Effect.gen(function* () {
         const currentEvidence = yield* discoverEvidence();
         if (

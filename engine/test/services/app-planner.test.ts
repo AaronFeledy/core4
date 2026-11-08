@@ -3556,9 +3556,12 @@ describe("AppPlannerLayer.layer", () => {
       });
 
       const storeNames = appPlan.stores.map((s) => s.name);
-      expect(storeNames).toContain("composeapp-worker-cache");
-      expect(storeNames).toContain("composeapp-worker-state");
-      expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
+      expect(storeNames).toContain("lando-composeapp_worker-cache");
+      expect(storeNames).toContain("lando-composeapp_worker-state");
+      expect(appPlan.stores.filter((s) => s.name.startsWith("lando-composeapp_"))).toEqual([
+        { name: "lando-composeapp_worker-cache", scope: "app", kind: "data" },
+        { name: "lando-composeapp_worker-state", scope: "app", kind: "data" },
+      ]);
     });
   });
 
@@ -3644,7 +3647,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.stores.map((store) => store.name)).toEqual(
         expect.arrayContaining(["lando-cache-var-cache", "extra-data"]),
       );
-      expect(appPlan.stores.some((store) => store.name === "overlapapp-worker-cache")).toBe(false);
+      expect(appPlan.stores.some((store) => store.name === "lando-overlapapp_worker-cache")).toBe(false);
     });
   });
 
@@ -3905,9 +3908,9 @@ describe("AppPlannerLayer.layer", () => {
 
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
-        "shadowapp-web-app-node-modules-ad806e3f",
-        "shadowapp-web-app-tmp-43bdc5ce",
-        "shadowapp-web-app-vendor-64784057",
+        "lando-shadowapp--web--shadow--app-node-modules-ad806e3f",
+        "lando-shadowapp--web--shadow--app-tmp-43bdc5ce",
+        "lando-shadowapp--web--shadow--app-vendor-64784057",
       ]);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
 
@@ -3946,9 +3949,9 @@ describe("AppPlannerLayer.layer", () => {
 
       const namesUnderscored = planUnderscored.stores.map((s) => s.name);
       const namesHyphenated = planHyphenated.stores.map((s) => s.name);
-      expect(namesUnderscored).toContain("shadowapp-web-app-node-modules-ad806e3f");
-      expect(namesHyphenated).toContain("shadowapp-web-app-node-modules-6a42fc95");
-      expect(namesUnderscored).not.toContain("shadowapp-web-app-node-modules-6a42fc95");
+      expect(namesUnderscored).toContain("lando-shadowapp--web--shadow--app-node-modules-ad806e3f");
+      expect(namesHyphenated).toContain("lando-shadowapp--web--shadow--app-node-modules-6a42fc95");
+      expect(namesUnderscored).not.toContain("lando-shadowapp--web--shadow--app-node-modules-6a42fc95");
     });
   });
 

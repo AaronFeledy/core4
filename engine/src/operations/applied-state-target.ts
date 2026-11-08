@@ -2,13 +2,32 @@ import { basename } from "node:path";
 import { Effect } from "effect";
 
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
-import { type AbsolutePath, type AppPlan, type ResourceOwnership, appIdentityKey } from "@lando/sdk/schema";
-import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type AppRef,
+  type ResourceOwnership,
+  appIdentityKey,
+  normalizeAppSlug,
+} from "@lando/sdk/schema";
+import {
+  type AppliedOrphanGroup,
+  LandofileService,
+  type ProviderError,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { type ResolvedAppTarget, resolveDesiredAppTarget, userAppRef } from "../landofile/app-resolution.ts";
+import {
+  type ResolvedAppTarget,
+  loadUserLandofileAt,
+  resolveDesiredAppTarget,
+  userAppRef,
+} from "../landofile/app-resolution.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
+import { TeardownProvider } from "../providers/app-placement.ts";
+import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 
 const mismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -83,6 +102,7 @@ export type TeardownResolution =
   | {
       readonly kind: "applied";
       readonly target: ResolvedAppTarget;
+      readonly reconcileApp?: AppRef;
       readonly ownership?: ReadonlyArray<ResourceOwnership>;
     }
   | {
@@ -104,13 +124,14 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
   root: AbsolutePath,
   landofilePresent: boolean,
   targetFor: (plan: AppPlan) => Effect.Effect<ResolvedAppTarget, E, R>,
+  app?: Pick<AppRef, "kind" | "id">,
 ): Effect.fn.Return<
   TeardownResolution,
   E | AppResolveError | ProviderError | NoProviderInstalledError,
   R | RuntimeProviderRegistry
 > {
   const registry = yield* RuntimeProviderRegistry;
-  const evidence = yield* registry.resolveTeardownEvidence(root);
+  const evidence = yield* registry.resolveTeardownEvidence(root, app);
   switch (evidence.kind) {
     case "applied":
       yield* registry.assertAppliedStateReadable?.(evidence.plan) ?? Effect.void;
@@ -153,14 +174,34 @@ export const resolveTeardownResolution = Effect.gen(function* () {
   const identity = yield* resolveAppIdentity(discovered ?? (yield* discoveryCwd()));
   const root = identity.appRoot;
   const landofilePresent = discovered !== undefined;
-  return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget);
+  return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget).pipe(
+    Effect.catchTag("AppResolveError", (error) => {
+      if (error.reason !== "ambiguous" || !landofilePresent) return Effect.fail(error);
+      return Effect.gen(function* () {
+        const loaded = yield* loadUserLandofileAt(yield* LandofileService, root).pipe(
+          Effect.catch(() => Effect.fail(error)),
+        );
+        const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
+        const registry = yield* RuntimeProviderRegistry;
+        const providerId = yield* TeardownProvider;
+        const plans = (yield* registry.appliedPlansFor(root)).filter(
+          (plan) =>
+            (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
+        );
+        const selected = plans.find((plan) => plan.id === app.id) ?? plans[0];
+        if (selected === undefined) return yield* Effect.fail(error);
+        const resolution = yield* teardownResolutionAt(root, true, appliedStateTarget, userAppRef(selected));
+        return resolution.kind === "applied" ? { ...resolution, reconcileApp: app } : resolution;
+      });
+    }),
+  );
 });
 
 export const withTeardownResolution = <A, E, R>(handlers: {
   readonly owned: (
     resolution: Extract<TeardownResolution, { readonly kind: "owned" }>,
   ) => Effect.Effect<A, E, R>;
-  readonly applied: (target: ResolvedAppTarget) => Effect.Effect<A, E, R>;
+  readonly applied: (target: ResolvedAppTarget, reconcileApp?: AppRef) => Effect.Effect<A, E, R>;
   readonly orphans: (
     resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
   ) => Effect.Effect<A, E, R>;
@@ -172,7 +213,7 @@ export const withTeardownResolution = <A, E, R>(handlers: {
     Effect.flatMap((resolution) => {
       switch (resolution.kind) {
         case "applied":
-          return handlers.applied(resolution.target);
+          return handlers.applied(resolution.target, resolution.reconcileApp);
         case "orphans":
           return handlers.orphans(resolution);
         case "owned":

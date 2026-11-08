@@ -32,9 +32,13 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 
 import { makeLandoPaths } from "@lando/paths";
-const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
+const testStateStoreLayer = Layer.merge(
+  layerTransactionGuard,
+  Layer.succeed(StateStore, makeTestStateStore().service),
+);
 import type {
   AppSelector,
   AppliedFileSyncInspection,

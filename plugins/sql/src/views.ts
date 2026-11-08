@@ -1,11 +1,13 @@
 import {
   AbsolutePath,
+  AppId,
   AppPlan,
   DatabaseConnection,
   Environment,
   ServiceCreds,
   type ServicePlan,
   planAppIdentity,
+  planDataId,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { Predicate } from "effect";
@@ -40,6 +42,7 @@ export type SqlPlan = {
     readonly appRoot: string;
     readonly ownerKey: string;
     readonly repoGroupKey?: string;
+    readonly dataName?: string;
   };
   readonly committedLiteralDigests?: NonNullable<AppPlan["committedLiteralDigests"]>;
   readonly extensions?: AppPlan["extensions"];
@@ -53,6 +56,13 @@ export const sqlPlanIdentity = (plan: SqlPlan) =>
     ...(plan.identity === undefined
       ? {}
       : { identity: { ...plan.identity, appRoot: AbsolutePath.make(plan.identity.appRoot) } }),
+  });
+
+export const sqlPlanDataId = (plan: SqlPlan) =>
+  planDataId({
+    id: AppId.make(plan.id),
+    root: AbsolutePath.make(plan.root),
+    identity: sqlPlanIdentity(plan),
   });
 
 const objectOrArray = Predicate.or(Predicate.isObject, (value: unknown): value is Record<string, unknown> =>
@@ -110,6 +120,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
   const identityOwnerKey = identityRecord === undefined ? undefined : asString(identityRecord.ownerKey);
   const identityRepoGroupKey =
     identityRecord === undefined ? undefined : asString(identityRecord.repoGroupKey);
+  const identityDataName = identityRecord === undefined ? undefined : asString(identityRecord.dataName);
   const identity =
     identityAppRoot === undefined || identityOwnerKey === undefined
       ? undefined
@@ -117,6 +128,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
           appRoot: identityAppRoot,
           ownerKey: identityOwnerKey,
           ...(identityRepoGroupKey === undefined ? {} : { repoGroupKey: identityRepoGroupKey }),
+          ...(identityDataName === undefined ? {} : { dataName: identityDataName }),
         };
   const services = objectOrArray(record.services) ? record.services : {};
   const mapped: Record<string, SqlPlanService> = {};

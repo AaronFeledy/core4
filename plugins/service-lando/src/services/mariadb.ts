@@ -21,7 +21,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
@@ -66,7 +66,11 @@ const defaultRootPassword = (appName: string, serviceName: string): string =>
   `lando-${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
 
 const mariadbCreds = (
-  input: { readonly appName?: string | undefined; readonly appRoot: string },
+  input: {
+    readonly appName?: string | undefined;
+    readonly dataName?: string | undefined;
+    readonly appRoot: string;
+  },
   serviceName: string,
   service: {
     readonly creds?: ServiceCreds | undefined;
@@ -74,7 +78,7 @@ const mariadbCreds = (
     readonly database?: string | undefined;
   },
 ): ServiceCreds => {
-  const appName = appNameFor(input);
+  const appName = dataNameFor(input);
   const creds = service.creds;
   return resolveServiceCreds({
     family: "mariadb",

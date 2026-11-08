@@ -96,7 +96,7 @@ export const installAndLoadGlobalPlan = Effect.fn("GlobalApp.installAndLoadPlan"
     const planner = yield* AppPlanner;
     const plan = yield* withDiscoveryCwd(
       candidate.paths.root,
-      planner.plan(candidate.landofile, provider.capabilities),
+      planner.plan(candidate.landofile, provider.capabilities, { kind: "global" }),
     );
     return { materialized: true as const, paths: candidate.paths, landofile: candidate.landofile, plan };
   },

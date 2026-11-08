@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 
-import { homeStoreName } from "@lando/engine/planner/home";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
@@ -15,6 +14,7 @@ import {
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
+import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
 import {
   type AppPlan,
   ServiceName,

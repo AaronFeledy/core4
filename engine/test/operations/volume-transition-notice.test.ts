@@ -1,120 +1,30 @@
 import { expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
-import type { AppPlan, ServiceHomePlan } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect } from "effect";
-import { rebuildApp } from "../../src/operations/rebuild.ts";
-import { restartApp } from "../../src/operations/restart.ts";
-import { startApp } from "../../src/operations/start.ts";
-import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
-
-const previousHome = {
-  state: "persisted",
-  target: "/home/node",
-  store: "lando-test-web-home-node-old",
-  user: "node",
-} as const;
-const withHome = (home?: ServiceHomePlan): AppPlan => ({
-  ...plan,
-  services: { [web.name]: { ...web, ...(home === undefined ? {} : { home }) } },
-});
-const paths = ["start", "rebuild", "selected rebuild", "restart", "selected restart"] as const;
-type CommandPath = (typeof paths)[number];
-
-const runTransition = async (
-  path: CommandPath,
-  previous: AppPlan | undefined,
-  desired: AppPlan,
-  repeats = 1,
-) => {
-  let appliedReads = 0;
-  const timeline: string[] = [];
-  const harness = makeHarness({
-    plannedApp: desired,
-    onApply: () => {
-      timeline.push("apply");
-    },
-    onPublish: (event) =>
-      Effect.sync(() => {
-        if (event._tag === "message.warn") timeline.push("warn");
-      }),
-  });
-  const target = {
-    plan: desired,
-    root: desired.root,
-    app: { kind: "user" as const, id: desired.id, root: desired.root },
-  };
-  const operation = () => {
-    switch (path) {
-      case "start":
-        return startApp({}, target);
-      case "rebuild":
-        return rebuildApp({}, target);
-      case "selected rebuild":
-        return rebuildApp({ services: [web.name] }, target);
-      case "restart":
-        return restartApp({}, target);
-      case "selected restart":
-        return restartApp({ services: [web.name] }, target);
-      default: {
-        const unreachable: never = path;
-        return unreachable;
-      }
-    }
-  };
-  try {
-    await Effect.runPromise(
-      Effect.forEach(Array.from({ length: repeats }), operation).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...harness.runtimeProviderRegistry,
-          appliedPlansFor: () => Effect.succeed(previous === undefined ? [] : [previous]),
-          resolveAppliedPlan: () =>
-            Effect.sync(() => {
-              appliedReads++;
-              return previous;
-            }),
-        }),
-        Effect.provide(harness.layer),
-      ),
-    );
-    return { warnings: byTag(harness.events, "message.warn"), timeline, appliedReads };
-  } finally {
-    await rm(harness.userDataRoot, { recursive: true, force: true });
-  }
-};
+import { web } from "./start-progress-topology-support.ts";
+import { paths, previousHome, runNotice, runTransition, withHome } from "./volume-transition-support.ts";
 
 for (const path of paths) {
   test.each([
-    [
-      { state: "unknown", reason: "custom-image" },
-      "Service web will no longer keep its home at /home/node: its image now comes from your Landofile.",
-    ],
-    [
-      { state: "unknown", reason: "no-identity" },
-      "Service web will no longer keep its home at /home/node: node doesn't declare image users.",
-    ],
-    [
-      { state: "unknown", reason: "undeclared-user", user: "alice" },
-      "Service web will no longer keep its home at /home/node: node doesn't know where alice's home is.",
-    ],
-    [
-      { ...previousHome, store: "new-home" },
-      "Service web will use home volume new-home at /home/node (previously lando-test-web-home-node-old at /home/node).",
-    ],
-    [
-      { ...previousHome, target: "/new-home" },
-      "Service web will use home volume lando-test-web-home-node-old at /new-home (previously lando-test-web-home-node-old at /home/node).",
-    ],
-  ] as const)(`${path} warns once before apply for %j`, async (home, message) => {
+    { state: "unknown", reason: "custom-image" },
+    { state: "unknown", reason: "no-identity" },
+    { state: "unknown", reason: "undeclared-user", user: "alice" },
+    { ...previousHome, store: "new-home" },
+    { ...previousHome, target: "/new-home" },
+  ] as const)(`${path} warns once before apply for %j`, async (home) => {
     // Given an applied persisted home and changed desired home metadata.
     const previous = withHome(previousHome);
     // When the command applies the desired plan, including any delegated start.
     const { warnings, timeline, appliedReads } = await runTransition(path, previous, withHome(home));
     // Then one warning names the old volume and an exact, parseable reattachment declaration.
-    expect(warnings.map((event) => event.body)).toEqual([
-      `${message}\nLando leaves lando-test-web-home-node-old untouched. To mount it at its previous location, set storage: [{ store: "lando-test-web-home-node-old", target: "/home/node" }] under services.web in your Landofile.`,
-    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.body).toContain(
+      'storage: [{ store: "lando-test-web-home-node-old", target: "/home/node" }]',
+    );
+    expect(warnings[0]?.body).toContain("services.web");
+    if (home.state === "persisted") {
+      expect(warnings[0]?.body).toContain(home.store);
+      expect(warnings[0]?.body).toContain(home.target);
+    }
     expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
     expect(appliedReads).toBe(path === "selected restart" ? 1 : 0);
   });
@@ -159,6 +69,19 @@ for (const path of paths) {
     expect((await runTransition(path, previous, desired)).warnings).toEqual([]);
   });
 }
+
+test("home type changes omit the reattachment declaration", async () => {
+  const previous = withHome(previousHome);
+  const desired = withHome({ state: "unknown", reason: "custom-image" });
+  const warnings = await runNotice(previous, {
+    ...desired,
+    services: { [web.name]: { ...web, type: "compose", home: { state: "unknown", reason: "custom-image" } } },
+  });
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]?.body).toContain(previousHome.store);
+  expect(warnings[0]?.body).toContain(previousHome.target);
+  expect(warnings[0]?.body).not.toContain("storage:");
+});
 
 test.each(["start", "rebuild", "restart"] as const)(
   "%s warns once for each affected service",

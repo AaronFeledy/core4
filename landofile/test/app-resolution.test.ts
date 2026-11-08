@@ -28,6 +28,18 @@ const serviceFor = (shape: LandofileShape): Context.Service.Shape<typeof Landofi
 });
 
 describe("user app resolution seam", () => {
+  test.each(["global", "Global", "global!", "--GLOBAL--"])(
+    "refuses the reserved normalized app slug for %s",
+    async (name) => {
+      await expect(
+        Effect.runPromise(makeResolution().loadUserLandofile(serviceFor({ name }))),
+      ).rejects.toMatchObject({
+        _tag: "AppIdReservedError",
+        reserved: "global",
+      });
+    },
+  );
+
   test("materializes recipe expressions when loading a non-layer file", async () => {
     // Given
     const resolution = makeResolution();

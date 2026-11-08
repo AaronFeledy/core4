@@ -163,6 +163,8 @@ export const lifecycleProblems = (
   lifecycle: StoreLifecycle,
   fields: ReadonlyMap<string, ReadonlySet<string>>,
 ): ReadonlyArray<string> => {
+  if (typeof lifecycle === "object" && "presence" in lifecycle)
+    return uncoveredValues("record presence", new Set(["absent", "present"]), lifecycle.presence);
   const lifecycleFields = [...fields].filter(([path]) =>
     LIFECYCLE_FIELD_NAMES.has(path.split(".").at(-1) ?? ""),
   );

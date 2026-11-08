@@ -129,7 +129,10 @@ export const loadGlobalPlan = Effect.fnUntraced(function* (
   if (!loaded.materialized) return loaded;
   const { paths, landofile } = loaded;
   const planner = yield* AppPlanner;
-  const plan = yield* withDiscoveryCwd(paths.root, planner.plan(landofile, provider.capabilities));
+  const plan = yield* withDiscoveryCwd(
+    paths.root,
+    planner.plan(landofile, provider.capabilities, { kind: "global" }),
+  );
 
   return { materialized: true, paths, landofile, plan };
 });

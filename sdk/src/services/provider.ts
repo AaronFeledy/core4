@@ -32,6 +32,7 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
+  AppRef,
   AppliedStateInventory,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
@@ -368,9 +369,11 @@ export class RuntimeProviderRegistry extends Context.Service<
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly resolveTeardownEvidence: (
       root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly observeRuntime?: Effect.Effect<
       ReadonlyArray<ProviderRuntimeSnapshot>,

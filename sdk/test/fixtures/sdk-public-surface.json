@@ -95,6 +95,7 @@
     "readonly base: \"l337\" | \"lando\"",
     "readonly primary: boolean",
     "readonly appName?: string | undefined",
+    "readonly dataName?: string | undefined",
     "readonly appRoot: string",
     "readonly host?: ServiceTypeHostFacts | undefined",
     "readonly normalizedConfig: ServiceConfig",
@@ -126,7 +127,7 @@
   },
   "serviceTags": {
     "AppPlanner": [
-      "plan:(landofile:LoadScopedLandofile,providerCapabilities:ProviderCapabilities) => Effect.Effect<CurrentExecutableAppPlan,AppPlannerError>"
+      "plan:(landofile:LoadScopedLandofile,providerCapabilities:ProviderCapabilities,options?:{ readonly kind?:AppRef[\"kind\"];readonly dataName?:string }) => Effect.Effect<CurrentExecutableAppPlan,AppPlannerError>"
     ],
     "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "BuildOrchestrator": [
@@ -453,8 +454,8 @@
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
       "observeRuntime?:Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>,AppResolveError|ProviderError|NoProviderInstalledError>",
-      "resolveAppliedPlan:(root:AbsolutePath) => Effect.Effect<AppPlan|undefined,AppResolveError|ProviderError|NoProviderInstalledError>",
-      "resolveTeardownEvidence:(root:AbsolutePath) => Effect.Effect<AppliedTeardownEvidence,AppResolveError|ProviderError|NoProviderInstalledError>",
+      "resolveAppliedPlan:(root:AbsolutePath,app?:Pick<AppRef,\"kind\"|\"id\">) => Effect.Effect<AppPlan|undefined,AppResolveError|ProviderError|NoProviderInstalledError>",
+      "resolveTeardownEvidence:(root:AbsolutePath,app?:Pick<AppRef,\"kind\"|\"id\">) => Effect.Effect<AppliedTeardownEvidence,AppResolveError|ProviderError|NoProviderInstalledError>",
       "resourceOwnership?:(providerId:ProviderId,root:AbsolutePath) => Effect.Effect<ResourceOwnership|undefined,ProviderUnavailableError|NoProviderInstalledError>",
       "select:(target?:AppPlan|ProviderId) => Effect.Effect<RuntimeProviderShape,ProviderSelectionError>"
     ],
@@ -625,6 +626,7 @@
     "./errors": [
       "AgentEnvPatternError",
       "AmbiguousCertificateAuthoritiesError",
+      "AppDataIdentityError",
       "AppFeatureCycleError",
       "AppFeatureMutationConflictError",
       "AppFeatureSelectorMatchedNothingError",
@@ -1928,18 +1930,24 @@
       "isUploadDir",
       "landoAppNetworkName",
       "landoAppNetworkNames",
+      "landoAppStoreName",
       "landoAuthoredNetworkName",
+      "landoCacheStoreName",
       "landoExternalNetworkNames",
       "landoNetworkNames",
       "landoNetworkingPlan",
       "landoOwnedNetworkNames",
       "landoServiceContainerName",
+      "landoServiceHomeStoreName",
       "landoServiceNetworkAliases",
       "landoServiceNetworkAttachments",
+      "landoServiceShadowStoreName",
+      "landoServiceStorageName",
       "landoServiceStoreName",
       "landoSharedNetworkName",
       "layerMerge",
       "logicalEndpointIdentity",
+      "normalizeAppSlug",
       "normalizeEnvironmentValue",
       "orderMounts",
       "override",
@@ -1947,6 +1955,7 @@
       "parseShortVolume",
       "parseValidationIssuePath",
       "planAppIdentity",
+      "planDataId",
       "planFileSyncDisposal",
       "plannedFileSyncSessions",
       "probeTargetError",
