@@ -114,7 +114,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.3 Type gates
 
-`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
+`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project and the repository scripts project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
 
 ### 13.4 Quality gates
 

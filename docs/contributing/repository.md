@@ -129,10 +129,11 @@ sources, and building the helper when the selected tests need it.
 | `bun run docs:check` / `bun run docs:test` | Check and test the Astro-owned docs tree |
 | `bun run docs:dev` / `bun run docs:build` | Preview or build the documentation site |
 
-The pre-PR gate does not replace tests. Root typechecking covers source and
-non-docs test trees; the docs checks are separate. Fetch `origin/main` before
-checking guide drift. Use the [CI runbook](./ci.md) to reproduce a specific job,
-including focused tests, guide checks, and provider integration tests.
+The pre-PR gate does not replace tests. Root typechecking covers source,
+non-docs test trees, and repository scripts; the docs checks are separate.
+Fetch `origin/main` before checking guide drift. Use the [CI runbook](./ci.md)
+to reproduce a specific job, including focused tests, guide checks, and
+provider integration tests.
 
 Executable guides check reader-facing workflows, while integration tests check
 behavior against external systems. To write or debug one scenario, follow
