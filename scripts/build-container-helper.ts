@@ -33,6 +33,7 @@ const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 const binaryNames = CONTAINER_HELPER_ARCHES.map((arch) => `linux-${arch}/${CONTAINER_HELPER_FILE}`);
 const noticeNames = ["licenses/go/LICENSE", "licenses/go/PATENTS", "licenses/go/files.json"];
 const artifactNames = new Set([...binaryNames, ...noticeNames]);
+const requiredArtifactNames = [...binaryNames, "licenses/go/LICENSE", "licenses/go/files.json"];
 
 /** Only compiler inputs and explicit Go test data cross into the builder. */
 export const containerHelperSourceArchive = async (root: string): Promise<AsyncIterable<Uint8Array>> => {
@@ -87,7 +88,7 @@ export const containerHelperBuildSpec = (options: {
         (arch) =>
           `GOARCH=${containerHelperGoArch(arch)} GOOS=linux go build -trimpath -buildvcs=false -ldflags="$1" -o dist/linux-${arch}/${CONTAINER_HELPER_FILE} . >&2`,
       ),
-      `tar -cf - -C dist ${[...binaryNames, "licenses/go/LICENSE", "licenses/go/files.json"].join(" ")} $(test ! -f dist/licenses/go/PATENTS || printf licenses/go/PATENTS) | base64`,
+      `tar -cf - -C dist ${requiredArtifactNames.join(" ")} $(test ! -f dist/licenses/go/PATENTS || printf licenses/go/PATENTS) | base64`,
     ].join("\n"),
     "lando-container-helper-build",
     options.linkerFlags,
@@ -192,7 +193,7 @@ export const containerHelperBuildArtifacts = (tar: Uint8Array): ReadonlyMap<stri
     if (header.every((byte) => byte === 0)) {
       if (tar.length - offset < TAR_BLOCK_SIZE * 2 || !tar.subarray(offset).every((byte) => byte === 0))
         throw new Error("Invalid helper artifact tar terminator.");
-      for (const name of [...binaryNames, "licenses/go/LICENSE", "licenses/go/files.json"])
+      for (const name of requiredArtifactNames)
         if (!files.has(name)) throw new Error(`Missing helper build artifact: ${name}`);
       return files;
     }
@@ -264,7 +265,7 @@ if (import.meta.main) {
     await containerHelperNotices(staging);
     const dist = resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist");
     await mkdir(dist, { recursive: true });
-    for (const name of [...binaryNames, ...noticeNames]) {
+    for (const name of artifactNames) {
       const path = join(staging, name);
       if (!(await Bun.file(path).exists())) continue;
       await mkdir(dirname(join(dist, name)), { recursive: true });

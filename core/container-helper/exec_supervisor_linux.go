@@ -226,7 +226,7 @@ func runExecControl(args []string, streams helperIO) int {
 
 // Only this loop calls Wait4. Direct children cannot have their PIDs recycled
 // until this owner reaps them. Never retain a discovered PID across a reap.
-func execDirectChildren() ([]int, error) { return execDirectChildrenStat() }
+func execDirectChildren() ([]int, error) { return execDirectChildrenAt("/proc", os.Getpid()) }
 
 // PPid in proc stat is the parent TGID. Unlike task/children, stat is
 // available without CONFIG_PROC_CHILDREN and does not omit live children
@@ -249,9 +249,6 @@ func execStatParent(data string, expectedPID int) (int, error) {
 		return 0, errors.New("invalid-proc-parent")
 	}
 	return parent, nil
-}
-func execDirectChildrenStat() ([]int, error) {
-	return execDirectChildrenAt("/proc", os.Getpid())
 }
 
 func execProcNamespaceStatus(data string, selfPID int) error {

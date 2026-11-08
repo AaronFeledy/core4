@@ -73,7 +73,7 @@ export interface ExecOptions {
   readonly containerId?: string;
   readonly onExecCreated?: (id: string) => void;
   readonly onExecStarted?: () => void;
-  /** Private control-channel validation; ordinary payload framing stays unchanged. */
+  /** Private control-channel validation; validated bytes are consumed, never emitted as output. */
   readonly validateAttach?: { readonly feed: (bytes: Uint8Array) => void; readonly end: () => void };
 }
 
@@ -340,7 +340,7 @@ const resizeExec = Effect.fnUntraced(function* (
   }
 });
 
-const interruptOnSignal = (signal: AbortSignal | undefined): Effect.Effect<void> =>
+export const interruptOnSignal = (signal: AbortSignal | undefined): Effect.Effect<void> =>
   signal === undefined
     ? Effect.never
     : Effect.callback<void>((resume) => {

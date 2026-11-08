@@ -173,7 +173,7 @@ export class ExecWatchProtocol {
   }
 }
 
-/** Strict watch-only framing. The general payload attach decoder remains unchanged. */
+/** Strict watch-only attach framing, separate from the payload attach decoder. */
 export class ExecWatchAttachDecoder {
   private mode: "raw" | "framed" | undefined;
   private readonly header = new Uint8Array(8);

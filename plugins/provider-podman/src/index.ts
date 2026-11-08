@@ -710,6 +710,10 @@ const assembleRuntimeProvider = (
   return Effect.gen(function* () {
     yield* conflictCheck;
     const { serverVersion, capabilities: resolvedCapabilities, logSourceBinding } = yield* gatedRuntime;
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const agentBridge = yield* resolvePodmanAgentBridge({ ...options, platform });
     const planState = makeProviderPlanState({
       ctx: PODMAN_CTX,
@@ -761,15 +765,13 @@ const assembleRuntimeProvider = (
           exec(plan, target, command, {
             api: podmanApi,
             ctx: PODMAN_CTX,
-            resolveContainerHelper: options.resolveContainerHelper,
-            helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+            ...execHelper,
           }),
         execStream: (plan, target, command) =>
           execStream(plan, target, command, {
             api: podmanApi,
             ctx: PODMAN_CTX,
-            resolveContainerHelper: options.resolveContainerHelper,
-            helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+            ...execHelper,
           }),
         inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
       },
@@ -832,8 +834,7 @@ const assembleRuntimeProvider = (
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: podmanApi,
           ctx: PODMAN_CTX,
-          resolveContainerHelper: options.resolveContainerHelper,
-          helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+          ...execHelper,
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
           platform,
           daemonUrl: socketPath,

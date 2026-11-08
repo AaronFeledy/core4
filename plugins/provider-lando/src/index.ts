@@ -864,6 +864,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         };
       }),
     );
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const planState = makeProviderPlanState({
       ctx: LANDO_CTX,
       ...(podmanApi === undefined
@@ -1107,8 +1111,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             : runtimeExec(plan, target, command, {
                 ...apiOptions,
                 ctx: LANDO_CTX,
-                resolveContainerHelper: options.resolveContainerHelper,
-                helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+                ...execHelper,
               }),
         execStream: (plan, target, command) =>
           shouldUseWindowsStdinCli(command)
@@ -1118,8 +1121,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             : runtimeExecStream(plan, target, command, {
                 ...apiOptions,
                 ctx: LANDO_CTX,
-                resolveContainerHelper: options.resolveContainerHelper,
-                helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+                ...execHelper,
               }),
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
@@ -1746,8 +1748,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     }),
                   }),
               ctx: LANDO_CTX,
-              resolveContainerHelper: options.resolveContainerHelper,
-              helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+              ...execHelper,
               startFailureRemediation: makeLandoStartFailureRemediation(platform),
               platform,
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),

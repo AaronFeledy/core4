@@ -12,7 +12,7 @@ import { execTiming } from "./exec-timing.ts";
 import { type OwnedExecWatch, startExecWatch } from "./exec-watch.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
 import { serviceContainerName } from "./plan.ts";
-import { execStream as transportExecStream } from "./podman/exec-transport.ts";
+import { interruptOnSignal, execStream as transportExecStream } from "./podman/exec-transport.ts";
 import { makeAttachDecoder } from "./streams.ts";
 
 export interface ExecSupervisionOptions {
@@ -65,20 +65,8 @@ export const supervisedExecStream = (
       )
         return yield* Effect.fail(failure("helper-unavailable"));
       if (command.signal?.aborted) return yield* Effect.interrupt;
-      const abortBeforeOwnership =
-        command.signal === undefined
-          ? Effect.never
-          : Effect.callback<never>((resume) => {
-              const signal = command.signal;
-              if (signal === undefined) return;
-              if (signal.aborted) {
-                resume(Effect.interrupt);
-                return;
-              }
-              const onAbort = () => resume(Effect.interrupt);
-              signal.addEventListener("abort", onAbort, { once: true });
-              return Effect.sync(() => signal.removeEventListener("abort", onAbort));
-            });
+      const awaitSignal = interruptOnSignal(command.signal);
+      const abortBeforeOwnership = awaitSignal.pipe(Effect.andThen(Effect.interrupt));
       const beforeOwnership = <A>(effect: Effect.Effect<A, ProviderError>) =>
         effect.pipe(
           Effect.timeout("10 seconds"),
@@ -390,20 +378,6 @@ export const supervisedExecStream = (
               );
           }),
       );
-      const awaitSignal =
-        command.signal === undefined
-          ? Effect.never
-          : Effect.callback<void>((resume) => {
-              const signal = command.signal;
-              if (signal === undefined) return;
-              if (signal.aborted) {
-                resume(Effect.void);
-                return;
-              }
-              const onAbort = () => resume(Effect.void);
-              signal.addEventListener("abort", onAbort, { once: true });
-              return Effect.sync(() => signal.removeEventListener("abort", onAbort));
-            });
       owned.signalWatcher = yield* awaitSignal.pipe(
         Effect.andThen(Queue.interrupt(output)),
         Effect.asVoid,
