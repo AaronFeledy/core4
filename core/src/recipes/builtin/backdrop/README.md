@@ -17,8 +17,8 @@ The recipe writes a Landofile only. The prompts come from the `lamp` recipe. Aft
 
 - `appserver` - `php:<8.4>` with the Apache-based PHP image,
   `framework: backdrop`, and `BACKDROP_SETTINGS` for the database. The `BACKDROP_SETTINGS` value
-  names `{{ app.name }}` as the database, resolved at start and visible to
-  both Bee and Apache.
+  names `{{ services.database.creds.database }}` as the database, so it follows the
+  folder's data name across renames, and is visible to both Bee and Apache.
 - `database` - `mariadb`.
 
 ## Generated tooling

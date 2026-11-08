@@ -14,7 +14,7 @@ const {
   contentDigest: BACKDROP_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("backdrop");
-const BACKDROP_SETTINGS_VALUE = backdropSettings("{{ app.name }}");
+const BACKDROP_SETTINGS_VALUE = backdropSettings("{{ services.database.creds.database }}");
 
 const defaults = { ...backdropDefaults };
 const alternatives = { php: "8.2", database: "mysql:8.0", composer: "2.7.7", webroot: "/app/public" };
@@ -96,8 +96,8 @@ describe("backdrop decomposition", () => {
     });
   });
 
-  test("defers the settings database name to the app scope and survives snapshot encoding", () => {
-    expect(BACKDROP_SETTINGS_VALUE).toContain('"database":"{{ app.name }}"');
+  test("defers the settings database name to service credentials and survives snapshot encoding", () => {
+    expect(BACKDROP_SETTINGS_VALUE).toContain('"database":"{{ services.database.creds.database }}"');
     const rendered = Result.getOrThrow(renderRecipeSnapshot(backdropSnapshot, defaults)) as {
       services: { appserver: { environment: { BACKDROP_SETTINGS: string } } };
     };

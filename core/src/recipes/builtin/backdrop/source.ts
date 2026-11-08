@@ -15,7 +15,7 @@ export const source = {
         framework: "backdrop",
         uploadDirs: ["files"],
         allowOverride: true,
-        environment: { BACKDROP_SETTINGS: backdropSettings("{{ app.name }}") },
+        environment: { BACKDROP_SETTINGS: backdropSettings("{{ services.database.creds.database }}") },
       },
     },
     tooling: {
