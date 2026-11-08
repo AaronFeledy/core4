@@ -354,11 +354,13 @@ gh workflow run workflow-performance.yml --ref <branch> -f start_samples=1 -f he
 | --- | --- | --- |
 | `start_samples` | `5` | Samples per start-class lane, at most 10 |
 | `heavy_samples` | `3` | Samples per heavy lane, at most 10 |
-| `failing_fixture_lane` | empty | `mysql-import` or `postgres-import` imports an invalid fixture in that lane to prove a correctness failure exits nonzero and keeps its evidence |
+| `failing_fixture_lane` | empty | `mysql-import` or `postgres-import` imports an invalid fixture in that lane to prove a correctness failure exits nonzero, with the failed step named in the report and run annotations |
 
 Each cell writes a last-30-run trend table to the job summary and uploads `report.json`, `history-summary.json`, and `history-summary.md` as the `workflow-performance-<cell>` artifact for 90 days.
 
 Samples pull images from Docker Hub anonymously, and each job posts a notice saying so. Add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets to log in and raise the pull limit; no workflow change is needed.
+
+Each sample's fresh roots mean its `lando setup` downloads mkcert from GitHub releases again. When GitHub release downloads fail, samples fail at `prepare:setup` while earlier samples in the run still pass; dispatch again once downloads recover.
 
 ## npm dev package publishing
 
