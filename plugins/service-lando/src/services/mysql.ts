@@ -23,7 +23,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
@@ -195,7 +195,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
       );
     }
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
-      const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
+      const creds = mysqlCredsFor(dataNameFor(input), input.name, input.service);
       const port = plannedPort(input.service, MYSQL_LISTENER);
       assertListenerConfig(input.service, MYSQL_LISTENER);
       return {

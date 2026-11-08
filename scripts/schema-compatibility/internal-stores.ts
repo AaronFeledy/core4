@@ -16,6 +16,7 @@ import {
   PendingStart,
   pendingStartTransitions,
 } from "../../engine/src/operations/accelerated-start-record.ts";
+import { AppDataIdentityRecord, appDataIdentityTransitions } from "../../engine/src/planner/data-identity.ts";
 import {
   SCRATCH_REGISTRY_VERSION,
   ScratchRegistryEntriesSchema,
@@ -90,6 +91,7 @@ export type LifecycleDeclaration = TransitionTable | ObligationTable | "observed
  */
 export type StoreLifecycle =
   | LifecycleDeclaration
+  | { readonly presence: TransitionTable }
   | { readonly fields: Readonly<Record<string, LifecycleDeclaration>> };
 
 /** Where the bucket spec is written: repo-relative file and the `schema:` expression text. */
@@ -110,6 +112,13 @@ interface InternalPersistedStore {
 // Traefik acquisition state is a plain file that re-derives on decode failure,
 // not a versioned StateStore bucket, so it does not belong in this registry.
 export const INTERNAL_PERSISTED_STORES = [
+  {
+    id: "app-data-identity",
+    schema: AppDataIdentityRecord,
+    version: 1,
+    source: { file: "engine/src/planner/data-identity.ts", schema: "AppDataIdentityRecord" },
+    lifecycle: { presence: appDataIdentityTransitions },
+  },
   {
     id: "managed-file-journal",
     schema: Journal,

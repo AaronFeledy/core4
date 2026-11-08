@@ -782,9 +782,14 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     const planForkPlan =
       isolate === "full"
         ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root), input).pipe(
-            Effect.andThen(withDiscoveryCwd(scratchPaths.root, planner.plan(forkLandofile, capabilities))),
+            Effect.andThen(
+              withDiscoveryCwd(
+                scratchPaths.root,
+                planner.plan(forkLandofile, capabilities, { kind: "scratch" }),
+              ),
+            ),
           )
-        : planner.plan(forkLandofile, capabilities);
+        : planner.plan(forkLandofile, capabilities, { kind: "scratch" });
     const forkPlan = yield* planForkPlan.pipe(
       Effect.mapError((cause) =>
         cause instanceof ScratchAppError
@@ -915,7 +920,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     );
     const recipePlan = yield* withDiscoveryCwd(
       scratchPaths.root,
-      planner.plan(recipeLandofile, capabilities),
+      planner.plan(recipeLandofile, capabilities, { kind: "scratch" }),
     ).pipe(
       Effect.mapError((cause) => scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause)),
       Effect.tapError(() =>

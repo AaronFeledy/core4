@@ -13,7 +13,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
@@ -143,7 +143,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       );
     }
 
-    const appName = appNameFor(input);
+    const appName = dataNameFor(input);
     const authoredEnv = input.service.environment ?? {};
     return serviceTypeResolve(id, "mssql service type failed to resolve", () => {
       const creds = resolveServiceCreds({

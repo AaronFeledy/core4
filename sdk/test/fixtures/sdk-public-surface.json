@@ -95,6 +95,7 @@
     "readonly base: \"l337\" | \"lando\"",
     "readonly primary: boolean",
     "readonly appName?: string | undefined",
+    "readonly dataName?: string | undefined",
     "readonly appRoot: string",
     "readonly host?: ServiceTypeHostFacts | undefined",
     "readonly normalizedConfig: ServiceConfig",
@@ -126,7 +127,7 @@
   },
   "serviceTags": {
     "AppPlanner": [
-      "plan:(landofile:LoadScopedLandofile,providerCapabilities:ProviderCapabilities) => Effect.Effect<CurrentExecutableAppPlan,AppPlannerError>"
+      "plan:(landofile:LoadScopedLandofile,providerCapabilities:ProviderCapabilities,options?:{ readonly kind?:AppRef[\"kind\"];readonly dataName?:string }) => Effect.Effect<CurrentExecutableAppPlan,AppPlannerError>"
     ],
     "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "BuildOrchestrator": [
@@ -625,6 +626,7 @@
     "./errors": [
       "AgentEnvPatternError",
       "AmbiguousCertificateAuthoritiesError",
+      "AppDataIdentityError",
       "AppFeatureCycleError",
       "AppFeatureMutationConflictError",
       "AppFeatureSelectorMatchedNothingError",

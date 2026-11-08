@@ -4,16 +4,18 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import { isPathWithin } from "@lando/paths";
+import { isPathWithin, makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CacheError } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, type LandofileShape, appIdentityKey } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { appDataIdentityBucketSpec } from "../planner/data-identity.ts";
 
 export const isMissingFile = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
 
 export interface AppCommandCacheSource {
+  readonly dataIdentityFingerprint?: string;
   readonly filePath: string;
   readonly stats: { readonly mtimeMs: number; readonly size: number };
   readonly landofileSources: ReadonlyArray<{ readonly relativePath: string; readonly bytes: Uint8Array }>;
@@ -154,12 +156,26 @@ export const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: s
   return { filePath, stats, landofileSources, includeLockfileBytes };
 });
 
+export const readDataIdentityFingerprint = async (root: string): Promise<string> => {
+  const appRoot = await realpath(root);
+  const spec = appDataIdentityBucketSpec({
+    appRoot: AbsolutePath.make(appRoot),
+    ownerKey: appIdentityKey("owner", appRoot),
+  });
+  const record = await readOptionalFile(join(makeLandoPaths().roots.userDataRoot, spec.namespace, spec.key));
+  return record === null ? "absent" : sha256Hex(record);
+};
+
 export const sourceContentHash = async (
   source: AppCommandCacheSource,
   localIncludePaths: ReadonlyArray<string>,
   allowOutsideRoot = false,
-): Promise<string> =>
-  sourceHashFor(
+): Promise<string> => {
+  const dataIdentity =
+    source.dataIdentityFingerprint ?? (await readDataIdentityFingerprint(dirname(source.filePath)));
+  const sourceHash = sourceHashFor(
     source,
     await localIncludeSourcesFor(dirname(source.filePath), localIncludePaths, allowOutsideRoot),
   );
+  return sha256Hex(`${sourceHash}\0${dataIdentity}`);
+};

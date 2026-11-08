@@ -8,12 +8,15 @@ import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
+  type AppIdentity,
+  type AppRef,
   type CurrentExecutableAppPlan,
   type LoadScopedLandofile,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
   landoNetworkingPlan,
+  normalizeAppSlug,
 } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
@@ -74,6 +77,7 @@ import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
+import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
@@ -93,6 +97,9 @@ import { type ResolvedService, resolvedServiceCacheInput } from "./service-types
 import { authoredStorageScopes } from "./storage.ts";
 
 export interface PlanAppInput {
+  readonly identity?: AppIdentity;
+  readonly dataName?: string;
+  readonly kind?: AppRef["kind"];
   readonly landofile: LoadScopedLandofile;
   readonly providerCapabilities: ProviderCapabilities;
   readonly appRoot: string;
@@ -144,6 +151,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       fileSystem,
       pathsService,
       landofile: authoredLandofile,
+      ...(input.dataName === undefined ? {} : { dataName: input.dataName }),
       capabilities: providerCapabilities,
       ...(knownAppRoot === undefined ? {} : { appRoot: knownAppRoot }),
     },
@@ -366,6 +374,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const cacheKey = deriveAppPlanCacheKey({
+    dataName: input.dataName ?? appName,
+    kind: input.kind ?? "user",
     hostProvider,
     appRoot,
     landofile: { ...cacheLandofile, provider },
@@ -383,20 +393,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     versionConstraints,
     serviceInputs: {
       router: router.selected ?? null,
-      fileSyncPolicy: {
-        ...fileSyncPolicy,
-        bindMounts: providerCapabilities.bindMounts,
-        bindMountPerformance: providerCapabilities.bindMountPerformance,
-        persistentStorage: providerCapabilities.persistentStorage,
-        candidates: fileSyncCandidates.map(({ id, capabilities, supports, defaultFor }) => ({
-          id,
-          supports,
-          modes: capabilities.modes,
-          exclusionPatterns: capabilities.exclusionPatterns,
-          remoteAgentDeployment: capabilities.remoteAgentDeployment,
-          defaultFor,
-        })),
-      },
+      fileSyncPolicy: fileSyncCacheInput(fileSyncPolicy, providerCapabilities, fileSyncCandidates),
       pendingSites: authoredLandofile.pendingSites,
       environment: environmentCacheInput(authoredLandofile),
       invocationSites: executableSites,
@@ -480,6 +477,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     appRoot,
     appSlug,
     appName,
+    dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
     defaultDomain,
     provider,
     providerCapabilities,
@@ -540,6 +538,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         name: appName,
         slug: appSlug,
         root: AbsolutePath.make(appRoot),
+        ...(input.identity === undefined ? {} : { identity: input.identity }),
         provider,
         router: router.field(finalized.routes.length),
         services: finalized.services,

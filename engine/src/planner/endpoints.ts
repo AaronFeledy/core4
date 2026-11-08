@@ -81,6 +81,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly dataSlug?: string;
   readonly appName: string;
   readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
@@ -182,7 +183,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
           };
     const context = {
       appRoot: input.appRoot,
-      appSlug: input.appSlug,
+      appSlug: input.dataSlug ?? input.appSlug,
       serviceName: name,
       configs: input.configs,
     };
@@ -239,7 +240,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
       },
       serviceName: name,
-      appSlug: input.appSlug,
+      appSlug: input.dataSlug ?? input.appSlug,
       appRoot: input.appRoot,
       intent: homeIntent,
     });

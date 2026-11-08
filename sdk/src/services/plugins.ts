@@ -84,6 +84,8 @@ export interface ServiceTypeInput {
   readonly service: ServiceConfig;
   readonly appRoot: string;
   readonly appName?: string;
+  /** Derive persisted defaults (databases, passwords, buckets) from this name so they survive a rename. Defaults to appName. */
+  readonly dataName?: string;
   readonly provider?: ProviderId;
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
