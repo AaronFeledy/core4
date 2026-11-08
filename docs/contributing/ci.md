@@ -340,6 +340,26 @@ Replace both example paths with your compiled binaries. The runner starts fresh 
 
 The JSON identifies each binary by path, byte size, and SHA-256 after timing finishes. It also records the runner's Bun version, host OS, architecture and kernel, and before/after CPU load and available Linux cgroup or pressure readings. Record the Bun compiler version used to build each binary separately; the runner cannot infer that provenance. Processes use isolated Lando roots without warmups or retries. The OS page cache remains unmanaged, so these are not cold-disk measurements. Inspect load and pressure evidence before attributing a difference to code.
 
+## Workflow performance history
+
+The `workflow-performance` workflow times real workflows end to end with the compiled binary on the `linux-x64` and `linux-arm64` managed-runtime readiness cells. Start-class lanes are cold first start, warm stop/start, and unchanged rebuild. Heavy lanes are MySQL and PostgreSQL import and snapshot restore, plus the Drupal and Rails journeys. Every sample gets fresh Lando roots and owned app identities, and its images are pre-pulled before timing, so cold start measures Lando startup rather than image downloads. Timings are advisory. A failed command fails its sample, and the job exits nonzero after uploading the report.
+
+The workflow runs nightly at 04:00 UTC. To check a branch, dispatch one sample per lane:
+
+```bash
+gh workflow run workflow-performance.yml --ref <branch> -f start_samples=1 -f heavy_samples=1
+```
+
+| Input | Default | Effect |
+| --- | --- | --- |
+| `start_samples` | `5` | Samples per start-class lane, at most 10 |
+| `heavy_samples` | `3` | Samples per heavy lane, at most 10 |
+| `failing_fixture_lane` | empty | `mysql-import` or `postgres-import` imports an invalid fixture in that lane to prove a correctness failure exits nonzero and keeps its evidence |
+
+Each cell writes a last-30-run trend table to the job summary and uploads `report.json`, `history-summary.json`, and `history-summary.md` as the `workflow-performance-<cell>` artifact for 90 days.
+
+Samples pull images from Docker Hub anonymously, and each job posts a notice saying so. Add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets to log in and raise the pull limit; no workflow change is needed.
+
 ## npm dev package publishing
 
 The generated GitHub release workflow does **not** publish npm. It only publishes unsigned `v4.0.0-dev.N` GitHub prerelease binaries. `scripts/prepare-npm-dev-packages.ts` rewrites checkout versions to `4.0.0-dev.N` and the `dev` tag. Live npm dev package publishing is the manual `scripts/release.ts` orchestrator. That orchestrator uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
