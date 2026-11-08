@@ -35,3 +35,4 @@ tooling:
     cmds:
       - php vendor/bin/typo3
     description: Run the TYPO3 CLI inside the appserver service.
+    wrapper: true
