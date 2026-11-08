@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec } from "@lando/provider-lando";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rabbitmqServiceType } from "../src/services/rabbitmq.ts";
 import { composeCatalogConfigPlan } from "./support/catalog-config-app.ts";
@@ -68,6 +68,11 @@ describe("RabbitMQ data across container recreation", () => {
               id: AppId.make(`${plan.id}-renamed`),
               name: `${plan.name}-renamed`,
               slug: `${plan.slug}-renamed`,
+              identity: {
+                appRoot: plan.root,
+                ownerKey: appIdentityKey("owner", plan.root),
+                dataName: plan.name,
+              },
             };
             yield* bringDown(plan, { api: app.api });
             yield* Effect.acquireRelease(bringUp(renamed, { api: app.api }), () =>
