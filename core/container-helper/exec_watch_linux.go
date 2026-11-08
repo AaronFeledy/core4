@@ -151,6 +151,9 @@ func execWatchLoop(dir string, output io.Writer, read func([]byte) (int, error),
 					op = "ready"
 				}
 				reply := execControlExchangeTimeout(dir, execRequest{Op: op}, time.Second)
+				if reply.OK && reply.Joined {
+					reply = execControlExchangeTimeout(dir, execRequest{Op: "collect"}, time.Second)
+				}
 				if code := execWatchEmit(output, reply, seq); code != 0 {
 					return code
 				}

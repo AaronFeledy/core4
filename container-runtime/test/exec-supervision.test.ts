@@ -134,7 +134,8 @@ const fixture = (hooks: Hooks = {}) => {
           : Stream.fail(hooks.mainError);
       }),
   };
-  installSupervisedExecFixture(api, hooks);
+  const supervised = installSupervisedExecFixture(api, hooks);
+  if (supervised === undefined) throw new TypeError("Fixture was already installed.");
   const request = api.request;
   const stream = api.stream;
   if (request === undefined || stream === undefined) throw new TypeError("Missing fixture transport.");
@@ -225,6 +226,7 @@ const fixture = (hooks: Hooks = {}) => {
                           continue;
                         }
                         hooks.onWatchTerminal?.();
+                        supervised.collect(commands.get(id ?? "")?.[2] ?? "");
                         yield frame(
                           `${JSON.stringify({ ok: true, seq: pulse.seq, state: "finished", exitCode: hooks.exitCode ?? 0, joined: true })}\n`,
                         );
@@ -315,7 +317,7 @@ describe("non-TTY exec supervision lifecycle", () => {
     expect(chunks.filter((chunk) => "kind" in chunk)).toEqual([
       { kind: "stderr", chunk: new TextEncoder().encode(stderr) },
     ]);
-    expect(f.events).toContain("collect");
+    expect(f.events).not.toContain("collect");
     expect(f.events).toContain("cleanup");
     expect(f.events).not.toContain("cancel");
   });
@@ -349,7 +351,7 @@ describe("non-TTY exec supervision lifecycle", () => {
       expect(Exit.isSuccess(exit)).toBe(true);
       expect(terminalChunks(chunks)).toEqual([{ exitCode }]);
       expect(f.events).toContain("watch");
-      expect(f.events).toContain("collect");
+      expect(f.events).not.toContain("collect");
       expect(f.events).toContain("cleanup");
       expect(f.counts()).toEqual({ primaryStarts: 1, launches: 1 });
       const actions = f.requests.filter(
@@ -745,7 +747,7 @@ describe("non-TTY exec supervision lifecycle", () => {
       const { exit, chunks } = await pending;
       expect(Exit.isSuccess(exit)).toBe(true);
       expect(terminalChunks(chunks)).toEqual([{ exitCode: 0 }]);
-      expect(f.events.indexOf("collect")).toBeGreaterThan(f.events.indexOf("watch-inspect"));
+      expect(f.events.indexOf("cleanup")).toBeGreaterThan(f.events.indexOf("watch-inspect"));
     } finally {
       releaseEOF();
       releaseInspect();

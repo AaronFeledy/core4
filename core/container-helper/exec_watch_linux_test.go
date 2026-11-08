@@ -132,9 +132,12 @@ func execTestWatchServer(t *testing.T, terminalAfter int64) (string, string, *at
 				if json.NewDecoder(conn).Decode(&req) != nil {
 					return
 				}
-				n := count.Add(1)
+				n := count.Load()
+				if req.Op != "collect" {
+					n = count.Add(1)
+				}
 				r := execReply{OK: true, State: "running"}
-				if terminalAfter > 0 && n == terminalAfter {
+				if terminalAfter > 0 && n >= terminalAfter {
 					code := 23
 					r = execReply{OK: true, State: "finished", Joined: true, ExitCode: &code}
 				}

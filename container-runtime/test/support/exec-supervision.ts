@@ -83,7 +83,7 @@ interface Session {
 export const installSupervisedExecFixture = (
   api: EngineHttpApi,
   options: { readonly installError?: ProviderError; readonly launchExitCode?: number } = {},
-): void => {
+): { readonly collect: (directory: string) => void } | undefined => {
   if (installed.has(api)) return;
   const request = api.request;
   const stream = api.stream;
@@ -129,6 +129,11 @@ export const installSupervisedExecFixture = (
             return state.ExitCode ?? 0;
           }),
         );
+  const collect = (directory: string) => {
+    const session = sessionFor(directory);
+    session.collected = true;
+    session.finish();
+  };
   Object.assign(api, {
     request: (input: EngineHttpRequest) =>
       Effect.gen(function* () {
@@ -257,6 +262,7 @@ export const installSupervisedExecFixture = (
                       continue;
                     }
                     const exitCode = await Effect.runPromise(observedExit(session));
+                    collect(cmd[2] ?? "");
                     yield frame(
                       session.cancelled
                         ? { ok: true, seq: pulse.seq, state: "cancelled", joined: true }
@@ -334,4 +340,5 @@ export const installSupervisedExecFixture = (
       return stream(input);
     },
   });
+  return { collect };
 };

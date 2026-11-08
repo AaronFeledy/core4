@@ -436,7 +436,6 @@ export const supervisedExecStream = (
         const finished = yield* watch.finished;
         if (finished.exitCode === undefined) return yield* Effect.fail(failure("root-status-missing"));
         yield* Deferred.succeed(receipt, finished);
-        yield* control("collect");
       }).pipe(
         Effect.catch((error) =>
           Deferred.fail(receipt, error).pipe(Effect.andThen(Queue.fail(output, error)), Effect.asVoid),
