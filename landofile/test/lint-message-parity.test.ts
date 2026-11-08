@@ -13,12 +13,12 @@ const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or
 test.each([
   [
     "    - FOO",
-    'Landofile service environment entry "FOO" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).',
+    'Landofile environment entry "FOO" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).',
   ],
   ["    - __proto__=x", 'The key "__proto__" is reserved and cannot be used in an environment map.'],
   [
     "    FOO: null",
-    'Landofile service environment entry "FOO" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.',
+    'Landofile environment entry "FOO" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.',
   ],
 ] as const)("merges env transformation diagnostics for #2194: %s", async (value, message) => {
   const cwd = await mkdtemp(join(tmpdir(), "lando-lint-env-"));
@@ -36,6 +36,73 @@ test.each([
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
+});
+
+const producer = [
+  "    sourceKind: bundled",
+  '    packageName: "@lando/recipe-demo"',
+  "    recipeId: demo",
+  "    manifestVersion: 1.0.0",
+  `    contentDigest: "sha256:${"a".repeat(64)}"`,
+].join("\n");
+const provenance = (id: string) =>
+  `recipe:\n  id: ${id}\n  version: 1.0.0\n  producer: !override\n${producer}\n  options: {}\n`;
+
+const lintLayers = async (layers: Readonly<Record<string, string>>) => {
+  const cwd = await mkdtemp(join(tmpdir(), "lando-lint-layers-"));
+  try {
+    for (const [file, yaml] of Object.entries(layers)) await writeFile(join(cwd, file), yaml);
+    return { cwd, result: await Effect.runPromise(lintLandofile({ cwd })) };
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+};
+
+test("reports a nested deprecation notice defect once in both scopes", async () => {
+  const { result } = await lintLayers({
+    ".lando.yml": [
+      "name: lint-parity",
+      "tooling:",
+      "  old:",
+      "    cmd: echo old",
+      "    deprecated:",
+      '      since: "4.2.0"',
+      '      removeIn: "4.2.0"',
+      "      note: Use new instead.",
+      "",
+    ].join("\n"),
+  });
+  expect(result.violations).toEqual([
+    expect.objectContaining({
+      path: ["tooling", "old", "deprecated"],
+      message: "removeIn must be a later release than since.",
+      scopes: ["fragment", "effective"],
+    }),
+  ]);
+});
+
+test("accepts a tooling notice versioned in the app's own release line", async () => {
+  const { result } = await lintLayers({
+    ".lando.yml":
+      "name: lint-parity\ntooling:\n  old:\n    cmd: echo old\n    deprecated:\n      since: 1.2.0\n      note: Use new instead.\n",
+  });
+  expect(result).toMatchObject({ valid: true, violations: [] });
+});
+
+test("checks recipe provenance in a local layer after applying !override", async () => {
+  const base = `name: lint-parity\nrecipe:\n  id: demo\n  version: 1.0.0\n  producer:\n${producer}\n  options: {}\n`;
+  const valid = await lintLayers({ ".lando.yml": base, ".lando.local.yml": provenance("!override demo") });
+  expect(valid.result).toMatchObject({ valid: true, violations: [] });
+
+  const invalid = await lintLayers({ ".lando.yml": base, ".lando.local.yml": provenance("!override other") });
+  expect(invalid.result.violations).toEqual([
+    expect.objectContaining({
+      path: ["recipe", "producer", "recipeId"],
+      message: 'Recipe provenance id "other" disagrees with producer.recipeId "demo".',
+      scopes: ["fragment", "effective"],
+      source: expect.objectContaining({ file: join(invalid.cwd, ".lando.local.yml"), layer: "local" }),
+    }),
+  ]);
 });
 
 test.each([
