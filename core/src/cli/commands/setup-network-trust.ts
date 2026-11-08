@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { HttpTrustError, HttpTrustErrorKind } from "@lando/sdk/errors";
 import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
@@ -159,10 +160,11 @@ export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustEr
 
 export const resolveSetupNetworkTrust = Effect.fnUntraced(function* (
   config: GlobalConfig,
-  env: NodeJS.ProcessEnv = process.env,
+  env?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<ResolvedSetupNetworkTrust, SetupNetworkTrustError> {
+  const sourceEnv = env ?? (yield* CliInvocation).env;
   const plan = yield* Effect.try({
-    try: () => resolveNetworkTrustPlan({ network: config.network }, env),
+    try: () => resolveNetworkTrustPlan({ network: config.network }, sourceEnv),
     catch: (cause) =>
       cause instanceof NetworkTrustResolutionError
         ? new SetupNetworkTrustError({

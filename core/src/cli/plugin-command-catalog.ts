@@ -3,9 +3,11 @@ import type {
   GraphCommandCandidate,
   PluginContributionGraphShape,
 } from "@lando/engine/plugins/contribution-graph";
+import { resolveLandoRoots } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Effect, Exit, Schema } from "effect";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import {
   isReservedNamespaceHead,
   resolveBuiltInCommand,
@@ -66,7 +68,7 @@ export interface PluginCommandListing {
 
 const diagnostic = Effect.fnUntraced(function* (error: unknown) {
   const service = yield* RedactionService;
-  const redactor = yield* service.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* service.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const tagged = Schema.is(PluginCommandDiagnostic)(error);
   const bounded = (text: string) => escapeDiagnosticText(redactor.redactString(text)).slice(0, 512);
   return {
@@ -105,9 +107,12 @@ const diagnostic = Effect.fnUntraced(function* (error: unknown) {
 export const createPluginCommandCatalog = (
   signal?: AbortSignal,
   acquireGraph: () => Effect.Effect<PluginContributionGraphShape, unknown> = acquirePluginCommandMetadata,
+  context?: CliInvocationContext,
 ) => {
   const run = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
-    const exit = await Effect.runPromiseExit(interruptOnAbort(effect, signal));
+    const operation =
+      context === undefined ? effect : effect.pipe(Effect.provideService(CliInvocation, context));
+    const exit = await Effect.runPromiseExit(interruptOnAbort(operation, signal));
     if (Exit.isFailure(exit)) throw exit.cause;
     return exit.value;
   };
@@ -138,7 +143,13 @@ export const createPluginCommandCatalog = (
   };
   const specs = new Map<string, Promise<PluginCommandRow>>();
   const index = async (result: Extract<Awaited<ReturnType<typeof graph>>, { status: "available" }>) => {
-    const receipt = await run(readAppCommandCacheForCwdDetailed());
+    const receipt = await run(
+      readAppCommandCacheForCwdDetailed(
+        context === undefined
+          ? {}
+          : { cwd: context.cwd, cacheRoot: resolveLandoRoots({ env: context.env }).userCacheRoot },
+      ),
+    );
     const cache = receipt.status === "fresh" ? receipt.payload : undefined;
     return buildCommandCatalog(
       result.graph.commands.map((candidate) => ({
@@ -180,6 +191,7 @@ export const createPluginCommandCatalog = (
     return pending;
   };
   return {
+    context,
     async list(namespace?: string): Promise<PluginCommandListing> {
       const result = await graph();
       if (result.status === "unavailable") return { rows: [], metadata: result };

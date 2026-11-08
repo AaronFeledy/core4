@@ -11,6 +11,7 @@ import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
 import { makeLandoRuntime } from "../runtime/layer";
 
 import type { RendererIO } from "@lando/renderer/io";
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { withCommandTracing } from "./command-tracing";
 import { landoSpecForId } from "./compiled-argv";
 import {
@@ -29,8 +30,8 @@ import { activeTrace } from "./trace-selection";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
 
-const makeCompiledRuntime: CompiledRuntimeFactory = (bootstrap) =>
-  makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } }));
+const makeCompiledRuntime = (bootstrap: BootstrapLevel, context?: CliInvocationContext) =>
+  makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } }, context?.env));
 
 export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state";
 export {
@@ -68,6 +69,7 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
   declaredBootstrap: BootstrapLevel,
   runtime: Layer.Layer<ROut, E, RIn>,
   runtimeForBootstrap: CompiledRuntimeFactory = makeCompiledRuntime,
+  context?: CliInvocationContext,
 ) => {
   const invocation = getActiveCommandInvocation();
   if (
@@ -83,7 +85,7 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
       }),
     );
   }
-  const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap);
+  const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap, context?.env);
   return effectiveBootstrap === declaredBootstrap ? runtime : runtimeForBootstrap(effectiveBootstrap);
 };
 
@@ -112,6 +114,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly preCommand?: boolean;
     readonly payloadStdout?: boolean;
     readonly io?: RendererIO;
+    readonly context?: CliInvocationContext;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
     readonly tracer?: Tracer.Tracer;
     readonly signal?: AbortSignal;
@@ -124,7 +127,13 @@ export const runCompiledCommand = <A, E, R, RE>(
     activeCommandId === "meta:doctor" ||
     activeCommandId === "meta:uninstall"
       ? runtime
-      : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
+      : resolveCompiledCommandRuntime(
+          activeCommandId,
+          spec.bootstrap,
+          runtime,
+          options.runtimeForBootstrap ?? ((bootstrap) => makeCompiledRuntime(bootstrap, options.context)),
+          options.context,
+        );
   const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
   const specCompletion = spec?.completion;
   const completion =
@@ -143,6 +152,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     projectResultKeys === undefined &&
     jqExpression === undefined;
   const rendererOptions = {
+    ...(options.context === undefined ? {} : { context: options.context }),
     runtime: effectiveRuntime as Layer.Layer<
       Exclude<R, EventService | Renderer>,
       RE | ConfigError | LandoRuntimeBootstrapError
@@ -169,7 +179,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     formatError: (
       failure: import("@lando/sdk/command-result").ProjectedFailure,
       redactor: import("@lando/sdk/secrets").Redactor,
-    ) => commandErrorMessage(failure, activeCommandId, redactor),
+    ) => commandErrorMessage(failure, activeCommandId, redactor, options.context?.env),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

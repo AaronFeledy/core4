@@ -16,6 +16,7 @@ import {
   failureOutcomeFromCause,
   normalizeDefect,
 } from "@lando/sdk/command-result";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
 import { collectOpenConnections } from "../commands/open-connections";
 import { parseOpenOptionsFromRunLandoArgv } from "./open-argv";
@@ -35,8 +36,9 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
   ProcessRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
 > {
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-  const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
+  const invocation = yield* CliInvocation;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: invocation.env });
+  const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: invocation.io.stdoutIsTTY === true });
   const encoded =
     parsed._tag === "failure"
       ? { outcome: parsed, exitCode: parsed.error.exitCode ?? 2 }

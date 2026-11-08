@@ -11,6 +11,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { McpAllowlistConflictError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Option, Schema } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { escapeDiagnosticText } from "../../diagnostic-text";
 import { validateEventCommandInput } from "../../event-command-input";
 import { type ResolvedPluginCommandSpec, loadPluginSpec } from "../../event-command-target";
@@ -190,7 +191,7 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
   const available = yield* Effect.serviceOption(PluginContributionGraph);
   if (Option.isNone(available)) return registry;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const projection = yield* projectMcpPluginCommands(
     available.value,
     new Set(registry.commandEntries.map((entry) => entry.spec.id)),

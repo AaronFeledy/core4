@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
@@ -208,10 +209,14 @@ const makeLayer = (options: {
     AppPlanner.of({
       plan: () => {
         options.planCalls?.push(1);
-        options.planCwds?.push(process.cwd());
-        return options.planError === undefined
-          ? Effect.succeed(currentTestPlan(options.plan))
-          : Effect.fail(options.planError);
+        return discoveryCwd().pipe(
+          Effect.tap((cwd) => Effect.sync(() => options.planCwds?.push(cwd))),
+          Effect.andThen(
+            options.planError === undefined
+              ? Effect.succeed(currentTestPlan(options.plan))
+              : Effect.fail(options.planError),
+          ),
+        );
       },
     }),
   );

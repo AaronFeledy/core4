@@ -11,6 +11,7 @@ import {
   Ref,
   Stream,
 } from "effect";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 import type { EventError } from "@lando/sdk/errors";
 import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
@@ -106,28 +107,27 @@ export const makeScopedEventDispatch = (): {
 
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
-const historyRedactionOptions = (): RedactionForProfileOptions => ({ sourceEnv: process.env });
-
 const redactForHistory = (
   redaction: Option.Option<Context.Service.Shape<typeof RedactionService>>,
   event: LandoEvent,
-): Effect.Effect<LandoEvent> => {
-  const options = historyRedactionOptions();
-  return Option.match(redaction, {
-    onNone: () =>
-      Effect.sync(() => ({
-        ...(createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options).redactValue(event) as LandoEvent),
-        timestamp: event.timestamp,
-      })),
-    onSome: (service) =>
-      service.forProfile(HISTORY_REDACTION_PROFILE, options).pipe(
-        Effect.map((redactor) => ({
-          ...(redactor.redactValue(event) as LandoEvent),
+): Effect.Effect<LandoEvent> =>
+  Effect.flatMap(HostExecutionDefaults, (host) => {
+    const options: RedactionForProfileOptions = { sourceEnv: host?.env ?? process.env };
+    return Option.match(redaction, {
+      onNone: () =>
+        Effect.sync(() => ({
+          ...(createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options).redactValue(event) as LandoEvent),
           timestamp: event.timestamp,
         })),
-      ),
+      onSome: (service) =>
+        service.forProfile(HISTORY_REDACTION_PROFILE, options).pipe(
+          Effect.map((redactor) => ({
+            ...(redactor.redactValue(event) as LandoEvent),
+            timestamp: event.timestamp,
+          })),
+        ),
+    });
   });
-};
 
 const makeEventService = (
   config: EventServiceConfig,

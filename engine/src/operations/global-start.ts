@@ -2,7 +2,10 @@ import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/g
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
-import { recordGlobalRouterStartupPlan } from "@lando/engine/global-app/router-admission";
+import {
+  recordGlobalRouterStartupPlan,
+  routerBackingServices,
+} from "@lando/engine/global-app/router-admission";
 import { captureGlobalStartupAdmission } from "@lando/engine/global-app/startup-admission";
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
@@ -110,14 +113,17 @@ export const globalStart = Effect.fn("GlobalStart.start")(
       expandDependencies: true,
     });
     const available = Object.values(loaded.plan.services);
+    const backing = routerBackingServices(loaded.plan, router.id).filter((id) =>
+      available.some((service) => service.name === id),
+    );
     if (
       (options.services?.length ?? 0) > 0 &&
       routerEnabled(loaded.plan) &&
-      available.some((service) => service.name === router.id) &&
+      backing.length > 0 &&
       loaded.plan.routes.some((route) => services.some((service) => service.name === route.service))
     ) {
       const selected = includeAvailableDependencies(
-        [...services.map((service) => service.name), router.id],
+        [...services.map((service) => service.name), ...backing],
         available,
       );
       services = available.filter((service) => selected.has(service.name));

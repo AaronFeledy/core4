@@ -185,15 +185,14 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
 
   <Scenario id="capture-bun-child-exit" layer="e2e" render>
     <Step name="capture-bun-json">
-      <UseFixture name="bun-child-output" />
-      <Run command="lando --format=json bun print-number.js" />
-      <Verify command="lando --format=json bun print-number.js" expect={{ stdout: { regex: "\"_tag\":\\s*\"stdout\"[\\s\\S]*\"chunk\":\\s*\"2" } }} />
+      <Run command="lando --format=json bun -e 'console.log(2)'" />
+      <Verify command="lando --format=json bun -e 'console.log(2)'" expect={{ stdout: { regex: "\"_tag\":\\s*\"stdout\"[\\s\\S]*\"chunk\":\\s*\"2" } }} />
     </Step>
     <Step name="keep-nonzero-bun-exit">
-      <Run command="lando --format=json bun fail.js" expectExit={3} />
+      <Run command="lando --format=json bun -e 'process.exit(3)'" expectExit={3} />
       <Verify errorTag="LandoCommandError" />
     </Step>
-    <Step name="cleanup-bun-files">
+    <Step name="cleanup-bun-run">
       <Cleanup />
     </Step>
   </Scenario>

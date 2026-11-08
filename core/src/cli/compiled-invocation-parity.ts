@@ -7,6 +7,7 @@
  * `invocationParityError` is the pure diagnostic used by compatibility tests.
  */
 import { Schema } from "effect";
+import { type CliInvocationContext, processInvocationContext } from "../runtime/invocation-context";
 
 import {
   argDefinitionsForCommand,
@@ -93,12 +94,13 @@ export const invocationParityError = (commandId: string, argv: ReadonlyArray<str
 export const rejectInvalidInvocation = async (
   commandId: string,
   argv: ReadonlyArray<string>,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<boolean> => {
   const diagnostic = invocationParityError(commandId, argv);
   if (diagnostic === undefined) return false;
-  await emitDiagnosticLine(diagnostic);
+  await emitDiagnosticLine(diagnostic, context);
   const example = commandStructureExample(commandId);
-  if (example !== undefined) await emitDiagnosticLine(`  ↳ Example: ${example}`);
-  process.exitCode = 2;
+  if (example !== undefined) await emitDiagnosticLine(`  ↳ Example: ${example}`, context);
+  context.setExitCode(2);
   return true;
 };

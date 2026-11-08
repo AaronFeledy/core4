@@ -6,6 +6,7 @@ import { RedactionService } from "@lando/redaction/service";
  */
 import { Effect, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { AppPlacementError } from "@lando/sdk/errors";
 import {
@@ -97,7 +98,11 @@ export const setupSpec: LandoCommandSpec<
     const flag = inputProviderFlag(input);
     const captured = yield* Effect.serviceOption(GlobalConfigSources);
     const env = readProviderEnvVar(
-      captured._tag === "None" ? process.env : captured.value.sources.env ? captured.value.env : {},
+      captured._tag === "None"
+        ? (yield* CliInvocation).env
+        : captured.value.sources.env
+          ? captured.value.env
+          : {},
     );
     const configRaw = globalConfig.defaultProviderId;
     const config = configRaw ?? undefined;
@@ -117,6 +122,7 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       resolution.providerId,
       redaction._tag === "Some" ? redaction.value : undefined,
+      (yield* CliInvocation).env,
     );
     yield* recorder.start;
     yield* Effect.addFinalizer(recorder.finish);
