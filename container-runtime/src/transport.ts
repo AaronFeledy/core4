@@ -23,7 +23,7 @@ export interface SocketHttpResponse {
 }
 
 export interface SocketHttpConnection extends AsyncIterable<Bytes> {
-  write(data: string | Uint8Array): void;
+  write(data: string | Uint8Array): void | Promise<void>;
   end(): void;
   destroy(): void;
 }
@@ -383,14 +383,14 @@ const connect = async (
   }
 };
 
-const writeRequest = (
+const writeRequest = async (
   connection: SocketHttpConnection,
   request: SocketHttpRequest,
   options: SocketHttpClientOptions,
   stdinPayload?: Bytes,
-): void => {
+): Promise<void> => {
   try {
-    connection.write(
+    await connection.write(
       socketHttpRequestText(
         request,
         options,
@@ -398,7 +398,7 @@ const writeRequest = (
         stdinPayload?.length,
       ),
     );
-    if (stdinPayload !== undefined) connection.write(stdinPayload);
+    if (stdinPayload !== undefined) await connection.write(stdinPayload);
   } catch (cause) {
     throw fail(
       "write",
@@ -422,7 +422,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     input.signal?.addEventListener("abort", abort, { once: true });
     try {
       if (input.signal?.aborted) throw new DOMException("Socket request aborted.", "AbortError");
-      writeRequest(connection, input, options, stdinPayload);
+      await writeRequest(connection, input, options, stdinPayload);
       let headBuffer: Bytes = new Uint8Array(0);
       let parsed: ParsedHttpHead | undefined;
       let contentLength: number | undefined;
@@ -517,19 +517,15 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     const stdinStopped = new Promise<void>((resolve) => {
       stopStdinPump = resolve;
     });
-    const pendingStdin: Bytes[] = [];
+    const ready = Promise.withResolvers<void>();
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
     const maybeEndStdin = (): void => {
       if (stdinReady && stdinExhausted) connection.end();
     };
-    const writeStdin = (chunk: Bytes): void => {
-      if (stdinReady) connection.write(chunk);
-      else pendingStdin.push(chunk);
-    };
     const flushStdin = (): void => {
       stdinReady = true;
-      for (const chunk of pendingStdin.splice(0)) connection.write(chunk);
+      ready.resolve();
       maybeEndStdin();
     };
     const startStdinPump = () => {
@@ -549,13 +545,18 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
             maybeEndStdin();
             return;
           }
-          writeStdin(next.value);
+          const attached = await Promise.race([
+            ready.promise.then(() => true),
+            stdinStopped.then(() => false),
+          ]);
+          if (!attached) return;
+          await Promise.race([connection.write(next.value), stdinStopped]);
         }
       })();
       stdinPump.catch(() => connection.destroy());
     };
     try {
-      writeRequest(connection, request, options);
+      await writeRequest(connection, request, options);
       startStdinPump();
       const initialChunks: Bytes[] = [];
       let parsed: ParsedHttpHead | undefined;
