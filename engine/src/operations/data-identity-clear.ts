@@ -86,11 +86,12 @@ export const clearAppDataIdentityWhenComplete = Effect.fn("AppDataIdentity.clear
   evidence: DataIdentityClearEvidence,
 ) {
   if (!evidence.volumesRequested || (evidence.skipped?.length ?? 0) > 0) return;
+  if ((yield* TeardownProvider) !== undefined) return;
 
   const remaining = yield* remainingDataVolumesForRoot(evidence.root).pipe(
-    Effect.provideService(TeardownProvider, undefined),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
-  if (remaining.size > 0) return;
+  if (remaining === undefined || remaining.size > 0) return;
 
   yield* clearAppDataIdentity(planAppIdentity({ root: evidence.root }));
 });
