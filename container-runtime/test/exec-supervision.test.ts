@@ -618,7 +618,14 @@ describe("non-TTY exec supervision lifecycle", () => {
   }, 25_000);
 
   test("hundreds of acknowledged heartbeats use one persistent control exec", async () => {
-    const f = fixture({ watchRunningReplies: 200, noOutput: true });
+    const f = fixture({
+      watchRunningReplies: 200,
+      noOutput: true,
+      before: (stage) =>
+        stage === "launch"
+          ? Effect.promise(() => f.waitForPulses(2)).pipe(Effect.andThen(flushWatchReply))
+          : Effect.void,
+    });
     const countCreates = () =>
       f.requests.filter((request) => {
         if (request.method !== "POST" || !request.path.endsWith("/exec")) return false;
@@ -633,11 +640,12 @@ describe("non-TTY exec supervision lifecycle", () => {
         yield* TestClock.adjust(Duration.millis(100));
         yield* Effect.promise(() => f.waitForPulses(1));
         yield* flushWatchReply;
-        yield* Effect.promise(() => f.waitForPulses(2));
+        // Launch confirmation must wake observation without advancing the pacing clock.
+        yield* Effect.promise(() => f.waitForPulses(3));
         yield* flushWatchReply;
-        expect(f.pulseCount()).toBe(2);
+        expect(f.pulseCount()).toBe(3);
         const steadyCreates = countCreates();
-        for (let pulse = 3; pulse <= 201; pulse++) {
+        for (let pulse = 4; pulse <= 202; pulse++) {
           yield* TestClock.adjust(Duration.millis(500));
           yield* Effect.promise(() => f.waitForPulses(pulse));
           yield* flushWatchReply;
@@ -650,7 +658,7 @@ describe("non-TTY exec supervision lifecycle", () => {
     );
     expect(Exit.isSuccess(result.exit)).toBe(true);
     expect(terminalChunks(result.chunks)).toEqual([{ exitCode: 0 }]);
-    expect(f.pulseCount()).toBe(202);
+    expect(f.pulseCount()).toBe(203);
     const operations = f.requests
       .filter((request) => request.method === "POST" && request.path.endsWith("/exec"))
       .map((request) => (request.body as { Cmd?: readonly string[] }).Cmd?.[4]);

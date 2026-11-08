@@ -14,6 +14,8 @@ export interface OwnedExecWatch {
   readonly finished: Effect.Effect<ExecWatchReceipt, ProviderError>;
   /** Authorize observation before sending launch, including while its acknowledgement is pending. */
   readonly beginLaunch: Effect.Effect<void, ProviderError>;
+  /** Observe once immediately after launch acknowledgement, without delaying pulses during launch. */
+  readonly confirmLaunch: Effect.Effect<void>;
   readonly prepareCancel: Effect.Effect<void>;
   /** Call only after the requested cancellation has been persisted. */
   readonly resumeAfterCancel: Effect.Effect<void>;
@@ -56,6 +58,7 @@ export const startExecWatch = (
     const ready = yield* Deferred.make<void, ProviderError>();
     const finished = yield* Deferred.make<ExecWatchReceipt, ProviderError>();
     const resume = yield* Deferred.make<void>();
+    const launchConfirmed = yield* Deferred.make<void>();
     const stop = yield* Deferred.make<void>();
     const input = yield* Queue.bounded<Uint8Array, Cause.Done>(1);
     let pending: Deferred.Deferred<ExecWatchReceipt, ProviderError> | undefined;
@@ -80,6 +83,7 @@ export const startExecWatch = (
         try: () => protocol.markLaunched(),
         catch: (cause) => failure("watch-launch-order", cause),
       }).pipe(Effect.andThen(Deferred.succeed(resume, undefined)), Effect.asVoid),
+      confirmLaunch: Deferred.succeed(launchConfirmed, undefined).pipe(Effect.asVoid),
       prepareCancel: Effect.sync(() => protocol.beginCancel()),
       resumeAfterCancel: Deferred.succeed(resume, undefined).pipe(Effect.asVoid),
       stopInput,
@@ -138,10 +142,15 @@ export const startExecWatch = (
       yield* Deferred.await(started);
       let first = true;
       let launched = false;
+      let confirmationObserved = false;
       for (;;) {
         if (!first) {
           yield* Deferred.await(resume);
-          if (launched) yield* Effect.sleep(execTiming.heartbeatInterval);
+          if (launched) {
+            const pace = Effect.sleep(execTiming.heartbeatInterval);
+            yield* confirmationObserved ? pace : pace.pipe(Effect.raceFirst(Deferred.await(launchConfirmed)));
+            confirmationObserved = yield* Deferred.isDone(launchConfirmed);
+          }
           launched = true;
         }
         first = false;

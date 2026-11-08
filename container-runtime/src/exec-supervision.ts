@@ -412,6 +412,7 @@ export const supervisedExecStream = (
           !(launched.state === "finished" && launched.joined === true && launched.exitCode !== undefined)
         )
           return yield* Effect.fail(failure("launch-not-confirmed"));
+        yield* watch.confirmLaunch;
         const finished = yield* watch.finished;
         if (finished.exitCode === undefined) return yield* Effect.fail(failure("root-status-missing"));
         yield* Deferred.succeed(receipt, finished);
