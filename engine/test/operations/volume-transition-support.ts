@@ -23,6 +23,7 @@ export const withHome = (home?: ServiceHomePlan): AppPlan => ({
   services: {
     [web.name]: {
       ...web,
+      serviceTypeId: "node",
       ...(home === undefined ? {} : { home }),
       mounts:
         home?.state === "persisted"

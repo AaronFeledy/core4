@@ -22,6 +22,7 @@ test.each(
       services: {
         [web.name]: {
           ...web,
+          serviceTypeId: "node",
           home: { state: "persisted", target: "/home/node", store: "previous-home", user: "node" },
           mounts: [
             {
@@ -53,6 +54,7 @@ test.each(
       services: {
         [web.name]: {
           ...web,
+          serviceTypeId: "node",
           home: { state: "persisted", target: "/home/node", store: "new-home", user: "node" },
           mounts: [
             {

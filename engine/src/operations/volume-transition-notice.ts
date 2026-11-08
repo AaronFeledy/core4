@@ -120,12 +120,17 @@ export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTran
       notices?.add(key);
       const storage = `storage: [{ store: ${quoteYamlScalar(old.store)}, target: ${quoteYamlScalar(old.target)} }]`;
       const sameType =
-        previous.serviceTypeId !== undefined && service.serviceTypeId !== undefined
-          ? previous.serviceTypeId === service.serviceTypeId
-          : previous.type === service.type;
+        previous.serviceTypeId !== undefined &&
+        service.serviceTypeId !== undefined &&
+        previous.serviceTypeId === service.serviceTypeId;
       const advice = sameType
         ? `To mount it at its previous location, set ${storage} under services.${service.name} in your Landofile.`
-        : `The service type changed from ${previous.serviceTypeId ?? previous.type} to ${service.serviceTypeId ?? service.type}. Export the data from the old service first, then import it using the new service's supported tools.`;
+        : `${
+            previous.serviceTypeId === undefined || service.serviceTypeId === undefined
+              ? "Service-type compatibility is unverified because a recorded declaration identity is missing."
+              : `The service type changed from ${previous.serviceTypeId} to ${service.serviceTypeId}.`
+          }
+Export the data from the old service first, then import it using the new service's supported tools.`;
       yield* events.publish(
         MessageWarnEvent.make({
           body: `${message}\nLando leaves ${old.store} untouched. ${advice}`,

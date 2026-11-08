@@ -21,7 +21,7 @@ const volume = (store: string, origin?: MountPlan["origin"]): VolumeMountPlan =>
 const dataPlan = (mounts: readonly MountPlan[], stores: readonly DataStorePlan[] = []): AppPlan => ({
   ...plan,
   stores,
-  services: { [web.name]: { ...web, mounts } },
+  services: { [web.name]: { ...web, serviceTypeId: "node", mounts } },
 });
 
 for (const path of paths) {
@@ -119,8 +119,10 @@ test.each([
   ["mysql:8.0", "mysql", "mysql:8.4", "mysql", true],
   ["mysql:8.0", "mysql", "mariadb:11.4", "mariadb", false],
   ["compose", "mysql", "compose", "mariadb", false],
-  ["mysql:8.0", undefined, "mysql:8.0", "mysql", true],
+  ["mysql:8.0", undefined, "mysql:8.0", "mysql", false],
   ["mysql:8.0", undefined, "mysql:8.4", "mysql", false],
+  ["mysql", "mysql", "mysql", undefined, false],
+  ["mysql", undefined, "mysql", undefined, false],
 ] as const)("reattach advice for %s/%s -> %s/%s: %s", async (oldType, oldId, type, id, reattach) => {
   const previous = dataPlan([volume("old-data", "service")]);
   const desired = dataPlan([volume("new-data", "service")]);
@@ -138,7 +140,14 @@ test.each([
     },
     {
       ...desired,
-      services: { [web.name]: { ...web, type, serviceTypeId: id, mounts: [volume("new-data", "service")] } },
+      services: {
+        [web.name]: {
+          ...web,
+          type,
+          ...(id === undefined ? {} : { serviceTypeId: id }),
+          mounts: [volume("new-data", "service")],
+        },
+      },
     },
   );
   expect(warnings).toHaveLength(1);
