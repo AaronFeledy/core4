@@ -92,8 +92,9 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
     },
     work: Effect.fnUntraced(function* (tree) {
       const retired = yield* plan.retire ?? Effect.succeed(undefined);
+      const targetRetired = target !== undefined && retired?.appIds.includes(target.app.id) === true;
       if (fileSync?.applicable === true) yield* tree.startTask("file-sync");
-      if (fileSync !== undefined) {
+      if (fileSync !== undefined && !targetRetired) {
         yield* fileSync.quiesceRetained.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       }
       let snapshotsRemoved = 0;
@@ -105,7 +106,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         yield* tree.completeTask("snapshots");
       }
       const quiesced =
-        fileSync === undefined
+        fileSync === undefined || targetRetired
           ? undefined
           : yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       if (fileSync?.applicable === true) yield* tree.completeTask("file-sync");
@@ -127,7 +128,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       if (hasProvider) {
         yield* tree.startTask("provider");
         const remove = Effect.gen(function* () {
-          if (target !== undefined && provider !== undefined) {
+          if (target !== undefined && provider !== undefined && !targetRetired) {
             const outcome = yield* destroyPlannedProvider({ ...plan, target }, provider);
             observationSources.push(outcome.shutdownObservations);
             switch (outcome.kind) {
@@ -175,7 +176,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
           Effect.Services<ReturnType<typeof cleanupDestroyHostState>> | RuntimeProviderRegistry
         >([remove, cleanupDestroyHostState(plan, tree)]);
       }
-      if (fileSync !== undefined) yield* fileSync.complete;
+      if (fileSync !== undefined && !targetRetired) yield* fileSync.complete;
       if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {

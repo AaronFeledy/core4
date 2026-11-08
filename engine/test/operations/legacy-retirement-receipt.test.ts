@@ -1,21 +1,25 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   FileSyncSessionRef,
   PortablePath,
   ServiceName,
   type ServiceShutdownObservation,
 } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
+import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 import { fixture, stale, target } from "./legacy-teardown-support.ts";
 import { web } from "./start-progress-topology-support.ts";
 
-test.each(["stop", "destroy"] as const)(
+test.each(["stop", "destroy", "renamed-destroy"] as const)(
   "%s includes retired services and preserves quiescence observations over later absence",
   async (command) => {
     const harness = fixture();
@@ -50,12 +54,30 @@ test.each(["stop", "destroy"] as const)(
       oomKilled: true,
     };
     try {
+      if (command === "renamed-destroy")
+        await Bun.write(join(target.root, ".lando.yml"), "name: third-name\n");
       const base = await Effect.runPromise(harness.runtimeProviderRegistry.select());
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           if (command === "stop") return yield* stopApp({}, target);
+          if (command === "renamed-destroy")
+            return yield* withResolvedCwd(target.root, destroyApp({ volumes: true, yes: true }));
           return yield* destroyApp({ volumes: true }, target);
         }).pipe(
+          Effect.provideService(LandofileService, {
+            discover: Effect.succeed(literalTestLandofile({ name: "third-name" }, target.root)),
+          }),
+          Effect.provideService(AppPlanner, {
+            plan: () =>
+              Effect.fail(
+                new LandofileValidationError({
+                  file: join(target.root, ".lando.yml"),
+                  message: "Planning fails",
+                  remediation: "Fix service composition",
+                  issues: [],
+                }),
+              ),
+          }),
           Effect.provideService(RuntimeProviderRegistry, {
             ...harness.runtimeProviderRegistry,
             select: () =>
@@ -109,6 +131,7 @@ test.each(["stop", "destroy"] as const)(
       expect(result.shutdownObservations).toEqual([observed]);
       if ("volumesRemoved" in result) expect(result.volumesRemoved).toBe(true);
     } finally {
+      if (command === "renamed-destroy") rmSync(join(target.root, ".lando.yml"));
       rmSync(harness.userDataRoot, { recursive: true, force: true });
     }
   },

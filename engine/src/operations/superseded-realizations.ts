@@ -24,6 +24,7 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export type RetirementReceipt = {
+  readonly appIds: readonly string[];
   readonly servicesRemoved: readonly string[];
   readonly volumesRemoved: boolean;
   readonly shutdownObservations?: readonly ServiceShutdownObservation[];
@@ -165,7 +166,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
         });
       }
       return withShutdownObservations(
-        { servicesRemoved: [...servicesRemoved], volumesRemoved },
+        { appIds: superseded.map((plan) => plan.id), servicesRemoved: [...servicesRemoved], volumesRemoved },
         ...observations,
       ) satisfies RetirementReceipt;
     }).pipe(Effect.provide(context));
