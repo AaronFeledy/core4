@@ -162,7 +162,6 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
                 yield frame.subarray(5);
                 break;
               case 1:
-                return;
               case 2:
                 return;
               default:

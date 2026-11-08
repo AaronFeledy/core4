@@ -54,7 +54,7 @@ export const prepareContainerHelperMounts = Effect.fn("RuntimeProvider.prepareCo
         return yield* Effect.fail(
           failure(
             `Service ${service.name} mounts the reserved helper target ${delivery.target}.`,
-            "Remove the authored mount at /run/lando/helper and retry lando start.",
+            `Remove the authored mount at ${delivery.target} and retry lando start.`,
           ),
         );
     }
