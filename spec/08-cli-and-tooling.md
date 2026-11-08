@@ -70,7 +70,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |
-| `app:info` | `info` | `app` | Runtime info; repeatable `--service/-s`; `--format json\|table\|yaml` |
+| `app:info` | `info` | `app` | Runtime info; repeatable `--service/-s`; `--format json\|table\|yaml`; result `app` is the current Landofile name when loading succeeds, otherwise the recorded applied name; optional `dataName` is present when the observed plan's recorded data name differs from `app`. Service observations retain applied runtime identity (§6.10, §7.4). |
 | `app:logs` | `logs` | `app` | Stream logs; `--service`, `--follow`, `--tail`, `--since`, `--no-viewer` |
 | `app:open` | `open` | `app` | Open or print URLs; `--service`, `--route`, `--all`, `--print` |
 | `app:pull` | `pull` | `app` | Pull remote datasets and optionally code (§10.12); `[<remote>@<env>]`, `--remote`, `--branch`, `--only`, `--fresh`, `--code`, `--no-snapshot`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json` |

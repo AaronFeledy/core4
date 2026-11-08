@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { homeStoreName } from "@lando/engine/planner/home";
+import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { mysqlServiceType } from "../src/services/mysql.ts";

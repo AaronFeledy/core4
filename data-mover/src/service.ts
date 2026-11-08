@@ -45,6 +45,7 @@ import {
 } from "@lando/sdk/events";
 import {
   AbsolutePath,
+  type AppId,
   type DataEndpoint,
   type DataTransferProgress,
   type DataTransferResult,
@@ -53,7 +54,9 @@ import {
   ProviderId,
   type PrunePolicy,
   type SnapshotInfo,
+  type VolumeRef,
   type VolumeSnapshotRef,
+  planDataId,
   snapshotHandle,
 } from "@lando/sdk/schema";
 import {
@@ -656,6 +659,17 @@ const byteStreamFromArchive = (
 
 type DataProvider = Effect.Effect<Context.Service.Shape<typeof RuntimeProvider>, DataTransferError>;
 
+const volumeRunOwner = Effect.fn("DataMover.volumeRunOwner")(function* (
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  app: AppId,
+) {
+  const plans = yield* (provider.appliedPlans ?? Effect.succeed([])).pipe(
+    Effect.mapError((cause) => providerFailure("appliedPlans", cause)),
+  );
+  const plan = plans.find((candidate) => planDataId(candidate) === app);
+  return plan === undefined ? { app } : { app: plan.id, plan };
+});
+
 const streamFromEndpoint = (
   selectedProvider: DataProvider,
   endpoint: DataEndpoint,
@@ -712,10 +726,12 @@ const streamFromProvider = (
       }
       return Stream.unwrap(
         resolveDataHelperImage(provider).pipe(
-          Effect.map((image) =>
+          Effect.bindTo("image"),
+          Effect.bind("owner", () => volumeRunOwner(provider, endpoint.app)),
+          Effect.map(({ image, owner }) =>
             execStdoutStream(
               provider.runStream({
-                owner: { app: endpoint.app },
+                owner,
                 image,
                 command: ["sh", "-c", `cat ${helperPayload}`],
                 mounts: [{ type: "volume", store: endpoint.store, target: helperTarget, readOnly: true }],
@@ -884,9 +900,10 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           ),
         );
         const helperImage = yield* resolveDataHelperImage(provider);
+        const owner = yield* volumeRunOwner(provider, target.app);
         yield* checkedTransferCommand(
           provider.runStream({
-            owner: { app: target.app },
+            owner,
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ type: "volume", store: target.store, target: helperTarget, readOnly: false }],
@@ -1594,7 +1611,10 @@ export const layerWithPrivateFileAccess: Layer.Layer<
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
       const persistence = { paths, stateStore, providerRegistry, privateFileAccess };
-      const service = (app?: import("@lando/sdk/schema").AppId, providerId?: ProviderId) => {
+      const service = (target?: DataEndpoint | VolumeRef, providerId?: ProviderId) => {
+        const app =
+          target === undefined ? undefined : "_tag" in target ? appFromEndpoint(target) : target.app;
+        const volume = target !== undefined && (!("_tag" in target) || target._tag === "volume");
         const selected = Effect.gen(function* () {
           // Explicit call-time bindings come from operations that already selected
           // their provider. The bootstrap placeholder is never a selection.
@@ -1613,7 +1633,7 @@ export const layerWithPrivateFileAccess: Layer.Layer<
               uninspected ??= inspected.failure;
               continue;
             }
-            const plan = inspected.success.find((plan) => plan.id === app);
+            const plan = inspected.success.find((plan) => (volume ? planDataId(plan) : plan.id) === app);
             if (plan !== undefined) return yield* providerRegistry.select(plan);
           }
           if (uninspected !== undefined) return yield* Effect.fail(uninspected);
@@ -1639,15 +1659,16 @@ export const layerWithPrivateFileAccess: Layer.Layer<
         return makeDataMoverService(selected, events, persistence);
       };
       return DataMover.of({
-        transfer: (spec) => service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transfer(spec),
+        transfer: (spec) =>
+          service(appFromEndpoint(spec.from) === undefined ? spec.to : spec.from).transfer(spec),
         volumeInitialization: Effect.fn("DataMover.volumeInitialization")((identity) =>
           sharedVolumeInitialization(stateStore, identity),
         ),
         transferStream: (spec) =>
-          service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transferStream(spec),
-        read: (from) => service(appFromEndpoint(from)).read(from),
-        snapshot: (store, opts) => service(store.app).snapshot(store, opts),
-        restore: (handle, store, opts) => service(store.app).restore(handle, store, opts),
+          service(appFromEndpoint(spec.from) === undefined ? spec.to : spec.from).transferStream(spec),
+        read: (from) => service(from).read(from),
+        snapshot: (store, opts) => service(store).snapshot(store, opts),
+        restore: (handle, store, opts) => service(store).restore(handle, store, opts),
         listSnapshots: (filter) => service().listSnapshots(filter),
         resolveSnapshot: (reference, scope) => service().resolveSnapshot(reference, scope),
         findOrphanedSnapshots: Effect.suspend(() => service().findOrphanedSnapshots),

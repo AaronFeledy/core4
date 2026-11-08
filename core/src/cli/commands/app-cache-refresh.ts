@@ -3,7 +3,6 @@ import { Effect, Schema } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
-  CacheError,
   CommandAliasConflictError,
   CommandAliasTargetError,
   EventError,
@@ -11,7 +10,7 @@ import type {
   PluginManifestError,
   SubscriberLevelMismatchError,
 } from "@lando/sdk/errors";
-import { ToolingCompileError } from "@lando/sdk/errors";
+import { type CacheError, ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   LandofileService,
@@ -24,7 +23,10 @@ import { loadUserLandofile } from "../app-resolution";
 import { commandAliasRegistrationError } from "../command-alias-policy";
 
 import { compileAppCommands } from "@lando/engine/cache/command-compiler";
-import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import {
+  readDataIdentityFingerprint,
+  writeAppCommandCacheStrict,
+} from "@lando/engine/cache/command-index-writer";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { publishHostShellWarnings } from "@lando/engine/operations/host-shell-warnings";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
@@ -80,6 +82,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
 
   const landofile = yield* loadUserLandofile(landofileService);
   const capabilities = yield* registry.capabilities;
+  const dataIdentityFingerprint = yield* readDataIdentityFingerprint(landofile.context.appRoot);
   const plan = yield* planner.plan(landofile, capabilities);
   yield* publishHostShellWarnings(plan);
 
@@ -113,6 +116,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   });
 
   const appCachePath = yield* writeAppCommandCacheStrict({
+    dataIdentityFingerprint,
     landofile: landofile.document,
     entries,
     cwd,

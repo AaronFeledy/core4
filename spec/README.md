@@ -98,7 +98,7 @@ If you are looking for a public surface or policy:
 | App mounts and mount realization | 06 | §6.4 |
 | File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
 | Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
-| Planned/applied project-file policy in info | 06 | §6.10 |
+| Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
@@ -128,7 +128,7 @@ If you are looking for a public surface or policy:
 | Six-layer Landofile merge | 07 | §7.2 |
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
-| Top-level Landofile and Compose-subset keys | 07 | §7.4 |
+| Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
 | Config translation contracts and diagnostics | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |

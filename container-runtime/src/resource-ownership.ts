@@ -10,6 +10,7 @@ import {
   ServiceName,
   landoOwnedNetworkNames,
   planAppIdentity,
+  planDataId,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { SCRATCH_ID_LABEL, scratchLabelsForPlan } from "./labels.ts";
@@ -187,6 +188,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
           identify({
             ...identity,
             kind: "volume",
+            appId: planDataId(attempt),
             nativeName: store.name,
             volumeClass: volumeClassForStore(store),
             volumeScope: store.scope,

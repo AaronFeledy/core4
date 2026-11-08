@@ -12,9 +12,9 @@ import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 
+import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
 import { DATA_TREE_OWNERSHIP_STEP_ID } from "../../src/planner/data-tree.ts";
 import { serviceFeatureBuildSteps } from "../../src/planner/extensions.ts";
-import { homeStoreName } from "../../src/planner/home.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";

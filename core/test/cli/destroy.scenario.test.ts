@@ -53,6 +53,7 @@ import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -358,6 +359,7 @@ const makeDestroyLayer = (
     }),
   );
   const baseCommandLayer = Layer.mergeAll(
+    layerTransactionGuard,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     stateStore.layer,

@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { EndpointPlan, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
-import { landoServiceStoreName } from "@lando/sdk/schema";
+import { landoServiceStoreName, normalizeAppSlug } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { type BaseSeed, type DraftServicePlan, makeDraft } from "./draft.ts";
@@ -28,6 +28,7 @@ export interface ComposeServiceInput {
   readonly base: BaseSeed;
   readonly baseKind: ServiceFeatureContext["base"];
   readonly appName?: string | undefined;
+  readonly dataName?: string | undefined;
   readonly appSlug: string;
   readonly appRoot: ServiceFeatureContext["appRoot"];
   readonly host?: ServiceFeatureContext["host"];
@@ -46,12 +47,18 @@ const makeContext = (
   base: input.baseKind,
   primary: draft.primary,
   appName: input.appName,
+  dataName: input.dataName,
   appRoot: input.appRoot,
   host: input.host,
   normalizedConfig: input.normalizedConfig,
   connection: draft.connection,
   config,
-  serviceStoreName: (role) => landoServiceStoreName(input.appSlug, draft.name, role),
+  serviceStoreName: (role) =>
+    landoServiceStoreName(
+      input.dataName === undefined ? input.appSlug : normalizeAppSlug(input.dataName, input.appRoot),
+      draft.name,
+      role,
+    ),
   addEnv: (name, value) => {
     draft.environment[name] = value;
   },

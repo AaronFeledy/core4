@@ -16,7 +16,7 @@ services:
     type: mongodb
 ```
 
-Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the app name.
+Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the folder's data name (the name this folder's data was first created under).
 
 ```yaml
 services:

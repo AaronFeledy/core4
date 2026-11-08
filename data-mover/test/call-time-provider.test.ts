@@ -50,17 +50,20 @@ const silentEvents = Layer.succeed(
 const passthroughRedaction = RedactionService.layer;
 
 describe("BunDataMover.layer call-time provider", () => {
-  test.each(["none", "select", "appliedPlans"] as const)(
+  test.each(["none", "select", "appliedPlans", "data-id", "stale-service-id"] as const)(
     "selects the app plan past an unrelated provider's %s failure instead of accepting the bootstrap stub",
     async (broken) => {
       const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-selected-"));
       const target = resolve(dir, "selected.txt");
       const plan: AppPlan = {
         valueModel: 1,
-        id: app,
+        id: broken === "data-id" || broken === "stale-service-id" ? AppId.make("renamed") : app,
         name: "Data app",
         slug: "data-app",
         root: absolute(dir),
+        ...(broken === "data-id" || broken === "stale-service-id"
+          ? { identity: { appRoot: absolute(dir), ownerKey: "owner", dataName: "data-app" } }
+          : {}),
         provider: ProviderId.make("selected"),
         services: {},
         routes: [],
@@ -73,6 +76,15 @@ describe("BunDataMover.layer call-time provider", () => {
         ...TestRuntimeProvider,
         id: "selected",
         appliedPlans: Effect.succeed([plan]),
+        capabilities: { ...TestRuntimeProvider.capabilities, ephemeralMounts: true, artifactPull: false },
+        runStream: (spec) => {
+          expect(spec.owner?.app).toBe(AppId.make("renamed"));
+          expect(spec.owner?.plan).toBe(plan);
+          return Stream.make(
+            { kind: "stdout" as const, chunk: new TextEncoder().encode("registry-output") },
+            { exitCode: 0 },
+          );
+        },
         execStream: () =>
           Stream.make(
             { kind: "stdout" as const, chunk: new TextEncoder().encode("registry-output") },
@@ -82,7 +94,7 @@ describe("BunDataMover.layer call-time provider", () => {
       const targets: Array<AppPlan | ProviderId | undefined> = [];
       const registry = RuntimeProviderRegistry.of({
         list: Effect.succeed(
-          broken === "none"
+          broken === "none" || broken === "data-id" || broken === "stale-service-id"
             ? [ProviderId.make("selected")]
             : [ProviderId.make("broken"), ProviderId.make("selected")],
         ),
@@ -108,16 +120,20 @@ describe("BunDataMover.layer call-time provider", () => {
         },
       });
       try {
-        await Effect.runPromise(
+        const result = await Effect.runPromise(
           Effect.scoped(
             Effect.flatMap(DataMover, (mover) =>
               mover.transfer({
-                from: { _tag: "serviceCmd", app, service, command: ["export"] },
+                from:
+                  broken === "data-id"
+                    ? { _tag: "volume", app, store: "original-data" }
+                    : { _tag: "serviceCmd", app, service, command: ["export"] },
                 to: { _tag: "hostPath", path: absolute(target) },
                 overwrite: true,
               }),
             ),
           ).pipe(
+            Effect.result,
             Effect.provideService(RuntimeProvider, runtimeProviderService),
             Effect.provide(
               dataMoverLayer.pipe(
@@ -134,6 +150,15 @@ describe("BunDataMover.layer call-time provider", () => {
             ),
           ),
         );
+        if (broken === "stale-service-id") {
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "DataTransferError", operation: "select" },
+          });
+          expect(targets).not.toContain(plan);
+          return;
+        }
+        expect(result._tag).toBe("Success");
         expect(await readFile(target, "utf8")).toBe("registry-output");
         expect(targets).toContain(plan);
         expect(targets).not.toContain(undefined);

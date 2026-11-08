@@ -34,7 +34,7 @@
  * either form. The labels are not collapsed into one, so nothing here needs a
  * migration path for volumes an earlier build created.
  */
-import { type AppPlan, appIdentityKey, planAppIdentity } from "@lando/sdk/schema";
+import { type AppPlan, appIdentityKey, planAppIdentity, planDataId } from "@lando/sdk/schema";
 
 import { isOwnershipRoot } from "./ownership-root.ts";
 import {
@@ -96,7 +96,7 @@ export const volumeOwnershipLabels = (
     [VOLUME_OWNER_LABEL]: ownership.appRoot,
     [VOLUME_SELECTOR_LABEL]: volumeSelectorValue({
       providerId: plan.provider,
-      appId: plan.id,
+      appId: planDataId(plan),
       ownerKey: ownership.ownerKey,
       volumeClass: volumeClassForStore(store),
     }),
@@ -108,7 +108,7 @@ export const planVolumeFilters = (
   plan: AppPlan,
   volumeClasses: ReadonlyArray<VolumeSelectorClass>,
 ): VolumeFilterMap =>
-  buildLandoVolumeFilters(plan.id, {
+  buildLandoVolumeFilters(planDataId(plan), {
     providerId: plan.provider,
     ownerKey: planAppIdentity(plan).ownerKey,
     volumeClasses,

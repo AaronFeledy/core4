@@ -3,7 +3,9 @@ import { getLandofileValueSource } from "@lando/landofile/validation";
 import { normalizeHostPlatform } from "@lando/paths";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
+import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
+import { readAppDataIdentity } from "../planner/data-identity.ts";
 import { invocationSitesOf, resolveLandofileForPlanning } from "../planner/event-set.ts";
 import { hostShellIssues } from "../planner/host-shell-issues.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
@@ -13,6 +15,7 @@ import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
 import { FileSyncPolicy, fileSyncMetadata, makeFileSyncPolicy } from "../plugins/file-sync-policy.ts";
 
 import type {
+  AppDataIdentityError,
   LandofileFormConflictError,
   LandofileNotFoundError,
   LandofileValidationError,
@@ -42,7 +45,11 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   options: AppConfigLintOptions = {},
 ): Effect.fn.Return<
   ConfigLintResult,
-  LandofileNotFoundError | LandofileFormConflictError | LandofileValidationError | NotImplementedError,
+  | LandofileNotFoundError
+  | LandofileFormConflictError
+  | LandofileValidationError
+  | NotImplementedError
+  | AppDataIdentityError,
   PluginRegistry
 > {
   const snapshot = yield* lintLandofileSnapshot(options);
@@ -55,7 +62,11 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     Option.getOrUndefined(yield* Effect.serviceOption(FileSystem)),
   );
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
+  const identity = yield* resolveAppIdentity(dirname(snapshot.landofilePath));
+  const record = yield* readAppDataIdentity(identity);
+  const dataName = record?.name ?? landofile.document.name ?? "app";
   const resolved = yield* resolveLandofileForPlanning({
+    dataName,
     landofile,
     pluginRegistry,
     configService,
@@ -130,6 +141,9 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
       platform: pathsService?.platform ?? normalizeHostPlatform(),
     });
     const planning = planApp({
+      dataName,
+      kind: "user",
+      identity: { ...identity, dataName },
       landofile,
       providerCapabilities: resolution.capabilities,
       appRoot: resolution.appRoot,

@@ -448,7 +448,7 @@ describe("recipe option parity", () => {
       const settings = landofile.services?.[ServiceName.make("appserver")]?.environment?.BACKDROP_SETTINGS;
       // App identity is planner-owned; discovery preserves its binding.
       expect(landofile.name).toBe("backdrop-defaults");
-      expect(settings).toContain('"database":"{{ app.name }}"');
+      expect(settings).toContain('"database":"{{ services.database.creds.database }}"');
       expect(settings).toContain('"username":"lando"');
       expect(settings).toContain('"password":"lando"');
       expect(yaml).not.toContain("via:");

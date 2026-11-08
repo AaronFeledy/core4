@@ -20,10 +20,12 @@ export const readCliAppCommandCache = Effect.fnUntraced(function* (
   options: ReadCliAppCommandCacheOptions = {},
 ): Effect.fn.Return<CliAppCommandCacheReadResult, CacheError | LandofileFormConflictError> {
   const invocation = yield* CliInvocation;
+  const roots = resolveLandoRoots({ env: invocation.env });
   const scoped = {
     ...options,
     cwd: options.cwd ?? invocation.cwd,
-    cacheRoot: options.cacheRoot ?? resolveLandoRoots({ env: invocation.env }).userCacheRoot,
+    cacheRoot: options.cacheRoot ?? roots.userCacheRoot,
+    roots,
   };
   const receipt = yield* readAppCommandCacheForCwdDetailed(scoped);
   if (receipt.status === "fresh" || receipt.sourcePath === undefined || options.rebuild === false)

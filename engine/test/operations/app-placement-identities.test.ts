@@ -9,7 +9,11 @@ import { infoApp } from "../../src/operations/info.ts";
 import { logsApp } from "../../src/operations/logs.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { stopApp } from "../../src/operations/stop.ts";
-import { ensureAppPlacement, resolveAppPlacement } from "../../src/providers/app-placement.ts";
+import {
+  ensureAppPlacement,
+  ensureAppPlacementState,
+  resolveAppPlacement,
+} from "../../src/providers/app-placement.ts";
 import {
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
@@ -190,3 +194,25 @@ test("two applied plans for one app identity on the same provider remain ambiguo
     rmSync(harness.userDataRoot, { recursive: true, force: true });
   }
 });
+
+test.each([false, true])(
+  "rename placement preserves the current plan and detects provider changes: %s",
+  async (crossProvider) => {
+    const old = { ...plan, id: AppId.make("previous-name"), name: "previous-name" };
+    const harness = makeHarness({
+      appliedPlans: crossProvider ? [{ ...old, provider: ProviderId.make("docker") }] : [old, plan],
+    });
+    try {
+      const result = await Effect.runPromise(
+        ensureAppPlacementState(user, plan.provider).pipe(Effect.provide(harness.layer), Effect.result),
+      );
+      expect(result).toMatchObject(
+        crossProvider
+          ? { _tag: "Failure", failure: { _tag: "AppPlacementError", realizedProviderId: "docker" } }
+          : { _tag: "Success", success: { plan, superseded: [old], realized: plan.provider } },
+      );
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  },
+);

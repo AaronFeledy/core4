@@ -256,7 +256,7 @@ At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,
 | `app` | Data shared across global services; preserved by normal destroy and removed by `--purge`. |
 | `global` | Shared under §6.5; survives `meta:global:destroy --purge` and is removed only by `meta:uninstall` (§17.7). |
 
-Global-app resources carry the standard ownership labels plus a global-app marker so `apps:poweroff --keep-global` can exclude them.
+Global-app volumes carry `dev.lando.app: "global"` and the standard storage ownership labels derived from the global root (§6.5). No separate global-app volume marker exists. `apps:poweroff --keep-global` excludes the global app by its app id.
 
 Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that guarantee covers named stores only, and a removed global container's anonymous volumes go with it (§6.5). Scratch apps retain their explicit lifetime and volume-removal policy (§21).
 

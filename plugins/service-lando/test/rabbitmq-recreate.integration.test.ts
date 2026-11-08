@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { basename } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { bringDown, bringUp } from "@lando/provider-lando";
+import { bringDown, bringUp, exec } from "@lando/provider-lando";
+import { ServiceName, appIdentityKey, normalizeAppSlug } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rabbitmqServiceType } from "../src/services/rabbitmq.ts";
 import { composeCatalogConfigPlan } from "./support/catalog-config-app.ts";
@@ -21,7 +22,7 @@ const containerId = (app: LiveApp, name: string) =>
 
 describe("RabbitMQ data across container recreation", () => {
   test.skipIf(resolveLiveProviderSocket() === undefined)(
-    "keeps its node name and durable queues when the container is recreated",
+    "keeps its node name and durable queues when the app is renamed",
     async () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath;
       if (socketPath === undefined) throw new Error("live RabbitMQ test requires a provider socket");
@@ -30,9 +31,10 @@ describe("RabbitMQ data across container recreation", () => {
           Effect.gen(function* () {
             // Given: a broker holding a persistent message in a durable queue.
             const appRoot = yield* acquireTempAppRoot("lando-rabbit-recreate-");
+            const slug = normalizeAppSlug(basename(appRoot), appRoot);
             const plan = yield* composeCatalogConfigPlan({
               serviceType: rabbitmqServiceType,
-              slug: basename(appRoot),
+              slug,
               serviceName: "queue",
               appRoot,
               service: { type: rabbitmqServiceType.id },
@@ -61,15 +63,43 @@ describe("RabbitMQ data across container recreation", () => {
             expect(published.exitCode).toBe(0);
             const before = yield* containerId(app, name);
 
-            // When: the container is removed and created again on the same data volume.
+            // When: a renamed runtime reuses the recorded data volume.
+            const renamedPlan = yield* composeCatalogConfigPlan({
+              serviceType: rabbitmqServiceType,
+              slug: `${slug}-renamed`,
+              dataName: slug,
+              serviceName: "queue",
+              appRoot,
+              service: { type: rabbitmqServiceType.id },
+              source: "rabbitmq-recreate.integration.test",
+            });
+            const renamed = {
+              ...renamedPlan,
+              identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root), dataName: slug },
+            };
             yield* bringDown(plan, { api: app.api });
-            yield* bringUp(plan, { api: app.api });
+            yield* Effect.acquireRelease(bringUp(renamed, { api: app.api }), () =>
+              Effect.orDie(bringDown(renamed, { api: app.api, volumes: true })),
+            );
+            const renamedApp: LiveApp = {
+              plan: renamed,
+              api: app.api,
+              exec: (service, command) =>
+                exec(
+                  renamed,
+                  { app: renamed.id, service: ServiceName.make(service) },
+                  { command: [...command] },
+                  { api: app.api },
+                ),
+            };
 
             // Then: the new container keeps the node name, so the broker finds its queue and message.
-            expect(yield* containerId(app, name)).not.toBe(before);
-            expect((yield* app.exec("queue", ["hostname"])).stdout.trim()).toBe(name);
+            expect(yield* containerId(app, serviceContainerName(renamed, "queue"))).not.toBe(before);
+            expect((yield* renamedApp.exec("queue", ["hostname"])).stdout.trim()).toBe(
+              serviceContainerName(renamed, "queue"),
+            );
             const queues = yield* execUntil({
-              app,
+              app: renamedApp,
               service: "queue",
               command: ["rabbitmqctl", "-q", "list_queues", "name", "durable", "messages"],
               accept: (result) => succeeded(result) && result.stdout.includes("lando-durable"),

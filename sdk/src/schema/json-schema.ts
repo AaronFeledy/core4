@@ -42,6 +42,7 @@ import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
 import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
 import {
+  AppDataIdentityError,
   AppPlacementError,
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
@@ -718,6 +719,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteInputError,
   RouteProviderMismatchError,
   AppPlacementError,
+  AppDataIdentityError,
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
@@ -1177,6 +1179,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouteInputError: "Invalid authored route with its key path and remediation.",
   RouteProviderMismatchError: "Routed app provider differs from the host router provider.",
   AppPlacementError: "App realized on a provider other than the selected provider.",
+  AppDataIdentityError: "The app folder's durable data identity cannot be established safely.",
   RouteObjectInput: "Expanded authored route with optional ordered filters.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
@@ -2329,6 +2332,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RouteInputError._tag",
   "RouteProviderMismatchError._tag",
   "AppPlacementError._tag",
+  "AppDataIdentityError._tag",
   "RoutePlan.hostname",
   "RoutePlan.pathPrefix",
   "RoutePlan.scheme",

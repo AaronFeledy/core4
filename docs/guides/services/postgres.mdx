@@ -52,7 +52,7 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the app name (`postgres-demo`); override with `database:` under `services.db` |
+| Database | the folder's data name (here `postgres-demo`, the name this folder's data was first created under); override with `database:` under `services.db` |
 | User | `lando` |
 | Password | generated when omitted; read it with `{{ services.db.creds.password }}` |
 
@@ -159,7 +159,7 @@ services:
     type: postgres:18
 ```
 
-Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the service's own `lando-<app>--<service>--postgresql-data` volume.
+Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the service's own `lando-<data-name>--<service>--postgresql-data` volume. That name follows the folder's data name across renames.
 
 Changing the major doesn't upgrade an existing database. Postgres refuses to start on files from another major, so the `lando start` that applies the change fails with the server's own error. Move the data through a dump. The volume-deletion step below removes app service volumes, not only this database. Verify that the export exists and back up any other service data you need before continuing:
 

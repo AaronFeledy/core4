@@ -60,9 +60,11 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
 > {
   const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return undefined;
+  const roots = resolveLandoRoots({ env: (yield* CliInvocation).env });
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
-    cacheRoot: options.cacheRoot ?? resolveLandoRoots({ env: (yield* CliInvocation).env }).userCacheRoot,
+    cacheRoot: options.cacheRoot ?? roots.userCacheRoot,
+    roots,
   }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
   if (cache === null) return undefined;
   const catalog = options.catalog ?? createPluginCommandCatalog();
