@@ -46,8 +46,7 @@ test.each(["view", "get"] as const)("raw %s ignores schema errors and higher lay
   );
   expect(Result.isSuccess(result)).toBe(true);
   if (Result.isFailure(result)) return;
-  expect(result.success).toMatchObject({ raw: { router: { httpPort: "nonsense" } }, value: "nonsense" });
-  expect(result.success.config).toBeUndefined();
+  expect(result.success).toEqual({ subcommand, key: "router.httpPort", value: "nonsense", format: "table" });
 });
 
 test("rejects an invalid file candidate even when an env override masks it", async () => {

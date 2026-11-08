@@ -22,11 +22,12 @@ import {
   requireMutableGlobalLandofile,
 } from "./global-config-document";
 
-export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
+export const GLOBAL_CONFIG_SUBCOMMANDS = ["view", "set", "unset", "edit", "validate", "describe"] as const;
+export type GlobalConfigSubcommand = Exclude<(typeof GLOBAL_CONFIG_SUBCOMMANDS)[number], "describe">;
 
 export interface GlobalConfigOptions {
   /** `describe` is schema-only; `runGlobalConfig` dispatches it without the global app. */
-  readonly subcommand?: GlobalConfigSubcommand | "describe";
+  readonly subcommand?: (typeof GLOBAL_CONFIG_SUBCOMMANDS)[number];
   readonly key?: string;
   readonly value?: string;
   readonly type?: ValueType;
@@ -95,10 +96,10 @@ export const globalConfigSet = Effect.fn("GlobalConfig.set")(
     if (key === undefined || raw === undefined) {
       return yield* Effect.fail(
         new LandofileWriteValidationError({
-          message: "`meta global config set` requires a <key.path> and a <value>.",
+          message: "`lando global:config set` requires a <key.path> and a <value>.",
           file: filePath,
           issues: [validationIssue([], "Missing key path or value.")],
-          remediation: "Usage: `lando meta global config set <key.path> <value> [--type ...]`.",
+          remediation: "Usage: `lando global:config set <key.path> <value> [--type ...]`.",
         }),
       );
     }
@@ -128,10 +129,10 @@ export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(
     if (key === undefined) {
       return yield* Effect.fail(
         new LandofileWriteValidationError({
-          message: "`meta global config unset` requires a <key.path>.",
+          message: "`lando global:config unset` requires a <key.path>.",
           file: filePath,
           issues: [validationIssue([], "Missing key path.")],
-          remediation: "Usage: `lando meta global config unset <key.path>`.",
+          remediation: "Usage: `lando global:config unset <key.path>`.",
         }),
       );
     }
@@ -268,12 +269,6 @@ export const globalConfig = Effect.fn("GlobalConfig.run")(function* (
   if (subcommand === "unset") return yield* globalConfigUnset(options, filePath);
   if (subcommand === "edit") return yield* globalConfigEdit(options, filePath);
   if (subcommand === "validate") return yield* globalConfigValidate(filePath);
-  return yield* Effect.fail(
-    new LandofileWriteValidationError({
-      message: `Unknown \`meta global config\` subcommand: "${subcommand}".`,
-      file: filePath,
-      issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
-      remediation: "Usage: `lando meta global config [view|set|unset|edit|validate]`.",
-    }),
-  );
+  const exhaustive: never = subcommand;
+  return exhaustive;
 });

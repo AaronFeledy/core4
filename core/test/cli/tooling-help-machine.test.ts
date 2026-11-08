@@ -109,6 +109,17 @@ test("built-in machine help carries declared flags and positional arguments (#20
   });
 });
 
+test("built-in config machine help carries positional choices", async () => {
+  await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
+    const result = await runHelp(root, cacheRoot, ["config", "--help"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).result.target.input.args[0]).toMatchObject({
+      name: "subcommand",
+      options: ["view", "get", "set", "unset", "edit", "validate", "describe", "telemetry", "translate"],
+    });
+  });
+});
+
 test("explicit machine help rejects an unknown target instead of returning a root catalog", async () => {
   // Given
   await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {

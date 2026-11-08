@@ -75,7 +75,7 @@
     "surface": "command:meta:config",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member."
+    "justification": "Issue #1614 adds the schema-only `describe` verb. The result becomes a union of the unchanged value result, whose `subcommand` is now the closed list of existing verbs, and a strict `subcommand: \"describe\"` member. #2153 then splits reads from writes: a selector (`get <key>` or `view --path`) returns a `{ subcommand, key, value? }` projection without the full `config`/`raw` tree, a full view returns only the tree, and write results carry a required `subcommand`; an absent value is an omitted `value` key, not a full-tree fallback."
   },
   {
     "surface": "command:meta:global:config",

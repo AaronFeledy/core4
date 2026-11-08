@@ -114,16 +114,41 @@ test("view includes hostEvents written in config.yml", async () => {
   });
 });
 
-test("get preserves roots and telemetry when an adjacent scalar write is applied", async () => {
+test("get projects telemetry without the full config tree", async () => {
   // Given
   await run({ subcommand: "set", key: "telemetry.enabled", value: "false", type: "boolean" });
   // When
   const result = await run({ subcommand: "get", key: "telemetry.enabled" });
   // Then
   expect(result.value).toBe(false);
-  expect(result.config).toMatchObject({
-    userConfRoot: root,
-    userDataRoot: join(root, "data"),
-    userCacheRoot: join(root, "cache"),
+  expect(Schema.encodeSync(ConfigResultSchema)(result)).toEqual({
+    subcommand: "get",
+    key: "telemetry.enabled",
+    value: false,
+    format: "table",
   });
+});
+
+test.each(["raw", "resolved"] as const)(
+  "%s selectors omit the full tree even for a missing key",
+  async (source) => {
+    await writeFile(join(root, "config.yml"), "telemetry:\n  enabled: false\n");
+    for (const selector of [
+      { subcommand: "get", key: "nope.nope" },
+      { subcommand: "view", path: "nope.nope" },
+    ] as const) {
+      const result = await run({ ...selector, source, format: "json" });
+      expect(result).toEqual({ subcommand: selector.subcommand, key: "nope.nope", format: "json" });
+      expect(Schema.encodeSync(ConfigResultSchema)(result)).toEqual(result);
+    }
+  },
+);
+
+test("the result schema rejects projections carrying full trees and incomplete views", () => {
+  for (const result of [
+    { subcommand: "get", key: "telemetry", raw: {}, format: "json" },
+    { subcommand: "view", key: "telemetry", config: {}, format: "json" },
+    { format: "json" },
+  ])
+    expect(Schema.is(ConfigResultSchema)(result)).toBe(false);
 });

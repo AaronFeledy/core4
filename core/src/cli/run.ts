@@ -18,6 +18,7 @@ import {
   type CliInvocationContext,
   processInvocationContext,
 } from "../runtime/invocation-context";
+import { rejectCommandCliArgValues } from "./arg-value-validation";
 import {
   type BuiltInCommandEntry,
   isReservedNamespaceHead,
@@ -607,6 +608,7 @@ const runCompiledCli = async (
       });
       return;
     }
+    if (await rejectCommandCliArgValues(canonicalCommandId, argv.slice(1), context)) return;
     if (await emitJsonListModeIfRequested(found[1].resultSchema, context)) return;
   }
 

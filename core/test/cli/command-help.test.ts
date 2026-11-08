@@ -117,17 +117,17 @@ describe("renderCommandHelp", () => {
   });
 
   test.each(["lint", "explain", "translate", "migrate"])(
-    "renders registered config:%s as the typeable config command name",
+    "renders app:config:%s by its canonical id, with no bare config alias",
     (verb) => {
       // Given
-      const entry = requireBuiltIn(`config:${verb}`);
+      const entry = requireBuiltIn(`app:config:${verb}`);
 
       // When
       const help = renderCommandHelp(entry);
 
       // Then
-      expect(sectionBody(help, "USAGE")).toContain(`lando config:${verb}`);
-      expect(sectionBody(help, "ALIASES")).toContain(`app:config:${verb}`);
+      expect(sectionBody(help, "USAGE")).toContain(`lando app:config:${verb}`);
+      expect(help).not.toMatch(new RegExp(`(?<!app:)config:${verb}`, "u"));
     },
   );
 

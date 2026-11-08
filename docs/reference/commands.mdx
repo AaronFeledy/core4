@@ -85,7 +85,7 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `key` | Dot-path key for get/set/unset/describe. |
-| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `get`, `set`, `unset`, `edit`, `validate`, `describe`) |
 | `value` | Value for set. |
 
 Flags:
@@ -125,19 +125,14 @@ Flags:
 
 Report recipe provenance and which generated value sites are still managed.
 
-Aliases: `lando config:explain`
-
 ## `lando app:config:lint`
 
 Check Landofile configuration, declared listeners, routes, and event names.
-
-Aliases: `lando config:lint`
 
 ## `lando app:config:migrate`
 
 Migrate managed recipe configuration through satisfied recipe history.
 
-Aliases: `lando config:migrate`
 
 Flags:
 
@@ -170,7 +165,6 @@ Flags:
 
 Translate a non-canonical config file into a canonical v4 Landofile.
 
-Aliases: `lando config:translate`
 
 Flags:
 
@@ -923,7 +917,7 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `key` | Dot-path key for get/set/unset/describe. |
-| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, translate, describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `get`, `set`, `unset`, `edit`, `validate`, `describe`, `telemetry`, `translate`) |
 | `value` | Value for set. |
 
 Flags:
@@ -969,7 +963,7 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `key` | Dot-path key for get/set/unset/describe. |
-| `subcommand` | Subcommand: view (default), set, unset, edit, validate, describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `set`, `unset`, `edit`, `validate`, `describe`) |
 | `value` | Value for set. |
 
 Flags:
