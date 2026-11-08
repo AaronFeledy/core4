@@ -342,7 +342,7 @@ The JSON identifies each binary by path, byte size, and SHA-256 after timing fin
 
 ## Workflow performance history
 
-The `workflow-performance` workflow times real workflows end to end with the compiled binary on the `linux-x64` and `linux-arm64` managed-runtime readiness cells. Start-class lanes are cold first start, warm stop/start, and unchanged rebuild. Heavy lanes are MySQL and PostgreSQL import and snapshot restore, plus the Drupal and Rails journeys. Every sample gets fresh Lando roots and owned app identities, and its images are pre-pulled before timing, so cold start measures Lando startup rather than image downloads. Timings are advisory. A failed command fails its sample, and the job exits nonzero after uploading the report.
+The `workflow-performance` workflow times real workflows end to end with the compiled binary on the `linux-x64` and `linux-arm64` managed-runtime readiness cells. Start-class lanes are cold first start, warm stop/start, and unchanged rebuild. Heavy lanes are MySQL and PostgreSQL import and snapshot restore, plus the Drupal and Rails journeys. Every sample gets fresh Lando roots and owned app identities. Its images are pre-pulled and the global services its app needs are started before timing, so cold start measures the app's own startup rather than image downloads or the one-time global service build. Timings are advisory. A failed command fails its sample, and the job exits nonzero after uploading the report.
 
 The workflow runs nightly at 04:00 UTC. To check a branch, dispatch one sample per lane:
 
