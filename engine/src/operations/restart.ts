@@ -53,11 +53,6 @@ import { collectPlanConnections, startedServices } from "./connection-collector.
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import {
-  publishHomeTransitionNotices,
-  publishPlacementHomeTransitionNotices,
-  withHomeTransitionNotices,
-} from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
@@ -72,6 +67,11 @@ import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import {
+  publishPlacementVolumeTransitionNotices,
+  publishVolumeTransitionNotices,
+  withVolumeTransitionNotices,
+} from "./volume-transition-notice.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
@@ -192,7 +192,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
     services: [...selected],
   });
   yield* publishAndRunAppEvent(target.plan, "pre-restart", preRestart);
-  yield* publishHomeTransitionNotices(appliedPlan, selectedPlan);
+  yield* publishVolumeTransitionNotices(appliedPlan, selectedPlan);
   yield* markStartMutation(target.plan);
 
   const started = yield* withGlobalConsumerAdmission(
@@ -336,7 +336,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
               timestamp: DateTime.nowUnsafe(),
             });
             yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
-            yield* publishPlacementHomeTransitionNotices(placement, plan);
+            yield* publishPlacementVolumeTransitionNotices(placement, plan);
             yield* markStartMutation(plan);
             yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
             yield* managed?.onStopped ?? Effect.void;
@@ -368,7 +368,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     );
   },
   (effect, options: RestartAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) => {
-    const command = withHomeTransitionNotices(effect);
+    const command = withVolumeTransitionNotices(effect);
     const signal = options.signal;
     if (signal === undefined) return command;
     return Effect.raceFirst(

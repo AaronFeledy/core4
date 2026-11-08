@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { AppId, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
+import { AppId, type AppPlan, PortablePath, appIdentityKey } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -12,7 +12,7 @@ test.each(
     [1, 2].flatMap((count) => [false, true].map((withCurrent) => ({ operation, count, withCurrent }))),
   ),
 )(
-  "$operation names the previous persisted home once after retiring $count previous names (current applied: $withCurrent)",
+  "$operation names previous home and data volumes once after retiring $count previous names (current applied: $withCurrent)",
   async ({ operation, count, withCurrent }) => {
     const old: AppPlan = {
       ...plan,
@@ -23,9 +23,21 @@ test.each(
         [web.name]: {
           ...web,
           home: { state: "persisted", target: "/home/node", store: "previous-home", user: "node" },
+          mounts: [
+            {
+              type: "volume",
+              origin: "service",
+              target: PortablePath.make("/data"),
+              store: "previous-data",
+              readOnly: false,
+            },
+          ],
         },
       },
-      stores: [{ name: "previous-home", kind: "data", scope: "service" }],
+      stores: [
+        { name: "previous-home", kind: "data", scope: "service" },
+        { name: "previous-data", kind: "data", scope: "service" },
+      ],
     };
     const desired: AppPlan = {
       ...old,
@@ -35,9 +47,21 @@ test.each(
         [web.name]: {
           ...web,
           home: { state: "persisted", target: "/home/node", store: "new-home", user: "node" },
+          mounts: [
+            {
+              type: "volume",
+              origin: "service",
+              target: PortablePath.make("/data"),
+              store: "new-data",
+              readOnly: false,
+            },
+          ],
         },
       },
-      stores: [{ name: "new-home", kind: "data", scope: "service" }],
+      stores: [
+        { name: "new-home", kind: "data", scope: "service" },
+        { name: "new-data", kind: "data", scope: "service" },
+      ],
     };
     const applied = [
       ...Array.from({ length: count }, (_, index) => ({ ...old, id: AppId.make(`previous-${index}`) })),
@@ -66,6 +90,12 @@ test.each(
         (event) => event.body.includes("previous-home") && event.body.includes("new-home"),
       );
       expect(notices).toHaveLength(1);
+      expect(notices[0]?.body).toContain('storage: [{ store: "previous-home", target: "/home/node" }]');
+      const dataNotices = byTag(harness.events, "message.warn").filter(
+        (event) => event.body.includes("previous-data") && event.body.includes("new-data"),
+      );
+      expect(dataNotices).toHaveLength(1);
+      expect(dataNotices[0]?.body).toContain('storage: [{ store: "previous-data", target: "/data" }]');
       expect(applied.map((plan) => plan.id)).toEqual([desired.id]);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });

@@ -10,10 +10,6 @@ import { selectPreparedProvider } from "../providers/prepared.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
-import {
-  publishPlacementHomeTransitionNotices,
-  withHomeTransitionNotices,
-} from "./home-transition-notice.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import {
@@ -23,6 +19,10 @@ import {
 } from "./start-internal.ts";
 import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overlays.ts";
 import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import {
+  publishPlacementVolumeTransitionNotices,
+  withVolumeTransitionNotices,
+} from "./volume-transition-notice.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
@@ -46,7 +46,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     execution.preparedOverlays ??
     (yield* prepareStartOverlays(target, yield* providerRegistry.select(target.plan)));
   yield* validateDesiredFileSyncEngine(target.plan);
-  return yield* withHomeTransitionNotices(
+  return yield* withVolumeTransitionNotices(
     withAppMutationLock(
       appLockTarget(target.plan),
       Effect.gen(function* () {
@@ -72,7 +72,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
                       : ensureStartTransactionConsistent(target);
                     if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
                     yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
-                    yield* publishPlacementHomeTransitionNotices(placement, plan);
+                    yield* publishPlacementVolumeTransitionNotices(placement, plan);
                     return yield* startAppForTargetUnlocked(options, target, managed, {
                       ...execution,
                       provider,

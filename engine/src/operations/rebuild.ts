@@ -46,10 +46,6 @@ import {
   withGlobalConsumerAdmission,
 } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import {
-  publishPlacementHomeTransitionNotices,
-  withHomeTransitionNotices,
-} from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
@@ -64,6 +60,10 @@ import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import {
+  publishPlacementVolumeTransitionNotices,
+  withVolumeTransitionNotices,
+} from "./volume-transition-notice.ts";
 
 export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
@@ -230,7 +230,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
               timestamp: timestamp(),
             });
             yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
-            yield* publishPlacementHomeTransitionNotices(placement, selectedPlan);
+            yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);
             const start = scoped
               ? {
                   app: plan.name,
@@ -279,5 +279,5 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     );
   },
   (effect, _options: RebuildAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) =>
-    withHomeTransitionNotices(effect),
+    withVolumeTransitionNotices(effect),
 );
