@@ -7,7 +7,7 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 - `src/schema/` is the canonical Effect Schema home, imported as `@lando/sdk/schema`.
 - `src/events/` contains lifecycle payload schemas; event discriminators live on `_tag`.
 - `src/errors/` contains Effect `TaggedError` classes.
-- `src/services/` contains `Context.Service` contracts only; implementation layers belong in their owning runtime packages, never the SDK.
+- `src/services/` contains `Context.Service` contracts and fiber references that are part of a service contract; implementation layers belong in their owning runtime packages, never the SDK.
 - `src/test/` is re-exported as `@lando/sdk/test` for contract helpers.
 
 ## Effect service and operation idioms

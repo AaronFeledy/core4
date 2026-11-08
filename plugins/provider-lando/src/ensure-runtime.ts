@@ -64,6 +64,9 @@ export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "private
     spec: PodmanServiceSpec,
   ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly setupProgress?: {
+    readonly helpers: (
+      body: Effect.Effect<void, ProviderUnavailableError>,
+    ) => Effect.Effect<void, ProviderUnavailableError>;
     readonly launch: (
       body: Effect.Effect<void, ProviderUnavailableError>,
     ) => Effect.Effect<void, ProviderUnavailableError>;
@@ -215,7 +218,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
 ): Effect.fn.Return<void, ProviderUnavailableError> {
   const socketPathError = validateManagedSocketPathLength(deps.socketPath);
   if (socketPathError !== undefined) return yield* Effect.fail(socketPathError);
-  const repair = Effect.gen(function* () {
+  const helpers = Effect.gen(function* () {
     if (deps.catatonitProvision !== undefined) {
       yield* ensureManagedCatatonit(deps.catatonitProvision);
     }
@@ -240,6 +243,9 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
         });
       }
     }
+  });
+  const repair = Effect.gen(function* () {
+    yield* deps.setupProgress?.helpers(helpers) ?? helpers;
     if (yield* linuxRuntimeIsHealthy(deps)) {
       const adopted =
         deps.generationStore === undefined

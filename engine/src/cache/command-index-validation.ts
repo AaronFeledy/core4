@@ -76,6 +76,7 @@ const isEntry = (value: unknown): value is CommandIndexEntry =>
   (!Object.hasOwn(value, "disabled") || (value.disabled === true && value.hidden === true)) &&
   (!Object.hasOwn(value, "service") || isString(value.service)) &&
   (!Object.hasOwn(value, "source") || value.source === "bun-script") &&
+  (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
   (!Object.hasOwn(value, "input") || isInput(value.input));
 
 const isAliasPolicy = (value: unknown): boolean => {

@@ -1,10 +1,13 @@
 import { Schema } from "effect";
+import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { HostProxyCall } from "./call-context";
 
 export const runHostProxyCallProcess = async (
   dispatch: (call: HostProxyCall, signal: AbortSignal) => Promise<void>,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  const reader = Bun.stdin.stream().getReader();
+  if (context.io.stdin === undefined) throw new TypeError("Host-proxy calls require an input stream.");
+  const reader = context.io.stdin.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const controller = new AbortController();
   const interrupt = () => controller.abort();

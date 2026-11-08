@@ -9,6 +9,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
+import { HttpTrustError } from "@lando/sdk/errors";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader } from "@lando/sdk/services";
 
@@ -605,5 +606,54 @@ describe("Downloader layer", () => {
     expect(error._tag).toBe("DownloadFetchError");
     expect(error.cause).toEqual(trustCause);
     expect(error.remediation).toBe("Supply the issuer CA through network.ca.certs.");
+  });
+
+  test("a body reset after HTTP 200 reports a transport failure, not an HTTP status (#1598)", async () => {
+    // Given: Bun's mid-body close after a 200, without Bun's developer hint in the user message.
+    const url = "https://deb.debian.org/nftables.deb";
+    const fake = makeFakeHttpClient({
+      bodies: {
+        [url]: {
+          kind: "fail-body",
+          prefix: bytes("partial"),
+          message:
+            "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
+        },
+      },
+    });
+    // When
+    const error = expectLeft(await download({ url, destination: { kind: "memory" } }, fake.layer));
+    // Then
+    expect(error).toMatchObject({
+      status: undefined,
+      reason: "transport",
+      message:
+        "Couldn't download from https://deb.debian.org: The socket connection was closed unexpectedly.",
+      remediation:
+        "Inspect the transport failure for https://deb.debian.org (DNS, TLS, proxy, or connectivity).",
+    });
+  });
+
+  test("an HttpTrustError cause sets DownloadFetchError.trustCause to its kind", async () => {
+    const url = "https://example.test/expired.bin";
+    const fake = makeFakeHttpClient({
+      bodies: {
+        [url]: {
+          kind: "fail-open",
+          cause: new HttpTrustError({
+            message: "TLS trust verification failed for https://example.test: certificate has expired",
+            urlOrigin: "https://example.test",
+            kind: "certificate-invalid",
+            remediation: "Check the host clock.",
+          }),
+        },
+      },
+    });
+    const error = expectLeft(await download({ url, destination: { kind: "memory" } }, fake.layer));
+    expect(error).toMatchObject({
+      _tag: "DownloadFetchError",
+      trustCause: "certificate-invalid",
+      remediation: "Check the host clock.",
+    });
   });
 });

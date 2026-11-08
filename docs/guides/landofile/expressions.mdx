@@ -87,7 +87,7 @@ That prints the Landofile after load-time resolution: recipe and env sites show 
 
 ## Plan-time app and proxy
 
-`app.name` and `app.slug` both resolve to the app slug: lowercase, with every run of non-alphanumerics turned into `-`, so `My App` becomes `my-app`. That is the same value route hostnames and default database names use. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`.
+`app.name` and `app.slug` both resolve to the **current** app slug: lowercase, with every run of non-alphanumerics turned into `-`, so `My App` becomes `my-app`. Route hostnames and other runtime identity follow that current slug. Catalog default database names, generated passwords, and named data stores follow the folder's **data name** (the name this folder's data was first created under), which matches the current name until you rename the app. When you author `database: "{{ app.slug }}"` yourself, the expression tracks the current name on rename; prefer `{{ services.<db>.creds.database }}` when you need the stable database the volume was initialized with. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`.
 
 Route hostnames, `environment:` values, service config such as `database:`, tooling `cmd` / `cmds`, and `x-` extension values all resolve at plan time:
 

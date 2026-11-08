@@ -67,7 +67,23 @@ readiness, and configure service leaf TLS separately through the
 [certificates with mkcert guide](../subsystems/certificates-mkcert.mdx).
 
 If a path cannot be read, Lando names that path and points to all three correction surfaces:
-`network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`.
+`network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`. A host CA file that
+contains no PEM certificate, such as a DER-encoded `.cer` file or a private key, fails the same way
+before any request goes out. Convert a DER file with
+`openssl x509 -inform der -in corporate-root.cer -out corporate-root.pem`.
+
+## Read certificate errors
+
+When Lando can't verify a server's certificate, the error says which kind of problem it is:
+
+- **The issuer isn't trusted.** This is what a TLS-inspecting corporate proxy usually causes. Add
+  that proxy's root CA to `network.ca.certs` or `LANDO_NETWORK_CA_CERTS`, then retry.
+- **The certificate itself is invalid.** It is expired, not yet valid, issued for a different host,
+  or revoked. Adding a CA doesn't fix this. Check your computer's clock, and whether a captive portal
+  or a proxy is rewriting TLS.
+
+A dropped or refused connection, or a failed TLS handshake, is a network problem, not a trust
+problem, so Lando doesn't suggest a CA for it.
 
 This host-global and per-service CA injection is separate from browser trust of the
 [Traefik reverse proxy's HTTPS certificates](../subsystems/proxy-traefik.mdx): injected corporate

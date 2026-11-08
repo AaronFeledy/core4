@@ -4,7 +4,7 @@ import { Context, Effect } from "effect";
 import { createBunCommandEnv } from "./bun-command-env.ts";
 import {
   type CapturedHostExecutionContext,
-  captureHostExecutionContext,
+  captureScopedHostExecutionContext,
   prepareHostExecutionContext,
 } from "./host-execution-context.ts";
 
@@ -36,7 +36,7 @@ export const withPreparedProcess = <A, E, R>(
         args: [...input.args],
         ...(input.env === undefined ? {} : { env: { ...input.env } }),
       };
-      const context = captured ?? captureHostExecutionContext(snapshot);
+      const context = captured ?? (yield* captureScopedHostExecutionContext(snapshot));
       const runtime = context.runtime;
       const tempRoot = runtime.tempRoot;
       const runner = yield* ProcessRunner;

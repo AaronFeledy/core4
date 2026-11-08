@@ -171,6 +171,11 @@ export const makeHarness = async (
             service: service.name,
             providerId: plan.provider,
             containerId: `fixture-${service.name}-${applyCalls.length}`,
+            labels: {
+              "dev.lando.app": plan.id,
+              "dev.lando.app-root": plan.root,
+              "dev.lando.service": service.name,
+            },
             status: "running" as const,
             lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
             publications: {

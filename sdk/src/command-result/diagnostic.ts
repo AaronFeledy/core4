@@ -51,6 +51,8 @@ const reserved = new Set([
   "issues",
   "steps",
   "redactionTokens",
+  "existing",
+  "incoming",
   "additionalErrors",
   "role",
   "failures",
@@ -96,6 +98,17 @@ const projectTaggedError = (error: unknown, ancestors: readonly unknown[]): type
   const issues = ownValue(record, "issues");
   const projectedIssues = isJsonSafe(issues) ? projectIssues(issues) : undefined;
   if (projectedIssues !== undefined) extra.issues = projectedIssues;
+  const cause = ownValue(record, "cause");
+  if (
+    cause !== null &&
+    typeof cause === "object" &&
+    typeof ownValue(cause, "_tag") === "string" &&
+    typeof ownValue(cause, "message") === "string" &&
+    ancestors.length < 8 &&
+    cause !== error &&
+    !ancestors.includes(cause)
+  )
+    extra.cause = projectTaggedError(cause, [...ancestors, error]);
   const failures = ownValue(record, "failures");
   if (Array.isArray(failures) && !types.isProxy(failures) && ancestors.length < 8) {
     const members: (typeof TaggedErrorJson.Type)[] = [];

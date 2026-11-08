@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, Downloader } from "@lando/sdk/services";
+import { testCaPem } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -78,7 +79,7 @@ describe("landofile network trust wiring", () => {
     const previous = globalThis.__landoEngineCompositionInputs;
     const directory = await mkdtemp(join(tmpdir(), "lando-lf-trust-"));
     const caPath = join(directory, "ca.pem");
-    const pem = "-----BEGIN CERTIFICATE-----\nlandofile\n-----END CERTIFICATE-----\n";
+    const pem = testCaPem(0);
     await writeFile(caPath, pem, "utf-8");
 
     let resolveNetworkTrust: (() => Promise<unknown>) | undefined;

@@ -14,7 +14,7 @@ const {
   contentDigest: BACKDROP_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("backdrop");
-const BACKDROP_SETTINGS_VALUE = backdropSettings("{{ app.name }}");
+const BACKDROP_SETTINGS_VALUE = backdropSettings("{{ services.database.creds.database }}");
 
 const defaults = { ...backdropDefaults };
 const alternatives = { php: "8.2", database: "mysql:8.0", composer: "2.7.7", webroot: "/app/public" };
@@ -74,23 +74,30 @@ describe("backdrop decomposition", () => {
         database: { type: "{{ recipe.database }}" },
       },
       tooling: {
-        bee: { service: "appserver", description: "Run Bee inside the appserver service.", cmds: ["bee"] },
+        bee: {
+          service: "appserver",
+          description: "Run Bee inside the appserver service.",
+          cmds: ["bee"],
+          wrapper: true,
+        },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         php: {
           service: "appserver",
           description: "Run the PHP CLI inside the appserver service.",
           cmds: ["php"],
+          wrapper: true,
         },
       },
     });
   });
 
-  test("defers the settings database name to the app scope and survives snapshot encoding", () => {
-    expect(BACKDROP_SETTINGS_VALUE).toContain('"database":"{{ app.name }}"');
+  test("defers the settings database name to service credentials and survives snapshot encoding", () => {
+    expect(BACKDROP_SETTINGS_VALUE).toContain('"database":"{{ services.database.creds.database }}"');
     const rendered = Result.getOrThrow(renderRecipeSnapshot(backdropSnapshot, defaults)) as {
       services: { appserver: { environment: { BACKDROP_SETTINGS: string } } };
     };

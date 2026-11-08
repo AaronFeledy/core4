@@ -3,6 +3,7 @@ import {
   type PortablePath,
   type ServiceConfig,
   containerDestinationRefusalMessage,
+  landoCacheStoreName,
   parseContainerDestination,
 } from "@lando/sdk/schema";
 
@@ -13,11 +14,11 @@ import type { AuthoredStorageInfo } from "./service-types.ts";
 const GLOBAL_SCOPE_REMEDIATION =
   "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
 
-const cacheStorageKey = (target: string, key: string | undefined): string => key ?? kebab(target);
+export const cacheStorageKey = (target: string, key: string | undefined): string => key ?? kebab(target);
 
 /** Cache stores are named from the canonical destination so every reader derives one name. */
 export const cacheStoreName = (target: string, key: string | undefined): string =>
-  `lando-cache-${cacheStorageKey(target, key)}`;
+  landoCacheStoreName(cacheStorageKey(target, key));
 
 export const plannedContainerDestination = (
   target: string,

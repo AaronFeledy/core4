@@ -1,11 +1,53 @@
 import { expect, test } from "bun:test";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, ServiceName, StartedService, appIdentityKey } from "@lando/sdk/schema";
-import { RouterService } from "@lando/sdk/services";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRouterService, makeTestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
-import { collectObservedConnections, observeService } from "../../src/operations/connection-collector.ts";
+import {
+  collectObservedConnections,
+  collectPlanObservations,
+  observeService,
+} from "../../src/operations/connection-collector.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
+
+test("observes an unapplied service as absent while preserving provider failures", async () => {
+  const provider = makeTestRuntimeProvider();
+  const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
+    list: Effect.succeed([plan.provider]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
+  const rows = await Effect.runPromise(
+    collectPlanObservations(plan, plan, provider).pipe(
+      Effect.provideService(RuntimeProviderRegistry, registry),
+    ),
+  );
+  expect(
+    rows.map((row) => ({
+      name: row.name,
+      status: row.runtime.status,
+      publications: row.runtime.publications,
+    })),
+  ).toEqual([{ name: web.name, status: "absent", publications: { status: "missing" } }]);
+  const error = new ProviderUnavailableError({
+    providerId: "test",
+    operation: "inspect",
+    message: "offline",
+    remediation: "Start the provider.",
+  });
+  const result = await Effect.runPromise(
+    Effect.result(
+      collectPlanObservations(plan, plan, { ...provider, inspect: () => Effect.fail(error) }),
+    ).pipe(Effect.provideService(RuntimeProviderRegistry, registry)),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBe(error);
+});
 
 test("observes routes once for the plan and retains unmatched runtime rows without leaking runtime", async () => {
   const other = ServiceName.make("other");

@@ -28,8 +28,8 @@ All tests run under `bun test` unless a gate names another tool.
 | Host proxy contract | Authentication, exact request union, allowlists, recursion, backpressure, socket ownership, redaction, streaming, and cleanup are enforced. |
 | TunnelService contract | Targets, egress, provisioning, scope ownership, detached state, probes, events, and redaction remain within the declared port. |
 | File sync engine contract | Capabilities, setup, containment, content fidelity, conflicts, events, cancellation, and pinned-tool ownership are enforced. |
-| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced (§10.3.2). |
-| Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced. |
+| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced, and so are certificate-code trust classification and the absence of automatic replay for every client whose harness can inject raw transport failures and HTTP statuses, which the bundled `@lando/http-client` layer's harness does (§10.3.2). |
+| Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced, and so are `OnlineAcquisition`-scoped retry of transient failures only, single attempts for routine downloads, `reason` classification, and `attempts` accounting (§10.3.3). |
 | Redaction contract | The canonical value and pattern layers produce byte-stable profile output and cannot be weakened by plugins. |
 | Interaction contract | Answer precedence, mode selection, validation, secret handling, cancellation, dynamic choices, and renderer routing are enforced. |
 | Renderer frames | Headless snapshots cover task trees, prompts, narrow terminals, and resize behavior without asserting machine renderers. |
@@ -68,7 +68,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Plugin SDK contract | Type and runtime tests protect the public plugin-author surface. |
 | Machine-output conformance | Every non-interactive canonical command emits schema-valid envelopes or streams with correct ids, status, and redaction. |
 | Agent command completion | Prove one-time completion policy resolution across CLI, lifecycle, and MCP; nonzero process failure with retained typed result/diagnostics; successful negative reports with format-independent exit codes; bounded final output with and without progress tokens; stream owner finalization; and quiet-read cancellation through real local transport and the relocated compiled CLI against an explicitly selected live provider. |
-| Scenario | Public library APIs run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
+| Scenario | Public library APIs and in-process CLI commands run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
 | Recipe | Every canonical recipe scaffolds with defaults and representative branches into schema-valid output. |
 | Executable guides | §19 MDX generates source-mapped scenario tests and visibility-separated transcripts for every applicable variant. |
 | Deprecation | Every notice records use, publishes `deprecation-used`, warns once, appears in doctor, and obeys `removeIn`. |

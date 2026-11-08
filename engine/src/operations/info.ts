@@ -29,12 +29,12 @@ import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../
 import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { hostProxyEligibleServices } from "../subsystems/host-proxy/worker-service-plan.ts";
-import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { infoLogSources } from "./info-log-sources.ts";
 import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
+import { resolveInfoTarget } from "./info-target.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -112,7 +112,7 @@ const serviceInfoMetadata = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
-  plannedPolicy: AppPlan | null = completionPlan,
+  options: { readonly plannedPolicy?: AppPlan | null; readonly appName?: string } = {},
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -138,11 +138,21 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     hostProxyEligibleServices(plan).length === 0
       ? undefined
       : (hostProxyPlanExtension(plan) ?? { runLando: { availability: "available" as const } });
-  const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
+  const applied = yield* registry.resolveAppliedPlan(
+    completionPlan.identity?.appRoot ?? completionPlan.root,
+    {
+      kind: "user",
+      id: completionPlan.id,
+    },
+  );
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
+  const appName = options.appName ?? plan.name;
+  const dataName = plan.identity?.dataName ?? plan.name;
+  const plannedPolicy = options.plannedPolicy === undefined ? completionPlan : options.plannedPolicy;
   return {
-    app: plan.name,
+    app: appName,
+    ...(dataName === appName ? {} : { dataName }),
     services,
     fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices),
     ...(hostProxy === undefined ? {} : { hostProxy }),
@@ -157,12 +167,17 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   let plan: AppPlan;
   let landofile: LoadScopedLandofile | undefined;
-  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  const observedTarget = target ?? (yield* resolveInfoTarget);
   if (observedTarget !== undefined) {
     plan = observedTarget.plan;
     if (options?.deep === true) {
       landofile =
         observedTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, observedTarget.root));
+    } else if (target === undefined) {
+      // An applied plan carries its recorded name; the Landofile names the app now, when it loads.
+      landofile = yield* loadUserLandofileAt(landofileService, observedTarget.root).pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
     }
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
@@ -175,7 +190,10 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
     const planned = yield* Effect.result(planDesiredApp);
     desired = Result.match(planned, { onFailure: () => null, onSuccess: ({ plan }) => plan });
   }
-  const result = yield* infoForPlan(selectedPlan, observedPlan, desired);
+  const result = yield* infoForPlan(selectedPlan, observedPlan, {
+    plannedPolicy: desired,
+    appName: landofile?.document.name ?? plan.name,
+  });
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);
   return { ...result, agentEnv };

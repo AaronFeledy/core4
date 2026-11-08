@@ -331,7 +331,8 @@ describe("start progress topology", () => {
       ),
     ).toMatchObject({
       summary: "test-start file-sync failed",
-      failed: 2,
+      failed: 1,
+      outcome: "failure",
     });
   });
 

@@ -146,7 +146,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       config,
       seed.service.storage,
     );
-    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts;
+    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts.mounts;
     const projection = resolution.endpointProjection.services.get(seed.name);
     const endpoints = projection?.endpoints;
     const publicationError = publicationCapabilityError(provider, capabilities, {

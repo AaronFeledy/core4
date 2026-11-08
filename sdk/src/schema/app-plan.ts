@@ -22,6 +22,7 @@ import {
   RouteRef,
   ScanPlan,
 } from "./networking.ts";
+import { normalizeAppSlug } from "./physical-names.ts";
 import {
   AbsoluteContainerPath,
   AbsolutePath,
@@ -385,8 +386,21 @@ export const AppIdentity = Schema.Struct({
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({
     description: "Stable identity shared by worktrees from one Git common directory.",
   }),
+  dataName: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The app name this folder's persisted data was first created under. Volume names, volume ownership, and generated defaults stored in data (database names, passwords) follow it, so a renamed app keeps its data.",
+  }),
 });
 export type AppIdentity = typeof AppIdentity.Type;
+
+/**
+ * The app id that owns a plan's persisted data. Plans recorded without a data name use their own
+ * id, which is what their volumes were labeled with.
+ */
+export const planDataId = (plan: Pick<AppPlan, "id" | "root" | "identity">): AppId =>
+  plan.identity?.dataName === undefined
+    ? plan.id
+    : AppId.make(normalizeAppSlug(plan.identity.dataName, plan.identity.appRoot));
 
 export const AppPlan = Schema.Struct({
   valueModel: Schema.optionalKey(Schema.Literal(1)).annotate({
@@ -448,10 +462,13 @@ export const AppPlan = Schema.Struct({
   router: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
+      id: Schema.optionalKey(Schema.String).annotate({
+        description: "Selected router contribution id for enabled routes; absent in legacy applied plans.",
+      }),
     }),
   ).annotate({
     description:
-      "Resolved router enablement; optional only because persisted cached plans predate this field.",
+      "Resolved router enablement and selected contribution identity; optional for legacy applied plans.",
   }),
   /**
    * Global-app services this app depends on at start, aggregated by the planner

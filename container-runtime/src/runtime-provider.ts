@@ -2,6 +2,7 @@ import { Effect, type Scope, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
+import { planDataId } from "@lando/sdk/schema";
 import type {
   AppSelector,
   CommandSpec,
@@ -198,7 +199,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
           const dataPlane = yield* requireDataPlane("observeVolume");
           return yield* dataPlane.observeVolume({
-            app: target.app,
+            app: planDataId(plan),
             containerId: runtime.containerId,
             destination,
           });
@@ -214,7 +215,7 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           if (!runtime.containerId) return yield* Effect.fail(unavailable("adoptVolume"));
           const dataPlane = yield* requireDataPlane("adoptVolume");
           return yield* dataPlane.adoptVolume({
-            app: target.app,
+            app: planDataId(plan),
             containerId: runtime.containerId,
             destination,
             ownerRoot: plan.identity.appRoot,

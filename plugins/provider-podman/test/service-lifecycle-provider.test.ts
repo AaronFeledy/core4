@@ -178,7 +178,17 @@ describe("provider-podman service lifecycle", () => {
                       },
                     },
                   ]
-                : { Id: "planned", State: { Running: true } },
+                : {
+                    Id: "planned",
+                    State: { Running: true },
+                    Config: {
+                      Labels: {
+                        "dev.lando.app": appId,
+                        "dev.lando.app-root": plan.root,
+                        "dev.lando.service": "web",
+                      },
+                    },
+                  },
             ),
           });
         },
@@ -189,6 +199,11 @@ describe("provider-podman service lifecycle", () => {
       const plannedRoot = result.find((snapshot) => snapshot.containerId === "planned")?.appRoot;
       if (ids.includes("planned")) {
         expect(plannedRoot === "/relabeled").toBe(filter.includeUnplanned === true);
+        expect(result.find((snapshot) => snapshot.containerId === "planned")?.labels).toEqual({
+          "dev.lando.app": appId,
+          "dev.lando.app-root": plan.root,
+          "dev.lando.service": "web",
+        });
       }
       expect(calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(
         filter.includeUnplanned === true,

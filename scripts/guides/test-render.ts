@@ -168,6 +168,8 @@ ${
     ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: ScenarioRunResult | undefined;
+        // <Verify event> asserts on what the most recent CLI invocation published.
+        let lastEvents: ScenarioRunResult["events"] = [];
 ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? "" : `${cleanupFinalizers}\n`}${steps}
       }),
     ),

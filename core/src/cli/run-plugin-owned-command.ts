@@ -42,8 +42,9 @@ export {
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "./plugin-owned-command-input";
+import type { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { CommandPayloadStdout } from "./command-payload-stdout";
-import type { MalformedCliFlagValueError, UnknownCliFlagError } from "./flag-value-validation";
 import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 
@@ -52,6 +53,7 @@ const PLUGIN_OWNED_COMMAND_ID = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_COMMAND_ID.test(token);
 
 export interface RunPluginOwnedCommandOptions {
+  readonly context?: CliInvocationContext;
   readonly io?: RendererIO;
   readonly stdin?: CommandStdioStdin;
   readonly signal?: AbortSignal;
@@ -60,6 +62,7 @@ export interface RunPluginOwnedCommandOptions {
 
 export interface PluginOwnedCommandEffectOptions {
   readonly stdin?: CommandStdioStdin;
+  readonly stdinStream?: ReadableStream<Uint8Array>;
   readonly stdoutIsTTY?: boolean;
   readonly stdinIsTTY?: boolean;
   readonly resultFormat?: import("./format-flags").ResultFormat;
@@ -77,6 +80,7 @@ const defaultPluginRuntime = (
   ) as PluginOwnedRuntime;
 
 const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOwnedCommandOptions) => ({
+  ...(options.context === undefined ? {} : { context: options.context }),
   resultSchema: spec.resultSchema,
   ...(options.io === undefined ? {} : { io: options.io }),
   ...(spec.redactionTokens === undefined
@@ -155,11 +159,15 @@ const renderPluginOwnedPreCommandFailure = async (
   error: unknown,
   io?: RendererIO,
   payloadStdout = false,
+  context?: CliInvocationContext,
+  usage = false,
 ): Promise<void> => {
   await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
+    ...(context === undefined ? {} : { context }),
     failureExitCode: () => 2,
     preCommand: true,
     payloadStdout,
+    ...(usage ? { usage } : {}),
     ...(io === undefined ? {} : { io }),
   });
 };
@@ -176,13 +184,22 @@ const runPluginOwnedCommand = (
       const request = commandStdioRequest(spec, parsed.args);
       const flagError = pluginOwnedCliFlagError(spec, argv);
       if (flagError !== undefined) {
-        await renderPluginOwnedPreCommandFailure(flagError, options.io, request.stdout === true);
+        await renderPluginOwnedPreCommandFailure(
+          flagError,
+          options.io,
+          request.stdout === true,
+          options.context,
+          true,
+        );
         return;
       }
       const completion = spec.completion;
-      const stdinSource = options.stdin ?? process.stdin;
+      const stdinSource =
+        options.stdin ??
+        (options.context === undefined ? process.stdin : { isTTY: options.context.io.stdinIsTTY });
       const stdio = {
         ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
+        ...(options.context?.io.stdin === undefined ? {} : { stdinStream: options.context.io.stdin }),
         stdoutIsTTY:
           options.io?.stdoutIsTTY === true || (options.io === undefined && process.stdout.isTTY === true),
         stdinIsTTY: stdinSource.isTTY === true,
@@ -197,7 +214,12 @@ const runPluginOwnedCommand = (
         ...stdio,
       });
       if (refusal !== undefined) {
-        await renderPluginOwnedPreCommandFailure(refusal, options.io, request.stdout === true);
+        await renderPluginOwnedPreCommandFailure(
+          refusal,
+          options.io,
+          request.stdout === true,
+          options.context,
+        );
         return;
       }
       let normalizedInput: ExecutableCommandInput;
@@ -215,7 +237,7 @@ const runPluginOwnedCommand = (
         }
         return yield* withGrantedStdio(spec, normalizedInput, stdio);
       });
-      const cwd = await Effect.runPromise(discoveryCwd());
+      const cwd = options.context?.cwd ?? (await Effect.runPromise(discoveryCwd()));
       await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap, cwd), () => undefined, {
         ...compiledPluginOptions(spec, options),
         payloadStdout: request.stdout === true,
@@ -250,16 +272,25 @@ const dispatchPluginOwnedCommand = async (
   if (signal?.aborted) return "dispatched";
   const row = await catalog.resolve(commandId);
   if (row === undefined) return "not-found";
+  // Failed discovery cannot claim a typo of a command that does not need plugins.
+  if ("unavailable" in row && (await catalog.hasCloseSpelling([commandId, ...argv]))) return "not-found";
   if ("unavailable" in row || row.loadError !== undefined) {
     // Without a loaded spec there is no stdio declaration, so stdout keeps its usual role.
-    await renderPluginOwnedPreCommandFailure("unavailable" in row ? row.unavailable : row.loadError);
+    await renderPluginOwnedPreCommandFailure(
+      "unavailable" in row ? row.unavailable : row.loadError,
+      catalog.context?.io,
+      false,
+      catalog.context,
+    );
     return "dispatched";
   }
   if (signal?.aborted) return "dispatched";
   const spec = row.spec;
   if (spec === undefined) return "not-found";
   setActiveCommandId(spec.id);
-  resetActiveCommandInvocation(spec.id, argv);
+  resetActiveCommandInvocation(spec.id, argv, {
+    ...(catalog.context === undefined ? {} : { context: catalog.context }),
+  });
   if (argv.includes("--help") || argv.includes("-h")) {
     await tryPluginCommandHelp(commandId, catalog);
     return "dispatched";
@@ -268,15 +299,28 @@ const dispatchPluginOwnedCommand = async (
   // universal set. Refuse before --json key listing can report success.
   const payloadStdout =
     commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, argv).args).stdout === true;
-  if (await rejectUnsupportedResultFormat(spec.id, undefined, { payloadStdout })) return "dispatched";
+  if (
+    await rejectUnsupportedResultFormat(spec.id, undefined, {
+      payloadStdout,
+      ...(catalog.context === undefined ? {} : { context: catalog.context }),
+    })
+  )
+    return "dispatched";
   const flagError = pluginOwnedCliFlagError(spec, argv);
   if (flagError !== undefined) {
-    await renderPluginOwnedPreCommandFailure(flagError, undefined, payloadStdout);
+    await renderPluginOwnedPreCommandFailure(
+      flagError,
+      catalog.context?.io,
+      payloadStdout,
+      catalog.context,
+      true,
+    );
     return "dispatched";
   }
-  if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
+  if (await emitJsonListModeIfRequested(spec.resultSchema, catalog.context)) return "dispatched";
   const notice = commandDescriptorNotice(row.descriptor, commandId);
   await runPluginOwnedCommand(spec, argv, {
+    ...(catalog.context === undefined ? {} : { context: catalog.context, io: catalog.context.io }),
     ...(signal === undefined ? {} : { signal }),
     ...(notice === undefined ? {} : { deprecation: { id: commandId, notice } }),
   });

@@ -24,6 +24,7 @@ import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
+  evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
@@ -112,8 +113,10 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalUploadDirs(
-    evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+  const evolved = evolveHistoricalToolingWrapper(
+    evolveHistoricalUploadDirs(
+      evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+    ),
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;

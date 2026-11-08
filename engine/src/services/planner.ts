@@ -9,6 +9,7 @@ import {
   applyAuthoredHealthcheck,
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
+import { readAppDataIdentity } from "../planner/data-identity.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { FileSyncPolicy } from "../plugins/file-sync-policy.ts";
@@ -30,16 +31,25 @@ export const layer = Layer.effect(
     const policy = yield* FileSyncPolicy.make;
     const context = yield* Effect.context<PluginRegistry>();
     return AppPlanner.of({
-      plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities) {
+      plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities, options) {
         const identity = yield* resolveAppIdentity(
           landofile.context.appRoot,
           Option.getOrUndefined(processRunner),
         );
-        const plan = yield* planApp({ landofile, providerCapabilities, appRoot: identity.appRoot }).pipe(
-          Effect.provide(context),
-          Effect.provideService(FileSyncPolicy, policy),
-        );
-        return { ...plan, root: identity.appRoot, identity };
+        const kind = options?.kind ?? "user";
+        const record =
+          kind === "user" ? yield* readAppDataIdentity(identity).pipe(Effect.provide(context)) : null;
+        const dataName = options?.dataName ?? record?.name ?? landofile.document.name ?? "app";
+        const plannedIdentity = { ...identity, dataName };
+        const plan = yield* planApp({
+          landofile,
+          providerCapabilities,
+          appRoot: identity.appRoot,
+          dataName,
+          kind,
+          identity: plannedIdentity,
+        }).pipe(Effect.provide(context), Effect.provideService(FileSyncPolicy, policy));
+        return { ...plan, root: identity.appRoot, identity: plannedIdentity };
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),

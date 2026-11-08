@@ -129,7 +129,7 @@ export function makeAppliedPlanStore(
             case "readable":
               return Effect.succeed(read.plan);
             case "unreadable":
-              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path, appId }));
           }
         }),
       );
@@ -182,19 +182,25 @@ export function makeAppliedPlanStore(
     });
   const inspectRecord = (stateStore: PluginStateStore) =>
     inspectAppliedPlansRecordBucket(open(stateStore), APPLIED_PLANS_KEY);
-  const readRecord = (stateStore: PluginStateStore) =>
+  const readRecord = (stateStore: PluginStateStore, appId?: AppId) =>
     inspectRecord(stateStore).pipe(
       Effect.flatMap((read) => {
         switch (read.status) {
           case "unreadable":
-            return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+            return Effect.fail(
+              unreadableAppliedStateError({
+                ...options,
+                path: read.path,
+                ...(appId === undefined ? {} : { appId }),
+              }),
+            );
           case "readable":
             return Effect.succeed(read.plans);
         }
       }),
     );
   const loadAppliedPlanStrict = (stateStore: PluginStateStore, appId: AppId) =>
-    readRecord(stateStore).pipe(Effect.map((plans) => plans?.[appId]));
+    readRecord(stateStore, appId).pipe(Effect.map((plans) => plans?.[appId]));
   return {
     loadAppliedPlanStrict,
     inspectAppliedPlan: (stateStore, appId) =>

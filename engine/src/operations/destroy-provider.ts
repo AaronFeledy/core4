@@ -1,5 +1,5 @@
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan, ServiceShutdownObservation } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, ServiceShutdownObservation } from "@lando/sdk/schema";
 import { EventService, PathsService, RouterService, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { TaskTreeController } from "@lando/sdk/task-progress";
 import { DateTime, Effect, Option } from "effect";
@@ -49,18 +49,22 @@ export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProv
   return shutdownObservations === undefined ? outcome : { ...outcome, shutdownObservations };
 });
 
+export const cleanupAppWorkers = Effect.fn("AppOperation.cleanupAppWorkers")(function* (app: AppRef) {
+  const paths = yield* PathsService;
+  const roots = { ...paths.roots, platform: paths.platform };
+  yield* cleanupAgentRelayState(app, roots, "ssh");
+  yield* cleanupAgentRelayState(app, roots, "gpg");
+  yield* cleanupHostProxyRunLandoState(app, roots);
+});
+
 export const cleanupDestroyWorkers = Effect.fn("AppOperation.cleanupDestroyWorkers")(function* (
   teardown: TeardownPlan,
   tree: TaskTreeController,
 ) {
   const target = teardown.target;
   if (target === undefined) return;
-  const paths = yield* PathsService;
-  const roots = { ...paths.roots, platform: paths.platform };
   yield* tree.startTask("host-proxy");
-  yield* cleanupAgentRelayState(target.app, roots, "ssh");
-  yield* cleanupAgentRelayState(target.app, roots, "gpg");
-  yield* cleanupHostProxyRunLandoState(target.app, roots);
+  yield* cleanupAppWorkers(target.app);
   yield* tree.completeTask("host-proxy");
 });
 

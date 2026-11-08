@@ -193,4 +193,42 @@ describe("LandoEventService.layer", () => {
     expect(dispatches).toBe(0);
     expect(retained).toEqual([preAppStartEvent]);
   });
+
+  test("a generation-scoped registration dispatches its own fibers' events and leaves the session registration intact", async () => {
+    // Given: a session registration and two app generations sharing one event service.
+    const dispatched: string[] = [];
+    const registration = (label: string) => ({
+      hasSubscribers: () => true,
+      dispatch: () =>
+        Effect.sync(() => {
+          dispatched.push(label);
+        }),
+    });
+
+    // When: each generation installs its subscribers through its own control, and fibers publish
+    // inside generation A, inside generation B, and outside any generation.
+    const history = await Effect.runPromise(
+      Effect.gen(function* () {
+        const control = yield* EventDispatchControl;
+        const events = yield* EventService;
+        yield* control.install(registration("session"));
+        const appA = LandoEventService.makeScopedEventDispatch();
+        const appB = LandoEventService.makeScopedEventDispatch();
+        yield* appA.control.install(registration("a"));
+        yield* appB.control.install(registration("b"));
+        yield* events
+          .publish(preAppStartEvent)
+          .pipe(Effect.provideService(LandoEventService.EventDispatchScope, appB.registration));
+        yield* events
+          .publish(preAppStartEvent)
+          .pipe(Effect.provideService(LandoEventService.EventDispatchScope, appA.registration));
+        yield* events.publish(preAppStartEvent);
+        return yield* events.query("pre-app-start");
+      }).pipe(Effect.provide(LandoEventService.layerRuntime)),
+    );
+
+    // Then: each publication reached only its fiber's registration, and history is shared.
+    expect(dispatched).toEqual(["b", "a", "session"]);
+    expect(history).toHaveLength(3);
+  });
 });

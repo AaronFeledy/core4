@@ -49,11 +49,13 @@ const authoring = {
       service: "appserver",
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
+      wrapper: true,
     },
     php: {
       service: "appserver",
       description: "Run the PHP CLI inside the appserver service.",
       cmds: ["php"],
+      wrapper: true,
     },
   },
 } as const;

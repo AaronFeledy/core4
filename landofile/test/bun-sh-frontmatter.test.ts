@@ -77,6 +77,7 @@ test.each([
   "flags:\n\ta:\n    boolean: true",
   "flags: {loud: true}",
   "descripshun: unknown",
+  "wrapper: true",
 ])("rejects invalid or conflicting front matter: %s", async (body) => {
   // Given / When
   const { path, result } = await parse(body.split("\n"));

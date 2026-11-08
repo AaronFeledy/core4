@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
-import { startStdioClient } from "@lando/mcp/testing";
+import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Layer, Result, Schema } from "effect";
@@ -96,7 +96,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
           McpRuntimeConfig.of({
             commandEntries: [{ spec }],
             defaultAllowlist: [logsSpec.id],
-            runtimeLayer: Layer.empty,
+            apps: testAppGenerations(),
           }),
         ),
         RedactionService.layer,
@@ -124,10 +124,11 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
       }),
     )(response.result);
     expect(JSON.parse(result.content[0]?.text ?? "null")).toMatchObject({
-      _tag: "McpToolInputError",
-      path: "flags.tail",
-      toolId: logsSpec.id,
+      ok: false,
+      error: { _tag: "McpToolInputError", path: "flags.tail", toolId: logsSpec.id },
     });
-    expect(Schema.decodeUnknownSync(Schema.JsonObject)(response.result).structuredContent).toBeUndefined();
+    expect(Schema.decodeUnknownSync(Schema.JsonObject)(response.result).structuredContent).toEqual(
+      JSON.parse(result.content[0]?.text ?? "null"),
+    );
   }
 });

@@ -20,8 +20,8 @@ describe("canonical guide projections", () => {
       const result = project(source);
       // Then
       expect(result.lint).toEqual([]);
-      expect(result.cells[0]?.test).toContain('context.runCli("lando info internal"');
-      expect(result.cells[0]?.test).toContain('context.runCli("lando status internal")');
+      expect(result.cells[0]?.test).toContain('context.runCli(["lando","info","internal"]');
+      expect(result.cells[0]?.test).toContain('context.runCli(["lando","status","internal"])');
       expect(result.cells[0]?.test).toContain('join(context.testDir, "internal.txt")');
       expect(result.cells[0]?.test).toContain('context.inspect({ file: "internal.json" })');
       expect(result.cells[0]?.test).toContain('context.inspect({ json: "internal.field" })');
@@ -94,7 +94,7 @@ describe("canonical guide projections", () => {
       ["a", "b"],
       ["b", "a", "c"],
     ]);
-    expect(result.cells[0]?.test).toContain('context.runCli("lando info first-value"');
+    expect(result.cells[0]?.test).toContain('context.runCli(["lando","info","first-value"]');
     expect(result.cells[0]?.test).toContain('test.skip("c"');
     expect(result.cells[1]?.test.indexOf("// @step: b")).toBeLessThan(
       result.cells[1]?.test.indexOf("// @step: a") ?? 0,
@@ -121,7 +121,7 @@ describe("canonical guide projections", () => {
         ),
         scenario(
           step(
-            '<Run command="lando info {{foreign.value}} {{ foreign.path }}" /><Verify command="lando version" expect={{ regex: "{{matcher}} {{ matcher }}" }} />',
+            '<Run command="lando info &apos;{{foreign.value}} {{ foreign.path }}&apos;" /><Verify command="lando version" expect={{ regex: "{{matcher}} {{ matcher }}" }} />',
           ),
           "foreign",
         ),
@@ -147,7 +147,7 @@ describe("canonical guide projections", () => {
     const source = document(
       scenario(
         step(
-          '<Variable name="empty" value="" display="" /><Variable name="literal" value="{{other}}" display="{{display}}" /><Run command="lando info {{empty}} {{literal}}" />',
+          '<Variable name="empty" value="" display="" /><Variable name="literal" value="{{other}}" display="{{display}}" /><Run command="lando info &apos;{{empty}}&apos; &apos;{{literal}}&apos;" />',
         ),
       ),
     );
@@ -155,9 +155,9 @@ describe("canonical guide projections", () => {
     const result = project(source);
 
     expect(result.lint).toEqual([]);
-    expect(result.cells[0]?.test).toContain('context.runCli("lando info  {{other}}"');
-    expect(result.cells[0]?.transcript?.frames[1]?.commandDisplay).toBe("lando info  {{display}}");
-    expect(result.readmes[0]?.markdown).toContain("lando info  {{display}}");
+    expect(result.cells[0]?.test).toContain('context.runCli(["lando","info","","{{other}}"]');
+    expect(result.cells[0]?.transcript?.frames[1]?.commandDisplay).toBe("lando info '' '{{display}}'");
+    expect(result.readmes[0]?.markdown).toContain("lando info '' '{{display}}'");
   });
 
   test("allows hidden execution to use public and hidden bindings while test-only scenarios have no public steps", () => {
@@ -169,7 +169,9 @@ describe("canonical guide projections", () => {
     const result = project(source);
 
     expect(result.lint).toEqual([]);
-    expect(result.cells[0]?.test).toContain('context.runCli("lando info visible-value private-value"');
+    expect(result.cells[0]?.test).toContain(
+      'context.runCli(["lando","info","visible-value","private-value"]',
+    );
     expect(result.cells[1]?.transcript).toBeUndefined();
     expect(result.guide.cells[1]?.resolved.publicSteps).toEqual([]);
     expect(result.readmes[0]?.markdown).not.toContain("private-value");

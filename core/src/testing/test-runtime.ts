@@ -67,7 +67,7 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  * Re-export of Effect's deterministic test clock utilities for callers using this test runtime.
  */
 export { TestClock } from "effect/testing";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
@@ -390,7 +390,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const files = new Map(Object.entries(options.files ?? {}));
   const directories = new Set<string>();
   const config = options.config ?? defaultGlobalConfig;
-  const runtimeProvider = options.with?.RuntimeProvider ?? TestRuntimeProvider;
+  const runtimeProvider = options.with?.RuntimeProvider ?? makeTestRuntimeProvider();
   const providerId = providerIdFrom(runtimeProvider);
   let pluginTrustState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
   const secrets = new Map<string, string>();

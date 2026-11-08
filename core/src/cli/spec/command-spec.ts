@@ -44,6 +44,8 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   /** True only for commands safe to forward from inside a container via the in-container `lando` shim. */
   readonly hostProxyAllowed?: boolean;
   readonly recipePostInitAllowed?: boolean;
+  /** Explicit online acquisition permits the Downloader to retry transient GET failures. */
+  readonly onlineAcquisition?: true;
   readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;

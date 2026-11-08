@@ -14,6 +14,10 @@
  *     verbatim. Otherwise truncate and append a 12-character SHA-256
  *     suffix of the *raw* base string so distinct long inputs that share
  *     a sanitized prefix cannot collide.
+ *   - Mutagen requires a leading letter, so a name that would start with a
+ *     digit (an app slug such as `2048-game`) is prefixed with `lando--`.
+ *     Collapsed names never contain `--`, so the prefixed form cannot equal
+ *     another app's name.
  *   - If sanitation strips all content (e.g. all-emoji input), fall back
  *     to `lando-<hash>` so the name remains a valid identifier.
  */
@@ -35,7 +39,7 @@ const SHORT_HASH_LEN = 12;
 const INVALID_CHAR = /[^a-z0-9-]+/gu;
 const COLLAPSE_DASH = /-+/gu;
 const TRIM_DASH = /^-+|-+$/gu;
-const VALID_NAME = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/u;
+const VALID_NAME = /^[a-z](?:[a-z0-9-]{0,58}[a-z0-9])?$/u;
 
 const shortHash = (input: string): string => sha256Hex(input).slice(0, SHORT_HASH_LEN);
 
@@ -54,8 +58,9 @@ export const mutagenSessionNameFromParts = (parts: {
   readonly mountKey: string;
 }): string => {
   const raw = `${parts.appId}-${parts.service}-${parts.mountKey}`;
-  const sanitized = sanitize(raw);
-  if (sanitized.length === 0) return `lando-${shortHash(raw)}`;
+  const folded = sanitize(raw);
+  if (folded.length === 0) return `lando-${shortHash(raw)}`;
+  const sanitized = /^[a-z]/u.test(folded) ? folded : `lando--${folded}`;
   if (sanitized.length <= MUTAGEN_NAME_MAX) return sanitized;
 
   const reserve = SHORT_HASH_LEN + 1; // 12 hex chars + connecting dash

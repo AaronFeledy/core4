@@ -12,6 +12,7 @@ import {
   NoProviderInstalledError,
   SshAgentUnavailableError,
 } from "@lando/sdk/errors";
+import { RouterServiceContribution } from "@lando/sdk/schema";
 import * as sdkServices from "@lando/sdk/services";
 import type { LandofileServiceError } from "@lando/sdk/services";
 
@@ -102,6 +103,11 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches router contribution fields", () => {
+    expect(Object.keys(RouterServiceContribution.fields).sort()).toEqual(
+      publicSurface.routerContributionFields,
+    );
+  });
   test("matches every ServiceFeatureContext member signature", () => {
     const members = interfaces.get("ServiceFeatureContext")?.members;
     expect(members?.map((member) => normalizeSignature(member.getText())).sort()).toEqual(

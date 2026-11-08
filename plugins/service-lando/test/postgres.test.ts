@@ -204,6 +204,7 @@ describe("postgres ServiceType", () => {
     });
 
     expect(resolution.tooling?.psql).toEqual({
+      wrapper: true,
       description: "Open the PostgreSQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",

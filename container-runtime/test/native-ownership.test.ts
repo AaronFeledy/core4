@@ -14,6 +14,7 @@ import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
   privateNetworkLabels as ownershipPrivateNetworkLabels,
+  ownsServiceContainer,
   verifiedNativeId,
 } from "../src/native-ownership.ts";
 import { commonContainerLabels } from "../src/plan.ts";
@@ -60,6 +61,56 @@ const plan: AppPlan = {
 const service = plan.services[web];
 if (service === undefined) throw new TypeError("Missing fixture service");
 const ownedLabels = commonContainerLabels(plan, service);
+
+test.each([
+  { name: "native ownership", labels: ownedLabels, containerId: "owned-id", service: "web", owned: true },
+  { name: "absent labels", labels: {}, containerId: "owned-id", service: "web", owned: false },
+  {
+    name: "role helper",
+    labels: { ...ownedLabels, "dev.lando.role": "helper" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "foreign root",
+    labels: { ...ownedLabels, "dev.lando.app-root": "/other" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "foreign provider",
+    labels: { ...ownedLabels, "dev.lando.provider": "lando" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "foreign owner",
+    labels: { ...ownedLabels, "dev.lando.owner": "other" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "scratch labels",
+    labels: { ...ownedLabels, "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": plan.id },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "different observed service",
+    labels: ownedLabels,
+    containerId: "owned-id",
+    service: "other",
+    owned: false,
+  },
+  { name: "absent identity", labels: ownedLabels, containerId: "", service: "web", owned: false },
+])("service-container mutation requires $name proof", (row) => {
+  expect(ownsServiceContainer(plan, row)).toBe(row.owned);
+});
 const networkLabels = privateNetworkLabels({
   ...planAppIdentity(plan),
   appId: plan.id,

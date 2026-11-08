@@ -6,6 +6,7 @@ import {
   getJsonSchema,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
+import { parsePathSegments } from "./dot-path.ts";
 import { parseConfigPath } from "./write-core.ts";
 
 export type ConfigSchemaName = "GlobalConfig" | "LandofileShape";
@@ -66,4 +67,17 @@ export const describeConfigKey = Effect.fn("Config.describeKey")(function* (
 export const configKeySummary = (name: ConfigSchemaName, key: string): string | undefined => {
   const parsed = descriptionFor(name, key, name);
   return Result.isSuccess(parsed) ? parsed.success.summary : undefined;
+};
+
+export const isAppOnlyConfigKey = (key: string): boolean => {
+  const first = parsePathSegments(key)?.[0];
+  if (first?.kind !== "key") return false;
+  const app = descriptionFor("LandofileShape", undefined, "Landofile");
+  const host = descriptionFor("GlobalConfig", undefined, "config.yml");
+  return (
+    Result.isSuccess(app) &&
+    Result.isSuccess(host) &&
+    (app.success.keys ?? []).some((entry) => entry.key === first.key) &&
+    !(host.success.keys ?? []).some((entry) => entry.key === first.key)
+  );
 };

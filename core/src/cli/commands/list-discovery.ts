@@ -299,6 +299,7 @@ const httpSocketPath = (socketPath: string): string =>
 
 export interface ContainerSocketCandidateOptions {
   readonly platform?: NodeJS.Platform;
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export const containerSocketCandidates = (
@@ -307,10 +308,11 @@ export const containerSocketCandidates = (
 ): string[] => {
   const paths = makeLandoPaths({ userDataRoot });
   const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
   // Managed Podman first. Host docker.sock / npipe://./pipe/docker_engine are never defaults.
   const managedSocket = platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
   const candidates = [managedSocket];
-  const dockerHost = process.env.DOCKER_HOST;
+  const dockerHost = env.DOCKER_HOST;
   if (dockerHost !== undefined && dockerHost !== "") {
     if (dockerHost.startsWith("unix://")) candidates.push(dockerHost.slice("unix://".length));
     else if (isNpipeDockerHost(dockerHost)) candidates.push(normalizeNamedPipePath(dockerHost));
@@ -319,7 +321,7 @@ export const containerSocketCandidates = (
   }
   if (platform !== "win32") {
     candidates.push("/run/podman/podman.sock");
-    const runtimeDir = process.env.XDG_RUNTIME_DIR;
+    const runtimeDir = env.XDG_RUNTIME_DIR;
     if (runtimeDir !== undefined && runtimeDir !== "") {
       candidates.push(join(runtimeDir, "podman", "podman.sock"));
     }

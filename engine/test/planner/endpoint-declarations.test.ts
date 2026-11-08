@@ -106,6 +106,7 @@ test("lint plans declared listeners without certificates, provider or cache", as
         services: {
           web: {
             type: "declaration",
+            image: "alpine:3.22",
             certs: true,
             routes: [{ hostname: "app.lndo.site", endpoint: "late" }],
           },
@@ -162,6 +163,7 @@ test("planning consumes the projected declarations once before applying features
               services: {
                 web: {
                   type: "declaration",
+                  image: "alpine:3.22",
                   home: false,
                   routes: [{ hostname: "app.lndo.site", endpoint: "late" }],
                 },
@@ -268,7 +270,9 @@ test("declarations receive original feature config before planner-owned SSH subs
           landofile: yield* compileTestLandofile(
             {
               name: "original-config",
-              services: { web: { type: type.id, home: false, routes: ["original.lndo.site"] } },
+              services: {
+                web: { type: type.id, image: "alpine:3.22", home: false, routes: ["original.lndo.site"] },
+              },
             },
             "/srv/original-config",
           ),

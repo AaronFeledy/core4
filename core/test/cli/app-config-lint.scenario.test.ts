@@ -274,12 +274,12 @@ describe("lando app:config:lint (source dispatch)", () => {
       ]);
     });
   });
-  test("help --all names the typeable lint command and its canonical id", async () => {
+  test("help --all lists lint under app:config:lint with no bare config:lint alias", async () => {
     await withTempCwd(async (dir) => {
       const help = await runCli(["help", "--all"], dir);
       expect(help.exitCode).toBe(0);
-      expect(help.stdout).toMatch(/^\s+config:lint\s+.*\(app:config:lint\)/mu);
-      expect(help.stdout).not.toMatch(/^\s+app:config:lint\s/mu);
+      expect(help.stdout).toMatch(/^\s+app:config:lint\s/mu);
+      expect(help.stdout).not.toMatch(/^\s+config:lint\s/mu);
     });
   });
 

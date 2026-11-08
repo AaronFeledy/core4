@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Effect, Schema } from "effect";
 
@@ -17,6 +18,7 @@ import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundar
 import {
   type AppsDiscoveryEvidence,
   type AppsListEntry,
+  containerSocketCandidates,
   discoverRunningAppsEvidenceFromSockets,
   mergeAppsListEntries,
   readAppliedPlansFromUserData,
@@ -125,6 +127,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   pruneCandidate?: PruneCandidate<E, R>,
 ): Effect.fn.Return<ListServicesResult, CacheError | E | LandoCommandError, ConfigService | R> {
   const configService = yield* ConfigService;
+  const invocation = yield* CliInvocation;
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
 
@@ -157,7 +160,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       }
       return discoverRunningAppsEvidenceFromSockets(
         userDataRoot,
-        undefined,
+        containerSocketCandidates(userDataRoot, { env: invocation.env }),
         options.includeScratch === true ? { includeScratch: true } : {},
       );
     }).pipe(
@@ -210,7 +213,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
   const pathFilter = options.path;
   const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
-  const cwd = runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd();
+  const cwd = runtimeCwd._tag === "Some" ? runtimeCwd.value : invocation.cwd;
   const pathMatched =
     pathFilter === undefined
       ? listed
@@ -246,7 +249,11 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
   const pruneServices = { paths, privateFileAccess, stateStore } satisfies PruneServices;
   return yield* listServicesInternal({ ...options, prune: true }, ({ discoverEvidence, entry }) =>
     withAppMutationLock(
-      { id: entry.appId, root: entry.appRoot },
+      {
+        id: entry.appId,
+        root: entry.appRoot,
+        kind: entry.scratch === true ? "scratch" : entry.appId === "global" ? "global" : "user",
+      },
       Effect.gen(function* () {
         const currentEvidence = yield* discoverEvidence();
         if (

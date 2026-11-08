@@ -4,9 +4,9 @@ import {
   sourceCacheGc,
 } from "@lando/engine/operations/source-cache-gc";
 import { DataTransferError } from "@lando/sdk/errors";
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { renderSourceGcReport } from "../../../commands/sources-gc";
-import { MalformedCliFlagValueError } from "../../../flag-value-validation";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";

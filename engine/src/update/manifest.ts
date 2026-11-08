@@ -3,11 +3,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { Effect, Layer, Option, Result, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
-import { StateStoreError } from "@lando/sdk/errors";
+import { DownloadFetchError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type UpdateChannel,
@@ -28,7 +28,7 @@ import {
 } from "./errors.ts";
 import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
 
-export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
+export type UpdateManifestFetcher = (url: string, signal?: AbortSignal) => Promise<Uint8Array>;
 
 import { CoreUpdateFailureSchema } from "./errors.ts";
 
@@ -95,8 +95,10 @@ export const isPlaceholderBinary = (
 export const defaultFetchManifestBytes = (
   url: string,
   retainedDownloader?: typeof Downloader.Service,
+  requestContext: Context.Context<never> = Context.empty(),
+  signal?: AbortSignal,
 ): Promise<Uint8Array> =>
-  Effect.runPromise(
+  Effect.runPromiseExit(
     Effect.scoped(
       Effect.gen(function* () {
         const directory = yield* Effect.acquireRelease(
@@ -118,21 +120,32 @@ export const defaultFetchManifestBytes = (
               )
             : Layer.succeed(Downloader, retainedDownloader),
         ),
+        Effect.provide(requestContext),
       ),
     ),
-  );
+    { signal },
+  ).then((exit) => {
+    if (Exit.isSuccess(exit)) return exit.value;
+    throw Cause.squash(exit.cause);
+  });
 
 export const fetchBytes = (
   fetcher: UpdateManifestFetcher,
   url: string,
 ): Effect.Effect<Uint8Array, UpdateNetworkError> =>
   Effect.tryPromise({
-    try: () => fetcher(url),
+    try: (signal) => fetcher(url, signal),
     catch: (cause) =>
       new UpdateNetworkError({
-        message: `Failed to fetch update metadata from ${url}.`,
+        message:
+          cause instanceof DownloadFetchError
+            ? cause.message
+            : `Failed to download ${url} for \`lando update\`.`,
         url,
-        remediation: `Check network access to ${url}, then retry \`lando update\`.`,
+        remediation:
+          cause instanceof DownloadFetchError
+            ? `${cause.remediation} Then run \`lando update\` again.`
+            : `Check network access to ${url}, then retry \`lando update\`.`,
         cause,
       }),
   });

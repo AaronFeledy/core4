@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
+import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
@@ -209,24 +210,6 @@ const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
     attempts: [],
     remediation: "Run `lando apps:scratch:start --fork` from a directory containing a Landofile.",
   });
-
-const withProcessCwd = <A, E, R>(
-  dir: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ScratchAppError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(dir);
-        return original;
-      },
-      catch: (cause) =>
-        scratchAppError("plan", `Unable to enter the scratch app directory at ${dir}.`, cause),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
 
 const causeRecord = (cause: unknown): Record<string, unknown> | undefined =>
   typeof cause === "object" && cause !== null ? (cause as Record<string, unknown>) : undefined;
@@ -800,10 +783,13 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       isolate === "full"
         ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root), input).pipe(
             Effect.andThen(
-              withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities)),
+              withDiscoveryCwd(
+                scratchPaths.root,
+                planner.plan(forkLandofile, capabilities, { kind: "scratch" }),
+              ),
             ),
           )
-        : planner.plan(forkLandofile, capabilities);
+        : planner.plan(forkLandofile, capabilities, { kind: "scratch" });
     const forkPlan = yield* planForkPlan.pipe(
       Effect.mapError((cause) =>
         cause instanceof ScratchAppError
@@ -932,8 +918,9 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       ),
     );
-    const recipePlan = yield* withProcessCwd(scratchPaths.root, () =>
-      planner.plan(recipeLandofile, capabilities),
+    const recipePlan = yield* withDiscoveryCwd(
+      scratchPaths.root,
+      planner.plan(recipeLandofile, capabilities, { kind: "scratch" }),
     ).pipe(
       Effect.mapError((cause) => scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause)),
       Effect.tapError(() =>

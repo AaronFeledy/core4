@@ -10,6 +10,40 @@ export class CommandStdioError extends Schema.TaggedError<CommandStdioError>()("
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+/** The first word of a CLI invocation names no built-in, plugin, or app command. */
+export class UnknownCommandError extends Schema.TaggedError<UnknownCommandError>()("UnknownCommandError", {
+  message: Schema.String,
+  commandToken: Schema.String,
+  /** Routable spellings closest to what was typed, best first; empty when nothing is close. */
+  suggestions: Schema.Array(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+}) {}
+
+/** A flag before a command's verbatim tail is not one the command declares. */
+export class UnknownCliFlagError extends Schema.TaggedError<UnknownCliFlagError>()("UnknownCliFlagError", {
+  message: Schema.String,
+  flag: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+}) {}
+
+/** A declared CLI flag got no value, an empty value, or a value its declaration rejects. */
+export class MalformedCliFlagValueError extends Schema.TaggedError<MalformedCliFlagValueError>()(
+  "MalformedCliFlagValueError",
+  {
+    message: Schema.String,
+    flag: Schema.String,
+    issue: Schema.Literals([
+      "missing",
+      "empty",
+      "invalid_integer",
+      "invalid_option",
+      "unexpected",
+      "repeated",
+    ]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
 /**
  * A plugin- or tooling-contributed top-level alias collides with a reserved
  * built-in top-level alias (for example the bare `run` alias reserved for

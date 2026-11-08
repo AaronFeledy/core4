@@ -15,7 +15,7 @@ import {
   encodeAppCommandIndex,
 } from "../../src/cache/command-index.ts";
 import { appToolingCompilationCachePath } from "../../src/cache/paths.ts";
-import { abi6Bytes } from "./fixtures/command-index-codec.ts";
+import { currentAbiBytes } from "./fixtures/command-index-codec.ts";
 
 interface Fixture {
   readonly cwd: string;
@@ -112,7 +112,7 @@ test.each([
     await cache(fixture);
     const payload = decodeAppCommandIndex(await readFile(fixture.cachePath));
     if (payload === null) throw new TypeError("Fixture requires a decodable cache");
-    await writeFile(fixture.cachePath, abi6Bytes("LCAC", { ...payload, ...patch }));
+    await writeFile(fixture.cachePath, currentAbiBytes("LCAC", { ...payload, ...patch }));
     // When
     const receipt = await Effect.runPromise(readAppCommandCacheForCwdDetailed(fixture));
     // Then

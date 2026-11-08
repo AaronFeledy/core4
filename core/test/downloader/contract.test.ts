@@ -10,10 +10,16 @@ import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import type { AbsolutePath, DownloadRequest, DownloadResult } from "@lando/sdk/schema";
-import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
+import {
+  Downloader,
+  type DownloaderShape,
+  EventService,
+  type LandoEvent,
+  OnlineAcquisition,
+} from "@lando/sdk/services";
 import { type DownloaderContractHarness, runDownloaderContract } from "@lando/sdk/test";
 
-import { makeTestDownloader } from "@lando/engine/testing/downloader";
+import { type TestDownloaderHandle, makeTestDownloader } from "@lando/engine/testing/downloader";
 import { layer as DownloaderLayer } from "@lando/http-client/downloader";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
@@ -45,8 +51,13 @@ const fsHarnessHooks = (tempDir: string) => ({
 
 const captureEventService = () => {
   const captured: Array<LandoEvent> = [];
+  const retries = Effect.runSync(Queue.unbounded<void>());
   const service: Context.Service.Shape<typeof EventService> = {
-    publish: (event) => Effect.sync(() => void captured.push(event)),
+    publish: (event) =>
+      Effect.sync(() => void captured.push(event)).pipe(
+        Effect.andThen(event._tag === "message.warn" ? Queue.offer(retries, undefined) : Effect.void),
+        Effect.asVoid,
+      ),
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
     waitFor: () => Effect.never,
@@ -54,8 +65,14 @@ const captureEventService = () => {
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   };
-  return { service, events: () => [...captured] };
+  return { service, events: () => [...captured], nextRetry: Queue.take(retries) };
 };
+
+const testDownloaderFailures = (td: TestDownloaderHandle): DownloaderContractHarness["failures"] => ({
+  reset: (url, count) => Effect.sync(() => td.failResets(url, count)),
+  status: (url, status) => Effect.sync(() => td.serveStatus(url, status)),
+  nextRetry: td.nextRetry,
+});
 
 describe("Downloader contract suite", () => {
   test("TestDownloader (in-memory) satisfies the contract", async () => {
@@ -67,6 +84,7 @@ describe("Downloader contract suite", () => {
         service: td.service,
         tempDir: dir as AbsolutePath,
         serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
+        failures: testDownloaderFailures(td),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => td.events()),
@@ -84,11 +102,28 @@ describe("Downloader contract suite", () => {
   test("Downloader layer (instrumented HttpClient) satisfies the contract and egress fence", async () => {
     await withTempDir(async (dir) => {
       const sources = new Map<string, Uint8Array>();
+      const resets = new Map<string, number>();
+      const statuses = new Map<string, number>();
       let streamCalls = 0;
       let bytesStreamed = 0;
       const http = HttpClient.make((request, url) =>
         Effect.gen(function* () {
           streamCalls += 1;
+          const remaining = resets.get(request.url) ?? 0;
+          if (remaining > 0) {
+            resets.set(request.url, remaining - 1);
+            return yield* Effect.fail(
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.TransportError({
+                  request,
+                  cause: Object.assign(new TypeError("Connection reset"), { code: "ECONNRESET" }),
+                }),
+              }),
+            );
+          }
+          const status = statuses.get(request.url);
+          if (status !== undefined)
+            return HttpClientResponse.fromWeb(request, new Response("failure", { status }));
           const body = sources.get(url.href) ?? sources.get(request.url);
           if (body === undefined) {
             return yield* Effect.fail(
@@ -129,6 +164,11 @@ describe("Downloader contract suite", () => {
         service,
         tempDir: dir as AbsolutePath,
         serveSource: (url, body) => Effect.sync(() => void sources.set(url, body)),
+        failures: {
+          reset: (url, count) => Effect.sync(() => void resets.set(url, count)),
+          status: (url, status) => Effect.sync(() => void statuses.set(url, status)),
+          nextRetry: capture.nextRetry,
+        },
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => capture.events()),
@@ -178,6 +218,7 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
         service: rogue,
         tempDir: dir as AbsolutePath,
         serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
+        failures: testDownloaderFailures(td),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => td.events()),
@@ -213,11 +254,35 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
         service: rogue,
         tempDir: dir as AbsolutePath,
         serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
+        failures: testDownloaderFailures(td),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => td.events()),
       };
       await expectContractFails(runDownloaderContract(harness), "escaping the directory");
+    });
+  });
+
+  test("a downloader that never retries transient failures fails the contract", async () => {
+    await withTempDir(async (dir) => {
+      const td = await run(makeTestDownloader());
+      const rogue: DownloaderShape = {
+        id: "rogue-no-retry",
+        capabilities: td.service.capabilities,
+        download: (request) =>
+          td.service.download(request).pipe(Effect.provideService(OnlineAcquisition, false)),
+      };
+      const hooks = fsHarnessHooks(dir);
+      const harness: DownloaderContractHarness = {
+        service: rogue,
+        tempDir: dir as AbsolutePath,
+        serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
+        failures: testDownloaderFailures(td),
+        read: hooks.read,
+        listDir: hooks.listDir,
+        events: () => Effect.sync(() => td.events()),
+      };
+      await expectContractFails(runDownloaderContract(harness), "retries a transient failure");
     });
   });
 
@@ -245,6 +310,7 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
         service: rogue,
         tempDir: dir as AbsolutePath,
         serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
+        failures: testDownloaderFailures(td),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => [...td.events(), ...leaked]),

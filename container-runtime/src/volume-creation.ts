@@ -10,7 +10,7 @@ import {
 
 import { Option, Schema } from "effect";
 
-import { AbsolutePath, type AppPlan, type VolumeCreationFact } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type VolumeCreationFact, planDataId } from "@lando/sdk/schema";
 
 import { STORAGE_KIND_LABEL, STORAGE_SCOPE_LABEL } from "./volume-classes.ts";
 import { volumeOwnershipLabels } from "./volume-ownership.ts";
@@ -27,7 +27,7 @@ export const volumeCreationLabels = (
   plan: Pick<AppPlan, "id" | "provider" | "root" | "identity" | "extensions">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => ({
-  [APP_LABEL]: plan.id,
+  [APP_LABEL]: planDataId(plan),
   [STORE_LABEL]: store.name,
   [STORAGE_SCOPE_LABEL]: store.scope,
   [VOLUME_INSTANCE_LABEL]: randomUUID(),

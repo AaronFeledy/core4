@@ -14,7 +14,7 @@ import {
 } from "./_feature-helpers.ts";
 import { assertListenerConfig, launcherAuthority, plannedPort } from "./_port-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const DEFAULT_API_PORT = 9000;
@@ -55,7 +55,7 @@ const defaultServerCommand = (apiPort: number, consolePort: number): string =>
 
 const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
+  const appName = dataNameFor(ctx);
   const { apiPort, consolePort } = minioPorts(ctx);
   const rootUser = service.environment?.MINIO_ROOT_USER ?? "lando";
   const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? MINIO_DEFAULT_PASSWORD;
@@ -158,6 +158,6 @@ export const minioServiceType: ServiceType = {
       features: [
         { id: MINIO_FEATURE_ID, config: { consolePort: input.service.consolePort ?? DEFAULT_CONSOLE_PORT } },
       ],
-      tooling: { mc: { service: input.name, cmd: "mc" } },
+      tooling: { mc: { service: input.name, cmd: "mc", wrapper: true } },
     }),
 };

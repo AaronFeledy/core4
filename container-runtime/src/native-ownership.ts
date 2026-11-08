@@ -11,6 +11,7 @@ import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
+  ROLE_LABEL,
   SCRATCH_ID_LABEL,
   SCRATCH_LABEL,
   SERVICE_LABEL,
@@ -57,6 +58,29 @@ export const coherentContainerOwnership = (
     (legacy === undefined || legacy === app) &&
     (labels["dev.lando.provider"] === undefined || labels["dev.lando.provider"] === providerId) &&
     (labels["dev.lando.owner"] === undefined || labels["dev.lando.owner"] === appIdentityKey("owner", root))
+  );
+};
+
+/** Native labels, rather than projected observation fields, authorize service-container mutation. */
+export const ownsServiceContainer = (
+  plan: AppPlan,
+  observation: {
+    readonly containerId?: string;
+    readonly service: string;
+    readonly labels?: Readonly<Record<string, string>>;
+  },
+): boolean => {
+  const labels = observation.labels;
+  if (labels === undefined || !observation.containerId) return false;
+  const scratch = scratchLabelsForPlan(plan);
+  return (
+    labels[ROLE_LABEL] === undefined &&
+    coherentContainerOwnership(labels, plan.provider) &&
+    labels[APP_LABEL] === plan.id &&
+    labels[APP_ROOT_LABEL] === planAppIdentity(plan).appRoot &&
+    labels[SCRATCH_LABEL] === scratch[SCRATCH_LABEL] &&
+    labels[SCRATCH_ID_LABEL] === scratch[SCRATCH_ID_LABEL] &&
+    labels[SERVICE_LABEL] === observation.service
   );
 };
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { GlobalAppError } from "@lando/sdk/errors";
+import { GlobalAppError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -43,14 +43,98 @@ import {
   globalEnsureRecord,
   rememberGlobalEnsure,
 } from "../../src/global-app/ensure-cache.ts";
+import { withGlobalMutation } from "../../src/global-app/mutation.ts";
 import { renderGlobalDist } from "../../src/global-app/service.ts";
 import { ensureGlobalServicesRunning } from "../../src/operations/ensure-global-services.ts";
-import { readGlobalConsumerReservations } from "../../src/operations/global-consumer-lease.ts";
+import {
+  readGlobalConsumerReservations,
+  withGlobalConsumerReservation,
+} from "../../src/operations/global-consumer-lease.ts";
 import { globalDisable } from "../../src/operations/global-policy.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const metadata = { runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0), source: "warm-test" };
+
+test.each(["cold", "warm"] as const)(
+  "%s ensure rejects unreadable applied state before accepting services",
+  async (path) => {
+    await withFixture(async (f) => {
+      if (path === "warm") await f.ensure();
+      const applied = f.calls.apply;
+      const events = f.events.length;
+      f.setUnreadable();
+      const result = await Effect.runPromise(
+        Effect.result(ensureGlobalServicesRunning({ services: ["app"] })).pipe(Effect.provide(f.layer)),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "ProviderUnavailableError",
+          providerId: "lando",
+          operation: "applied-state.read",
+        },
+      });
+      expect(f.calls.apply).toBe(applied);
+      expect(f.events.slice(events).filter((event) => event._tag === "post-global-start")).toEqual([]);
+    });
+  },
+);
+
+test.each(["running", "exited"] as const)(
+  "#2144 app ensure reconciles a %s global sibling on the old bridge",
+  async (status) => {
+    await withFixture(async (f) => {
+      await writeFile(
+        f.paths.userLandofile,
+        "services:\n  app:\n    type: compose\n    image: app:v1\n  sibling:\n    type: compose\n    image: sibling:v1\n",
+      );
+      await f.ensure(["app", "sibling"]);
+      f.setLegacyBridge();
+      const sibling = f.runtimes.get("sibling");
+      if (sibling === undefined) throw new Error("Missing sibling");
+      const { status: _status, health: _health, exitCode: _exitCode, ...identity } = sibling;
+      f.runtimes.set("sibling", { ...identity, status });
+      const result = await f.ensure(["app"]);
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(
+        status === "running" ? ["app", "sibling"] : ["app"],
+      );
+      expect(f.removed).toEqual(status === "exited" ? ["sibling"] : []);
+    });
+  },
+);
+
+test("nested app ensure refuses to recreate a sibling reserved by another consumer", async () => {
+  await withFixture(async (f) => {
+    await writeFile(
+      f.paths.userLandofile,
+      "services:\n  app:\n    type: compose\n    image: app:v1\n  sibling:\n    type: compose\n    image: sibling:v1\n",
+    );
+    await f.ensure(["app", "sibling"]);
+    f.setLegacyBridge();
+    const applied = f.calls.apply;
+    const prior = await Effect.runPromise(f.registry.resolveAppliedPlan(f.root));
+    if (prior === undefined) throw new Error("Missing applied plan");
+    const result = await Effect.runPromise(
+      withGlobalMutation(
+        withGlobalConsumerReservation(
+          { ...prior, id: AppId.make("consumer"), name: "consumer-app" },
+          ["sibling"],
+          Effect.result(ensureGlobalServicesRunning({ services: ["app"] })),
+        ),
+      ).pipe(Effect.provide(f.layer)),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "GlobalAppError",
+        operation: "consumer-admission",
+      },
+    });
+    expect(f.calls.apply).toBe(applied);
+    expect(f.removed).toEqual([]);
+  });
+});
 
 const withFixture = async (use: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-global-warm-"));
@@ -83,12 +167,14 @@ const makeFixture = async (directory: string) => {
     });
   const events: LandoEvent[] = [];
   const runtimes = new Map<string, ServiceRuntimeInfo>();
+  const removed: string[] = [];
   let onEvent: ((event: LandoEvent) => Effect.Effect<void>) | undefined;
   let onApply: ((plan: AppPlan) => Effect.Effect<void>) | undefined;
   let applied: AppPlan | undefined;
   let capabilities = TestRuntimeProvider.capabilities;
   let catalog: ReadonlyArray<PluginManifest> = [];
   let omitOwnership = false;
+  let unreadable = false;
   const providerId = ProviderId.make("lando");
   const provider = {
     ...TestRuntimeProvider,
@@ -96,6 +182,12 @@ const makeFixture = async (directory: string) => {
     get capabilities() {
       return capabilities;
     },
+    removeObservedService: (observation: ServiceRuntimeInfo) =>
+      Effect.sync(() => {
+        removed.push(observation.service);
+        runtimes.delete(observation.service);
+        return { kind: "removed" as const };
+      }),
     list: () =>
       Effect.sync(() => {
         calls.list++;
@@ -127,6 +219,11 @@ const makeFixture = async (directory: string) => {
               providerId,
               service: service.name,
               containerId: `container-${service.name}`,
+              labels: {
+                "dev.lando.app": plan.id,
+                "dev.lando.app-root": plan.root,
+                "dev.lando.service": service.name,
+              },
               lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
               status: "running" as const,
               publications: { status: "present", bindings: [] },
@@ -136,6 +233,19 @@ const makeFixture = async (directory: string) => {
       }),
   };
   const registry = RuntimeProviderRegistry.of({
+    assertAppliedStateReadable: () =>
+      Effect.suspend(() =>
+        unreadable
+          ? Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "applied-state.read",
+                message: "Global applied state is unreadable.",
+                remediation: "Restore the global applied state, then run `lando global:start`.",
+              }),
+            )
+          : Effect.void,
+      ),
     appliedStateInventory: () =>
       Effect.succeed({ plans: applied === undefined ? [] : [applied], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
@@ -302,8 +412,20 @@ const makeFixture = async (directory: string) => {
     calls,
     events,
     runtimes,
+    removed,
     ensure,
     registry,
+    setUnreadable: () => {
+      unreadable = true;
+    },
+    setLegacyBridge: () => {
+      if (applied === undefined) throw new Error("Missing applied plan");
+      applied = {
+        ...applied,
+        networking: { perAppBridge: { name: "lando-global", driver: "bridge", aliases: {} } },
+      };
+      forgetGlobalEnsure(registry, root);
+    },
     layer,
     setCatalog: (next: ReadonlyArray<PluginManifest>) => {
       catalog = next;

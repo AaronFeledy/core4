@@ -47,6 +47,22 @@ Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use 
       <Verify event="post-start" />
     </Step>
     <Step name="fetch">
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "static-demo[\\s\\S]*web" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="fetch-page" layer="e2e" render>
+    <Step name="scaffold">
+      <UseFixture name="static-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="fetch">
       <Verify command="lando curl index.html" expect={{ stdout: { regex: "hello from lando static" } }} />
     </Step>
     <Step name="cleanup">

@@ -102,6 +102,25 @@ changed policy or configuration takes the normal reconciliation path; this reuse
 doesn't require a background daemon. A new CLI process doesn't inherit this
 retained state; it must establish that state again.
 
+Starting an app brings up only the global services it needs, and Lando keeps the
+rest of the global app consistent with that start. After an upgrade changes how
+global services are defined, for example which network they join, a global
+service still running from the old definition is recreated from its current one.
+A stopped container left from the old definition is removed, and that service is
+created fresh the next time it starts. Named volumes and their data stay.
+Services that already match keep running untouched. Lando prints a note for
+each service it recreates or removes this way, naming the service and the older
+setting it still used. `lando global:start --service <name>` follows the same
+rules and lists every service it started in `servicesStarted`.
+
+The start stops instead when Lando can't safely do that work: a conflicting
+service is disabled or no longer configured, or a running container's labels
+don't prove it belongs to this global app. The error names the service and
+container and tells you what to run. If the global app's applied-state file is
+unreadable, the start fails with the provider's `applied-state.read` error and
+its recovery steps, even when a retained runtime could otherwise reuse a
+verified start.
+
 ## Where the global app runs
 
 Traefik, Mailpit, and the ssh-agent sidecar run on the host provider that `lando setup` selected. A Landofile `provider:` never moves them, and routed apps must share that provider. Only `lando setup --provider=<new>` switches an existing global app. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs), [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider), and [Switch providers](../setup/provider-selection.mdx#switch-providers).

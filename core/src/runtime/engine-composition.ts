@@ -14,7 +14,7 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
   bundledPluginModules: [],
   builtInCommandIds: BUILT_IN_COMMAND_IDS,
   landofileSourcePorts: (client, downloader, runtime) => {
-    const archive = makeArchiveTransport(downloader);
+    const archive = makeArchiveTransport(downloader, runtime?.requestContext);
     const npmClient = defaultNpmRegistryClient({
       fetchJson: (url, options) => httpJsonFetch(url, options, client),
       snapshot: npmRegistryConfigSnapshot(runtime?.registerSecrets, runtime?.readPolicy),

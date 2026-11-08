@@ -10,7 +10,7 @@ import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
-import { makeStdioClient } from "@lando/mcp/testing";
+import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
@@ -98,7 +98,7 @@ describe("McpService.catalog", () => {
         { spec: spec("app:destroy", () => Effect.succeed({})) },
       ],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
     const catalog = await Effect.runPromise(
       Effect.gen(function* () {
@@ -114,7 +114,7 @@ describe("McpService.catalog", () => {
       commandEntries: [{ spec: spec("app:info", () => Effect.succeed({})) }],
       toolingEntries: [{ spec: spec("app:php", () => Effect.succeed({})) } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const catalog = await Effect.runPromise(
@@ -137,7 +137,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: versionSpec }],
       defaultAllowlist: [versionSpec.id],
-      runtimeLayer,
+      apps: testAppGenerations(runtimeLayer),
     };
     const layer = Layer.mergeAll(eventLayer, redactionLayer(), serviceLayer(config));
 
@@ -205,7 +205,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: failing }],
       defaultAllowlist: [failing.id],
-      runtimeLayer,
+      apps: testAppGenerations(runtimeLayer),
     };
     const layer = Layer.mergeAll(eventLayer, redactionLayer(), serviceLayer(config));
 
@@ -256,7 +256,7 @@ describe("McpService.serve", () => {
       commandEntries: [],
       toolingEntries: [{ spec: spec("app:php", () => Effect.succeed({})) } satisfies McpCommandEntry],
       defaultAllowlist: [],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const replies = await Effect.runPromise(
@@ -285,7 +285,7 @@ describe("McpService.serve", () => {
         },
       ],
       defaultAllowlist: [],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const replies = await Effect.runPromise(
@@ -312,7 +312,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
       defaultAllowlist: ["app:logs"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const program = Effect.gen(function* () {
@@ -351,7 +351,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
       defaultAllowlist: ["app:logs"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     // When
@@ -388,7 +388,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
       defaultAllowlist: ["app:logs"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     // When
@@ -420,7 +420,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     // When
@@ -444,7 +444,10 @@ describe("McpService.serve", () => {
 
     // Then
     expect(replies).toHaveLength(2);
-    expect(replies[0]).toMatchObject({ ok: false, error: { _tag: "McpTransportError" } });
+    expect(replies[0]).toMatchObject({
+      ok: true,
+      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+    });
     expect(replies[1]).toMatchObject({ ok: true, result: { envelope: { result: { chunks: [1] } } } });
   });
 
@@ -456,7 +459,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     // When
@@ -471,7 +474,10 @@ describe("McpService.serve", () => {
 
     // Then
     expect(replies).toHaveLength(1);
-    expect(replies[0]).toMatchObject({ ok: false, error: { _tag: "McpTransportError" } });
+    expect(replies[0]).toMatchObject({
+      ok: true,
+      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+    });
   });
 
   test("rejects exotic result hooks without executing them", async () => {
@@ -496,7 +502,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     // When
@@ -505,7 +511,10 @@ describe("McpService.serve", () => {
     );
 
     // Then
-    expect(replies[0]).toMatchObject({ ok: false, error: { _tag: "McpTransportError" } });
+    expect(replies[0]).toMatchObject({
+      ok: true,
+      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+    });
     expect(getterCalls).toBe(0);
     expect(toJsonCalls).toBe(0);
   });
@@ -515,7 +524,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: dying } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const replies = await Effect.runPromise(
@@ -530,7 +539,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.succeed(RuntimeCwd, "/session-root"),
+      apps: testAppGenerations(Layer.succeed(RuntimeCwd, "/session-root")),
     };
 
     const program = Effect.gen(function* () {
@@ -574,7 +583,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: blocking } satisfies McpCommandEntry],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const program = Effect.gen(function* () {
@@ -615,7 +624,7 @@ describe("McpService.serve", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: hanging } satisfies McpCommandEntry],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const program = Effect.gen(function* () {

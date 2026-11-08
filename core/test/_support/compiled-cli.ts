@@ -15,6 +15,7 @@ const compileCli = async (): Promise<string> => {
   const subprocess = Bun.spawn({
     cmd: [process.execPath, "run", "build:compile"],
     cwd: coreRoot,
+    env: process.env,
     stdout: "ignore",
     stderr: "pipe",
   });

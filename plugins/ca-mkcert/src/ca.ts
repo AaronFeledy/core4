@@ -106,10 +106,12 @@ export const makeMkcertCertificateAuthority = (
           `mkcert ${MKCERT_TOOL_VERSION} does not publish a binary for this host (${resolveHostKey(platform, arch)}). Install mkcert manually, or contribute a CertificateAuthority plugin for this platform.`,
           cause,
         )
-      : caError(
-          `Failed to provision mkcert ${MKCERT_TOOL_VERSION} for ${resolveHostKey(platform, arch)}: ${cause.message}. ${SETUP_REMEDIATION}`,
+      : new CaError({
+          message: cause.message,
+          caId: CA_ID,
           cause,
-        );
+          remediation: `${cause.remediation} Then run \`lando setup\`.`,
+        });
 
   // CertificateAuthorityShape has no Effect requirements channel; inject Downloader here.
   const provision = (force: boolean): Effect.Effect<void, CaError> =>

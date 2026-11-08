@@ -83,6 +83,30 @@ test("protects legacy routed apps using the actual configured router id", () => 
   expect(resolve([disabled], [row(disabled)], ["router-custom"]).consumers).toEqual([]);
 });
 
+test("#1941 protects the applied router's services after the configured router changes", () => {
+  const planned = {
+    ...app("custom-routed", { requires: ["gateway"], routed: true }),
+    router: { enabled: true, id: "custom" },
+  };
+  const impact = resolve([planned], [row(planned)], ["gateway"], "traefik");
+  expect(impact.consumers[0]).toMatchObject({
+    globalServices: ["gateway"],
+    routes: expect.arrayContaining([firstRoute.hostname]),
+  });
+  expect(resolve([planned], [row(planned)], ["traefik"], "traefik").consumers).toEqual([]);
+});
+
+test("#1941 a router with no declared globals is independent of global-service policy", () => {
+  const external = {
+    ...app("external-routed", { requires: [], routed: true }),
+    router: { enabled: true, id: "external" },
+  };
+  expect(resolve([external], [row(external)], ["external", "traefik", "gateway"], "external")).toEqual({
+    consumers: [],
+    uncertainties: [],
+  });
+});
+
 test("ignores stopped consumers and records active service-level orphan uncertainty", () => {
   const plan = app();
   expect(resolve([plan], [row(plan, { status: "exited" })]).consumers).toEqual([]);
