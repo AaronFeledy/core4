@@ -51,7 +51,11 @@ const recordedPlane = (
       }
       return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
     },
-    stream: () => Stream.empty,
+    stream: (request) =>
+      Stream.suspend(() => {
+        request.onResponseHead?.();
+        return Stream.empty;
+      }),
   };
   return makeProviderDataPlane({
     providerId: "test",
