@@ -34,10 +34,9 @@ test.each(["stop", "destroy", "restart", "rebuild"] as const)(
             select: () =>
               Effect.succeed({
                 ...base,
-                ensureReady:
-                  Effect.sync(() => {
-                    preparations++;
-                  }),
+                ensureReady: Effect.sync(() => {
+                  preparations++;
+                }),
               }),
           }),
           Effect.provide(harness.layer),

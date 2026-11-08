@@ -29,7 +29,11 @@ test("destroy confirmation refusal preserves every legacy realization and its vo
         {
           ...target,
           root,
-          plan: { ...target.plan, root, identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) } },
+          plan: {
+            ...target.plan,
+            root,
+            identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
+          },
           app: { ...target.app, root },
         },
       ).pipe(
