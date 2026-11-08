@@ -10,7 +10,7 @@ import type {
   PluginManifestError,
   SubscriberLevelMismatchError,
 } from "@lando/sdk/errors";
-import { CacheError, ToolingCompileError } from "@lando/sdk/errors";
+import { type CacheError, ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   LandofileService,
@@ -82,16 +82,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
 
   const landofile = yield* loadUserLandofile(landofileService);
   const capabilities = yield* registry.capabilities;
-  const dataIdentityFingerprint = yield* Effect.tryPromise({
-    try: () => readDataIdentityFingerprint(landofile.context.appRoot),
-    catch: (cause) =>
-      new CacheError({
-        key: "app-command",
-        message: "Could not read the folder's data identity for tooling compilation.",
-        remediation: "Check the data identity record's permissions and retry.",
-        cause,
-      }),
-  });
+  const dataIdentityFingerprint = yield* readDataIdentityFingerprint(landofile.context.appRoot);
   const plan = yield* planner.plan(landofile, capabilities);
   yield* publishHostShellWarnings(plan);
 

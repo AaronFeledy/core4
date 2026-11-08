@@ -1,6 +1,6 @@
 import { AppDataIdentityError } from "@lando/sdk/errors";
 import type { AppIdentity } from "@lando/sdk/schema";
-import { StateStore } from "@lando/sdk/services";
+import { type LandoRoots, StateStore } from "@lando/sdk/services";
 import { defineTransitions } from "@lando/sdk/transitions";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Effect, Option, Schema } from "effect";
@@ -31,11 +31,16 @@ const identityFailure = (identity: AppIdentity, cause?: unknown) =>
       "Restore the app-data-identity record from a backup or correct its permissions, then retry. Do not remove it while the folder still owns data volumes.",
   });
 
-export const readAppDataIdentity = Effect.fn("AppDataIdentity.read")(function* (identity: AppIdentity) {
+export const readAppDataIdentity = Effect.fn("AppDataIdentity.read")(function* (
+  identity: AppIdentity,
+  roots?: LandoRoots,
+) {
   const provided = yield* Effect.serviceOption(StateStore);
   const store = Option.isSome(provided)
     ? provided.value
-    : yield* StateStore.pipe(Effect.provide(DiskStateStore.layer));
+    : yield* StateStore.pipe(
+        Effect.provide(roots === undefined ? DiskStateStore.layer : DiskStateStore.layerAt(roots)),
+      );
   return yield* store.open(appDataIdentityBucketSpec(identity)).pipe(
     Effect.flatMap((bucket) => bucket.get),
     Effect.mapError((cause) => identityFailure(identity, cause)),

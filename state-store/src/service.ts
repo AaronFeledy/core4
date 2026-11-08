@@ -115,3 +115,12 @@ export const layerWithPrivateFileAccess: Layer.Layer<StateStore, never, PrivateF
 export const layer: Layer.Layer<StateStore> = layerWithPrivateFileAccess.pipe(
   Layer.provide(PrivateFileAccessService.layer),
 );
+
+/** A disk store over roots a caller resolved itself, such as from a CLI invocation's environment. */
+export const layerAt = (roots: LandoRoots): Layer.Layer<StateStore> =>
+  Layer.effect(
+    StateStore,
+    Effect.gen(function* () {
+      return makeStateStore({ privateFileAccess: yield* PrivateFileAccessService, roots });
+    }),
+  ).pipe(Layer.provide(PrivateFileAccessService.layer));

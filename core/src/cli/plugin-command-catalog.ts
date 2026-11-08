@@ -143,11 +143,12 @@ export const createPluginCommandCatalog = (
   };
   const specs = new Map<string, Promise<PluginCommandRow>>();
   const index = async (result: Extract<Awaited<ReturnType<typeof graph>>, { status: "available" }>) => {
+    const roots = context === undefined ? undefined : resolveLandoRoots({ env: context.env });
     const receipt = await run(
       readAppCommandCacheForCwdDetailed(
-        context === undefined
+        context === undefined || roots === undefined
           ? {}
-          : { cwd: context.cwd, cacheRoot: resolveLandoRoots({ env: context.env }).userCacheRoot },
+          : { cwd: context.cwd, cacheRoot: roots.userCacheRoot, roots },
       ),
     );
     const cache = receipt.status === "fresh" ? receipt.payload : undefined;

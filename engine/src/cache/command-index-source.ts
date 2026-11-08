@@ -4,18 +4,20 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import { isPathWithin, makeLandoPaths } from "@lando/paths";
+import { isPathWithin } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CacheError } from "@lando/sdk/errors";
-import { AbsolutePath, type LandofileShape, appIdentityKey } from "@lando/sdk/schema";
+import type { LandofileShape } from "@lando/sdk/schema";
+import type { LandoRoots } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { appDataIdentityBucketSpec } from "../planner/data-identity.ts";
+import { resolveAppIdentity } from "../planner/app-identity.ts";
+import { readAppDataIdentity } from "../planner/data-identity.ts";
 
 export const isMissingFile = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
 
 export interface AppCommandCacheSource {
-  readonly dataIdentityFingerprint?: string;
+  readonly dataIdentityFingerprint: string;
   readonly filePath: string;
   readonly stats: { readonly mtimeMs: number; readonly size: number };
   readonly landofileSources: ReadonlyArray<{ readonly relativePath: string; readonly bytes: Uint8Array }>;
@@ -128,10 +130,11 @@ const sourceHashFor = (
   return hash.digest("hex");
 };
 
-export const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: string) {
+export const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: string, roots?: LandoRoots) {
   const filePath = yield* findLandofilePath(cwd);
   if (filePath === undefined) return undefined;
   const appRoot = dirname(filePath);
+  const dataIdentityFingerprint = yield* readDataIdentityFingerprint(appRoot, roots);
   const layers = yield* presentLandofileLayers(appRoot);
   const [stats, landofileSources, includeLockfileBytes] = yield* Effect.tryPromise({
     try: () =>
@@ -153,26 +156,31 @@ export const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: s
         remediation: "Ensure the app's Landofile layers and any .lando.lock.yml file exist and are readable.",
       }),
   });
-  return { filePath, stats, landofileSources, includeLockfileBytes };
+  return { filePath, stats, landofileSources, includeLockfileBytes, dataIdentityFingerprint };
 });
 
-export const readDataIdentityFingerprint = async (root: string): Promise<string> => {
-  const appRoot = await realpath(root);
-  const spec = appDataIdentityBucketSpec({
-    appRoot: AbsolutePath.make(appRoot),
-    ownerKey: appIdentityKey("owner", appRoot),
-  });
-  const record = await readOptionalFile(join(makeLandoPaths().roots.userDataRoot, spec.namespace, spec.key));
-  return record === null ? "absent" : sha256Hex(record);
-};
+export const readDataIdentityFingerprint = Effect.fnUntraced(function* (root: string, roots?: LandoRoots) {
+  const record = yield* resolveAppIdentity(root).pipe(
+    Effect.flatMap((identity) => readAppDataIdentity(identity, roots)),
+    Effect.mapError(
+      (cause) =>
+        new CacheError({
+          key: "app-command",
+          message: "Could not read the folder's data identity for tooling compilation.",
+          remediation: "Check the data identity record's permissions and retry.",
+          cause,
+        }),
+    ),
+  );
+  return record === null ? "absent" : sha256Hex(record.name);
+});
 
 export const sourceContentHash = async (
   source: AppCommandCacheSource,
   localIncludePaths: ReadonlyArray<string>,
   allowOutsideRoot = false,
 ): Promise<string> => {
-  const dataIdentity =
-    source.dataIdentityFingerprint ?? (await readDataIdentityFingerprint(dirname(source.filePath)));
+  const dataIdentity = source.dataIdentityFingerprint;
   const sourceHash = sourceHashFor(
     source,
     await localIncludeSourcesFor(dirname(source.filePath), localIncludePaths, allowOutsideRoot),
