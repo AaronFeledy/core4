@@ -70,7 +70,7 @@ lando info
 
 The worktree serves at `web.shop-feature.lndo.site` while the main checkout keeps `web.shop.lndo.site`. Both run at the same time. Open the URLs `lando info` prints.
 
-The database name defaults to the app name, so the worktree's database is `shop-feature`. `DB_NAME` comes from the resolved credentials, so it follows along:
+The database name defaults to the folder's data name, which starts as the app name, so this new worktree's database is `shop-feature`. Later renames keep that database name. `DB_NAME` comes from the resolved credentials:
 
 ```sh
 lando exec web -- printenv DB_NAME

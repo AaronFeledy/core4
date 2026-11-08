@@ -51,7 +51,7 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the app name (`mysql-demo`); override with `database:` under `services.db` |
+| Database | the folder's data name (here `mysql-demo`, the name this folder's data was first created under); override with `database:` under `services.db` |
 | User | `lando` |
 | Password | `lando` |
 | Root password | derived per app; `LANDO_DB_ROOT_PASSWORD` inside the service |
@@ -133,7 +133,7 @@ services:
 
 Use unversioned `type: mysql` with `image:` only for a custom image whose compatibility you manage yourself. A versioned type plus `image:` is conflicting intent and fails during planning.
 
-Each MySQL service keeps its data in its own `lando-<app>--<service>--mysql-data` volume, independent of the server version.
+Each MySQL service keeps its data in its own `lando-<data-name>--<service>--mysql-data` volume, independent of the server version. The data-name slug stays fixed when you rename the app.
 
 Keeping a volume's identity is not an upgrade compatibility check. Existing databases still depend on the SQL recovery guard for changed or unknown initialized series; do not treat a type change as a safe datadir upgrade.
 

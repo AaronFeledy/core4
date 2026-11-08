@@ -84,7 +84,7 @@ lando rabbitmqctl eval 'rabbit_networking:active_listeners().'
 RabbitMQ stores its data in `/var/lib/rabbitmq`. The service mounts persistent
 storage there by default. The data volume survives ordinary restarts, `lando rebuild`, and a plain `lando destroy`; `--volumes` or `--purge` deletes it. A persistent volume does not make every queue or message durable: RabbitMQ's queue and message durability settings still determine what survives a broker restart.
 
-RabbitMQ files its data under the node name `rabbit@<hostname>`. Lando sets the container's hostname to its container name, `lando-<app>--<service>`, so a rebuilt broker keeps its node name and finds its saved queues. Renaming the app or the service gives the broker a new node name, and it starts without the old queues.
+RabbitMQ files its data under the node name `rabbit@<hostname>`. Lando sets the container's hostname to its current container name, `lando-<current-app>--<service>`, so a rebuilt broker under the same name keeps its node name and finds its saved queues. The data volume itself follows the folder's data name across renames, but renaming the app or the service still changes the container hostname and therefore the node name, so the broker starts without the old queues unless you reattach under the previous node layout.
 
 ## Manage the broker
 

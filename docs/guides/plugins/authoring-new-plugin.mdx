@@ -66,6 +66,24 @@ export class Greeter extends Context.Service<Greeter, {
 
 Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and TypeScript 7.
 
+## Use `dataName` for persisted defaults
+
+`ServiceTypeInput` and `ServiceFeatureContext` carry both `appName` and optional
+`dataName`. `appName` is the current Landofile name. `dataName` is the name this
+folder's persisted data was first created under. When `dataName` is absent, it
+matches `appName`.
+
+Derive databases, generated passwords, bucket names, and other values that live
+inside named volumes from `dataName` (or fall back to `appName` when it is
+absent). Use `appName` for runtime identity that should follow a rename:
+container-facing labels you surface only in the current process, diagnostics that
+name the running app, and similar non-persisted strings.
+
+`ServiceFeatureContext.serviceStoreName(role)` already names a store from the
+folder's data identity. Do not rebuild that name from the current `appName`, or a
+rename will point a new empty volume at services that still hold data under the
+old name.
+
 ## Supply the service image
 
 If your plugin contributes a service type, its `resolve` method chooses the base,

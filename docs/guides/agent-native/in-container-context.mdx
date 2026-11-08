@@ -43,9 +43,11 @@ tags: [docs, agent-native, info, json]
 `app:info --format=json` wraps its result in the same `CommandResultEnvelope`
 every non-interactive command emits: `{ "ok": true, "result": <InfoAppResult> }`.
 The [`InfoAppResult` schema reference](../../reference/schemas/info-app-result.mdx)
-lists every field. The result carries `app` (the app name, matching the
+lists every field. The result carries `app` (the current app name, matching the
 Landofile) and `services`, an array with one entry per service defined in the
-Landofile.
+Landofile. When this folder's data was first created under a different name,
+`dataName` is present with that original name; omit it from scripts when it is
+absent (it matches `app`).
 
 Read `hostProxy.runLando.availability` as configured provider support, not worker health: `available` means a selected service has the bridge configured and its provider supports it, `unavailable` includes a reason, and an absent `hostProxy` means no selected service is eligible.
 

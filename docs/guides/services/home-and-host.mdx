@@ -72,7 +72,7 @@ The php image ships `/var/www` owned by root. Lando creates it for `www-data` in
 
 ### One volume per user
 
-The store belongs to that one service in that one app, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is the service's container name, usually `lando-<app slug>--<service>`. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
+The store belongs to that one service in that one app folder, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is built from the folder's **data name** (the name this folder's data was first created under, usually the current app name) and the service key, as `lando-<data slug>--<service>`. Running containers use the current app name in their own names; home and other data stores keep the data-name form so a rename does not orphan them. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
 
 Changing `user:` changes the home. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
 
@@ -95,7 +95,7 @@ services:
     image: my-org/web:dev
     user: node
     storage:
-      - store: lando-<app>--web--home--node-<digest>
+      - store: lando-<data-name>--web--home--node-<digest>
         target: /home/node
 ```
 
