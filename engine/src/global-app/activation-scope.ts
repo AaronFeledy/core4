@@ -12,6 +12,7 @@ export type GlobalActivationReservation = {
     readonly kind: "user" | "scratch" | "global";
   };
   readonly services: ReadonlyArray<string>;
+  readonly exclusive?: ReadonlyArray<string>;
 };
 
 type PolicyOperation = "enable" | "disable" | "reconcile";

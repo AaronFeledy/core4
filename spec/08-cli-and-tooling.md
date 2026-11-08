@@ -979,6 +979,7 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
+| `error.cause` | Optional recursively projected wrapped tagged failure, retaining its message and diagnostic fields; omitted for non-tagged causes |
 | `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses; carries the collected child output of Bun-backed commands under `json`/`yaml` (§8.2.4) |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
@@ -990,6 +991,8 @@ Unsuccessful process completion MUST retain its schema-encoded `result` alongsid
 CLI and MCP failure envelopes MUST share one Cause projection. The primary is the first `Fail` reason without a failure role, otherwise the first such `Die`, otherwise the first `Fail`, otherwise the first `Die`, otherwise the squashed Cause. Failure-role annotations take precedence over Cause order, which breaks ties within each category. Every other `Fail` and `Die` reason, in Cause order and excluding interruptions, is an additional error with a `role`: `rollback` (undoing the failed operation's partial work), `cleanup` (best-effort release, teardown, or bookkeeping), or `peer` (a sibling step in the same phase, and the default for unannotated reasons). Roles are reason annotations set only by the engine compensation helpers; error mappings and nested defect conversion MUST preserve every reason and its annotations.
 
 `error.additionalErrors` is omitted when empty and never nests. Each entry is the additional error's `TaggedErrorJson` plus `role`, encoded and redacted like the primary. Additional errors MUST NOT change the primary's exit status. Human reports show the primary body and remediation, then one `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`, or `Also failed (<tag>)` block per additional error with its body, indented continuation and remediation lines, and diagnostic fields that differ from the primary's, without stack traces. Interruption-only Causes follow the invocation surface's cancellation policy. Effect-native library results follow §16.7.
+
+Primary and additional errors preserve `cause` only when it has own string `_tag` and `message` data properties. Cause projection uses the same diagnostic projection recursively, with a shared maximum of eight edges through `cause` and `failures`, omitting ancestor cycles. Projection MUST NOT invoke accessors or proxy traps and MUST omit stacks and raw mutation-conflict payloads (`existing` and `incoming`). Nested cause strings receive the same envelope redaction as the primary error. Human reports keep their outer-first raw-cause traversal and MUST NOT print the nested projected object as a second copy of its messages. The published `TaggedErrorJson` schema admits `cause` through its open additional keys rather than a dedicated property, so per-tool MCP output schemas stay within the discovery budget.
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 

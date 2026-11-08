@@ -916,7 +916,8 @@ const assembleRuntimeProvider = (
                 ...snapshot,
                 appRoot: plan.root,
                 providerId: providerIdBranded,
-                labels: scratchLabelsForPlan(plan),
+                // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
+                labels: snapshot.labels ?? scratchLabelsForPlan(plan),
               })),
             ),
           ),

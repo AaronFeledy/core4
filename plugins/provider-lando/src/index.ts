@@ -918,7 +918,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       const prior = yield* inspectAppliedPlan(state, target.app);
       if (prior.status === "unreadable")
         return yield* Effect.fail(
-          unreadableAppliedStateError({ providerId, path: prior.path, layout: "per-app" }),
+          unreadableAppliedStateError({ providerId, path: prior.path, layout: "per-app", appId: target.app }),
         );
       if (requireReceipt && prior.status === "missing") {
         return yield* Effect.fail(
@@ -1875,10 +1875,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     { app: plan.id, service: service.name },
                     { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
                   ).pipe(
+                    // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
                     Effect.map((snapshot) => ({
                       ...snapshot,
                       appRoot: plan.root,
-                      labels: scratchLabelsForPlan(plan),
+                      labels: snapshot.labels ?? scratchLabelsForPlan(plan),
                     })),
                   ),
                 ),
