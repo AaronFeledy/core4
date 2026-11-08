@@ -122,7 +122,7 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
             path: `/containers/${encodeURIComponent(names.get(id) ?? id)}/exec`,
             body: {
               ...(typeof input.body === "object" && input.body !== null ? input.body : {}),
-              Cmd: body.value.Cmd.slice(3),
+              Cmd: body.value.Cmd.slice(body.value.Cmd.indexOf("--", 4) + 1),
             },
           });
           const decoded = Schema.decodeUnknownSync(Schema.fromJsonString(Container))(response.body);

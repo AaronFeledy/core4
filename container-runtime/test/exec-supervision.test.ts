@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { DateTime, Deferred, Effect, Exit, Fiber, Stream } from "effect";
+import { DateTime, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { execDataFrames, execEofFrame, execSignalFrame } from "../src/exec-control.ts";
 import { supervisedExecStream } from "../src/exec-supervision.ts";
@@ -68,6 +68,9 @@ const fixture = (mounted = true) => {
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
+        const control =
+          Schema.is(Schema.Struct({ Cmd: Schema.Array(Schema.String) }))(request.body) &&
+          request.body.Cmd[1] === "exec-signal";
         return {
           status: 200,
           body: JSON.stringify(
@@ -79,8 +82,8 @@ const fixture = (mounted = true) => {
                     : [],
                 }
               : request.method === "POST"
-                ? { Id: "exec" }
-                : { Running: false, ExitCode: 7 },
+                ? { Id: control ? "control" : "exec" }
+                : { Running: false, ExitCode: request.path === "/exec/control/json" ? 3 : 7 },
           ),
         };
       }),
@@ -183,7 +186,17 @@ test("sends byte-exact DATA followed by logical EOF while retaining control atta
 test("a disconnected attach preserves its provider error and confirms the same exec stopped", async () => {
   const f = fixture();
   const failure = new ProviderUnavailableError({ ...ctx, operation: "exec", message: "Disconnected" });
-  const api = { ...f.api, stream: () => Stream.fail(failure) };
+  const api = {
+    ...f.api,
+    stream: (request: EngineHttpRequest) => {
+      if (request.path === "/exec/control/start") {
+        f.requests.push(request);
+        request.onResponseHead?.();
+        return Stream.empty;
+      }
+      return Stream.fail(failure);
+    },
+  };
   const result = await Effect.runPromise(
     Stream.runDrain(supervisedExecStream(plan, target, { command: ["payload"] }, { ...f.options, api })).pipe(
       Effect.flip,
@@ -193,6 +206,9 @@ test("a disconnected attach preserves its provider error and confirms the same e
   expect(f.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
     "GET /containers/lando-exec-supervision--web/json",
     "POST /containers/container/exec",
+    "POST /containers/container/exec",
+    "POST /exec/control/start",
+    "GET /exec/control/json",
     "GET /exec/exec/json",
   ]);
 });
@@ -242,6 +258,8 @@ test.each([true, false])("supervised umask compensation requires no shell (shell
       Cmd: [
         "/run/lando/helper/lando-container-helper",
         "exec-run",
+        "--nonce",
+        expect.stringMatching(/^[a-f0-9]{32}$/u),
         "--umask",
         "0022",
         "--",

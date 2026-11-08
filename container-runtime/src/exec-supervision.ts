@@ -1,22 +1,11 @@
 import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
-import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
-import {
-  type Cause,
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Queue,
-  Schema,
-  type Scope,
-  Stream,
-} from "effect";
+import { type Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, type Scope, Stream } from "effect";
 import { containerHelperDelivery } from "./container-helper.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { cancelWedgedExec } from "./exec-cancellation.ts";
 import { execDataFrames, execEofFrame, execSignalFrame } from "./exec-control.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
 import { serviceContainerName } from "./plan.ts";
@@ -44,7 +33,6 @@ const Container = Schema.Struct({
     ),
   ),
 });
-const ExecState = Schema.Struct({ Running: Schema.Boolean });
 
 /** The detached attach stays owned until cancellation has joined the helper. */
 export const supervisedExecStream = (
@@ -109,6 +97,9 @@ export const supervisedExecStream = (
       const preparation =
         options.prepareCommand === undefined ? { command } : yield* options.prepareCommand(container.Id);
       const prepared = preparation.command;
+      const nonce = yield* Effect.sync(() =>
+        Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex"),
+      );
       const input = yield* Queue.bounded<Uint8Array, Cause.Done>(1);
       const output = yield* Queue.bounded<ExecChunk, ProviderError | Cause.Done>(16);
       const finished = yield* Deferred.make<void, ProviderError>();
@@ -149,7 +140,6 @@ export const supervisedExecStream = (
             );
             if (Exit.isSuccess(joined)) return;
             disconnect.abort();
-            const inspectPath = `/exec/${encodeURIComponent(execId)}/json` as const;
             const unavailable = (cause?: unknown) =>
               new ProviderUnavailableError({
                 providerId: options.ctx.providerId,
@@ -158,42 +148,21 @@ export const supervisedExecStream = (
                 remediation: "Check the provider connection and service processes before retrying.",
                 ...(cause === undefined ? {} : { cause }),
               });
-            let observed: Exit.Exit<boolean, ProviderError> = Exit.succeed(true);
-            yield* runProbe(
-              {
-                id: "exec-disconnect-join",
-                policy: { maxAttempts: 11, delay: Duration.millis(100) },
-                classify: {
-                  success: () => (Exit.isFailure(observed) || !observed.value ? "green" : "yellow"),
-                  failure: () => "red",
-                },
-              },
-              Effect.gen(function* () {
-                const response = yield* request({
-                  method: "GET",
-                  path: inspectPath,
-                });
-                if (response.status < 200 || response.status >= 300) return yield* Effect.fail(unavailable());
-                const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(
-                  response.body,
-                ).pipe(Effect.mapError(unavailable));
-                return state.Running;
-              }).pipe(
-                Effect.exit,
-                Effect.tap((exit) =>
-                  Effect.sync(() => {
-                    observed = exit;
-                  }),
-                ),
-              ),
-            ).pipe(
-              Effect.mapError(unavailable),
+            yield* cancelWedgedExec({
+              api,
+              ctx: options.ctx,
+              plan,
+              target,
+              containerId: container.Id,
+              helper: delivery.executable,
+              nonce,
+              signal: command.signal,
+              execId,
+            }).pipe(
               Effect.interruptible,
               Effect.timeout("1500 millis"),
               Effect.catchTag("TimeoutError", (cause) => Effect.fail(unavailable(cause))),
             );
-            if (Exit.isFailure(observed)) return yield* Effect.failCause(observed.cause);
-            if (observed.value) return yield* Effect.fail(failure("cleanup-unconfirmed"));
           });
           const result = yield* Effect.exit(cleanup);
           disconnect.abort();
@@ -231,6 +200,8 @@ export const supervisedExecStream = (
             command: [
               delivery.executable,
               "exec-run",
+              "--nonce",
+              nonce,
               ...(preparation.umask === undefined ? [] : ["--umask", preparation.umask]),
               "--",
               ...prepared.command,
