@@ -249,8 +249,8 @@ describe("workflow performance runner", () => {
     // When preparation finishes, Then each lane's global services are already started.
     for (const [lane, firstMeasured, services] of [
       ["cold-first-start", "start", ["ssh-agent"]],
-      ["drupal-journey", "init", ["ssh-agent", "traefik"]],
-      ["rails-journey", "init", ["ssh-agent", "traefik"]],
+      ["drupal-journey", "init", ["ssh-agent"]],
+      ["rails-journey", "init", ["ssh-agent"]],
     ] as const) {
       const ids = laneCommands(lane).map((command) => command.id);
       const global = laneCommands(lane).find((command) => command.id === "prepare:global");

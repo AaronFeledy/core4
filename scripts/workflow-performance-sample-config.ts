@@ -11,14 +11,13 @@ export const imagesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] 
   return ["node:22"];
 };
 
-// Lanes without a running-app preparation step would otherwise build or pull these global
-// services inside their first measured start. Every app starts the SSH agent sidecar by
-// default; the journeys are routed, so they also start the proxy.
-export const globalServicesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] => {
-  if (laneId === "drupal-journey" || laneId === "rails-journey") return ["ssh-agent", "traefik"];
-  if (laneId === "cold-first-start") return ["ssh-agent"];
-  return [];
-};
+// Every app starts the SSH agent sidecar by default, and the first start on a fresh runtime
+// builds its image. Lanes without a running-app preparation step would otherwise time that build.
+// Setup already starts the proxy.
+export const globalServicesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] =>
+  laneId === "cold-first-start" || laneId === "drupal-journey" || laneId === "rails-journey"
+    ? ["ssh-agent"]
+    : [];
 
 export const landofileFor = (laneId: WorkflowPerformanceLaneId, name: string): string => {
   const type = laneId.startsWith("mysql-")
