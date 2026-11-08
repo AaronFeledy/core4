@@ -209,7 +209,7 @@ test.each([
     undefined,
   );
   if (mounts instanceof LandofileValidationError) throw mounts;
-  expect(mounts[0]?.type === "bind" ? mounts[0].relativeTo : undefined).toBe(relativeTo);
+  expect(mounts.mounts[0]?.type === "bind" ? mounts.mounts[0].relativeTo : undefined).toBe(relativeTo);
 });
 
 test("shared project config definitions are read once per plan rather than per service grant", async () => {

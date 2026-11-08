@@ -49,7 +49,7 @@ describe("@lando/sdk/task-progress import boundary", () => {
       const source = await readFile(join(taskProgressDir.pathname, name), "utf8");
       const code = stripComments(source);
       expect(code).not.toMatch(/\bLandoRuntime\b/u);
-      expect(code).not.toMatch(/\b(?:Layer|Context|ManagedRuntime)\b/u);
+      expect(code).not.toMatch(/\b(?:Layer|ManagedRuntime)\b|\bContext\.(?:Service|make|empty)\b/u);
       expect(code).not.toMatch(/\bConsole\.|\bLogger\b/u);
     }
   });

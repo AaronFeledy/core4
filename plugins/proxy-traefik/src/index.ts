@@ -83,6 +83,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       {
         id: "traefik",
         module: "./src/proxy.ts",
+        requires: { globalServices: ["traefik"] },
         defaultFor: { platform: ["darwin", "linux", "win32"] },
       },
     ],

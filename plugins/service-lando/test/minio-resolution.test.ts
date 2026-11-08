@@ -21,7 +21,7 @@ test("resolves tooling, feature, and catalog schema before effective artifact va
   // Then
   expect(resolution.base).toBe("lando");
   expect(resolution.features).toEqual([{ id: MINIO_FEATURE_ID, config: { consolePort: 9001 } }]);
-  expect(resolution.tooling?.mc).toEqual({ service: "storage", cmd: "mc" });
+  expect(resolution.tooling?.mc).toEqual({ service: "storage", cmd: "mc", wrapper: true });
   expect(minioServiceType.schema).toBe(MinIOServiceConfig);
 });
 

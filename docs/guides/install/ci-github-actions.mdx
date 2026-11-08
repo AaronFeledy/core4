@@ -20,7 +20,7 @@ To pin an exact version instead, pick a release tag from [AaronFeledy/core4 rele
 ```sh
 lando --version
 lando setup --yes --no-interactive
-lando start --no-interactive
+lando start
 lando app:config --format=json
 lando poweroff -y
 ```
@@ -31,7 +31,7 @@ lando poweroff -y
 lando setup --provider=docker --yes --no-interactive
 ```
 
-`--no-interactive` fails instead of waiting for a TTY when required input is missing. `poweroff` does not prompt; it accepts `-y` but does not require it. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
+`--no-interactive` makes setup fail instead of waiting for a TTY when required input is missing. `start` and `poweroff` do not prompt; `poweroff` accepts `-y` but does not require it. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
 
 Do not scrape human text. Assert on JSON (`ok: true`) from `--format=json`.
 
@@ -53,7 +53,7 @@ services:
       <UseFixture name="ci-github-actions-demo" />
     </Step>
     <Step name="start">
-      <Run command="lando start --no-interactive" />
+      <Run command="lando start" />
       <Verify event="post-start" />
     </Step>
     <Step name="json-assertion">

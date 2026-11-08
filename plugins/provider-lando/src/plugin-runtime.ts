@@ -3,16 +3,12 @@ import { join } from "node:path";
 
 import { type Context, Effect, Schema } from "effect";
 
-import { DownloadChecksumError, ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
 import type { Downloader, StateBucket } from "@lando/sdk/services";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import {
-  type ArtifactDownload,
-  type ArtifactDownloadResult,
-  ProviderBundleChecksumError,
-} from "./runtime-bundle.ts";
+import type { ArtifactDownload, ArtifactDownloadResult } from "./runtime-bundle.ts";
 
 const providerStateError = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({
@@ -57,16 +53,15 @@ export const makePluginArtifactDownload =
         } satisfies ArtifactDownloadResult;
       }),
     ).pipe(
-      Effect.mapError((cause) =>
-        cause instanceof DownloadChecksumError
-          ? new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", cause)
-          : new ProviderUnavailableError({
-              providerId: "lando",
-              operation: "setup",
-              message: "Failed to download the provider-lando runtime bundle.",
-              cause,
-              remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
-            }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "setup",
+            message: cause.message,
+            cause,
+            remediation: `${cause.remediation} Then run \`lando setup\` to finish installing the Lando runtime.`,
+          }),
       ),
     );
 

@@ -140,6 +140,10 @@ export type InfoAppHostProxy = typeof InfoAppHostProxy.Type;
 
 export const InfoAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the inspected app." }),
+  dataName: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Original name used by this folder's persisted data, present when it differs from the app name.",
+  }),
   services: Schema.Array(ServiceInfo).annotate({
     description: "Observed service status, endpoints, and connection metadata.",
   }),

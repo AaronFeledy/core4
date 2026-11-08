@@ -14,6 +14,8 @@ import {
   ProviderId,
   ServiceName,
   ServicePlan,
+  appIdentityKey,
+  planDataId,
 } from "@lando/sdk/schema";
 
 const FIXED_RESOLVED_AT = DateTime.makeUnsafe("2026-05-10T18:51:00Z");
@@ -345,5 +347,19 @@ describe("AppPlan", () => {
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe("planDataId", () => {
+  const root = AbsolutePath.make("/srv/shop");
+  const identity = { appRoot: root, ownerKey: appIdentityKey("owner", root) };
+  test("a plan recorded without a data name owns its data under its own id", () => {
+    expect(planDataId({ id: AppId.make("store"), root, identity })).toBe(AppId.make("store"));
+    expect(planDataId({ id: AppId.make("store"), root })).toBe(AppId.make("store"));
+  });
+  test("a renamed plan owns its data under the slug of its data name", () => {
+    expect(
+      planDataId({ id: AppId.make("store"), root, identity: { ...identity, dataName: "My Shop" } }),
+    ).toBe(AppId.make("my-shop"));
   });
 });

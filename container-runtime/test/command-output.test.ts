@@ -355,11 +355,14 @@ test.each(["take", "interrupt"] as const)(
         }
         return Effect.succeed({ status: 201, body: "{}" });
       },
-      stream: () =>
-        Stream.concat(
-          Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(frame))),
-          Stream.fromEffect(Effect.never),
-        ),
+      stream: (request) =>
+        Stream.suspend(() => {
+          request.onResponseHead?.();
+          return Stream.concat(
+            Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(frame))),
+            Stream.fromEffect(Effect.never),
+          );
+        }),
     };
     const provider = makeProviderDataPlane({
       providerId: "test",

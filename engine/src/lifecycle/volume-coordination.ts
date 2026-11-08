@@ -2,6 +2,7 @@ import { Context, Effect } from "effect";
 
 import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
+import { planDataId } from "@lando/sdk/schema";
 import {
   type ProviderError,
   type RuntimeProviderShape,
@@ -55,7 +56,7 @@ const locatePlanVolumes = (
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
 ): Effect.Effect<ReadonlyArray<LocatedPlanVolume>, ProviderError> =>
   Effect.forEach(plan.stores, (store) => {
-    const ref: VolumeRef = { app: plan.id, store: store.name, scope: store.scope };
+    const ref: VolumeRef = { app: planDataId(plan), store: store.name, scope: store.scope };
     return provider.locateVolume(ref).pipe(
       Effect.flatMap((locator) => {
         if (
@@ -69,7 +70,7 @@ const locatePlanVolumes = (
               operation: "coordinateVolume",
               store: store.name,
               message: `Volume ${locator.nativeName}${locator.nativeName === store.name ? "" : ` (store ${store.name})`} belongs to the app at ${locator.identity.ownerRoot}, not ${plan.identity?.appRoot ?? plan.root}.`,
-              remediation: `If that folder still exists, the two apps share an app name: change name: in one Landofile. If it is gone, run lando destroy --root ${shellArg(locator.identity.ownerRoot)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
+              remediation: `If that folder still exists, give this app a different name: or this service a different explicit store:. An app keeps the data name it first started with after a rename, so renaming the other app does not free its volumes. If it is gone, run lando destroy --root ${shellArg(locator.identity.ownerRoot)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
             }),
           );
         }

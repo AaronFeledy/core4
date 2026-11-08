@@ -1,7 +1,15 @@
 import type { BugReportEnvelope } from "./bug-report";
 import { escapeDiagnosticText } from "./diagnostic-text";
 
-export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
+export interface PlainBugReportOptions {
+  /** A CLI usage failure ran nothing, so the report omits the log and cache locations. */
+  readonly usage?: boolean;
+}
+
+export const renderPlainBugReport = (
+  envelope: BugReportEnvelope,
+  options: PlainBugReportOptions = {},
+): string => {
   const renderText = (text: string) => text.split("\n").map(escapeDiagnosticText).join("\n");
   const lines = [renderText(envelope.body)];
   for (const [key, value] of envelope.extra) if (key === "failures") lines.push(renderText(value));
@@ -22,7 +30,8 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
   if (envelope.providerId !== undefined) details.push(`providerId: ${renderText(envelope.providerId)}`);
   for (const [key, value] of envelope.extra)
     if (key !== "failures") details.push(`${renderText(key)}: ${renderText(value)}`);
-  details.push(`logsDir: ${renderText(envelope.logsDir)}`, `cacheDir: ${renderText(envelope.cacheDir)}`);
+  if (options.usage !== true)
+    details.push(`logsDir: ${renderText(envelope.logsDir)}`, `cacheDir: ${renderText(envelope.cacheDir)}`);
   return [...lines, ...details].join("\n");
 };
 

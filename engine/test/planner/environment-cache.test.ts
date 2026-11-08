@@ -71,7 +71,7 @@ test.each([
     const layer = Planner.layer.pipe(Layer.provide(Layer.mergeAll(Cache.layer, FileSystem.layer, registry)));
     const document = {
       name: "env-cache",
-      services: { web: { type: serviceType.id, home: false } },
+      services: { web: { type: serviceType.id, image: "alpine:3.22", home: false } },
       events: { "pre-start": [command] },
     };
     try {

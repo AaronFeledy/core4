@@ -69,8 +69,15 @@ export const resolveGraphCommands = (
   const commands: GraphCommandCandidate[] = [];
   const diagnostics: ManifestDiagnostic[] = [];
   for (const plugin of plugins) {
-    const result = pluginCommandCandidates([plugin]);
     const selectedCommands = selected.filter((entry) => entry.plugin.manifest === plugin.manifest);
+    const loadFailure = plugin.loadFailure;
+    if (loadFailure !== undefined) {
+      // The graph already reported the import failure; each selected command fails with it.
+      for (const entry of selectedCommands)
+        commands.push({ ...entry, load: () => Promise.reject(loadFailure) });
+      continue;
+    }
+    const result = pluginCommandCandidates([plugin]);
     if (result._tag === "Failure") {
       const failure = result.failure;
       diagnostics.push({

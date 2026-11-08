@@ -126,7 +126,11 @@ describe("redis ServiceType", () => {
       }),
     );
 
-    expect(resolution.tooling?.["redis-cli"]).toEqual({ service: "cache", cmd: ["redis-cli"] });
+    expect(resolution.tooling?.["redis-cli"]).toEqual({
+      service: "cache",
+      cmd: ["redis-cli"],
+      wrapper: true,
+    });
   });
 
   test("sets launcher listener authority when an authored command replaces the Lando port launcher", async () => {

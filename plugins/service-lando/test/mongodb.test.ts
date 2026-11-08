@@ -262,6 +262,7 @@ describe("mongodb ServiceType", () => {
     // Then
     expect(resolution.tooling).toEqual({
       mongosh: {
+        wrapper: true,
         service: "db",
         cmd: expect.any(Array),
         env: {

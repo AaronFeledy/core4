@@ -3,9 +3,8 @@ import { SecretStoreUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { CREATE_CONFIG_LABEL, retainCreateArtifactIdentity } from "../src/create-fingerprint.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { ctx, fakeEngine, service, withService } from "./fixtures/environment-values.ts";
+import { bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 test.each([
   "literal-${secret:TOKEN}",

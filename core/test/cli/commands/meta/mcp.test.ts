@@ -1,4 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { runCli } from "../../../../src/cli/index.ts";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Result } from "effect";
@@ -45,16 +49,42 @@ const appConfigUnsafeIds = APP_CONFIG_MCP_UNSAFE_IDS;
 const fullRegistry = (): McpCommandRegistry => mcpRegistryFromBuiltIns(builtInCommandEntries);
 
 describe("native meta:mcp dispatch", () => {
-  test("routes list and serve through the same MCP dispatcher", () => {
-    // Given
-    const source = readFileSync(
-      new URL("../../../../src/cli/run-built-in-command.ts", import.meta.url),
-      "utf8",
-    );
-
-    // When / Then
-    expect(source).toContain('if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal);');
-    expect(source).not.toContain("input.flags.list !== true");
+  test.each([true, false])("routes the native MCP command with list=%s", async (list) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-mcp-context-"));
+    const io = createBufferedRendererIO();
+    let exitCode = 0;
+    try {
+      await runCli({
+        argv: ["meta:mcp", ...(list ? ["--list"] : []), "--format=json"],
+        rootUrl: "",
+        context: {
+          cwd: root,
+          env: {
+            LANDO_USER_DATA_ROOT: join(root, "data"),
+            LANDO_USER_CACHE_ROOT: join(root, "cache"),
+            LANDO_USER_CONF_ROOT: join(root, "config"),
+            LANDO_SYSTEM_PLUGIN_ROOT: join(root, "plugins"),
+          },
+          io,
+          setExitCode: (code) => {
+            exitCode = code;
+          },
+        },
+      });
+      expect(exitCode).toBe(list ? 0 : 1);
+      if (list) {
+        expect(JSON.parse(io.stdout())).toMatchObject({
+          command: "meta:mcp",
+          ok: true,
+          result: { tools: expect.arrayContaining([expect.objectContaining({ id: "app:info" })]) },
+        });
+      } else {
+        expect(io.stdout()).toBe("");
+        expect(io.stderr()).toContain("McpTransportError");
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -147,22 +177,42 @@ describe("validateMcpAllowlistIds", () => {
       validateMcpAllowlistIds({ allow: ["app:info"], deny: ["tooling:disabled"], tooling: false }, known),
     ));
 
-  test("rejects an unknown --allow id with McpToolInputError carrying the flag path", async () => {
-    const exit = await Effect.runPromiseExit(
-      validateMcpAllowlistIds({ allow: ["does:not:exist"], deny: [], tooling: false }, known),
+  test("retains a well-formed unknown --allow id as a pending allowance", async () => {
+    const pending = await Effect.runPromise(
+      validateMcpAllowlistIds({ allow: ["does:not:exist", "app:info"], deny: [], tooling: false }, known),
     );
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const error = Cause.findError(exit.cause);
-      expect(Result.isSuccess(error)).toBe(true);
-      if (Result.isFailure(error)) throw error.failure;
-      expect(error.success).toBeInstanceOf(McpToolInputError);
-      if (error.success instanceof McpToolInputError) {
-        expect(error.success.path).toBe("flags.allow");
-        expect(error.success.toolId).toBe("does:not:exist");
-      }
-    }
+    expect(pending).toEqual(["does:not:exist"]);
   });
+
+  test("accepts a known tooling id whose task name is outside the plugin id shape", async () => {
+    const pending = await Effect.runPromise(
+      validateMcpAllowlistIds(
+        { allow: ["app:build_assets"], deny: [], tooling: true },
+        new Set([...known, "app:build_assets"]),
+      ),
+    );
+    expect(pending).toEqual([]);
+  });
+
+  test.each(["bogus", "Does:Exist", "app::info", "app:info "])(
+    "rejects malformed --allow id %p with McpToolInputError carrying the flag path",
+    async (id) => {
+      const exit = await Effect.runPromiseExit(
+        validateMcpAllowlistIds({ allow: [id], deny: [], tooling: false }, known),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.findError(exit.cause);
+        expect(Result.isSuccess(error)).toBe(true);
+        if (Result.isFailure(error)) throw error.failure;
+        expect(error.success).toBeInstanceOf(McpToolInputError);
+        if (error.success instanceof McpToolInputError) {
+          expect(error.success.path).toBe("flags.allow");
+          expect(error.success.toolId).toBe(id);
+        }
+      }
+    },
+  );
 });
 
 describe("mcpFlagsFromParsed", () => {
@@ -237,11 +287,16 @@ describe("mcpListResult", () => {
     expect(result.tools).toContainEqual({ id: "app:composer", summary: "Run Composer", source: "tooling" });
   });
 
-  test("fails with McpToolInputError when an unknown id is requested", async () => {
-    const exit = await Effect.runPromiseExit(
+  test("reports an unresolved allowance as a pending diagnostic instead of a tool", async () => {
+    const result = await Effect.runPromise(
       mcpListResult(registry, { allow: ["bogus:id"] }).pipe(Effect.provide(configLayer(undefined))),
     );
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(result.tools.map((tool) => tool.id)).not.toContain("bogus:id");
+    expect(result.diagnostics).toContainEqual({
+      _tag: "McpPendingAllowance",
+      message: expect.stringContaining("bogus:id"),
+      remediation: expect.stringContaining("appPath"),
+    });
   });
 
   test("fails with McpToolInputError when the app config umbrella is explicitly allowed", async () => {

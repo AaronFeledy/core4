@@ -47,6 +47,7 @@ const inputs = () => ({
 
 const runningSidecar = {
   ...TestRuntimeProvider,
+  exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   inspect: () =>
     Effect.succeed({
       app: AppId.make("global"),

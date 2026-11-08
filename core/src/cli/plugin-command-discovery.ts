@@ -14,6 +14,7 @@ import { readGlobalConfigSources } from "@lando/paths/config-sources";
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Effect, Layer, Schema } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import { BUNDLED_PLUGIN_MANIFESTS } from "./generated/bundled-command-descriptors";
 
@@ -37,10 +38,11 @@ const acquirePluginCommandGraph = Effect.fnUntraced(function* (resolution: Resol
 
 export const acquirePluginCommandMetadata = Effect.fnUntraced(
   function* (): Effect.fn.Return<PluginContributionGraphShape> {
-    const sources = readGlobalConfigSources({ env: process.env, sources: { user: true, env: true } });
+    const invocation = yield* CliInvocation;
+    const sources = readGlobalConfigSources({ env: invocation.env, sources: { user: true, env: true } });
     const paths = makeLandoPathsFromRoots(
       resolveLandoRootsFromSources(sources),
-      normalizeHostPlatform({ env: process.env }),
+      normalizeHostPlatform({ env: invocation.env }),
     );
     const cwd = yield* discoveryCwd();
     const selected = yield* resolvePluginManifests({
@@ -64,7 +66,9 @@ export const acquirePluginCommandMetadata = Effect.fnUntraced(
       commands: selected.commands.map((command) => ({
         ...command,
         load: async () => {
-          graph ??= Effect.runPromise(acquirePluginCommandGraph(selected));
+          graph ??= Effect.runPromise(
+            acquirePluginCommandGraph(selected).pipe(Effect.provideService(CliInvocation, invocation)),
+          );
           const candidate = (await graph).commands.find(
             (entry) =>
               entry.id === command.id &&

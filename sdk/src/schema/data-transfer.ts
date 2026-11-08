@@ -23,10 +23,19 @@ export const DataEndpoint = Schema.Union([
   }),
   Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }),
   Schema.TaggedStruct("stream", {}),
-  Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }),
-  Schema.TaggedStruct("servicePath", { app: AppId, service: ServiceName, path: PortablePath }),
+  Schema.TaggedStruct("volume", {
+    app: AppId.annotate({
+      description: "Recorded data app id from planDataId(plan), retained across app renames.",
+    }),
+    store: Schema.String,
+  }),
+  Schema.TaggedStruct("servicePath", {
+    app: AppId.annotate({ description: "Runtime app id of the service where file access occurs." }),
+    service: ServiceName,
+    path: PortablePath,
+  }),
   Schema.TaggedStruct("serviceCmd", {
-    app: AppId,
+    app: AppId.annotate({ description: "Runtime app id of the service where the command executes." }),
     service: ServiceName,
     command: CommandSpec,
     env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -64,7 +73,10 @@ export type LabelMap = typeof LabelMap.Type;
  * Reference to a named volume (a `DataStorePlan`) owned by an app.
  */
 export const VolumeRef = Schema.Struct({
-  app: AppId,
+  app: AppId.annotate({
+    description:
+      "Recorded data app id from planDataId(plan); also retained as snapshot store.app and image dev.lando.app.",
+  }),
   store: Schema.String,
   scope: Schema.optionalKey(StorageScope),
 });
@@ -106,7 +118,9 @@ export type VolumeInfo = typeof VolumeInfo.Type;
  * Match criteria for listing volumes.
  */
 export const VolumeFilter = Schema.Struct({
-  app: Schema.optionalKey(AppId),
+  app: Schema.optionalKey(AppId).annotate({
+    description: "Match the recorded data app id, retained across app renames.",
+  }),
   store: Schema.optionalKey(Schema.String),
   scope: Schema.optionalKey(StorageScope),
   labels: Schema.optionalKey(LabelMap),
@@ -133,7 +147,10 @@ export type VolumeSnapshotRef = typeof VolumeSnapshotRef.Type;
 export const VolumeSnapshotArtifact = Schema.Struct({
   ref: VolumeSnapshotRef.annotate({ description: "Immutable provider snapshot reference." }),
   createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
-  labels: LabelMap.annotate({ description: "Labels carried by the snapshot image." }),
+  labels: LabelMap.annotate({
+    description:
+      "Labels carried by the snapshot image; dev.lando.app records the data app id, not the current runtime app id.",
+  }),
 });
 export type VolumeSnapshotArtifact = typeof VolumeSnapshotArtifact.Type;
 
@@ -142,7 +159,7 @@ export const SnapshotGcOrphan = Schema.Struct({
   provider: Schema.String.annotate({ description: "Provider that holds the snapshot image." }),
   sizeBytes: Schema.Number.annotate({ description: "Provider image size in bytes." }),
   createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
-  app: Schema.optionalKey(Schema.String).annotate({ description: "Owning app label when present." }),
+  app: Schema.optionalKey(Schema.String).annotate({ description: "Recorded data app label when present." }),
 });
 export const SnapshotGcProviderReport = Schema.Struct({
   provider: Schema.String.annotate({ description: "Provider inspected for orphaned images." }),
@@ -326,7 +343,10 @@ export const snapshotHandle = (info: SnapshotInfo): SnapshotHandle => ({
  */
 export const SnapshotFilter = Schema.Struct({
   id: Schema.optionalKey(SnapshotId),
-  app: Schema.optionalKey(AppId),
+  app: Schema.optionalKey(AppId).annotate({
+    description:
+      "Recorded data app id. Resolve a current applied runtime app id to its data id before filtering; canonical-owner path selection remains separate.",
+  }),
   store: Schema.optionalKey(Schema.String),
   ownerKey: Schema.optionalKey(Schema.String).annotate({ description: "Match the snapshot owner's key." }),
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({

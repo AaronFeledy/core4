@@ -29,6 +29,7 @@ export interface GrantCommandStdioOptions {
   readonly stdoutIsTTY: boolean;
   readonly stdinIsTTY: boolean;
   readonly stdin?: CommandStdioStdin;
+  readonly stdinStream?: ReadableStream<Uint8Array>;
   readonly resultFormat: ResultFormat;
   readonly rendererMode: RendererMode;
 }
@@ -105,6 +106,7 @@ export const grantCommandStdio = (
 
   if (request.stdin === true) {
     const source = options.stdin ?? process.stdin;
+    const stdinStream = options.stdinStream;
     const command = options.command;
     let claimed = false;
     // Suspend so cancellableTerminalStdin attaches only when the stream is pulled. Stdin is one
@@ -116,6 +118,11 @@ export const grantCommandStdio = (
           new Error(`${command} consumed its granted stdin twice; it is a single-consumer stream.`),
         );
       claimed = true;
+      if (stdinStream !== undefined)
+        return Stream.fromReadableStream({
+          evaluate: () => stdinStream,
+          onError: (cause) => stdinReadError(command, cause),
+        });
       return Stream.fromAsyncIterable(cancellableTerminalStdin(source), (cause) =>
         stdinReadError(command, cause),
       );

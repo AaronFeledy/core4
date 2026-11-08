@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
-import { startStdioClient } from "@lando/mcp/testing";
+import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { AbsolutePath, CommandResultEnvelope } from "@lando/sdk/schema";
 import { Effect, Fiber, Layer, Schema } from "effect";
@@ -50,7 +50,7 @@ test("canonical MCP execution preserves and redacts broken-app aggregate diagnos
                 McpRuntimeConfig.of({
                   commandEntries: [{ spec }],
                   defaultAllowlist: [spec.id],
-                  runtimeLayer: Layer.succeedContext(retained),
+                  apps: testAppGenerations(Layer.succeedContext(retained)),
                 }),
               ),
             ),

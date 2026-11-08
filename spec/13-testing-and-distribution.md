@@ -28,8 +28,8 @@ All tests run under `bun test` unless a gate names another tool.
 | Host proxy contract | Authentication, exact request union, allowlists, recursion, backpressure, socket ownership, redaction, streaming, and cleanup are enforced. |
 | TunnelService contract | Targets, egress, provisioning, scope ownership, detached state, probes, events, and redaction remain within the declared port. |
 | File sync engine contract | Capabilities, setup, containment, content fidelity, conflicts, events, cancellation, and pinned-tool ownership are enforced. |
-| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced (§10.3.2). |
-| Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced. |
+| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced, and so are certificate-code trust classification and the absence of automatic replay for every client whose harness can inject raw transport failures and HTTP statuses, which the bundled `@lando/http-client` layer's harness does (§10.3.2). |
+| Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced, and so are `OnlineAcquisition`-scoped retry of transient failures only, single attempts for routine downloads, `reason` classification, and `attempts` accounting (§10.3.3). |
 | Redaction contract | The canonical value and pattern layers produce byte-stable profile output and cannot be weakened by plugins. |
 | Interaction contract | Answer precedence, mode selection, validation, secret handling, cancellation, dynamic choices, and renderer routing are enforced. |
 | Renderer frames | Headless snapshots cover task trees, prompts, narrow terminals, and resize behavior without asserting machine renderers. |
@@ -68,7 +68,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Plugin SDK contract | Type and runtime tests protect the public plugin-author surface. |
 | Machine-output conformance | Every non-interactive canonical command emits schema-valid envelopes or streams with correct ids, status, and redaction. |
 | Agent command completion | Prove one-time completion policy resolution across CLI, lifecycle, and MCP; nonzero process failure with retained typed result/diagnostics; successful negative reports with format-independent exit codes; bounded final output with and without progress tokens; stream owner finalization; and quiet-read cancellation through real local transport and the relocated compiled CLI against an explicitly selected live provider. |
-| Scenario | Public library APIs run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
+| Scenario | Public library APIs and in-process CLI commands run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
 | Recipe | Every canonical recipe scaffolds with defaults and representative branches into schema-valid output. |
 | Executable guides | §19 MDX generates source-mapped scenario tests and visibility-separated transcripts for every applicable variant. |
 | Deprecation | Every notice records use, publishes `deprecation-used`, warns once, appears in doctor, and obeys `removeIn`. |
@@ -102,6 +102,8 @@ The compiled MCP completion journey MUST cover real container stdout/stderr, spl
 
 **Listener matrix:** a second strict Linux nightly job MUST start one reviewed image per bundled service family, on its default and on a moved `port:`, through the compiled CLI, and read the container's TCP LISTEN table with the same parser as §6.7 diagnosis. Each case MUST prove the planned port listens on a non-loopback address, that every other observed listener is a declared secondary or an enumerated infrastructure allowance, and that nothing remains on the default after a move; language-runtime cases run a server that binds the projected port variable. An unreadable observation fails strict runs, and the job asserts complete execution through a completion token.
 
+**Workflow performance history:** a nightly and manually dispatchable advisory job on each Linux managed-runtime readiness cell MUST time cold first start, warm stop/start, unchanged rebuild, database import and snapshot restore, and the Drupal and Rails journeys through the compiled CLI. Each sample uses fresh isolated Lando roots and owned app identities. Image pulls and the global services the app needs MUST be prepared before timing, so a measured first start excludes registry downloads and one-time global artifact builds, and the report MUST record that reset condition. A failed command fails its sample rather than becoming a fast measurement, failures are excluded from statistics, and the job exits nonzero after writing its report. Timing changes stay advisory. The job authenticates to Docker Hub when repository credentials exist and otherwise pulls anonymously; credentials MUST NOT be required to run it. Reports are retained for 90 days with a last-30-run trend.
+
 ### 13.2 Schema and documentation gates
 
 The schema snapshot is the complete generated set: public SDK JSON Schemas and index, command-result Schemas and index, and decoded bundled-plugin manifest fixtures. Generated schema and command trees are derived build outputs, not Git sources of truth; committed fixtures receive pure drift checks, while gitignored outputs receive deterministic regeneration and consumer validation.
@@ -114,7 +116,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.3 Type gates
 
-`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
+`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project and the repository scripts project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
 
 ### 13.4 Quality gates
 

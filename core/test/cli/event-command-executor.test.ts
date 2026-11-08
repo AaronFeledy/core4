@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
@@ -596,8 +597,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     let observedCwd = "";
     const spec = {
       ...testSpec(() =>
-        Effect.sync(() => {
-          observedCwd = process.cwd();
+        Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
           return "done";
         }),
       ),
@@ -647,8 +648,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     let observedCwd = "";
     const spec = {
       ...testSpec(() =>
-        Effect.sync(() => {
-          observedCwd = process.cwd();
+        Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
         }),
       ),
       namespace: "app" as const,
@@ -779,7 +780,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect.stringContaining("Missing required argument target"),
       expect.stringContaining("flag count"),
       expect.stringContaining("flag enabled"),
-      expect.stringContaining("must be one of"),
+      expect.stringContaining("does not accept that mode"),
       expect.stringContaining("does not accept raw arguments"),
     ]);
   });
@@ -1185,6 +1186,50 @@ describe("EventCommandExecutorLayer.layer", () => {
       reason: "unknown",
     });
   });
+
+  test.each([
+    { value: "remtoe", suggestion: 'Did you mean "remote"? ' },
+    { value: "unrelated", suggestion: "" },
+  ])(
+    "rejects a repeatable positional choice $value before running its command",
+    async ({ value, suggestion }) => {
+      const harness = makeHarness();
+      let ran = false;
+      const executor = executorFor(
+        entryFor(
+          testSpec(() =>
+            Effect.sync(() => {
+              ran = true;
+            }),
+          ),
+          {
+            args: { destination: Args.string({ options: ["local", "remote"], multiple: true }) },
+          },
+        ),
+        harness,
+      );
+      const error = await Effect.runPromise(
+        Effect.flip(
+          executor.run({
+            command: "meta:test:event-command",
+            flags: {},
+            args: { destination: ["local", value] },
+            argv: [],
+            cwd: process.cwd(),
+          }),
+        ),
+      );
+      expect(error).toMatchObject({
+        _tag: "CommandInputValidationError",
+        target: "meta:test:event-command",
+        field: "destination",
+        kind: "arg",
+        reason: "option",
+        remediation: `${suggestion}destination takes one of: local, remote.`,
+      });
+      expect(ran).toBe(false);
+    },
+  );
 
   test("rejects deferred canonical commands with the structured not-implemented error", async () => {
     // Given

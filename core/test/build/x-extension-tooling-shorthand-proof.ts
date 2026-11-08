@@ -96,3 +96,21 @@ export const evolveHistoricalToolingSensitivity = (
   };
   return normalizeJsonSchema(wireObject(visit(historical)));
 };
+
+export const evolveHistoricalToolingWrapper = (historical: JsonSchema): JsonSchema => {
+  const visit = (value: JsonValue): JsonValue => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (!isJsonObject(value)) return value;
+    const next = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, visit(child)]));
+    if (!isTaskObject(value)) return next;
+    const fields = wireObject(next.properties);
+    return {
+      ...next,
+      properties: {
+        ...fields,
+        wrapper: structuredClone(wireObject(fields.disabled)),
+      },
+    };
+  };
+  return normalizeJsonSchema(wireObject(visit(historical)));
+};

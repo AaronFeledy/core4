@@ -5,13 +5,13 @@ import { Effect, Schema } from "effect";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablement.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import { recordGlobalGeneration } from "../global-app/reconciliation.ts";
 import { assertGlobalResolution } from "../global-app/resolution.ts";
-import { withProcessCwd } from "./global-plan.ts";
 
 export interface GlobalInstallOptions {
   readonly services?: ReadonlyArray<string>;
@@ -94,8 +94,9 @@ export const installAndLoadGlobalPlan = Effect.fn("GlobalApp.installAndLoadPlan"
         }),
       );
     const planner = yield* AppPlanner;
-    const plan = yield* withProcessCwd(candidate.paths.root, () =>
-      planner.plan(candidate.landofile, provider.capabilities),
+    const plan = yield* withDiscoveryCwd(
+      candidate.paths.root,
+      planner.plan(candidate.landofile, provider.capabilities, { kind: "global" }),
     );
     return { materialized: true as const, paths: candidate.paths, landofile: candidate.landofile, plan };
   },

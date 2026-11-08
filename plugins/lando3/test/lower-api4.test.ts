@@ -195,8 +195,8 @@ describe("API-4 service lowering", () => {
       ctx,
     );
     expect(result.patch.storage).toEqual([
-      { store: "app-leet-var-lib-data", target: "/var/lib/data" },
-      { store: "app-cache", target: "/cache", scope: "app" },
+      { store: "lando-app--leet--storage--var-lib-data-94388fea", target: "/var/lib/data" },
+      { store: "lando-app_cache--4f7cfe6f", target: "/cache", scope: "app" },
       { store: "known", target: "/known" },
     ]);
     expect(result.patch.mounts).toEqual([

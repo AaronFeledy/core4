@@ -5,7 +5,12 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
-import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "@lando/mcp/dispatch";
+import {
+  type McpDispatchDeps,
+  type McpExecute,
+  type McpProgressFrame,
+  dispatchTool,
+} from "@lando/mcp/dispatch";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
@@ -32,7 +37,7 @@ const spec = (
   ...extra,
 });
 
-const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
+const directExecute = (): McpExecute => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
     Effect.catch((error) =>

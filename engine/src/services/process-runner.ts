@@ -12,7 +12,11 @@ import {
   type ProcessStreamEvent,
 } from "@lando/sdk/services";
 import { Context, Effect, Layer, Stream } from "effect";
-import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
+import {
+  type CapturedHostExecutionContext,
+  HostExecutionDefaults,
+  captureScopedHostExecutionContext,
+} from "./host-execution-context.ts";
 import { PreparedProcessBinding } from "./prepared-process.ts";
 import { runProcess, streamProcess } from "./process-execution.ts";
 import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
@@ -137,14 +141,18 @@ const scopedProcessStream = (
 ) =>
   Stream.unwrap(
     Effect.gen(function* () {
+      const host = yield* HostExecutionDefaults;
       const snapshot = {
         ...input,
+        ...(input.inheritStdin === true && host?.stdin !== undefined
+          ? { inheritStdin: false, stdinStream: host.stdin }
+          : {}),
         args: [...input.args],
         ...(input.env === undefined ? {} : { env: { ...input.env } }),
       };
       const binding = yield* PreparedProcessBinding;
       const prepared = binding?.request === input ? binding : undefined;
-      const captured = prepared?.context ?? captureHostExecutionContext(snapshot);
+      const captured = prepared?.context ?? (yield* captureScopedHostExecutionContext(snapshot));
       const controller = yield* Effect.acquireRelease(
         Effect.sync(() => new AbortController()),
         (controller) => Effect.sync(() => controller.abort()),
@@ -182,14 +190,18 @@ const scopedProcessStream = (
 const makeService = (bunCommandEnv: boolean): Context.Service.Shape<typeof ProcessRunner> =>
   ProcessRunner.of({
     run: Effect.fn("ProcessRunner.run")(function* (input) {
+      const host = yield* HostExecutionDefaults;
       const snapshot = {
         ...input,
+        ...(input.inheritStdin === true && host?.stdin !== undefined
+          ? { inheritStdin: false, stdinStream: host.stdin }
+          : {}),
         args: [...input.args],
         ...(input.env === undefined ? {} : { env: { ...input.env } }),
       };
       const binding = yield* PreparedProcessBinding;
       const prepared = binding?.request === input ? binding : undefined;
-      const captured = prepared?.context ?? captureHostExecutionContext(snapshot);
+      const captured = prepared?.context ?? (yield* captureScopedHostExecutionContext(snapshot));
       if (prepared === undefined && snapshot.capture !== true)
         yield* publishRedactedProcessEvent(captured, {
           _tag: "pre-process-exec",

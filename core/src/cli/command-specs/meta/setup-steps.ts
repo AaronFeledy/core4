@@ -95,8 +95,8 @@ export const makeSetupReadinessRecorder = (
   userDataRoot: string | undefined,
   selectedProviderId: string,
   redaction?: RedactionServiceShape,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): AccumulatingSetupReadinessRecorder => {
-  const sourceEnv = { ...process.env };
   const readinessSteps: SetupReadinessStep[] = [];
   let providerId = selectedProviderId;
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;

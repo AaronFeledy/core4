@@ -97,7 +97,7 @@ bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. Deprecation checks run through `bun run lint`. `bun run typecheck` runs TypeScript 7's `tsc -b` over the whole project graph, including the aggregate test project. Dependency audits run separately and never block pull requests.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. Deprecation checks run through `bun run lint`. `bun run typecheck` runs TypeScript 7's `tsc -b` over the whole project graph, including the aggregate test project and the `scripts/` project. Dependency audits run separately and never block pull requests.
 
 `bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts. Replace `<rule-id>` with a rule from the [boundary inventory](../../scripts/boundary/README.md).
 
@@ -340,6 +340,28 @@ Replace both example paths with your compiled binaries. The runner starts fresh 
 
 The JSON identifies each binary by path, byte size, and SHA-256 after timing finishes. It also records the runner's Bun version, host OS, architecture and kernel, and before/after CPU load and available Linux cgroup or pressure readings. Record the Bun compiler version used to build each binary separately; the runner cannot infer that provenance. Processes use isolated Lando roots without warmups or retries. The OS page cache remains unmanaged, so these are not cold-disk measurements. Inspect load and pressure evidence before attributing a difference to code.
 
+## Workflow performance history
+
+The `workflow-performance` workflow times real workflows end to end with the compiled binary on the `linux-x64` and `linux-arm64` managed-runtime readiness cells. Start-class lanes are cold first start, warm stop/start, and unchanged rebuild. Heavy lanes are MySQL and PostgreSQL import and snapshot restore, plus the Drupal and Rails journeys. Every sample gets fresh Lando roots and owned app identities. Its images are pre-pulled and the global services its app needs are started before timing, so cold start measures the app's own startup rather than image downloads or the one-time global service build. Timings are advisory. A failed command fails its sample, and the job exits nonzero after uploading the report.
+
+The workflow runs nightly at 04:00 UTC. To check a branch, dispatch one sample per lane:
+
+```bash
+gh workflow run workflow-performance.yml --ref <branch> -f start_samples=1 -f heavy_samples=1
+```
+
+| Input | Default | Effect |
+| --- | --- | --- |
+| `start_samples` | `5` | Samples per start-class lane, at most 10 |
+| `heavy_samples` | `3` | Samples per heavy lane, at most 10 |
+| `failing_fixture_lane` | empty | `mysql-import` or `postgres-import` imports an invalid fixture in that lane to prove a correctness failure exits nonzero, with the failed step named in the report and run annotations |
+
+Each cell writes a last-30-run trend table to the job summary and uploads `report.json`, `history-summary.json`, and `history-summary.md` as the `workflow-performance-<cell>` artifact for 90 days.
+
+Samples pull images from Docker Hub anonymously, and each job posts a notice saying so. Add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets to log in and raise the pull limit; no workflow change is needed.
+
+Each job restores the current-commit runtime bundle from the same Actions cache the `ci` workflow fills and assembles it only when bundle inputs changed. Each sample's fresh roots still mean its `lando setup` downloads mkcert from GitHub releases again. When GitHub release downloads fail, samples fail at `prepare:setup` while earlier samples in the run still pass; dispatch again once downloads recover.
+
 ## npm dev package publishing
 
 The generated GitHub release workflow does **not** publish npm. It only publishes unsigned `v4.0.0-dev.N` GitHub prerelease binaries. `scripts/prepare-npm-dev-packages.ts` rewrites checkout versions to `4.0.0-dev.N` and the `dev` tag. Live npm dev package publishing is the manual `scripts/release.ts` orchestrator. That orchestrator uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
@@ -525,6 +547,8 @@ Only a standalone `nolint` fence metadata token opts out. A title such as
 ## Guide e2e smoke subset
 
 The `guides`, `runtime`, and `providers` PR profiles run generated guide scenarios on Linux x64 and Windows x64. Broad CI runs them on all six platforms through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+
+The wrapper runs scenario-layer files in isolated Bun worker processes, using the available CPU count up to eight workers by default. Set `--parallel=N` to choose a worker count. Each worker runs the test preload to isolate its Lando roots; tests within a worker remain serial by default (`--max-concurrency=1`). Runs with `LANDO_GUIDE_E2E=1` or a test-name pattern containing `[e2e]` force one worker and one test at a time, including when concurrency flags are supplied, because those scenarios share a real Podman socket.
 
 CI sets `LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1` on both guide-scenario run steps. With it set, the wrapper tees the child's raw stdout and stderr as they arrive, between two banner lines, and still prints the source-mapped document after the child exits. The source-mapped document stays the authoritative output: the mapper is a whole-document transform that rewrites earlier lines from later stack frames, so it cannot be streamed line by line. That is why the live region is raw and unmapped, and why it repeats what the mapped document later shows. Without the variable, a local run keeps the single mapped document it prints today. Reproduce the CI shape locally:
 

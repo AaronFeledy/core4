@@ -198,8 +198,9 @@ describe("build-guide-scenarios MDX walker", () => {
         'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',
       );
       expect(firstContent).toContain('yield* context.fixtures.use("basic-app");');
-      expect(firstContent).toContain('context.runCli("version", {');
-      expect(firstContent).toContain('context.events.find((event) => event._tag === "post-start")');
+      expect(firstContent).toContain('context.runCli(["version"], {');
+      expect(firstContent).toContain("lastEvents = lastRun.events;");
+      expect(firstContent).toContain('lastEvents.filter((event) => event._tag === "post-start")');
       expect(firstContent).toContain('yield* context.transcript.append({ kind: "verify", target: "event"');
 
       const hiddenContent = await Bun.file(
@@ -208,7 +209,7 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(hiddenContent).toStartWith(
         "// @generated\n// @source: docs/guides/multi-scenario/multi.mdx:13\n// @scenario: hidden-regression\n// @render: false\n// @variant:",
       );
-      expect(hiddenContent).toContain('context.events.find((event) => event._tag === "post-init")');
+      expect(hiddenContent).toContain('lastEvents.filter((event) => event._tag === "post-init")');
       const readerContent = await Bun.file(
         join(root, "test/scenarios/generated/guides/multi-guide/reader-path.test.ts"),
       ).text();

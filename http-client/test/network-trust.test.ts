@@ -9,6 +9,7 @@ import { Context, Effect, Schema } from "effect";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { testCaPem } from "@lando/sdk/test";
 import {
   loadCaPems,
   resolveServiceNetworkInject,
@@ -50,8 +51,8 @@ describe("core network trust", () => {
     const directory = await mkdtemp(join(tmpdir(), "lando-ca-pems-"));
     const firstPath = join(directory, "first.pem");
     const secondPath = join(directory, "second.pem");
-    const firstPem = "-----BEGIN CERTIFICATE-----\nfirst\n-----END CERTIFICATE-----\n";
-    const secondPem = "-----BEGIN CERTIFICATE-----\nsecond\n-----END CERTIFICATE-----\n";
+    const firstPem = testCaPem(0);
+    const secondPem = testCaPem(1);
 
     try {
       await writeFile(firstPath, firstPem, "utf-8");
@@ -71,6 +72,30 @@ describe("core network trust", () => {
           digest: createHash("sha256").update(secondPem, "utf-8").digest("hex"),
         },
       ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ["text with no certificate block", "not a certificate\n"],
+    [
+      "a certificate block that does not parse",
+      "-----BEGIN CERTIFICATE-----\nbogus\n-----END CERTIFICATE-----\n",
+    ],
+  ])("rejects %s at load, naming the file", async (_label, contents) => {
+    // Given: a configured CA file Bun would otherwise reject later as FailedToOpenSocket.
+    const directory = await mkdtemp(join(tmpdir(), "lando-bad-ca-"));
+    const badPath = join(directory, "corp-root.pem");
+    try {
+      await writeFile(badPath, contents, "utf-8");
+      // When
+      const result = await Effect.runPromise(Effect.result(loadCaPems([badPath])));
+      // Then
+      if (result._tag !== "Failure") throw new Error("expected CA PEM loading to fail");
+      expect(result.failure).toMatchObject({ _tag: "CaPemLoadError", path: badPath });
+      expect(result.failure.message).toContain(badPath);
+      expect(result.failure.remediation).toContain("BEGIN CERTIFICATE");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -219,7 +244,7 @@ describe("resolveTrust", () => {
   test("loads plan from ConfigService and CA PEMs from disk", async () => {
     const directory = await mkdtemp(join(tmpdir(), "lando-resolve-trust-"));
     const caPath = join(directory, "custom.pem");
-    const pem = "-----BEGIN CERTIFICATE-----\nresolve-trust\n-----END CERTIFICATE-----\n";
+    const pem = testCaPem(2);
     try {
       await writeFile(caPath, pem, "utf-8");
       const config = Schema.decodeUnknownSync(GlobalConfig)({

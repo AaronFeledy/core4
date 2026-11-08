@@ -48,6 +48,7 @@ import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-times
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
+  evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
@@ -64,31 +65,33 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalUploadDirs(
-    evolveHistoricalConsolePort(
-      evolveHistoricalToolingSensitivity(
-        evolveHistoricalAppMountAcceleration(
-          evolveHistoricalToolingShorthand(
-            evolveHistoricalEnvironment(
-              evolveHistoricalEndpointMetadata(
-                evolveHistoricalServicePort(
-                  evolveHistoricalTimestamps(
-                    evolveHistoricalContainerUser(
-                      evolveHistoricalReadiness(
-                        evolveHistoricalShorthand(
-                          evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+  evolveHistoricalToolingWrapper(
+    evolveHistoricalUploadDirs(
+      evolveHistoricalConsolePort(
+        evolveHistoricalToolingSensitivity(
+          evolveHistoricalAppMountAcceleration(
+            evolveHistoricalToolingShorthand(
+              evolveHistoricalEnvironment(
+                evolveHistoricalEndpointMetadata(
+                  evolveHistoricalServicePort(
+                    evolveHistoricalTimestamps(
+                      evolveHistoricalContainerUser(
+                        evolveHistoricalReadiness(
+                          evolveHistoricalShorthand(
+                            evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+                          ),
                         ),
                       ),
+                      "bare",
                     ),
-                    "bare",
                   ),
                 ),
               ),
+              "bare",
             ),
-            "bare",
           ),
+          "bare",
         ),
-        "bare",
       ),
     ),
   );

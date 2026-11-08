@@ -12,7 +12,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
@@ -41,10 +41,11 @@ const defaultPassword = (appId: string): string => `lando-${sha256Hex(appId).sli
 
 const credsFor = (input: {
   readonly appName?: string | undefined;
+  readonly dataName?: string | undefined;
   readonly appRoot: string;
   readonly service: ServiceConfig;
 }): ServiceCreds => {
-  const appName = appNameFor(input);
+  const appName = dataNameFor(input);
   const authored = input.service.creds;
   return resolveServiceCreds({
     family: "postgres",
@@ -132,6 +133,7 @@ const postgresToolingForConnection: NonNullable<ServiceType["toolingForConnectio
             "-d",
             connection.creds.database,
           ],
+          wrapper: true,
           env: { PGPASSWORD: connection.creds.password },
         },
       };

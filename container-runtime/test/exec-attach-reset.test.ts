@@ -4,7 +4,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lan
 import { DateTime, Effect, Stream } from "effect";
 import type { EngineHttpApi } from "../src/engine-api.ts";
 import { engineApiFailure } from "../src/engine-errors.ts";
-import { exec } from "../src/podman/exec.ts";
+import { exec } from "../src/podman/exec-transport.ts";
 import { makeSocketHttpClient, socketHttpConnection } from "../src/transport.ts";
 import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 

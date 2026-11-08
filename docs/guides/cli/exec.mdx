@@ -10,15 +10,19 @@ tags: [docs, cli, exec]
 
 `lando exec` runs a one-off command inside a running service. At a terminal it doesn't attach your keyboard, so commands finish without waiting for input. Add `-i` when you want to type into the command. Piped or redirected input always reaches the command.
 
-Run these commands from your app directory on the host. A service name before `--` selects that service; otherwise Lando uses the primary service. Everything after `--` belongs to the command inside the service, including its flags. Replace `appserver`, the user, and the working directory with values from your app.
+Run these commands from your app directory on the host. Select a service with `-s` / `--service` or a service name before `--`; otherwise Lando uses the primary service. Everything after `--` belongs to the command inside the service, including its flags. Replace `appserver`, `db`, the user, and the working directory with values from your app.
 
 ```sh
 lando exec -- echo hello world
 lando exec -i -- cat
 lando exec appserver -- echo hello world
+lando exec -s db -- psql
+lando exec db -- psql
 lando exec --user www-data -- whoami
 lando exec --cwd /srv/app -- pwd
 ```
+
+Put Lando's own flags (`-s`, `-i`, `--user`, `--cwd`) before `--`. Without `--`, the command starts at the first other word, and every token from there on is the command's, including flags such as `--help`. An unknown flag in front of the command fails with `UnknownCliFlagError` before anything runs. A service name followed directly by a flag, as in `lando exec web -c 'echo hi'`, fails with `ToolingExecError` because Lando can't tell where the command starts; write `lando exec -s web -- sh -c 'echo hi'` instead.
 
 Open a shell with `lando ssh` or `lando shell --service <name>`.
 
@@ -103,6 +107,16 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 ## Exit codes
 
 `app:exec` sets its own command exit code to the executed command's `exitCode`. A non-zero result is mirrored onto the CLI process, so `lando exec` propagates the target command's failure to the shell.
+
+## Interrupt a command
+
+At a terminal, Ctrl-C reaches the command through its terminal, the same as in any shell.
+
+Without a terminal, when a script, editor task, CI step, or agent runs `lando exec` and sends it `SIGINT` or `SIGTERM`, Lando stops the command inside the container along with everything it started, waits for them to exit, and then exits `130` for `SIGINT` or `143` for `SIGTERM` with a `CommandInterruptedError`. A port the command was listening on is free for the next run, so you don't need to hunt down leftover processes or restart the service. When the command exits on its own, processes it deliberately backgrounded keep running, as with `docker exec`.
+
+If Lando cannot set up that supervision for a command, it fails with a tagged error and remediation before the command runs rather than running it unsupervised. On native Windows with the default `lando` provider, non-TTY exec does not yet get this cleanup.
+
+The same rules apply to tooling commands, `lando ssh -- <command>`, and `lando run`.
 
 ## Masked output
 

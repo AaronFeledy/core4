@@ -11,13 +11,13 @@ import {
 } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import {
   APPLY_REMEDIATION,
   type BringUpOptions,
   GLOBAL_APPLY_REMEDIATION,
   bringUp,
-} from "../src/podman/bring-up.ts";
-import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+} from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");

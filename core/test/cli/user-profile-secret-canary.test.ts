@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";
 import { Effect, Layer, Queue, Stream } from "effect";
-import * as ContainerHelperAssetsLayer from "../../src/container-helper/assets.ts";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import {

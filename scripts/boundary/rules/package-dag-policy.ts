@@ -60,10 +60,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/container-runtime": {
-    dependencies: ["@lando/sdk", "@lando/redaction"],
+    dependencies: ["@lando/sdk", "@lando/redaction", "@lando/paths"],
     devDependencies: [],
     // Historical applied-state bytes exercise the real disk store at their owning package.
-    testTargets: ["@lando/sdk", "@lando/redaction", "@lando/state-store"],
+    testTargets: ["@lando/sdk", "@lando/redaction", "@lando/paths", "@lando/state-store"],
   },
   "@lando/redaction": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/http-client": { dependencies: ["@lando/redaction", "@lando/sdk"], devDependencies: [] },
@@ -192,8 +192,13 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/proxy-traefik": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client"],
     devDependencies: [],
-    // Diagnostic regressions register process-global canaries; runtime imports remain forbidden.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client", "@lando/redaction"],
+    // Diagnostics use redaction canaries; global-service plans exercise engine layers, never core.
+    testTargets: [
+      ...PLUGIN_RUNTIME_TARGETS,
+      ...PLUGIN_TEST_TARGETS,
+      "@lando/http-client",
+      "@lando/redaction",
+    ],
   },
   "@lando/renderer-lando": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],
