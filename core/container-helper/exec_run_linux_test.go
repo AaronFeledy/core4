@@ -19,13 +19,14 @@ func TestExecRunProcess(t *testing.T) {
 	if os.Getenv("LANDO_TEST_EXEC_RUN") != "1" {
 		return
 	}
+	syscall.Umask(0)
 	for i, arg := range os.Args {
 		if arg == "--" {
 			scan := execDescendants
 			if root := os.Getenv("LANDO_TEST_EXEC_PROC_ROOT"); root != "" {
 				scan = func() ([]int, error) { return execDescendantsAt(root, 73) }
 			}
-			os.Exit(runExecRunWithScan(os.Args[i:], helperIO{os.Stdin, os.Stdout, os.Stderr, nil}, scan))
+			os.Exit(runExecRunWithScan(os.Args[i+1:], helperIO{os.Stdin, os.Stdout, os.Stderr, nil}, scan))
 		}
 	}
 	os.Exit(125)
@@ -40,6 +41,11 @@ type execRunFixture struct {
 
 func execRunStart(t *testing.T, argv ...string) *execRunFixture {
 	t.Helper()
+	return execRunStartArgs(t, append([]string{"--"}, argv...)...)
+}
+
+func execRunStartArgs(t *testing.T, helperArgs ...string) *execRunFixture {
+	t.Helper()
 	if _, err := execDescendants(); err != nil {
 		t.Skip("kernel does not expose process children: ", err)
 	}
@@ -47,7 +53,7 @@ func execRunStart(t *testing.T, argv ...string) *execRunFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := append([]string{"-test.run=^TestExecRunProcess$", "--"}, argv...)
+	args := append([]string{"-test.run=^TestExecRunProcess$", "--"}, helperArgs...)
 	cmd := exec.Command(binary, args...)
 	cmd.Env = append(os.Environ(), "LANDO_TEST_EXEC_RUN=1")
 	stdin, err := cmd.StdinPipe()
@@ -220,7 +226,7 @@ func TestExecRunNaturalExitPreservesBackgroundAndUnrelatedProcesses(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-test.run=^TestExecRunProcess$", "--", "/bin/sh", "-c",
+	args := []string{"-test.run=^TestExecRunProcess$", "--", "--", "/bin/sh", "-c",
 		setsid + " /bin/sh -c 'trap \"\" TERM; echo $$ > " + marker + "; while :; do sleep 1; done' & while [ ! -s " + marker + " ]; do sleep 0.01; done; exit 7"}
 	cmd := exec.Command(binary, args...)
 	cmd.Env = append(os.Environ(), "LANDO_TEST_EXEC_RUN=1")
@@ -358,7 +364,7 @@ func TestExecRunRefusesUnsupportedProcBeforePayload(t *testing.T) {
 	os.WriteFile(filepath.Join(procRoot, "self", "status"), []byte("NStgid:\t74\n"), 0600)
 	binary, _ := os.Executable()
 	marker := filepath.Join(t.TempDir(), "spawned")
-	cmd := exec.Command(binary, "-test.run=^TestExecRunProcess$", "--", "/bin/sh", "-c", "touch "+marker)
+	cmd := exec.Command(binary, "-test.run=^TestExecRunProcess$", "--", "--", "/bin/sh", "-c", "touch "+marker)
 	cmd.Env = append(os.Environ(), "LANDO_TEST_EXEC_RUN=1", "LANDO_TEST_EXEC_PROC_ROOT="+procRoot)
 	err := cmd.Run()
 	if err == nil {

@@ -767,11 +767,11 @@ export const prepareExecCommand = (
   target: ExecTarget,
   command: CommandSpec,
   options: ExecOptions,
-): Effect.Effect<CommandSpec, ExecError, Scope.Scope> => {
+): Effect.Effect<{ readonly command: CommandSpec; readonly umask?: string }, ExecError, Scope.Scope> => {
   const service = plan.services[target.service];
   if (service === undefined) return Effect.fail(missingService(options.ctx, target, "exec"));
   if (options.api === undefined) return Effect.fail(missingApi(options.ctx, "exec"));
-  return resolveExecCommand(
+  return resolveExecUmask(
     {
       api: options.api,
       ctx: options.ctx,
@@ -780,7 +780,12 @@ export const prepareExecCommand = (
     },
     plan,
     target,
-    command,
     options,
+    options.containerId,
+  ).pipe(
+    Effect.map((result) => ({
+      command,
+      ...(result.status === "ok" && isWorldWritableUmask(result.umask) ? { umask: "0022" } : {}),
+    })),
   );
 };

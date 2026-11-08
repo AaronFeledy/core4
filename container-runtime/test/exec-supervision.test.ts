@@ -6,7 +6,7 @@ import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { execDataFrames, execEofFrame, execSignalFrame } from "../src/exec-control.ts";
 import { supervisedExecStream } from "../src/exec-supervision.ts";
 import { execStream as plainExecStream } from "../src/podman/exec-transport.ts";
-import { rememberExecUmask } from "../src/podman/exec-umask.ts";
+import { rememberContainerHasShell, rememberExecUmask } from "../src/podman/exec-umask.ts";
 import { execStream as dispatchExecStream } from "../src/podman/exec.ts";
 
 const ctx = { providerId: "docker", remediation: "Reconnect the provider.", env: {} };
@@ -223,6 +223,32 @@ test("warm supervision uses exactly the plain transport engine request set", asy
     "POST /containers/lando-exec-supervision--web/exec",
     "POST /exec/exec/start",
     "GET /exec/exec/json",
+  ]);
+});
+
+test.each([true, false])("supervised umask compensation requires no shell (shell=%s)", async (shell) => {
+  const f = fixture();
+  rememberExecUmask(f.api, "container", { status: "ok", umask: "0000" });
+  rememberContainerHasShell(f.api, "container", shell);
+  await Effect.runPromise(
+    Effect.scoped(
+      Stream.runDrain(dispatchExecStream(plan, target, { command: ["payload", "a b"] }, f.options)),
+    ),
+  );
+  expect(
+    f.requests.filter((request) => request.path.endsWith("/exec")).map((request) => request.body),
+  ).toEqual([
+    expect.objectContaining({
+      Cmd: [
+        "/run/lando/helper/lando-container-helper",
+        "exec-run",
+        "--umask",
+        "0022",
+        "--",
+        "payload",
+        "a b",
+      ],
+    }),
   ]);
 });
 

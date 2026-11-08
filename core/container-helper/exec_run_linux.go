@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -21,6 +22,14 @@ func runExecRun(args []string, streams helperIO) int {
 }
 
 func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, error)) int {
+	if len(args) >= 2 && args[0] == "--umask" {
+		mask, err := strconv.ParseUint(args[1], 8, 9)
+		if err != nil || len(args[1]) != 4 {
+			return 64
+		}
+		syscall.Umask(int(mask))
+		args = args[2:]
+	}
 	if len(args) < 2 || args[0] != "--" {
 		return 64
 	}

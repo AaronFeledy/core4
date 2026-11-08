@@ -15,7 +15,9 @@ export interface ExecSupervisionOptions {
   readonly ctx: ProviderErrorContext;
   readonly resolveContainerHelper?: ResolveContainerHelper | undefined;
   readonly helperTarget?: ContainerHelperTarget | undefined;
-  readonly prepareCommand?: (containerId: string) => Effect.Effect<CommandSpec, ProviderError, Scope.Scope>;
+  readonly prepareCommand?: (
+    containerId: string,
+  ) => Effect.Effect<{ readonly command: CommandSpec; readonly umask?: string }, ProviderError, Scope.Scope>;
 }
 
 const Container = Schema.Struct({
@@ -92,8 +94,9 @@ export const supervisedExecStream = (
         )
       )
         return yield* Effect.fail(failure("helper-mount-missing"));
-      const prepared =
-        options.prepareCommand === undefined ? command : yield* options.prepareCommand(container.Id);
+      const preparation =
+        options.prepareCommand === undefined ? { command } : yield* options.prepareCommand(container.Id);
+      const prepared = preparation.command;
       const input = yield* Queue.bounded<Uint8Array, Cause.Done>(1);
       const output = yield* Queue.bounded<ExecChunk, ProviderError | Cause.Done>(16);
       const finished = yield* Deferred.make<void, ProviderError>();
@@ -189,7 +192,13 @@ export const supervisedExecStream = (
           target,
           {
             ...payload,
-            command: [delivery.executable, "exec-run", "--", ...prepared.command],
+            command: [
+              delivery.executable,
+              "exec-run",
+              ...(preparation.umask === undefined ? [] : ["--umask", preparation.umask]),
+              "--",
+              ...prepared.command,
+            ],
             raw: true,
             tty: false,
             stdinStream: stdin,
