@@ -49,7 +49,7 @@ import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creat
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
-import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stream } from "effect";
 
 import {
   annotateFailureRole,
@@ -93,6 +93,7 @@ export interface DataPlaneHttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
+  readonly onResponseHead?: () => void;
 }
 
 export interface DataPlaneHttpResponse {
@@ -915,28 +916,42 @@ const runByteStream = (
     Stream.flatMap((name) =>
       Stream.unwrap(
         Effect.gen(function* () {
-          const stdinFiber = yield* Effect.forkScoped(attachEphemeralStdin(options, name, spec));
+          const attached = yield* Deferred.make<void, ProviderError>();
+          const chunks = yield* Queue.bounded<ExecChunk, ProviderError | Cause.Done>(16);
+          yield* Effect.addFinalizer(() => Queue.shutdown(chunks));
+          yield* stream(options, "run.attach", {
+            method: "POST",
+            path: `/containers/${encodeURIComponent(name)}/attach?stream=true&stdin=${spec.stdinStream === undefined ? "false" : "true"}&stdout=true&stderr=true`,
+            ...(spec.stdinStream === undefined ? {} : { stdin: spec.stdinStream }),
+            onResponseHead: () => Deferred.doneUnsafe(attached, Effect.void),
+          })
+            .pipe((self) =>
+              Stream.flattenIterable(
+                Stream.map(self, (chunk) =>
+                  decode(chunk).map((frame): ExecChunk => {
+                    if (frame.stream === "stderr") diagnostic.write(frame.payload);
+                    return { kind: frame.stream, chunk: new Uint8Array(frame.payload) };
+                  }),
+                ),
+              ),
+            )
+            .pipe(
+              Stream.runForEach((chunk) => Queue.offer(chunks, chunk)),
+              Effect.andThen(Queue.end(chunks)),
+              Effect.catchCause((cause) =>
+                Deferred.failCause(attached, cause).pipe(Effect.andThen(Queue.failCause(chunks, cause))),
+              ),
+              Effect.forkScoped,
+            );
+          yield* Deferred.await(attached);
           const started = yield* request(options, "run.start", {
             method: "POST",
             path: `/containers/${encodeURIComponent(name)}/start`,
           });
           yield* ensure2xx(options, "run.start", started, spec.mounts?.[0]?.store);
-          const output = stream(options, "run.logs", {
-            method: "GET",
-            path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
-          }).pipe((self) =>
-            Stream.flattenIterable(
-              Stream.map(self, (chunk) =>
-                decode(chunk).map((frame): ExecChunk => {
-                  if (frame.stream === "stderr") diagnostic.write(frame.payload);
-                  return { kind: frame.stream, chunk: new Uint8Array(frame.payload) };
-                }),
-              ),
-            ),
-          );
+          const output = Stream.fromQueue(chunks);
           const completed = Stream.fromEffect(
             Effect.gen(function* () {
-              if (spec.stdinStream !== undefined) yield* Fiber.join(stdinFiber);
               yield* waitForEphemeralContainer(options, name, spec);
               const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
               observed.exitCode = exitCode;
