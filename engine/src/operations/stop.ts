@@ -6,7 +6,7 @@ import {
   FileSyncStopError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type EventService,
@@ -55,6 +55,7 @@ type StopAppServices =
   | RuntimeProviderRegistry
   | StateStore;
 type StopExecution = {
+  readonly reconcileApp?: AppRef;
   readonly revalidate: boolean;
   readonly requireAppliedEvidence: boolean;
   readonly runInitEvents?: boolean;
@@ -85,7 +86,7 @@ const stopAppWithResolvedPlan = (
       let retired = false;
       let validatedTarget = execution.revalidate ? yield* validateResolvedAppTarget(target) : target;
       const placement = yield* resolveAppPlacement(
-        validatedTarget.app,
+        execution.reconcileApp ?? validatedTarget.app,
         validatedTarget.plan.provider,
         yield* TeardownProvider,
       );
@@ -299,7 +300,7 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
             ),
           );
         }),
-        applied: Effect.fnUntraced(function* (resolved) {
+        applied: Effect.fnUntraced(function* (resolved, reconcileApp?: AppRef) {
           const { pending } = yield* readDiscardableStart(resolved.app);
           if (pending !== null && pending.phase !== "completed") {
             const desired = yield* resolveDesiredAppTarget;
@@ -321,6 +322,7 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
           return yield* stopAppWithResolvedPlan(options, resolved, {
             revalidate: false,
             requireAppliedEvidence: false,
+            ...(reconcileApp === undefined ? {} : { reconcileApp }),
           }).pipe(Effect.map(({ result }) => result));
         }),
         orphans: Effect.fnUntraced(function* (resolution) {

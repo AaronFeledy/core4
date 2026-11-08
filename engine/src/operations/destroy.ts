@@ -77,7 +77,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
       if (resolution.kind === "applied" && resolution.target.app.kind === "user") {
         const desired = resolution.target;
         const placement = yield* resolveAppPlacement(
-          desired.app,
+          resolution.reconcileApp ?? desired.app,
           desired.plan.provider,
           yield* TeardownProvider,
         );
