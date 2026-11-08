@@ -1028,8 +1028,6 @@ const ToolingTaskShorthand = Schema.Union([
     ),
   );
 
-// The object member stays outside the shorthand codec so authoring derivation walks the
-// task struct itself and keeps its nested checks instead of a flattened encoded copy.
 export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
   identifier: "ToolingTaskInput",
   description:

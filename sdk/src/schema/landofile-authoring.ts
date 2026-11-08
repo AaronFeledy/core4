@@ -1,4 +1,4 @@
-import { SchemaAST as AST, Schema } from "effect";
+import { SchemaAST as AST, Array as Arr, Schema } from "effect";
 import { authoringSource, recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
 import {
   type AuthoringExpression,
@@ -193,10 +193,9 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
     return ast;
   };
   const walk = (node: AST.AST, allowExpression: boolean): AST.AST => {
-    if (node.encoding !== undefined) {
-      const [first, ...rest] = node.encoding;
-      return derive((rest.at(-1) ?? first).to, allowExpression);
-    }
+    // Follow one link to the authored form instead of flipping the whole subtree with
+    // toEncoded, which would drop the Type-side checks of nested containers.
+    if (node.encoding !== undefined) return derive(Arr.lastNonEmpty(node.encoding).to, allowExpression);
     const kind = leafKind(node);
     if (kind) {
       const leaf =

@@ -85,8 +85,7 @@ const expressionAtOrAbovePath = (value: unknown, path: ReadonlyArray<PropertyKey
   let current = value;
   for (const key of path) {
     while (isLandofileOverride(current)) current = current.value;
-    if (isExpression(current)) return true;
-    if (isLandofileReset(current)) return true;
+    if (isExpression(current) || isLandofileReset(current)) return true;
     if (typeof current !== "object" || current === null) return false;
     current = Reflect.get(current, key);
   }
@@ -155,16 +154,18 @@ export const authoringContainerFilter = (
     return issue === undefined ? undefined : new SchemaIssue.Filter(check, issue, input, parseOptions);
   };
   return new AST.Filter((input, self, parseOptions) => {
-    if (partial && !hasRequiredShape(encoded, input)) return undefined;
+    // Checks read a temporary projection with merge directives applied and expressions as
+    // source text. The authoring result itself still retains the original, unresolved input.
+    const projected = projectCheckInput(input);
+    if (partial && !hasRequiredShape(encoded, projected)) return undefined;
     const sources = expressionSources(input);
     let normalized: ReturnType<typeof decodeWithoutOwnChecks> | undefined;
     for (const check of (refinement.checks ?? []).flatMap(leafChecks)) {
       // Checks removed by toEncoded expect a normalized Type value, including child defaults.
-      // The authoring result itself still retains the original, unresolved input.
       const encodedSafe = encodedChecks.has(check);
-      let checkInput = input;
+      let checkInput = projected;
       if (!encodedSafe) {
-        normalized ??= decodeWithoutOwnChecks(projectCheckInput(input), parseOptions);
+        normalized ??= decodeWithoutOwnChecks(projected, parseOptions);
         if (Result.isFailure(normalized)) {
           // A complete literal that cannot normalize is invalid. Unresolved expressions
           // can prevent normalization, so defer this Type-only check until resolution.
@@ -187,13 +188,13 @@ export const authoringContainerFilter = (
         input !== null &&
         !Array.isArray(input)
       ) {
-        const literals = Object.fromEntries(
-          Object.entries(input).filter(([, value]) => !containsExpression(value)),
+        const literals = projectCheckInput(
+          Object.fromEntries(Object.entries(input).filter(([, value]) => !containsExpression(value))),
         );
         const literalResult = run(check, literals, self, parseOptions);
         if (literalResult !== undefined) return literalResult;
       }
-      const result = run(check, encodedSafe ? projectCheckInput(input) : checkInput, self, parseOptions);
+      const result = run(check, checkInput, self, parseOptions);
       if (result === undefined) continue;
       const dependsOnExpression = SchemaIssue.makeFormatterStandardSchemaV1()(result).issues.some(
         (issue) =>
