@@ -10,18 +10,6 @@
     "composite": false,
     "rootDir": ".."
   },
-  "include": [
-    "./bench-plugin-identity.ts",
-    "./check-*.ts",
-    "./linux-runtime-bundle-builder.ts",
-    "./linux-runtime-bundle-engines.ts",
-    "./runtime-bundle-cleanup.ts",
-    "./runtime-bundle-builder/entry.ts",
-    "./module-edge-scan.ts",
-    "./boundary/**/*.ts",
-    "./build-workflow-performance-workflow.ts",
-    "./workflow-performance.ts",
-    "./workflow-performance-*.ts"
-  ],
-  "exclude": ["./check-public-transcripts.ts", "./check-compose-coverage.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.test.ts", "./generated/**"]
 }
