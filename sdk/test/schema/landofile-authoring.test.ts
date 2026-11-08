@@ -227,9 +227,10 @@ describe("authoring AST derivation", () => {
     );
     expect(document.definitions).toHaveProperty(["DeprecationNotice", "required"], ["since", "note"]);
     expect(document.definitions).toHaveProperty(["DeprecationNotice", "properties", "severity"]);
-    expect(Schema.decodeUnknownResult(derived)({ notice: { since: "4.0.0", note: "Old" } })._tag).toBe(
-      "Failure",
-    );
+    expect(
+      Schema.decodeUnknownResult(derived)({ notice: { since: "4.2.0", removeIn: "4.1.0", note: "Old" } })
+        ._tag,
+    ).toBe("Failure");
   });
 
   test("defers a checked parent when a nested fragment is incomplete", () => {
@@ -427,7 +428,8 @@ describe("Landofile authoring schemas", () => {
             service: "web",
             cmd: "echo old",
             deprecated: {
-              since: "4.0.0",
+              since: "4.2.0",
+              removeIn: "4.1.0",
               note: "Use new instead.",
               ...(severity === undefined ? {} : { severity }),
             },
@@ -443,26 +445,29 @@ describe("Landofile authoring schemas", () => {
     },
   );
 
-  test("keeps valid defaulted notices as authored input and round-trips runtime values strictly", () => {
-    const input = {
-      tooling: {
-        old: {
-          service: "web",
-          cmd: "echo old",
-          deprecated: { since: "4.2.0", note: "Use new instead." },
+  test.each(["4.2.0", "1.2.0"])(
+    "keeps valid defaulted notices since %s as authored input and round-trips runtime values strictly",
+    (since) => {
+      const input = {
+        tooling: {
+          old: {
+            service: "web",
+            cmd: "echo old",
+            deprecated: { since, note: "Use new instead." },
+          },
         },
-      },
-    };
-    const options = { onExcessProperty: "error" as const };
-    for (const schema of [Public.LandofileAuthoringShape, Public.LandofileAuthoringFragment]) {
-      const authored = Schema.decodeUnknownSync(schema, options)(input);
-      expect(authored).toEqual(input);
-      expect(Schema.encodeSync(schema, options)(authored)).toEqual(input);
-    }
-    const runtime = Schema.decodeUnknownSync(Public.LandofileShape, options)(input);
-    const encoded = Schema.encodeSync(Public.LandofileShape, options)(runtime);
-    expect(Schema.decodeUnknownSync(Public.LandofileShape, options)(encoded)).toEqual(runtime);
-  });
+      };
+      const options = { onExcessProperty: "error" as const };
+      for (const schema of [Public.LandofileAuthoringShape, Public.LandofileAuthoringFragment]) {
+        const authored = Schema.decodeUnknownSync(schema, options)(input);
+        expect(authored).toEqual(input);
+        expect(Schema.encodeSync(schema, options)(authored)).toEqual(input);
+      }
+      const runtime = Schema.decodeUnknownSync(Public.LandofileShape, options)(input);
+      const encoded = Schema.encodeSync(Public.LandofileShape, options)(runtime);
+      expect(Schema.decodeUnknownSync(Public.LandofileShape, options)(encoded)).toEqual(runtime);
+    },
+  );
 
   test("defers an incomplete deprecation notice inside a fragment", () => {
     const input = { tooling: { old: { deprecated: { since: "4.0.0" } } } };
@@ -471,7 +476,7 @@ describe("Landofile authoring schemas", () => {
 
   test("validates notices after resolving merge directives only for a temporary check input", () => {
     const notice = (since: string, severity: unknown) => ({
-      tooling: { old: { deprecated: { since, note: "Use new instead.", severity } } },
+      tooling: { old: { deprecated: { since, removeIn: "5.0.0", note: "Use new instead.", severity } } },
     });
     for (const [schema, replacement, removal, badReplacement] of [
       [
@@ -488,8 +493,8 @@ describe("Landofile authoring schemas", () => {
       expect<unknown>(Schema.decodeUnknownSync(schema)(notice("4.2.0", removal))).toEqual(
         notice("4.2.0", reset()),
       );
-      expect(Schema.decodeUnknownResult(schema)(notice("4.0.0", replacement))._tag).toBe("Failure");
-      expect(Schema.decodeUnknownResult(schema)(notice("4.0.0", removal))._tag).toBe("Failure");
+      expect(Schema.decodeUnknownResult(schema)(notice("5.0.0", replacement))._tag).toBe("Failure");
+      expect(Schema.decodeUnknownResult(schema)(notice("5.0.0", removal))._tag).toBe("Failure");
       expect(Schema.decodeUnknownResult(schema)(notice("4.2.0", badReplacement))._tag).toBe("Failure");
     }
   });

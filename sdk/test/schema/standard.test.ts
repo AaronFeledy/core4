@@ -67,7 +67,7 @@ describe("Standard Schema views", () => {
         old: {
           service: "web",
           cmd: "echo old",
-          deprecated: { since: "4.0.0", note: "Use new instead." },
+          deprecated: { since: "4.2.0", removeIn: "4.1.0", note: "Use new instead." },
         },
       },
     };
@@ -75,8 +75,7 @@ describe("Standard Schema views", () => {
       issues: [
         {
           path: ["tooling", "old", "deprecated"],
-          message:
-            "Notices from releases older than the active 4.1.0 deprecation window must declare removeIn.",
+          message: "removeIn must be a later release than since.",
         },
       ],
     });

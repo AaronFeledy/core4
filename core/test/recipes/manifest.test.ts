@@ -329,7 +329,8 @@ version: 0.0.1
 
   test("top-level `deprecated:` validates the canonical notice contract", async () => {
     const yaml = `${baseHeader}deprecated:
-  since: 4.0.0
+  since: 4.2.0
+  removeIn: 4.1.0
   note: replaced by node-postgres-v2
 `;
     const exit = await runParse("test://beta-deprecated", yaml);
@@ -346,7 +347,8 @@ version: 0.0.1
     type: text
     message: Legacy?
     deprecated:
-      since: 4.0.0
+      since: 4.2.0
+      removeIn: 4.2.0
       note: removed in 5.0
 `;
     const exit = await runParse("test://beta-prompt-deprecated", yaml);
