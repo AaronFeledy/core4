@@ -1500,6 +1500,15 @@
       },
       "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
     },
+    "docs/guides/magento/fixtures/mageos": {
+      "before": {
+        "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
+      },
+      "after": {
+        "digest": "9e9c712e5ed587b8ec284c19961749bf2d51b03103f9242710d6ca2559f62358"
+      },
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The encoded document drops bcmath from that one install command; nothing else changed."
+    },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {
         "invalid": {
