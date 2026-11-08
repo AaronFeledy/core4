@@ -2,6 +2,7 @@ import { configRedactionTokens } from "../../../commands/config-redaction";
 import { Args } from "../../../spec/metadata";
 
 import {
+  GLOBAL_CONFIG_SUBCOMMANDS,
   type GlobalConfigOptions,
   type GlobalConfigResult,
   GlobalConfigResultSchema,
@@ -41,7 +42,8 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   strict: false,
   args: {
     subcommand: Args.string({
-      description: "Subcommand: view (default), set, unset, edit, validate, describe.",
+      options: GLOBAL_CONFIG_SUBCOMMANDS,
+      description: "Subcommand to run (default: view).",
       required: false,
     }),
     key: Args.string({ description: "Dot-path key for get/set/unset/describe.", required: false }),

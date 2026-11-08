@@ -1,41 +1,22 @@
-import { Schema } from "effect";
-import { flagDefinitionsByToken, flagToken } from "./flag-definitions";
+import { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
+import { commandTailIndex } from "./command-tail";
+import { flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
 
-const FLAG_VALUE_ISSUES = [
-  "missing",
-  "empty",
-  "invalid_integer",
-  "invalid_option",
-  "unexpected",
-  "repeated",
-] as const;
-type FlagValueIssue = (typeof FLAG_VALUE_ISSUES)[number];
+type FlagValueIssue = MalformedCliFlagValueError["issue"];
 
 // Bare `--mount-cwd` normalizes to an empty value to select its default target.
 const EMPTY_VALUE_FLAGS_BY_COMMAND: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps:scratch:start": ["mount-cwd"],
 };
 
-export class MalformedCliFlagValueError extends Schema.TaggedError<MalformedCliFlagValueError>()(
-  "MalformedCliFlagValueError",
-  {
-    message: Schema.String,
-    flag: Schema.String,
-    issue: Schema.Literals([...FLAG_VALUE_ISSUES]),
-    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-  },
-) {}
-
-export class UnknownCliFlagError extends Schema.TaggedError<UnknownCliFlagError>()("UnknownCliFlagError", {
-  message: Schema.String,
-  flag: Schema.String,
-  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-}) {}
+const flagToken = (arg: string): string => {
+  const equalsIndex = arg.indexOf("=");
+  return equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+};
 
 export const validateUnknownCliFlags = (
   argv: ReadonlyArray<string>,
   definitions: Readonly<Record<string, unknown>>,
-  commandArgvRemediation?: string,
 ): UnknownCliFlagError | undefined => {
   const byToken = flagDefinitionsByToken(definitions);
   const normalizedArgv = normalizeCliFlagTokens(argv, definitions);
@@ -54,61 +35,10 @@ export const validateUnknownCliFlags = (
     return new UnknownCliFlagError({
       message: `Nonexistent flag: ${reportedToken}`,
       flag: reportedToken,
-      remediation:
-        commandArgvRemediation ??
-        "Remove the unknown flag or run the command with --help to inspect supported flags.",
+      remediation: "Remove the unknown flag or run the command with --help to inspect supported flags.",
     });
   }
   return undefined;
-};
-
-export const normalizeCliFlagTokens = (
-  argv: ReadonlyArray<string>,
-  definitions: Readonly<Record<string, unknown>>,
-): ReadonlyArray<string> => {
-  const byToken = flagDefinitionsByToken(definitions);
-  const normalized: string[] = [];
-  let optionsEnded = false;
-
-  for (const arg of argv) {
-    if (optionsEnded || arg === "--" || !arg.startsWith("-") || arg.startsWith("--") || arg.length <= 2) {
-      normalized.push(arg);
-      if (arg === "--") optionsEnded = true;
-      continue;
-    }
-
-    const expanded: string[] = [];
-    const bundle = arg.slice(1);
-    let offset = 0;
-    let recognized = true;
-    while (offset < bundle.length) {
-      const token = `-${bundle[offset]}`;
-      const definition = byToken.get(token);
-      if (definition === undefined) {
-        recognized = false;
-        break;
-      }
-      expanded.push(token);
-      offset += 1;
-      if (definition.boolean) {
-        const attached = bundle.slice(offset);
-        const nextToken = attached.length === 0 ? undefined : byToken.get(`-${attached[0]}`);
-        if (attached.length > 0 && nextToken === undefined) {
-          expanded[expanded.length - 1] =
-            `${token}=${attached.startsWith("=") ? attached.slice(1) : attached}`;
-          offset = bundle.length;
-        }
-        continue;
-      }
-
-      const attached = bundle.slice(offset);
-      if (attached.length > 0) expanded.push(attached.startsWith("=") ? attached.slice(1) : attached);
-      offset = bundle.length;
-    }
-    normalized.push(...(recognized ? expanded : [arg]));
-  }
-
-  return normalized;
 };
 
 const malformedFlagValue = (
@@ -194,38 +124,30 @@ export const validateCommandFlagValues = (
 ): MalformedCliFlagValueError | undefined =>
   validateCliFlagValues(argv, definitions, EMPTY_VALUE_FLAGS_BY_COMMAND[commandId]);
 
-const leadingCliFlagArgv = (
-  argv: ReadonlyArray<string>,
-  definitions: Readonly<Record<string, unknown>>,
-): ReadonlyArray<string> => {
-  const normalized = normalizeCliFlagTokens(argv, definitions);
-  const byToken = flagDefinitionsByToken(definitions);
-  for (let index = 0; index < normalized.length; index += 1) {
-    const arg = normalized[index];
-    if (arg === undefined || arg === "--" || arg === "-" || !arg.startsWith("-")) {
-      return normalized.slice(0, index);
-    }
-    const definition = byToken.get(flagToken(arg));
-    if (definition !== undefined && !definition.boolean && !arg.includes("=")) index += 1;
-  }
-  return normalized;
-};
-
 export const validateCommandCliFlags = (input: {
   readonly commandId: string;
   readonly argv: ReadonlyArray<string>;
   readonly definitions: Readonly<Record<string, unknown>>;
   readonly allowUnknownFlags: boolean;
-  readonly commandArgvRemediation?: string;
+  readonly commandTail?: boolean;
+  /** The spelling remediation names; defaults to the canonical id. */
+  readonly commandName?: string;
 }): MalformedCliFlagValueError | UnknownCliFlagError | undefined => {
-  const argv =
-    input.commandArgvRemediation === undefined
-      ? input.argv
-      : leadingCliFlagArgv(input.argv, input.definitions);
-  return (
-    (input.allowUnknownFlags && input.commandArgvRemediation === undefined
-      ? undefined
-      : validateUnknownCliFlags(argv, input.definitions, input.commandArgvRemediation)) ??
-    validateCommandFlagValues(input.commandId, argv, input.definitions)
-  );
+  const argv = input.commandTail
+    ? input.argv.slice(0, commandTailIndex(input.argv, input.definitions))
+    : input.argv;
+  const unknown =
+    input.commandTail || !input.allowUnknownFlags
+      ? validateUnknownCliFlags(argv, input.definitions)
+      : undefined;
+  if (unknown !== undefined) {
+    if (!input.commandTail) return unknown;
+    const name = input.commandName ?? input.commandId;
+    return new UnknownCliFlagError({
+      message: unknown.message,
+      flag: unknown.flag,
+      remediation: `Put the command after \`--\`: \`lando ${name} -- <command>\`. Run \`lando ${name} --help\` for its flags.`,
+    });
+  }
+  return validateCommandFlagValues(input.commandId, argv, input.definitions);
 };

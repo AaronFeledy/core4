@@ -1,5 +1,5 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Flags } from "../../../spec/metadata";
+import { Args, Flags } from "../../../spec/metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import {
@@ -26,7 +26,9 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
   aliases: ["scratch:run", "run"],
   bootstrap: "scratch",
   strict: false,
-  commandArgvRemediation: "Pass the command after --: lando run -- <command>.",
+  args: {
+    command: Args.string({ multiple: true, description: "Command argv after `--`." }),
+  },
   flags: {
     from: Flags.string({
       description: "Recipe reference for the disposable scratch app (default: the bundled toolbox).",

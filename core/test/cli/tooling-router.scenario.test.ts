@@ -516,16 +516,12 @@ test("Given fresh caches without a match, when an unknown task is invoked, then 
     ]);
 
     // Then
-    expect(sourceResult.exitCode).toBe(1);
-    expect(compiledResult.exitCode).toBe(1);
+    expect(sourceResult.exitCode).toBe(2);
+    expect(compiledResult.exitCode).toBe(2);
     expect(lastEnvelope(sourceResult.stdout)).toMatchObject({
-      command: "app:unknown-router-task",
+      command: "cli:unknown-command",
       ok: false,
-      error: {
-        _tag: "ToolingCommandUnavailableError",
-        reason: "unknown-command",
-        commandId: "app:unknown-router-task",
-      },
+      error: { _tag: "UnknownCommandError", commandToken: "unknown-router-task" },
     });
     expect(lastEnvelope(compiledResult.stdout)).toEqual(lastEnvelope(sourceResult.stdout));
   } finally {
@@ -543,8 +539,8 @@ test("Given a directory outside an app, when a source command is unknown, then n
     const result = await runSource(source, ["unknown-outside-app"]);
 
     // Then
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Command unknown-outside-app not found");
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('Unknown command "unknown-outside-app".');
   } finally {
     await source.cleanup();
   }

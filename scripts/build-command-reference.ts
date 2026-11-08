@@ -24,6 +24,7 @@ const OUTPUT = resolve(REPO_ROOT, "docs/reference/commands.mdx");
 const UNIVERSAL_FLAGS = new Set(["format", "json"]);
 
 interface ManifestArg {
+  readonly options?: readonly string[];
   readonly name?: string;
   readonly description?: string;
   readonly stdio?: "stdin" | "stdout";
@@ -106,7 +107,13 @@ const renderArgs = (command: ManifestCommand): ReadonlyArray<string> => {
   if (args.length === 0) return [];
   const lines = ["", "Arguments:", "", "| Argument | Description |", "| --- | --- |"];
   for (const arg of args.sort((left, right) => left.name.localeCompare(right.name))) {
-    lines.push(`| \`${escapeCell(arg.name)}\` | ${escapeCell(argStdioDescription(arg) ?? "")} |`);
+    const options =
+      arg.options !== undefined && arg.options.length > 0
+        ? ` (one of ${arg.options.map((option) => `\`${option}\``).join(", ")})`
+        : "";
+    lines.push(
+      `| \`${escapeCell(arg.name)}\` | ${escapeCell(`${argStdioDescription(arg) ?? ""}${options}`)} |`,
+    );
   }
   return lines;
 };

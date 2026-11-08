@@ -112,6 +112,8 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
     readonly streamingMode?: "live";
     readonly preCommand?: boolean;
+    /** A pre-command usage failure: exits 2 and the human report omits log locations. */
+    readonly usage?: boolean;
     readonly payloadStdout?: boolean;
     readonly io?: RendererIO;
     readonly context?: CliInvocationContext;
@@ -171,7 +173,11 @@ export const runCompiledCommand = <A, E, R, RE>(
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(completion === undefined ? {} : { completion }),
     ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
-    ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
+    ...(options.failureExitCode !== undefined
+      ? { failureExitCode: options.failureExitCode }
+      : options.usage === true
+        ? { failureExitCode: () => 2 }
+        : {}),
     ...(options.io === undefined ? {} : { io: options.io }),
     ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -179,7 +185,8 @@ export const runCompiledCommand = <A, E, R, RE>(
     formatError: (
       failure: import("@lando/sdk/command-result").ProjectedFailure,
       redactor: import("@lando/sdk/secrets").Redactor,
-    ) => commandErrorMessage(failure, activeCommandId, redactor, options.context?.env),
+    ) =>
+      commandErrorMessage(failure, activeCommandId, redactor, options.context?.env, options.usage === true),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

@@ -31,12 +31,10 @@ Pass a command instead of the default shell:
 
 ```sh
 lando ssh -- ls -la
+lando ssh --service db -- sh -c 'echo $HOSTNAME'
 ```
 
-Put Lando options before the command and use `--` to separate its arguments.
-Unknown flags before the command fail with exit code 2. The Lando 3 `-c` option
-is not supported: use `lando ssh -- echo hi`, or `lando ssh -- sh -c 'echo hi'`
-when you need shell syntax. Arguments after `--` pass through unchanged.
+Lando reads its own flags (`--service`, `--user`, `--no-history`) before the command. Everything after `--` goes to the command unchanged. Without `--`, the command starts at the first word that is not one of those flags, and every token from there on is the command's, including flags such as `--help` and `--format`: `lando ssh ls --help` shows `ls` help, while `lando ssh --help` shows Lando's. An unknown flag in front of the command fails with `UnknownCliFlagError` before anything runs, so the Lando 3 spelling `lando ssh -c "echo hi"` tells you to put the command after `--` instead.
 
 To leave shell and common client history off disk for one session, pass `--no-history`. See [Keep shell and client history across rebuilds](../tooling/lando-shell.mdx#keep-shell-and-client-history-across-rebuilds).
 
@@ -45,8 +43,6 @@ Pipe a script in, and the shell runs it without a terminal, then exits at the en
 ```sh
 lando ssh < setup.sh
 ```
-
-Interrupting a non-terminal `lando ssh -- <command>` with `SIGINT` or `SIGTERM` stops the command inside the service and everything it started, then exits `130` or `143`. See [Interrupt a command](./exec.mdx#interrupt-a-command).
 
 ## SSH identities
 
@@ -76,6 +72,12 @@ If your service mounts its own `/etc/ssh/ssh_known_hosts` or an ancestor directo
     <Step name="check-shell-flags">
       <Run command="lando ssh --help" />
       <Verify command="lando ssh --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="ssh-rejects-unknown-leading-flag" render={false} reason="An unknown flag before the command fails before Lando needs a running service.">
+    <Step name="reject-lando3-command-flag">
+      <Run command="lando ssh --format=json -c hostname" expectExit={2} />
+      <Verify command="lando ssh --format=json -c hostname" expectExit={2} expect={{ stdout: { regex: "UnknownCliFlagError" } }} />
     </Step>
   </Scenario>
 </Guide>

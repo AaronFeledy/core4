@@ -37,13 +37,7 @@ import { finishCommandProgress } from "../command-progress";
 import { withInheritedStdinRawMode } from "../exec-host-io";
 import type { ScratchRunOptions } from "./scratch-run-input";
 
-export {
-  type ScratchRunOptions,
-  normalizeScratchRunArgvForParsing,
-  parseScratchRunArgv,
-  scratchRunHasCommandTail,
-  scratchRunOptionsFromInput,
-} from "./scratch-run-input";
+export { type ScratchRunOptions, scratchRunOptionsFromInput } from "./scratch-run-input";
 
 export const DEFAULT_SCRATCH_RUN_RECIPE = "toolbox";
 
@@ -152,8 +146,6 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
   options: ScratchRunOptions,
   deps: ScratchRunDeps = defaultScratchRunDeps,
 ): Effect.fn.Return<ScratchRunResult, ScratchRunError, ScratchRunServices> {
-  const issue = options.issues[0];
-  if (issue !== undefined) return yield* Effect.fail(usageError(issue));
   if (options.command.length === 0) {
     return yield* Effect.fail(usageError("apps:scratch:run requires a command to run."));
   }

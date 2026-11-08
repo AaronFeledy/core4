@@ -42,7 +42,10 @@ export const invocationParityError = (commandId: string, argv: ReadonlyArray<str
   if (command === undefined) return undefined;
   const flagDefinitions = flagDefinitionsForCommand(command);
   const flagTokens = flagNameByToken(flagDefinitions);
-  const maxPositionals = Object.keys(argDefinitionsForCommand(command)).length;
+  const argDefinitions = argDefinitionsForCommand(command);
+  const maxPositionals = Object.values(argDefinitions).some((definition) => definition.multiple === true)
+    ? Number.POSITIVE_INFINITY
+    : Object.keys(argDefinitions).length;
   const positionals: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

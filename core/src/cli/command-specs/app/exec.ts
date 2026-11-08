@@ -11,15 +11,39 @@ import {
 import { isStdioRendererIO } from "@lando/renderer/io";
 import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { CliInvocation } from "../../../runtime/invocation-context";
+import { wordsBeforeSeparator } from "../../command-tail";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
   typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";
+
+const execFlags = {
+  service: Flags.string({
+    char: "s",
+    description: "Service to run the command in (default: the primary service).",
+  }),
+  user: Flags.string({ char: "u", description: "User to run the command as inside the service." }),
+  cwd: Flags.string({ description: "Working directory inside the service." }),
+  interactive: Flags.boolean({
+    char: "i",
+    description: "Attach your terminal keyboard to the command. Piped stdin is always attached.",
+    default: false,
+  }),
+};
+
+// The CLI input keeps a `--` the user typed and drops the one Lando inserts before the command tail.
+const cliSeparatorAt = (input: unknown): number =>
+  wordsBeforeSeparator(
+    typeof input === "object" && input !== null && "argv" in input && Array.isArray(input.argv)
+      ? input.argv.filter((arg): arg is string => typeof arg === "string")
+      : [],
+    execFlags,
+  );
 
 export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServices> = {
   resultSchema: ExecAppResult,
@@ -31,18 +55,9 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   topLevelAlias: true,
   bootstrap: "app",
   strict: false,
-  usage: "[SERVICE] -- [COMMAND...]",
-  commandArgvRemediation: "Pass the command after --: lando exec [SERVICE] -- <command>.",
-  examples: ["lando exec -- echo hello", "lando exec appserver -- echo hello"],
-  flags: {
-    user: Flags.string({ char: "u", description: "User to run the command as inside the service." }),
-    cwd: Flags.string({ description: "Working directory inside the service." }),
-    interactive: Flags.boolean({
-      char: "i",
-      description: "Attach your terminal keyboard to the command. Piped stdin is always attached.",
-      default: false,
-    }),
-  },
+  usage: "[--service SERVICE | SERVICE] -- [COMMAND...]",
+  examples: ["lando exec -- echo hello", "lando exec -s db -- psql", "lando exec appserver -- echo hello"],
+  flags: execFlags,
   args: {
     command: Args.string({
       name: "command",
@@ -57,6 +72,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     const flags = specFlagsOf(input);
     const format = stringFlag(flags, "format");
     const user = stringFlag(flags, "user");
+    const service = stringFlag(flags, "service");
     const cwd = stringFlag(flags, "cwd");
     const parsedArgv = extractSpecParsedArgv(input);
     const namedCommand = specArgsOf(input).command;
@@ -67,10 +83,10 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
           ? namedCommand.filter((arg): arg is string => typeof arg === "string")
           : [];
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
-    const signal = extractSpecAbortSignal(input);
     const base = {
-      ...(signal === undefined ? {} : { signal }),
       command,
+      ...(execInputUsesCliHostIo(input) ? { cliSeparatorAt: cliSeparatorAt(input) } : {}),
+      ...(service === undefined ? {} : { service }),
       ...(user === undefined ? {} : { user }),
       ...(cwd === undefined ? {} : { cwd }),
     };

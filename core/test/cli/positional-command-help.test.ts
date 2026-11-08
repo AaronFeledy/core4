@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Effect, Schema } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
@@ -51,6 +53,22 @@ test.each(["exec", "init"])("#2040 built-in %s help renders its declared argumen
   for (const [name, arg] of Object.entries(entry.spec.args ?? {})) {
     expect(argumentsBody).toContain(`  ${name} ${arg.description}`);
   }
+});
+
+test("config --help renders its declared subcommand choices", () => {
+  const result = Bun.spawnSync(
+    [process.execPath, resolve(import.meta.dirname, "../../bin/lando.ts"), "config", "--help"],
+    {
+      cwd: tmpdir(),
+      env: { ...process.env },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  expect(result.stdout.toString().split("\nARGUMENTS\n")[1]).toContain(
+    "(view, get, set, unset, edit, validate, describe, telemetry, translate)",
+  );
 });
 
 test("styles the ARGUMENTS heading like other command sections", () => {

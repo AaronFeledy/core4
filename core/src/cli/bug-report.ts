@@ -187,10 +187,13 @@ export const formatBugReport = (
     readonly rendererMode: RendererMode;
     readonly redactor?: Redactor;
     readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+    readonly usage?: boolean;
   },
 ): string => {
   const envelope = buildBugReport(input);
-  return input.rendererMode === "json" ? renderJsonBugReport(envelope) : renderPlainBugReport(envelope);
+  return input.rendererMode === "json"
+    ? renderJsonBugReport(envelope)
+    : renderPlainBugReport(envelope, { usage: input.usage === true });
 };
 
 export const redactedErrorDetails = redactDetails;

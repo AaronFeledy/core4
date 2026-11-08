@@ -153,8 +153,8 @@ Home contents stay out of build keys. Filling up `~/.npm` will not trigger a reb
 Containers get `host.lando.internal` pointing at your host machine, plus `LANDO_HOST_IP` holding that name so your code does not have to hardcode it. Use it for a service you run outside Lando:
 
 ```sh
-lando ssh -s app -c 'curl -sf http://host.lando.internal:5000/'
-lando ssh -s app -c 'echo $LANDO_HOST_IP'
+lando ssh -s app -- curl -sf http://host.lando.internal:5000/
+lando ssh -s app -- sh -c 'echo $LANDO_HOST_IP'
 ```
 
 Both exist only when your provider says it can reach the host. A provider that cannot is not an error: you simply get neither the alias nor the variable, so check for `LANDO_HOST_IP` rather than assuming it.

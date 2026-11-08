@@ -20,7 +20,7 @@ Run `lando config --format=json` to read your effective host-level settings. It 
 
 ## Set app defaults and read them back
 
-Use `appEnv` for environment defaults and `appLabels` for container-label defaults. They apply to user-app services; values authored on a service win. The full view includes both maps under `result.config`. A lookup also returns the selected map or scalar under `result.value`.
+Use `appEnv` for environment defaults and `appLabels` for container-label defaults. They apply to user-app services; values authored on a service win. The full view includes both maps under `result.config`. A lookup with `get` or `view --path` returns only the selected key and its `value`, plus the subcommand and format; it omits the full `config` or `raw` tree. A missing key succeeds without a `value` field and prints no human text. An explicit `null` prints `null`. This also applies to `--source raw`.
 
 These commands replace each whole map. Keep any existing entries you want before running them.
 

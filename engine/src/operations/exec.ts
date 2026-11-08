@@ -33,6 +33,12 @@ export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | Landofile
 export type { ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 
 export type ExecAppRuntimeOptions = ExecAppOptions & {
+  /**
+   * How many command words the CLI user typed before `--` (-1: no `--`). With
+   * 0 the first word is the program, never a service. Absent for library, MCP,
+   * and event command arrays, which keep literal handling.
+   */
+  readonly cliSeparatorAt?: number;
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
   readonly hostTerminal?: HostTerminal;
@@ -173,7 +179,24 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     ({ plan, landofile } = yield* planDesiredApp);
   }
 
-  const split = splitExecServiceCommand(plan, options.service, options.command);
+  const split =
+    options.cliSeparatorAt === 0
+      ? { service: options.service, command: options.command }
+      : splitExecServiceCommand(plan, options.service, options.command);
+  // `lando exec web -c x`: a flag right after a positional service, with no `--` anywhere.
+  if (
+    options.cliSeparatorAt === -1 &&
+    split.command !== options.command &&
+    split.command[0]?.startsWith("-") === true
+  ) {
+    return yield* Effect.fail(
+      new ToolingExecError({
+        message: `Lando can't tell where the command starts: ${split.command[0]} follows service ${split.service} without --.`,
+        tool: "app:exec",
+        remediation: `Put the command after --, for example: lando exec -s ${split.service} -- <command>`,
+      }),
+    );
+  }
   if (split.command.length === 0) {
     const list = availableServiceList(plan.services);
     const first = split.service ?? list.split(", ")[0];

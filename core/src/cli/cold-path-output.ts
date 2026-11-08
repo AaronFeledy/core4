@@ -25,7 +25,7 @@ export type ColdHelpStyle = {
   readonly pluginTopics?: readonly { readonly token: string; readonly summary: string }[];
 };
 
-export const HELP_TOPICS = ["app", "apps", "plugin", "global", "recipes", "scratch"] as const;
+export const HELP_TOPICS = ["app", "apps", "meta", "plugin", "global", "recipes", "scratch"] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
 const HELP_TOPIC_SET: ReadonlySet<string> = new Set(HELP_TOPICS);
@@ -162,6 +162,14 @@ const topicEntries = (topic: HelpTopic): readonly ManifestCommand[] => {
       return entries.filter(
         (entry) =>
           entry.spec.id.startsWith("apps:") && entry.spec.id !== "apps:init" && entry.spec.id !== "apps:list",
+      );
+    case "meta":
+      // Plugin, global, and recipe commands have their own topics.
+      return entries.filter(
+        (entry) =>
+          entry.spec.id.startsWith("meta:") &&
+          !/^meta:(?:plugin|global|recipes):/u.test(entry.spec.id) &&
+          !isCommon(entry),
       );
     case "plugin":
       return entries.filter(

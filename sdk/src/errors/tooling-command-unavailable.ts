@@ -9,7 +9,7 @@ export class ToolingCommandUnavailableError extends Schema.TaggedError<ToolingCo
     message: Schema.String,
     commandId: Schema.String,
     tool: Schema.String,
-    reason: Schema.Literals(["missing-cache", "stale-cache", "invalid-cache", "unknown-command"]),
+    reason: Schema.Literals(["missing-cache", "stale-cache", "invalid-cache"]),
     staleReason: Schema.optional(
       Schema.Literals([
         "format",

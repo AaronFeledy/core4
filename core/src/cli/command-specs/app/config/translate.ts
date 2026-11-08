@@ -24,7 +24,6 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
   namespace: "app",
   recipePostInitAllowed: true,
   topLevelAlias: false,
-  aliases: ["config:translate"],
   bootstrap: "plugins",
   flags: {
     list: Flags.boolean({

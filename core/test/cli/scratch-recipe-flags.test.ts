@@ -3,12 +3,12 @@ import type { ScratchAppService } from "@lando/core/services";
 import { Effect } from "effect";
 
 import { resolveScratchAcquireIsolation } from "@lando/engine/scratch-app/service";
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import {
   normalizeScratchStartArgv,
   scratchStart,
   scratchStartOptionsFromInput,
 } from "../../src/cli/commands/scratch.ts";
-import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { parseScratchStartArgv } from "../../src/cli/run.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
