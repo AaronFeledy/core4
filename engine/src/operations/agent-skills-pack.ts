@@ -45,8 +45,9 @@ already defines the tool.
 
 Stopping a \`lando exec\` or tooling command with SIGINT or SIGTERM also stops
 it inside the container, along with everything it started, before Lando exits
-130 or 143. Do not kill leftover container processes or restart the service to
-free a port after an interrupt.
+130 or 143, so you do not need to kill leftover container processes or restart
+the service to free a port after an interrupt. Native Windows with the managed
+\`lando\` provider does not get this cleanup yet.
 
 ## Read the existing Lando guides
 
