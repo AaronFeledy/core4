@@ -31,7 +31,7 @@ describe("issue 796 global autostart", () => {
       rendererMode: "plain",
     });
     expect(text).toContain("Failed to auto-start global services (traefik) required by my-drupal-cms-app.");
-    expect(text).toContain("Docker API request failed with exit code 7.");
+    expect(text.match(/Docker API request failed with exit code 7\./gu)).toHaveLength(1);
     expect(text).toContain("providerId: docker");
     expect(text).toContain("cause: ProviderUnavailableError");
     expect(text).toContain("retry `lando start`");

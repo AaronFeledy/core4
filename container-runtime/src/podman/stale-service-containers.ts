@@ -5,20 +5,11 @@ import {
   ProviderId,
   ServiceName,
   type ServiceShutdownObservation,
-  planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
-import {
-  APP_LABEL,
-  APP_ROOT_LABEL,
-  ROLE_LABEL,
-  SCRATCH_ID_LABEL,
-  SCRATCH_LABEL,
-  SERVICE_LABEL,
-  scratchLabelsForPlan,
-} from "../labels.ts";
-import { coherentContainerOwnership } from "../native-ownership.ts";
+import { APP_LABEL, SERVICE_LABEL } from "../labels.ts";
+import { ownsServiceContainer } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
 import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
 import { listLabeledContainerRows } from "./discover.ts";
@@ -71,8 +62,7 @@ export const selectStaleServiceContainers = (
   providerId: string,
   containers: ReadonlyArray<LabeledServiceContainer>,
 ): ReadonlyArray<StaleServiceContainer> => {
-  const root = String(planAppIdentity(plan).appRoot);
-  const scratch = scratchLabelsForPlan(plan);
+  const ownershipPlan = { ...plan, provider: ProviderId.make(providerId) };
   const planned = new Map(
     Object.values(plan.services).map((service) => [
       String(service.name),
@@ -82,18 +72,16 @@ export const selectStaleServiceContainers = (
   const selected: StaleServiceContainer[] = [];
   for (const container of containers) {
     const labels = container.labels;
-    if (labels[ROLE_LABEL] !== undefined) continue;
-    if (!coherentContainerOwnership(labels, providerId)) continue;
-    if (labels[APP_LABEL] !== plan.id) continue;
-    if (labels[APP_ROOT_LABEL] !== root) continue;
-    // A scratch app and a user app can share a root and a slug; never remove the other kind's container.
-    if (
-      labels[SCRATCH_LABEL] !== scratch[SCRATCH_LABEL] ||
-      labels[SCRATCH_ID_LABEL] !== scratch[SCRATCH_ID_LABEL]
-    )
-      continue;
     const service = labels[SERVICE_LABEL];
     if (service === undefined) continue;
+    if (
+      !ownsServiceContainer(ownershipPlan, {
+        containerId: container.id,
+        service,
+        labels,
+      })
+    )
+      continue;
     const expected = planned.get(service);
     if (expected === undefined) continue;
     const names = container.names.map(stripName).filter((name) => name.length > 0);

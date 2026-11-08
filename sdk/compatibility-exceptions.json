@@ -1771,7 +1771,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "The terminal result member admits optional reason, SQL confirmation service/steps, JSON-safe error fields, validation source provenance, and bounded redacted output: { chunks, truncated }. P2b intentionally requires nonblank remediation on primary and additional errors before v4 ships, matching standalone CommandResultEnvelope; defects normalize to LandoInternalError. Frame discriminators are unchanged. Causes, stacks, private redaction metadata, cyclic, over-depth, and non-JSON-safe fields remain excluded."
+    "justification": "The terminal result member admits optional reason, SQL confirmation service/steps, JSON-safe error fields, validation source provenance, and bounded redacted output: { chunks, truncated }. P2b intentionally requires nonblank remediation on primary and additional errors before v4 ships, matching standalone CommandResultEnvelope; defects normalize to LandoInternalError. Frame discriminators are unchanged. Wrapped tagged causes are projected recursively under error.cause; stacks, non-tagged causes, private redaction metadata, cyclic, over-depth, and non-JSON-safe fields remain excluded."
   },
   {
     "surface": "command:meta:doctor",

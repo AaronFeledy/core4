@@ -256,6 +256,7 @@ export const makeRuntimeProviderRegistry = (
                   providerId: plan.provider,
                   path: issue.path,
                   layout: issue.appId === undefined ? "record" : "per-app",
+                  appId: plan.id,
                 }),
               );
           },
