@@ -2,10 +2,9 @@ import { dataHelperImage } from "@lando/container-runtime/data-plane";
 import type { WorkflowPerformanceLaneId } from "./workflow-performance-plan.ts";
 
 export const imagesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] => {
-  if (laneId === "mysql-snapshot-restore") return ["mysql:8.0", dataHelperImage.ref];
-  if (laneId === "postgres-snapshot-restore") return ["postgres:16", dataHelperImage.ref];
-  if (laneId.startsWith("mysql-")) return ["mysql:8.0"];
-  if (laneId.startsWith("postgres-")) return ["postgres:16"];
+  // Database import and snapshot restore both stream through the data helper.
+  if (laneId.startsWith("mysql-")) return ["mysql:8.0", dataHelperImage.ref];
+  if (laneId.startsWith("postgres-")) return ["postgres:16", dataHelperImage.ref];
   if (laneId === "drupal-journey") return ["php:8.3-apache-bookworm", "mariadb:11.4", "traefik:v3.3"];
   if (laneId === "rails-journey") return ["ruby:3.3-slim", "postgres:16", "redis:7", "traefik:v3.3"];
   return ["node:22"];
