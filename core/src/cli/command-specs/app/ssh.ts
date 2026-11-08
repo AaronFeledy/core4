@@ -27,7 +27,9 @@ export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplemen
   topLevelAlias: true,
   bootstrap: "app",
   strict: false,
-  usage: "[--service SERVICE] [COMMAND...]",
+  usage: "[--service SERVICE] [-- COMMAND...]",
+  commandArgvRemediation:
+    "Pass the command after --: lando ssh -- echo hi. The Lando 3 -c spelling is not supported; use lando ssh -- sh -c <script> for shell syntax.",
   flags: {
     service: Flags.string({ char: "s", description: "Service to open a shell in." }),
     user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),

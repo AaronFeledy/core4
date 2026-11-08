@@ -20,6 +20,11 @@ lando exec --user www-data -- whoami
 lando exec --cwd /srv/app -- pwd
 ```
 
+Put Lando options before the service or command. Unknown flags there fail with
+exit code 2 and show the `lando exec [SERVICE] -- <command>` form. You can also
+omit `--` in `lando exec appserver ls -la`; once the service or command starts,
+its flags pass through unchanged.
+
 Open a shell with `lando ssh` or `lando shell --service <name>`.
 
 ## Pipe input in

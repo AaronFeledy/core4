@@ -575,6 +575,9 @@ const runCompiledCli = async (
       argv: argv.slice(1),
       definitions: flagDefinitionsForCommand(found[1]),
       allowUnknownFlags: isBunOrX || found[1].strict === false,
+      ...(found[1].commandArgvRemediation === undefined
+        ? {}
+        : { commandArgvRemediation: found[1].commandArgvRemediation }),
     });
     if (flagError !== undefined) {
       await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {

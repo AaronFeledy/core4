@@ -32,6 +32,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   bootstrap: "app",
   strict: false,
   usage: "[SERVICE] -- [COMMAND...]",
+  commandArgvRemediation: "Pass the command after --: lando exec [SERVICE] -- <command>.",
   examples: ["lando exec -- echo hello", "lando exec appserver -- echo hello"],
   flags: {
     user: Flags.string({ char: "u", description: "User to run the command as inside the service." }),

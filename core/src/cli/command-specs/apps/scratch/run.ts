@@ -26,6 +26,7 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
   aliases: ["scratch:run", "run"],
   bootstrap: "scratch",
   strict: false,
+  commandArgvRemediation: "Pass the command after --: lando run -- <command>.",
   flags: {
     from: Flags.string({
       description: "Recipe reference for the disposable scratch app (default: the bundled toolbox).",

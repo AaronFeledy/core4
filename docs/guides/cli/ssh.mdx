@@ -33,6 +33,11 @@ Pass a command instead of the default shell:
 lando ssh -- ls -la
 ```
 
+Put Lando options before the command and use `--` to separate its arguments.
+Unknown flags before the command fail with exit code 2. The Lando 3 `-c` option
+is not supported: use `lando ssh -- echo hi`, or `lando ssh -- sh -c 'echo hi'`
+when you need shell syntax. Arguments after `--` pass through unchanged.
+
 To leave shell and common client history off disk for one session, pass `--no-history`. See [Keep shell and client history across rebuilds](../tooling/lando-shell.mdx#keep-shell-and-client-history-across-rebuilds).
 
 Pipe a script in, and the shell runs it without a terminal, then exits at the end of the input:

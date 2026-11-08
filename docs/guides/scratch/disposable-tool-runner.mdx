@@ -21,6 +21,10 @@ This prints the tool's version and destroys the scratch when the tool exits.
 Without `--from`, Lando uses the bundled `toolbox` recipe. Arguments after `--`
 belong to the tool, not to Lando.
 
+Put Lando options before the command. An unknown option such as `--image` there
+fails with exit code 2 before Lando creates a scratch app. Use `--from` to pick
+a recipe, then pass the tool command after `--`: `lando run -- sh -c 'echo ok'`.
+
 If a healthcheck exhausts its attempts or an unsupervised service exits during
 startup, the tool does not run. Failed or interrupted scratch acquisition cleans
 up at every phase, unlike a failed user-app start.
