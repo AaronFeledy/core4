@@ -20,14 +20,14 @@ import {
 } from "@lando/sdk/services";
 
 import "@lando/core/bundled-plugins";
-import { makeLandoRuntime } from "@lando/core";
-import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
+import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
 import {
   CONTAINER_HELPER_SOURCE_DIGEST_PATH,
   CONTAINER_HELPER_SOURCE_ROOT,
   containerHelperLinkerFlags,
   containerHelperSourceDigest,
-} from "../core/src/container-helper/source.ts";
+} from "@lando/container-runtime/container-helper/source";
+import { makeLandoRuntime } from "@lando/core";
 
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 const binaryNames = CONTAINER_HELPER_ARCHES.map((arch) => `linux-${arch}/${CONTAINER_HELPER_FILE}`);

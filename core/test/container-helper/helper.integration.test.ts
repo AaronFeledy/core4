@@ -13,7 +13,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { resolveContainerHelper } from "../../src/container-helper/assets.ts";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 
 // Drives the real Go helper built by `bun run build:container-helper` so the
 // link-time env policy and both wire protocols stay in sync with TypeScript.

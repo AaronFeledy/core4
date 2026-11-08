@@ -1,18 +1,18 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { CONTAINER_HELPER_FILE, type ContainerHelperArch } from "@lando/container-runtime/container-helper";
+import { sha256Hex } from "@lando/sdk/digest";
+import { CONTAINER_HELPER_FILE, type ContainerHelperArch } from "../container-helper.ts";
 import {
   AGENT_CONTEXT_ENV_ALLOWLIST,
   AGENT_ENV_VALUE_MUST_BE_ONE,
   HOST_PROXY_ENV_NAMES,
   HOST_PROXY_ENV_PREFIXES,
-} from "@lando/engine/config/agent-env";
-import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { sha256Hex } from "@lando/sdk/digest";
+  HOST_PROXY_RUN_LANDO_ENV_NAMES,
+} from "./env-policy.ts";
 
 /** Go module, builder Landofile, and build outputs of the in-container helper. */
-export const CONTAINER_HELPER_SOURCE_ROOT = resolve(import.meta.dirname, "../../container-helper");
+export const CONTAINER_HELPER_SOURCE_ROOT = resolve(import.meta.dirname, "../../../core/container-helper");
 
 export const containerHelperDistPath = (arch: ContainerHelperArch): string =>
   join(CONTAINER_HELPER_SOURCE_ROOT, "dist", `linux-${arch}`, CONTAINER_HELPER_FILE);

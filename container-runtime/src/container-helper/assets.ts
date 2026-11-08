@@ -3,13 +3,13 @@ import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/pro
 import { dirname, join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-import { CONTAINER_HELPER_FILE } from "@lando/container-runtime/container-helper";
 import { makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperArtifact, type ContainerHelperTarget } from "@lando/sdk/schema";
 import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
+import { CONTAINER_HELPER_FILE } from "../container-helper.ts";
 
 import { containerHelperNotices } from "./notices.ts";
 import {
