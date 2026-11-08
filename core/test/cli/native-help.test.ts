@@ -201,9 +201,9 @@ describe("native unknown-command failures", () => {
   test("Given a unique built-in suffix, when dispatched, then the canonical command is suggested without resolving the suffix", async () => {
     const result = await runCli(["includes:verify"]);
 
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("UnknownCommandError");
-    expect(result.stderr).toContain("Command includes:verify not found");
+    expect(result.stderr).toContain('Unknown command "includes:verify".');
     expect(result.stderr).toContain("Run `lando app:includes:verify` instead.");
     expect(result.stderr).not.toContain("lando help --all");
   });
@@ -211,14 +211,15 @@ describe("native unknown-command failures", () => {
   test("Given a unique built-in suffix, when JSON is requested, then the tagged failure carries the suggestion", async () => {
     const result = await runCli(["includes:verify", "--format=json"]);
 
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toMatchObject({
       command: "cli:unknown-command",
       ok: false,
       error: {
         _tag: "UnknownCommandError",
-        message: "Command includes:verify not found",
+        message: 'Unknown command "includes:verify".',
+        commandToken: "includes:verify",
         remediation: "Run `lando app:includes:verify` instead.",
       },
     });
@@ -233,7 +234,7 @@ describe("native unknown-command failures", () => {
   test("Given control characters in a near suffix, when dispatched, then the generic diagnostic stays escaped", async () => {
     const result = await runCli(["config:lint\u001b[31m"]);
 
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("config:lint\\u001b[31m");
     expect(result.stderr).toContain("lando help --all");
     expect(result.stderr).not.toContain("lando app:config:lint");
@@ -247,6 +248,7 @@ describe("native unknown-command failures", () => {
     ["retired share-list dispatcher alias", ["share:app:list"]],
     ["retired plugin trust dispatcher alias", ["plugin:trust-authoring-root"]],
     ["unsupported app space form", ["app", "unsupported"]],
+    ["unsupported app lifecycle space form", ["app", "start"]],
     ["unsupported space form", ["apps", "list"]],
     ["unsupported meta space form", ["meta", "unsupported"]],
     ["unsupported global space form", ["global", "unsupported"]],
@@ -257,9 +259,9 @@ describe("native unknown-command failures", () => {
       const result = await runCli(argv);
 
       // Then
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain("UnknownCommandError");
-      expect(result.stderr).toContain(`Command ${argv[0]} not found`);
+      expect(result.stderr).toContain(`Unknown command "${argv[0]}".`);
       expect(result.stderr).toContain("↳");
       expect(result.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
     },
@@ -270,11 +272,55 @@ describe("native unknown-command failures", () => {
     const result = await runCli(["does-not-exist"]);
 
     // Then
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("lando help --all");
   });
 
-  test("Given an app context and an unregistered share-list permutation, when dispatched, then dynamic tooling precedence is preserved", async () => {
+  test("Given a typo of a built-in, when dispatched, then the closest command is named without bug-report locations", async () => {
+    // Given / When
+    const result = await runCli(["strat"]);
+
+    // Then
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Did you mean `lando start`?");
+    expect(result.stderr).toContain("suggestions: start");
+    expect(result.stderr).not.toContain("logsDir:");
+    expect(result.stderr).not.toContain("cacheDir:");
+  });
+
+  test("Given a space-separated meta spelling, when JSON is requested, then the routable colon id is the closest command", async () => {
+    // Given / When
+    const result = await runCli(["meta", "version", "--format=json"]);
+
+    // Then
+    expect(result.exitCode).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "cli:unknown-command",
+      error: { _tag: "UnknownCommandError", commandToken: "meta", suggestions: ["meta:version"] },
+    });
+  });
+
+  test("Given an app context, when a typo of an app task is dispatched, then the task is suggested", async () => {
+    // Given
+    const fixture = await makeAppFixture();
+    try {
+      await writeFreshCache(fixture);
+
+      // When
+      const result = await runCli(["knwon", "--format=json"], { cwd: fixture.root, env: fixture.env });
+
+      // Then
+      expect(result.exitCode).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        command: "cli:unknown-command",
+        error: { _tag: "UnknownCommandError", commandToken: "knwon", suggestions: ["known"] },
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("Given an app context and an unregistered share-list permutation, when dispatched, then the fresh index makes it an unknown command", async () => {
     // Given
     const fixture = await makeAppFixture();
     try {
@@ -284,9 +330,9 @@ describe("native unknown-command failures", () => {
       const result = await runCli(["app:list:share"], { cwd: fixture.root, env: fixture.env });
 
       // Then
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("ToolingCommandUnavailableError");
-      expect(result.stderr).not.toContain("UnknownCommandError");
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("commandToken: app:list:share");
+      expect(result.stderr).not.toContain("ToolingCommandUnavailableError");
     } finally {
       await fixture.cleanup();
     }
@@ -304,7 +350,7 @@ describe("native unknown-command failures", () => {
         const fixtureResult = await runCli([head, "unsupported"], { cwd: fixture.root, env: fixture.env });
 
         // Then
-        expect(fixtureResult.exitCode).toBe(1);
+        expect(fixtureResult.exitCode).toBe(2);
         expect(fixtureResult.stderr).toContain("UnknownCommandError");
         expect(fixtureResult.stderr).not.toContain("ToolingCommandUnavailableError");
         expect(fixtureResult.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
@@ -314,7 +360,7 @@ describe("native unknown-command failures", () => {
     },
   );
 
-  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then unavailable-command text is escaped", async () => {
+  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then unknown-command text is escaped", async () => {
     // Given
     const fixture = await makeAppFixture();
     const commandToken = "unknown-tooling\u001b[31m";
@@ -325,9 +371,9 @@ describe("native unknown-command failures", () => {
       const result = await runCli([commandToken], { cwd: fixture.root, env: fixture.env });
 
       // Then
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("ToolingCommandUnavailableError");
-      expect(result.stderr).toContain("commandId: app:unknown-tooling\\u001b[31m");
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("UnknownCommandError");
+      expect(result.stderr).toContain("commandToken: unknown-tooling\\u001b[31m");
       expect(result.stderr).not.toContain("\u001b");
     } finally {
       await fixture.cleanup();
@@ -346,16 +392,15 @@ describe("native unknown-command failures", () => {
       const envelope: unknown = JSON.parse(result.stdout);
 
       // Then
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(2);
       expect(result.stderr).toBe("");
       expect(result.stdout).not.toContain("\u001b");
       expect(envelope).toMatchObject({
-        command: `app:${name}`,
+        command: "cli:unknown-command",
         ok: false,
         error: {
-          _tag: "ToolingCommandUnavailableError",
-          reason: "unknown-command",
-          commandId: `app:${name}`,
+          _tag: "UnknownCommandError",
+          commandToken: name,
           message: expect.stringContaining("unknown-tooling-json\\u001b[31m"),
         },
       });
@@ -372,7 +417,7 @@ describe("native unknown-command failures", () => {
     const result = await runCli([commandToken]);
 
     // Then
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("\\u001b[31m");
     expect(result.stderr).not.toContain("\u001b");
   });
@@ -387,7 +432,7 @@ describe("native unknown-command failures", () => {
     const typedError = unknownCommandError(commandToken);
 
     // Then
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe("");
     expect(result.stdout).not.toContain("\u001b");
     expect(encoded).toMatchObject({
@@ -395,7 +440,7 @@ describe("native unknown-command failures", () => {
       ok: false,
       error: {
         _tag: "UnknownCommandError",
-        message: "Command does-not-exist\\u001b[31m not found",
+        message: 'Unknown command "does-not-exist\\u001b[31m".',
       },
     });
     expect(typedError.commandToken).toBe(commandToken);
@@ -407,7 +452,7 @@ describe("native unknown-command failures", () => {
     const envelope: unknown = JSON.parse(result.stdout);
 
     // Then
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(envelope).toMatchObject({
       command: "cli:unknown-command",
       ok: false,

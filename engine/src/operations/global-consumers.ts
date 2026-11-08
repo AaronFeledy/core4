@@ -100,7 +100,10 @@ export const resolveGlobalConsumerImpact = (input: {
     );
     if (running.length === 0) continue;
     const requirements = (plan.requires?.globalServices ?? []).filter((id) => selected.has(id));
-    const routed = selected.has(input.routerId) && routerEnabled(plan) && plan.routes.length > 0;
+    const routed =
+      routerEnabled(plan) &&
+      plan.routes.length > 0 &&
+      (plan.router?.id === undefined ? selected.has(input.routerId) : requirements.length > 0);
     if (requirements.length === 0 && !routed) continue;
     consumers.push({
       id: String(plan.id),
@@ -109,7 +112,9 @@ export const resolveGlobalConsumerImpact = (input: {
       root,
       provider: String(plan.provider),
       services: [...new Set(running.map((service) => String(service.service)))].sort(),
-      globalServices: [...new Set([...requirements, ...(routed ? [input.routerId] : [])])].sort(),
+      globalServices: [
+        ...new Set([...requirements, ...(routed && plan.router?.id === undefined ? [input.routerId] : [])]),
+      ].sort(),
       routes: routed ? [...new Set(plan.routes.map((route) => route.hostname))].sort() : [],
     });
   }
@@ -158,7 +163,10 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
       (plan) =>
         String(plan.id) !== "global" &&
         ((plan.requires?.globalServices ?? []).some((id) => selectedIds.has(id)) ||
-          (selectedIds.has(input.routerId) && routerEnabled(plan) && plan.routes.length > 0)),
+          (plan.router?.id === undefined &&
+            selectedIds.has(input.routerId) &&
+            routerEnabled(plan) &&
+            plan.routes.length > 0)),
     );
     if (
       providerId !== input.providerId &&

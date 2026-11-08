@@ -144,14 +144,16 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   );
   const landofile = {
     name: "effective-tooling-cache",
-    services: { [ServiceName.make("web")]: { type: serviceType.id, home: false as const } },
+    services: {
+      [ServiceName.make("web")]: { type: serviceType.id, image: "alpine:3.22", home: false as const },
+    },
     events: { "pre-start": ["echo event"] },
   };
 
   try {
     await writeFile(
       join(appRoot, ".lando.yml"),
-      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\nevents:\n  pre-start:\n    - echo event\n",
+      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    image: alpine:3.22\n    home: false\nevents:\n  pre-start:\n    - echo event\n",
     );
     const runPlan = () =>
       Effect.runPromise(
@@ -282,12 +284,12 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
 
 const phpLandofile = (name: string, tooling?: PhpTooling) => ({
   name,
-  services: { [ServiceName.make("web")]: { type: "php", home: false as const } },
+  services: { [ServiceName.make("web")]: { type: "php", image: "php:8.4-cli", home: false as const } },
   ...(tooling === undefined ? {} : { tooling }),
 });
 
 const phpYaml = (name: string, toolingYaml = ""): string =>
-  `name: ${name}\nservices:\n  web:\n    type: php\n    home: false\n${toolingYaml}`;
+  `name: ${name}\nservices:\n  web:\n    type: php\n    image: php:8.4-cli\n    home: false\n${toolingYaml}`;
 
 const withTempPlannerApp = async (yaml: string, run: () => Promise<void>): Promise<void> => {
   const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-reserved-tooling-plan-")));
@@ -488,8 +490,8 @@ test("plans when the first service contributor disables a reserved name claimed 
   const landofile: LandofileShape = {
     name: "disabled-first-contributor",
     services: {
-      [ServiceName.make("b")]: { type: "php", home: false },
-      [ServiceName.make("a")]: { type: "php", home: false },
+      [ServiceName.make("b")]: { type: "php", image: "php:8.4-cli", home: false },
+      [ServiceName.make("a")]: { type: "php", image: "php:8.4-cli", home: false },
     },
   };
   await withTempPlannerApp(phpYaml("disabled-first-contributor"), async () => {

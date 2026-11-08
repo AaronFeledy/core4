@@ -39,6 +39,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
       {
         id: "traefik",
         module: "./src/proxy.ts",
+        requires: { globalServices: ["traefik"] },
         defaultFor: { platform: ["darwin", "linux", "win32"] },
       },
     ]);

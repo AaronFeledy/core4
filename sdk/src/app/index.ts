@@ -543,7 +543,10 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
-    LandofileNotFoundError | LandofileValidationError | NotImplementedError
+    | LandofileNotFoundError
+    | LandofileValidationError
+    | NotImplementedError
+    | import("../errors/app.ts").AppDataIdentityError
   >;
 }
 

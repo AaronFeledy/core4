@@ -190,6 +190,7 @@ describe("mariadb ServiceType", () => {
 
     // Then
     expect(resolution.tooling?.mariadb).toEqual({
+      wrapper: true,
       description: "Open the MariaDB client for this service.",
       dir: PortablePath.make("/"),
       service: "db",

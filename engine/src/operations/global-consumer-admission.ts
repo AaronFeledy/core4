@@ -75,6 +75,34 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
   const routed = routerEnabled(plan) && plan.routes.length > 0;
   const required = new Set(plan.requires?.globalServices ?? []);
   if (!routed && required.size === 0) return yield* interruptOnAbort(body, signal);
+  if (routed && plan.router?.id !== undefined) {
+    const router = yield* RouterService;
+    if (router.id !== plan.router.id)
+      return yield* Effect.fail(
+        new GlobalAutoStartError({
+          app: plan.name,
+          services: [...required],
+          message: `Plan router ${plan.router.id} differs from the active router ${router.id}.`,
+          remediation:
+            "Retry startup to plan with the selected router, or restore defaultRouterService to the plan's router.",
+        }),
+      );
+  }
+  if (routed && plan.router?.id !== undefined && required.size === 0) {
+    return yield* interruptOnAbort(
+      Effect.gen(function* () {
+        const router = yield* RouterService;
+        const config = {
+          defaultDomain: yield* resolveProxyDefaultDomain,
+          ...(yield* resolveRouterConfigForApp(request.landofileRouter)),
+        };
+        if (router.prepare !== undefined) yield* router.prepare(config);
+        if (request.setupRouter) yield* Effect.scoped(router.setup(config));
+        return yield* body;
+      }),
+      signal,
+    );
+  }
   const failure = (cause: unknown) =>
     cause instanceof AppPlacementError ||
     cause instanceof ServiceNotReadyError ||
@@ -93,7 +121,8 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
     withGlobalMutation(
       Effect.gen(function* () {
         const router = routed ? yield* RouterService : undefined;
-        if (router !== undefined) required.add(router.id);
+        // Legacy applied plans have no selected identity; retain their authored requirements.
+        if (router !== undefined && plan.router?.id === undefined) required.add(router.id);
         const config =
           router === undefined
             ? undefined

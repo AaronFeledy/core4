@@ -18,7 +18,11 @@ import { validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import type { EditorRunner } from "../config-write/editor.ts";
-import { ConfigDescribeResultSchema, describeConfigKey } from "../config-write/key-schema.ts";
+import {
+  ConfigDescribeResultSchema,
+  describeConfigKey,
+  isAppOnlyConfigKey,
+} from "../config-write/key-schema.ts";
 import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import type { ValueType } from "../config-write/write-core";
 import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
@@ -29,8 +33,19 @@ import { GlobalConfigSources } from "../services/config.ts";
 
 export type { EditorRunInput, EditorRunResult, EditorRunner } from "../config-write/editor.ts";
 
+export const CONFIG_SUBCOMMANDS = [
+  "view",
+  "get",
+  "set",
+  "unset",
+  "edit",
+  "validate",
+  "describe",
+  "telemetry",
+  "translate",
+] as const;
 export interface ConfigOptions {
-  readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "translate" | "telemetry";
+  readonly subcommand?: Exclude<(typeof CONFIG_SUBCOMMANDS)[number], "describe">;
   readonly key?: string;
   readonly value?: string;
   readonly type?: ValueType;
@@ -44,11 +59,9 @@ export interface ConfigOptions {
 }
 
 const ConfigValueResultSchema = Schema.Struct({
-  raw: Schema.optionalKey(Schema.Unknown),
-  config: Schema.optionalKey(GlobalConfigView),
-  subcommand: Schema.optionalKey(
-    Schema.Literals(["view", "get", "set", "unset", "edit", "validate", "translate", "telemetry"]),
-  ),
+  config: Schema.optionalKey(Schema.Never),
+  raw: Schema.optionalKey(Schema.Never),
+  subcommand: Schema.Literals(["set", "unset", "edit", "validate", "telemetry"]),
   key: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
   path: Schema.optionalKey(Schema.String),
@@ -70,7 +83,37 @@ const ConfigValueResultSchema = Schema.Struct({
   issues: Schema.optionalKey(Schema.Array(Schema.String)),
   configPath: Schema.optionalKey(Schema.String),
 });
+const ConfigReadFields = {
+  changed: Schema.optionalKey(Schema.Never),
+  dryRun: Schema.optionalKey(Schema.Never),
+  valid: Schema.optionalKey(Schema.Never),
+  issues: Schema.optionalKey(Schema.Never),
+  telemetry: Schema.optionalKey(Schema.Never),
+  configPath: Schema.optionalKey(Schema.Never),
+};
+const ConfigProjectionResultSchema = Schema.Struct({
+  ...ConfigReadFields,
+  subcommand: Schema.Literals(["get", "view"]),
+  key: Schema.String,
+  value: Schema.optionalKey(Schema.Unknown),
+  config: Schema.optionalKey(Schema.Never),
+  raw: Schema.optionalKey(Schema.Never),
+  format: ConfigValueResultSchema.fields.format,
+});
+const ConfigViewFields = {
+  ...ConfigReadFields,
+  subcommand: Schema.optionalKey(Schema.Literal("view")),
+  key: Schema.optionalKey(Schema.Never),
+  value: Schema.optionalKey(Schema.Never),
+  format: ConfigValueResultSchema.fields.format,
+};
+const ConfigReadResultSchema = Schema.Union([
+  ConfigProjectionResultSchema,
+  Schema.Struct({ ...ConfigViewFields, config: GlobalConfigView, raw: Schema.optionalKey(Schema.Never) }),
+  Schema.Struct({ ...ConfigViewFields, raw: Schema.Unknown, config: Schema.optionalKey(Schema.Never) }),
+]);
 export const ConfigResultSchema = Schema.Union([
+  ConfigReadResultSchema,
   ConfigValueResultSchema,
   Schema.Struct({ ...ConfigDescribeResultSchema.fields, format: ConfigValueResultSchema.fields.format }),
 ]);
@@ -153,7 +196,7 @@ const isHostEventsConfigPath = (key: string): boolean => {
 
 const hostEventsWriteError = (key: string, file: string): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
-    message: `Cannot change ${key} through \`meta config\`. ${HOST_EVENTS_HAND_EDIT}`,
+    message: `Cannot change ${key} through \`lando config\`. ${HOST_EVENTS_HAND_EDIT}`,
     file,
     path: key,
     issues: [validationIssue(["hostEvents"], HOST_EVENTS_HAND_EDIT)],
@@ -175,7 +218,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
   if (key === undefined || raw === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
-        message: "`meta config set` requires a <key.path> and a <value>.",
+        message: "`lando config set` requires a <key.path> and a <value>.",
         file: "",
         issues: [validationIssue([], "Missing key path or value.")],
         remediation: "Usage: `lando config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
@@ -183,6 +226,19 @@ const metaConfigSet = Effect.fnUntraced(function* (
     );
   }
   const path = resolveConfigWritePath(options);
+  if (isAppOnlyConfigKey(key)) {
+    const first = parsePathSegments(key)?.[0];
+    const root = first?.kind === "key" ? first.key : key;
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: `Cannot set ${key} in config.yml.`,
+        file: path,
+        path: key,
+        issues: [validationIssue([root], `\`${root}\` is a Landofile key, not a config.yml key.`)],
+        remediation: `Run \`lando app:config set ${key} <value>\` to change this app's Landofile.`,
+      }),
+    );
+  }
   const outcome = yield* runSetVerb({
     ...installationDocument(path),
     key,
@@ -215,7 +271,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
   if (key === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
-        message: "`meta config unset` requires a <key.path>.",
+        message: "`lando config unset` requires a <key.path>.",
         file: "",
         issues: [validationIssue([], "Missing key path.")],
         remediation: "Usage: `lando config unset <key.path>`.",
@@ -313,7 +369,7 @@ export const describeConfig = Effect.fn("AppOperation.configDescribe")(function*
 export const config = Effect.fn("AppOperation.config")(function* (
   inputOptions: ConfigOptions = {},
 ): Effect.fn.Return<
-  typeof ConfigValueResultSchema.Type,
+  typeof ConfigValueResultSchema.Type | typeof ConfigReadResultSchema.Type,
   ConfigError | LandoCommandError | LandofileWriteValidationError | NotImplementedError,
   GlobalConfigSources
 > {
@@ -361,6 +417,7 @@ export const config = Effect.fn("AppOperation.config")(function* (
     const origin = mergeGlobalConfigSources(stack).originAt(["telemetry", "enabled"]).layer.layer;
     const source = origin === "env" ? "env" : origin === "default" ? "default" : "config";
     return {
+      subcommand: "telemetry",
       telemetry: { enabled: decoded.success.config.telemetry.enabled, source },
       changed: false,
       configPath: options.configPath,
@@ -382,27 +439,21 @@ export const config = Effect.fn("AppOperation.config")(function* (
     );
   }
 
-  if (subcommand !== "view" && subcommand !== "get") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `Unknown \`meta config\` subcommand: "${subcommand}".`,
-        file: "",
-        issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
-        remediation: "Usage: `lando meta config [view|get|set|unset|edit|validate|translate|telemetry]`.",
-      }),
-    );
-  }
-
   const key = options.key ?? options.path;
   if (options.source === "raw") {
     const raw = yield* inputs.sources.user
       ? readConfigTree(resolveConfigWritePath(options))
       : Effect.succeed({});
     const value = key === undefined ? undefined : getAtPath(raw, key);
+    if (key !== undefined)
+      return {
+        subcommand,
+        key,
+        ...(value === undefined ? {} : { value }),
+        format: options.format ?? "table",
+      };
     return {
       raw,
-      ...(key === undefined ? {} : { key }),
-      ...(value === undefined ? {} : { value }),
       format: options.format ?? "table",
     };
   }
@@ -423,10 +474,10 @@ export const config = Effect.fn("AppOperation.config")(function* (
   );
 
   const value = key === undefined ? undefined : getAtPath(merged, key);
+  if (key !== undefined)
+    return { subcommand, key, ...(value === undefined ? {} : { value }), format: options.format ?? "table" };
   return {
     config: merged,
-    ...(key === undefined ? {} : { key }),
-    ...(value === undefined ? {} : { value }),
     format: options.format ?? "table",
   };
 });

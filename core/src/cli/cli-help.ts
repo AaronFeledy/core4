@@ -57,6 +57,8 @@ export type ToolingHelpEntry = {
   readonly hidden?: boolean;
   readonly service?: string;
   readonly input?: ToolingHelpInput;
+  readonly wrapper?: true;
+  readonly source?: "bun-script";
 };
 
 type HelpStyle = {
@@ -244,5 +246,14 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
     ...helpSection("ARGUMENTS", argRows, style),
   ];
   if (entry.service !== undefined) lines.push("", `Runs in service ${entry.service}`);
+  if (input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0))
+    lines.push(
+      "",
+      entry.wrapper
+        ? `-h, --help, and --version go to the command. Run \`lando help ${names.primary}\` to see this page.`
+        : entry.source === "bun-script"
+          ? `Run \`lando ${names.primary} -- --help\` to pass --help to the script.`
+          : `Run \`lando ${names.primary} -- --help\` to pass --help to the command, or set wrapper: true if the task wraps a CLI tool.`,
+    );
   return lines.join("\n");
 };

@@ -61,6 +61,7 @@ const service = {
     { type: "volume", store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false },
   ],
   hostAliases: [],
+  routes: [],
   extensions: {},
 } as unknown as ServicePlan;
 
@@ -182,8 +183,13 @@ describe("container plan helpers", () => {
   test("retains prior services only for a non-reconciling partial apply", () => {
     const oldService = { ...service, name: "database" } as ServicePlan;
     const changedService = { ...service, environment: { UPDATED: "yes" } } as ServicePlan;
-    const previous = { ...plan, services: { database: oldService, web: service } } as AppPlan;
-    const incoming = { ...plan, services: { web: changedService } } as AppPlan;
+    const previous = {
+      ...plan,
+      routes: [],
+      stores: [],
+      services: { database: oldService, web: service },
+    } as AppPlan;
+    const incoming = { ...plan, routes: [], stores: [], services: { web: changedService } } as AppPlan;
 
     expect(mergeAppliedPlan(previous, incoming, false).services).toEqual({
       [ServiceName.make("database")]: oldService,

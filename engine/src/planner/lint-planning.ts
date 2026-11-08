@@ -16,6 +16,7 @@ export const planningLintFindings = (
   ];
   const details = { message: error.message, suggestion: error.remediation };
   return Match.value(error).pipe(
+    Match.tag("AppDataIdentityError", () => finding({ ...details, rule: "landofile.validation", path: [] })),
     Match.tag("LandofileValidationError", (failure) =>
       failure.issues.length === 0
         ? finding({ ...details, rule: "landofile.validation", path: [] })

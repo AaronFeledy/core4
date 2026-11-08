@@ -1,3 +1,4 @@
+import { APP_CONFIG_SUBCOMMANDS } from "@lando/engine/operations/app-config-view";
 import type { Effect } from "effect";
 import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
@@ -40,7 +41,8 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   strict: false,
   args: {
     subcommand: Args.string({
-      description: "Subcommand: view (default), get, set, unset, edit, validate, describe.",
+      options: APP_CONFIG_SUBCOMMANDS,
+      description: "Subcommand to run (default: view).",
       required: false,
     }),
     key: Args.string({ description: "Dot-path key for get/set/unset/describe.", required: false }),

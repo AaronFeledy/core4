@@ -12,7 +12,7 @@ import { EventService, PluginRegistry } from "@lando/sdk/services";
 
 import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
-import { makeStdioClient } from "@lando/mcp/testing";
+import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { Stdio } from "effect";
@@ -657,7 +657,7 @@ describe("subscriber runtime integration", () => {
           const config: McpRuntimeConfigShape = McpRuntimeConfig.of({
             commandEntries: [{ spec: versionSpec }],
             defaultAllowlist: [versionSpec.id],
-            runtimeLayer: Layer.succeed(EventService, events),
+            apps: testAppGenerations(Layer.succeed(EventService, events)),
           });
           const mcpLayer = mcpServiceLayer.pipe(
             Layer.provide(

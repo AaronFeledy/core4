@@ -1,5 +1,6 @@
 export { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
 import type { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
 import { ConfigService, PathsService } from "@lando/sdk/services";
@@ -38,7 +39,7 @@ export const hostEventStatusesForPlan = Effect.fnUntraced(function* (
       landofile: plan.events === undefined ? {} : { events: plan.events },
       hostEvents,
       services: stampPlanServices(plan.services),
-      skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
+      skipHostEvents: (yield* CliInvocation).env[LANDO_HOST_EVENT_ENV] === "1",
     }),
   );
 });

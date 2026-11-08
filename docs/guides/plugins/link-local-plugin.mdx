@@ -26,6 +26,14 @@ lando meta:plugin:link ../lando-plugin-demo
 After linking, check that `<userDataRoot>/plugins/<name>` points to your checkout,
 where `<name>` is the plugin manifest's name.
 
+Edits to the linked checkout take effect on the next command or MCP call,
+including edits to modules imported by the entry. If an MCP call is still using
+the previous code, a call that needs the edited plugin waits for it to finish
+before loading the new code. Lando also invalidates saved app plans produced by
+the previous plugin implementation.
+Change detection excludes hidden directories and tracks installed dependencies
+through their package metadata.
+
 ## Fix a rejected manifest
 
 If linking fails with `PluginManifestError`, read the issue paths and reasons

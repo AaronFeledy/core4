@@ -15,7 +15,7 @@ import { schemaIssueKind } from "./validation-issue-kind.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
 
-export { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
+export { closestKeys, suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 
 /**
  * Location of a validation issue inside an authored document: object keys

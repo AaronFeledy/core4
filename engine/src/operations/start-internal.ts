@@ -35,7 +35,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
-import { resolveRouterConfigForApp } from "../config/router-config.ts";
+import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
@@ -262,7 +262,12 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   yield* publishAndRunAppEvent(plan, "pre-start", preStart);
 
   const neededGlobalServices = requiredGlobalServicesForPlan(plan);
-  if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
+  if (
+    routerEnabled(plan) &&
+    plan.routes.length > 0 &&
+    (plan.router?.id ?? proxy.id) === proxy.id &&
+    proxy.prepare !== undefined
+  ) {
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.document.router);
     yield* proxy.prepare({ defaultDomain, router, routerPin });

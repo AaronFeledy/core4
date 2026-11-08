@@ -28,9 +28,11 @@ export type ApplyDebugRendererFlipInput = {
 export const applyDebugRendererFlip = (input: ApplyDebugRendererFlipInput): RendererMode =>
   input.verbose && input.renderer.source === "default" ? "verbose" : input.renderer.mode;
 
-export const readConfigCliGlobals = async (): Promise<ConfigCliGlobals> => {
+export const readConfigCliGlobals = async (
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<ConfigCliGlobals> => {
   const config = mergeGlobalConfigSources(
-    readGlobalConfigSources({ env: process.env, sources: { user: true, env: true } }),
+    readGlobalConfigSources({ env, sources: { user: true, env: true } }),
   ).tree;
   const tracing = config.tracing;
   const otlp = configRecord(tracing) ? tracing.otlp : undefined;
@@ -69,7 +71,8 @@ export const resolveCliRendererMode = async (
 ): Promise<ResolveRendererModeResult> => {
   const initial = resolveRendererMode({ argv: options.argv, env: options.env });
   if (initial.source === "flag" || initial.source === "env") return initial;
-  const loadRenderer = options.loadConfigRenderer ?? (async () => (await readConfigCliGlobals()).renderer);
+  const loadRenderer =
+    options.loadConfigRenderer ?? (async () => (await readConfigCliGlobals(options.env)).renderer);
   const configValue = await loadRenderer();
   if (configValue !== undefined && configValue !== "") {
     return resolveRendererMode({ argv: options.argv, env: options.env, configValue });

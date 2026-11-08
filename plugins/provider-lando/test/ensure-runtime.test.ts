@@ -1238,6 +1238,52 @@ describe("ensureRuntime", () => {
     }
   });
 
+  test("linux helper repair runs inside the setup helpers phase, before launch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-helpers-"));
+    try {
+      // Given: nft is missing and its download fails.
+      const phases: string[] = [];
+      const record =
+        (phase: string) =>
+        (
+          body: Effect.Effect<void, ProviderUnavailableError>,
+        ): Effect.Effect<void, ProviderUnavailableError> =>
+          body.pipe(Effect.onExit((exit) => Effect.sync(() => phases.push(`${phase}:${exit._tag}`))));
+      const downloadFailure = new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message:
+          "Failed to download nftables_1.1.3-1_amd64.deb from https://deb.debian.org: connection reset",
+        remediation: "Retry.",
+      });
+      // When
+      const result = await Effect.runPromise(
+        ensureRuntime({
+          ...paths(dir),
+          platform: "linux",
+          arch: "x64",
+          podmanApi: unreachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          nftProvision: {
+            download: () => Effect.fail(downloadFailure),
+            cacheDir: join(dir, "nft-downloads"),
+            arch: "x64",
+          },
+          setupProgress: {
+            helpers: record("helpers"),
+            launch: record("launch"),
+            readiness: record("readiness"),
+          },
+        }).pipe(Effect.result),
+      );
+      // Then: the failure is attributed to helpers and nothing launched.
+      expect(result).toMatchObject({ _tag: "Failure", failure: downloadFailure });
+      expect(phases).toEqual(["helpers:Failure"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("healthy Windows machine completes setup progress without taking the launch lock", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-progress-"));
     try {
@@ -1253,6 +1299,7 @@ describe("ensureRuntime", () => {
               phases.push("lock");
             }).pipe(Effect.andThen(body)),
           setupProgress: {
+            helpers: (body) => body,
             launch: (body) =>
               Effect.sync(() => {
                 phases.push("launch");
@@ -1418,6 +1465,7 @@ describe("ensureRuntime", () => {
               running = true;
             }).pipe(Effect.andThen(body)),
           setupProgress: {
+            helpers: (body) => body,
             launch: (body) =>
               Effect.sync(() => {
                 phases.push("launch");

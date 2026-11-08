@@ -56,6 +56,7 @@ const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
       mcpAllowed: spec.mcpAllowed,
       hostProxyAllowed: spec.hostProxyAllowed,
       recipePostInitAllowed: spec.recipePostInitAllowed,
+      onlineAcquisition: spec.onlineAcquisition,
       topLevelAlias: spec.topLevelAlias,
       aliases: spec.aliases,
       examples: spec.examples,

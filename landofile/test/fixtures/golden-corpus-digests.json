@@ -18,7 +18,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "c50fa9b247ad9e117cfd51bc4e0459514362225bf9d0a18d739bb48ce9102013"
+      "digest": "985ff8aabfc071da6696b4c136d1f05759ce14eb624b0ac45e915e5e16a834be"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -54,6 +54,10 @@
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/missing-front-matter",
       "digest": "6c888bdc32825b680c353e10e63b052c20746b501869941a8ae22a66b2b39acf"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/raw-help",
+      "digest": "fab07a0f379902450c5926603a2858069d4c12018e4208646164bdadf8d2a4f4"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
@@ -389,6 +393,14 @@
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
       "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/help-forwarding",
+      "digest": "ca641ff757fc660852beb359bbb62e173f8079758268b254781448df877b7951"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/invalid-wrapper",
+      "digest": "de7c35b02f36239aed6566b22710712972b8e24966ee87f334aac17561176562"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",

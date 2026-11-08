@@ -3,6 +3,10 @@ import * as HttpClient from "effect/http/HttpClient";
 
 import type { LandoEvent } from "../services/index.ts";
 import { ContractFailure, bytesEqual, collectByteStream } from "./_shared.ts";
+import {
+  type HttpClientFailureHarness,
+  runHttpClientFailureContract,
+} from "./http-client-failure-contract.ts";
 
 const httpClientContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `HttpClient contract failed: ${assertion}`, assertion, details });
@@ -53,6 +57,7 @@ export interface HttpClientContractHarness<TrustObject = unknown> {
   readonly service: HttpClient.HttpClient;
   readonly serveSource: (url: string, bytes: Uint8Array) => Effect.Effect<void>;
   readonly events: () => Effect.Effect<ReadonlyArray<LandoEvent>>;
+  readonly failures?: HttpClientFailureHarness;
   readonly withPolicy?: <A, E, R>(
     policy: HttpClientContractRequestPolicy,
     effect: Effect.Effect<A, E, R>,
@@ -119,6 +124,7 @@ export const runHttpClientContract: <TrustObject>(
   harness: HttpClientContractHarness<TrustObject>,
 ) {
   const service = harness.service;
+  if (harness.failures !== undefined) yield* runHttpClientFailureContract(service, harness.failures);
   const failWith =
     (assertion: string) =>
     (cause: unknown): ContractFailure =>

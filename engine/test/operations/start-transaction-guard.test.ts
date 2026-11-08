@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
+import { AppId, appIdentityKey } from "@lando/sdk/schema";
 import { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
@@ -89,108 +90,138 @@ for (const [name, operation] of [
 }
 
 for (const name of ["start", "restart", "rebuild"] as const) {
-  test(`${name} checks a blocked transaction once before init or provider action`, async () => {
-    const calls: string[] = [];
-    const failure = new ManagedFileTransactionError({
-      reason: "blocked",
-      phase: "recover",
-      path: String(plan.root),
-      cause: "invariant",
-      remediation: "Resolve the conflicting target before starting.",
-    });
-    const harness = makeHarness({
-      onApply: () => calls.push("apply"),
-      onDestroy: () => calls.push("destroy"),
-      onPublish: (event) => {
-        if (event._tag === "pre-init") calls.push("init");
-        return Effect.void;
-      },
-    });
-    const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
-    const guard = {
-      assertReadable: () => Effect.void,
-      ensureConsistent: (root: string) => {
-        calls.push(`guard:${root}`);
-        return Effect.fail(failure);
-      },
-      pending: () => Effect.succeed(null),
-    };
-    const result =
-      name === "start"
-        ? await Effect.runPromise(
-            startAppForTarget({}, target).pipe(
-              Effect.provideService(ManagedFileTransactionGuard, guard),
-              Effect.provide(harness.layer),
-              Effect.result,
-            ),
-          )
-        : name === "restart"
+  test.each([false, true])(
+    `${name} checks a blocked transaction before init or provider action (rename: %s)`,
+    async (rename) => {
+      const calls: string[] = [];
+      const failure = new ManagedFileTransactionError({
+        reason: "blocked",
+        phase: "recover",
+        path: String(plan.root),
+        cause: "invariant",
+        remediation: "Resolve the conflicting target before starting.",
+      });
+      const harness = makeHarness({
+        appliedPlans: rename
+          ? [
+              {
+                ...plan,
+                id: AppId.make("previous"),
+                identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) },
+              },
+            ]
+          : [],
+        onApply: () => calls.push("apply"),
+        onDestroy: () => calls.push("destroy"),
+        onPublish: (event) => {
+          if (event._tag === "pre-init") calls.push("init");
+          return Effect.void;
+        },
+      });
+      const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const guard = {
+        assertReadable: () => Effect.void,
+        ensureConsistent: (root: string) => {
+          calls.push(`guard:${root}`);
+          return Effect.fail(failure);
+        },
+        pending: () => Effect.succeed(null),
+      };
+      const result =
+        name === "start"
           ? await Effect.runPromise(
-              restartApp({}, target).pipe(
+              startAppForTarget({}, target).pipe(
                 Effect.provideService(ManagedFileTransactionGuard, guard),
                 Effect.provide(harness.layer),
                 Effect.result,
               ),
             )
-          : await Effect.runPromise(
-              rebuildApp({}, target).pipe(
-                Effect.provideService(ManagedFileTransactionGuard, guard),
-                Effect.provide(harness.layer),
-                Effect.result,
-              ),
-            );
-    expect(Result.isFailure(result) && result.failure).toBe(failure);
-    expect(calls).toEqual([`guard:${plan.root}`]);
-    expect(harness.events).toEqual([]);
-  });
+          : name === "restart"
+            ? await Effect.runPromise(
+                restartApp({}, target).pipe(
+                  Effect.provideService(ManagedFileTransactionGuard, guard),
+                  Effect.provide(harness.layer),
+                  Effect.result,
+                ),
+              )
+            : await Effect.runPromise(
+                rebuildApp({}, target).pipe(
+                  Effect.provideService(ManagedFileTransactionGuard, guard),
+                  Effect.provide(harness.layer),
+                  Effect.result,
+                ),
+              );
+      expect(Result.isFailure(result) && result.failure).toBe(failure);
+      expect(calls).toEqual([`guard:${plan.root}`]);
+      expect(harness.events).toEqual([]);
+    },
+  );
 
-  test(`${name} checks the transaction once before init and provider work`, async () => {
-    const calls: string[] = [];
-    const harness = makeHarness({
-      onApply: () => calls.push("apply"),
-      onDestroy: () => calls.push("destroy"),
-      onPublish: (event) => {
-        if (event._tag === "pre-init") calls.push("init");
-        return Effect.void;
-      },
-    });
-    const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
-    const guard = {
-      assertReadable: () => Effect.void,
-      ensureConsistent: (root: string) =>
-        Effect.sync(() => {
-          calls.push(`guard:${root}`);
-        }),
-      pending: () => Effect.succeed(null),
-    };
-    if (name === "start") {
-      await Effect.runPromise(
-        startAppForTarget({}, target).pipe(
-          Effect.provideService(ManagedFileTransactionGuard, guard),
-          Effect.provide(harness.layer),
-        ),
+  test.each([false, true])(
+    `${name} checks the transaction once before init and provider work (rename: %s)`,
+    async (rename) => {
+      const calls: string[] = [];
+      const applied = rename
+        ? [
+            {
+              ...plan,
+              id: AppId.make("previous"),
+              identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) },
+            },
+          ]
+        : [];
+      const harness = makeHarness({
+        appliedPlans: applied,
+        onApply: () => calls.push("apply"),
+        onDestroy: () => {
+          applied.splice(0);
+          calls.push("destroy");
+        },
+        onPublish: (event) => {
+          if (event._tag === "pre-init") calls.push("init");
+          return Effect.void;
+        },
+      });
+      const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const guard = {
+        assertReadable: () => Effect.void,
+        ensureConsistent: (root: string) =>
+          Effect.sync(() => {
+            calls.push(`guard:${root}`);
+          }),
+        pending: () => Effect.succeed(null),
+      };
+      if (name === "start") {
+        await Effect.runPromise(
+          startAppForTarget({}, target).pipe(
+            Effect.provideService(ManagedFileTransactionGuard, guard),
+            Effect.provide(harness.layer),
+          ),
+        );
+      } else if (name === "restart") {
+        await Effect.runPromise(
+          restartApp({}, target).pipe(
+            Effect.provideService(ManagedFileTransactionGuard, guard),
+            Effect.provide(harness.layer),
+          ),
+        );
+      } else {
+        await Effect.runPromise(
+          rebuildApp({}, target).pipe(
+            Effect.provideService(ManagedFileTransactionGuard, guard),
+            Effect.provide(harness.layer),
+          ),
+        );
+      }
+      expect(calls[0]).toBe(`guard:${plan.root}`);
+      expect(calls.filter((call) => call.startsWith("guard:"))).toHaveLength(1);
+      expect(calls.filter((call) => call === "init")).toHaveLength(1);
+      expect(calls.filter((call) => call === "apply")).toHaveLength(1);
+      expect(calls.filter((call) => call === "destroy")).toHaveLength(
+        (name === "start" ? 0 : 1) + (rename ? 1 : 0),
       );
-    } else if (name === "restart") {
-      await Effect.runPromise(
-        restartApp({}, target).pipe(
-          Effect.provideService(ManagedFileTransactionGuard, guard),
-          Effect.provide(harness.layer),
-        ),
-      );
-    } else {
-      await Effect.runPromise(
-        rebuildApp({}, target).pipe(
-          Effect.provideService(ManagedFileTransactionGuard, guard),
-          Effect.provide(harness.layer),
-        ),
-      );
-    }
-    expect(calls[0]).toBe(`guard:${plan.root}`);
-    expect(calls.filter((call) => call.startsWith("guard:"))).toHaveLength(1);
-    expect(calls.filter((call) => call === "init")).toHaveLength(1);
-    expect(calls.filter((call) => call === "apply")).toHaveLength(1);
-    expect(calls.filter((call) => call === "destroy")).toHaveLength(name === "start" ? 0 : 1);
-    expect(calls.indexOf("init")).toBeLessThan(calls.indexOf("apply"));
-    if (name !== "start") expect(calls.indexOf("init")).toBeLessThan(calls.indexOf("destroy"));
-  });
+      expect(calls.indexOf("init")).toBeLessThan(calls.indexOf("apply"));
+      if (name !== "start" && !rename) expect(calls.indexOf("init")).toBeLessThan(calls.indexOf("destroy"));
+    },
+  );
 }

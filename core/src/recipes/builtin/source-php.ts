@@ -28,12 +28,14 @@ export const composerTool = {
   service: "appserver",
   description: "Run Composer inside the appserver service.",
   cmds: ["composer"],
+  wrapper: true,
 } as const;
 
 export const phpTool = {
   service: "appserver",
   description: "Run the PHP CLI inside the appserver service.",
   cmds: ["php"],
+  wrapper: true,
 } as const;
 
 export const phpAppserver = (framework: string) => ({

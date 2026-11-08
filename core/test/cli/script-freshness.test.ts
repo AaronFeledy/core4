@@ -98,10 +98,11 @@ test("a removed indexed script rebuilds the index and reports an unknown command
     });
     await rm(path);
     const result = await invoke(root, cacheRoot, "probe");
-    expect(result.code).toBe(1);
+    expect(result.code).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
-      error: { _tag: "ToolingCommandUnavailableError", reason: "unknown-command", commandId: "app:probe" },
+      command: "cli:unknown-command",
+      error: { _tag: "UnknownCommandError", commandToken: "probe" },
     });
   });
 }, 30_000);

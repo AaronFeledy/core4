@@ -8,6 +8,9 @@ import { PathsService } from "@lando/sdk/services";
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import {
   CertificateAuthority,
@@ -57,6 +60,8 @@ import {
   makeTestRouterService,
   makeTestSshService,
 } from "@lando/sdk/test";
+import { testCaPem } from "@lando/sdk/test";
+import { buildBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
@@ -67,6 +72,7 @@ import {
 } from "../../src/cli/command-specs/meta/setup.ts";
 import {
   type ResolvedSetupNetworkTrust,
+  SetupNetworkTrustError,
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
@@ -1881,8 +1887,8 @@ describe("meta:setup command", () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-"));
     const configCert = join(tempRoot, "config.pem");
     const envCert = join(tempRoot, "env.pem");
-    await Bun.write(configCert, "-----BEGIN CERTIFICATE-----\nconfig\n-----END CERTIFICATE-----\n");
-    await Bun.write(envCert, "-----BEGIN CERTIFICATE-----\nenv\n-----END CERTIFICATE-----\n");
+    await Bun.write(configCert, testCaPem(0));
+    await Bun.write(envCert, testCaPem(1));
     const previous = process.env.LANDO_NETWORK_CA_CERTS;
     process.env.LANDO_NETWORK_CA_CERTS = JSON.stringify([envCert]);
     const calls: string[] = [];
@@ -1935,7 +1941,7 @@ describe("meta:setup command", () => {
   test("reports service injection when setup resolves configured CAs", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
-    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    await Bun.write(corporateCert, testCaPem(2));
     try {
       const result = await Effect.runPromise(
         setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -1961,8 +1967,8 @@ describe("meta:setup command", () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-many-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
     const partnerCert = join(tempRoot, "partner-root.pem");
-    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
-    await Bun.write(partnerCert, "-----BEGIN CERTIFICATE-----\npartner\n-----END CERTIFICATE-----\n");
+    await Bun.write(corporateCert, testCaPem(2));
+    await Bun.write(partnerCert, testCaPem(3));
     try {
       const result = await Effect.runPromise(
         setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -1986,7 +1992,7 @@ describe("meta:setup command", () => {
   test("does not report service injection when CA injection is disabled", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-off-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
-    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    await Bun.write(corporateCert, testCaPem(2));
     try {
       const result = await Effect.runPromise(
         setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -2064,15 +2070,32 @@ describe("meta:setup command", () => {
     }
   });
 
-  test("classifies setup network probe failures with actionable remediation", () => {
+  test("classifies unclassified probe failures by HTTP status, never by message text", () => {
+    // Given: raw transport failures whose text merely mentions TLS or a proxy status.
+    const request = HttpClientRequest.get("https://github.com/");
+    const statusFailure = (status: number) =>
+      new HttpClientError.HttpClientError({
+        reason: new HttpClientError.StatusCodeError({
+          request,
+          response: HttpClientResponse.fromWeb(request, new Response(null, { status })),
+        }),
+      });
+    const transport = (cause: unknown) =>
+      new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
     const cases = [
-      ["HTTP 407 Proxy Authentication Required", "proxy-authentication", "HTTP_PROXY"],
-      ["self signed certificate in certificate chain", "tls-interception", "LANDO_NETWORK_CA_CERTS"],
-      ["connect ETIMEDOUT github.com", "blocked-registry", "network.proxy"],
+      [statusFailure(407), "proxy-authentication", "HTTP_PROXY"],
+      [transport(new Error("HTTP 407 Proxy Authentication Required")), "blocked-endpoint", "network.proxy"],
+      [
+        transport(Object.assign(new TypeError("The TLS handshake failed"), { code: "EPROTO" })),
+        "blocked-endpoint",
+        "network.proxy",
+      ],
+      [new Error("self signed certificate in certificate chain"), "blocked-endpoint", "network.proxy"],
     ] as const;
 
-    for (const [message, kind, remediationNeedle] of cases) {
-      const error = classifySetupNetworkFailure(new Error(message));
+    // When / Then
+    for (const [failure, kind, remediationNeedle] of cases) {
+      const error = classifySetupNetworkFailure(failure);
       expect(error.kind).toBe(kind);
       expect(error.remediation).toContain(remediationNeedle);
     }
@@ -2090,7 +2113,7 @@ describe("meta:setup command", () => {
       });
     const cases = [
       [tunnel(407), "proxy-authentication", "proxy credentials"],
-      [tunnel(403), "blocked-registry", "network.proxy"],
+      [tunnel(403), "proxy-tunnel-refused", "proxy credentials"],
       [
         new HttpTrustError({
           message: "TLS trust verification failed",
@@ -2098,8 +2121,18 @@ describe("meta:setup command", () => {
           kind: "missing-custom-ca",
           remediation: "Supply the issuer CA and retry.",
         }),
-        "tls-interception",
+        "missing-custom-ca",
         "LANDO_NETWORK_CA_CERTS",
+      ],
+      [
+        new HttpTrustError({
+          message: "certificate has expired",
+          urlOrigin: "https://github.com",
+          kind: "certificate-invalid",
+          remediation: "Check the server certificate and retry.",
+        }),
+        "certificate-invalid",
+        "host clock",
       ],
       [
         new HttpTrustError({
@@ -2108,7 +2141,7 @@ describe("meta:setup command", () => {
           kind: "blocked-endpoint",
           remediation: "Allow the registry endpoint and retry.",
         }),
-        "blocked-registry",
+        "blocked-endpoint",
         "network.proxy",
       ],
     ] as const;
@@ -2120,7 +2153,11 @@ describe("meta:setup command", () => {
       expect(error.remediation).toContain(remediationNeedle);
       expect(error.cause).toBe(trust);
     }
-    expect(classifySetupNetworkFailure(tunnel(403)).message).toContain("HTTP 403");
+    expect(classifySetupNetworkFailure(cases[1][0]).message).toBe(cases[1][0].message);
+    // An invalid certificate is not fixed by a CA, so its remediation never points at CA settings.
+    const invalid = classifySetupNetworkFailure(cases[3][0]);
+    expect(invalid.remediation).not.toContain("network.ca.certs");
+    expect(invalid.remediation).not.toContain("LANDO_NETWORK_CA_CERTS");
   });
 
   test("default network trust probe uses resolved proxy and CA settings before setup downloads", async () => {
@@ -2221,7 +2258,7 @@ describe("meta:setup command", () => {
       readonly remediation?: string;
     };
     expect(error._tag).toBe("SetupNetworkTrustError");
-    expect(error.kind).toBe("blocked-registry");
+    expect(error.kind).toBe("blocked-endpoint");
     expect(error.remediation ?? "").toContain("network.proxy");
     expect(setupCalls).toBe(0);
   });
@@ -2374,7 +2411,7 @@ describe("meta:setup command", () => {
     expect(setupCalls).toBe(0);
   });
 
-  test("fails with missing custom CA remediation before long-download setup starts", async () => {
+  test("#2112 renders missing custom CA remediation once before long-download setup starts", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-missing-"));
     const missingCert = join(tempRoot, "missing.pem");
     let setupCalls = 0;
@@ -2411,15 +2448,18 @@ describe("meta:setup command", () => {
       const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected a typed failure");
-      const error = failure.value as {
-        readonly _tag?: string;
-        readonly kind?: string;
-        readonly remediation?: string;
-      };
+      const error = failure.value;
+      if (!Schema.is(SetupNetworkTrustError)(error))
+        throw new TypeError("expected setup network trust error");
       expect(error._tag).toBe("SetupNetworkTrustError");
       expect(error.kind).toBe("missing-custom-ca");
-      expect(error.remediation ?? "").toContain("network.ca.certs");
-      expect(error.remediation ?? "").toContain("LANDO_NETWORK_CA_CERTS");
+      expect(error.remediation).toContain("network.ca.certs");
+      expect(error.remediation).toContain("LANDO_NETWORK_CA_CERTS");
+      const report = buildBugReport({ error: failure.value, context: { commandId: "meta:setup" } });
+      expect(report.remediation).toBe(error.remediation);
+      expect(report.remediation).not.toContain("network.proxy");
+      const rendered = renderPlainBugReport(report);
+      expect(rendered.split(error.remediation).length - 1).toBe(1);
       expect(setupCalls).toBe(0);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

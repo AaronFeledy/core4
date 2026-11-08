@@ -157,14 +157,9 @@ A fast rebuild prints nothing. In a terminal, one that takes longer than about h
 
 If the rebuild fails because of broken YAML, invalid config, a bad tooling definition, or malformed script front matter, the command fails with that error: `LandofileParseError`, `LandofileValidationError`, `BunShellScriptFrontMatterError`, and so on, as `error._tag` in `--format=json`. Fix it and run the command again; Lando does not cache the failure.
 
-Unavailable command metadata produces `ToolingCommandUnavailableError`. Its `reason` tells you what to do:
+A name that matches no script, task, or other command fails with `UnknownCommandError`, the same error you get for any mistyped command. When a command is spelled close to what you typed, Lando names it: `lando gret` suggests `lando greet`, and `--format=json` lists the suggestions, best first, in `error.suggestions`.
 
-| `reason` | Next action |
-| --- | --- |
-| `unknown-command` | Check the name and aliases with `lando help`; the app has no matching command |
-| `missing-cache`, `stale-cache`, `invalid-cache` | The app changed while Lando was reading it. Run the command again |
-
-The error also carries `commandId`, `tool`, and `remediation`, with `staleReason` and `sourcePath` when available. Help does not start a provider or fall back to live discovery. To inspect status, run:
+`ToolingCommandUnavailableError` means Lando could not read this app's command metadata. Its `reason` is `missing-cache`, `stale-cache`, or `invalid-cache`, and it only happens when the app changed while Lando was reading it, so run the command again. The error also carries `commandId`, `tool`, and `remediation`, with `staleReason` and `sourcePath` when available. Help does not start a provider or fall back to live discovery. To inspect status, run:
 
 ```sh
 lando help --format=json
@@ -172,7 +167,9 @@ lando help --format=json
 
 Read `result.toolingMetadata.status`: `fresh`, `not-app`, or `unavailable`. After a failed rebuild, `status` is `unavailable` with `reason: "rebuild-failed"`, a `remediation`, and the underlying `error` as `{ _tag, message }`; human help prints `This app's commands are unavailable:` with the same message while still listing built-in and plugin commands. Fix the reported problem and run help again. `toolingMetadata` covers only scripts and Landofile tooling; plugin commands report through the separate `result.pluginMetadata` and don't depend on this cache.
 
-For a newly added script with declared inputs, `lando <name> --help` shows those inputs right away. Scripts without input declarations receive `--help` as a raw argument. If any declared flag is named `help` or aliased to `h`, Lando leaves both help spellings to the script's input parser instead of showing its own help.
+`lando <name> --help` and `lando <name> -h` show Lando's help without running the script. Either spelling works anywhere before the first `--`. To pass help to the script, run `lando <name> -- --help`: Lando consumes that first `--` and the script receives `--help`. If any declared flag is named `help` or aliased to `h`, Lando leaves both help spellings to the script's input parser instead of showing its own help.
+
+A lone `lando <name> --version` fails with `ToolingInputError` before the body runs, unless a declared flag is named `version`. Run `lando version` for Lando's version, or `lando <name> -- --version` to pass the option to the script. With other tokens, such as `lando <name> --version 2.0`, it is ordinary script input. `wrapper` is not a front-matter key; a thin CLI wrapper belongs in a Landofile task with [`wrapper: true`](../flags-and-args/#forward-undeclared-input).
 
 ## List your commands
 
@@ -446,6 +443,28 @@ lando stamp abc1234
 ## Build, stamp, and seed an env file
 
 <Guide>
+  <Scenario id="raw-script-help-does-not-run" render={false} reason="Both help spellings on an undeclared script must leave its marker absent">
+    <Step name="prepare-raw-script">
+      <UseFixture name="raw-help" />
+    </Step>
+    <Step name="show-raw-script-help">
+      <Verify command="lando wipe --help" expect={{ stdout: { regex: "lando wipe" } }} />
+      <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
+      <Verify command="lando wipe -h" expect={{ stdout: { regex: "lando wipe" } }} />
+      <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
+    </Step>
+    <Step name="refuse-lone-script-version">
+      <Verify command="lando wipe --version --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingInputError[\\s\\S]*\"field\":\\s*\"version\"" } }} />
+      <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
+    </Step>
+    <Step name="forward-help-after-separator">
+      <Run command="lando wipe -- --help" />
+      <Verify file="raw-help/marker" expect={{ regex: "^first=--help\nsecond=\n$" }} />
+    </Step>
+    <Step name="cleanup-raw-script">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="scripts-demo" />

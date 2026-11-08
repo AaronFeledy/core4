@@ -627,7 +627,9 @@ const resolvedOptions = (options: UpdateOptions): RequiredUpdateOptions => ({
   currentVersion: options.currentVersion ?? CORE_VERSION,
   channel: options.channel ?? updateChannelForVersion(options.currentVersion ?? CORE_VERSION),
   dryRun: options.dryRun === true,
-  fetchManifestBytes: options.fetchManifestBytes ?? defaultFetchManifestBytes,
+  fetchManifestBytes:
+    options.fetchManifestBytes ??
+    ((url, signal) => defaultFetchManifestBytes(url, undefined, undefined, signal)),
   selfUpdate: options.selfUpdate,
   updateStatePath: options.updateStatePath ?? updateManifestStatePath(),
   verifyChecksumSignature: options.verifyChecksumSignature ?? defaultVerifyChecksumSignature,
@@ -642,11 +644,13 @@ export const update = Effect.fn("Update.update")(function* (
 ): Effect.fn.Return<UpdateResult, UpdateError, Telemetry | ProcessRunner> {
   const telemetry = yield* Telemetry;
   const downloader = yield* Effect.serviceOption(Downloader);
+  const requestContext = yield* Effect.context<never>();
   const required = resolvedOptions({
     ...options,
     fetchManifestBytes:
       options.fetchManifestBytes ??
-      ((url) => defaultFetchManifestBytes(url, Option.getOrUndefined(downloader))),
+      ((url, signal) =>
+        defaultFetchManifestBytes(url, Option.getOrUndefined(downloader), requestContext, signal)),
   });
   if (!required.dryRun && options.handoff?.token !== undefined) {
     const receipt = yield* options.handoff.consume(options.handoff.token);

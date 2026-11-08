@@ -67,8 +67,9 @@ describe("sveltekit decomposition", () => {
           service: "web",
           description: "Run the Svelte CLI inside the web service.",
           cmds: ["npx svelte-kit"],
+          wrapper: true,
         },
-        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"] },
+        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"], wrapper: true },
       },
     });
     expect<unknown>(result.fragment).toEqual({

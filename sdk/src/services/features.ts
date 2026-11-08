@@ -129,6 +129,8 @@ export interface ServiceFeatureContext {
   readonly primary: boolean;
   /** The app name, when known. */
   readonly appName?: string | undefined;
+  /** Derive persisted defaults (databases, passwords, buckets) from this name so they survive a rename. Defaults to appName. */
+  readonly dataName?: string | undefined;
   /** Absolute host path of the app root. */
   readonly appRoot: string;
   /** Host identity facts (os/user/uid/gid/home), when the planner supplied them. */
@@ -219,6 +221,7 @@ export type ServiceEndpointContext = Pick<
   | "base"
   | "primary"
   | "appName"
+  | "dataName"
   | "appRoot"
   | "host"
   | "normalizedConfig"

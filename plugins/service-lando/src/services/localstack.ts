@@ -146,7 +146,7 @@ export const localstackServiceType: ServiceType = {
       normalizedConfig: { ...input.service, type: "localstack" },
       features: [{ id: LOCALSTACK_FEATURE_ID }],
       tooling: {
-        awslocal: { service: input.name, cmd: "awslocal" },
+        awslocal: { service: input.name, cmd: "awslocal", wrapper: true },
       },
     }),
 };
