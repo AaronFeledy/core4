@@ -49,7 +49,7 @@ export const rejectUnsupportedResultFormat = async (
     }),
     ...refusalOutputMode(activeResultFormat),
     ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
-    failureExitCode: 2,
+    usage: true,
   });
   return true;
 };

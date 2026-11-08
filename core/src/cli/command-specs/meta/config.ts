@@ -8,6 +8,7 @@ import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
 
 import {
+  CONFIG_SUBCOMMANDS,
   type ConfigResult,
   ConfigResultSchema,
   type MetaConfigOptions,
@@ -54,7 +55,8 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   strict: false,
   args: {
     subcommand: Args.string({
-      description: "Subcommand: view (default), get, set, unset, edit, validate, translate, describe.",
+      options: CONFIG_SUBCOMMANDS,
+      description: "Subcommand to run (default: view).",
       required: false,
     }),
     key: Args.string({ description: "Dot-path key for get/set/unset/describe.", required: false }),

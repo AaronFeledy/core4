@@ -36,7 +36,7 @@ const graph = (commands: readonly GraphCommandCandidate[]): PluginContributionGr
 test("catalog excludes built-in canonical and alias winners before loading", async () => {
   // Given
   let shadowLoads = 0;
-  const commands = ["app:start", "config:explain"].map((id) =>
+  const commands = ["app:start", "agent:skills:install"].map((id) =>
     candidate(id, async () => {
       shadowLoads += 1;
       return spec(id);
@@ -50,9 +50,9 @@ test("catalog excludes built-in canonical and alias winners before loading", asy
   // Then
   expect(listing.rows.map((row) => row.id)).toEqual(["fixture:inspect"]);
   expect(await catalog.resolve("app:start")).toBeUndefined();
-  expect(await catalog.resolve("config:explain")).toBeUndefined();
-  expect(await catalog.topic("config")).toBeUndefined();
-  expect(await catalog.remediation("explain")).toBeUndefined();
+  expect(await catalog.resolve("agent:skills:install")).toBeUndefined();
+  expect(await catalog.topic("agent")).toBeUndefined();
+  expect(await catalog.remediation("skills:install")).toBeUndefined();
   expect(shadowLoads).toBe(0);
 });
 
@@ -194,7 +194,7 @@ test("plugin contributions cannot turn a core namespace into a plugin topic", as
     Effect.succeed(graph([candidate("meta:example")])),
   );
   expect(await catalog.topic("meta")).toBeUndefined();
-  expect(await catalog.remediation("meta")).toBeUndefined();
+  expect(await catalog.remediation("meta")).toBe("Run `lando help meta` to list commands.");
 });
 
 test("unavailable discovery is explained by colon resolution and unknown-command remediation", async () => {
@@ -211,8 +211,20 @@ test("unavailable discovery is explained by colon resolution and unknown-command
     unavailable: { _tag: "LandoRuntimeBootstrapError", message: "Discovery broke.", remediation: "Fix it." },
   });
   expect(await catalog.remediation("snapshot")).toBeUndefined();
-  expect(await catalog.unknownCommandRemediation("snapshot")).toBe(
-    "Plugin commands could not be listed: Discovery broke. Fix it.",
-  );
-  expect(await catalog.unknownCommandRemediation("app")).toBe("Run `lando help app` to list commands.");
+  expect(await catalog.unknownCommandGuidance(["snapshot"])).toEqual({
+    remediation:
+      "Run `lando help --all` to list commands. Plugin commands could not be listed: Discovery broke. Fix it.",
+  });
+  expect(await catalog.unknownCommandGuidance(["app"])).toEqual({
+    remediation:
+      "Run `lando help app` to list commands. Plugin commands could not be listed: Discovery broke. Fix it.",
+  });
+  // Failed discovery cannot claim a typo of a built-in, only tokens no other command is close to.
+  expect(await catalog.hasCloseSpelling(["app:strat"])).toBe(true);
+  expect(await catalog.hasCloseSpelling(["fixture:first"])).toBe(false);
+  // Failed discovery still names the built-in a typo was close to.
+  expect(await catalog.unknownCommandGuidance(["strat"])).toEqual({
+    suggestions: ["start"],
+    remediation: "Did you mean `lando start`? Plugin commands could not be listed: Discovery broke. Fix it.",
+  });
 });

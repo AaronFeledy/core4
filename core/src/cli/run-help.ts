@@ -138,8 +138,8 @@ export const rejectUnknownHelpFlags = async (
   if (flagError === undefined) return false;
   await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
     ...(context === undefined ? {} : { context }),
-    failureExitCode: () => 2,
     preCommand: true,
+    usage: true,
   });
   return true;
 };
@@ -231,9 +231,10 @@ export const dispatchHelpTarget = async (
         case "plugin":
           await tryPluginCommandHelp(route.token, catalog);
           return;
-        case "cache-miss":
         case "unknown-tooling":
-          if (route._tag === "unknown-tooling" || !token.startsWith("app:")) {
+          break;
+        case "cache-miss":
+          if (!token.startsWith("app:")) {
             if (await tryPluginCommandHelp(token, catalog)) return;
             if (await catalog.topic(token)) {
               if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
@@ -258,6 +259,7 @@ export const dispatchHelpTarget = async (
             error: unknownCommandError(token),
             rendererMode: activeRendererMode,
             resultFormat: activeResultFormat,
+            usage: true,
           });
         default:
           route satisfies never;
@@ -276,8 +278,9 @@ export const dispatchHelpTarget = async (
   await renderPreCommandFailure({
     ...(catalog.context === undefined ? {} : { context: catalog.context }),
     commandId: "cli:unknown-command",
-    error: unknownCommandError(token, await catalog.unknownCommandRemediation(token)),
+    error: unknownCommandError(token, await catalog.unknownCommandGuidance([token])),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
+    usage: true,
   });
 };

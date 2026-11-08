@@ -3381,15 +3381,26 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("config rejects an unrecognized subcommand instead of silently validating", async () => {
-    await withHarness(async (harness) => {
-      const exit = await Effect.runPromiseExit(
-        globalConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(harness.layer)),
-      );
-
-      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
-      expect(error._tag).toBe("LandofileWriteValidationError");
-      expect(error.message).toContain("bogus");
+  test("event input rejects an undeclared global config verb before global app resolution", async () => {
+    const { metaGlobalConfigSpec } = await import("../../src/cli/command-specs/meta/global/config.ts");
+    const { validateEventCommandInput } = await import("../../src/cli/event-command-input.ts");
+    const error = await Effect.runPromise(
+      Effect.flip(
+        validateEventCommandInput(metaGlobalConfigSpec, {
+          flags: {},
+          args: { subcommand: "valdiate" },
+          raw: [],
+        }),
+      ),
+    );
+    expect(error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "meta:global:config",
+      field: "subcommand",
+      kind: "arg",
+      reason: "option",
+      remediation:
+        'Did you mean "validate"? subcommand takes one of: view, set, unset, edit, validate, describe.',
     });
   });
 

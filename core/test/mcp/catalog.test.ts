@@ -15,6 +15,7 @@ import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/de
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
 import { listSpec as typedListSpec } from "../../src/cli/command-specs/apps/list.ts";
+import { metaConfigSpec } from "../../src/cli/command-specs/meta/config.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { Flags } from "../../src/cli/spec/metadata.ts";
@@ -36,6 +37,21 @@ const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEnt
 });
 
 describe("deriveToolInputSchema", () => {
+  test("projects built-in positional choices into an enum", () => {
+    const spec: LandoCommandSpec = metaConfigSpec;
+    expect(deriveToolInputSchema(spec)).toMatchObject({
+      properties: {
+        args: {
+          properties: {
+            subcommand: {
+              type: "string",
+              enum: ["view", "get", "set", "unset", "edit", "validate", "describe", "telemetry", "translate"],
+            },
+          },
+        },
+      },
+    });
+  });
   test("config describe accepts an optional key and runs without app context", async () => {
     const spec: LandoCommandSpec = appConfigDescribeSpec;
     const input = validateToolInput(spec, {});

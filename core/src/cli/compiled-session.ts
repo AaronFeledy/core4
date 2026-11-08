@@ -143,6 +143,7 @@ export const commandErrorMessage = (
   commandId: string = activeCommandId,
   redactor?: import("@lando/sdk/secrets").Redactor,
   sourceEnv?: Readonly<Record<string, string | undefined>>,
+  usage = false,
 ): string => {
   const context: BugReportContext = { commandId };
   return formatBugReport({
@@ -151,6 +152,7 @@ export const commandErrorMessage = (
     rendererMode: activeRendererMode,
     ...(redactor === undefined ? {} : { redactor }),
     ...(sourceEnv === undefined ? {} : { sourceEnv }),
+    ...(usage ? { usage } : {}),
   });
 };
 

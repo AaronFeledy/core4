@@ -293,12 +293,7 @@ test("Given a fresh cache that does not list a token, when resolving it, then it
     const route = await Effect.runPromise(resolveToolingRoute("disabled-now", { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toEqual({
-      _tag: "unknown-tooling",
-      commandId: "app:disabled-now",
-      name: "disabled-now",
-      remediation: expect.stringContaining("lando help"),
-    });
+    expect(route).toEqual({ _tag: "unknown-tooling", commandId: "app:disabled-now", name: "disabled-now" });
   });
 });
 
@@ -365,11 +360,7 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
     const route = await Effect.runPromise(resolveToolingRoute("unknown", { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toMatchObject({
-      _tag: "unknown-tooling",
-      commandId: "app:unknown",
-      remediation: expect.stringContaining("lando help"),
-    });
+    expect(route).toMatchObject({ _tag: "unknown-tooling", commandId: "app:unknown" });
   });
 });
 
@@ -379,7 +370,8 @@ test("Given an argv-derived tooling name with terminal controls, when its error 
 
   // When
   const error = toolingRouteError({
-    _tag: "unknown-tooling",
+    _tag: "cache-miss",
+    reason: "missing-cache",
     commandId: `app:${name}`,
     name,
     remediation: "refresh",
@@ -660,7 +652,7 @@ test("Given mixed route kinds, help is requested only for the raw script", () =>
       hidden: false,
       appRoot: "/tmp",
     },
-    { _tag: "unknown-tooling", commandId: "app:nope", name: "nope", remediation: "refresh" },
+    { _tag: "unknown-tooling", commandId: "app:nope", name: "nope" },
   ];
 
   // When

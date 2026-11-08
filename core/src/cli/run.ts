@@ -18,24 +18,23 @@ import {
   type CliInvocationContext,
   processInvocationContext,
 } from "../runtime/invocation-context";
+import { rejectCommandCliArgValues } from "./arg-value-validation";
 import {
+  type BuiltInCommandEntry,
   isReservedNamespaceHead,
   notImplementedErrorForCommand,
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
 import { isHelpTopic } from "./cold-path-output";
+import { commandTailIndex, firstCommandWordIndex } from "./command-tail";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
-import { scratchRunHasCommandTail } from "./commands/scratch-run";
 import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
 import { COMPILED_DECODER_ASTS } from "./compiled-decoder-targets";
 import { printToolingHelp } from "./compiled-help";
 import { compiledCommandInputFromArgv } from "./compiled-input";
-import {
-  normalizeCompiledCommandArgv,
-  normalizeCompiledScratchRunArgvForUniversalFlags,
-} from "./compiled-normalize";
+import { normalizeCompiledCommandArgv } from "./compiled-normalize";
 import {
   activeJq,
   activeJsonControl,
@@ -93,6 +92,7 @@ import {
 } from "./run-help";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
+import { resolveTopLevelAliases } from "./spec/command-spec";
 import {
   resolveToolingRoute,
   toolingHelpRequested,
@@ -103,7 +103,6 @@ import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
-export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
 export { compiledCommandInputFromArgv };
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 
@@ -111,21 +110,21 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
 
 const failUnknownCommand = async (
-  token: string,
+  argv: ReadonlyArray<string>,
   catalog: PluginCommandCatalog,
-  suggestCanonicalId = true,
+  suggest = true,
   context?: CliInvocationContext,
-) =>
-  renderPreCommandFailure({
+) => {
+  setActiveCommandId("cli:unknown-command");
+  return renderPreCommandFailure({
     ...(context === undefined ? {} : { context }),
     commandId: "cli:unknown-command",
-    error: unknownCommandError(
-      token,
-      suggestCanonicalId ? await catalog.unknownCommandRemediation(token) : undefined,
-    ),
+    error: unknownCommandError(argv[0] ?? "", suggest ? await catalog.unknownCommandGuidance(argv) : {}),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
+    usage: true,
   });
+};
 
 const jsonControlConflict = (): JsonJqConflictError | JsonProjectionError | undefined => {
   if (activeJsonControl.mode === "list" && activeJq !== undefined) {
@@ -159,7 +158,7 @@ const rejectJsonControlConflicts = async (context: CliInvocationContext): Promis
     error,
     rendererMode: activeRendererMode,
     resultFormat: "json",
-    failureExitCode: 2,
+    usage: true,
   });
   return true;
 };
@@ -178,6 +177,20 @@ const resolveToolingRouteExit = async (
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
+};
+
+/**
+ * Where the verbatim tail of a command that owns one (a non-strict built-in
+ * declaring a `command` arg) begins. Lando reads only the tokens before it, so
+ * `lando exec ls --help` hands `--help` to `ls`.
+ */
+const commandTailStart = (argv: ReadonlyArray<string>, routed: BuiltInCommandEntry | undefined): number => {
+  const headIndex = firstCommandWordIndex(argv, {}, { dispatcherFlags: true });
+  const entry = (headIndex === 0 ? routed : undefined) ?? resolveBuiltInCommand(argv[headIndex]);
+  if (entry === undefined || entry.spec.strict !== false || entry.spec.args?.command === undefined)
+    return argv.length;
+  const flags = flagDefinitionsForCommand(entry.spec);
+  return headIndex + 1 + commandTailIndex(argv.slice(headIndex + 1), flags, { dispatcherFlags: true });
 };
 
 // Help and listing paths stay free of bundled plugin modules; command dispatch registers them before building a runtime.
@@ -260,9 +273,18 @@ const runCompiledCli = async (
       passthroughAliasResolution.success._tag === "not-tooling");
 
   let argv: ReadonlyArray<string> = rawArgv;
+  let commandTail: ReadonlyArray<string> = [];
   setActiveTrace(undefined);
   if (!isBunOrXPassthrough) {
-    argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
+    argv = normalizeCompiledCommandArgv(rawArgv);
+    const tailStart = commandTailStart(
+      argv,
+      passthroughAliasResolution?._tag === "Success" && passthroughAliasResolution.success._tag === "built-in"
+        ? passthroughAliasResolution.success.entry
+        : undefined,
+    );
+    commandTail = argv.slice(tailStart);
+    argv = argv.slice(0, tailStart);
     const isProtocolStdoutCommand =
       rawHead === "mcp" ||
       rawHead === "meta:mcp" ||
@@ -311,6 +333,7 @@ const runCompiledCli = async (
           commandId,
           error,
           ...output,
+          usage: true,
         });
         return;
       }
@@ -345,11 +368,13 @@ const runCompiledCli = async (
           commandId: "cli:format-selection",
           error,
           ...preCommandOutputMode({ argv, env: context.env }),
+          usage: true,
         });
         return;
       }
       throw error;
     }
+    argv = [...argv, ...commandTail];
   } else {
     setActiveResultFormat(DEFAULT_RESULT_FORMAT);
     setActiveJsonControl(JSON_CONTROL_OFF);
@@ -431,11 +456,11 @@ const runCompiledCli = async (
         await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
         return;
       }
-      if (
-        route._tag === "unknown-tooling" &&
-        (await tryPluginOwnedCommand(argv[0] ?? "", argvTail, signal, catalog))
-      )
+      if (route._tag === "unknown-tooling") {
+        if (!(await tryPluginOwnedCommand(argv[0] ?? "", argvTail, signal, catalog)))
+          await failUnknownCommand(argv, catalog, true, context);
         return;
+      }
       const hint = await catalog.remediation(argv[0] ?? "");
       if (hint !== undefined) {
         return renderPreCommandFailure({
@@ -451,8 +476,7 @@ const runCompiledCli = async (
       builtInCommand = route.entry;
       argv = [route.commandId, ...argvTail];
     } else if (route._tag === "alias-disabled") {
-      setActiveCommandId("cli:unknown-command");
-      await failUnknownCommand(route.token, catalog, false, context);
+      await failUnknownCommand([route.token], catalog, false, context);
       return;
     } else if (
       (route._tag === "tooling" || route._tag === "bun-script") &&
@@ -523,10 +547,10 @@ const runCompiledCli = async (
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
-  const isScratchRun = head === "run" || head === "scratch:run" || head === "apps:scratch:run";
-  const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
-  const dashDashIndex = argv.indexOf("--");
-  const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
+  // Help and version flags inside a command tail belong to that command.
+  const landoArgv = argv.slice(0, argv.length - commandTail.length);
+  const dashDashIndex = landoArgv.indexOf("--");
+  const dispatchArgv = dashDashIndex === -1 ? landoArgv : landoArgv.slice(0, dashDashIndex);
   const passthroughHasPayload =
     isBunOrX && dispatchArgv.slice(1).some((arg) => arg !== "--help" && arg !== "-h");
   const found: [string, CompiledCommand] | undefined =
@@ -534,7 +558,6 @@ const runCompiledCli = async (
 
   if (
     !passthroughHasPayload &&
-    !scratchRunHasToolCommand &&
     (dispatchArgv.length === 0 || dispatchArgv.includes("--help") || dispatchArgv.includes("-h"))
   ) {
     const commandArg = dispatchArgv.find((arg) => !arg.startsWith("-"));
@@ -552,11 +575,7 @@ const runCompiledCli = async (
     return;
   }
 
-  if (
-    (dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) &&
-    !isBunOrX &&
-    !scratchRunHasToolCommand
-  ) {
+  if ((dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) && !isBunOrX) {
     if (hostProxy !== undefined) throw hostProxyDenied("meta:version");
     const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
     if (await rejectUnsupportedResultFormat("meta:version", versionSpec, { context })) return;
@@ -575,15 +594,21 @@ const runCompiledCli = async (
       argv: argv.slice(1),
       definitions: flagDefinitionsForCommand(found[1]),
       allowUnknownFlags: isBunOrX || found[1].strict === false,
+      commandTail: !isBunOrX && found[1].strict === false && found[1].args?.command !== undefined,
+      commandName: typeableName({
+        canonicalId: canonicalCommandId,
+        builtInAliases: builtInCommand === undefined ? [] : resolveTopLevelAliases(builtInCommand.spec),
+      }).primary,
     });
     if (flagError !== undefined) {
       await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
         context,
-        failureExitCode: () => 2,
         preCommand: true,
+        usage: true,
       });
       return;
     }
+    if (await rejectCommandCliArgValues(canonicalCommandId, argv.slice(1), context)) return;
     if (await emitJsonListModeIfRequested(found[1].resultSchema, context)) return;
   }
 
@@ -605,7 +630,7 @@ const runCompiledCli = async (
   if (found === undefined) {
     const token = argv[0] ?? "";
     if (await tryPluginOwnedCommand(token, argv.slice(1), signal, catalog)) return;
-    await failUnknownCommand(token, catalog, true, context);
+    await failUnknownCommand(argv, catalog, true, context);
     return;
   }
 

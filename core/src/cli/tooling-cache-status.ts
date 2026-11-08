@@ -13,7 +13,7 @@ export type CliAppCommandCacheReadResult =
   | { readonly status: "rebuild-failed"; readonly sourcePath: string; readonly error: ToolingRebuildFailure };
 
 type CacheRecovery = {
-  readonly reason: Exclude<ToolingCommandUnavailableError["reason"], "unknown-command">;
+  readonly reason: ToolingCommandUnavailableError["reason"];
   readonly remediation: string;
   readonly staleReason?: ToolingCommandUnavailableError["staleReason"];
   readonly sourcePath?: string;

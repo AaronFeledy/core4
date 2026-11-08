@@ -82,13 +82,12 @@ const main = async (): Promise<void> => {
 
     // Every text form of the version command prints the bare embedded version.
     const versionRequest =
-      (argv.length === 1 &&
-        (argv[0] === "--version" ||
-          argv[0] === "-V" ||
-          argv[0] === "-v" ||
-          argv[0] === "meta:version" ||
-          (argv[0] === "version" && !appAliasContext))) ||
-      (argv.length === 2 && argv[0] === "meta" && argv[1] === "version");
+      argv.length === 1 &&
+      (argv[0] === "--version" ||
+        argv[0] === "-V" ||
+        argv[0] === "-v" ||
+        argv[0] === "meta:version" ||
+        (argv[0] === "version" && !appAliasContext));
 
     if (coldPathAllowed && versionRequest) {
       const { CORE_VERSION } = await import("@lando/engine/version");
@@ -98,8 +97,8 @@ const main = async (): Promise<void> => {
 
     if (
       coldPathAllowed &&
-      ((argv.length === 1 && (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
-        (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv"))
+      argv.length === 1 &&
+      (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))
     ) {
       const { defaultShellenvShell, renderShellenv } = await import("../src/cli/commands/shellenv");
       await writeLine("stdout", renderShellenv(defaultShellenvShell()));
