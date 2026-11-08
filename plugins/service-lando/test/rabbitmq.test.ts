@@ -136,6 +136,7 @@ describe("rabbitmq ServiceType", () => {
         expect(String(volumes[0]?.target)).toBe("/var/lib/rabbitmq");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
+          RABBITMQ_NODENAME: "rabbit@localhost",
           RABBITMQ_DEFAULT_USER: "lando",
           RABBITMQ_DEFAULT_PASS: "lando",
         });
@@ -184,7 +185,11 @@ describe("rabbitmq ServiceType", () => {
           type: id,
           image: "rabbitmq:custom",
           port: 25672,
-          environment: { RABBITMQ_DEFAULT_USER: "author", EXTRA_VAR: "extra" },
+          environment: {
+            RABBITMQ_NODENAME: "author@localhost",
+            RABBITMQ_DEFAULT_USER: "author",
+            EXTRA_VAR: "extra",
+          },
           command: ["rabbitmq-server"],
           entrypoint: ["/bin/sh", "-c"],
           workingDirectory: "/var/lib/rabbitmq",
@@ -197,6 +202,7 @@ describe("rabbitmq ServiceType", () => {
           { _tag: "internal", port: 15672, protocol: "http", name: "management" },
         ]);
         expect(plan.environment).toMatchObject({
+          RABBITMQ_NODENAME: "author@localhost",
           RABBITMQ_DEFAULT_USER: "author",
           RABBITMQ_DEFAULT_PASS: "lando",
           RABBITMQ_NODE_PORT: "25672",

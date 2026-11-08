@@ -83,6 +83,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
   ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addEnv("RABBITMQ_NODE_PORT", String(port));
+  ctx.addEnv("RABBITMQ_NODENAME", service.environment?.RABBITMQ_NODENAME ?? "rabbit@localhost");
   ctx.addStorage({
     store: ctx.serviceStoreName("rabbitmq-data"),
     target: DATA_TARGET,
