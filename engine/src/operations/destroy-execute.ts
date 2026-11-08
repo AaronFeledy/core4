@@ -91,6 +91,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       proxy: target !== undefined && Option.isSome(proxy),
     },
     work: Effect.fnUntraced(function* (tree) {
+      const retired = yield* plan.retire ?? Effect.succeed(false);
       if (fileSync?.applicable === true) yield* tree.startTask("file-sync");
       if (fileSync !== undefined) {
         yield* fileSync.quiesceRetained.pipe(Effect.tapError(() => tree.failTask("file-sync")));
@@ -113,7 +114,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         quiesced?.shutdownObservations,
       ];
       let volumesRemoved = false;
-      let changed = snapshotsRemoved > 0;
+      let changed = retired || snapshotsRemoved > 0;
       let skipped: NonNullable<import("@lando/sdk/schema").OwnedResourcesCleanupResult["skipped"]> = [];
       const ownedCleanup = cleanup.pipe(
         Effect.tap((removed) =>

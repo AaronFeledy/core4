@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { DestroyAppOptions } from "@lando/sdk/app";
+import type { DestroyAppError, DestroyAppOptions } from "@lando/sdk/app";
 import { AppResolveError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PreDestroyEvent } from "@lando/sdk/events";
 import {
@@ -37,6 +37,7 @@ export type TeardownPlan = {
   readonly snapshots: ReadonlyArray<SnapshotInfo>;
   readonly followUpOrphans: boolean;
   readonly options: DestroyAppOptions;
+  readonly retire?: Effect.Effect<boolean, DestroyAppError>;
 };
 
 export const uniqueDestroyRefs = (refs: ReadonlyArray<AppRef>): ReadonlyArray<AppRef> => [

@@ -1,12 +1,55 @@
 import { expect, test } from "bun:test";
-import { rmSync } from "node:fs";
-import { ManagedFileTransactionError } from "@lando/sdk/errors";
-import { ManagedFileTransactionGuard } from "@lando/sdk/services";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LandofileValidationError, ManagedFileTransactionError } from "@lando/sdk/errors";
+import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
+import { LandofileService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { openJournal } from "../../src/operations/accelerated-start-journal.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { current, fixture, stale, target } from "./legacy-teardown-support.ts";
+
+test("destroy confirmation refusal preserves every legacy realization and its volumes", async () => {
+  const root = AbsolutePath.make(mkdtempSync(join(tmpdir(), "lando-legacy-refusal-")));
+  const harness = fixture(root);
+  const file = join(root, ".lando.yml");
+  await Bun.write(file, "services: [invalid\n");
+  const failure = new LandofileValidationError({
+    file,
+    message: "Invalid Landofile",
+    remediation: "Restore the Landofile.",
+    issues: [{ path: [], message: "Invalid services" }],
+  });
+  try {
+    const result = await Effect.runPromise(
+      destroyApp(
+        { volumes: true },
+        {
+          ...target,
+          root,
+          plan: { ...target.plan, root, identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) } },
+          app: { ...target.app, root },
+        },
+      ).pipe(
+        Effect.provideService(LandofileService, { discover: Effect.fail(failure) }),
+        Effect.provide(harness.layer),
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileEventsSkippedError" } });
+    expect(harness.applied.map((plan) => plan.id)).toEqual([stale.id, current.id]);
+    expect([...harness.containers]).toEqual([stale.id, current.id]);
+    expect([...harness.volumes]).toEqual([stale.id, current.id]);
+    expect(
+      harness.events.filter((event) => event._tag === "pre-destroy" || event._tag === "post-destroy"),
+    ).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
 
 test.each(["stop", "destroy"] as const)(
   "%s refuses a blocked transaction before retiring either name",

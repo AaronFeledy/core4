@@ -30,7 +30,6 @@ import { TeardownProvider, resolveAppPlacement } from "../providers/app-placemen
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
-  missingRootAppliedTarget,
   resolveTeardownResolution,
   teardownResolutionAt,
   validateResolvedAppTarget,
@@ -39,7 +38,7 @@ import { executeTeardown } from "./destroy-execute.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import { planUserTeardown } from "./destroy-plan.ts";
 import { resolveMissingDestroyRoot } from "./destroy-resolution.ts";
-import { retireSupersededRealizations } from "./superseded-realizations.ts";
+import { prepareSupersededRealizations } from "./superseded-realizations.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -72,7 +71,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
   return yield* withAppMutationLock(
     { id: id ?? root, root, kind: resolution.kind === "applied" ? resolution.target.app.kind : "user" },
     Effect.gen(function* () {
-      let retired = false;
+      let retire: Effect.Effect<boolean, SdkDestroyAppError> | undefined;
       if (resolution.kind === "applied" && request.missingRoot !== true)
         yield* validateResolvedAppTarget(resolution.target);
       if (resolution.kind === "applied" && resolution.target.app.kind === "user") {
@@ -91,32 +90,15 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
           });
           const provider = yield* registry.select(placement.plan ?? placement.superseded[0] ?? target.plan);
           yield* prepareDestroyFileSync(target, provider);
-          retired = yield* retireSupersededRealizations(target, placement.superseded, {
+          retire = yield* prepareSupersededRealizations(target, placement.superseded, {
             provider,
             volumes: options.volumes === true,
             purgeCaches: options.purgeCaches === true,
           });
         }
       }
-      const refreshed =
-        retired && resolution.kind === "applied"
-          ? yield* teardownResolutionAt(
-              resolution.target.root,
-              request.missingRoot !== true,
-              (plan) =>
-                request.missingRoot === true
-                  ? missingRootAppliedTarget(plan, resolution.target.root)
-                  : validateResolvedAppTarget({
-                      ...resolution.target,
-                      plan,
-                      app: { ...resolution.target.app, id: plan.id },
-                    }),
-              resolution.target.app,
-            )
-          : resolution;
-      const plan = yield* planUserTeardown(refreshed, options, request);
-      const result = yield* executeTeardown(plan);
-      return retired ? { ...result, outcome: "destroyed" as const } : result;
+      const plan = yield* planUserTeardown(resolution, options, request);
+      return yield* executeTeardown({ ...plan, ...(retire === undefined ? {} : { retire }) });
     }),
   );
 });
