@@ -38,6 +38,8 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 		switch args[0] {
 		case "exec-run":
 			return runExecRun(args[1:], streams)
+		case "exec-signal":
+			return runExecSignal(argv0, args[1:])
 		case "log-file":
 			if err := runLogFile(streams.stdin, streams.stdout); err != nil {
 				fmt.Fprintln(streams.stderr, err)

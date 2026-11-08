@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -22,6 +20,12 @@ func runExecRun(args []string, streams helperIO) int {
 }
 
 func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, error)) int {
+	if len(args) >= 2 && args[0] == "--nonce" {
+		if !execNonceValid(args[1]) {
+			return 64
+		}
+		args = args[2:]
+	}
 	if len(args) >= 2 && args[0] == "--umask" {
 		mask, err := strconv.ParseUint(args[1], 8, 9)
 		if err != nil || len(args[1]) != 4 {
@@ -49,6 +53,9 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 	if _, err := scan(); err != nil {
 		return 125
 	}
+	cancelSignals := make(chan os.Signal, 2)
+	signal.Notify(cancelSignals, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(cancelSignals)
 
 	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
@@ -154,6 +161,15 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 	}
 
 	for {
+		select {
+		case sig := <-cancelSignals:
+			if sig == syscall.SIGINT {
+				beginCancel(syscall.SIGINT)
+			} else {
+				beginCancel(syscall.SIGTERM)
+			}
+		default:
+		}
 		if controlOpen {
 			if hungup, err := execControlHungup(controlFD); hungup || err != nil {
 				beginCancel(syscall.SIGTERM)
@@ -250,21 +266,4 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 		}
 		<-ticker.C
 	}
-}
-
-func execLaunchFailure(streams helperIO, program string, err error) int {
-	message := "cannot execute"
-	code := 126
-	switch {
-	case errors.Is(err, exec.ErrNotFound), errors.Is(err, os.ErrNotExist), errors.Is(err, syscall.ENOENT):
-		code, message = 127, "command not found"
-	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.ENOEXEC):
-		code = 126
-	default:
-		if pe, ok := err.(*os.PathError); ok && errors.Is(pe.Err, syscall.ENOENT) {
-			code, message = 127, "command not found"
-		}
-	}
-	fmt.Fprintf(streams.stderr, "lando: %s: %s\n", program, message)
-	return code
 }
