@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	execCancelGrace   = 500 * time.Millisecond
-	execCancelJoinMax = 5 * time.Second
-	execControlRead   = 32 * 1024
+	execCancelGrace = 500 * time.Millisecond
+	execControlRead = 32 * 1024
 )
 
 func runExecRun(args []string, streams helperIO) int {
@@ -239,10 +238,6 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 			if reap() {
 				process.Release()
 				return 128 + int(cancelSignal)
-			}
-			if now.Sub(cancelAt) > execCancelJoinMax {
-				process.Release()
-				return 125
 			}
 		}
 		<-ticker.C

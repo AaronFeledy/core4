@@ -1,5 +1,5 @@
 import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
-import { ServiceExecError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
 import { type Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, type Scope, Stream } from "effect";
@@ -116,25 +116,33 @@ export const supervisedExecStream = (
               Queue.offer(input, execSignalFrame(command.signal)).pipe(
                 Effect.andThen(Deferred.await(finished)),
                 Effect.interruptible,
-                Effect.timeout("5 seconds"),
+                Effect.timeout("4 seconds"),
               ),
             );
             if (Exit.isSuccess(joined)) return;
             disconnect.abort();
-            if (owned.attach !== undefined) yield* Fiber.interrupt(owned.attach);
+            const unavailable = (cause?: unknown) =>
+              new ProviderUnavailableError({
+                providerId: options.ctx.providerId,
+                operation: "exec",
+                message: "Could not observe the container exec after disconnecting its control channel.",
+                remediation: "Check the provider connection and service processes before retrying.",
+                ...(cause === undefined ? {} : { cause }),
+              });
             const observed = yield* request({
               method: "GET",
               path: `/exec/${encodeURIComponent(execId)}/json`,
-            });
+            }).pipe(
+              Effect.interruptible,
+              Effect.timeout("1 second"),
+              Effect.catchTag("TimeoutError", (cause) => Effect.fail(unavailable(cause))),
+            );
+            if (observed.status < 200 || observed.status >= 300) return yield* Effect.fail(unavailable());
             const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(
               observed.body,
-            ).pipe(Effect.mapError((cause) => failure("cleanup-inspect", cause)));
+            ).pipe(Effect.mapError(unavailable));
             if (state.Running) return yield* Effect.fail(failure("cleanup-unconfirmed"));
-          }).pipe(
-            Effect.interruptible,
-            Effect.timeout("6 seconds"),
-            Effect.catchTag("TimeoutError", (cause) => Effect.fail(failure("cleanup-timeout", cause))),
-          );
+          });
           const result = yield* Effect.exit(cleanup);
           disconnect.abort();
           if (owned.attach !== undefined) yield* Fiber.interrupt(owned.attach);
