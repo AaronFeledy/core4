@@ -10,6 +10,6 @@
     "composite": false,
     "rootDir": ".."
   },
-  "include": ["./**/*.ts"],
+  "include": ["./**/*.ts", "../core/build.config.ts"],
   "exclude": ["./**/*.test.ts", "./generated/**"]
 }

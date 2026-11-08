@@ -93,6 +93,12 @@
       "path": "./plugins/lando3"
     },
     {
+      "path": "./plugins/ssh-agent"
+    },
+    {
+      "path": "./plugins/secret-store-1password"
+    },
+    {
       "path": "./tsconfig.test.json"
     },
     {
