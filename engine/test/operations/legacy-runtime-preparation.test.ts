@@ -34,7 +34,7 @@ test.each(["stop", "destroy", "restart", "rebuild"] as const)(
             select: () =>
               Effect.succeed({
                 ...base,
-                ensureReady: () =>
+                ensureReady:
                   Effect.sync(() => {
                     preparations++;
                   }),
