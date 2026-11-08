@@ -121,7 +121,7 @@ describe("authoring AST derivation", () => {
     expect(Schema.decodeUnknownResult(derived)({ child: { label: "good" } })._tag).toBe("Success");
   });
 
-  test("keeps a canonical JSON reference for a checked child under decodeTo", () => {
+  test("keeps a named JSON definition for a checked child under decodeTo", () => {
     const source = Schema.Struct({ notice: Public.DeprecationNotice }).pipe(
       Schema.decodeTo(
         Schema.Struct({ notice: Schema.toType(Public.DeprecationNotice) }),
@@ -139,10 +139,13 @@ describe("authoring AST derivation", () => {
 
     expect(document.schema).toHaveProperty(
       ["properties", "notice", "anyOf", 0, "$ref"],
-      "#/$defs/DeprecationNotice",
+      "#/$defs/DeprecationNoticeAuthoring",
     );
-    expect(document.definitions).toHaveProperty(["DeprecationNotice", "required"], ["since", "note"]);
-    expect(document.definitions).toHaveProperty(["DeprecationNotice", "properties", "severity"]);
+    expect(document.definitions).toHaveProperty(
+      ["DeprecationNoticeAuthoring", "required"],
+      ["since", "note"],
+    );
+    expect(document.definitions).toHaveProperty(["DeprecationNoticeAuthoring", "properties", "severity"]);
     expect(
       Schema.decodeUnknownResult(derived)({ notice: { since: "4.2.0", removeIn: "4.1.0", note: "Old" } })
         ._tag,
@@ -698,41 +701,45 @@ describe("Landofile authoring schemas", () => {
     expect(results).toEqual(samples.map(() => ({ shape: "Failure", wire: "Success" })));
   });
 
-  test("publishes deprecation constraints without requiring them on a partial fragment", () => {
+  test("publishes expression-aware deprecation constraints and keeps fragments partial", () => {
     // Given the published authoring documents.
     const shape = getJsonSchema("LandofileAuthoringShape");
     const fragment = getJsonSchema("LandofileAuthoringFragment");
 
-    // When a fragment omits the notice fields the published schema still lists.
+    // When a fragment omits notice fields another layer may supply.
     const decoded = Schema.decodeUnknownResult(Public.LandofileAuthoringFragment)({
       tooling: { task: { service: "web", cmd: "echo", deprecated: { since: "4.2.0" } } },
     });
 
-    // Then the JSON projection keeps the notice contract and the fragment stays partial.
+    // Then the complete shape publishes the notice contract with expression alternatives,
+    // and the fragment definition is as partial as fragment decoding.
     expect(shape).toMatchObject({
       $defs: {
-        DeprecationNotice: {
+        DeprecationNoticeAuthoring: {
           required: ["since", "note"],
           properties: {
-            docsUrl: { format: "uri", pattern: "^[Hh][Tt][Tt][Pp][Ss]?://" },
-            since: { pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$" },
-            severity: { enum: ["info", "warn", "error"] },
+            docsUrl: { anyOf: [{ format: "uri", pattern: "^[Hh][Tt][Tt][Pp][Ss]?://" }, {}] },
+            since: { anyOf: [{ pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$" }, {}] },
           },
         },
       },
     });
-    expect(fragment).toMatchObject({ $defs: { DeprecationNotice: { required: ["since", "note"] } } });
-    for (const [document, taskDefinition] of [
-      [shape, "ToolingTaskInputAuthoring"],
-      [fragment, "ToolingTaskInputAuthoringFragment"],
+    expect(shape).toHaveProperty(
+      ["$defs", "DeprecationNoticeAuthoring", "properties", "severity", "anyOf", 0, "anyOf"],
+      [{ type: "string", enum: ["info"] }, { $ref: "#/$defs/AuthoringExpressionEncoded" }],
+    );
+    expect(fragment).toHaveProperty(["$defs", "DeprecationNoticeAuthoringFragment", "properties", "note"]);
+    expect(fragment).not.toHaveProperty(["$defs", "DeprecationNoticeAuthoringFragment", "required"]);
+    for (const [document, taskDefinition, noticeDefinition] of [
+      [shape, "ToolingTaskInputAuthoring", "DeprecationNoticeAuthoring"],
+      [fragment, "ToolingTaskInputAuthoringFragment", "DeprecationNoticeAuthoringFragment"],
     ] as const) {
-      expect(document).toHaveProperty(["$defs", "DeprecationNotice", "required"], ["since", "note"]);
       const definitions = document.$defs;
       if (typeof definitions !== "object" || definitions === null) {
         throw new TypeError("Expected JSON Schema definitions");
       }
       expect(JSON.stringify(Reflect.get(definitions, taskDefinition))).toContain(
-        '"$ref":"#/$defs/DeprecationNotice"',
+        `"$ref":"#/$defs/${noticeDefinition}"`,
       );
     }
     expect(shape).toHaveProperty(["properties", "tooling", "anyOf", 0, "additionalProperties"], {
@@ -740,7 +747,7 @@ describe("Landofile authoring schemas", () => {
     });
     expect(shape).toHaveProperty(
       ["$defs", "ToolingTaskInputAuthoring", "anyOf", 0, "anyOf", 0, "properties", "deprecated", "anyOf"],
-      [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string", pattern: expect.any(String) }],
+      [{ $ref: "#/$defs/DeprecationNoticeAuthoring" }, { type: "string", pattern: expect.any(String) }],
     );
     expect(decoded._tag).toBe("Success");
   });
