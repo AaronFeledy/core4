@@ -1,8 +1,20 @@
 import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
+import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
-import { type Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, type Scope, Stream } from "effect";
+import {
+  type Cause,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Queue,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
 import { containerHelperDelivery } from "./container-helper.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { execDataFrames, execEofFrame, execSignalFrame } from "./exec-control.ts";
@@ -137,6 +149,7 @@ export const supervisedExecStream = (
             );
             if (Exit.isSuccess(joined)) return;
             disconnect.abort();
+            const inspectPath = `/exec/${encodeURIComponent(execId)}/json` as const;
             const unavailable = (cause?: unknown) =>
               new ProviderUnavailableError({
                 providerId: options.ctx.providerId,
@@ -145,19 +158,42 @@ export const supervisedExecStream = (
                 remediation: "Check the provider connection and service processes before retrying.",
                 ...(cause === undefined ? {} : { cause }),
               });
-            const observed = yield* request({
-              method: "GET",
-              path: `/exec/${encodeURIComponent(execId)}/json`,
-            }).pipe(
+            let observed: Exit.Exit<boolean, ProviderError> = Exit.succeed(true);
+            yield* runProbe(
+              {
+                id: "exec-disconnect-join",
+                policy: { maxAttempts: 11, delay: Duration.millis(100) },
+                classify: {
+                  success: () => (Exit.isFailure(observed) || !observed.value ? "green" : "yellow"),
+                  failure: () => "red",
+                },
+              },
+              Effect.gen(function* () {
+                const response = yield* request({
+                  method: "GET",
+                    path: inspectPath,
+                });
+                if (response.status < 200 || response.status >= 300) return yield* Effect.fail(unavailable());
+                const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(
+                  response.body,
+                ).pipe(Effect.mapError(unavailable));
+                return state.Running;
+              }).pipe(
+                Effect.exit,
+                Effect.tap((exit) =>
+                  Effect.sync(() => {
+                    observed = exit;
+                  }),
+                ),
+              ),
+            ).pipe(
+              Effect.mapError(unavailable),
               Effect.interruptible,
-              Effect.timeout("1 second"),
+              Effect.timeout("1500 millis"),
               Effect.catchTag("TimeoutError", (cause) => Effect.fail(unavailable(cause))),
             );
-            if (observed.status < 200 || observed.status >= 300) return yield* Effect.fail(unavailable());
-            const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(
-              observed.body,
-            ).pipe(Effect.mapError(unavailable));
-            if (state.Running) return yield* Effect.fail(failure("cleanup-unconfirmed"));
+            if (Exit.isFailure(observed)) return yield* Effect.failCause(observed.cause);
+            if (observed.value) return yield* Effect.fail(failure("cleanup-unconfirmed"));
           });
           const result = yield* Effect.exit(cleanup);
           disconnect.abort();

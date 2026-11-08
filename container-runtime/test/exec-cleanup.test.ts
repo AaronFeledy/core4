@@ -7,7 +7,7 @@ import { supervisedExecStream } from "../src/exec-supervision.ts";
 import { ctx, plan, service } from "./fixtures/environment-values.ts";
 import { fixtureHelperMount, fixtureHelperOptions } from "./support/exec-supervision.ts";
 
-test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
+test.each(["stopped", "joining", "running", "http-error", "unresponsive"] as const)(
   "a stalled cancellation disconnects and inspects the owned exec (%s)",
   async (outcome) => {
     const started = Deferred.makeUnsafe<void>();
@@ -22,7 +22,9 @@ test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
           if (outcome === "unresponsive") return Effect.never;
           return Effect.succeed({
             status: outcome === "http-error" ? 500 : 200,
-            body: JSON.stringify({ Running: outcome === "running" }),
+            body: JSON.stringify({
+              Running: outcome === "running" || (outcome === "joining" && inspections < 4),
+            }),
           });
         }
         return Effect.succeed({
@@ -70,13 +72,13 @@ test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
         signal.abort("SIGINT");
         yield* TestClock.adjust("250 millis");
         expect(attached?.aborted).toBe(true);
-        yield* TestClock.adjust("1 second");
+        yield* TestClock.adjust("1500 millis");
         const exit = yield* Fiber.await(child);
         if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
         return { elapsed: (yield* Clock.currentTimeMillis) - begin, exit: exit.value };
       }).pipe(Effect.provide(TestClock.layer())),
     );
-    expect(inspections).toBe(1);
+    expect(inspections).toBe(outcome === "joining" ? 4 : outcome === "running" ? 11 : 1);
     expect(Exit.isFailure(result.exit)).toBe(true);
     if (Exit.isSuccess(result.exit)) throw new Error("Cancellation succeeded");
     expect(Cause.hasInterrupts(result.exit.cause)).toBe(true);
@@ -88,7 +90,7 @@ test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
       return [];
     });
     expect(errors).toEqual(
-      outcome === "stopped"
+      outcome === "stopped" || outcome === "joining"
         ? []
         : [
             expect.objectContaining({
@@ -96,6 +98,6 @@ test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
             }),
           ],
     );
-    expect(result.elapsed).toBeLessThanOrEqual(1250);
+    expect(result.elapsed).toBeLessThanOrEqual(1750);
   },
 );
