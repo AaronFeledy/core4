@@ -9,7 +9,7 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, type AppPlan, type PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type AppRef, type PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -208,15 +208,17 @@ export const makeRuntimeProviderRegistry = (
       });
 
       const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
-        (root: AbsolutePath) =>
+        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
           appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers)),
+            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers, app)),
           ),
       );
 
       const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(
-        (root: AbsolutePath) =>
-          appliedStateProviders.pipe(Effect.flatMap((providers) => resolveTeardownEvidence(root, providers))),
+        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
+          appliedStateProviders.pipe(
+            Effect.flatMap((providers) => resolveTeardownEvidence(root, providers, app)),
+          ),
       );
 
       return RuntimeProviderRegistry.of({

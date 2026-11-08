@@ -13,6 +13,7 @@ import {
   AppId,
   type AppPlan,
   AppPlan as AppPlanSchema,
+  type AppRef,
   LoadScopedLandofile,
   type ProviderCapabilities,
   ProviderId,
@@ -333,10 +334,10 @@ export const makeHarness = (
         : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
     },
     // What a provider really hands back: a decoded record, never the planner's object, with no events.
-    resolveAppliedPlan: (root: AbsolutePath) =>
+    resolveAppliedPlan: (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
       root === globalAdmission.root
         ? Effect.sync(() => globalAdmission.appliedPlan())
-        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root),
+        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root, app),
     resolveTeardownEvidence:
       options.resolveTeardownEvidence ??
       ((root: AbsolutePath) =>
