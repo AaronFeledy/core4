@@ -117,7 +117,7 @@ export const execCancellationFixture = async (user?: string) => {
     const stream = base.stream;
     if (request === undefined || stream === undefined) throw new Error("Missing engine transport");
     const commands: (readonly string[])[] = [];
-    const disconnected = new AbortController();
+    let disconnected = new AbortController();
     const api = {
       ...base,
       request: (input: EngineHttpRequest) => {
@@ -147,7 +147,10 @@ export const execCancellationFixture = async (user?: string) => {
       provider,
       target: { app: id, service, plan, ...(user === undefined ? {} : { user }) },
       commands,
-      disconnect: () => disconnected.abort(),
+      disconnect: () => {
+        disconnected.abort();
+        disconnected = new AbortController();
+      },
       inside: (args: readonly string[]) => docker(["exec", container, ...args]),
       close: () => docker(["rm", "--force", container]),
     };

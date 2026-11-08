@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
+import { containerHelperDelivery } from "@lando/container-runtime/container-helper";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { exec as runtimeExec } from "@lando/container-runtime/podman/exec";
 import { parseProcSelfStatusUmask } from "@lando/container-runtime/podman/exec-umask";
@@ -136,6 +137,10 @@ describe("docker exec umask mode", () => {
         },
       };
       const masks = { [serviceName]: "0022", [loose]: "0000", [strict]: "0077" };
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(makeDockerApiClient(cliHost)));
+      const helper = containerHelperDelivery(
+        await Effect.runPromise(helperOptions.resolveContainerHelper(helperOptions.helperTarget)),
+      );
       const created: string[] = [];
       const create = async (name: ServiceName, umask: string) => {
         const container = serviceContainerName(scopedPlan, name);
@@ -145,6 +150,8 @@ describe("docker exec umask mode", () => {
           container,
           "--umask",
           umask,
+          "--mount",
+          `type=bind,source=${helper.source},target=${helper.target},readonly`,
           ...(name === loose ? ["--user", "1000:1000"] : []),
           "alpine:3.20",
           "sleep",
@@ -164,7 +171,6 @@ describe("docker exec umask mode", () => {
         Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
-              const helperOptions = yield* containerHelperTestOptions(api);
               return yield* runtimeExec(
                 scopedPlan,
                 { app: appId, service: name, ...(user === undefined ? {} : { user }) },

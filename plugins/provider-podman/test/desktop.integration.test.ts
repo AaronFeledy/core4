@@ -12,6 +12,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import {
   installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
   supervisedExecFixtureOptions,
 } from "@lando/container-runtime/testing/exec-supervision";
 import { PodmanMachineNotRunningError, resolvePodmanDesktopMachine } from "@lando/provider-podman";
@@ -521,6 +522,7 @@ liveDesktopTest(
         Effect.provide(
           makeProviderLayer({
             podmanApi: makePodmanApiClient(socket),
+            resolveContainerHelper: resolveBuiltContainerHelperForTest,
             platform: process.platform === "darwin" ? "darwin" : "win32",
           }),
         ),

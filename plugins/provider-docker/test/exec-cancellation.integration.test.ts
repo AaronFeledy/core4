@@ -31,6 +31,8 @@ describe.skipIf(host === undefined)("Mounted helper non-TTY exec (Docker-compati
         [
           "/run/lando/helper/lando-container-helper",
           "exec-run",
+          "--nonce",
+          expect.stringMatching(/^[a-f0-9]{32}$/u),
           "--umask",
           "0022",
           "--",

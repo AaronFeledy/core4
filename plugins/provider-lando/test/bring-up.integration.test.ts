@@ -12,6 +12,7 @@ import type {
 import {
   containerHelperTestOptions,
   fixtureHelperMount,
+  resolveBuiltContainerHelperForTest,
 } from "@lando/container-runtime/testing/exec-supervision";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
@@ -1000,6 +1001,7 @@ describe("provider-lando bringUp", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: makePodmanApiClient(socketPath ?? ""),
               platform: "win32",
+              resolveContainerHelper: resolveBuiltContainerHelperForTest,
             }),
           ),
         ),

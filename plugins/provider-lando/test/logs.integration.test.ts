@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import * as LandoProvider from "@lando/provider-lando";
@@ -239,7 +240,8 @@ describe("provider-lando logs", () => {
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 
-      await Effect.runPromise(bringUp(plan, { api }));
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+      await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
       try {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         const chunks = await Effect.runPromise(

@@ -269,7 +269,7 @@ describe("provider-lando exec", () => {
       const api = makePodmanApiClient(socketPath ?? "");
       const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
 
-      await Effect.runPromise(bringUp(plan, { api }));
+      await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
       try {
         const chunks = await Effect.runPromise(
           execStream(

@@ -12,6 +12,7 @@ import { bringDown } from "../../src/podman/bring-down.ts";
 import { exec } from "../../src/podman/exec.ts";
 import { postServiceLifecycle } from "../../src/service-lifecycle.ts";
 import { volumeCreationLabels } from "../../src/volume-creation.ts";
+import { containerHelperTestOptions } from "./exec-supervision.ts";
 import { bringUp } from "./service-creation.ts";
 import {
   decodeStorageContainer,
@@ -57,6 +58,7 @@ export const runStorageLifecycle = async (
   const options = {
     api,
     ctx,
+    ...(await Effect.runPromise(containerHelperTestOptions(client))),
     dialect: input.provider === "docker" ? dockerLifecycleDialect : libpodLifecycleDialect,
   };
   const target = { app: plan.id, service: serviceName };

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveBuiltContainerHelperForTest } from "@lando/container-runtime/testing/exec-supervision";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { layer as plannerLayer } from "@lando/engine/services/planner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -75,6 +76,7 @@ test.skipIf(liveSocket === undefined)(
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           podmanApi: makePodmanApiClient(liveSocket?.socketPath ?? ""),
+          resolveContainerHelper: resolveBuiltContainerHelperForTest,
           appliedPlanState: makePluginStateStore(
             makeTestStateStore().service,
             AbsolutePath.make(stateDir),
