@@ -12,6 +12,34 @@ const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or
 
 test.each([
   [
+    "    - FOO",
+    'Landofile service environment entry "FOO" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).',
+  ],
+  ["    - __proto__=x", 'The key "__proto__" is reserved and cannot be used in an environment map.'],
+  [
+    "    FOO: null",
+    'Landofile service environment entry "FOO" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.',
+  ],
+] as const)("merges env transformation diagnostics for #2194: %s", async (value, message) => {
+  const cwd = await mkdtemp(join(tmpdir(), "lando-lint-env-"));
+  try {
+    for (const [prefix, path] of [
+      ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
+      ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
+    ] as const) {
+      await writeFile(join(cwd, ".lando.yml"), `name: lint-parity\n${prefix}\n  ${value}\n`);
+      const result = await Effect.runPromise(lintLandofile({ cwd }));
+      expect(result.violations).toEqual([
+        expect.objectContaining({ path, message, scopes: ["fragment", "effective"] }),
+      ]);
+    }
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  [
     "services:\n  api:\n    environment: 5",
     ["services", "api", "environment"],
     "Expected a map or a list of KEY=VALUE strings",

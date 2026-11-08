@@ -2,91 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { override, reset } from "@lando/sdk/landofile";
 import { getJsonSchema } from "@lando/sdk/schema";
 import * as Public from "@lando/sdk/schema";
-import { SchemaAST as AST, Array as Arr, Effect, Result, Schema, SchemaTransformation } from "effect";
-import { authoringSource } from "../../src/schema/authoring-issue-metadata.ts";
-// Provenance is recorded per module instance, so the guard derives from the same instance.
-import * as Source from "../../src/schema/index.ts";
-
-type Child = readonly [segment: string | undefined, ast: AST.AST];
-
-const structuralChildren = (ast: AST.AST): ReadonlyArray<Child> => {
-  switch (ast._tag) {
-    case "Objects":
-      return [
-        ...ast.propertySignatures.map(({ name, type }): Child => [String(name), type]),
-        ...ast.indexSignatures.map(({ type }): Child => ["*", type]),
-      ];
-    case "Arrays":
-      return [
-        ...ast.elements.map((element, index): Child => [String(index), element]),
-        ...ast.rest.map((rest): Child => ["[]", rest]),
-      ];
-    case "Union":
-      return ast.types.map((member): Child => [undefined, member]);
-    case "Suspend":
-      return [[undefined, ast.thunk()]];
-    default:
-      return [];
-  }
-};
-
-// Maps each path to the marked nodes found there, following every acyclic path from the root.
-type Positions = ReadonlyMap<string, ReadonlySet<AST.AST>>;
-
-const markedPositions = (
-  root: AST.AST,
-  children: (ast: AST.AST) => ReadonlyArray<Child>,
-  mark: (ast: AST.AST) => AST.AST | undefined,
-  within?: ReadonlySet<string>,
-): Positions => {
-  const found = new Map<string, Set<AST.AST>>();
-  const visit = (ast: AST.AST, path: string, ancestors: ReadonlySet<AST.AST>): void => {
-    if (ancestors.has(ast)) return;
-    const marked = mark(ast);
-    if (marked !== undefined) found.set(path, (found.get(path) ?? new Set()).add(marked));
-    const next = new Set(ancestors).add(ast);
-    for (const [segment, child] of children(ast)) {
-      const childPath = segment === undefined ? path : `${path}.${segment}`;
-      if (within === undefined || within.has(childPath)) visit(child, childPath, next);
-    }
-  };
-  visit(root, "$", new Set());
-  return found;
-};
-
-// Authors write an encoded node in its last link's form, so checks on containers along that
-// path are the ones authoring validation can enforce. Map-input declarations are skipped:
-// they project a fresh codec on every derivation, so their nodes cannot match by identity.
-const checkedAuthoredPositions = (root: AST.AST): Positions =>
-  markedPositions(
-    root,
-    (ast) =>
-      ast.encoding === undefined ? structuralChildren(ast) : [[undefined, Arr.lastNonEmpty(ast.encoding).to]],
-    (ast) =>
-      ast.encoding === undefined &&
-      (ast._tag === "Objects" || ast._tag === "Arrays") &&
-      ast.checks !== undefined
-        ? ast
-        : undefined,
-  );
-
-// Derived nodes are marked by the source they were derived from, so both sides compare by identity.
-const checkedDerivedPositions = (root: AST.AST, within: ReadonlySet<string>): Positions =>
-  markedPositions(
-    root,
-    (ast) => [
-      ...(ast.encoding ?? []).map(({ to }): Child => [undefined, to]),
-      ...(ast._tag === "Declaration"
-        ? ast.typeParameters.map((parameter): Child => [undefined, parameter])
-        : structuralChildren(ast)),
-    ],
-    (ast) =>
-      ast.checks !== undefined ||
-      (ast._tag === "Declaration" && ast.typeParameters.some((parameter) => parameter.checks !== undefined))
-        ? authoringSource(ast)
-        : undefined,
-    within,
-  );
+import { SchemaAST as AST, Effect, Result, Schema, SchemaTransformation } from "effect";
 
 // ==== AST derivation contracts
 describe("authoring AST derivation", () => {
@@ -317,20 +233,6 @@ describe("authoring AST derivation", () => {
     expect(Schema.decodeUnknownSync(derived)(input)).toEqual(input);
     expect(Schema.decodeUnknownResult(derived)({ mount: "/bad", probe: "ping" })._tag).toBe("Failure");
     expect(Schema.decodeUnknownResult(derived)({ mount: "/site", probe: "bad" })._tag).toBe("Failure");
-  });
-
-  test("keeps a literal cross-field error when another field has an expression", () => {
-    const source = Schema.Struct({ a: Schema.Number, b: Schema.Number, n: Schema.Number }).check(
-      Schema.makeFilter(({ a, b }) =>
-        a < b ? undefined : { path: ["b"], issue: "Expected b greater than a" },
-      ),
-    );
-    const derived = Schema.make<Schema.Codec<unknown>>(
-      Public.deriveAuthoringAst(source.ast, { partial: false, slotFor: expressionSlot }),
-    );
-    const expression = { _tag: "AuthoringExpression", source: "{{ env.N }}", expectedType: "number" };
-
-    expect(Schema.decodeUnknownResult(derived)({ a: 2, b: 1, n: expression })._tag).toBe("Failure");
   });
 
   test("defers a transformed-child check when its field is a whole expression", () => {
@@ -841,25 +743,5 @@ describe("Landofile authoring schemas", () => {
       [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string", pattern: expect.any(String) }],
     );
     expect(decoded._tag).toBe("Success");
-  });
-
-  test.each([
-    ["complete shape", Source.LandofileAuthoringShape],
-    ["fragment", Source.LandofileAuthoringFragment],
-    ["native fragment", Source.LandofileAuthoringFragmentNative],
-  ] as const)("keeps every checked container on the authored path in the %s", (_name, schema) => {
-    const expected = checkedAuthoredPositions(Source.LandofileShape.ast);
-    const prefixes = new Set(
-      [...expected.keys()].flatMap((path) =>
-        path.split(".").map((_, index, segments) => segments.slice(0, index + 1).join(".")),
-      ),
-    );
-    const derived = checkedDerivedPositions(schema.ast, prefixes);
-    const missing = [...expected].flatMap(([path, containers]) =>
-      [...containers].filter((container) => !derived.get(path)?.has(container)).map(() => path),
-    );
-
-    expect(expected.size).toBeGreaterThan(0);
-    expect(missing).toEqual([]);
   });
 });

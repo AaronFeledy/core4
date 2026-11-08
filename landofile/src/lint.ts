@@ -166,7 +166,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         violations.push(
           ...error.issues.map((issue) =>
             attributeLintIssue(
-              recordedFailures.includes(error)
+              recordedFailures.includes(error) && issue.rule !== "landofile.validation"
                 ? { ...issue, rule: "landofile.load", reason: issue.rule ?? error._tag }
                 : issue,
               "effective",
