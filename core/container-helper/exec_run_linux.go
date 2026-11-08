@@ -13,6 +13,7 @@ import (
 const (
 	execCancelGrace = 500 * time.Millisecond
 	execControlRead = 32 * 1024
+	execPendingMax  = 1024 * 1024
 )
 
 func runExecRun(args []string, streams helperIO) int {
@@ -77,10 +78,8 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 	}
 	defer stdinW.Close()
 
-	// Backpressure solution: control reads never wait on child-stdin writability.
-	// Complete frames are buffered in-memory (DATA max 64KiB each); pending child
-	// writes drain opportunistically. SIGNAL/EOF/raw-EOF are handled as soon as
-	// their frame is complete, even while a prior DATA chunk is still blocked.
+	// Reserve one incomplete frame and one read below the pending limit.
+	// When DATA stalls, poll still observes host disconnect without consuming it.
 	parser := execFrameParser{}
 	readBuf := make([]byte, execControlRead)
 	var pending []byte
@@ -150,7 +149,10 @@ func runExecRunWithScan(args []string, streams helperIO, scan func() ([]int, err
 
 	for {
 		if controlOpen {
-			for reads := 0; reads < 8 && controlOpen; reads++ {
+			if hungup, err := execControlHungup(controlFD); hungup || err != nil {
+				beginCancel(syscall.SIGTERM)
+			}
+			for reads := 0; reads < 8 && controlOpen && len(pending) <= execPendingMax-execFrameMaxData-execControlRead; reads++ {
 				n, e := syscall.Read(controlFD, readBuf)
 				if n > 0 {
 					if parser.Feed(readBuf[:n]) != nil {

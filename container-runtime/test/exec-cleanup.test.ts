@@ -68,7 +68,9 @@ test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
         );
         yield* Deferred.await(started);
         signal.abort("SIGINT");
-        yield* TestClock.adjust("6 seconds");
+        yield* TestClock.adjust("250 millis");
+        expect(attached?.aborted).toBe(true);
+        yield* TestClock.adjust("1 second");
         const exit = yield* Fiber.await(child);
         if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
         return { elapsed: (yield* Clock.currentTimeMillis) - begin, exit: exit.value };
@@ -94,6 +96,6 @@ test.each(["stopped", "running", "http-error", "unresponsive"] as const)(
             }),
           ],
     );
-    expect(result.elapsed).toBeLessThanOrEqual(6000);
+    expect(result.elapsed).toBeLessThanOrEqual(1250);
   },
 );

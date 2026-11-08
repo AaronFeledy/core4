@@ -97,7 +97,17 @@ export const supervisedExecStream = (
       const input = yield* Queue.bounded<Uint8Array, Cause.Done>(1);
       const output = yield* Queue.bounded<ExecChunk, ProviderError | Cause.Done>(16);
       const finished = yield* Deferred.make<void, ProviderError>();
-      const stdin = yield* Stream.toAsyncIterableEffect(Stream.fromQueue(input));
+      const frames = yield* Stream.toAsyncIterableEffect(Stream.fromQueue(input));
+      const signalWritten = Promise.withResolvers<void>();
+      let cancelFrame: Uint8Array | undefined;
+      const stdin = {
+        async *[Symbol.asyncIterator]() {
+          for await (const frame of frames) {
+            yield frame;
+            if (frame === cancelFrame) signalWritten.resolve();
+          }
+        },
+      };
       const disconnect = new AbortController();
       let completed = false;
       let execId: string | undefined;
@@ -112,8 +122,11 @@ export const supervisedExecStream = (
           const cleanup = Effect.gen(function* () {
             if (completed || execId === undefined) return;
             yield* Queue.clear(input);
+            cancelFrame = execSignalFrame(command.signal);
             const joined = yield* Effect.exit(
-              Queue.offer(input, execSignalFrame(command.signal)).pipe(
+              Queue.offer(input, cancelFrame).pipe(
+                Effect.andThen(Effect.promise(() => signalWritten.promise)),
+                Effect.timeout("250 millis"),
                 Effect.andThen(Deferred.await(finished)),
                 Effect.interruptible,
                 Effect.timeout("4 seconds"),
