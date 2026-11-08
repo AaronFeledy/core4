@@ -2,8 +2,6 @@
 name: workflow-performance
 
 on:
-  schedule:
-    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       start_samples:

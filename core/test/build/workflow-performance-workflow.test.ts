@@ -17,11 +17,11 @@ const jobBody = (workflow: string, id: string): string => {
   return workflow.slice(start, next === -1 ? workflow.length : next);
 };
 describe("workflow performance rendering", () => {
-  test("derives schedule/manual jobs from eligible readiness cells", async () => {
+  test("derives manually dispatched jobs from eligible readiness cells", async () => {
     const workflow = await renderWorkflow();
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
-    expect(workflow).toContain("on:\n  schedule:");
-    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("on:\n  workflow_dispatch:");
+    expect(workflow).not.toContain("schedule:");
     expect(workflow).not.toContain("pull_request:");
     expect(workflow).toContain("WORKFLOW_PERF_ISOLATION");
     for (const cell of WORKFLOW_PERFORMANCE_CELLS) {
