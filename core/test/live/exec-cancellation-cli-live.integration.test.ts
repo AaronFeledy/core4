@@ -129,14 +129,6 @@ for (const variant of variants.flatMap((entry) =>
               "    command:",
               "      - sleep",
               "      - '300'",
-              "tooling:",
-              "  serve:",
-              "    service: web",
-              `    user: ${JSON.stringify(user)}`,
-              "    cmd:",
-              "      - sh",
-              "      - -c",
-              `      - ${JSON.stringify(script)}`,
               "",
             ].join("\n"),
           );
@@ -188,7 +180,7 @@ for (const variant of variants.flatMap((entry) =>
             await inside(["sh", "-c", `kill -0 ${Number(background.stdout.trim())} && echo alive`]),
           ).toBe("alive");
           await inside(["sh", "-c", "sleep 317 </dev/null >/dev/null 2>&1 & echo $! >/tmp/cli-sentinel"]);
-          active = cli(["serve", "--format=json"]);
+          active = cli(["exec", "--format=json", "--user", user, "web", "--", "sh", "-c", script]);
           const running = active;
           let stdout = "";
           let stderr = "";
