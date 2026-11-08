@@ -2,6 +2,7 @@ import { Context, Effect } from "effect";
 
 import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
+import { planDataId } from "@lando/sdk/schema";
 import {
   type ProviderError,
   type RuntimeProviderShape,
@@ -55,7 +56,7 @@ const locatePlanVolumes = (
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
 ): Effect.Effect<ReadonlyArray<LocatedPlanVolume>, ProviderError> =>
   Effect.forEach(plan.stores, (store) => {
-    const ref: VolumeRef = { app: plan.id, store: store.name, scope: store.scope };
+    const ref: VolumeRef = { app: planDataId(plan), store: store.name, scope: store.scope };
     return provider.locateVolume(ref).pipe(
       Effect.flatMap((locator) => {
         if (

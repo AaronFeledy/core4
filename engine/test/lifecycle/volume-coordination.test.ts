@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, type VolumeRef } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 
@@ -55,6 +55,27 @@ const liveStore = (): Promise<StateStoreShape> =>
   Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
 
 describe("physical volume lifecycle coordination", () => {
+  test("coordinates renamed plan stores through their data id", async () => {
+    const refs: VolumeRef[] = [];
+    const renamed = { ...plan, identity: { ...plan.identity, dataName: "original" } };
+    await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan: renamed,
+        stateStore: await liveStore(),
+        provider: {
+          id: "test",
+          locateVolume: (ref) =>
+            Effect.sync(() => {
+              refs.push(ref);
+              return { coordinationKey: coordinationKey(ref.store), nativeName: ref.store };
+            }),
+        },
+        body: (coordination) => coordination.verify,
+      }),
+    );
+    expect([...new Set(refs.map((ref) => ref.app))]).toEqual([AppId.make("original")]);
+    expect([...new Set(refs.map((ref) => ref.store))].sort()).toEqual(["alias", "alpha", "zeta"]);
+  });
   test.each([0, 1, 2])("preserves provider failure on observation %i", async (failureAt) => {
     // Given a provider that becomes unavailable during locate, lock verification, or body verification.
     const store = await liveStore();
