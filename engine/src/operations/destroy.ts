@@ -18,6 +18,7 @@ import {
   type EventService,
   type FileSystem,
   type LandofileService,
+  type ManagedFileTransactionGuard,
   type PathsService,
   RuntimeProviderRegistry,
   type StateStore,
@@ -25,22 +26,27 @@ import {
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { TeardownProvider } from "../providers/app-placement.ts";
+import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
+import { selectPreparedProvider } from "../providers/prepared.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
+  missingRootAppliedTarget,
   resolveTeardownResolution,
   teardownResolutionAt,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
 import { executeTeardown } from "./destroy-execute.ts";
+import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import { planUserTeardown } from "./destroy-plan.ts";
 import { resolveMissingDestroyRoot } from "./destroy-resolution.ts";
+import { retireSupersededRealizations } from "./superseded-realizations.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 
 type DestroyAppServices =
+  | ManagedFileTransactionGuard
   | AppPlanner
   | DataMover
   | EventService
@@ -67,10 +73,53 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
   return yield* withAppMutationLock(
     { id: id ?? root, root, kind: resolution.kind === "applied" ? resolution.target.app.kind : "user" },
     Effect.gen(function* () {
+      let retired = false;
       if (resolution.kind === "applied" && request.missingRoot !== true)
         yield* validateResolvedAppTarget(resolution.target);
-      const plan = yield* planUserTeardown(resolution, options, request);
-      return yield* executeTeardown(plan);
+      if (resolution.kind === "applied" && resolution.target.app.kind === "user") {
+        const desired = resolution.target;
+        const placement = yield* resolveAppPlacement(
+          desired.app,
+          desired.plan.provider,
+          yield* TeardownProvider,
+        );
+        const target = placement.plan === undefined ? desired : { ...desired, plan: placement.plan };
+        if (placement.superseded.length > 0) {
+          const registry = yield* RuntimeProviderRegistry;
+          yield* registry.resolveTeardownEvidence(target.root, {
+            ...target.app,
+            id: placement.plan?.id ?? placement.superseded[0]?.id ?? target.app.id,
+          });
+          const provider = yield* selectPreparedProvider(
+            placement.plan ?? placement.superseded[0] ?? target.plan,
+          );
+          yield* prepareDestroyFileSync(target, provider);
+          retired = yield* retireSupersededRealizations(target, placement.superseded, {
+            provider,
+            volumes: options.volumes === true,
+            purgeCaches: options.purgeCaches === true,
+          });
+        }
+      }
+      const refreshed =
+        retired && resolution.kind === "applied"
+          ? yield* teardownResolutionAt(
+              resolution.target.root,
+              request.missingRoot !== true,
+              (plan) =>
+                request.missingRoot === true
+                  ? missingRootAppliedTarget(plan, resolution.target.root)
+                  : validateResolvedAppTarget({
+                      ...resolution.target,
+                      plan,
+                      app: { ...resolution.target.app, id: plan.id },
+                    }),
+              resolution.target.app,
+            )
+          : resolution;
+      const plan = yield* planUserTeardown(refreshed, options, request);
+      const result = yield* executeTeardown(plan);
+      return retired ? { ...result, outcome: "destroyed" as const } : result;
     }),
   );
 });
@@ -85,24 +134,23 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
     Effect.gen(function* () {
       yield* validateResolvedAppTarget(target);
       const registry = yield* RuntimeProviderRegistry;
+      const placement = yield* resolveAppPlacement(target.app, target.plan.provider, yield* TeardownProvider);
+      const app = {
+        ...target.app,
+        id: placement.plan?.id ?? placement.superseded[0]?.id ?? target.app.id,
+      };
       const resolution: TeardownResolution =
         target.landofile === undefined
           ? {
               kind: "applied",
               target,
               ownership: yield* registry
-                .resolveTeardownEvidence(target.root)
+                .resolveTeardownEvidence(target.root, app)
                 .pipe(
                   Effect.map((evidence) => (evidence.kind === "absent" ? [] : (evidence.ownership ?? []))),
                 ),
             }
-          : yield* teardownResolutionAt(target.root, true, (plan) =>
-              validateResolvedAppTarget({
-                plan,
-                root: plan.root,
-                app: { ...target.app, id: plan.id, root: plan.root },
-              }),
-            );
+          : yield* teardownResolutionAt(target.root, true, () => Effect.succeed(target), app);
       const result = yield* runTeardown(resolution, options ?? {}, { desired: Effect.succeed(target) });
       yield* afterSuccess ?? Effect.void;
       return result;

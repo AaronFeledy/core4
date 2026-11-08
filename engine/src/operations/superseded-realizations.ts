@@ -21,7 +21,12 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 export const retireSupersededRealizations = Effect.fn("AppOperation.retireSupersededRealizations")(function* (
   target: ResolvedAppTarget,
   superseded: readonly AppPlan[],
-  execution: { readonly provider: PreparedRuntimeProvider; readonly selectedServices?: boolean },
+  execution: {
+    readonly provider: PreparedRuntimeProvider;
+    readonly selectedServices?: boolean;
+    readonly volumes?: boolean;
+    readonly purgeCaches?: boolean;
+  },
 ) {
   if (superseded.length === 0) return false;
   if (execution.selectedServices === true)
@@ -90,7 +95,11 @@ export const retireSupersededRealizations = Effect.fn("AppOperation.retireSupers
           yield* cleanupAppWorkers(app);
           yield* provider.destroy(
             { app: old.id, plan: old },
-            { volumes: false, purgeCaches: false, removeState: true },
+            {
+              volumes: execution.volumes === true,
+              purgeCaches: execution.purgeCaches === true,
+              removeState: true,
+            },
           );
           yield* disposal.complete;
           const retained = old.stores

@@ -5,13 +5,23 @@ import { AppId, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { ManagedFileTransactionGuard, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Effect } from "effect";
+import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
+import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { stopApp } from "../../src/operations/stop.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan } from "./accelerated-start-recovery-support.ts";
 import { ordinaryPlan } from "./start-file-sync-rotation-support.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
+
+const operations = [startApp, restartApp, rebuildApp, stopApp, destroyApp].map(
+  (operation) => (_options: Record<string, never>, target: ResolvedAppTarget) =>
+    Effect.gen(function* () {
+      yield* operation({}, target);
+    }),
+);
 
 const old: AppPlan = {
   ...ordinaryPlan,
@@ -22,7 +32,7 @@ const old: AppPlan = {
 };
 
 test.each(
-  [startApp, restartApp, rebuildApp].flatMap((operation) =>
+  operations.flatMap((operation) =>
     (["engine", "provider"] as const).map((failure) => ({ operation, failure })),
   ),
 )(
@@ -86,7 +96,7 @@ test.each(
   },
 );
 
-test.each([startApp, restartApp, rebuildApp])(
+test.each(operations)(
   "%s prepares every superseded sync disposal before recovery or retirement",
   async (operation) => {
     const safe = {

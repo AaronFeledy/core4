@@ -2,7 +2,13 @@ import { basename } from "node:path";
 import { Effect } from "effect";
 
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
-import { type AbsolutePath, type AppPlan, type ResourceOwnership, appIdentityKey } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type AppRef,
+  type ResourceOwnership,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
@@ -104,13 +110,14 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
   root: AbsolutePath,
   landofilePresent: boolean,
   targetFor: (plan: AppPlan) => Effect.Effect<ResolvedAppTarget, E, R>,
+  app?: Pick<AppRef, "kind" | "id">,
 ): Effect.fn.Return<
   TeardownResolution,
   E | AppResolveError | ProviderError | NoProviderInstalledError,
   R | RuntimeProviderRegistry
 > {
   const registry = yield* RuntimeProviderRegistry;
-  const evidence = yield* registry.resolveTeardownEvidence(root);
+  const evidence = yield* registry.resolveTeardownEvidence(root, app);
   switch (evidence.kind) {
     case "applied":
       yield* registry.assertAppliedStateReadable?.(evidence.plan) ?? Effect.void;
@@ -153,7 +160,16 @@ export const resolveTeardownResolution = Effect.gen(function* () {
   const identity = yield* resolveAppIdentity(discovered ?? (yield* discoveryCwd()));
   const root = identity.appRoot;
   const landofilePresent = discovered !== undefined;
-  return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget);
+  return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget).pipe(
+    Effect.catchTag("AppResolveError", (error) =>
+      error.reason === "ambiguous" && landofilePresent
+        ? resolveDesiredAppTarget.pipe(
+            Effect.catch(() => Effect.fail(error)),
+            Effect.map((target): TeardownResolution => ({ kind: "applied", target })),
+          )
+        : Effect.fail(error),
+    ),
+  );
 });
 
 export const withTeardownResolution = <A, E, R>(handlers: {
