@@ -237,7 +237,7 @@ A provider MUST declare `fileSyncTargets: prepared-volume` only when its actual 
 
 ### 5.5 The `AppPlan`
 
-The frozen, schema-validated plan is the sole source of truth across the core/provider boundary.
+The frozen, schema-validated plan is the sole source of truth for portable intent across the core/provider boundary. The mandatory helper bind (§5.3) is a runtime-owned creation mount: providers add it to their physical lowering, including emitted Compose, without mutating the logical plan or persisting the host helper path in desired or applied plans. Its stable source and target participate in physical create-config identity; helper content digests do not. Observations MAY project logical create-config identity only after verifying the corresponding physical identity (§5.3.2).
 
 | `ServicePlan` field | Meaning |
 |---|---|
@@ -249,7 +249,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `connection` | Optional `DatabaseConnection` resolved once by a database service type: `family`, typed `creds` (`user`, `database` literal; `password`, `rootPassword` as `EnvironmentValue`), and the planned `port` (§6.12.4). Clients, info, SQL operations, and `services.<name>.*` expression scopes read this, never the environment map. |
 | `serviceTypeId` | Optional nonempty canonical registry ID of the effective service-type declaration, including its composed inheritance chain. Fresh plans stamp every resolved service independently of tooling winners; `type` retains its normalized-family meaning. Missing historical declaration identity is not inferred from that normalized type. |
 | `nonSqlCreds` | Optional typed `ServiceCreds` published by a non-SQL service type, such as password-protected Redis, for credential expression scopes. Mutually exclusive with `connection`; it survives plan serialization and never duplicates database connection credentials. |
-| `mounts` | Every container mount (binds including the `role: app` app source, named stores, tmpfs), unique targets ordered shallow to deep (§6.4). |
+| `mounts` | Logical service mounts (binds including the `role: app` app source, named stores, tmpfs), unique targets ordered shallow to deep (§6.4); the runtime-owned helper bind is added during physical lowering. |
 | `endpoints`, `routes` | Service listeners and references to app routes. |
 | `dependsOn` | Planned service dependencies. |
 | `healthcheck`, `readiness`, `readinessSource`, `certs`, `hostAliases` | Independent native health and lifecycle readiness, readiness provenance, certificate, and supported host-reachability intent. |
