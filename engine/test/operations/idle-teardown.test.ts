@@ -184,3 +184,40 @@ test("idle stop terminates listed lifecycle-less sessions without flushing runti
   await Effect.runPromise(stopAppForTarget({}, target).pipe(Effect.provide(harness.layer)));
   expect(sessions).toEqual([]);
 });
+
+test("idle stop does not require a file-sync observation the stopped runtime cannot provide", async () => {
+  const actions: string[] = [];
+  const provider = {
+    ...TestRuntimeProvider,
+    id: "lando",
+    isAvailable: Effect.succeed(true),
+    getStatus: Effect.succeed({ state: "idle" as const }),
+    ensureReady: Effect.sync(() => {
+      actions.push("ensure-ready");
+    }),
+    // A Windows provider probes managed volumes through the stopped machine and cannot answer.
+    inspectAppliedFileSync: () => Effect.succeed({ status: "unknown" as const }),
+    appliedPlans: Effect.succeed([plan]),
+    runtimeOnline: Effect.succeed(false),
+    destroy: () =>
+      Effect.sync(() => {
+        actions.push("destroy");
+        return { kind: "destroyed" as const };
+      }),
+  };
+  const harness = makeHarness({
+    plannedApp: plan,
+    appliedPlans: [plan],
+    selectProvider: () => Effect.succeed(provider),
+    resolveAppliedPlan: () => Effect.succeed(plan),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan }),
+  });
+  const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+
+  const result = await Effect.runPromise(
+    stopAppForTarget({}, target).pipe(Effect.provide(harness.layer), Effect.provide(BunFileSystem.layer)),
+  );
+
+  expect(result.outcome).toBe("stopped");
+  expect(actions).toEqual([]);
+});

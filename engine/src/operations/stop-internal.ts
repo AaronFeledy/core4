@@ -131,12 +131,15 @@ export const preflightStopApp = Effect.fnUntraced(function* (
     fileSyncAvailable && Option.isSome(maybeFileSync)
       ? yield* maybeFileSync.value.listSessions({ app: ref })
       : [];
+  // An idle runtime runs no writer and idle stop flushes and removes nothing, so the
+  // proof that guards writer shutdown does not apply; providers may not observe volumes then.
   if (
-    appliedFileSync.status === "unknown" ||
-    (appliedFileSync.status === "accelerated" &&
-      (Option.isNone(maybeFileSync) ||
-        maybeFileSync.value.id !== appliedFileSync.engineId ||
-        !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions)))
+    runtimeState !== "idle" &&
+    (appliedFileSync.status === "unknown" ||
+      (appliedFileSync.status === "accelerated" &&
+        (Option.isNone(maybeFileSync) ||
+          maybeFileSync.value.id !== appliedFileSync.engineId ||
+          !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))))
   ) {
     return yield* Effect.fail(
       new FileSyncStopError({

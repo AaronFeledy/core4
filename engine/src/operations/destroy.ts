@@ -89,6 +89,7 @@ const runTeardown = Effect.fnUntraced(function* <E, R>(
             id: placement.plan?.id ?? placement.superseded[0]?.id ?? target.app.id,
           });
           const provider = yield* registry.select(placement.plan ?? placement.superseded[0] ?? target.plan);
+          if ((yield* provider.getStatus).state === "idle") yield* provider.ensureReady ?? Effect.void;
           yield* prepareDestroyFileSync(target, provider);
           retire = yield* prepareSupersededRealizations(target, placement.superseded, {
             provider,

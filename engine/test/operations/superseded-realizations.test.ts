@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, LoadScopedLandofile, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { openJournal } from "../../src/operations/accelerated-start-journal.ts";
@@ -235,3 +236,48 @@ test.each(
     }
   },
 );
+
+test("destroy after rename prepares an idle runtime before checking superseded file sync", async () => {
+  const applied: AppPlan[] = [old];
+  let running = true;
+  let preparations = 0;
+  // Stops the flow at the first live check once the runtime is prepared.
+  const inspectedWhileReady = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "inspect",
+    message: "inspected after readiness",
+    remediation: "none",
+  });
+  const harness = makeHarness({
+    plannedApp: desired,
+    providerCanInspectFileSync: false,
+    appliedPlans: applied,
+    onApply: (plan) => {
+      applied.push(plan);
+    },
+    providerOverrides: {
+      getStatus: Effect.sync(() => ({ state: running ? ("running" as const) : ("idle" as const) })),
+      ensureReady: Effect.sync(() => {
+        preparations++;
+        running = true;
+      }),
+      // Volume inspection needs the runtime, as on a stopped Windows machine.
+      inspectAppliedFileSync: () =>
+        running ? Effect.fail(inspectedWhileReady) : Effect.succeed({ status: "unknown" as const }),
+    },
+  });
+  try {
+    await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer), Effect.ignore));
+    // The renamed app still holds its previous realization, as after an interrupted retirement.
+    if (!applied.includes(old)) applied.unshift(old);
+    running = false;
+    preparations = 0;
+    const result = await Effect.runPromise(
+      destroyApp({}, target).pipe(Effect.provide(harness.layer), Effect.flip),
+    );
+    expect(result).toBe(inspectedWhileReady);
+    expect(preparations).toBe(1);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
