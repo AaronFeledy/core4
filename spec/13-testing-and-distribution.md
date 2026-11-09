@@ -128,14 +128,14 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.4 Quality gates
 
-A PR cannot merge unless:
+Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). A selected job MUST pass; only a job the profile excludes MAY skip. A PR cannot merge unless:
 
 - `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
 - Provider, plugin-abstraction, library API, machine-output, deprecation, redaction, managed-file, coexistence, scenario, recipe, executable-guide, and applicable renderer/OpenTUI contracts pass.
 - `lint:guides`, guide coverage, public transcript, source-mapper, and guide component-schema gates pass (§19).
 - The Linux x64 perf suite and e2e smoke pass; per-PR macOS and Windows perf results are advisory but nightly failures block release.
-- Scenario and recipe suites pass on every per-PR platform.
+- Recipe suites pass on Linux x64, and scenario suites pass on every platform the selected profile includes.
 - Boundary gates pass through the shared `check:boundaries` surface, with package seams primary and residual AST rules limited to behavior package edges cannot express.
 - The `effect-idioms` boundary rule keeps retired Effect forms out of the shared shipped-runtime tier (core, primitive packages, engine, renderer, data-mover, MCP, telemetry, and bundled plugins): `Data.TaggedError` and `Data.Error`; `Date.now()` and `new Date(` in modules that import `effect`; named functions or methods whose body only returns `Effect.gen(...)`; local definitions named `isRecord`, `isPlainObject`, or `isObject`; exports named `*Live`; and imports from `@effect/*`. Those bans have no carve-outs. Cause assembly (`Cause.combine`, `Cause.fromReasons`) is restricted to the engine compensation and SDK command-failure owners; consumers MUST use role-aware helpers.
 - Command, service, event, deprecation, export, and package-DAG registry drift checks pass.
@@ -166,10 +166,12 @@ Releases include public schema and command-schema artifacts, declaration bundles
 
 ### 13.6 CI matrix
 
+Pull requests select a cumulative CI profile from their changed paths. `docs` runs the static gates and the docs job on Linux x64. `guides` adds the schema, library, recipe and container-helper jobs, the Linux x64 build and runtime bundle, and Linux x64 and Windows x64 guide scenarios with the Linux `@smoke` e2e subset. `runtime` adds the unit shards, isolation regressions, macOS process-signal tests, the Linux arm64 runtime bundle and the performance gates. `providers` adds live Linux x64 provider integration. Pushes to `main`, manual dispatches, and changes to `.bun-version` or a platform build path select broad CI, which also runs every platform job in the table below.
+
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|
-| Per PR: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke (on the four POSIX targets, also native libc binding round trips and the shared-pipe stdio check, §8.11.2), and scenario guides. Compilation alone is not evidence of live-provider readiness. |
-| Per PR: unit and runtime gates | Linux x64 | Sharded unit tests, e2e smoke, and gating performance tests. The platform matrix MUST NOT be reported as full native unit-suite coverage on every target. |
+| Broad CI: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke (on the four POSIX targets, also native libc binding round trips and the shared-pipe stdio check, §8.11.2), and scenario guides. Compilation alone is not evidence of live-provider readiness. |
+| `runtime` profile: unit and runtime gates | Linux x64 | Sharded unit tests, e2e smoke, and gating performance tests. The platform matrix MUST NOT be reported as full native unit-suite coverage on every target. |
 | Nightly | Linux x64/arm64, macOS arm64 | Full e2e against the default managed runtime, all generated e2e guides, release-shaped binaries, library publish rehearsal, and gating platform perf. |
 | Weekly | Managed runtime, Docker Desktop/Engine, Podman Desktop/Podman, Lima, OrbStack on applicable hosts | Provider contracts plus full e2e and generated e2e guide scenarios across the provider matrix. |
 
