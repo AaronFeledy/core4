@@ -104,9 +104,9 @@ bun run check:runtime-bundle-manifest
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` collects the unit file set from `scripts/test-ownership.ts` and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. Workspace test roots come from the root package manifest. Tests beside scripts are included too. Go helper test files belong to the containerized `container-helper` builder, which runs `build-container-helper.ts --test`; they stay outside Bun unit argv and do not establish native ARM64 Go-test execution. Dedicated library, recipe, docs, generated guide and nightly suites stay outside unit shards. Shard balance comes from the committed timings file.
+`scripts/test-shards.ts` collects the unit file set from the ownership inventory in `scripts/test-ownership.ts` and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` with every file passed as an exact path. The inventory reads tracked files and untracked files that Git does not ignore, so local artifacts under ignored directories such as `.local/` never enter it. Workspace test roots come from the root package manifest, and tests beside `scripts/` are included. Dedicated library, recipe, docs, guide, helper and nightly suites stay outside unit shards. Go helper tests run in the `container-helper` job through `build-container-helper.ts --test`. Shard balance comes from the committed timings file.
 
-The unit set includes the three provider contract suites and the local integration suites explicitly listed in `LOCAL_INTEGRATION_TESTS`. Podman Desktop fake-client cases live in `desktop.test.ts` and run without a socket. Its real desktop contract remains in `desktop.integration.test.ts`, requires native macOS or Windows plus `LANDO_TEST_PODMAN_DESKTOP_SOCKET`, and currently has no CI invocation. A Linux fake-client pass does not establish desktop acceptance.
+The unit set includes the three provider contract suites and the integration suites listed in `LOCAL_INTEGRATION_TESTS`. Those run without a live provider; their live or platform-specific cases skip when a prerequisite is missing. Podman Desktop fake-client cases live in `plugins/provider-podman/test/desktop.test.ts`. The real desktop contract stays in `desktop.integration.test.ts`, needs native macOS or Windows plus `LANDO_TEST_PODMAN_DESKTOP_SOCKET`, and has no CI invocation.
 
 Inspect ownership without starting tests:
 
@@ -116,11 +116,11 @@ bun run check:test-ownership
 bun run scripts/test-shards.ts --list
 ```
 
-The inventory reports each test path, its primary execution owner, invocation and limitations. `manual` entries are known CI gaps, with prerequisites and reasons recorded alongside their paths. New integration suites without an execution owner and stale explicit entries fail the ownership check, which runs in static CI and `gate:pr`. New workspace packages are discovered through `workspaces.packages` (or array-form `workspaces`). Tests outside workspace test trees, scripts, generated guides, or the Go helper tree require discovery support. Test-file symlinks fail the check; keep authored test files as regular files.
+`bun run test:inventory` prints each test path with its owner, invocation and prerequisites. `manual` entries are known CI gaps. `bun run check:test-ownership` runs in static CI and `gate:pr`. It fails on a test without an owner, a stale explicit entry, a test outside a discovered location, or a test-file symlink.
 
-For an unowned path, register a new workspace in the root manifest if needed, then add an owner in `scripts/test-ownership.ts` backed by an actual execution command. Add that CI invocation before labeling a suite as CI-owned. If a suite intentionally remains manual, record its prerequisites and missing CI invocation. For a renamed or deleted explicitly owned suite, update or remove its registry path. Rerun `bun run check:test-ownership` after the correction.
+To fix an unowned path, register its workspace in the root manifest if needed, then give it an owner in `scripts/test-ownership.ts` that matches a real invocation. A suite that only runs by hand goes in `MANUAL_TESTS` with its prerequisites. Update or remove an explicit entry when its suite is renamed or deleted.
 
-Ownership records file selection. Selected files can still skip cases because a live socket, native OS, compiled binary, architecture or explicit destructive-test opt-in is missing. Read the test results and prerequisites before claiming live or native coverage; generated workflow validation and simulated platform cases provide no native execution receipt.
+A selected file can still skip cases when a live socket, native OS, compiled binary, architecture or opt-in variable is missing. Read the skip counts before claiming live or native coverage.
 
 Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
@@ -146,9 +146,9 @@ The unsharded local command uses exactly the same collected unit file set as CI 
 bun run test:unit
 ```
 
-On Windows, this command splits the collected paths into bounded sequential process invocations to fit the native command-line limit. Every selected path is retained, and a later successful batch cannot erase an earlier failure. Linux and macOS use one invocation. This preserves file selection; process boundaries differ from the Linux CI shards.
+On Windows the command runs the paths in sequential batches to stay under the command-line length limit, and any failing batch fails the run.
 
-For focused work, run explicit test paths or use the affected selector below. The full local unit command and the timings refresh execute the entire unit set; avoid them when you only need a focused check.
+For focused work, run explicit test paths or use the affected selector below. `test:unit` and the timings refresh both run the whole unit set.
 
 For a local review of which shard-eligible tests may relate to your changes, run:
 
@@ -607,7 +607,7 @@ Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman servi
 
 ## Nightly source-store acceptance
 
-The nightly workflow runs compiled source-store acceptance on `linux-x64`, `darwin-arm64`, and `windows-x64`. Each `source-store-acceptance-<platform>` job downloads the current run's container helper, rebuilds the command registry manifest, compiles that platform's CLI the same way `build-<platform>` does in `ci`, points `LANDO_TEST_COMPILED_CLI` at the binary (including the Windows `.exe`), and runs `core/test/build/source-store-acceptance.integration.test.ts`. Every job checks `git --version`; the Windows job also requires `git-http-backend` under `git --exec-path` because the suite serves bare repos through Git's CGI backend. The suite ends in `.integration.test.ts`, so PR unit shards exclude it.
+The nightly workflow runs compiled source-store acceptance on `linux-x64`, `darwin-arm64`, and `windows-x64`. Each `source-store-acceptance-<platform>` job downloads the current run's container helper, rebuilds the command registry manifest, compiles that platform's CLI the same way `build-<platform>` does in `ci`, points `LANDO_TEST_COMPILED_CLI` at the binary (including the Windows `.exe`), and runs `core/test/build/source-store-acceptance.integration.test.ts`. Every job checks `git --version`; the Windows job also requires `git-http-backend` under `git --exec-path` because the suite serves bare repos through Git's CGI backend. The ownership inventory assigns this suite to the nightly source-store jobs, so PR unit shards exclude it.
 
 ## Provider matrix
 

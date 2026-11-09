@@ -20,7 +20,7 @@ Executable components are allowed only in the guide discovery roots:
 - `docs/guides/**/*.mdx`
 - `recipes/<id>/README.mdx`
 
-Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. Unrelated regressions belong under `test/scenarios/`.
+Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. Unrelated regressions belong in the owning workspace package's `test/` tree.
 
 ### 19.2 Model and artifact
 
