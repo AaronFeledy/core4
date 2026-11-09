@@ -158,17 +158,17 @@ export const makeSetupReadinessRecorder = (
   return {
     start: Effect.suspend(() => persist("in-progress")),
     finish: (exit) => {
-      if (
-        Exit.isFailure(exit) &&
+      if (Exit.isSuccess(exit)) return persist(completedSetupReadinessStatus(readinessSteps));
+      const cancelled =
         Cause.hasInterrupts(exit.cause) &&
         !exit.cause.reasons.some(
           (reason) =>
             (Cause.isFailReason(reason) || Cause.isDieReason(reason)) &&
             Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined,
-        )
-      )
-        return Effect.void;
-      return persist(Exit.isFailure(exit) ? "failed" : completedSetupReadinessStatus(readinessSteps));
+        );
+      // A cancelled run stays in progress unless a step already failed; then doctor can name that step.
+      if (cancelled && !readinessSteps.some((step) => step.status === "failed")) return Effect.void;
+      return persist("failed");
     },
     setProvider: (value) => {
       providerId = value;

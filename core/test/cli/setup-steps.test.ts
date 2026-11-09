@@ -165,6 +165,20 @@ describe("setup readiness recorder", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test("finish records a failed step when the run is cancelled afterward", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-setup-finish-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(root, "test");
+      await Effect.runPromise(recorder.start);
+      await Effect.runPromise(recorder.recordFailure("runtime", new Error("runtime failed")));
+      await Effect.runPromise(recorder.finish(Exit.failCause(Cause.interrupt(1))));
+      expect(JSON.parse(await readFile(setupReadinessPath(root), "utf8"))).toMatchObject({
+        status: "failed",
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("masks registered exact values in persisted failure evidence and remediation", async () => {
     // Given
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-registered-redaction-"));
