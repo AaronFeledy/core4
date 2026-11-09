@@ -125,6 +125,9 @@ report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
 `stderrTail` preserve its exit status and redacted stderr. The tail is limited to
 8 KiB, including its truncation marker. Oversized unfinished lines may be
 suppressed. A provider failure without an exit status does not invent one.
+When the container runtime itself failed, for example because it stopped
+responding, `error.cause` holds that failure with its own `_tag`, message, and
+`remediation`, and `error.remediation` starts with what the runtime says to do.
 Database payloads and stdout are never included in these command failures.
 
 `lando db:*` commands mask only the target database's credential password or
@@ -141,11 +144,10 @@ report `recoverySnapshotId` with recovery guidance. Command failures keep their
 tag and diagnostics. A manual snapshot also remains available when restarting
 the database fails; that failure reports the captured snapshot instead of losing
 its handle. Failures outside command execution may use a different error tag.
-When the runtime provider can't capture or restore a snapshot,
-`DataTransferError` keeps the provider's failure under `error.cause`, with its
-own `_tag` and `remediation`, and `error.remediation` starts with that
-remediation. Fix the reported problem before retrying. Restore the snapshot
-only if recovery is needed. A failed capture never invents a snapshot ID.
+Snapshot capture and restore failures caused by the runtime carry it under
+`error.cause` the same way. Fix the reported problem before retrying. Restore
+the snapshot only if recovery is needed. A failed capture never invents a
+snapshot ID.
 
 Import and seed stop with the same diagnostics if their emptiness query fails.
 `--yes` skips confirmation, not a failed database check.
