@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect, Layer, Scope } from "effect";
 import { CliInvocation } from "../runtime/invocation-context";
 
@@ -72,7 +73,7 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
           Effect.suspend(() => acquireScratchAppWithPlan(scratchInput)),
         ).pipe(
           Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof LandofileParseError
               ? new ScratchAppError({
                   message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,

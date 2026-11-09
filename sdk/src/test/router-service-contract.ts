@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import {
   AppId,
@@ -52,24 +53,22 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
   if (proxy.prepare !== undefined) {
     yield* proxy
       .prepare({ defaultDomain: "lndo.site" })
-      .pipe(Effect.mapError((cause) => failure("prepare resolves before setup", cause)));
+      .pipe(mapFailures((cause) => failure("prepare resolves before setup", cause)));
   }
   yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
-    Effect.mapError((cause) => failure("setup resolves", cause)),
+    mapFailures((cause) => failure("setup resolves", cause)),
   );
   if (proxy.prepare !== undefined) {
     yield* proxy
       .prepare({ defaultDomain: "lndo.site" })
-      .pipe(Effect.mapError((cause) => failure("prepare resolves before setup", cause)));
+      .pipe(mapFailures((cause) => failure("prepare resolves before setup", cause)));
   }
   yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
-    Effect.mapError((cause) => failure("setup is idempotent", cause)),
+    mapFailures((cause) => failure("setup is idempotent", cause)),
   );
+  yield* proxy.revalidateStartup.pipe(mapFailures((cause) => failure("revalidateStartup resolves", cause)));
   yield* proxy.revalidateStartup.pipe(
-    Effect.mapError((cause) => failure("revalidateStartup resolves", cause)),
-  );
-  yield* proxy.revalidateStartup.pipe(
-    Effect.mapError((cause) => failure("revalidateStartup is idempotent", cause)),
+    mapFailures((cause) => failure("revalidateStartup is idempotent", cause)),
   );
   yield* requireContract(proxy.capabilities.wildcardHostnames, "declares wildcard hostname support");
   yield* requireContract(proxy.capabilities.tls, "declares TLS intent support");
@@ -80,7 +79,7 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
   const beforeObservation = yield* harness.readRoutes(owner);
   const evidence = yield* proxy
     .observeRoutes(owner, routes)
-    .pipe(Effect.mapError((cause) => failure("read-only route observation resolves", cause)));
+    .pipe(mapFailures((cause) => failure("read-only route observation resolves", cause)));
   yield* requireContract(
     Schema.is(RouteEvidence)(evidence),
     "observation returns explicit route evidence",
@@ -92,7 +91,7 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
   );
   const result = yield* proxy
     .applyRoutes(routes, owner)
-    .pipe(Effect.mapError((cause) => failure("applyRoutes resolves", cause)));
+    .pipe(mapFailures((cause) => failure("applyRoutes resolves", cause)));
   yield* requireContract(result.app === owner.id, "apply result identifies the owner app id", result);
   yield* requireContract(result.appliedRoutes.length === 2, "apply result reports every route", result);
   yield* requireContract(
@@ -110,7 +109,7 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
 
   const replacementResult = yield* proxy
     .applyRoutes(routes.slice(1), owner)
-    .pipe(Effect.mapError((cause) => failure("re-apply resolves", cause)));
+    .pipe(mapFailures((cause) => failure("re-apply resolves", cause)));
   const reconciled = yield* harness.readRoutes(owner);
   yield* requireContract(
     replacementResult.appliedRoutes.length === 1 && reconciled.length === 1,
@@ -118,11 +117,11 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
     { replacementResult, reconciled },
   );
 
-  const status = yield* proxy.status.pipe(Effect.mapError((cause) => failure("status resolves", cause)));
+  const status = yield* proxy.status.pipe(mapFailures((cause) => failure("status resolves", cause)));
   yield* requireContract(status.state === "running", "status reports running after setup", status);
-  yield* proxy.stop.pipe(Effect.mapError((cause) => failure("stop resolves", cause)));
+  yield* proxy.stop.pipe(mapFailures((cause) => failure("stop resolves", cause)));
   const stopped = yield* proxy.status.pipe(
-    Effect.mapError((cause) => failure("status resolves after stop", cause)),
+    mapFailures((cause) => failure("status resolves after stop", cause)),
   );
   yield* requireContract(
     stopped.state === "stopped" && stopped.configuredApps.length === 0,
@@ -130,10 +129,8 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
     stopped,
   );
   yield* requireContract((yield* harness.readRoutes(owner)).length === 0, "stop clears routes");
-  yield* proxy.removeRoutes(owner).pipe(Effect.mapError((cause) => failure("removeRoutes resolves", cause)));
-  yield* proxy
-    .removeRoutes(owner)
-    .pipe(Effect.mapError((cause) => failure("removeRoutes is idempotent", cause)));
+  yield* proxy.removeRoutes(owner).pipe(mapFailures((cause) => failure("removeRoutes resolves", cause)));
+  yield* proxy.removeRoutes(owner).pipe(mapFailures((cause) => failure("removeRoutes is idempotent", cause)));
   yield* requireContract((yield* harness.readRoutes(owner)).length === 0, "removeRoutes clears routes");
 });
 

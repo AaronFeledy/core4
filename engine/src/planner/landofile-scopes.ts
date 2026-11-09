@@ -5,6 +5,7 @@ import {
   PLAN_SERVICE_EXPRESSION_SCOPES,
   recipeOptionScope,
 } from "@lando/landofile/recipe-expressions";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type ExpressionContext, expressionScopeMembers } from "@lando/sdk/expressions";
 import {
@@ -37,7 +38,7 @@ export const configExpressionIssuePath = (error: ConfigExpressionError): Validat
 
 const decodeDocument = (document: unknown, filePath: string, pendingSites: readonly ParsedPendingSite[]) =>
   Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(document, { onExcessProperty: "error" }).pipe(
-    Effect.mapError((cause) => compiledValueError(cause, { filePath, pendingSites })),
+    mapFailures((cause) => compiledValueError(cause, { filePath, pendingSites })),
   );
 
 export const materializeLandofileScopes = Effect.fn("Landofile.identityScope")(function* (

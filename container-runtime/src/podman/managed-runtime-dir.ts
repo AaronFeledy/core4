@@ -1,6 +1,7 @@
 import { lstatSync, realpathSync, statSync } from "node:fs";
 import { chmod, lstat, mkdir, readFile, readlink, realpath, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
@@ -281,9 +282,9 @@ export const prepareManagedRuntimeDir = (
     } else {
       yield* fsSeam
         .mkdir(privateDir, { recursive: true, mode: OWNER_ONLY_MODE })
-        .pipe(Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)));
+        .pipe(mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)));
       const created = yield* lstatPath(privateDir).pipe(
-        Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)),
+        mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)),
       );
       if (!isSafeOwnedDirectory(created, uid)) {
         return yield* Effect.fail(privateRuntimeDirUnavailable(providerId));
@@ -292,10 +293,10 @@ export const prepareManagedRuntimeDir = (
 
     yield* fsSeam
       .chmod(privateDir, OWNER_ONLY_MODE)
-      .pipe(Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)));
+      .pipe(mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)));
 
     const info = yield* lstatPath(privateDir).pipe(
-      Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)),
+      mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)),
     );
     if (!isUsableRuntimeBase(info, uid)) {
       return yield* Effect.fail(privateRuntimeDirUnavailable(providerId));

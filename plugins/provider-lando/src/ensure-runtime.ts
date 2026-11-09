@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Duration, Effect, Exit } from "effect";
 
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
@@ -199,7 +200,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
             ),
           ),
     ),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ProviderUnavailableError
         ? cause
         : new ProviderUnavailableError({
@@ -348,7 +349,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
   const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(
-    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    mapFailures((cause) => mapLaunchLockError(deps, cause)),
   );
   yield* launchAndReadiness;
 });
@@ -389,7 +390,7 @@ const ensureMachineRuntime = (
     Effect.flatMap((ready) =>
       ready ? completeProgress : (deps.withLaunchLock?.(launchAndReadiness) ?? launchAndReadiness),
     ),
-    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    mapFailures((cause) => mapLaunchLockError(deps, cause)),
   );
 };
 

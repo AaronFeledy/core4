@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, type Scope, Stream, absurd } from "effect";
 
@@ -104,7 +105,7 @@ export const writeDumpTransform = (
         destinationPath: destPath,
         mode: 0o600,
       }).pipe(
-        Effect.mapError(() =>
+        mapFailures(() =>
           dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
         ),
       );

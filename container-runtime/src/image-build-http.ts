@@ -1,9 +1,11 @@
-import { Effect, Option, Predicate } from "effect";
+import { mapFailures } from "@lando/sdk/command-result";
+import { Effect, Option, Predicate, type Schema } from "effect";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { parseNdjsonLines } from "./engine-json.ts";
+import { redactDetails } from "./redact.ts";
 
 export interface ContainerBuildHttpRequest {
   readonly method: "GET" | "POST";
@@ -60,12 +62,12 @@ const buildSecretsRedactor = Effect.fnUntraced(function* (
 const redactSecrets = (value: string, redactor: Redactor): string =>
   redactBuildQuery(redactor.redactString(value));
 
-const sanitizeBuildErrorValue = (value: unknown, redactor: Redactor): unknown => {
-  if (typeof value === "string") return redactSecrets(value, redactor);
-  if (Array.isArray(value)) return value.map((entry) => sanitizeBuildErrorValue(entry, redactor));
-  if (!Predicate.isObject(value)) return value;
+const sanitizeBuildErrorValue = (value: Schema.Json): Schema.Json => {
+  if (typeof value === "string") return redactBuildQuery(value);
+  if (Array.isArray(value)) return value.map(sanitizeBuildErrorValue);
+  if (value === null || typeof value !== "object") return value;
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry, redactor)]),
+    Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry)]),
   );
 };
 
@@ -77,7 +79,11 @@ const sanitizeProviderError = (
     providerId: cause.providerId,
     operation: cause.operation,
     message: redactSecrets(cause.message, redactor),
-    details: cause.details === undefined ? undefined : sanitizeBuildErrorValue(cause.details, redactor),
+    ...(cause.details === undefined
+      ? {}
+      : {
+          details: sanitizeBuildErrorValue(redactDetails(cause.details, redactor)),
+        }),
     remediation: cause.remediation,
   };
   return cause instanceof ProviderInternalError
@@ -141,7 +147,7 @@ export const requestContainerBuild = (
         stdin: input.stdin,
       })
       .pipe(
-        Effect.mapError((cause) => mapRequestError(input.options, redactor, cause)),
+        mapFailures((cause) => mapRequestError(input.options, redactor, cause)),
         Effect.flatMap(
           (response): Effect.Effect<string | undefined, ProviderUnavailableError | ArtifactBuildError> => {
             if (response.status < 200 || response.status >= 300) {
@@ -174,7 +180,7 @@ export const requestContainerBuild = (
         ),
         Effect.flatMap((digest) =>
           input.request({ method: "GET", path: `/images/${encodeURIComponent(input.tag)}/json` }).pipe(
-            Effect.mapError((cause) => mapRequestError(input.options, redactor, cause)),
+            mapFailures((cause) => mapRequestError(input.options, redactor, cause)),
             Effect.flatMap((response) =>
               response.status >= 200 && response.status < 300
                 ? Effect.succeed(digest)

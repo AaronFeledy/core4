@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
@@ -74,7 +75,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       endpointContributions,
       applicationConfigs,
     }).pipe(
-      Effect.mapError((error) =>
+      mapFailures((error) =>
         servicePlanError(
           input.appRoot,
           name,

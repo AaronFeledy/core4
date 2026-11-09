@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
@@ -54,7 +55,7 @@ export const resolveSourcesStoreRoot = (state: StateStoreShape) =>
     })
     .pipe(
       Effect.map((bucket) => dirname(bucket.path)),
-      Effect.mapError((error) => acquisitionError("cache", "source store", error)),
+      mapFailures((error) => acquisitionError("cache", "source store", error)),
     );
 
 const regularRecord = <A>(bucket: StateBucket<A>) => {
@@ -96,7 +97,7 @@ export const sourceRecords = (state: StateStoreShape) => ({
       })
       .pipe(
         Effect.map(regularRecord),
-        Effect.mapError((error) => acquisitionError("cache", name, error)),
+        mapFailures((error) => acquisitionError("cache", name, error)),
       ),
   ref: (url: string, ref: string) =>
     state
@@ -112,7 +113,7 @@ export const sourceRecords = (state: StateStoreShape) => ({
       })
       .pipe(
         Effect.map(regularRecord),
-        Effect.mapError((error) => acquisitionError("cache", "git ref", error)),
+        mapFailures((error) => acquisitionError("cache", "git ref", error)),
       ),
   root: (lockfile: string) =>
     state
@@ -128,6 +129,6 @@ export const sourceRecords = (state: StateStoreShape) => ({
       })
       .pipe(
         Effect.map(regularRecord),
-        Effect.mapError((error) => acquisitionError("cache", "include root", error)),
+        mapFailures((error) => acquisitionError("cache", "include root", error)),
       ),
 });

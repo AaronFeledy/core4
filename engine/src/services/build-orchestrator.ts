@@ -15,7 +15,7 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { runAppBuild } from "./build-app-runner.ts";
@@ -194,13 +194,13 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
     yield* progress.startTask(service, transcriptPath);
     const bucket = isScratchPlan(plan)
       ? yield* openScratchBuildResults(stateStore).pipe(
-          Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
+          mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
         )
       : undefined;
     const cached =
       bucket === undefined
         ? undefined
-        : yield* bucket.get.pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+        : yield* bucket.get.pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
     if (bucket !== undefined) {
       const complete = findCompleteBuildResult(cached ?? [], {
         buildKey: step.buildKey,
@@ -252,7 +252,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
               durationMs: performance.now() - started,
               transcriptPath,
             }).pipe(
-              Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
+              mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
               Effect.exit,
               Effect.asVoid,
             ),
@@ -279,7 +279,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
                 : { sourceArtifactDigest: sourceArtifact.digest }),
             }),
         transcriptPath,
-      }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+      }).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
     }
 
     yield* events.publish({

@@ -1,4 +1,5 @@
 import { resolve as resolvePath } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppResolveError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -15,7 +16,7 @@ export const resolveMissingDestroyRoot = Effect.fn("AppOperation.resolveMissingD
   const requested = AbsolutePath.make(resolvePath(root));
   const canonical = AbsolutePath.make(
     yield* canonicalMissingAppRoot(root).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new AppResolveError({
             reason: "missing-root",

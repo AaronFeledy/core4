@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import { DateTime, Effect, Schema } from "effect";
@@ -36,7 +37,7 @@ export const listNativeSnapshots = Effect.fn("ProviderDataPlane.listVolumeSnapsh
     return yield* Effect.fail(failure(options.redactor.redactValue(response)));
   }
   const images = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ImageList))(response.body).pipe(
-    Effect.mapError(failure),
+    mapFailures(failure),
   );
   const artifacts: VolumeSnapshotArtifact[] = [];
   for (const image of images) {

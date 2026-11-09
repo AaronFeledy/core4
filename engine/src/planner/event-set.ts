@@ -1,6 +1,7 @@
 import { compileInvocationSites, compiledValueError } from "@lando/landofile/compiled-sites";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   LandofileShape,
@@ -81,7 +82,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const provider = landofile.provider ?? hostProvider;
   const capabilities = input.capabilities ?? input.resolveCapabilities?.(provider);
   const manifests = yield* pluginRegistry.list.pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new LandofileValidationError({
           message: `Failed to enumerate plugin contributions: ${causeMessage(error)}.`,
@@ -147,7 +148,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     });
     const decoded = yield* Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(
       serviceScoped.document,
-    ).pipe(Effect.mapError((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
+    ).pipe(mapFailures((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
     landofile = copyLandofileProvenance(landofile, decoded);
     pendingSites = [
       ...pendingSites.filter((site) => blocked.has(deferredSiteKey(site.path))),

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppDataIdentityError } from "@lando/sdk/errors";
 import type { AppIdentity } from "@lando/sdk/schema";
 import { type LandoRoots, StateStore } from "@lando/sdk/services";
@@ -43,7 +44,7 @@ export const readAppDataIdentity = Effect.fn("AppDataIdentity.read")(function* (
       );
   return yield* store.open(appDataIdentityBucketSpec(identity)).pipe(
     Effect.flatMap((bucket) => bucket.get),
-    Effect.mapError((cause) => identityFailure(identity, cause)),
+    mapFailures((cause) => identityFailure(identity, cause)),
   );
 });
 
@@ -62,7 +63,7 @@ const transitionAppDataIdentity = (
         illegal: () => identityFailure(identity),
       }),
     ),
-    Effect.mapError((cause) => identityFailure(identity, cause)),
+    mapFailures((cause) => identityFailure(identity, cause)),
   );
 
 export const recordAppDataIdentity = Effect.fn("AppDataIdentity.record")(function* (

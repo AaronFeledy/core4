@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   NotImplementedError,
   PluginManifestError,
@@ -84,7 +85,7 @@ export const acquirePluginPackage = Effect.fn("PluginAdd.acquirePackage")(functi
   });
   const pin = yield* session
     .resolveNpm({ name: parsed.name, ...(parsed.version === undefined ? {} : { selector: parsed.version }) })
-    .pipe(Effect.mapError(mapSource("resolve")));
+    .pipe(mapFailures(mapSource("resolve")));
   const packageDir = yield* Effect.try({
     try: () => {
       for (const [label, value] of [
@@ -128,7 +129,7 @@ export const acquirePluginPackage = Effect.fn("PluginAdd.acquirePackage")(functi
   });
   if (options.expectedActivation === undefined && exists)
     return { created: false, packageDir, stagingRoot: undefined, targetDir: undefined };
-  const snapshot = yield* session.materializeNpm(pin).pipe(Effect.mapError(mapSource("materialize")));
+  const snapshot = yield* session.materializeNpm(pin).pipe(mapFailures(mapSource("materialize")));
   const stagingRoot = yield* Effect.tryPromise({
     try: async () => {
       const parent = dirname(packageDir);

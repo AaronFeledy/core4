@@ -1,5 +1,6 @@
 import { readdir, rmdir, unlink } from "node:fs/promises";
 import type { LandoPaths } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SnapshotAmbiguousError, SnapshotNotFoundError, StateStoreError, errnoCode } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -49,7 +50,7 @@ export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
         });
       },
     })
-    .pipe(Effect.mapError((cause) => stateFailure("open", cause)));
+    .pipe(mapFailures((cause) => stateFailure("open", cause)));
 });
 
 export const readSnapshot = Effect.fn("DataMover.readSnapshot")(function* (
@@ -57,7 +58,7 @@ export const readSnapshot = Effect.fn("DataMover.readSnapshot")(function* (
   handle: SnapshotHandle,
 ) {
   const bucket = yield* openSnapshot(persistence, handle);
-  const info = yield* bucket.get.pipe(Effect.mapError((cause) => stateFailure("read-sidecar", cause)));
+  const info = yield* bucket.get.pipe(mapFailures((cause) => stateFailure("read-sidecar", cause)));
   if (info === null) return undefined;
   if (
     info.owner.ownerKey !== handle.ownerKey ||
@@ -140,7 +141,7 @@ export const listSnapshotInfos = Effect.fn("DataMover.listSnapshotInfos")(functi
         // app/scope are content, not directory components. Validate the path before opening the bucket.
         const address = { ownerKey, id, store: { store: store.name } };
         const bucket = yield* openSnapshot(persistence, address);
-        const info = yield* bucket.get.pipe(Effect.mapError((cause) => stateFailure("read-sidecar", cause)));
+        const info = yield* bucket.get.pipe(mapFailures((cause) => stateFailure("read-sidecar", cause)));
         if (info === null) continue;
         if (
           info.owner.ownerKey !== ownerKey ||

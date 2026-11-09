@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -27,7 +28,7 @@ export const prepareContainerHelperMounts = Effect.fn("RuntimeProvider.prepareCo
         ),
       );
     const helper = yield* resolveContainerHelper(helperTarget).pipe(
-      Effect.mapError((cause) => failure(cause.message, cause.remediation, cause)),
+      mapFailures((cause) => failure(cause.message, cause.remediation, cause)),
     );
     const delivery = containerHelperDelivery(helper);
     const services: AppPlan["services"] = Object.fromEntries(

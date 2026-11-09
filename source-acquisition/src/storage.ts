@@ -1,4 +1,5 @@
 import { lstat, mkdir, readFile, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import { Clock, Effect, Schema } from "effect";
@@ -61,7 +62,7 @@ export const makeStorage = (
   const locked = <A, E>(effect: Effect.Effect<A, E>) =>
     options.stateStore
       .withLock(lockKey, effect)
-      .pipe(Effect.mapError((error) => acquisitionError("cache", "source store", error)));
+      .pipe(mapFailures((error) => acquisitionError("cache", "source store", error)));
   const entryPath = (key: SourceKey) => containedPath(root, key.kind, keyId(key));
   const stage = <A>(body: (directory: string) => Effect.Effect<A, SourceAcquisitionError>) =>
     Effect.acquireUseRelease(

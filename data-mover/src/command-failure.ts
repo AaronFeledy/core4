@@ -10,15 +10,18 @@ export const serviceCommandFailure = (
   evidence?: CommandOutputFailure,
 ): DataTransferError =>
   new DataTransferError({
-    message: `Service command ${operation} failed during data transfer.`,
+    message: "The service command failed during the data transfer.",
     operation,
     exitCode,
     stderrTail,
     reason: evidence?.reason,
+    ...(evidence?.cause === undefined ? {} : { cause: evidence.cause }),
     remediation:
-      evidence?.role === "cleanup"
-        ? "Inspect and resolve the reported failure, including cleanup, before deciding whether to repeat the transfer; it may already have completed."
-        : "Inspect the service command and retry after the service is healthy.",
+      (evidence?.cause?.remediation ??
+        "Inspect the service command and retry after the service is healthy.") +
+      (evidence?.role === "cleanup"
+        ? " Resolve cleanup before deciding whether to repeat the transfer; it may already have completed."
+        : ""),
   });
 
 export const checkedTransferCommand = Effect.fnUntraced(function* <E, R>(

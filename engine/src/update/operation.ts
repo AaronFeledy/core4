@@ -1,6 +1,7 @@
 /** Update orchestration, launch probing, and platform apply flows. */
 import { mkdtemp, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { causeMessage } from "@lando/sdk/errors";
@@ -197,9 +198,7 @@ const runLaunchProbe = Effect.fn("Update.runLaunchProbe")(function* (
   const result = yield* processRunner
     .run({ cmd: path, args: ["--version"], timeoutMs: 15_000 })
     .pipe(
-      Effect.mapError((cause) =>
-        launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause }),
-      ),
+      mapFailures((cause) => launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause })),
     );
   if (result.exitCode === 0) return;
   return yield* Effect.fail(
@@ -303,7 +302,7 @@ const applyPosixSelfUpdate = ({
         yield* selfUpdate
           .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
           .pipe(
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new UpdatePermissionError({
                   message: `Failed to exec updated Lando binary at ${executablePath}; the new binary remains installed.`,
@@ -366,7 +365,7 @@ const applyWindowsSelfUpdate = Effect.fn("Update.applyWindowsSelfUpdate")(functi
   );
   yield* guardCoreReplacement(
     selfUpdate.replaceWindows(replacementInput).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new UpdatePermissionError({
             message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,

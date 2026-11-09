@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSystem } from "@lando/sdk/services";
 import { Effect, Option, Schema, Stream } from "effect";
 
@@ -48,7 +49,7 @@ export const decodeInstallRecord = Effect.fnUntraced(function* (
   file: string,
 ): Effect.fn.Return<InstallRecord, InstallRecordError> {
   const value: unknown = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(json).pipe(
-    Effect.mapError(() =>
+    mapFailures(() =>
       recordError({ reason: "invalid-json", file, detail: "Install record is not valid JSON." }),
     ),
   );
@@ -60,7 +61,7 @@ export const decodeInstallRecord = Effect.fnUntraced(function* (
     });
   }
   return yield* Schema.decodeUnknownEffect(InstallRecord)(value, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(() =>
+    mapFailures(() =>
       recordError({ reason: "schema", file, detail: "Install record does not match the version 1 schema." }),
     ),
   );
@@ -108,7 +109,7 @@ export const readInstallRecord = Effect.fnUntraced(function* (
   const stat = yield* fs.lstat(file).pipe(
     Effect.map(Option.some),
     Effect.catchTag("FileNotFoundError", () => Effect.succeed(Option.none())),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       recordError({ reason: "io", file, detail: "Cannot inspect install record.", cause }),
     ),
   );
@@ -123,7 +124,7 @@ export const readInstallRecord = Effect.fnUntraced(function* (
   const json = yield* fs
     .readText(file)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         recordError({ reason: "io", file, detail: "Cannot read install record.", cause }),
       ),
     );
@@ -141,7 +142,7 @@ export const verifyInstallRecordOwnership = Effect.fnUntraced(function* (
   }
   const fs = yield* FileSystem;
   const stat = yield* fs.lstat(destination).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       recordError({
         reason: "io",
         file: destination,
@@ -158,7 +159,7 @@ export const verifyInstallRecordOwnership = Effect.fnUntraced(function* (
       () => new Bun.CryptoHasher("sha256"),
       (hasher, chunk) => hasher.update(chunk),
     ),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       recordError({ reason: "io", file: destination, detail: "Cannot read installed executable.", cause }),
     ),
   );

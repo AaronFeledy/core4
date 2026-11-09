@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, DateTime, Duration, Effect, Stream } from "effect";
 
 import { sameRealpath } from "@lando/paths";
@@ -111,7 +112,7 @@ export const hasDurableMutagenOwnership = (
       ),
     )
     .pipe(
-      Effect.mapError((error) =>
+      mapFailures((error) =>
         error instanceof FileSyncStartError
           ? error
           : startError("Could not read Mutagen session ownership state."),
@@ -444,7 +445,7 @@ export const makePreparedWindowsMutagenProcessClient = (
               ? Effect.succeed(cliPath)
               : Effect.fail(startError("The provider did not prepare an absolute Windows docker.exe path.")),
           ),
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof FileSyncStartError
               ? error
               : startError("Could not verify the managed Docker-compatible CLI for Mutagen."),
@@ -512,7 +513,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
     options.stateStore
       .withLock("mutagen-sessions", ledger.pipe(Effect.flatMap(operation)))
       .pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof FileSyncStartError ||
           error instanceof FileSyncDriftError ||
           error instanceof FileSyncStopError
@@ -529,7 +530,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
     return options.stateStore
       .withLock(`mutagen-app-${identity}`, operation)
       .pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof FileSyncStartError ||
           error instanceof FileSyncDriftError ||
           error instanceof FileSyncStopError
@@ -615,7 +616,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       verifiedTransport.pipe(
         Effect.andThen(installed),
         Effect.flatMap(() => options.runner.run({ cmd: binary, args, env, timeoutMs, windowsHide: true })),
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof FileSyncStartError
             ? error
             : startError(`Mutagen command failed: ${args.slice(0, 2).join(" ")}.`),
@@ -1037,7 +1038,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             }
           }
           yield* flushOwned(entry).pipe(
-            Effect.mapError(
+            mapFailures(
               (error) =>
                 new FileSyncStopError({
                   engineId: ENGINE_ID,
@@ -1086,7 +1087,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         );
       }),
     ).pipe(
-      Effect.mapError((error) =>
+      mapFailures((error) =>
         error instanceof FileSyncStopError ? error : stopError(error.message, String(app.id)),
       ),
     );
@@ -1189,7 +1190,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }
         }),
       ),
-    ).pipe(Effect.mapError((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
 
   const completeAppDisposal = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1234,7 +1235,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }));
         }),
       ),
-    ).pipe(Effect.mapError((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
 
   const disposalPhase = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1271,7 +1272,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }),
         ),
       ),
-    ).pipe(Effect.mapError((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
 
   const create = ({ name, spec }: { readonly name: string; readonly spec: FileSyncSessionSpec }) =>
     withAppLock(
@@ -1455,7 +1456,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             Effect.asVoid,
           ),
         ),
-      ).pipe(Effect.mapError((error) => stopError(error.message, name))),
+      ).pipe(mapFailures((error) => stopError(error.message, name))),
     resume: (name) =>
       withNamedApp(name, (app) =>
         withLedger((bucket) =>
@@ -1538,7 +1539,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             }),
           ),
         );
-      }).pipe(Effect.mapError((error) => stopError(error.message, name))),
+      }).pipe(mapFailures((error) => stopError(error.message, name))),
     list: withLedger((bucket) =>
       readKnownLedger(bucket).pipe(
         Effect.flatMap((value) => reconcilePreparing(bucket, value)),

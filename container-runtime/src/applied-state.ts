@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Option, Schema } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -159,12 +160,12 @@ export function makeAppliedPlanStore(
               Effect.as(bucket.path),
             ),
           ),
-          Effect.mapError((cause) => error("persist", cause)),
+          mapFailures((cause) => error("persist", cause)),
         ),
       removeAppliedPlan: (stateStore, appId) =>
         open(stateStore, appId).pipe(
           Effect.flatMap((bucket) => bucket.remove),
-          Effect.mapError((cause) => error("remove", cause)),
+          mapFailures((cause) => error("remove", cause)),
         ),
     };
   }
@@ -225,7 +226,7 @@ export function makeAppliedPlanStore(
             ),
           ),
         ),
-        Effect.mapError((cause) => error("persist", cause)),
+        mapFailures((cause) => error("persist", cause)),
       ),
     loadAppliedPlan: (stateStore, appId) =>
       loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined))),
@@ -253,7 +254,7 @@ export function makeAppliedPlanStore(
             return [undefined, remaining];
           }),
         ),
-        Effect.mapError((cause) => error("remove", cause)),
+        mapFailures((cause) => error("remove", cause)),
       ),
   };
 }

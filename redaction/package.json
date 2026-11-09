@@ -20,7 +20,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
-    "./plan-values": "./src/plan-values.ts"
+    "./plan-values": "./src/plan-values.ts",
+    "./provider-error": "./src/provider-error.ts",
+    "./provider-details": "./src/provider-details.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "redaction"],

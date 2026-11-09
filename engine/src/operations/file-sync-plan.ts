@@ -1,4 +1,5 @@
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { type AppPlan, type FileSyncSessionSpec, hasStructuralFileSyncCoverage } from "@lando/sdk/schema";
 import type { AppliedFileSyncInspection } from "@lando/sdk/services";
@@ -60,7 +61,7 @@ export const resolveFileSyncMountPlan = Effect.fnUntraced(function* (
   yield* requireFileSyncPlanCapabilities(engine, plan);
   if (
     !(yield* engine.isAvailable.pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new FileSyncStartError({
             engineId: bundle.id,

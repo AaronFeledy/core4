@@ -47,6 +47,7 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     exitCode: Schema.optional(Schema.Number),
     reason: Schema.optional(Schema.Literals(["exit", "protocol", "provider", "timeout", "stdout-limit"])),
     stderrTail: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
     recoverySnapshotId: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },

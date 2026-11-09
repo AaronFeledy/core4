@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { FileSyncError, StateWrite } from "@lando/sdk/services";
@@ -21,7 +22,7 @@ export const acceleratedStartStopError = (app: AppRef, cause: FileSyncError) =>
   });
 
 export const readDiscardableStart = (app: AppRef) =>
-  readJournal(app).pipe(Effect.mapError((cause) => acceleratedStartStopError(app, cause)));
+  readJournal(app).pipe(mapFailures((cause) => acceleratedStartStopError(app, cause)));
 
 export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, plan: AppPlan) {
   const pending = yield* readPendingAcceleratedStart(app, plan).pipe(
@@ -37,7 +38,7 @@ export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, pl
       remediation: journalRecovery(path),
       ...(cause === undefined ? {} : { cause }),
     });
-  const bucket = yield* openJournal(app).pipe(Effect.mapError((cause) => failure(cause.message, cause)));
+  const bucket = yield* openJournal(app).pipe(mapFailures((cause) => failure(cause.message, cause)));
   return {
     record: pending,
     clear: bucket

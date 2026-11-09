@@ -1,6 +1,7 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { managedPodmanChildEnv } from "@lando/container-runtime/podman/managed-invocation";
 import { prepareManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
@@ -49,7 +50,7 @@ const readPodmanServiceLogTailSync = (socketPath: string): string | undefined =>
 
 const stderrFromCause = (cause: unknown): string | undefined => {
   if (typeof cause !== "object" || cause === null || !("stderr" in cause)) return undefined;
-  const stderr = (cause as { readonly stderr?: unknown }).stderr;
+  const stderr = cause.stderr;
   return typeof stderr === "string" ? stderr : undefined;
 };
 
@@ -74,7 +75,7 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
     if (typeof this.details !== "object" || this.details === null || !("stderr" in this.details)) {
       return undefined;
     }
-    const stderr = (this.details as { readonly stderr?: unknown }).stderr;
+    const stderr = this.details.stderr;
     return typeof stderr === "string" ? stderr : undefined;
   }
 }
@@ -204,7 +205,7 @@ export const makeSystemPodmanServiceRunner = (
         runRoot === undefined
           ? undefined
           : yield* prepare(dirname(runRoot), { privateRuntimeDir: spec.env?.XDG_RUNTIME_DIR }).pipe(
-              Effect.mapError((cause) => new RuntimeLaunchError(cause.message, cause)),
+              mapFailures((cause) => new RuntimeLaunchError(cause.message, cause)),
             );
       return yield* Effect.try({
         try: () => {

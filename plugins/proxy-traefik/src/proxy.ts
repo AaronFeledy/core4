@@ -1,4 +1,5 @@
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Layer, Option, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -320,7 +321,7 @@ export const makeTraefikRouterService = (
               yield* ensureDashboardFile(dependencies, defaultDomain);
             }),
           ),
-        Effect.mapError((cause) => {
+        mapFailures((cause) => {
           const mapped = mapSetupError(cause);
           return mapped instanceof RouterWatcherError
             ? new ProxySetupError({
@@ -383,7 +384,7 @@ export const makeTraefikRouterService = (
               yield* finalizeRouterStartup(dependencies, advertised, "setup");
             }),
           ),
-        Effect.mapError(mapSetupError),
+        mapFailures(mapSetupError),
       ),
       revalidateStartup: Effect.fn("RouterService.revalidateStartup")(
         () =>
@@ -398,7 +399,7 @@ export const makeTraefikRouterService = (
               yield* finalizeRouterStartup(dependencies, advertised, "revalidation");
             }),
           ),
-        Effect.mapError(mapStartupRevalidationError),
+        mapFailures(mapStartupRevalidationError),
       )(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app) => {
@@ -415,7 +416,7 @@ export const makeTraefikRouterService = (
               : apply;
           return guarded;
         },
-        (effect, _nextRoutes, owner) => effect.pipe(Effect.mapError((cause) => applyError(owner.id, cause))),
+        (effect, _nextRoutes, owner) => effect.pipe(mapFailures((cause) => applyError(owner.id, cause))),
       ),
       removeRoutes: Effect.fn("RouterService.removeRoutes")(
         (owner) => {
@@ -441,13 +442,13 @@ export const makeTraefikRouterService = (
               : remove;
           return guarded;
         },
-        Effect.mapError((cause) => proxyError("route removal", cause)),
+        mapFailures((cause) => proxyError("route removal", cause)),
       ),
       status: Effect.fn("RouterService.status")(
         function* () {
           return yield* persistedStatus(dependencies);
         },
-        Effect.mapError((cause) => proxyError("status", cause)),
+        mapFailures((cause) => proxyError("status", cause)),
       )(),
       stop: Effect.fn("RouterService.stop")(
         () => {
@@ -493,7 +494,7 @@ export const makeTraefikRouterService = (
               : stop;
           return guarded;
         },
-        Effect.mapError((cause) => proxyError("stop", cause)),
+        mapFailures((cause) => proxyError("stop", cause)),
       )(),
     }),
     readAppliedRoutes: (owner: AppRouteOwner) => Effect.succeed(routes.get(owner.ownerKey) ?? []),
@@ -515,7 +516,7 @@ export const layer = (stateStore: PluginStateStore) =>
       return yield* deferredRouter(
         ROUTER_IDENTITY,
         globalApp.paths.pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new ProxyError({
                 message: "Unable to resolve the global router's storage root.",

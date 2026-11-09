@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import {
@@ -93,5 +94,5 @@ export const validateLandofile = (
   return Schema.decodeUnknownEffect(LandofileShape)(parsed, {
     onExcessProperty: "error",
     errors: "all",
-  }).pipe(Effect.mapError((cause) => validationErrorFromCause(file, parsed, cause)));
+  }).pipe(mapFailures((cause) => validationErrorFromCause(file, parsed, cause)));
 };

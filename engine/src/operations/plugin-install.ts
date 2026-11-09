@@ -1,6 +1,7 @@
 import { lstat, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Result, Schema } from "effect";
 
@@ -233,7 +234,7 @@ export const finalizePluginInstall = Effect.fn("AppOperation.finalizePluginInsta
     finalize,
     io,
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       isInstalledPluginRegistryRejection(cause)
         ? new NotImplementedError({
             message: `Plugin ${options.entry.name} is linked from a local checkout; installing would replace that link.`,

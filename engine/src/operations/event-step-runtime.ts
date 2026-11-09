@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 // allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
 import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 
@@ -275,7 +276,7 @@ const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: 
     ...(leaf.user === undefined ? {} : { user: leaf.user }),
     redactionTokens,
     ...(env === undefined ? {} : { env }),
-  }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
+  }).pipe(mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)));
   return { leaf, result, startedAt, redactor };
 });
 
@@ -332,7 +333,7 @@ const runTask = Effect.fnUntraced(function* (
   const resolved = yield* resolveToolingTaskShape(client.task, context, client.sites);
   const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
   const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
-    Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
+    mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)),
   );
   return { leaf, result, startedAt, redactor };
 });
@@ -444,7 +445,7 @@ export const makeEventStepRunners = (
             options.redactorFor({ input: [leaf.flags, leaf.args], directTokens: leaf.raw }).pipe(
               Effect.flatMap(({ redactor, redactionTokens }) =>
                 options.runCanonical(leaf, redactionTokens).pipe(
-                  Effect.mapError((error) =>
+                  mapFailures((error) =>
                     isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
                   ),
                   Effect.map((result) => ({ leaf, result, startedAt, redactor })),

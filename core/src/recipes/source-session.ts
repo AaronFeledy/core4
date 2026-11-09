@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import { SourceAcquisitionError, displaySource } from "@lando/source-acquisition";
 import { Effect, Schema } from "effect";
@@ -61,6 +62,6 @@ export const runSourceSession = <A>(
   signal?: AbortSignal,
 ): Promise<A> =>
   Effect.runPromise(
-    effect.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error, context))),
+    effect.pipe(mapFailures((error) => mapSourceAcquisitionError(error, context))),
     signal === undefined ? undefined : { signal },
   );

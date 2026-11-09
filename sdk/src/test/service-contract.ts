@@ -1,4 +1,5 @@
 import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 import { canonicalJson } from "../digest/index.ts";
 
 import {
@@ -142,9 +143,7 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
 
   const resolution = yield* serviceType
     .resolve(makeInput())
-    .pipe(
-      Effect.mapError((cause) => serviceCompositionFailure("service type resolve succeeds", String(cause))),
-    );
+    .pipe(mapFailures((cause) => serviceCompositionFailure("service type resolve succeeds", String(cause))));
 
   yield* requireServiceComposition(
     typeof resolution === "object" && resolution !== null,
@@ -219,9 +218,7 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
   const second = yield* serviceType
     .resolve(makeInput())
     .pipe(
-      Effect.mapError((cause) =>
-        serviceCompositionFailure("service type resolve is replay-safe", String(cause)),
-      ),
+      mapFailures((cause) => serviceCompositionFailure("service type resolve is replay-safe", String(cause))),
     );
   yield* requireServiceComposition(
     second.base === resolution.base &&

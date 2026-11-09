@@ -2,6 +2,7 @@
  * Core download body: cache, offline, stream, verify, and lifecycle events.
  */
 import { join } from "node:path";
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 
 import { Clock, DateTime, Effect, type Exit, Ref, Stream } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
@@ -118,7 +119,7 @@ export const makeDownloaderService = (
         )
         .pipe(
           Effect.provideService(RequestPolicy, policy),
-          Effect.mapError((error: HttpClientError.HttpClientError) =>
+          mapFailures((error: HttpClientError.HttpClientError) =>
             mapHttpClientError(error, source, tokenRedactor),
           ),
         );
@@ -139,7 +140,7 @@ export const makeDownloaderService = (
       const httpError = statusError(response.status, source);
       if (httpError !== undefined) return yield* Effect.fail(httpError);
       const body = response.stream.pipe(
-        Stream.mapError((error: HttpClientError.HttpClientError) =>
+        mapStreamFailures((error: HttpClientError.HttpClientError) =>
           mapHttpClientError(error, source, tokenRedactor),
         ),
       );

@@ -95,7 +95,9 @@ export const parseEngineJson = (
         providerId: ctx.providerId,
         operation,
         message: options?.message ?? `provider-${ctx.providerId} API returned invalid JSON.`,
-        ...(options?.details === undefined ? {} : { details: options.details }),
+        ...(options?.details === undefined
+          ? {}
+          : { details: redactDetails(options.details, redactorFor(ctx)) }),
         remediation: options?.remediation ?? ctx.remediation,
         cause,
       }),

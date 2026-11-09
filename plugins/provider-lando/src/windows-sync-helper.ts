@@ -5,6 +5,7 @@ import {
   buildVolumePruneRequest,
   parseVolumePruneResult,
 } from "@lando/container-runtime/podman/volume-prune";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { Duration, Effect, Predicate } from "effect";
@@ -34,9 +35,7 @@ const withReceiptLock = <A, E>(
 ) =>
   stateStore
     .withLock(`windows-sync-helper-${receiptKey(spec)}`, body)
-    .pipe(
-      Effect.mapError((cause) => (cause instanceof ProviderUnavailableError ? cause : stateFailure(cause))),
-    );
+    .pipe(mapFailures((cause) => (cause instanceof ProviderUnavailableError ? cause : stateFailure(cause))));
 
 const REMEDIATION =
   "Inspect the named volume and sync helper in the managed Podman machine, then retry with resources owned by this app.";
@@ -184,7 +183,7 @@ const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonReco
     method: "GET",
     path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
   }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       failure("syncHelper.image.inspect", "Podman image identity could not be verified.", cause),
     ),
   );
@@ -328,7 +327,7 @@ const requireCreatedAt = (body: JsonRecord): Effect.Effect<string, ProviderUnava
 const loadReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) =>
   openReceipt(stateStore, receiptKey(spec)).pipe(
     Effect.flatMap((bucket) => bucket.get),
-    Effect.mapError(stateFailure),
+    mapFailures(stateFailure),
   );
 
 const collision = (kind: string) =>

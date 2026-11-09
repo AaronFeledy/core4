@@ -6,6 +6,7 @@ import {
   composeLandofileRootLayers,
   finishLoadStage,
 } from "@lando/landofile/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
 import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
@@ -41,7 +42,7 @@ export interface AppConfigViewOptions {
 
 const inspectionValue = (value: unknown) =>
   Schema.decodeUnknownEffect(LandofileSourceValue)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ConfigError({
           message: "Landofile inspection requires serializable source data.",

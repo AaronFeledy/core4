@@ -25,6 +25,40 @@ import {
 import { ProviderId } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
+import { Schema } from "effect";
+
+import { redactProviderDetails } from "./provider-details.ts";
+
+export const isProviderError = Schema.is(
+  Schema.Union([
+    SecretNotFoundError,
+    SecretReferenceInvalidError,
+    SecretStoreUnavailableError,
+    EnvironmentValueResolutionError,
+    PlanReplanRequiredError,
+    ProviderUnavailableError,
+    ProviderCapabilityError,
+    ProviderConfigError,
+    ProviderInternalError,
+    ArtifactBuildError,
+    HealthcheckTargetUnsupportedError,
+    ServiceExecError,
+    ServiceNotFoundError,
+    ServiceRestartWouldRecreateError,
+    ServiceStartError,
+    VolumeOperationError,
+    ServiceCopyError,
+    ArtifactTransferError,
+    ProviderSetupConsentDeniedError,
+    ProviderSetupPrivilegeUnavailableError,
+    ProviderSetupProvisioningError,
+    ProviderSetupUnsupportedHostError,
+  ]),
+);
+
+interface ReconstructionOptions {
+  readonly cause?: "keep" | "omit";
+}
 
 const baseFields = (
   error: Pick<
@@ -32,13 +66,14 @@ const baseFields = (
     "providerId" | "operation" | "message" | "details" | "remediation" | "cause"
   >,
   redactor: Redactor,
+  options: ReconstructionOptions,
 ) => ({
   providerId: redactor.redactString(error.providerId),
   operation: redactor.redactString(error.operation),
   message: redactor.redactString(error.message),
-  ...(error.details === undefined ? {} : { details: redactor.redactValue(error.details) }),
+  ...(error.details === undefined ? {} : { details: redactProviderDetails(error.details, redactor) }),
   remediation: redactor.redactString(error.remediation),
-  ...(error.cause === undefined ? {} : { cause: error.cause }),
+  ...(options.cause === "omit" || error.cause === undefined ? {} : { cause: error.cause }),
 });
 
 const setupFields = (
@@ -50,40 +85,41 @@ const setupFields = (
   remediation: redactor.redactString(error.remediation),
 });
 
-// Preserve the narrower error channel on availability probes and contribution callbacks.
-export function redactProviderError(
-  error: ProviderUnavailableError,
+// Preserve narrow error channels when redacting individual canonical classes.
+export function redactProviderError<E extends ProviderError>(
+  error: E,
   redactor: Redactor,
-): ProviderUnavailableError;
-export function redactProviderError(error: ProviderConfigError, redactor: Redactor): ProviderConfigError;
-export function redactProviderError(error: ProviderError, redactor: Redactor): ProviderError;
-export function redactProviderError(error: ProviderError, redactor: Redactor): ProviderError {
+  options?: ReconstructionOptions,
+): E;
+export function redactProviderError(
+  error: ProviderError,
+  redactor: Redactor,
+  options: ReconstructionOptions = {},
+): ProviderError {
   // Reconstruct, never clone: TaggedError serialization retains its constructor arguments.
   switch (error._tag) {
     case "SecretNotFoundError":
       return new SecretNotFoundError({
-        ...error,
         message: redactor.redactString(error.message),
         secret: redactor.redactString(error.secret),
         remediation: redactor.redactString(error.remediation),
       });
     case "SecretReferenceInvalidError":
       return new SecretReferenceInvalidError({
-        ...error,
         message: redactor.redactString(error.message),
         reference: redactor.redactString(error.reference),
         remediation: redactor.redactString(error.remediation),
       });
     case "SecretStoreUnavailableError":
       return new SecretStoreUnavailableError({
-        ...error,
+        reason: error.reason,
         message: redactor.redactString(error.message),
         storeId: redactor.redactString(error.storeId),
         remediation: redactor.redactString(error.remediation),
       });
     case "EnvironmentValueResolutionError":
       return new EnvironmentValueResolutionError({
-        ...error,
+        reason: error.reason,
         message: redactor.redactString(error.message),
         ...(error.variable === undefined ? {} : { variable: redactor.redactString(error.variable) }),
         ...(error.reference === undefined ? {} : { reference: redactor.redactString(error.reference) }),
@@ -91,26 +127,31 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
       });
     case "PlanReplanRequiredError":
       return new PlanReplanRequiredError({
-        ...error,
+        providerId: redactor.redactString(error.providerId),
+        operation: redactor.redactString(error.operation),
+        ...(error.valueModel === undefined ? {} : { valueModel: error.valueModel }),
+        ...(options.cause === "omit" || error.cause === undefined ? {} : { cause: error.cause }),
         message: redactor.redactString(error.message),
         app: redactor.redactString(error.app),
         remediation: redactor.redactString(error.remediation),
       });
     case "ProviderUnavailableError":
-      return new ProviderUnavailableError(baseFields(error, redactor));
+      return new ProviderUnavailableError(baseFields(error, redactor, options));
     case "ProviderCapabilityError":
       return new ProviderCapabilityError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         capability: redactor.redactString(error.capability),
-        requiredValue: redactor.redactValue(error.requiredValue),
-        actualValue: redactor.redactValue(error.actualValue),
+        requiredValue: redactProviderDetails(error.requiredValue, redactor),
+        ...(error.actualValue === undefined
+          ? {}
+          : { actualValue: redactProviderDetails(error.actualValue, redactor) }),
       });
     case "ProviderConfigError":
-      return new ProviderConfigError(baseFields(error, redactor));
+      return new ProviderConfigError(baseFields(error, redactor, options));
     case "ProviderInternalError":
-      return new ProviderInternalError(baseFields(error, redactor));
+      return new ProviderInternalError(baseFields(error, redactor, options));
     case "ArtifactBuildError":
-      return new ArtifactBuildError(baseFields(error, redactor));
+      return new ArtifactBuildError(baseFields(error, redactor, options));
     case "HealthcheckTargetUnsupportedError":
       return new HealthcheckTargetUnsupportedError({
         message: redactor.redactString(error.message),
@@ -121,50 +162,64 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
       });
     case "ServiceExecError":
       return new ServiceExecError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         service: redactor.redactString(error.service),
       });
     case "ServiceNotFoundError":
       return new ServiceNotFoundError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         service: redactor.redactString(error.service),
       });
     case "ServiceRestartWouldRecreateError":
       return new ServiceRestartWouldRecreateError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         service: redactor.redactString(error.service),
         reason: error.reason,
       });
     case "ServiceStartError":
       return new ServiceStartError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         service: redactor.redactString(error.service),
         ...(error.logTail === undefined
           ? {}
           : {
               logTail: {
-                ...error.logTail,
                 service: redactor.redactString(error.logTail.service),
                 lines: error.logTail.lines.map(redactor.redactString),
+                truncated: error.logTail.truncated,
+                ...(error.logTail.exitCode === undefined ? {} : { exitCode: error.logTail.exitCode }),
+                ...(error.logTail.timedOut === undefined ? {} : { timedOut: error.logTail.timedOut }),
               },
             }),
         ...(error.listener === undefined
           ? {}
-          : { listener: { ...error.listener, service: redactor.redactString(error.listener.service) } }),
+          : {
+              listener: {
+                service: redactor.redactString(error.listener.service),
+                port: error.listener.port,
+                transport: error.listener.transport,
+                basis: error.listener.basis,
+                state: error.listener.state,
+                listening: error.listener.listening.map((binding) => ({
+                  address: redactor.redactString(binding.address),
+                  port: binding.port,
+                })),
+              },
+            }),
       });
     case "VolumeOperationError":
       return new VolumeOperationError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         ...(error.store === undefined ? {} : { store: redactor.redactString(error.store) }),
       });
     case "ServiceCopyError":
       return new ServiceCopyError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         ...(error.service === undefined ? {} : { service: redactor.redactString(error.service) }),
       });
     case "ArtifactTransferError":
       return new ArtifactTransferError({
-        ...baseFields(error, redactor),
+        ...baseFields(error, redactor, options),
         ...(error.artifactRef === undefined ? {} : { artifactRef: redactor.redactString(error.artifactRef) }),
       });
     case "ProviderSetupConsentDeniedError":
@@ -181,7 +236,7 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
         stage: error.stage,
         ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
         ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-        ...(error.cause === undefined ? {} : { cause: error.cause }),
+        ...(options.cause === "omit" || error.cause === undefined ? {} : { cause: error.cause }),
       });
     case "ProviderSetupUnsupportedHostError":
       return new ProviderSetupUnsupportedHostError({

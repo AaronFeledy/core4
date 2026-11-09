@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo } from "@lando/sdk/services";
@@ -33,7 +34,7 @@ export const listLabeledContainerRows = Effect.fn("RuntimeProvider.listLabeled")
   const input = { method: "GET", path: `/containers/json?${query}` } as const;
 
   const response = yield* request(input).pipe(
-    Effect.mapError((cause) => engineApiFailure(ctx, "list", input, cause)),
+    mapFailures((cause) => engineApiFailure(ctx, "list", input, cause)),
   );
   if (response.status < 200 || response.status >= 300) {
     return yield* Effect.fail(
@@ -52,7 +53,7 @@ export const listLabeledContainerRows = Effect.fn("RuntimeProvider.listLabeled")
   }
   const decoded = yield* parseEngineJson(response, ctx, "list");
   return yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ProviderInternalError({
           providerId: ctx.providerId,

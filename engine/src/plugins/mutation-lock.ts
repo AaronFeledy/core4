@@ -1,5 +1,6 @@
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect } from "effect";
 
@@ -29,7 +30,7 @@ export const withPluginMutationLock = Effect.fnUntraced(
   },
   (effect, _pluginsRoot, operation) =>
     effect.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof StateStoreError
           ? new NotImplementedError({
               message: `Could not acquire the shared plugin mutation lock for ${operation}.`,

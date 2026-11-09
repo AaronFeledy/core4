@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
@@ -57,7 +58,7 @@ const runHostOpener = Effect.fn("HostOpener.run")(function* (
       ...(exitCode === undefined ? {} : { exitCode }),
       remediation: "Check that your host has a working default browser or file manager and desktop session.",
     });
-  const launch = runner.run({ cmd, args }).pipe(Effect.mapError((cause) => failure(undefined, cause)));
+  const launch = runner.run({ cmd, args }).pipe(mapFailures((cause) => failure(undefined, cause)));
   const result = yield* redaction._tag === "Some"
     ? launch.pipe(
         Effect.provideService(RedactionService, {

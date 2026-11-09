@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 import {
@@ -59,7 +60,7 @@ export const resolveAgentSkillsAppRoot = Effect.fn("resolveAgentSkillsAppRoot")(
           : yield* findAppRoot(options.cwd);
       const appRoot = discovered ?? (yield* findDiscoveredLandofilePath(options.cwd)).appRoot;
       return yield* canonicalAppRoot(appRoot).pipe(
-        Effect.mapError(
+        mapFailures(
           (error) =>
             new ManagedFileError({
               reason: "path",

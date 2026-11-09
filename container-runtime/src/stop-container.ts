@@ -1,10 +1,11 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type ObservedServiceRemoval, ServiceShutdownObservation } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi } from "./engine-errors.ts";
-import { redactorFor, withApiReason } from "./redact.ts";
+import { redactDetails, redactorFor, standaloneSecretsRedactor, withApiReason } from "./redact.ts";
 import { type ShutdownIdentity, absentShutdown, observeShutdown } from "./shutdown-observation.ts";
 
 const FailureFacts = Schema.Struct({ shutdownObservations: Schema.Array(ServiceShutdownObservation) });
@@ -25,7 +26,7 @@ export const retainShutdownObservations = (
     message: error.message,
     remediation: error.remediation,
     cause: error,
-    details: { shutdownObservations },
+    details: redactDetails({ shutdownObservations }, standaloneSecretsRedactor({})),
   };
   switch (error._tag) {
     case "ProviderInternalError":
@@ -79,7 +80,7 @@ export const stopAndRemoveContainer = Effect.fn("ContainerShutdown.stopAndRemove
   const removed = yield* removeRuntimeContainer(options.api, identity.containerId, {
     ...options.ctx,
     operation: "bringDown.remove",
-  }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
+  }).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
   return {
     changed: response.status === 204 || removed,
     kind: removed ? "removed" : "absent",

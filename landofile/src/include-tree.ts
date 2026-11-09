@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { isMergeDirective, override } from "@lando/sdk/landofile";
@@ -154,7 +155,7 @@ export const resolveTree = Effect.fnUntraced(function* (
           remoteOrigin: fragment.remoteOrigin,
         },
         { depth: depth + 1, stack: [...stack, fragment.sourceId], source: fragment.sourceId, layer, order },
-      ).pipe(Effect.mapError(attributeError));
+      ).pipe(mapFailures(attributeError));
       fragments.push(nested);
       fragmentRecords.push(...getIncludeOverlays(nested));
       localIncludePaths.push(...getLocalIncludePaths(nested));

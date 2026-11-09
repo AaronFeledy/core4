@@ -1,3 +1,4 @@
+import { mapStreamFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Ref, Stream } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -313,7 +314,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
     const decoder = new TextDecoder();
     const buffer = yield* Ref.make("");
     yield* api.stream(buildImagePullRequest(reference, options.dialect, options)).pipe(
-      Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error, redactor)),
+      mapStreamFailures((error) => pullFailureFromTransport(options.ctx, reference, error, redactor)),
       Stream.runForEach(
         Effect.fnUntraced(function* (chunk) {
           const text = (yield* Ref.get(buffer)) + decoder.decode(chunk, { stream: true });

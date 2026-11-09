@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -21,7 +22,7 @@ export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
   function* () {
     const { selection, app } = yield* globalPlacementInput;
     return yield* ensureAppPlacement(app, selection.providerId).pipe(
-      Effect.mapError((error) =>
+      mapFailures((error) =>
         error instanceof AppPlacementError && selection.source === "env"
           ? new AppPlacementError({
               app: error.app,
@@ -34,7 +35,7 @@ export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
       ),
     );
   },
-  Effect.mapError((cause) =>
+  mapFailures((cause) =>
     cause instanceof AppPlacementError
       ? cause
       : new GlobalAppError({

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
-import { DataTransferError, SqlCommandFailedError } from "@lando/sdk/errors";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { encodeCommandResult, identityRedactor, taggedErrorJson } from "@lando/sdk/command-result";
+import { DataTransferError, ProviderConfigError, SqlCommandFailedError } from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 import { checkedSqlExecution } from "../src/checked-execution.ts";
 import { SqlEnvironmentSession } from "../src/environment.ts";
@@ -166,23 +167,64 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
   expect(harness.snapshots()).toHaveLength(1);
 });
 
-test("SQL execution failure is normalized without relabeling a provider message as stderr", async () => {
+test.each([false, true])("SQL capture preserves safe provider cause with live registry=%s", async (live) => {
+  const redaction = makeRedactionService();
+  const original = new ProviderConfigError({
+    providerId: "test",
+    operation: "exec",
+    message:
+      "Cannot connect sql-env-canary sql-token-canary https://user:sql-url-canary@example.test sql-late-canary",
+    details: { stderr: "sql-env-canary sql-token-canary" },
+    cause: "nested-secret-cause",
+    remediation: "Correct the runtime socket and retry.",
+  });
+  const execution = Stream.unwrap(
+    redaction.registerValues(["sql-late-canary"]).pipe(Effect.as(Stream.fail(original))),
+  );
   const result = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const session = yield* valueResolver({}).resolver.openSession();
-        return yield* checkedSqlExecution(Stream.fail("private provider error"), {
+        return yield* checkedSqlExecution(execution, {
           service: "database",
           command: ["sqlcmd"],
+          env: { PASSWORD: "sql-env-canary" },
+          secrets: {
+            substring: ["sql-token-canary", "sql-env-canary", ...(live ? [] : ["sql-late-canary"])],
+            wholeToken: [],
+          },
         }).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.result);
       }),
-    ),
+    ).pipe((effect) => (live ? Effect.provideService(effect, RedactionService, redaction) : effect)),
   );
   if (result._tag !== "Failure") throw new Error("expected failure");
   if (!(result.failure instanceof SqlCommandFailedError)) throw new Error("expected SQL command failure");
   expect(result.failure._tag).toBe("SqlCommandFailedError");
   expect(result.failure.exitCode).toBeUndefined();
   expect(result.failure.stderrTail).toBeUndefined();
+  expect(result.failure.cause).toMatchObject({
+    _tag: "ProviderConfigError",
+    remediation: original.remediation,
+  });
+  expect(result.failure.remediation).toBe(original.remediation);
+  const encoded = await Effect.runPromise(
+    encodeCommandResult({
+      command: "db:import",
+      resultSchema: DbCommandResult,
+      outcome: { _tag: "failure", error: result.failure, additionalErrors: [] },
+      redactor: identityRedactor,
+    }),
+  );
+  for (const secret of [
+    "sql-env-canary",
+    "sql-token-canary",
+    "sql-url-canary",
+    "sql-late-canary",
+    "nested-secret-cause",
+  ]) {
+    expect(encoded).not.toContain(secret);
+    expect(JSON.stringify(taggedErrorJson(result.failure))).not.toContain(secret);
+  }
 });
 
 test.each(["import", "seed"] as const)(

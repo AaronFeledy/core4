@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type AppPlacementError,
   GlobalAppError,
@@ -44,7 +45,7 @@ const reservationError = (cause: unknown) =>
 
 /** Other processes must own a lease; nested operations share this scoped activation intent. */
 export const readGlobalConsumerReservations = Effect.fnUntraced(function* (selected: ReadonlyArray<string>) {
-  const policy = yield* globalPolicyIdentity.pipe(Effect.mapError(reservationError));
+  const policy = yield* globalPolicyIdentity.pipe(mapFailures(reservationError));
   const scope = yield* GlobalActivationScope;
   const active = scope === undefined ? [] : (yield* Ref.get(scope.state)).entries;
   const required = new Set(selected);
@@ -61,10 +62,10 @@ export const withGlobalConsumerReservation = Effect.fnUntraced(function* <A, E, 
 ) {
   const selected = [...new Set([...services, ...exclusive])].sort();
   if (selected.length === 0) return yield* body;
-  const policy = yield* globalPolicyIdentity.pipe(Effect.mapError(reservationError));
+  const policy = yield* globalPolicyIdentity.pipe(mapFailures(reservationError));
   const global = yield* GlobalAppService;
   const paths = yield* global.paths;
-  const globalRoot = yield* canonicalMissingAppRoot(paths.root).pipe(Effect.mapError(reservationError));
+  const globalRoot = yield* canonicalMissingAppRoot(paths.root).pipe(mapFailures(reservationError));
   const scope = yield* GlobalActivationScope;
   if (scope === undefined)
     return yield* Effect.fail(reservationError("The global mutation coordinator is not held."));
