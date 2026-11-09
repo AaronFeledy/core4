@@ -85,8 +85,8 @@ export const pendingStartBucketSpec = (key: string) =>
     },
   }) as const;
 export const digest = (value: unknown): string => sha256Hex(JSON.stringify(value));
-export const journalRecovery = (path: string) =>
-  `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase. Journal: \`${path}\`.`;
+export const journalRecovery = (path?: string) =>
+  `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase.${path === undefined ? "" : ` Journal: \`${path}\`.`}`;
 
 export const sameStartIdentity = (previous: PendingStart, planned: PendingStart) =>
   previous.providerId === planned.providerId &&

@@ -45,7 +45,7 @@ export const readAcceleratedStartInventory = Effect.fnUntraced(function* (includ
         const pending = yield* bucket.get;
         return pending === null || (!includeCompleted && pending.phase === "completed")
           ? []
-          : [{ ...pending, path: bucket.path, remediation: journalRecovery(bucket.path) }];
+          : [{ ...pending, path: bucket.path, remediation: journalRecovery() }];
       }).pipe(
         Effect.result,
         Effect.map((result) => ({ key, result })),

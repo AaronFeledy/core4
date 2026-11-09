@@ -161,3 +161,57 @@ test("doctor reports a corrupt journal while still reporting readable attempts",
   expect(checks[0]?.solutions[0]?.description).toContain("Preserve this journal");
   expect(checks[1]?.context?.attemptId).toBe("redacted(valid)");
 });
+
+test("pending attempts for different roots share one remediation so bounded text can group them", async () => {
+  // Given two retained journals for different app roots.
+  const store = makeTestStateStore();
+  const keys = [`${"a".repeat(64)}.json`, `${"b".repeat(64)}.json`];
+  for (const [index, key] of keys.entries()) {
+    const bucket = await Effect.runPromise(
+      store.service.open({
+        root: "userData",
+        namespace: "accelerated-starts",
+        key,
+        schema: Schema.Unknown,
+        version: 1,
+      }),
+    );
+    await Effect.runPromise(
+      bucket.set({
+        attemptId: `attempt-${index}`,
+        appId: `demo${index}`,
+        appRoot: `/apps/demo${index}`,
+        providerId: "lando",
+        engineId: "mutagen",
+        mountPlanDigest: "digest",
+        phase: "apply-intent",
+        sessions: [{ name: "web/app-mount", specDigest: "spec" }],
+        targets: [
+          {
+            service: "web",
+            mountKey: "app-mount",
+            volumeName: `demo${index}-sync`,
+            helperSpecDigest: "helper",
+          },
+        ],
+      }),
+    );
+  }
+  // When doctor scans both.
+  const checks = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem;
+      return yield* acceleratedStartsDoctor((value) => value).pipe(
+        Effect.provideService(
+          FileSystem,
+          FileSystem.of({ ...fs, readDir: () => Effect.succeed(keys), exists: () => Effect.succeed(true) }),
+        ),
+        Effect.provide(store.layer),
+      );
+    }).pipe(Effect.provide(BunFileSystem.layer)),
+  );
+  // Then identity stays in context and the remediation is identical, not one variant per journal.
+  expect(checks.map((check) => check.context.journalPath)).toHaveLength(2);
+  expect(new Set(checks.map((check) => check.context.journalPath)).size).toBe(2);
+  expect(checks[0]?.solutions).toEqual(checks[1]?.solutions);
+});
