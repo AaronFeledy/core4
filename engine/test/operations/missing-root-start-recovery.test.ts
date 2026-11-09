@@ -44,6 +44,7 @@ const fixture = async (phase: "preparing" | "apply-intent" = "apply-intent") => 
   let interruptRemoval = false;
   let failCompletion = false;
   let vanishAfterListing = false;
+  let reappearAfterLookup = false;
   let lookup: "native" | "unknown" | "wrong-name" | "failure" = "native";
   const removed: string[] = [];
   const work = Effect.gen(function* () {
@@ -76,7 +77,13 @@ const fixture = async (phase: "preparing" | "apply-intent" = "apply-intent") => 
                 nativeName: lookup === "wrong-name" ? "other-volume" : ref.store,
               };
               if (lookup === "unknown") return Effect.succeed(common);
-              if (volumes.length === 0) return Effect.succeed({ ...common, presence: "absent" as const });
+              if (volumes.length === 0) {
+                if (reappearAfterLookup) {
+                  reappearAfterLookup = false;
+                  volumes = [volume];
+                }
+                return Effect.succeed({ ...common, presence: "absent" as const });
+              }
               const identity = volumes[0]?.identity;
               return Effect.succeed({
                 ...common,
@@ -142,6 +149,9 @@ const fixture = async (phase: "preparing" | "apply-intent" = "apply-intent") => 
     vanishAfterListing: () => {
       vanishAfterListing = true;
     },
+    reappearAfterLookup: () => {
+      reappearAfterLookup = true;
+    },
     hideVolumes: () => {
       listed = [];
     },
@@ -187,6 +197,18 @@ test("missing-root destroy skips a target that earlier teardown already removed"
   expect(Exit.isSuccess(result)).toBe(true);
   expect(f.removed).toEqual([]);
   expect(await f.journal()).toBeNull();
+});
+
+test("missing-root destroy keeps the journal when a target verified absent reappears", async () => {
+  const f = await fixture();
+  f.replace([]);
+  f.reappearAfterLookup();
+
+  const result = await f.run();
+
+  expect(Exit.isFailure(result)).toBe(true);
+  expect(f.removed).toEqual([]);
+  expect(await f.journal()).not.toBeNull();
 });
 
 test.each(["preparing", "apply-intent"] as const)(

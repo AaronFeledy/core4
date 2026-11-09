@@ -31,6 +31,7 @@ const at = (name: string): AppPlan => {
 
 const fixture = (names: readonly string[] = ["one", "two"], retainData = false) => {
   let plans = names.map(at);
+  let listed = [providerId];
   const destroyed: string[] = [];
   const fail = new Set<string>();
   const interrupt = new Set<string>();
@@ -59,7 +60,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
       }),
   };
   const registry = RuntimeProviderRegistry.of({
-    list: Effect.succeed([providerId]),
+    list: Effect.sync(() => listed),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
     appliedPlansFor: (root) => Effect.sync(() => plans.filter((plan) => plan.root === root)),
@@ -111,6 +112,10 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
     },
     changePlan: () => {
       plans = plans.map((plan) => ({ ...plan, name: "changed after confirmation" }));
+    },
+    vanishUnscanned: () => {
+      plans = [];
+      listed = [];
     },
   };
 };
@@ -179,6 +184,15 @@ test("prune continues past a failed root and preserves roots found after confirm
     _tag: "ProviderUnavailableError",
     remediation: "Repair provider ownership and retry.",
   });
+});
+
+test("prune does not call a root absent when its provider was not scanned again", async () => {
+  const f = fixture(["one"]);
+  const prepared = await Effect.runPromise(prepareAppsGc().pipe(Effect.provide(f.layer)));
+  f.vanishUnscanned();
+  const result = await Effect.runPromise(prepared.prune.pipe(Effect.provide(f.layer)));
+  expect(result.roots).toMatchObject([{ outcome: "retained", confirmed: true }]);
+  expect(f.destroyed).toEqual([]);
 });
 
 test("prune retains a root whose folder reappeared after confirmation", async () => {

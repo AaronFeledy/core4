@@ -89,23 +89,24 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
         discard: true,
       }),
       // Owned and orphan cleanup run first and may already have deleted a listed target, so
-      // re-observe it and skip only explicit absence; removeVolume still pins the generation.
+      // re-observe every target and skip only explicit absence; removeVolume still pins the
+      // generation, and a target that reappeared after preflight keeps the journal.
       removeTargets: options.volumes
         ? Effect.forEach(
             targets,
-            ({ target, volume }) => {
-              const identity = volume?.identity;
-              if (volume === undefined || identity === undefined) return Effect.void;
-              return provider
-                .locateVolume({ app: AppId.make(record.appId), store: target.volumeName })
-                .pipe(
-                  Effect.flatMap((located) =>
-                    located.nativeName === target.volumeName && located.presence === "absent"
-                      ? Effect.void
-                      : provider.removeVolume(volume.ref, identity.generation),
-                  ),
-                );
-            },
+            ({ target, volume }) =>
+              Effect.gen(function* () {
+                const located = yield* provider.locateVolume({
+                  app: AppId.make(record.appId),
+                  store: target.volumeName,
+                });
+                if (located.nativeName === target.volumeName && located.presence === "absent") return;
+                if (volume?.identity === undefined)
+                  return yield* Effect.fail(
+                    failure(`File-sync target ${target.volumeName} appeared after its absence was verified.`),
+                  );
+                yield* provider.removeVolume(volume.ref, volume.identity.generation);
+              }),
             { discard: true },
           )
         : Effect.void,

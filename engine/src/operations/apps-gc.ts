@@ -82,11 +82,19 @@ const pruneAppsGc = Effect.fn("AppOperation.pruneAppsGc")(function* (
         const record = current.candidates.find((record) => record.root === candidate.root);
         if (
           record === undefined &&
-          current.scans.some((scan) => candidate.providers.includes(scan.providerId) && !scan.complete)
+          !candidate.providers.every((id) =>
+            current.scans.some((scan) => scan.providerId === id && scan.complete),
+          )
         )
           return {
             outcome: "retained" as const,
             reason: "A recorded provider was not observed; absence of its resources cannot be verified.",
+          };
+        if (record === undefined && candidate.journals.length > 0 && current.unreadableJournals.length > 0)
+          return {
+            outcome: "retained" as const,
+            reason:
+              "An accelerated-start journal became unreadable; absence of its file-sync copies cannot be verified.",
           };
         if (record === undefined)
           return { outcome: "unchanged" as const, reason: "The recorded leftovers are already absent." };

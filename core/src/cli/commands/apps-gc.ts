@@ -13,22 +13,25 @@ const holdings = (root: AppsGcReport["candidates"][number]): string =>
     .filter((part) => part !== undefined)
     .join(", ") || "recorded state only";
 
-export const renderAppsGcReport = (report: AppsGcReport): string =>
-  [
+export const renderAppsGcReport = (report: AppsGcReport): string => {
+  const incomplete = report.scans.filter((scan) => !scan.complete);
+  const explained = incomplete.filter(
+    (scan) =>
+      scan.errorTag !== undefined ||
+      report.candidates.some((root) => root.providers.includes(scan.providerId)),
+  );
+  // Unobserved providers that hold no candidate share one line; their leftovers can only be orphans.
+  const unobserved = incomplete.filter((scan) => !explained.includes(scan)).map((scan) => scan.providerId);
+  return [
     `${report.candidates.length} missing app root${report.candidates.length === 1 ? "" : "s"}.`,
     ...report.unreadableJournals.map(
       (journal) =>
         `Unreadable journal ${journal.path}: ${journal._tag}: ${journal.message} ${journal.remediation}`,
     ),
-    // A provider that never recorded a missing root has nothing for this report to miss.
-    ...report.scans
-      .filter(
-        (scan) =>
-          !scan.complete &&
-          (scan.errorTag !== undefined ||
-            report.candidates.some((root) => root.providers.includes(scan.providerId))),
-      )
-      .map((scan) => `${scan.providerId}: ${scan.message}`),
+    ...explained.map((scan) => `${scan.providerId}: ${scan.message}`),
+    ...(unobserved.length === 0
+      ? []
+      : [`Not observed (their containers and volumes are not listed): ${unobserved.join(", ")}.`]),
     ...(report.prune
       ? report.roots.map(
           (root) =>
@@ -41,3 +44,4 @@ export const renderAppsGcReport = (report: AppsGcReport): string =>
           "Run lando apps:gc --prune to clean up; add --volumes to delete data and file-sync copies of app files.",
         ]),
   ].join("\n");
+};

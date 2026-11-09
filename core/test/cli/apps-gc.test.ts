@@ -215,3 +215,18 @@ test("GC text reports unreadable journal paths, tagged errors and remediation", 
     "/state/broken.json: StateStoreError: Cannot decode journal Preserve this journal.",
   );
 });
+
+test("GC text names unobserved providers that hold no candidate instead of hiding them", () => {
+  const output = renderAppsGcReport({
+    ...report,
+    scans: [
+      {
+        providerId: ProviderId.make("docker"),
+        runtimeObserved: false,
+        complete: false,
+        message: "Runtime not observed; containers and volumes are not listed.",
+      },
+    ],
+  });
+  expect(output).toContain("docker");
+});
