@@ -32,66 +32,132 @@ test("minimal doctor does not inspect ambient state without a supplied StateStor
   expect(scans).toBe(0);
 });
 
-test.each(["retained", "preparing", "sessions-ready", "apply-intent"] as const)(
-  "doctor reports pending %s attempts with ownership context and manual remediation",
-  async (phase) => {
-    // Given a retained version-1 journal in the state-store namespace.
-    const store = makeTestStateStore();
-    const key = `${"a".repeat(64)}.json`;
-    const bucket = await Effect.runPromise(
-      store.service.open({
-        root: "userData",
-        namespace: "accelerated-starts",
-        key,
-        schema: Schema.Unknown,
-        version: 1,
-      }),
-    );
-    await Effect.runPromise(
-      bucket.set({
-        attemptId: "attempt-1",
-        appId: "demo",
-        appRoot: "/apps/demo",
-        providerId: "lando",
-        engineId: "mutagen",
-        mountPlanDigest: "digest",
-        phase,
-        ...(phase === "retained" ? {} : { recoveredFrom: "original-attempt" }),
-        sessions: [{ name: "web/app-mount", specDigest: "spec" }],
-        targets: [
-          { service: "web", mountKey: "app-mount", volumeName: "demo-sync", helperSpecDigest: "helper" },
-        ],
-      }),
-    );
-    // When doctor scans the namespace through the filesystem service.
-    const checks = await Effect.runPromise(
+test.each(
+  (["retained", "preparing", "sessions-ready", "apply-intent"] as const).flatMap((phase) =>
+    [false, true].map((exists) => ({ phase, exists })),
+  ),
+)("doctor reports pending attempts only when the app root exists: %j", async ({ phase, exists }) => {
+  // Given a retained version-1 journal in the state-store namespace.
+  const store = makeTestStateStore();
+  const key = `${"a".repeat(64)}.json`;
+  const bucket = await Effect.runPromise(
+    store.service.open({
+      root: "userData",
+      namespace: "accelerated-starts",
+      key,
+      schema: Schema.Unknown,
+      version: 1,
+    }),
+  );
+  await Effect.runPromise(
+    bucket.set({
+      attemptId: "attempt-1",
+      appId: "demo",
+      appRoot: "/apps/demo",
+      providerId: "lando",
+      engineId: "mutagen",
+      mountPlanDigest: "digest",
+      phase,
+      ...(phase === "retained" ? {} : { recoveredFrom: "original-attempt" }),
+      sessions: [{ name: "web/app-mount", specDigest: "spec" }],
+      targets: [
+        { service: "web", mountKey: "app-mount", volumeName: "demo-sync", helperSpecDigest: "helper" },
+      ],
+    }),
+  );
+  // When doctor scans the namespace through the filesystem service.
+  const checks = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem;
+      return yield* acceleratedStartsDoctor((value) => value).pipe(
+        Effect.provideService(
+          FileSystem,
+          FileSystem.of({
+            ...fs,
+            readDir: () => Effect.succeed([key]),
+            exists: () => Effect.succeed(exists),
+          }),
+        ),
+        Effect.provide(store.layer),
+      );
+    }).pipe(Effect.provide(BunFileSystem.layer)),
+  );
+  // Then it reports the durable identities and both user recovery commands without auto-fixing.
+  if (!exists) {
+    expect(checks).toEqual([]);
+    return;
+  }
+  expect(checks).toHaveLength(1);
+  expect(checks[0]).toMatchObject({
+    name: "accelerated-start",
+    status: "warn",
+    recovery: "manual",
+    context: {
+      appId: "demo",
+      appRoot: "/apps/demo",
+      phase: phase === "retained" ? "apply-intent" : phase,
+      attemptId: "attempt-1",
+      journalPath: bucket.path,
+      sessions: "web/app-mount",
+      volumes: "demo-sync",
+    },
+  });
+  expect(checks[0]?.solutions[0]?.description).toContain("lando start");
+  expect(checks[0]?.solutions[0]?.description).toContain("lando destroy");
+  expect(checks[0]?.context).not.toHaveProperty("recoveredFrom");
+  expect(checks[0]?.context).not.toHaveProperty("recoveryState");
+});
+
+test("doctor reports a corrupt journal while still reporting readable attempts", async () => {
+  const store = makeTestStateStore();
+  const keys = [`${"a".repeat(64)}.json`, `${"b".repeat(64)}.json`];
+  const paths = await Effect.runPromise(
+    Effect.forEach(keys, (key, index) =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem;
-        return yield* acceleratedStartsDoctor((value) => value).pipe(
-          Effect.provideService(FileSystem, FileSystem.of({ ...fs, readDir: () => Effect.succeed([key]) })),
-          Effect.provide(store.layer),
+        const bucket = yield* store.service.open({
+          root: "userData",
+          namespace: "accelerated-starts",
+          key,
+          schema: Schema.Unknown,
+          version: 2,
+        });
+        yield* bucket.set(
+          index === 0
+            ? { broken: true }
+            : {
+                attemptId: "valid",
+                appId: "demo",
+                appRoot: "/apps/demo",
+                providerId: "lando",
+                engineId: "mutagen",
+                mountPlanDigest: "digest",
+                phase: "preparing",
+                sessions: [],
+                targets: [],
+              },
         );
-      }).pipe(Effect.provide(BunFileSystem.layer)),
-    );
-    // Then it reports the durable identities and both user recovery commands without auto-fixing.
-    expect(checks).toHaveLength(1);
-    expect(checks[0]).toMatchObject({
-      name: "accelerated-start",
-      status: "warn",
-      recovery: "manual",
-      context: {
-        appId: "demo",
-        appRoot: "/apps/demo",
-        phase: phase === "retained" ? "apply-intent" : phase,
-        attemptId: "attempt-1",
-        journalPath: bucket.path,
-        sessions: "web/app-mount",
-        volumes: "demo-sync",
-      },
-    });
-    expect(checks[0]?.solutions[0]?.description).toContain("lando start");
-    expect(checks[0]?.solutions[0]?.description).toContain("lando destroy");
-    expect(checks[0]?.context).not.toHaveProperty("recoveredFrom");
-    expect(checks[0]?.context).not.toHaveProperty("recoveryState");
-  },
-);
+        return bucket.path;
+      }),
+    ),
+  );
+  const checks = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem;
+      return yield* acceleratedStartsDoctor((text) => `redacted(${text})`).pipe(
+        Effect.provideService(FileSystem, {
+          ...fs,
+          readDir: () => Effect.succeed(keys),
+          exists: () => Effect.succeed(true),
+        }),
+        Effect.provide(store.layer),
+      );
+    }).pipe(Effect.provide(BunFileSystem.layer)),
+  );
+  expect(checks.map((check) => check.name)).toEqual(["accelerated-start-journal", "accelerated-start"]);
+  expect(checks[0]?.context).toMatchObject({
+    journalPath: `redacted(${paths[0]})`,
+    errorTag: "redacted(StateStoreError)",
+  });
+  expect(checks[0]?.solutions[0]?.description).toContain("Preserve this journal");
+  expect(checks[1]?.context?.attemptId).toBe("redacted(valid)");
+});

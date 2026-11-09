@@ -41,6 +41,7 @@ export interface HostProxyTransportDoctorOptions {
   readonly selection: DoctorSelectionRecord;
   readonly sourceEnv?: Record<string, string | undefined>;
   readonly limits?: HostProxyDoctorLimits;
+  readonly runtimeIdle?: boolean;
 }
 
 const HOST_PROXY_STATE_REMEDIATION: DoctorSolution = {
@@ -178,6 +179,12 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
       break;
     }
     if (bounded.value === undefined) continue;
+    if (bounded.value.status !== "skipped" && bounded.value.context.reachability === "skipped")
+      skipped.push({
+        section: `host-proxy-transport:${redactor.redactString(bounded.value.context.appId ?? "unknown")}`,
+        status: "skipped",
+        reason: `Provider ${options.provider.id} is idle; host-proxy reachability was not probed.`,
+      });
     if (bounded.value.status === "skipped") {
       skipped.push({
         ...bounded.value,

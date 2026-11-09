@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import * as BunFileSystem from "@lando/engine/services/file-system";
-import { shellArg } from "@lando/engine/services/shell-quote";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { sha256Hex } from "@lando/sdk/digest";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { missingAppRootsDoctor } from "../../src/cli/commands/doctor-missing-app-roots";
 
 const root = AbsolutePath.make("/apps/gone");
@@ -173,7 +174,7 @@ test("emits one manual warning per root and redacts every context value and solu
   expect(checks[0]?.context).not.toHaveProperty("cacheVolumes");
   expect(checks[0]?.solutions[0]).toMatchObject({
     kind: "manual",
-    command: "redacted(lando destroy --root /apps/gone --volumes)",
+    command: "redacted(lando apps:gc --prune --volumes)",
   });
   expect(checks[0]?.solutions[0]?.description).toMatch(/^redacted\(/);
 });
@@ -181,16 +182,16 @@ test("emits one manual warning per root and redacts every context value and solu
 test.each([false, true])("purges caches only when cache volumes were observed: %s", async (cache) => {
   const checks = await run([snapshot(root, cache)]);
   expect(checks[0]?.solutions[0]?.command).toBe(
-    `lando destroy --root /apps/gone --volumes${cache ? " --purge-caches" : ""}`,
+    `lando apps:gc --prune --volumes${cache ? " --purge-caches" : ""}`,
   );
 });
 
 test.each(["/apps/space name", "/apps/a;$(touch nope)", "/apps/it's gone"])(
-  "quotes root %s as one argument for the host shell",
+  "uses the shared command without interpolating root %s into shell input",
   async (path) => {
     const checks = await run([snapshot(AbsolutePath.make(path))]);
     const command = checks[0]?.solutions[0]?.command;
-    expect(command).toBe(`lando destroy --root ${shellArg(path)} --volumes`);
+    expect(command).toBe("lando apps:gc --prune --volumes");
     expect(command).not.toContain(`--root ${path} `);
   },
 );
@@ -203,8 +204,78 @@ test.each([false, true])(
     expect(description).toContain("move it back");
     expect(description).toContain("--volumes");
     const guidance =
-      " Its runtime was not running, so containers and volumes may be missing from this list. Start the runtime, then rerun lando doctor before you clean up.";
+      " Its runtime was not observed, so containers and volumes may be missing from this list.";
     expect(description.endsWith(guidance)).toBe(!runtimeObserved);
     expect(description).not.toContain("lando setup");
   },
 );
+
+test("missing-root findings include folded journal ownership facts and share the cache-aware command", async () => {
+  const store = makeTestStateStore();
+  const key = `${sha256Hex(JSON.stringify(JSON.stringify(["user", root])))}.json`;
+  const bucket = await Effect.runPromise(
+    store.service.open({
+      root: "userData",
+      namespace: "accelerated-starts",
+      key,
+      schema: Schema.Unknown,
+      version: 2,
+    }),
+  );
+  await Effect.runPromise(
+    bucket.set({
+      attemptId: "attempt-1",
+      appId: app,
+      appRoot: root,
+      providerId,
+      engineId: "mutagen",
+      mountPlanDigest: "mounts",
+      phase: "apply-intent",
+      sessions: [{ name: "web/app-mount", specDigest: "session" }],
+      targets: [
+        { service: "web", mountKey: "app-mount", volumeName: "app-sync", helperSpecDigest: "helper" },
+      ],
+    }),
+  );
+  const corruptKey = `${"b".repeat(64)}.json`;
+  const corrupt = await Effect.runPromise(
+    store.service.open({
+      root: "userData",
+      namespace: "accelerated-starts",
+      key: corruptKey,
+      schema: Schema.Unknown,
+      version: 2,
+    }),
+  );
+  await Effect.runPromise(corrupt.set({ broken: true }));
+  const checks = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem;
+      return yield* missingAppRootsDoctor((value) => value).pipe(
+        Effect.provideService(FileSystem, {
+          ...fs,
+          exists: () => Effect.succeed(false),
+          readDir: () => Effect.succeed([corruptKey, key]),
+        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          registry([snapshot(), snapshot(AbsolutePath.make("/apps/second"), true)]),
+        ),
+        Effect.provide(store.layer),
+      );
+    }).pipe(Effect.provide(BunFileSystem.layer)),
+  );
+  expect(checks).toHaveLength(2);
+  expect(checks[0]?.context).toMatchObject({
+    attempts: "attempt-1",
+    phases: "apply-intent",
+    engines: "mutagen",
+    sessions: "web/app-mount",
+    targets: "app-sync",
+  });
+  expect(checks.map((check) => check.solutions[0]?.command)).toEqual([
+    "lando apps:gc --prune --volumes --purge-caches",
+    "lando apps:gc --prune --volumes --purge-caches",
+  ]);
+  expect(await Effect.runPromise(corrupt.get)).toEqual({ broken: true });
+});

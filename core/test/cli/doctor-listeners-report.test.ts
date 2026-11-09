@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Deferred, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
@@ -8,6 +10,7 @@ import { listenerProvider, listenerReportLayers, withListenerApp } from "./docto
 test("preserves provider results and success when the app listener section exhausts its budget", async () => {
   // Given a readable applied plan whose listener inspection cannot finish.
   await withListenerApp(async (plan) => {
+    await writeFile(join(plan.root, ".lando.yml"), "name: listener-demo\nlando: '>=0'\n");
     const report = await Effect.runPromise(
       Effect.gen(function* () {
         const started = yield* Deferred.make<void>();
@@ -36,6 +39,7 @@ test("preserves provider results and success when the app listener section exhau
       reason: expect.stringMatching(/^timeout:/),
     });
     expect(report.self).toBeUndefined();
+    expect(report.appConfig?.valid).toBe(true);
     expect(metaDoctorSpec.completion?.(report, {})).toEqual({ ok: true, exitCode: 0 });
   });
 });

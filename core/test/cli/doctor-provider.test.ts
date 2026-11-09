@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { linuxDockerCapabilities } from "@lando/provider-docker";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { diagnosePrimaryProvider } from "../../src/cli/commands/doctor-provider.ts";
 
 describe("diagnosePrimaryProvider Docker API versions", () => {
@@ -15,8 +16,14 @@ describe("diagnosePrimaryProvider Docker API versions", () => {
         platform: "linux",
         capabilities: linuxDockerCapabilities,
       },
-      status: { running: false, message },
-      statusProbe: undefined,
+      status: { state: "running", message },
+      statusProbe: "failure",
+      statusFailure: new ProviderUnavailableError({
+        providerId: "docker",
+        operation: "getStatus",
+        message,
+        remediation: "Install a compatible Docker Engine.",
+      }),
       runtimeVersion: undefined,
       bundleVersion: undefined,
       selection: {
@@ -26,7 +33,7 @@ describe("diagnosePrimaryProvider Docker API versions", () => {
       },
     });
 
-    expect(diagnosis.check.status).toBe("warn");
+    expect(diagnosis.check.status).toBe("fail");
     expect(diagnosis.runtimeMessage).toContain("1.43-1.44");
     expect(diagnosis.runtimeMessage).toContain("1.50-1.55");
     expect(diagnosis.check.runtime?.message).toBe(message);
