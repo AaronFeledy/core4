@@ -329,3 +329,96 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
     errorTag: "AppResolveError",
   });
 });
+
+test("an owner that cannot start does not block another owner's confirmation", async () => {
+  const healthy = ProviderId.make("lando");
+  const broken = ProviderId.make("broken");
+  let plans = [
+    { ...at("one"), provider: healthy },
+    { ...at("two"), provider: broken },
+  ];
+  let running = false;
+  const launchFailure = new ProviderUnavailableError({
+    providerId: broken,
+    operation: "ensureReady",
+    message: "Runtime cannot start.",
+    remediation: "Repair the runtime.",
+  });
+  const providerFor = (id: ProviderId) => ({
+    ...TestRuntimeProvider,
+    id,
+    getStatus: Effect.sync(() => ({
+      state: id === healthy && running ? ("running" as const) : ("idle" as const),
+    })),
+    ensureReady:
+      id === healthy
+        ? Effect.sync(() => {
+            running = true;
+          })
+        : Effect.fail(launchFailure),
+    destroy: (target: Parameters<typeof TestRuntimeProvider.destroy>[0]) =>
+      Effect.sync(() => {
+        plans = plans.filter((plan) => plan.id !== target.app);
+        return { kind: "destroyed" as const };
+      }),
+  });
+  const registry = RuntimeProviderRegistry.of({
+    list: Effect.succeed([healthy, broken]),
+    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+    select: (target) =>
+      Effect.succeed(providerFor(typeof target === "string" ? target : (target?.provider ?? healthy))),
+    appliedPlansFor: (root, providerId) =>
+      Effect.sync(() =>
+        plans.filter(
+          (plan) => plan.root === root && (providerId === undefined || plan.provider === providerId),
+        ),
+      ),
+    resolveAppliedPlan: (root) => Effect.sync(() => plans.find((plan) => plan.root === root)),
+    resolveTeardownEvidence: (root) =>
+      Effect.sync(() => {
+        const applied = plans.find((plan) => plan.root === root);
+        return applied === undefined
+          ? { kind: "absent" as const }
+          : { kind: "applied" as const, plan: applied };
+      }),
+    observeRuntime: Effect.sync((): readonly ProviderRuntimeSnapshot[] =>
+      [healthy, broken].map((id) => {
+        const owned = plans.filter((plan) => plan.provider === id);
+        const observed = id === healthy && running;
+        return {
+          providerId: id,
+          runtimeObserved: observed,
+          appliedPlans: owned,
+          services: observed
+            ? owned.map((plan) => ({
+                app: plan.id,
+                appRoot: plan.root,
+                service: ServiceName.make("web"),
+                providerId: id,
+                status: "created" as const,
+                publications: { status: "unknown" as const },
+                containerId: `${plan.id}-web`,
+              }))
+            : [],
+          volumes: [],
+        };
+      }),
+    ),
+  });
+  const layer = Layer.mergeAll(
+    makeHarness().layer,
+    BunFileSystem.layer,
+    Layer.succeed(RuntimeProviderRegistry, registry),
+  );
+
+  const prepared = await Effect.runPromise(prepareAppsGc({}, { prune: true }).pipe(Effect.provide(layer)));
+  expect(prepared.report.candidates).toMatchObject([
+    { root: at("one").root, runtimeObserved: true, services: ["one/web"] },
+    { root: at("two").root, runtimeObserved: false },
+  ]);
+  const result = await Effect.runPromise(prepared.prune.pipe(Effect.provide(layer)));
+  expect(result.roots).toMatchObject([
+    { root: at("one").root, outcome: "destroyed" },
+    { root: at("two").root, outcome: "failed", error: { message: "Runtime cannot start." } },
+  ]);
+});

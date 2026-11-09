@@ -56,15 +56,18 @@ export const prepareAppsGc = Effect.fn("AppOperation.prepareAppsGc")(function* (
   const unobserved = reported.candidates
     .filter((candidate) => !candidate.runtimeObserved)
     .flatMap((candidate) => candidate.providers);
-  // A failed launch keeps the unobserved report; pruning that root then fails with the launch error.
-  const prepared =
-    intent.prune === true && unobserved.length > 0
-      ? yield* prepareOwners(unobserved).pipe(
-          Effect.as(true),
-          Effect.catch(() => Effect.succeed(false)),
+  // Each owner launches on its own: a failed launch keeps only that owner's roots unobserved, and
+  // pruning those roots then fails with the launch error without blocking the others.
+  const launched =
+    intent.prune === true
+      ? yield* Effect.forEach([...new Set(unobserved)], (id) =>
+          prepareOwners([id]).pipe(
+            Effect.as(true),
+            Effect.catch(() => Effect.succeed(false)),
+          ),
         )
-      : false;
-  const scan = prepared ? yield* scanRoots : reported;
+      : [];
+  const scan = launched.some(Boolean) ? yield* scanRoots : reported;
   const report: AppsGcReport = {
     candidates: scan.candidates,
     scans: scan.scans,
