@@ -1,4 +1,4 @@
-import { dirname, relative } from "node:path";
+import { dirname, relative, sep } from "node:path";
 import { type ConfigLintViolation, formatValidationIssuePath } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "../diagnostic-text";
 
@@ -13,7 +13,10 @@ const renderViolation = (violation: ConfigLintViolation, landofilePath?: string)
       ? escapeDiagnosticText(
           landofilePath === undefined
             ? violation.source.file
-            : relative(dirname(landofilePath), violation.source.file),
+            : // Same POSIX form as script help; the "at" line keeps the native absolute path.
+              relative(dirname(landofilePath), violation.source.file)
+                .split(sep)
+                .join("/"),
         )
       : formatPath(violation.path);
   const lines = [
