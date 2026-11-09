@@ -131,7 +131,9 @@ Expressions parse to an AST and record their minimum bootstrap level:
 | `plugins` | self `service.{name,type,primary,creds.*}`, `plugin.<id>.{root,config,version}` |
 | `app` | `proxy.defaultDomain`; self routes/endpoints; `services.<name>.*`; permitted `globalServices.<name>.*` (§20.8.3) |
 | `provider` | `info.*` |
-| invocation-specific | tooling `task`, `flags`, `args`, `raw`, `sources`, `generates`, `checksum`, `timestamp`; event `event`; recipe-init `answers`, `recipe`, `destination`, `flags`, `cwd` |
+| invocation-specific | tooling `task`, `flags`, `args`, `raw`, `vars`, `item`, `key`; event `event`; recipe-init `answers`, `recipe`, `destination`, `flags`, `cwd` |
+
+Tooling invocation expressions remain recorded ASTs at executable sites, including var definitions, until admission binds the complete input maps (§8.5.4). Shell interpolation uses provenance: captured load scopes remain authored command text, while invocation values and their transitive literal-var derivatives bind as data and are never reparsed. The planned tooling scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` fail loading with scope-specific `NotImplementedError` and authored-path remediation.
 
 `ConfigService.resolve` resolves at the consumer's current level or returns opaque `DeferredExpression`; consumers MUST NOT escalate bootstrap level. For shared configuration validation only, a consumer at `plugins` MAY evaluate `app.{name,slug}`, `proxy.defaultDomain`, and `services.<name>.creds.*` through the provider-independent resolve pass (§7.8), without escalating bootstrap or building an `AppPlan`; this does not change load-time deferral (§7.2) or expose finalized routes, endpoints, global-service data, or `info.*`. Cross-service cycles, forbidden global-service access, unknown paths, type mismatch, and invalid indexing fail with `ConfigExpressionError` or `ConfigExpressionScopeNotPermittedError` at the consuming level.
 

@@ -43,7 +43,7 @@ test.each(["", false, 0])("caller var %j suppresses shell evaluation", async (va
     }),
   );
   expect(resolved.vars?.V).toBe(value);
-  expect(resolved.cmd).toBe(`echo '${value}'`);
+  expect(resolved.cmd).toBe(value === "" ? "echo " : `echo '${value}'`);
 });
 
 test.each([

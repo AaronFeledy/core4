@@ -1,4 +1,9 @@
 import {
+  consumedToolingInputs,
+  dynamicToolingReferenceIssues,
+  toolingInvocationIssues,
+} from "@lando/landofile/compiled-sites";
+import {
   type ToolingInputSubject,
   bindToolingInput,
   lowerToolingInput,
@@ -7,8 +12,8 @@ import {
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
 import { RedactionService } from "@lando/redaction/service";
-import { ToolingDisabledError } from "@lando/sdk/errors";
-import type { ToolingTaskShape } from "@lando/sdk/schema";
+import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
+import type { ParsedPendingSite, ToolingTaskShape } from "@lando/sdk/schema";
 import type {
   ToolingInputDeclaration,
   ToolingInputRevision,
@@ -47,6 +52,7 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
   readonly source: { readonly path: string; readonly task: string };
   readonly input?: ToolingInvocationInput;
   readonly expectedInputRevision?: ToolingInputRevision;
+  readonly sites?: readonly ParsedPendingSite[];
 }) {
   const declaration = yield* Effect.fromResult(normalizeToolingInput(input.name, input.task, input.source));
   const subject = { name: input.name, source: input.source };
@@ -54,14 +60,35 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
     { ...subject, input: declaration, disabled: input.task.disabled === true },
     input,
   );
-  // Lowering reads only the declaration, so input argv cannot carry fails before a dynamic var runs.
+  const sites = input.sites ?? [];
+  const issue = [
+    ...toolingInvocationIssues(input.task, sites),
+    ...dynamicToolingReferenceIssues(input.task, sites),
+  ][0];
+  if (issue !== undefined)
+    return yield* Effect.fail(
+      new ToolingCompileError({
+        tool: input.name,
+        source: input.source,
+        message: `${["tooling", input.name, ...issue.path].join(".")}: ${issue.message}`,
+        remediation: issue.suggestion,
+      }),
+    );
+  const consumed = consumedToolingInputs(input.task, sites);
+  const remaining = {
+    ...declaration,
+    flags: declaration.flags.filter((flag) => !consumed.flags.has(flag.name)),
+    args: declaration.args.filter((arg) => !consumed.args.has(arg.name)),
+  };
   const argv =
     declaration.flags.length + declaration.args.length > 0
-      ? yield* Effect.fromResult(lowerToolingInput(subject, declaration, admitted.values))
-      : admitted.invocation._tag === "RawArgv"
-        ? admitted.invocation.argv
-        : (admitted.invocation.passthroughArgv ?? []);
-  return { ...admitted, argv };
+      ? yield* Effect.fromResult(lowerToolingInput(subject, remaining, admitted.values))
+      : consumed.raw
+        ? []
+        : admitted.invocation._tag === "RawArgv"
+          ? admitted.invocation.argv
+          : (admitted.invocation.passthroughArgv ?? []);
+  return { ...admitted, argv, declaration };
 });
 
 export type AdmittedToolingInput = Effect.Success<ReturnType<typeof admitToolingTask>>;

@@ -1,4 +1,4 @@
-import { dynamicToolingReferenceIssues } from "@lando/landofile/compiled-sites";
+import { dynamicToolingReferenceIssues, toolingInvocationIssues } from "@lando/landofile/compiled-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { compileEffectiveTooling } from "./effective-tooling.ts";
 import type { ResolvedLandofile } from "./event-set.ts";
@@ -16,16 +16,17 @@ export const toolingDynamicIssues = (
       ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
     })),
   });
-  return Object.entries(tooling).flatMap(([name, task]) =>
-    dynamicToolingReferenceIssues(
-      task,
-      sites
-        .filter((site) => site.path[0] === "tooling" && site.path[1] === name)
-        .map((site) => ({ ...site, path: site.path.slice(2) })),
-    ).map((issue) => ({
+  return Object.entries(tooling).flatMap(([name, task]) => {
+    const taskSites = sites
+      .filter((site) => site.path[0] === "tooling" && site.path[1] === name)
+      .map((site) => ({ ...site, path: site.path.slice(2) }));
+    return [
+      ...dynamicToolingReferenceIssues(task, taskSites),
+      ...toolingInvocationIssues(task, taskSites),
+    ].map((issue) => ({
       ...issue,
       rule: "landofile.tooling" as const,
       path: ["tooling", name, ...issue.path],
-    })),
-  );
+    }));
+  });
 };

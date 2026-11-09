@@ -182,6 +182,18 @@ lando app:cache:refresh
 
 See [Secret stores](../config/secret-stores.mdx#where-references-resolve) for which authored sites create a reference.
 
+## Use invocation values in tooling
+
+Tooling command text, var definitions, and step overrides can read `flags`, `args`, `raw`, and `task` when the task runs. Lando binds declared inputs first, so `{{ flags.name }}` reads the validated value and `{{ default(args.label, 'latest') }}` handles an omitted optional argument. `task` has `name`, `subnamespace`, `commandNamespace`, and `canonicalId`; for `app:db:dump` these are `db:dump`, `db`, `app`, and `app:db:dump`. `raw` is the passthrough argument array for tasks with no declared flags or args.
+
+Invocation values are data in shell text, including `task`, event payloads, loop `item` and `key`, computed vars, and caller overrides. A literal var becomes data when its recorded definition reads invocation data, even through helpers or other vars. Lando quotes data for the current shell context and never parses a substituted value as another template. Load-time scopes such as `env`, `host`, and `app`, and literal vars independent of invocation input, remain authored command text.
+
+Place `{{ raw }}` alone in an unquoted argument word after the executable. Its elements become separate arguments, preserving empty elements. An argv-list element exactly equal to `{{ raw }}` splices the tail. Other argv elements receive scalar values without shell escaping. Lando forwards only unconsumed input, so using `flags.name` does not suppress an unrelated declared `--verbose`.
+
+Data binding is refused inside backticks, here-documents, arithmetic, parameter expansions, and dollar-prefixed quotes. It also cannot make an argument safe for a program that interprets code: `sh -c "{{ flags.code }}"` still executes the supplied code. See [Use inputs in the command](../tooling/flags-and-args.mdx#use-inputs-in-the-command) for empty-word rules, forwarding, and complete examples.
+
+The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented. A reference fails loading with `NotImplementedError` naming the scope, authored path, and available alternatives.
+
 ## Keep `${VAR}` and `{{` as text
 
 Double the opener. `$${HOME}` reaches the container as `${HOME}`, and `{{{{ app.name }}` reaches it as `{{ app.name }}`. Use this for a `command:`, an `environment:` value, or a container tooling `cmd` that needs literal expression-looking text. To expand a variable, invoke a shell explicitly, as the `sh -c` commands below do. An environment value itself is not a shell command and stays literal.

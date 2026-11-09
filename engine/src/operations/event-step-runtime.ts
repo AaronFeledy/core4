@@ -42,7 +42,7 @@ import { publishEventOutputProgress } from "./event-output-progress.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
-import { type AdmittedToolingInput, admitToolingTask } from "./tooling-input-admission.ts";
+import { admitToolingTask } from "./tooling-input-admission.ts";
 import { prepareToolingInvocation } from "./tooling-prepare.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
@@ -217,7 +217,6 @@ const runInvocation = Effect.fnUntraced(function* (
   tool: string,
   task: ToolingTaskShape,
   invocationOptions: {
-    readonly admitted?: AdmittedToolingInput;
     readonly compiled?: Effect.Success<ReturnType<typeof compileToolingInvocations>>;
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
@@ -228,13 +227,11 @@ const runInvocation = Effect.fnUntraced(function* (
   const compiled =
     invocationOptions.compiled ??
     (yield* compileToolingInvocations({
-      admitted:
-        invocationOptions.admitted ??
-        (yield* admitToolingTask({
-          name: tool,
-          task,
-          source: { path: toolingSourcePathForPlan(options.plan, tool), task: tool },
-        })),
+      admitted: yield* admitToolingTask({
+        name: tool,
+        task,
+        source: { path: toolingSourcePathForPlan(options.plan, tool), task: tool },
+      }),
       name: tool,
       lookupKey: tool,
       task,

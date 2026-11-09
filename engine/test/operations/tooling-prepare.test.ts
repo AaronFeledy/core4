@@ -7,6 +7,7 @@ import {
   type CurrentExecutableAppPlan,
   PortablePath,
   ProviderId,
+  type ToolingInvocationInput,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
 import { ProcessRunner, RuntimeProviderRegistry, ShellRunner, ToolingEngine } from "@lando/sdk/services";
@@ -33,7 +34,7 @@ const plan: CurrentExecutableAppPlan = {
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"), source: "test", runtime: 4 },
 };
 
-const run = (task: ToolingTaskShape) => {
+const run = (task: ToolingTaskShape, input: ToolingInvocationInput = { _tag: "RawArgv", argv: [] }) => {
   const runner = Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer)));
   const layer = Layer.mergeAll(
     BunProcessRunner.layer,
@@ -65,7 +66,13 @@ const run = (task: ToolingTaskShape) => {
   return Effect.runPromise(
     prepareToolingInvocation({
       plan,
-      options: { name: "probe", lookupKey: "probe", task, source: { path: ".lando.yml", task: "probe" } },
+      options: {
+        name: "probe",
+        lookupKey: "probe",
+        task,
+        input,
+        source: { path: ".lando.yml", task: "probe" },
+      },
       sites: authoredInvocationSites(task, "test"),
     }).pipe(Effect.provide(layer), Effect.result),
   );
@@ -152,3 +159,43 @@ test("cancels an endless producer when stdout crosses 64 KiB", async () => {
   });
   if (result._tag === "Failure") expect(result.failure).not.toHaveProperty("exitCode");
 }, 3000);
+
+test("binds declared input in var shell text before capture and consumes it once", async () => {
+  const value = "safe; echo INJECTED";
+  const result = await run(
+    {
+      service: ":host",
+      flags: { name: {} },
+      cmd: "echo {{ vars.VALUE }}",
+      vars: { VALUE: { sh: "printf '%s' {{ flags.name }}" } },
+    },
+    { _tag: "RawArgv", argv: [`--name=${value}`] },
+  );
+  expect(result).toMatchObject({ _tag: "Success" });
+  if (result._tag === "Success")
+    expect(result.success.invocations[0]?.commands).toEqual([
+      ["sh", "-c", "echo 'safe; echo INJECTED' \"$@\"", "lando-tooling"],
+    ]);
+});
+
+test("refuses raw placement before any dynamic command starts", async () => {
+  const result = await run({ service: ":host", cmd: "echo prefix{{ raw }}", vars: { X: { sh: "exit 8" } } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
+});
+
+test("missing invocation values name the input and remediation before dynamic commands", async () => {
+  const result = await run({
+    service: ":host",
+    cmd: "echo {{ flags.name }}",
+    flags: { name: {} },
+    vars: { X: { sh: "exit 8" } },
+  });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ToolingInputError",
+      field: "flags.name",
+      remediation: expect.stringContaining("default()"),
+    },
+  });
+});

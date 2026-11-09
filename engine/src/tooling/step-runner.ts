@@ -1,21 +1,14 @@
 import {
-  type InvocationProgram,
   bindToolingShellSite,
   compiledValueError,
-  dynamicToolingNames,
-  dynamicToolingReferenceIssues,
   evaluateInvocationSite,
   instantiateInvocation,
   replaceSiteValue,
 } from "@lando/landofile/compiled-sites";
 import { mapFailures } from "@lando/sdk/command-result";
-import {
-  type ConfigExpressionError,
-  ToolingCompileError,
-  ToolingStepConditionError,
-} from "@lando/sdk/errors";
+import { ConfigExpressionError, ToolingCompileError, ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import { Environment, EventForSelector, PortablePath, ToolingTaskShape } from "@lando/sdk/schema";
+import { Environment, EventForSelector, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { compileSelector } from "./step-compiler.ts";
 import { runToolingStepProgramWith } from "./step-executor.ts";
@@ -52,103 +45,7 @@ const ResolvedCommand = Schema.Struct({
   raw: Schema.Array(Schema.String),
 });
 
-export type DynamicToolingVarResolver<E, R> = (input: {
-  readonly name: string;
-  readonly command: string;
-  readonly task: ToolingTaskShape;
-}) => Effect.Effect<string, E, R>;
-
-export const resolveToolingTaskShape = Effect.fnUntraced(function* <E = never, R = never>(
-  task: ToolingTaskShape,
-  context: ExpressionContext,
-  program: InvocationProgram,
-  dynamic?: {
-    /** Effective task name, used to locate failures at `tooling.<name>`. */
-    readonly name: string;
-    readonly evaluate: DynamicToolingVarResolver<E, R>;
-    readonly register?: (name: string, value: unknown) => Effect.Effect<void>;
-  },
-) {
-  const issue = dynamicToolingReferenceIssues(task, program)[0];
-  if (issue !== undefined)
-    return yield* Effect.fail(
-      new ToolingCompileError({
-        tool: dynamic?.name ?? "<tooling-task>",
-        message: `${["tooling", ...(dynamic === undefined ? [] : [dynamic.name]), ...issue.path].join(".")}: ${issue.message}`,
-        remediation: issue.suggestion,
-      }),
-    );
-  const names = dynamicToolingNames(task);
-  const variableValue = yield* instantiateInvocation({
-    value: task,
-    sites: program.filter(
-      (site) => site.path[0] === "vars" && !Object.hasOwn(context.vars ?? {}, String(site.path[1])),
-    ),
-    context: { ...context, vars: { ...task.vars, ...context.vars } },
-  });
-  const variables = yield* Schema.decodeUnknownEffect(ToolingTaskShape)(variableValue).pipe(
-    mapFailures((cause) => compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program })),
-  );
-  const targetValue = yield* instantiateInvocation({
-    value: variables,
-    sites: program.filter(
-      (site) => site.path.length === 1 && ["service", "user", "dir"].includes(String(site.path[0])),
-    ),
-    context: { ...context, vars: { ...variables.vars, ...context.vars } },
-  });
-  const target = yield* Schema.decodeUnknownEffect(ToolingTaskShape)(targetValue).pipe(
-    mapFailures((cause) => compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program })),
-  );
-  const vars: Record<string, unknown> = { ...target.vars, ...context.vars };
-  for (const [name, variable] of Object.entries(target.vars ?? {})) {
-    if (typeof variable !== "object" || Object.hasOwn(context.vars ?? {}, name)) continue;
-    if (dynamic === undefined)
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          tool: "<tooling-task>",
-          message: `No evaluator is available for vars.${name}.sh.`,
-          remediation: "Provide a dynamic var evaluator before resolving this task.",
-        }),
-      );
-    vars[name] = yield* dynamic.evaluate({ name, command: variable.sh, task: target });
-    yield* dynamic.register?.(name, vars[name]) ?? Effect.void;
-  }
-  const resolvedVars: Record<string, unknown> = { ...target.vars };
-  for (const name of names) resolvedVars[name] = vars[name];
-  const resolvedContext = { ...context, vars };
-  let value: unknown = { ...target, ...(target.vars === undefined ? {} : { vars: resolvedVars }) };
-  for (const site of program.filter(
-    (site) =>
-      site.path[0] !== "vars" &&
-      !(site.path.length === 1 && ["service", "user", "dir"].includes(String(site.path[0]))),
-  )) {
-    const shell =
-      (site.path[0] === "cmd" && site.path.length === 1) ||
-      (site.path[0] === "cmds" &&
-        (site.path.length === 2 || (site.path.length === 3 && site.path[2] === "cmd")));
-    const resolved = yield* Effect.try({
-      try: () =>
-        shell && names.size > 0
-          ? bindToolingShellSite(site, resolvedContext, names)
-          : evaluateInvocationSite(site, resolvedContext),
-      catch: (cause) =>
-        cause instanceof ToolingCompileError
-          ? cause
-          : compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: [site] }),
-    });
-    const environment = site.path[0] === "env" || (site.path[0] === "cmds" && site.path[2] === "env");
-    value = replaceSiteValue(
-      value,
-      site.path,
-      environment && (typeof resolved === "number" || typeof resolved === "boolean")
-        ? String(resolved)
-        : resolved,
-    );
-  }
-  return yield* Schema.decodeUnknownEffect(ToolingTaskShape)(value).pipe(
-    mapFailures((cause) => compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program })),
-  );
-});
+export { resolveToolingTaskShape, type DynamicToolingVarResolver } from "./task-shape.ts";
 
 export const conditionAllows = (condition: ToolingStepLeaf["condition"], context: ExpressionContext) => {
   if (condition === undefined || typeof condition === "boolean") return Effect.succeed(condition ?? true);
@@ -184,9 +81,25 @@ export const conditionAllows = (condition: ToolingStepLeaf["condition"], context
 
 export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, context: ExpressionContext) {
   const sites = leaf.invocationSites ?? [];
-  const value = yield* instantiateInvocation({ value: leaf, sites, context });
+  let value = yield* instantiateInvocation({
+    value: leaf,
+    sites: sites.filter((site) => leaf.kind !== "cmd" || site.path[0] !== "command"),
+    context,
+  });
   const locate = (cause: unknown): ConfigExpressionError =>
     compiledValueError(cause, { filePath: "<tooling-step>", pendingSites: sites });
+  if (leaf.kind === "cmd") {
+    for (const site of sites.filter((site) => site.path[0] === "command")) {
+      const command = yield* Effect.try({
+        try: () => bindToolingShellSite(site, context, new Set(Object.keys(context.vars ?? {}))),
+        catch: (cause) =>
+          cause instanceof ToolingCompileError || cause instanceof ConfigExpressionError
+            ? cause
+            : locate(cause),
+      });
+      value = replaceSiteValue(value, site.path, command);
+    }
+  }
   switch (leaf.kind) {
     case "cmd":
       return {

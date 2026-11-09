@@ -139,7 +139,7 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "No enabled tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-` or `post-` events Lando reserves, such as `start` or `pull`. Lint-only, so planning does not fail on it: var definitions and task-level service, user, and dir must not read shell-computed vars.",
+      "No enabled tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-` or `post-` events Lando reserves, such as `start` or `pull`. Lint-only invocation checks require declared flags/args references, safe raw argument placement, and var definitions and task placement independent of shell-computed vars.",
     examplePaths: ["tooling.run"],
   },
   "landofile.host-shell": {

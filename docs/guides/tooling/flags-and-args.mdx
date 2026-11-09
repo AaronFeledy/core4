@@ -7,13 +7,13 @@ tags: [docs, tooling, flags]
 
 # Declare flags and args on a tooling task
 
-Add `flags:` and `args:` to a task in your `.lando.yml` when you want Lando to validate input before the command runs. The following fragment assumes your app has a service named `web`. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name.
+Add `flags:` and `args:` to a task in your `.lando.yml` when you want Lando to validate input before the command runs. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name. This greeting runs on your host, so it needs no running container.
 
 ```yaml
 tooling:
   greet:
     description: Greet a target environment
-    service: web
+    service: ":host"
     flags:
       name:
         alias: n
@@ -28,10 +28,10 @@ tooling:
         required: true
         choices: [dev, prod]
         description: Environment to greet
-    cmd: echo greeting
+    cmd: echo "hello {{ default(flags.loud, false) ? upper(flags.name) : flags.name }} from {{ args.target }} via {{ task.canonicalId }}"
 ```
 
-Save the file. From the app directory, check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
+Save the file. From the app directory, check `lando greet --help` for the declared flags and argument, then run:
 
 ```sh
 lando greet dev -n team
@@ -56,7 +56,7 @@ FLAGS
 ARGUMENTS
   target Environment to greet (dev, prod) [required]
 
-Runs `echo` in web.
+Runs `echo` on the host.
 ```
 
 The program name appears only when the task is a single step whose command is one simple program: the first item of an argv list, or the first word of shell text after any leading `NAME=value` assignments, as long as nothing in the text could start a second command (an unquoted operator such as `&&` or `|`, `$(...)`, backticks, or a line break). Quoted arguments are fine, so `echo "version {{ vars.VERSION }}"` still reports `echo`. Otherwise the sentence describes the shape instead: `Runs a command on the host.`, `Runs a command in the service named by --service.`, `Runs 2 commands in web and on the host.`, or `Runs .lando/scripts/deploy.bun.sh on the host.` for a script. `lando help greet --format=json` carries the same data as `result.target.runs`: `{ "kind": "commands", "steps": 1, "targets": [{ "kind": "service", "name": "web" }], "program": "echo" }`, where a target is a named `service`, `host`, `flag` (with the flag name), `primary`, or `dynamic`, and a script reports `{ "kind": "script", "path": ".lando/scripts/deploy.bun.sh" }`. Help never runs the task, and it redacts this data like the rest of the page.
@@ -137,6 +137,22 @@ tooling:
 
 A `.bun.sh` script is map-capable instead: MCP can send only `args.channel` and the script receives that value in `LANDO_ARG_CHANNEL` while `label` stays absent from `LANDO_INPUT.args`. No positional gap is compacted and no argv is synthesized. Required arguments still must be supplied. See [Drive Lando through MCP](../../agent-native/mcp/).
 
+## Use inputs in the command
+
+Read a declared flag with `{{ flags.name }}` and an argument with `{{ args.target }}`. Omitted optional inputs stay missing; use `default(flags.name, 'world')`, give the declaration a default, or supply the input. An empty string and `false` are values, so neither is replaced by a default. Boolean expressions print lowercase `true` or `false`.
+
+Lando inserts invocation values as data. A name such as `safe; echo INJECTED` remains one argument, including when an expression passes it through a helper or a literal var. Caller overrides and event payloads follow the same rule. Inside single or double quotes, Lando escapes the value for those quotes. Outside quotes, it creates one quoted word. An empty value disappears only when it occupies a whole unquoted argument after the executable; quote the interpolation to pass an empty argument. It never disappears in command position, inside another word, or as a redirection operand. A value containing `{{ ... }}` stays literal text.
+
+Each input is forwarded only if the task has not already read it. In `cmd: echo "{{ flags.name }}"`, `name` is consumed, but an unrelated declared `--verbose` still reaches the last command. Reads in var definitions and step `env`, `dir`, `user`, or `service` also consume their inputs. Selecting `service: ":target"` consumes `--target` itself. Computed or whole-group reads consume that whole input group. Unconsumed arguments retain declaration order; a missing positional already handled by interpolation no longer leaves a forwarding gap. Tasks without bindings keep their normal forwarding.
+
+For a task with no declared flags or args, `{{ raw }}` inserts the passthrough tail as separate arguments. Use it alone in an unquoted argument word after the executable, never inside quotes, another word, or a redirection. Empty elements remain empty arguments. With argv-list `cmd`, an element exactly equal to `{{ raw }}` splices the tail; the resulting list still needs a nonempty executable. Reading `raw` consumes the tail so Lando does not append it again.
+
+`task` exposes `name`, `subnamespace`, `commandNamespace`, and `canonicalId`. For `app:db:dump`, these are `db:dump`, `db`, `app`, and `app:db:dump`. A task with no subnamespace gets an empty `subnamespace`. These values are data too.
+
+Lando refuses data interpolation in backticks, here-documents, arithmetic or parameter expansions, and dollar-prefixed quotes, where ordinary quoting would change its meaning. It also refuses a preceding unescaped dollar sign that could combine with data to start an expansion, including inside double quotes. Quoting protects the shell boundary; it cannot protect a program that interprets an argument as code. For example, `sh -c "{{ flags.code }}"` still asks `sh` to execute that input. Load-time scopes such as `env`, `host`, and `app`, and literal vars independent of invocation input, remain authored command text. Use them only for text you intend to author into the command.
+
+Unknown references such as `flags.naem` are `landofile.tooling` lint findings with a closest-name suggestion. They do not block planning other tasks, but invoking the affected task fails with `ToolingCompileError` before any var command runs. The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented yet; loading a reference names the scope and its authored path with `NotImplementedError`.
+
 ## Protect sensitive values
 
 Set `sensitive: true` on a flag or argument, including one named `note` or another name that does not suggest a credential. The existing secret-name heuristic also marks inputs sensitive; `sensitive: false` is not an opt-out. Lando rejects defaults and choices on effectively sensitive declarations so credential literals cannot enter cached metadata or catalogs. The declaration exposes sensitivity safely, including `writeOnly: true` in MCP's input schema.
@@ -191,7 +207,7 @@ tooling:
     cmd: echo deploying
 ```
 
-`lando deploy -s worker` runs in `worker`. Plain `lando deploy` falls back to `web`. Leave out `default` and skip the flag, or name a service that isn't in the app, and the run fails before any command starts.
+`lando deploy -s worker` runs in `worker`. Plain `lando deploy` falls back to `web`. The service selector consumes `-s worker`; it is not forwarded to `echo`. Leave out `default` and skip the flag, or name a service that isn't in the app, and the run fails before any command starts.
 
 ## Compute a value with a shell command
 
@@ -271,7 +287,7 @@ tooling:
     cmd: echo "[{{ vars.TEXT }}]"
 ```
 
-`lando literal` prints `[a$(echo PWNED)b]`. A site inside backticks, a here-document, `$((...))`, or `${...}` cannot be quoted safely, so Lando refuses the task with `ToolingCompileError`. Argv-list `cmd` entries and `env` values receive the value unchanged. Literal vars keep their old behavior: raw command text, no quoting.
+`lando literal` prints `[a$(echo PWNED)b]`. A site inside backticks, a here-document, `$((...))`, or `${...}` cannot be quoted safely, so Lando refuses the task with `ToolingCompileError`. Argv-list `cmd` entries and `env` values receive the value unchanged. Literal vars remain authored command text only when their definitions are independent of invocation data and no caller replaced them. A literal var that reads a flag or another data var, directly or through a helper, stays data through later references.
 
 A few positions cannot read a computed var: another var's definition (including its target) and the task-level `service`, `user`, and `dir`. Lando refuses the task with `ToolingCompileError` when you run it, and `lando app:config:lint` reports the same site as a `landofile.tooling` finding. Use a literal or a declared flag there, and read the computed value in commands or step-level overrides. Any var whose effective target is `:host` runs in Bun Shell, so lint also checks its syntax (`landofile.host-shell` at `tooling.<task>.vars.<name>.sh`) and `lando app:cache:refresh` warns about it. Other computed values appear in output normally; mark sensitive values explicitly or use `${secret:...}` in `env` for secret-store lookup.
 
@@ -339,12 +355,13 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
     <Step name="greet-help">
       <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
       <Verify command="lando greet --help" expect={{ stdout: { regex: "target" } }} />
-      <Verify command="lando greet --help" expect={{ stdout: { regex: "Runs `echo` in web\\." } }} />
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "Runs `echo` on the host\\." } }} />
       <Verify command="lando deploy --help" expect={{ stdout: { regex: "Runs `echo` in the service named by --service\\." } }} />
-      <Verify command="lando help greet --format=json" expect={{ stdout: { regex: "\"runs\":\\s*\\{\"kind\":\"commands\",\"steps\":1,\"targets\":\\[\\{\"kind\":\"service\",\"name\":\"web\"\\}\\],\"program\":\"echo\"\\}" } }} />
+      <Verify command="lando help greet --format=json" expect={{ stdout: { regex: "\"runs\":\\s*\\{\"kind\":\"commands\",\"steps\":1,\"targets\":\\[\\{\"kind\":\"host\"\\}\\],\"program\":\"echo\"\\}" } }} />
     </Step>
     <Step name="run-greet">
-      <Verify command="lando greet dev -n team --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"greet\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando greet dev -n team --format=json" expect={{ stdout: { regex: "hello team from dev via app:greet" } }} />
+      <Verify command="lando greet prod --loud --format=json" expect={{ stdout: { regex: "hello WORLD from prod via app:greet" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

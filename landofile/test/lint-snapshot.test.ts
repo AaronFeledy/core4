@@ -174,6 +174,21 @@ describe("retained lint snapshot", () => {
     expect(result.violations.some((violation) => violation.path.length === 0)).toBe(false);
   });
 
+  test("keeps a deferred-scope refusal that the tooling scan did not raise", async () => {
+    await write(
+      ".lando.yml",
+      ["name: snapshot", "tooling:", "  s:", "    cmd: echo {{ sources }}", ""].join("\n"),
+    );
+    const { result } = await lint();
+    expect(result.violations).toEqual([
+      expect.objectContaining({
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        message: expect.stringContaining("Invocation scope sources"),
+      }),
+    ]);
+  });
+
   test("reports a rejected Compose key once, at its field", async () => {
     await write(
       ".lando.yml",
