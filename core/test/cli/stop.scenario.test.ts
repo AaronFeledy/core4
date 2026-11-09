@@ -193,6 +193,7 @@ const makeStopLayer = (
   options: {
     readonly pathsService?: ReturnType<typeof makeLandoPaths>;
     readonly appliedFileSync?: AppliedFileSyncInspection;
+    readonly idle?: boolean;
   } = {},
 ) => {
   const currentPlan = currentTestPlan(plannedApp);
@@ -214,7 +215,7 @@ const makeStopLayer = (
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ state: "running" as const }),
+    getStatus: Effect.succeed({ state: options.idle ? "idle" : "running" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -321,6 +322,13 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando stop", () => {
+  test("reports an idle runtime without claiming any services were stopped", async () => {
+    const harness = makeStopLayer(plan, { idle: true });
+    const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+    expect(result.servicesStopped).toEqual([]);
+    expect(harness.destroyCalls).toEqual([]);
+    expect(renderStopAppResult(result)).toBe("stopped: test-stop (runtime idle; nothing was running)");
+  });
   test("plans the app, destroys provider-lando without volumes, publishes stop events, and renders stopped services", async () => {
     const harness = makeStopLayer();
     const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));

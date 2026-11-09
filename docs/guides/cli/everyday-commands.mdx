@@ -157,7 +157,11 @@ root, marks which categories are kept or deleted, and includes the completed
 start-journal sweep. An idle runtime's live holdings and snapshot inventory are
 not available in this preview. Lando revalidates roots and ownership before
 deleting anything; changed evidence is retained for another review.
-Add `--volumes` to delete data volumes and file-sync copies
+If the report says Lando cannot remove a provider's file-sync copies of a deleted
+app yet, run `lando apps:gc --prune` without `--volumes`. It removes everything
+else selected by your flags and keeps data volumes, file-sync copies, and their
+ownership journals. Requesting `--volumes` fails that root before deletion.
+Otherwise, add `--volumes` to delete data volumes and file-sync copies
 of app files; add `--purge-caches` to delete caches. Data you keep by leaving off
 `--volumes` is listed in the result. A failed root doesn't prevent the others from
 being cleaned up, but makes the command exit nonzero.
@@ -179,7 +183,7 @@ lando destroy --root <path> --volumes
 
 `poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
 
-When the managed runtime is positively identified as idle, `lando stop` finishes the app's host-side cleanup without starting it. Its `:host` event steps still run; steps that would run in a service container are skipped with a notice. `lando destroy` starts or repairs the managed runtime holding the app's resources before checking and removing them, including when status is unknown after a crash, `wsl --terminate`, or an upgrade. `lando destroy --root` and `lando apps:gc --prune` prepare it the same way. If preparation fails, cleanup reports that error. Normal data-retention rules still apply.
+When the managed runtime is positively identified as idle, `lando stop` finishes the app's host-side cleanup without starting it and reports that the runtime is idle and nothing was running. Its `:host` event steps still run; steps that would run in a service container are skipped with a notice. `lando destroy` starts or repairs the managed runtime holding the app's resources before checking and removing them, including when status is unknown after a crash, `wsl --terminate`, or an upgrade. `lando destroy --root` and `lando apps:gc --prune` prepare it the same way. If preparation fails, cleanup reports that error. Normal data-retention rules still apply.
 
 On macOS and Windows, an absent API and a managed machine inspected as stopped establish idle. On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `poweroff` or when it comes from an earlier boot, provided the API is absent and no managed processes match. Each runtime launch invalidates that evidence first. Without valid receipt evidence, `lando list` reports `unknown` and stop fails closed; process observations alone cannot prove workloads stopped. Observation and stop never launch the runtime.
 

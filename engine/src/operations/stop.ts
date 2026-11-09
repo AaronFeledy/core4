@@ -178,6 +178,7 @@ const stopAppWithResolvedPlan = (
                   app: validatedTarget.plan.name,
                   outcome: retired || ownedCleanupChanged(removed) ? "stopped" : "unchanged",
                   servicesStopped: removed.servicesRemoved,
+                  runtimeState,
                 },
                 retired,
               ),

@@ -266,6 +266,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   return {
     result: {
       app: plan.name,
+      runtimeState,
       ...(runtimeState === "idle" ? { outcome: "stopped" as const } : {}),
       servicesStopped: runtimeState === "idle" ? [] : services.map((service) => String(service.name)),
       landofileEvents,
