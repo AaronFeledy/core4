@@ -47,6 +47,7 @@ export * from "./redaction-secret-store.ts";
 export * from "./config-translator-route-filter.ts";
 export * from "./doctor-tooling-plugin-source.ts";
 export * from "./http-client-contract.ts";
+export * from "./ca-pem-fixture.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./renderer-panel-contract.ts";
 export * from "./renderer-contract.ts";
@@ -55,6 +56,8 @@ export * from "./renderer-contract.ts";
  * - packageRoot: plugin package directory (has package.json + src/).
  * - sourceRoot / repoRoot / packageJson: optional fixture overrides.
  * - alwaysAllowed: defaults to @lando/sdk + @lando/container-runtime.
+ * Parsing uses the TypeScript 6 compiler API, so install the optional
+ * `@typescript/typescript6` peer dependency next to TypeScript 7.
  */
 export {
   type CollectImportBoundaryViolationsOptions,

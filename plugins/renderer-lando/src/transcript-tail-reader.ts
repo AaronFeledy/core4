@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
 import { basename, dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope } from "effect";
 
@@ -243,7 +244,7 @@ const makeSession = (userDataRoot: string, path: AbsolutePath): TranscriptTailSe
         }),
       ),
       Effect.map((next) => next.page),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new TranscriptTailReadError({
             path,

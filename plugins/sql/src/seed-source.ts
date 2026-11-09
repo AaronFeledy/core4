@@ -85,6 +85,16 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
       }),
     );
   }
+  if (service.kind === "file") {
+    return yield* Effect.fail(
+      new SqlSeedSourceError({
+        ...details,
+        message: "SQLite file targets cannot stream as a seed source.",
+        remediation:
+          "Use `lando db:export` in the source checkout, then `lando db:seed <file>` in the target checkout.",
+      }),
+    );
+  }
   if (service.family === "mssql") {
     return yield* Effect.fail(
       new SqlSeedSourceError({
@@ -117,14 +127,16 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
   });
   const creds = resolveSqlCreds(connection);
   const env = credsEnv(service.family, creds);
-  const redactionTokens = secretTokens({ password: creds.password });
+  const redactionTokens = secretTokens({ password: creds.password }, plan);
   return {
+    plan,
     endpoint: {
       _tag: "serviceCmd" as const,
       app: source.id,
       service: ServiceName.make(service.name),
       command: dumpCommand(service.family, creds),
       env,
+      secrets: { substring: [], wholeToken: [] },
     },
     database: creds.database,
     credentials: [creds.password],

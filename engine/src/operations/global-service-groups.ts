@@ -1,19 +1,21 @@
 import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import { type ApplyOptions, EnvironmentValueResolver, type RuntimeProviderShape } from "@lando/sdk/services";
+import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import {
   type PreparedDebuggerOverlay,
   prepareDebuggerOverlay,
   projectDebuggerOverlay,
 } from "../subsystems/start-overlay-registry.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
-import { advanceGlobalRecordedPlan } from "./global-retained-plan.ts";
+import { type GlobalSiblingRemoval, advanceGlobalRecordedPlan } from "./global-retained-plan.ts";
 
 export const serviceGroups = (
   services: ReadonlyArray<ServicePlan>,
+  bindings: ReadonlyArray<ReadonlyArray<string>> = [],
 ): ReadonlyArray<ReadonlyArray<ServicePlan>> => {
   const byName = new Map(services.map((service) => [service.name, service]));
   const remaining = new Set(services.map((service) => service.name));
@@ -26,6 +28,7 @@ export const serviceGroups = (
         if (!remaining.has(candidate.name)) continue;
         if (
           candidate.name === name ||
+          bindings.some((binding) => binding.includes(name) && binding.includes(candidate.name)) ||
           candidate.dependsOn.some((dependency) => dependency.service === name) ||
           byName.get(name)?.dependsOn.some((dependency) => dependency.service === candidate.name)
         ) {
@@ -47,11 +50,14 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
 >(
   plan: AppPlan,
   apply: {
-    readonly provider: RuntimeProviderShape;
+    readonly provider: PreparedRuntimeProvider;
     readonly services: ReadonlyArray<ServicePlan>;
     readonly options: Pick<ApplyOptions, "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
+    readonly bindings?: ReadonlyArray<ReadonlyArray<string>>;
+    readonly removals?: ReadonlyArray<GlobalSiblingRemoval>;
+    readonly exclusive?: ReadonlyArray<string>;
     readonly beforeApply?: Effect.Effect<void, AdmissionE, AdmissionR>;
     readonly preparedOverlays?: PreparedDebuggerOverlay;
   },
@@ -66,10 +72,13 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     }));
   let recordedPlan = apply.recordedPlan ?? plan;
   const outcomes = yield* Effect.forEach(
-    serviceGroups(apply.services),
+    serviceGroups(apply.services, apply.bindings),
     (group) =>
       Effect.gen(function* () {
-        const names = new Set(group.map((service) => service.name));
+        const names = new Set<string>(group.map((service) => service.name));
+        const removals = (apply.removals ?? []).filter((removal) =>
+          removal.binding.some((id) => names.has(id)),
+        );
         const result = yield* Effect.result(
           Effect.gen(function* () {
             const builtPlan = yield* build({
@@ -79,16 +88,24 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               ),
             });
             if (apply.beforeApply !== undefined) yield* apply.beforeApply;
+            const removalIds = removals.map(({ observation }) => String(observation.service));
             const candidateRecordedPlan =
               apply.recordedPlan === undefined
                 ? { ...recordedPlan, services: { ...recordedPlan.services, ...builtPlan.services } }
-                : yield* advanceGlobalRecordedPlan(recordedPlan, builtPlan, apply.recordedDisabledIds ?? []);
+                : yield* advanceGlobalRecordedPlan(
+                    recordedPlan,
+                    builtPlan,
+                    apply.recordedDisabledIds ?? [],
+                    new Set(removalIds),
+                  );
             const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
             yield* withGlobalConsumerReservation(
               builtPlan,
               [...names],
               Effect.gen(function* () {
                 if (apply.beforeApply !== undefined) yield* apply.beforeApply;
+                for (const removal of removals)
+                  yield* apply.provider.removeObservedService(removal.observation);
                 return yield* Effect.scoped(
                   apply.provider.apply(runtimePlan, {
                     ...apply.options,
@@ -101,6 +118,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                   }),
                 );
               }),
+              [...(apply.exclusive ?? []).filter((id) => names.has(id)), ...removalIds],
             );
             recordedPlan = candidateRecordedPlan;
           }),

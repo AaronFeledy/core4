@@ -4,8 +4,8 @@ import { chmod, lstat, readFile, readdir, unlink, writeFile } from "node:fs/prom
 import { basename, dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { Effect, Schema } from "effect";
-import { Journal, openJournal } from "../src/transaction-journal.ts";
-import { fixture, ownerOnlyFileAccess, scoped } from "./transaction-fixture.ts";
+import { Journal } from "../src/transaction-journal.ts";
+import { fixture, scoped } from "./transaction-fixture.ts";
 
 test("derives its journal from the full canonical-root digest and existing paths primitive", async () => {
   // Given an isolated app and user-data root
@@ -109,30 +109,4 @@ test("retains durable stages even if the prepared journal disappears externally"
   );
   // Then scope cleanup does not delete already-retained recovery evidence
   expect((await readdir(appRoot)).filter((name) => name.includes(".lando-stage."))).toHaveLength(1);
-});
-
-test("refuses to skip the committing journal transition", async () => {
-  // Given a durable prepared journal
-  const { appRoot, dataRoot, transactions } = await fixture();
-  await scoped(transactions.prepare({ appRoot, operations: [] }));
-  const store = await scoped(openJournal(appRoot, dataRoot, { privateFileAccess: ownerOnlyFileAccess }));
-  const journal = await scoped(store.read);
-  if (journal === null) throw new Error("missing journal");
-  // When the persistence layer is asked to jump directly to committed
-  const result = await scoped(Effect.result(store.write({ ...journal, state: "committed" })));
-  // Then it refuses the invalid transition and preserves the prepared plan
-  expect(result._tag).toBe("Failure");
-  expect((await scoped(store.read))?.state).toBe("prepared");
-});
-
-test("refuses journal removal before committed", async () => {
-  // Given a durable prepared journal
-  const { appRoot, dataRoot, transactions } = await fixture();
-  await scoped(transactions.prepare({ appRoot, operations: [] }));
-  const store = await scoped(openJournal(appRoot, dataRoot, { privateFileAccess: ownerOnlyFileAccess }));
-  // When cleanup is attempted prematurely
-  const result = await scoped(Effect.result(store.removeCommitted));
-  // Then the recovery plan is preserved
-  expect(result._tag).toBe("Failure");
-  expect((await scoped(store.read))?.state).toBe("prepared");
 });

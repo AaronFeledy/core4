@@ -7,9 +7,11 @@ import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
   APACHE_FEATURE_ID,
   APACHE_LISTEN_BUILD_STEP_ID,
+  apacheForwardedDirectoryRedirectDirectives,
   apacheServiceFeature,
   apacheServiceType,
 } from "../src/services/apache.ts";
+import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -79,6 +81,26 @@ const composeApachePlan = (raw: unknown, serviceName = "web"): Promise<ServicePl
   });
 
 describe("apache ServiceType", () => {
+  test.each([
+    {
+      mechanism: "alias",
+      redirect: ['Redirect permanent "%{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/"'],
+    },
+    {
+      mechanism: "rewrite",
+      redirect: [
+        "RewriteEngine On",
+        "RewriteRule ^ %{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/ [R=301,L]",
+      ],
+    },
+  ] as const)("redirects forwarded directory requests with $mechanism", ({ mechanism, redirect }) => {
+    expect(apacheForwardedDirectoryRedirectDirectives(mechanism)).toEqual([
+      `<If "%{HTTP:X-Forwarded-Proto} =~ /^https?$/ && -d %{REQUEST_FILENAME} && %{REQUEST_URI} !~ m#/$#">`,
+      ...redirect,
+      "</If>",
+    ]);
+  });
+
   test("plans a default Apache web service with APACHE_DOCUMENT_ROOT env", async () => {
     const plan = await composeApachePlan({ type: "apache" });
 
@@ -178,6 +200,8 @@ describe("apache ServiceType", () => {
       "Require all granted",
       "-c",
       "</Directory>",
+      ...apacheForwardedDirectoryRedirectDirectives("alias").flatMap((directive) => ["-c", directive]),
+      ...apacheHiddenPathDirectives().flatMap((directive) => ["-c", directive]),
     ]);
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
@@ -197,6 +221,7 @@ describe("apache ServiceType", () => {
 
     // Then: Lando neither emits a directive nor edits the image.
     expect(plan.command).toEqual(["httpd-foreground"]);
+    expect(plan.listenerAuthority?.owner).toBe("launcher");
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
@@ -206,6 +231,7 @@ describe("apache ServiceType", () => {
 
     // Then: Lando neither emits a directive nor edits the image.
     expect(plan.entrypoint).toEqual(["/custom-start"]);
+    expect(plan.listenerAuthority?.owner).toBe("launcher");
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
@@ -220,8 +246,23 @@ describe("apache ServiceType", () => {
     // Then: Lando still generates the start command, but neither emits Listen
     // nor edits a config path that image may not have.
     expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
+    expect(plan.listenerAuthority).toEqual({
+      owner: "image",
+      daemon: "Apache",
+      port: 8080,
+      setting: "Listen 8080",
+    });
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
+
+  test.each(["httpd:2.4-alpine", "library/httpd:2.4-alpine", "docker.io/library/httpd:2.4-alpine"])(
+    "catalog image %s retains listener ownership",
+    async (image) => {
+      const plan = await composeApachePlan({ type: "apache", image, port: 8080 });
+      expect(plan.listenerAuthority).toBeUndefined();
+      expect(apacheDirectives(plan.command)).toContain("Listen 8080");
+    },
+  );
 
   test("serves an authored webroot through Apache config and LANDO env", async () => {
     // Given / When

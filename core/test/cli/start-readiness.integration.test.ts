@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveBuiltContainerHelperForTest } from "@lando/container-runtime/testing/exec-supervision";
 import { openLandoRuntime } from "@lando/core";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
@@ -27,6 +28,7 @@ test.skipIf(socket === undefined)(
             const name = `readiness-pg-${crypto.randomUUID().slice(0, 8)}`;
             const provider = yield* makeRuntimeProvider({
               platform: "linux",
+              resolveContainerHelper: resolveBuiltContainerHelperForTest,
               socketPath: socket.socketPath,
               appliedPlanState: makePluginStateStore(makeTestStateStore().service, AbsolutePath.make(root), {
                 enforce: async () => undefined,
@@ -106,6 +108,7 @@ test.skipIf(socket === undefined)(
             const name = `readiness-apache-${crypto.randomUUID().slice(0, 8)}`;
             const provider = yield* makeRuntimeProvider({
               platform: "linux",
+              resolveContainerHelper: resolveBuiltContainerHelperForTest,
               socketPath: socket.socketPath,
               appliedPlanState: makePluginStateStore(makeTestStateStore().service, AbsolutePath.make(root), {
                 enforce: async () => undefined,

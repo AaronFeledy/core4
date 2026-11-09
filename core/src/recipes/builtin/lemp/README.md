@@ -6,7 +6,7 @@ from `appserver`, where PHP runs and tooling commands execute.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Serve PHP
 

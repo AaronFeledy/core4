@@ -87,7 +87,7 @@ test("private shell nonzero errors preserve the exit and canonically redacted st
   // When
   const error = await Effect.runPromise(
     Shell.withShellRedactionTokens(
-      [secret],
+      { substring: [secret] },
       Effect.flatMap(ShellRunner, (runner) =>
         runner.run(`printf ${secret} 1>&2; exit 23`, { capture: true }),
       ),

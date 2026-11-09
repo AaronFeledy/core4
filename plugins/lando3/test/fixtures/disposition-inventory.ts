@@ -717,7 +717,12 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       ["labels", "{team: dev}", "labels", { team: "dev" }],
       ["app-mount", "false", "appMount", false],
       ["mounts", "['./src:/dst']", "mounts", [{ source: "./src", target: "/dst" }]],
-      ["storage", "[/data]", "storage", [{ store: "inventory-s-data", target: "/data" }]],
+      [
+        "storage",
+        "[/data]",
+        "storage",
+        [{ store: "lando-inventory--s--storage--data-bd47413b", target: "/data" }],
+      ],
       ["security", "{ca: [ca.crt]}", "security", { ca: ["ca.crt"] }],
       [
         "healthcheck",
@@ -879,7 +884,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         api4("mounts: [{type: 'storage:volume', dest: /data}]", "mount-aliases4"),
         ["services", "mount-aliases4", "storage"],
-        [{ store: "inventory-mount-aliases4-data", target: "/data" }],
+        [{ store: "lando-inventory--mount-aliases4--storage--data-bd47413b", target: "/data" }],
       ),
     ],
   },
@@ -891,7 +896,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         api4("storage: [{dest: /data}]"),
         ["services", "s", "storage"],
-        [{ store: "inventory-s-data", target: "/data" }],
+        [{ store: "lando-inventory--s--storage--data-bd47413b", target: "/data" }],
       ),
     ],
   },
@@ -903,7 +908,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         api4("storage: [{dest: /data, scope: project}]"),
         ["services", "s", "storage"],
-        [{ store: "inventory-data", target: "/data", scope: "app" }],
+        [{ store: "lando-inventory_data--bd47413b", target: "/data", scope: "app" }],
       ),
       diagnostic(api4("storage: [{dest: /data, scope: project}]"), "rewritten", [
         "services",

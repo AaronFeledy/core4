@@ -187,7 +187,13 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
     message: "Server busy",
     remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
   });
-  expect(Schema.decodeUnknownSync(Schema.JsonObject)(observed.busy.result).structuredContent).toBeUndefined();
+  expect(Schema.decodeUnknownSync(Schema.JsonObject)(observed.busy.result).structuredContent).toMatchObject({
+    apiVersion: "v4",
+    command: "app:info",
+    ok: false,
+    warnings: [],
+    deprecations: [],
+  });
 });
 
 test("repeated cancellation notifications are consumed immediately without an accumulating cancellation queue", async () => {

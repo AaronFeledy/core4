@@ -1,8 +1,9 @@
 import { availableParallelism } from "node:os";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { gateId } from "@lando/container-runtime/dependency-gates";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
-import { listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { dependencyGateRemediation } from "@lando/container-runtime/podman/bring-up";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
@@ -72,10 +73,9 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   if (graphPlan._tag === "Cycle") return yield* planError(input, graphPlan.edges);
   const parentId = `build-app-${String(input.plan.id)}`;
   const bucket = yield* openAppBuildResults(input.stateStore, String(input.plan.id)).pipe(
-    Effect.mapError((cause) => cacheError(input.provider.id, cause)),
+    mapFailures((cause) => cacheError(input.provider.id, cause)),
   );
-  const cached =
-    (yield* bucket.get.pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)))) ?? [];
+  const cached = (yield* bucket.get.pipe(mapFailures((cause) => cacheError(input.provider.id, cause)))) ?? [];
   yield* input.events.publish(
     TaskTreeStartEvent.make({
       parentId,
@@ -194,7 +194,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
       exitCode: result.exitCode,
       durationMs: result.durationMs,
       transcriptPath,
-    }).pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)));
+    }).pipe(mapFailures((cause) => cacheError(input.provider.id, cause)));
     if (result.exitCode === 0) return "succeeded" as const;
     failures.set(
       step.id,
@@ -270,6 +270,11 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         primaryGate?.value._tag === "gate" ? input.plan.services[primaryGate.value.service] : undefined;
       const diagnostic =
         listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
+      const action =
+        diagnostic?.action ??
+        (primaryGate?.value._tag === "gate" && primaryGate.value.condition === "service_healthy"
+          ? listenerAuthorityAction(service)
+          : undefined);
       const remediation =
         ordered[0]?.remediation ??
         "Inspect the reported app-phase build step failures, fix them, and rebuild.";
@@ -283,9 +288,11 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         failures: ordered,
         ...(listener === undefined ? {} : { listener }),
         remediation:
-          diagnostic === undefined || listener === undefined
+          action === undefined || service === undefined
             ? remediation
-            : `${diagnostic.action}\n${dependencyGateRemediation(input.plan, listener.service)}`,
+            : input.redactor.redactString(
+                `${action}\n${diagnostic?.authority === undefined ? "" : `${diagnostic.authority}\n`}${dependencyGateRemediation(input.plan, service.name)}`,
+              ),
       });
     }
   });

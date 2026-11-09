@@ -187,7 +187,7 @@ const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fa
 const fakeRedactionService = {
   ...makeRedactionService(),
   forProfile: () => Effect.succeed(fakeRedactor),
-  payloadValues: () => Effect.succeed(() => [secret]),
+  payloadValues: () => Effect.succeed(() => ({ substring: [secret], wholeToken: [] })),
 } satisfies RedactionServiceShape;
 
 export const withFakeRedaction = <A, E>(effect: Effect.Effect<A, E, never>): Effect.Effect<A, E, never> =>

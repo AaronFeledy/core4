@@ -1,5 +1,6 @@
 import type {
   AppIdentity,
+  DataEndpoint,
   DataTransferSpec,
   DatabaseConnection,
   SnapshotFilter,
@@ -13,6 +14,7 @@ import type { SqlCommandDeps } from "../../src/run.ts";
 export type ExtraSqlService = { readonly name: string; readonly type: string };
 export type SqlTestOptions = {
   readonly password: string;
+  readonly readPayload?: Uint8Array;
   readonly connection?: DatabaseConnection;
   readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
   readonly inspectSource?: SqlCommandDeps["inspectSource"];
@@ -54,6 +56,7 @@ export type SqlTestHarness = {
   readonly root: string;
   readonly deps: SqlCommandDeps;
   readonly transfers: () => ReadonlyArray<DataTransferSpec>;
+  readonly reads: () => ReadonlyArray<DataEndpoint>;
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly restores: () => ReadonlyArray<{
     readonly id: string;

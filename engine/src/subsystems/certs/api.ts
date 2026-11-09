@@ -25,7 +25,7 @@ import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 export { CertificateAuthority };
 
 const CA_UNAVAILABLE_MESSAGE =
-  "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).";
+  "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA.";
 
 export const layerUnavailable = Layer.succeed(
   CertificateAuthority,

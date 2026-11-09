@@ -70,9 +70,9 @@ test.each([
   const config = Schema.decodeUnknownSync(ServiceConfig)({ mounts: [{ source, target: "/packages" }] });
   const mounts = compileAuthoredMounts(context, config, undefined);
   if (mounts instanceof LandofileValidationError) throw mounts;
-  expect(mounts[0]).toMatchObject({ type: "bind", origin: "authored" });
-  expect(mounts[0]?.type === "bind" ? mounts[0].relativeTo : undefined).toBe(relativeTo);
-  if (source === "../shared") expect(mounts[0]).toMatchObject({ source: "/canonical/shared" });
+  expect(mounts.mounts[0]).toMatchObject({ type: "bind", origin: "authored" });
+  expect(mounts.mounts[0]?.type === "bind" ? mounts.mounts[0].relativeTo : undefined).toBe(relativeTo);
+  if (source === "../shared") expect(mounts.mounts[0]).toMatchObject({ source: "/canonical/shared" });
 });
 
 test.each(["./packages", "/host/packages"])(
@@ -84,7 +84,7 @@ test.each(["./packages", "/host/packages"])(
     const mounts = compileAuthoredMounts(context, config, undefined);
     if (mounts instanceof LandofileValidationError) throw mounts;
     const result = await Effect.runPromise(
-      deriveMountOverlays({ context, servicePlan: { ...base, mounts } }),
+      deriveMountOverlays({ context, servicePlan: { ...base, mounts: mounts.mounts } }),
     );
     expect(result.servicePlan.mounts.find(({ target }) => target === "/packages/vendor")).toMatchObject({
       type: "volume",

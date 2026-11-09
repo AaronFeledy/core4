@@ -317,7 +317,7 @@ describe("per-app mutation lock", () => {
           let entered = false;
           const started=Date.now();
           const result=await Effect.runPromise(withAppMutationLock(${JSON.stringify(app)},Effect.sync(()=>{entered=true})).pipe(Effect.result,Effect.provide(layer)));
-          const independent=await Effect.runPromise(withAppMutationLock({id:"independent",root:${JSON.stringify(app.root)}},Effect.succeed("own lease")).pipe(Effect.provide(layer)));
+          const independent=await Effect.runPromise(withAppMutationLock({kind:"scratch",id:"independent",root:${JSON.stringify(app.root)}},Effect.succeed("own lease")).pipe(Effect.provide(layer)));
           console.log(JSON.stringify({result,entered,elapsed:Date.now()-started,independent}));
         `,
                 ],

@@ -82,7 +82,7 @@ describe("bundled-first global service loader", () => {
         {
           id: "authored-artifact:1",
           phase: "build",
-          command: ["sh", "-lc", "apk add --no-cache openssh-client socat"],
+          command: ["sh", "-c", "apk add --no-cache openssh-client socat"],
           user: "root",
         },
       ],

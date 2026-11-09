@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
  * its complete selected shards. Paths and witnesses are repository-relative.
  */
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { loadWorkspacePackages, resolveFile, resolveWorkspaceSpecifier } from "./boundary/graph.ts";
 import { scanLiterals } from "./boundary/literals.ts";

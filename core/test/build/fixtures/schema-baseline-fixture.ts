@@ -14,7 +14,7 @@ const ARTIFACTS_MODULE_PATH = new URL(
 const GENERATOR_PATH = "scripts/build-schema-snapshot.ts";
 const roots: string[] = [];
 
-type SchemaArtifactFamily = "sdk" | "command";
+type SchemaArtifactFamily = "sdk" | "command" | "persisted";
 
 interface Fixture {
   readonly root: string;
@@ -152,7 +152,10 @@ export const regenerate = (request: RegenerationRequest): Promise<unknown> =>
 
 export const unavailableFamilies = (result: unknown): ReadonlyArray<SchemaArtifactFamily> => {
   const value = field(result, "unavailableFamilies");
-  if (!Array.isArray(value) || !value.every((entry) => entry === "sdk" || entry === "command")) {
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry) => entry === "sdk" || entry === "command" || entry === "persisted")
+  ) {
     throw new FixtureCommandError("read regeneration result", "invalid unavailableFamilies");
   }
   return value;

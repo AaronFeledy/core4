@@ -1,4 +1,5 @@
 import { Effect, Option, Result } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -78,9 +79,10 @@ export const doctor = Effect.fn("Doctor.collect")(
     const configService = yield* ConfigService;
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
-    const sourceEnv = { ...(options.env ?? process.env) };
+    const sourceEnv = { ...(options.env ?? (yield* CliInvocation).env) };
     const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
-    const probeBudget = probeBudgetMs(doctorSectionBudgetMs(sourceEnv));
+    const sectionBudget = doctorSectionBudgetMs(sourceEnv);
+    const probeBudget = probeBudgetMs(sectionBudget);
     const selfChecks: DoctorSelfCheck[] = [];
 
     const gathered = yield* gatherSelectionInputs(options);
@@ -146,7 +148,7 @@ export const doctor = Effect.fn("Doctor.collect")(
         executables,
         platform,
         stateDir,
-        env: options.env ?? process.env,
+        env: sourceEnv,
         userDataRoot,
         binDir: userDataRoot === undefined ? undefined : paths.binDir,
       },

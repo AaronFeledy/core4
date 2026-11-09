@@ -1,4 +1,5 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Cause, Effect, Result, Schema } from "effect";
 
 import { GlobalAppError, GlobalServiceCapabilityError, GlobalServiceCollisionError } from "@lando/sdk/errors";
@@ -205,7 +206,7 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
     }
 
     const decoded = yield* (exported as Effect.Effect<unknown, unknown>).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         loaderError(
           `Global service ${entry.contribution.id} module ${moduleSpecifier} failed.`,
           `Fix plugin ${entry.plugin}'s global service module or uninstall the plugin.`,
@@ -214,7 +215,7 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
       ),
       Effect.flatMap((value) =>
         Schema.decodeUnknownEffect(ServiceConfig)(value).pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             loaderError(
               `Global service ${entry.contribution.id} module ${moduleSpecifier} did not return a valid ServiceConfig.`,
               `Update plugin ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,
@@ -229,11 +230,9 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
   }),
 };
 
-export const GlobalContributionStateSchema = Schema.Struct({
+const GlobalContributionFields = {
   id: Schema.String,
   plugin: Schema.String,
-  enabled: Schema.Boolean,
-  state: Schema.Literals(["enabled", "disabled", "blocked", "unverified"]),
   source: Schema.Literals(["default", "plugin", "contribution"]),
   capabilitySource: Schema.Literals(["declared", "runtime", "unavailable"]),
   reasons: Schema.Array(Schema.String),
@@ -241,11 +240,23 @@ export const GlobalContributionStateSchema = Schema.Struct({
   dependencyEvidence: Schema.Literals(["resolved", "unavailable"]),
   summary: Schema.optionalKey(Schema.String),
   commands: Schema.Array(Schema.String),
-});
+};
+export const GlobalContributionStateSchema = Schema.Union([
+  Schema.Struct({
+    ...GlobalContributionFields,
+    enabled: Schema.Literal(false),
+    state: Schema.Literal("disabled"),
+  }),
+  Schema.Struct({
+    ...GlobalContributionFields,
+    enabled: Schema.Literal(true),
+    state: Schema.Literals(["enabled", "blocked", "unverified"]),
+  }),
+]);
 export type GlobalContributionState = typeof GlobalContributionStateSchema.Type;
 
-type MutableGlobalContributionState = {
-  -readonly [K in keyof GlobalContributionState]: GlobalContributionState[K];
+type MutableGlobalContributionState<T = GlobalContributionState> = {
+  -readonly [K in keyof T]: T[K];
 };
 
 export interface GlobalResolutionIssue {
@@ -450,7 +461,7 @@ export const projectEffectiveGlobalResolution = (
   const direct = new Set(resolution.directlyExcludedIds);
   const admitted = new Set(Object.keys(effective.services));
   const entries = resolution.entries.map((row): GlobalContributionState => {
-    if (direct.has(row.id)) return row;
+    if (!row.enabled || direct.has(row.id)) return row;
     const config = Object.hasOwn(services, row.id) ? services[row.id] : undefined;
     const pending = pendingSites.some(
       (site) =>
@@ -516,7 +527,9 @@ export const resolveGlobalServices = Effect.fn("GlobalServices.resolve")(functio
       id: entry.contribution.id,
       plugin: entry.plugin,
       ...preference,
-      state: preference.enabled ? "enabled" : "disabled",
+      ...(preference.enabled
+        ? { enabled: true, state: "enabled" as const }
+        : { enabled: false, state: "disabled" as const }),
       capabilitySource,
       reasons: preference.enabled ? [] : ["policy-disabled"],
       requiredServices: [],
@@ -525,7 +538,7 @@ export const resolveGlobalServices = Effect.fn("GlobalServices.resolve")(functio
       ...(entry.contribution.summary === undefined ? {} : { summary: entry.contribution.summary }),
     };
     rows.set(row.id, row);
-    if (!preference.enabled) continue;
+    if (!row.enabled) continue;
     const requirements = entry.contribution.requires?.providerCapabilities ?? [];
     if (requirements.length > 0 && input.providerCapabilities === undefined) {
       row.state = "unverified";
@@ -623,7 +636,7 @@ export const resolveGlobalServices = Effect.fn("GlobalServices.resolve")(functio
   errors.push(...graph.errors);
   for (const [id, reasons] of Object.entries(graph.reasons)) {
     const row = rows.get(id);
-    if (row === undefined) continue;
+    if (row?.enabled !== true) continue;
     row.state = "blocked";
     row.reasons = reasons;
   }

@@ -72,6 +72,7 @@ import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 import { makeDataMoverService } from "../src/service.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -268,6 +269,38 @@ const runDataMover = <A, E>(effect: Effect.Effect<A, E, DataMover | Scope.Scope>
   );
 
 describe("BunDataMover.layer", () => {
+  test("preserves provider remediation and cause when wrapping a provider failure", async () => {
+    const original = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "copyFromService",
+      message: "Provider copy unavailable",
+      remediation: "Start the selected provider and retry the copy.",
+    });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mover = yield* DataMover;
+          yield* mover.read({ _tag: "servicePath", app, service, path: servicePath }).pipe(Stream.runDrain);
+        }),
+      ).pipe(
+        Effect.provide(BunDataMover.layer),
+        Effect.provide(
+          providerLayer({
+            capabilities: dataPlaneCapabilities({ serviceFileCopy: "native" }),
+            copyFromService: () => Stream.fail(original),
+          }),
+        ),
+        Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+      ),
+    );
+    if (exit._tag !== "Failure") throw new Error("Expected transfer failure");
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(DataTransferError);
+    if (!(error instanceof DataTransferError)) throw new Error("Expected data transfer error");
+    expect(error.remediation).toBe(original.remediation);
+    expect(error.cause).toBe(original);
+  });
+
   test("dispatches native service file copies and reports accelerated", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "payload.txt");
@@ -475,13 +508,14 @@ describe("BunDataMover.layer", () => {
     expect(Array.from(result)).toEqual(Array.from(payload));
   });
 
-  test("imports to volumes when existence preflight is unavailable", async () => {
+  test("unreachable volume inventory prevents staging and mutation before import", async () => {
     await withTempDir(async (dir) => {
       const seed = join(dir, "seed.txt");
-      const restored = join(dir, "restored.txt");
+      const paths = makeLandoPaths({ userCacheRoot: join(dir, "cache") });
+      const mutations: string[] = [];
       await writeFile(seed, "unlisted-volume-payload");
 
-      await Effect.runPromise(
+      const result = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -489,33 +523,54 @@ describe("BunDataMover.layer", () => {
               from: { _tag: "hostPath", path: absolute(seed) },
               to: { _tag: "volume", app, store: "unlisted" },
             });
-            yield* dataMover.transfer({
-              from: { _tag: "volume", app, store: "unlisted" },
-              to: { _tag: "hostPath", path: absolute(restored) },
-              overwrite: true,
-            });
           }),
         ).pipe(
           Effect.provide(BunDataMover.layer),
           Effect.provide(
-            providerLayer({
-              listVolumes: () =>
-                Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: "test",
-                    operation: "listVolumes",
-                    message: "volume listing unavailable",
-                    remediation:
-                      "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+            providerLayer(
+              {
+                runStream: () => {
+                  mutations.push("runStream");
+                  return Stream.make({ exitCode: 0 });
+                },
+                copyToService: () =>
+                  Effect.sync(() => {
+                    mutations.push("copyToService");
                   }),
-                ),
-            }),
+                copyFromService: () => {
+                  mutations.push("copyFromService");
+                  return Stream.empty;
+                },
+                listVolumes: () =>
+                  Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: "test",
+                      operation: "listVolumes",
+                      message: "volume listing unavailable",
+                      remediation:
+                        "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+                    }),
+                  ),
+              },
+              paths,
+            ),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.result,
         ),
       );
 
-      expect(await readFile(restored, "utf8")).toBe("unlisted-volume-payload");
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DataTransferError",
+          operation: "listVolumes",
+          cause: { _tag: "ProviderUnavailableError", operation: "listVolumes" },
+          remediation: "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+        },
+      });
+      expect(mutations).toEqual([]);
+      await expect(lstat(paths.transferStagingDir)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 
@@ -837,12 +892,14 @@ describe("BunDataMover.layer", () => {
 
   test("removes a staged volume payload when the helper is interrupted", async () => {
     await withTempDir(async (dir) => {
-      // Given: a verified payload staged in the configured scratch directory.
+      // Given: a verified payload staged under transferStagingDir, not scratchDir.
       const source = join(dir, "interrupt-volume.sql");
       const scratchDir = join(dir, "scratch");
+      const transferStagingDir = join(dir, "transfer-staging");
+      await mkdir(scratchDir, { recursive: true });
       await writeFile(source, "interrupt-volume-payload");
       const helperStarted = await Effect.runPromise(Deferred.make<void>());
-      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir });
+      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir, transferStagingDir });
       const transfer = Effect.scoped(
         Effect.gen(function* () {
           const dataMover = yield* DataMover;
@@ -878,11 +935,16 @@ describe("BunDataMover.layer", () => {
       // When: the transfer is interrupted after the provider helper starts.
       const fiber = Effect.runFork(transfer);
       await Effect.runPromise(Deferred.await(helperStarted));
-      expect((await readdir(scratchDir)).some((name) => name.startsWith(".lando-stage-volume-"))).toBe(true);
+      expect(
+        (await readdir(transferStagingDir)).some((name) => name.startsWith(".lando-stage-volume-")),
+      ).toBe(true);
+      expect(await readdir(scratchDir)).toEqual([]);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
       // Then: scoped cleanup removes both staged and in-progress files.
-      expect((await readdir(scratchDir)).filter((name) => name.includes("lando-stage-volume"))).toEqual([]);
+      expect(
+        (await readdir(transferStagingDir)).filter((name) => name.includes("lando-stage-volume")),
+      ).toEqual([]);
     });
   });
 
@@ -3537,12 +3599,18 @@ test.each([
   ["target", "CUSTOM_URL"],
   ["source", "MONGO_URI"],
   ["target", "MONGO_URI"],
-] as const)("direct non-SQL transfer masks supplied %s command env value for %s", async (side, key) => {
+] as const)("direct transfer masks explicit %s command secrets for %s", async (side, key) => {
   await withTempDir(async (dir) => {
     const url = key === "CUSTOM_URL" || key === "MONGO_URI";
     const secret = url ? "p:/?#'!\n☃" : "SYNTHETIC_GENERIC_COMMAND_CREDENTIAL";
     const encoded = encodeUriComponent(secret);
     const envValue = url ? `arbitrary://user:${encoded}@host/database` : secret;
+    // Explicit tiered credential secrets only — never every env value.
+    // URL userinfo is derived from substring secrets via collectUrlCredentialValues.
+    const secrets = {
+      substring: url ? [secret, encoded] : [secret],
+      wholeToken: [] as string[],
+    };
     const payload = new Uint8Array([0, 255, 195, 169, 13, 10]);
     const received: number[] = [];
     let destinationCalls = 0;
@@ -3571,12 +3639,26 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
-            from: { _tag: "serviceCmd", app, service, command: ["dump"], env: { [key]: envValue } },
-            to: { _tag: "serviceCmd", app, service, command: ["load"], env: { [key]: envValue } },
+            from: {
+              _tag: "serviceCmd",
+              app,
+              service,
+              command: ["dump"],
+              env: { [key]: envValue },
+              secrets,
+            },
+            to: {
+              _tag: "serviceCmd",
+              app,
+              service,
+              command: ["load"],
+              env: { [key]: envValue },
+              secrets,
+            },
             overwrite: true,
           })
           .pipe(Effect.result);
@@ -3590,5 +3672,104 @@ test.each([
     expect(result.failure.exitCode).toBe(7);
     expect(destinationCalls).toBe(side === "source" ? 0 : 1);
     expect(received).toEqual(side === "source" ? [] : [...payload]);
+  });
+});
+
+test("serviceCmd whole-token secrets mask whole tokens only on failure tails", async () => {
+  await withTempDir(async (dir) => {
+    const secret = "wordpress";
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stateStore = yield* StateStore;
+        const provider = RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          execStream: () =>
+            Stream.make(
+              {
+                kind: "stderr" as const,
+                chunk: bytes(`denied ${secret} path=wp-content/plugins/wordpress-seo\n`),
+              },
+              { exitCode: 3 },
+            ),
+        });
+        const mover = makeDataMoverService(
+          Effect.succeed(provider),
+          { redactText: (text) => text, publish: () => Effect.void },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
+        );
+        return yield* mover
+          .transfer({
+            from: {
+              _tag: "serviceCmd",
+              app,
+              service,
+              command: ["dump"],
+              env: { MYSQL_PWD: secret },
+              secrets: { substring: [], wholeToken: [secret] },
+            },
+            to: { _tag: "hostPath", path: AbsolutePath.make(join(dir, "out.bin")) },
+            overwrite: true,
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected command failure");
+    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
+    expect(result.failure.stderrTail).toBe("denied [redacted] path=wp-content/plugins/wordpress-seo\n");
+  });
+});
+
+test.each([
+  ["source", "APP_TOKEN", undefined, "[redacted]"],
+  ["target", "APP_TOKEN", undefined, "[redacted]"],
+  ["source", "APP_TOKEN", { substring: [], wholeToken: [] }, "private-canary"],
+  ["target", "APP_TOKEN", { substring: [], wholeToken: [] }, "private-canary"],
+  ["source", "PGPASSWORD", undefined, "private-canary"],
+  ["target", "PGPASSWORD", undefined, "private-canary"],
+  ["source", "DB_USER", undefined, "private-canary"],
+  ["target", "DB_USER", undefined, "private-canary"],
+])("serviceCmd %s failure tails classify unclassified %s env: %j", async (side, key, secrets, expected) => {
+  await withTempDir(async (dir) => {
+    const secret = "private-canary";
+    await writeFile(join(dir, "in.bin"), "payload");
+    const endpoint = {
+      _tag: "serviceCmd" as const,
+      app,
+      service,
+      command: ["transfer"],
+      env: { [key]: secret },
+      ...(secrets === undefined ? {} : { secrets }),
+    };
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stateStore = yield* StateStore;
+        const provider = RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          execStream: () =>
+            Stream.make({ kind: "stderr" as const, chunk: bytes(`denied ${secret}\n`) }, { exitCode: 3 }),
+        });
+        const mover = makeDataMoverService(
+          Effect.succeed(provider),
+          { redactText: (text) => text, publish: () => Effect.void },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
+        );
+        return yield* mover
+          .transfer({
+            from:
+              side === "source"
+                ? endpoint
+                : { _tag: "hostPath", path: AbsolutePath.make(join(dir, "in.bin")) },
+            to:
+              side === "source"
+                ? { _tag: "hostPath", path: AbsolutePath.make(join(dir, "out.bin")) }
+                : endpoint,
+            overwrite: true,
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected command failure");
+    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
+    expect(result.failure.stderrTail).toBe(`denied ${expected}\n`);
   });
 });

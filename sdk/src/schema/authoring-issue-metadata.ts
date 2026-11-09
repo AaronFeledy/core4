@@ -1,10 +1,30 @@
-import type { SchemaAST } from "effect";
+import type { SchemaAST, SchemaIssue } from "effect";
 
 // Diagnostic provenance must not affect union flattening, identity, or JSON Schema.
 const sources = new WeakMap<SchemaAST.AST, SchemaAST.AST>();
 const expectations = new WeakMap<SchemaAST.AST, SchemaAST.AST>();
 const slots = new WeakSet<SchemaAST.AST>();
 const directiveValues = new WeakMap<SchemaAST.Union["types"], SchemaAST.AST>();
+const semanticSites = new WeakMap<SchemaAST.Filter<unknown>["run"], SchemaAST.AST>();
+
+export const recordSemanticSite = (filter: SchemaAST.Filter<unknown>, source: SchemaAST.AST): void => {
+  semanticSites.set(filter.run, source);
+};
+
+export const isSemanticSite = (check: SchemaAST.Check<unknown>): boolean =>
+  check._tag === "Filter" && semanticSites.has(check.run);
+
+export const semanticSiteSource = (check: SchemaAST.Check<unknown>): SchemaAST.AST | undefined =>
+  check._tag === "Filter" ? semanticSites.get(check.run) : undefined;
+
+export const throughSemanticSite = (issue: SchemaIssue.Issue): SchemaIssue.Issue => {
+  if (issue._tag === "Filter" && isSemanticSite(issue.filter)) return throughSemanticSite(issue.issue);
+  if (issue._tag === "Composite" && issue.issues.length === 1) {
+    const child = issue.issues[0];
+    if (child?._tag === "Filter" && isSemanticSite(child.filter)) return throughSemanticSite(child.issue);
+  }
+  return issue;
+};
 
 export const recordAuthoringSource = (derived: SchemaAST.AST, source: SchemaAST.AST): void => {
   if (derived === source) return;

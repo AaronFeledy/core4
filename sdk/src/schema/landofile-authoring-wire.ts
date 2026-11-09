@@ -177,22 +177,24 @@ export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.A
   if (source.checks === undefined || !source.checks.some(checkProjectsObjectSchema)) {
     return keyChecks === undefined ? undefined : container;
   }
+  // Project the derived members so the published object accepts expressions and directives
+  // exactly where the authoring schema does; the source check only proves the object projects.
   const projection =
-    source._tag === "Objects"
+    runtime._tag === "Objects"
       ? new AST.Objects(
-          source.propertySignatures.map(
+          runtime.propertySignatures.map(
             (property) => new AST.PropertySignature(property.name, property.type),
           ),
-          source.indexSignatures.map((index) => new AST.IndexSignature(index.parameter, index.type)),
-          source.annotations,
+          runtime.indexSignatures.map((index) => new AST.IndexSignature(index.parameter, index.type)),
+          runtime.annotations,
           keyChecks,
         )
-      : source._tag === "Arrays"
+      : runtime._tag === "Arrays"
         ? new AST.Arrays(
-            source.isMutable,
-            [...source.elements],
-            [...source.rest],
-            source.annotations,
+            runtime.isMutable,
+            [...runtime.elements],
+            [...runtime.rest],
+            runtime.annotations,
             keyChecks,
           )
         : undefined;

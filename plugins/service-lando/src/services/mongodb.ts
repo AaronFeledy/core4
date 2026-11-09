@@ -3,7 +3,6 @@ import { Effect, Schema } from "effect";
 
 import {
   type EnvironmentValue,
-  PortNumber,
   PortablePath,
   type ServiceConfig,
   type ServiceCreds,
@@ -13,10 +12,15 @@ import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
+import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  assertListenerConfig,
+  launcherAuthority,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 import { mongodbProbes } from "./mongodb-probes.ts";
@@ -24,14 +28,24 @@ import { mongodbProbes } from "./mongodb-probes.ts";
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
 const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
-export const DEFAULT_PORT = 27017;
+export const MONGODB_LISTENER = {
+  port: 27017,
+  daemon: "MongoDB",
+  when: "All MongoDB services",
+  launcher: { setting: (port: number) => `--port ${port}` },
+} as const;
+export const DEFAULT_PORT = MONGODB_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
 export const MONGODB_CONFIG_TARGET = PortablePath.make("/etc/lando/mongod.conf");
 
 const credsFor = (
-  input: { readonly appName?: string | undefined; readonly appRoot: string },
+  input: {
+    readonly appName?: string | undefined;
+    readonly dataName?: string | undefined;
+    readonly appRoot: string;
+  },
   service: ServiceConfig,
 ): ServiceCreds => {
   const creds = service.creds;
@@ -48,7 +62,7 @@ const credsFor = (
           },
         }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
-    defaults: { user: "lando", password: DEFAULT_PASSWORD, database: appNameFor(input) },
+    defaults: { user: "lando", password: DEFAULT_PASSWORD, database: dataNameFor(input) },
     ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
@@ -69,7 +83,6 @@ const connectMongo =
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -78,23 +91,28 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     ...landoDbEnvFor(creds, port),
   });
   ctx.addStorage({
-    store: `${appName}-mongodb-data`,
+    store: ctx.serviceStoreName("mongodb-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
 
   const serverConfig = addServerConfigMount(ctx, MONGODB_CONFIG_TARGET);
-  if (
+  const ownsLauncher =
     (serverConfig || service.port !== undefined) &&
     service.command === undefined &&
-    service.entrypoint === undefined
-  ) {
+    service.entrypoint === undefined;
+  if (ownsLauncher) {
     ctx.setCommand([
       "mongod",
       ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []),
       "--port",
       String(port),
     ]);
+  } else if (
+    (serverConfig || service.port !== undefined) &&
+    (service.command !== undefined || service.entrypoint !== undefined)
+  ) {
+    ctx.setListenerAuthority(launcherAuthority(MONGODB_LISTENER, port));
   }
 
   applyAuthoredProcessFields(ctx);
@@ -129,6 +147,7 @@ const mongodbToolingForConnection: NonNullable<ServiceType["toolingForConnection
             `for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval '${connectMongo}' "$@";; esac; done; exec mongosh --nodb --eval '${connectMongo}' --shell "$@"`,
             "mongosh",
           ],
+          wrapper: true,
           env: { MONGO_URI: mongoUri(connection.creds, connection.port) },
         },
       };
@@ -145,7 +164,8 @@ export const mongodbServiceType: ServiceType = {
   resolve: (input) => {
     return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
       const creds = credsFor(input, input.service);
-      const port = PortNumber.make(input.service.port ?? DEFAULT_PORT);
+      assertListenerConfig(input.service, MONGODB_LISTENER);
+      const port = plannedPort(input.service, MONGODB_LISTENER);
       return {
         base: "lando",
         connection: { family: "mongodb", creds, port },

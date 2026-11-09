@@ -4,6 +4,7 @@ recipe: drupal
 services:
   appserver:
     type: php:8.3
+    db_client: mysql:8.0
     framework: drupal
     webroot: web
     allowOverride: true

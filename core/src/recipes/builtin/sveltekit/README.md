@@ -6,7 +6,7 @@ configure the adapter package.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -19,9 +19,10 @@ configure the adapter package.
 - `lando svelte …`: Svelte CLI through `npx svelte-kit`.
 - `lando npm …`: npm inside the web service.
 
-## Alpha limitations
+## Limitations
 
 - Adapter picker is informational: it sets a `SVELTEKIT_ADAPTER` env hint but
   does not install or configure `@sveltejs/adapter-*`. Users wire the adapter
   through the generated tooling.
-- A dedicated SvelteKit service type is deferred to Beta.
+- There is no dedicated SvelteKit service type; the recipe uses the bundled
+  `node:<lts|22>` service type.

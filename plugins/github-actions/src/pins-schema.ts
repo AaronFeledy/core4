@@ -1,4 +1,5 @@
 import { isAbsolute, normalize, parse, resolve, sep } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 // Private catalog failures contain only fixed, allowlisted diagnostics.
@@ -290,7 +291,7 @@ const consistent = (catalog: PinCatalog): boolean => {
 };
 export const decodePinCatalog = (input: unknown) =>
   Schema.decodeUnknownEffect(PinCatalog)(input, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(() => pinError("invalid-catalog")),
+    mapFailures(() => pinError("invalid-catalog")),
     Effect.flatMap((catalog) =>
       consistent(catalog) ? Effect.succeed(catalog) : Effect.fail(pinError("invalid-catalog")),
     ),

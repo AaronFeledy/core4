@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Schema } from "effect";
 import { type DataPlaneHttpRequest, makeProviderDataPlane, volumeWitnessImage } from "../src/data-plane.ts";
 import { echoHelperPull } from "./helper-pull-support.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -15,28 +16,19 @@ test("pins both adoption helpers to the existing container rather than auto-crea
   const pulledRefs: string[] = [];
   const ownerRoot = AbsolutePath.make("/canonical/app");
   const witness = { version: 1, ownerRoot, generation: "a1234567-1234-4123-8123-123456789abc" };
+  const engine = new FakeEngine({ stdout: new TextEncoder().encode(JSON.stringify(witness)) }).seedContainer(
+    "existing",
+    { Image: "fixture", HostConfig: { Binds: ["actual:/data"] } },
+  );
+  engine.assets.volumes.set("actual", { Name: "actual", Driver: "local" });
+  engine.onRequest = (input) => calls.push(input);
   const plane = makeProviderDataPlane({
     providerId: "podman",
     capabilities: { volumeSnapshot: "none" },
     endpointNamespace: "unix:///fixture.sock",
     pullHelperImage: echoHelperPull(pulledRefs),
     redactor: passthroughRedactor,
-    api: {
-      request: (input) => {
-        calls.push(input);
-        return Effect.succeed({
-          status: 200,
-          body: JSON.stringify(
-            input.path === "/containers/existing/json"
-              ? { Mounts: [{ Type: "volume", Name: "actual", Destination: "/data" }] }
-              : input.path === "/volumes/actual"
-                ? { Name: "actual", Driver: "local" }
-                : { State: { ExitCode: 0 } },
-          ),
-        });
-      },
-      stream: () => Stream.make(new TextEncoder().encode(JSON.stringify(witness))),
-    },
+    api: engine.api,
   });
   const result = await Effect.runPromise(
     plane.adoptVolume({
@@ -89,26 +81,19 @@ test("pins both adoption helpers to the existing container rather than auto-crea
 
 test("refuses to create a witness helper when the acquired image is not the pinned digest", async () => {
   const calls: DataPlaneHttpRequest[] = [];
+  const engine = new FakeEngine().seedContainer("existing", {
+    Image: "fixture",
+    HostConfig: { Binds: ["actual:/data"] },
+  });
+  engine.assets.volumes.set("actual", { Name: "actual", Driver: "local" });
+  engine.onRequest = (input) => calls.push(input);
   const plane = makeProviderDataPlane({
     providerId: "podman",
     capabilities: { volumeSnapshot: "none" },
     endpointNamespace: "unix:///fixture.sock",
     pullHelperImage: (ref) => Effect.succeed({ ref, digest: `sha256:${"0".repeat(64)}` }),
     redactor: passthroughRedactor,
-    api: {
-      request: (input) => {
-        calls.push(input);
-        return Effect.succeed({
-          status: 200,
-          body: JSON.stringify(
-            input.path === "/containers/existing/json"
-              ? { Mounts: [{ Type: "volume", Name: "actual", Destination: "/data" }] }
-              : { Name: "actual", Driver: "local" },
-          ),
-        });
-      },
-      stream: () => Stream.empty,
-    },
+    api: engine.api,
   });
   const result = await Effect.runPromise(
     plane

@@ -1,0 +1,4 @@
+services:
+  optional-cache:
+    type: compose
+    image: redis:7

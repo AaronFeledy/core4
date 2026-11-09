@@ -213,7 +213,9 @@ describe("API-4 mount normalization", () => {
     // Given / When
     const result = lowerApi4Mounts({ mounts: [{ type, dest: "/data", scope: "project" }] }, ctx);
     // Then
-    expect(result.patch.storage).toEqual([{ store: "app-data", target: "/data", scope: "app" }]);
+    expect(result.patch.storage).toEqual([
+      { store: "lando-app_data--bd47413b", target: "/data", scope: "app" },
+    ]);
     expect(result.diagnostics).toMatchObject([{ kind: "rewritten", keyPath: path("mounts", 0, "scope") }]);
   });
   test("routes storage:bind into binds", () => {
@@ -233,7 +235,9 @@ describe("API-4 mount normalization", () => {
     // Given / When
     const result = lowerApi4Mounts({ storage: [{ dest: "/data", scope: "other" }] }, ctx);
     // Then
-    expect(result.patch.storage).toEqual([{ store: "app-web-data", target: "/data" }]);
+    expect(result.patch.storage).toEqual([
+      { store: "lando-app--web--storage--data-bd47413b", target: "/data" },
+    ]);
     expect(result.diagnostics).toMatchObject([{ kind: "dropped", keyPath: path("storage", 0, "scope") }]);
   });
   test("rejects global data storage rather than emitting a planning failure", () => {

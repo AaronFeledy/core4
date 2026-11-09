@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { DestroyAppOptions } from "@lando/sdk/app";
+import type { DestroyAppError, DestroyAppOptions } from "@lando/sdk/app";
 import { AppResolveError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PreDestroyEvent } from "@lando/sdk/events";
 import {
@@ -12,11 +12,11 @@ import {
 import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
 import { type LandofileEventPlan, resolveLandofileEventPlan } from "./landofile-events.ts";
+import type { RetirementReceipt } from "./superseded-realizations.ts";
 
 /** Read-only evidence for one invocation, never a fabricated desired/applied plan. */
 export type TeardownPlan = {
@@ -38,6 +38,7 @@ export type TeardownPlan = {
   readonly snapshots: ReadonlyArray<SnapshotInfo>;
   readonly followUpOrphans: boolean;
   readonly options: DestroyAppOptions;
+  readonly retire?: Effect.Effect<RetirementReceipt | undefined, DestroyAppError>;
 };
 
 export const uniqueDestroyRefs = (refs: ReadonlyArray<AppRef>): ReadonlyArray<AppRef> => [
@@ -150,8 +151,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     applied !== undefined && retained === undefined ? yield* resolveLandofileEventPlan(applied) : undefined;
   const registry = yield* RuntimeProviderRegistry;
   if (desired !== undefined) yield* registry.assertAppliedStateReadable?.(desired.plan) ?? Effect.void;
-  const disposal = retained ?? applied;
-  const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);
+  const target = retained ?? applied;
   const refs = uniqueDestroyRefs([...recorded, ...(retained === undefined ? [] : [retained.app])]);
   if (inventory.length > 0 && refs.length === 0)
     return yield* Effect.fail(

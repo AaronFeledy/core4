@@ -2,7 +2,7 @@
 id: minio
 provider: test
 timeout: 90000
-tags: [beta, docs, minio, service]
+tags: [docs, minio, service]
 ---
 
 # Run your MinIO image
@@ -79,7 +79,7 @@ both App Network connections and the console route.
 Lando prepares the bucket directory under `/data` before its default server
 command starts.
 `database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
-the app name.
+the folder's data name (the name this folder's data was first created under).
 
 ### Run MinIO as another user
 
@@ -197,11 +197,17 @@ Applications in another service talk to `http://object-store:9000` by default,
 or `http://object-store:9001` with the custom ports above. The console URL is for
 browser access, not an S3 client endpoint.
 
-If you supply your own `command:` or `entrypoint:`, Lando preserves it. Your
-launcher must bind the API and console to the ports you declared; changing
-`port:` or `consolePort:` does not rewrite an authored launcher.
+If you supply your own `command:`, Lando preserves it and never appends
+`--address` or `--console-address`. Your command must bind the API and console
+to the ports you declared. If you set only `entrypoint:` and leave `command:`
+unset, Lando still supplies its server arguments for the planned API and
+console ports after your entrypoint. Changing `port:` or `consolePort:` does
+not rewrite an authored `command:`.
+If startup fails with an authored command, Lando includes a hint naming
+`--address :<api-port> --console-address :<console-port>` with your effective
+port numbers.
 
-An entrypoint without an authored command receives Lando's server arguments, including both ports, and must execute them. If MinIO never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores the API `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for observed ports and listener troubleshooting.
 
 The service also adds `mc` tooling, so you can run the MinIO client in the
 object-store service:

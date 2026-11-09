@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, type Scope } from "effect";
 
 import { type ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
@@ -204,7 +205,7 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
         yield* tree.startTask("session");
         const helper = yield* resolveContainerHelper(shimTarget, {
           cacheRoot: landoPaths.toolDownloadsDir("container-helper"),
-        }).pipe(Effect.mapError(helperUnavailable));
+        }).pipe(mapFailures(helperUnavailable));
         return yield* withRetainedSession(
           (publish: PublishSession<HostProxyRunLandoSession & { readonly reused?: boolean }>) =>
             startDetachedHostProxyWorker({

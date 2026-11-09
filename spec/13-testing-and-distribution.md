@@ -28,8 +28,8 @@ All tests run under `bun test` unless a gate names another tool.
 | Host proxy contract | Authentication, exact request union, allowlists, recursion, backpressure, socket ownership, redaction, streaming, and cleanup are enforced. |
 | TunnelService contract | Targets, egress, provisioning, scope ownership, detached state, probes, events, and redaction remain within the declared port. |
 | File sync engine contract | Capabilities, setup, containment, content fidelity, conflicts, events, cancellation, and pinned-tool ownership are enforced. |
-| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced (§10.3.2). |
-| Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced. |
+| HttpClient contract | `runHttpClientContract` from `@lando/sdk/test` runs against any Effect `effect/http` `HttpClient` (the `@lando/http-client` layer, the in-memory test client, or an `httpClients:` plugin): proxy/CA precedence, scheme policy, streaming, offline behavior, cancellation, events, and redaction are enforced, and so are certificate-code trust classification and the absence of automatic replay for every client whose harness can inject raw transport failures and HTTP statuses, which the bundled `@lando/http-client` layer's harness does (§10.3.2). |
+| Downloader contract | All egress uses `HttpClient`; cache, checksum, size, containment, atomicity, cancellation, and redaction are enforced, and so are `OnlineAcquisition`-scoped retry of transient failures only, single attempts for routine downloads, `reason` classification, and `attempts` accounting (§10.3.3). |
 | Redaction contract | The canonical value and pattern layers produce byte-stable profile output and cannot be weakened by plugins. |
 | Interaction contract | Answer precedence, mode selection, validation, secret handling, cancellation, dynamic choices, and renderer routing are enforced. |
 | Renderer frames | Headless snapshots cover task trees, prompts, narrow terminals, and resize behavior without asserting machine renderers. |
@@ -68,7 +68,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Plugin SDK contract | Type and runtime tests protect the public plugin-author surface. |
 | Machine-output conformance | Every non-interactive canonical command emits schema-valid envelopes or streams with correct ids, status, and redaction. |
 | Agent command completion | Prove one-time completion policy resolution across CLI, lifecycle, and MCP; nonzero process failure with retained typed result/diagnostics; successful negative reports with format-independent exit codes; bounded final output with and without progress tokens; stream owner finalization; and quiet-read cancellation through real local transport and the relocated compiled CLI against an explicitly selected live provider. |
-| Scenario | Public library APIs run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
+| Scenario | Public library APIs and in-process CLI commands run end-to-end against `TestRuntimeProvider` without real container, network, or host mutation. |
 | Recipe | Every canonical recipe scaffolds with defaults and representative branches into schema-valid output. |
 | Executable guides | §19 MDX generates source-mapped scenario tests and visibility-separated transcripts for every applicable variant. |
 | Deprecation | Every notice records use, publishes `deprecation-used`, warns once, appears in doctor, and obeys `removeIn`. |
@@ -98,7 +98,11 @@ The compiled MCP completion journey MUST cover real container stdout/stderr, spl
 
 **Scenario, recipe, and e2e conventions:** scenarios live as TypeScript under `test/scenarios/`, use public APIs and isolated fixtures, and rely on Scope finalizers. Recipe tests scaffold every `recipes/<id>/` source but do not start apps. E2E tests use the compiled binary, real providers, structured assertions, isolated working directories, and unconditional cleanup. User-facing flows belong in recipes or executable guides; internal regressions belong in test fixtures. The Lando 3 Leia format, bash-block parsing, grep assertions, and its heading grammar are retired with no conversion path.
 
-**Bounded service journeys:** a dedicated strict Linux nightly job MUST complete four serial real-planner/CLI cases: Mailpit default and moved listeners, and MinIO BYO default and independently moved API/console. Mail proof sends a unique SMTP message from another container and retrieves the exact message through HTTP; object-storage proof puts and retrieves actual bytes, reaches the console and confirms API-health scan targeting. Cases use observed publications, unique owned apps/stores, bounded probes and scoped cleanup, not hand-authored ServicePlans. Normal local collection MAY skip absent explicitly supplied socket/image prerequisites. Configured failures MUST fail rather than become skips; strict CI MUST fail missing prerequisites and zero/partial execution, asserting all four completed cases. A pinned, checksum-verified official-source-built MinIO fixture MAY supply test-only BYO acceptance, with an explicit container toolchain and no host Go installation. It MUST NOT become a product image default, runtime manifest, automatic source-build fallback or unverified maintained-distribution claim. These integration cases stay outside ordinary PR unit shards; the full catalog/platform matrix remains a separate expansion of this pattern.
+**Bounded service journeys:** a dedicated strict Linux nightly job MUST complete four serial real-planner/CLI cases: Mailpit default and moved listeners, and MinIO BYO default and independently moved API/console. Mail proof sends a unique SMTP message from another container and retrieves the exact message through HTTP; object-storage proof puts and retrieves actual bytes, reaches the console and confirms API-health scan targeting. Cases use observed publications, unique owned apps/stores, bounded probes and scoped cleanup, not hand-authored ServicePlans. Normal local collection MAY skip absent explicitly supplied socket/image prerequisites. Configured failures MUST fail rather than become skips; strict CI MUST fail missing prerequisites and zero/partial execution, asserting all four completed cases. A pinned, checksum-verified official-source-built MinIO fixture MAY supply test-only BYO acceptance, with an explicit container toolchain and no host Go installation. It MUST NOT become a product image default, runtime manifest, automatic source-build fallback or unverified maintained-distribution claim. These integration cases stay outside ordinary PR unit shards.
+
+**Listener matrix:** a second strict Linux nightly job MUST start one reviewed image per bundled service family, on its default and on a moved `port:`, through the compiled CLI, and read the container's TCP LISTEN table with the same parser as §6.7 diagnosis. Each case MUST prove the planned port listens on a non-loopback address, that every other observed listener is a declared secondary or an enumerated infrastructure allowance, and that nothing remains on the default after a move; language-runtime cases run a server that binds the projected port variable. An unreadable observation fails strict runs, and the job asserts complete execution through a completion token.
+
+**Workflow performance history:** a nightly and manually dispatchable advisory job on each Linux managed-runtime readiness cell MUST time cold first start, warm stop/start, unchanged rebuild, database import and snapshot restore, and the Drupal and Rails journeys through the compiled CLI. Each sample uses fresh isolated Lando roots and owned app identities. Image pulls and the global services the app needs MUST be prepared before timing, so a measured first start excludes registry downloads and one-time global artifact builds, and the report MUST record that reset condition. A failed command fails its sample rather than becoming a fast measurement, failures are excluded from statistics, and the job exits nonzero after writing its report. Timing changes stay advisory. The job authenticates to Docker Hub when repository credentials exist and otherwise pulls anonymously; credentials MUST NOT be required to run it. Reports are retained for 90 days with a last-30-run trend.
 
 #### Test execution ownership and selection
 
@@ -120,13 +124,13 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.3 Type gates
 
-`tsc --noEmit` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
+`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project and the repository scripts project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
 
 ### 13.4 Quality gates
 
 A PR cannot merge unless:
 
-- `bun test`, `tsc --noEmit`, and Biome checks pass.
+- `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
 - Provider, plugin-abstraction, library API, machine-output, deprecation, redaction, managed-file, coexistence, scenario, recipe, executable-guide, and applicable renderer/OpenTUI contracts pass.
 - `lint:guides`, guide coverage, public transcript, source-mapper, and guide component-schema gates pass (§19).
@@ -141,7 +145,7 @@ A PR cannot merge unless:
 - Public `@lando/core` or `@lando/sdk` additions have documentation and the corresponding library/schema tests.
 - Install/update/uninstall/shellenv changes pass side-by-side coexistence; network-sensitive changes pass offline-after-build coverage.
 
-`bun run codegen:check` is pure drift only. Semantic gates remain separate: `check:guide-coverage`, `check:schema-compatibility`, `check:public-transcripts`, `check:package-dag`, and behavioral boundary rules.
+`bun run codegen:check` is pure drift only. Semantic gates remain separate: `check:guide-coverage`, `check:schema-compatibility`, `check:public-transcripts`, and `check:boundaries`, which runs the package-DAG and behavioral boundary rules.
 
 ### 13.5 Distribution
 
@@ -164,7 +168,7 @@ Releases include public schema and command-schema artifacts, declaration bundles
 
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|
-| Per PR: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke, and scenario guides. Compilation alone is not evidence of live-provider readiness. |
+| Per PR: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke (on the four POSIX targets, also native libc binding round trips and the shared-pipe stdio check, §8.11.2), and scenario guides. Compilation alone is not evidence of live-provider readiness. |
 | Per PR: unit and runtime gates | Linux x64 | Sharded unit tests, e2e smoke, and gating performance tests. The platform matrix MUST NOT be reported as full native unit-suite coverage on every target. |
 | Nightly | Linux x64/arm64, macOS arm64 | Full e2e against the default managed runtime, all generated e2e guides, release-shaped binaries, library publish rehearsal, and gating platform perf. |
 | Weekly | Managed runtime, Docker Desktop/Engine, Podman Desktop/Podman, Lima, OrbStack on applicable hosts | Provider contracts plus full e2e and generated e2e guide scenarios across the provider matrix. |

@@ -95,3 +95,37 @@ test.each(["argv", "shell"] as const)(
     }
   },
 );
+
+test("host readiness text Bun Shell can't run fails while preparing, before any attempt", async () => {
+  // Given a runner that would record an attempt
+  let attempts = 0;
+  const input = {
+    probe: { ...probe, command: "test -f ready >&2" },
+    app: plan.id,
+    service,
+    plan,
+    exec: TestRuntimeProvider.exec,
+    runners: {
+      process: { run: () => Effect.die("argv not expected") },
+      shell: {
+        run: () =>
+          Effect.sync(() => {
+            attempts += 1;
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }),
+      },
+    },
+  };
+  // When
+  const result = await Effect.runPromise(Effect.result(prepareHealthcheckAttempt(input)));
+  // Then the retry loop never starts and the error carries the fix
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure._tag).toBe("HealthcheckError");
+    expect(result.failure.message).toBe(
+      "Host readiness command: Column 15: Bun Shell needs an explicit source descriptor in >&2.",
+    );
+    if (result.failure._tag === "HealthcheckError") expect(result.failure.remediation).toBe("Write 1>&2.");
+  }
+  expect(attempts).toBe(0);
+});

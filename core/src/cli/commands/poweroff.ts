@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect, Option, Schema } from "effect";
 
 import type { CacheError, LandoCommandError } from "@lando/sdk/errors";
@@ -179,7 +180,7 @@ const poweroffOperation = Effect.fn("AppsPoweroff.poweroff")(function* (
       ? stopDiscoveredApp(app)
       : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });
     yield* stop.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof PoweroffStopError
           ? cause
           : new PoweroffStopError({

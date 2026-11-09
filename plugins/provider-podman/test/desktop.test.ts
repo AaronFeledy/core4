@@ -10,6 +10,10 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { PodmanMachineNotRunningError, resolvePodmanDesktopMachine } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -102,6 +106,19 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return {
+            status: 200,
+            body: JSON.stringify(
+              [...existing].map((name) => ({
+                Id: `${name}-id`,
+                Names: [name],
+                Labels: labels.get(name),
+                State: running.has(name) ? "running" : "stopped",
+              })),
+            ),
+          };
+        }
         if (
           request.method === "GET" &&
           request.path.startsWith("/libpod/images/") &&
@@ -234,6 +251,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -243,6 +261,7 @@ const buildProvider = (stateDir: string, platform: HostPlatform, fakeApi: Podman
       Effect.provide(
         makeProviderLayer({
           podmanApi: fakeApi,
+          ...supervisedExecFixtureOptions(fakeApi),
           platform,
           env: { HOME: "/Users/desktop-tester" },
           stateDir,
@@ -296,7 +315,7 @@ describe.each([
 
     const snapshot = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
     expect(String(snapshot.providerId)).toBe("podman");
-    expect(snapshot.state).toBeTruthy();
+    expect(snapshot.status).toBe("running");
   });
 
   test("exec routes through the Podman REST API", async () => {

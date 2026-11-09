@@ -62,8 +62,8 @@ describe("tooling", () => {
     );
     // Then
     expect(fragment(result).tooling).toEqual({
-      git: { service: "appserver", cmd: "git" },
-      drush: { service: "appserver", description: "Run drush", cmd: "drush --root=/app/web" },
+      git: { service: "appserver", cmd: "git", wrapper: true },
+      drush: { service: "appserver", description: "Run drush", cmd: "drush --root=/app/web", wrapper: true },
       test: { service: "appserver", cmds: ["php -v", "php -m"] },
       install: {
         cmds: [
@@ -71,15 +71,25 @@ describe("tooling", () => {
           { cmd: "pnpm install", service: "node" },
         ],
       },
-      iamroot: { service: "appserver", cmd: "id", dir: "/tmp", env: { TIMEOUT: 600 }, user: "root" },
+      iamroot: {
+        service: "appserver",
+        cmd: "id",
+        dir: "/tmp",
+        env: { TIMEOUT: 600 },
+        user: "root",
+        wrapper: true,
+      },
       "xdebug-off": false,
       php: false,
     });
     expect(summary(result)).toEqual([
+      "generated tooling.git.cmd",
       "needs-review services.appserver.type",
       "generated tooling.git",
+      "generated tooling.drush",
       "needs-review tooling.test.cmd",
       "needs-review tooling.install.cmd",
+      "generated tooling.iamroot",
       "rewritten tooling.iamroot.user",
       "dropped tooling.iamroot.env.LANDO_X",
       "rewritten tooling.xdebug-off",
@@ -196,6 +206,7 @@ describe("tooling", () => {
     expect(summary(result)).toEqual([
       "dropped plugins",
       "dropped keys",
+      "generated tooling.bg",
       "dropped tooling.bg.cmd",
       "dropped tooling.bg.level",
       "dropped tooling.bg.usage",
@@ -203,7 +214,7 @@ describe("tooling", () => {
       "dropped tooling.bg.interactive",
     ]);
     const merged = section(result, "tooling");
-    expect(merged).toEqual({ bg: { service: "node", cmd: "sleep infinity" } });
+    expect(merged).toEqual({ bg: { service: "node", cmd: "sleep infinity", wrapper: true } });
   });
 
   test("keeps shell text literal under Lando 4 expression syntax", async () => {
@@ -218,9 +229,10 @@ describe("tooling", () => {
     );
     // Then
     expect(section(result, "tooling")).toEqual({
-      fmt: { service: "web", cmd: "docker inspect -f '{{{{.Id}}' $NAME $HOME $1" },
+      fmt: { service: "web", cmd: "docker inspect -f '{{{{.Id}}' $NAME $HOME $1", wrapper: true },
     });
     expect(summary(result)).toEqual([
+      "generated tooling.fmt",
       "rewritten tooling.fmt.cmd",
       "needs-review tooling.fmt.cmd",
       "unsupported tooling.dflt.cmd",
@@ -313,6 +325,7 @@ describe("events", () => {
     });
     expect(summary(result)).toEqual([
       "needs-review services.appserver.type",
+      "generated tooling.db-import",
       "generated events.pre-start.0",
       "rewritten events.pre-start.1.node",
       "rewritten events.post-db-import",

@@ -44,6 +44,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 | Healthcheck runner | `HealthcheckRunner` | `RuntimeProvider.exec` | `healthcheckRunners:` for native or external probes. |
 | App check kind | `CheckKind` | Built-in `http` over `HttpClient`, `command` over `RuntimeProvider.exec`/`ShellRunner`, `tcp` | `checkKinds:`; a kind observes only and declares its observation schema; judging stays declarative (§10.5.2). Implementations MUST pass the check-kind contract suite (§13.1). |
 | App check profile | No service tag | Built-in router and web-server page rules | `checkProfiles:`; named declarative rule sets and checks, resolved into `CheckPlan` at plan time (§10.5.2). |
+| Host maintenance | No service tag | Plugin-only | `hostMaintainers:` on the plugin module; each entry MAY supply `teardown` (stop host processes the plugin owns at `lando poweroff` and uninstall) and `uninstall` (`plan` and `execute` for host-global artifacts the plugin installed). Engine uninstall merges planned steps under their contributor, rejects duplicate or built-in ids, executes only steps it planned, never falls back to generic path removal, honors `preserveOnKeepData`, and runs them before the data root is deleted (§8.2). |
 | Doctor diagnostics | `DoctorService` | Core app/provider checks | `doctorChecks:`; checks receive `DoctorCheckContext` and MUST pass the doctor-check contract suite (§10.9, §13.1). |
 | Plugin source | `PluginSource` | Registry, git, local, tarball | `pluginSources:`; implementations MUST pass the plugin-source contract suite (§13.1). |
 | Init source | `InitSource` | Built-in `cwd`, `git`, and `tarball` | `initSources:`; selected by `apps:init --source`. Implementations supply prompts, source auth, dynamic choices, and locators only; core acquires and commits, and implementations MUST pass the init-source contract suite (§8.8.13, §13.1). |
@@ -61,7 +62,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 
 The host proxy (§10.10) is also intentionally absent and core-owned: its detached per-app dispatcher is unreachable by in-process overrides, owns the authentication/allowlist/containment boundary for container re-entry into Lando, and has no concrete replacement need. It has no public replaceable service tag or plugin contribution surface.
 
-Core owns generic pull/push/switch orchestration and `CodeSync`; installed source and Dataset plugins supply the data plane, including the bundled `dotenv` plugin (§10.12). Neither `CodeSync` nor the scope-local `lando-session` secret store is a plugin replacement surface. This catalog specifies the design; release sequencing remains in `ROADMAP.md`.
+Core owns generic pull/push/switch orchestration and `CodeSync`; installed source and Dataset plugins supply the data plane, including the bundled `dotenv` plugin (§10.12). Neither `CodeSync` nor the scope-local `lando-session` secret store is a plugin replacement surface. Implementation status is tracked in `ROADMAP.md`.
 
 `ExecutionSessionService` is core-owned and non-replaceable. Consumers use its SDK contract through existing command/tooling contributions; no new manifest family is introduced (§22).
 
@@ -75,6 +76,8 @@ When an abstraction has multiple implementations, precedence is:
 4. Plugin `defaultFor` capability/platform matchers.
 5. Sole installed implementation.
 6. Tagged failure naming the missing abstraction and suggested plugin.
+
+Router selection has no Landofile implementation choice: global `defaultRouterService` takes precedence over a unique `defaultFor.platform` host-family match, then a sole installed router. Planning and runtime registration MUST use the same selection rules. Router selection at planning reads manifests only; its identity and static global-service requirements participate in the cached-plan inputs (§10.2). When no router can be selected, planning MUST still succeed with no recorded router identity; the runtime router registry owns and reports the selection failure.
 
 No selection may depend on import or discovery order, and no abstraction may prefer an implementation by brand name. File sync has no per-context or Landofile engine choice (rules 1 and 2 do not apply). Eligibility requires the current host family in `supports.platform`, provider `fileSyncTargets: prepared-volume`, `two-way-safe` mode, and exclusion-pattern support. The provider target requirement applies to every accelerated engine, not an optional engine declaration. A `defaultFor` preference MUST NOT confer eligibility. Automatic selection considers eligible engines only: one matching default wins, otherwise a sole eligible engine wins. No eligible engine produces ordinary binds with `no-compatible-engine`; multiple matching defaults or multiple remaining eligible engines fail deterministically with `FileSyncSelectionError` and remediation.
 

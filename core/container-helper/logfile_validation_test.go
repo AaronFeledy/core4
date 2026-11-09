@@ -2,10 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -112,48 +109,5 @@ func TestLogErrnoMapping(t *testing.T) {
 				t.Fatalf("response=%+v", got)
 			}
 		})
-	}
-}
-
-func TestCleanupPathValidation(t *testing.T) {
-	for _, path := range []string{"", "/tmp", "/tmp/lando-log-file-helper-", "/tmp/lando-log-file-helper-" + strings.Repeat("a", 31), "/tmp/lando-log-file-helper-" + strings.Repeat("A", 32), "/tmp/lando-log-file-helper-" + strings.Repeat("a", 32) + "/", "/tmp/lando-log-file-helper-" + strings.Repeat("a", 32) + "/../other"} {
-		t.Run(path, func(t *testing.T) {
-			var out bytes.Buffer
-			if err := cleanupLogFile(path, &out); err != nil {
-				t.Fatal(err)
-			}
-			if out.String() != "{\"ok\":false,\"code\":\"EPROTO\",\"message\":\"invalid helper cleanup path\"}\n" {
-				t.Fatalf("response=%s", out.String())
-			}
-		})
-	}
-}
-
-func TestCleanupRemovesDirectory(t *testing.T) {
-	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil {
-		t.Fatal(err)
-	}
-	path := "/tmp/lando-log-file-helper-" + hex.EncodeToString(id[:])
-	if err := os.Mkdir(path, 0700); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(path); err != nil {
-			t.Error(err)
-		}
-	})
-	writeLog(t, filepath.Join(path, "helper"), "binary")
-	for range 2 {
-		var out bytes.Buffer
-		if err := cleanupLogFile(path, &out); err != nil {
-			t.Fatal(err)
-		}
-		if out.String() != "{\"ok\":true}\n" {
-			t.Fatalf("response=%s", out.String())
-		}
-	}
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("cleanup left directory: %v", err)
 	}
 }

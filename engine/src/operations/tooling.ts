@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { Clock, Effect, Option, Result } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
@@ -19,7 +20,7 @@ import type {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import {
   type AppPlanner,
   ConfigService,
@@ -42,10 +43,7 @@ import {
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
-import {
-  collectAppPlanPublicCredentialValues,
-  collectAppPlanRedactionTokens,
-} from "../services/app-plan-redaction.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
@@ -174,8 +172,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       new ToolingCompileError({
         message: `Unknown tooling command: ${options.name}.`,
         tool: options.name,
-        remediation:
-          "Verify the tooling task name, then run `lando app:cache:refresh` after changing tooling configuration.",
+        remediation: "Check the task name with `lando help`.",
       }),
     );
   }
@@ -186,7 +183,10 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
     task: toolingLookupKey,
   };
-  const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+  const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(
+    landofile.agentEnv,
+    (yield* HostExecutionDefaults)?.env ?? process.env,
+  );
   const client = yield* resolveConnectionClientTask({
     plan,
     name: toolingLookupKey,
@@ -203,25 +203,21 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     agentEnvAllowlist,
   });
   const invocations = compiled.invocations;
-  const publicValues = collectAppPlanPublicCredentialValues(plan);
-  const redactionTokens = [
-    ...new Set([
-      ...collectAppPlanRedactionTokens(plan),
-      ...compiled.redactionTokens,
-      ...invocations.flatMap((invocation) =>
-        collectSecretEnvValues(
-          Object.fromEntries(
-            Object.entries(invocation.env ?? {}).filter(
-              (entry): entry is [string, string] => typeof entry[1] === "string",
-            ),
-          ),
-          publicValues,
+  const planValues = yield* registerPlanRedaction(
+    plan,
+    invocations.map((invocation) =>
+      Object.fromEntries(
+        Object.entries(invocation.env ?? {}).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
         ),
       ),
-    ]),
-  ];
+    ),
+  );
+  const redactionTokens = [...new Set([...planValues.substring, ...compiled.redactionTokens])];
   const redaction = yield* Effect.serviceOption(RedactionService);
-  if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokens);
+  if (Option.isSome(redaction)) {
+    yield* redaction.value.registerValues(redactionTokens);
+  }
 
   const events = yield* Effect.serviceOption(EventService);
   const progressEvents = Option.getOrUndefined(events);

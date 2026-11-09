@@ -1,6 +1,7 @@
 import { test } from "bun:test";
 import { Effect } from "effect";
 
+import { resolveBuiltContainerHelperForTest } from "@lando/container-runtime/testing/exec-supervision";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
@@ -21,6 +22,7 @@ liveDesktopTest(
         Effect.provide(
           makeProviderLayer({
             podmanApi: makePodmanApiClient(socket),
+            resolveContainerHelper: resolveBuiltContainerHelperForTest,
             platform: process.platform === "darwin" ? "darwin" : "win32",
           }),
         ),

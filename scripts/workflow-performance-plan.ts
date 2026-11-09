@@ -69,7 +69,13 @@ export const buildWorkflowPerformancePlan = (
   return {
     runId: options.runId,
     lanes: [
-      lane("cold-first-start", "start", startSamples, ["setup", "init", "pre-pull"], ["start"]),
+      lane(
+        "cold-first-start",
+        "start",
+        startSamples,
+        ["setup", "init", "pre-pull", "start-global"],
+        ["start"],
+      ),
       lane(
         "warm-stop-start",
         "start",
@@ -116,8 +122,14 @@ export const buildWorkflowPerformancePlan = (
         ["db:restore"],
         "postgres",
       ),
-      lane("drupal-journey", "heavy", heavySamples, ["setup", "pre-pull"], ["journey:drupal"]),
-      lane("rails-journey", "heavy", heavySamples, ["setup", "pre-pull"], ["journey:rails"]),
+      lane(
+        "drupal-journey",
+        "heavy",
+        heavySamples,
+        ["setup", "pre-pull", "start-global"],
+        ["journey:drupal"],
+      ),
+      lane("rails-journey", "heavy", heavySamples, ["setup", "pre-pull", "start-global"], ["journey:rails"]),
     ],
   };
 };

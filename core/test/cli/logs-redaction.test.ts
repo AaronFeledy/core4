@@ -160,7 +160,6 @@ const makeLayer = (rawLine: string) => {
         service: ServiceName.make("database"),
         providerId,
         status: "running",
-        state: "running",
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),

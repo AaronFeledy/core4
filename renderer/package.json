@@ -27,6 +27,7 @@
     "./palette": "./src/palette.ts",
     "./runtime": "./src/runtime.ts",
     "./stdio": "./src/stdio.ts",
+    "./stdio-flags": "./src/stdio-flags.ts",
     "./summary": "./src/summary.ts",
     "./package.json": "./package.json"
   },

@@ -6,7 +6,7 @@ app root, or configure their location in `.eleventy.js`.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -19,10 +19,10 @@ app root, or configure their location in `.eleventy.js`.
 - `lando eleventy …`: Eleventy CLI through `npx @11ty/eleventy`.
 - `lando npm …`: npm inside the builder service.
 
-## Alpha limitations
+## Limitations
 
 - The recipe assumes site sources live at the app root. Custom input/output
   directory configuration runs through `.eleventy.js` (authored by the user).
   If you change the output directory, point `webroot` on `web` at it.
-- The static frontend serves files only; rewrites and asset hashing are
-  deferred.
+- The static frontend serves files only. The `static:nginx` service type has
+  no rewrite or asset-hashing options; handle those in your Eleventy build.

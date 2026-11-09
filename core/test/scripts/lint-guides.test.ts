@@ -176,7 +176,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("unsupported-component");
 
     expect(diagnostics[0]).toBe(
-      "core/test/lint/guides/unsupported-component.mdx:7:3: guide.component.unsupported: <Bogus> is not supported yet.",
+      "core/test/lint/guides/unsupported-component.mdx:7:3: guide.component.unsupported: <Bogus> is not supported.",
     );
   });
 
@@ -263,7 +263,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("unsupported-inline-component");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/unsupported-inline-component.mdx:9:33: guide.component.unsupported: <Bogus> is not supported yet.",
+      "core/test/lint/guides/unsupported-inline-component.mdx:9:33: guide.component.unsupported: <Bogus> is not supported.",
     ]);
   });
 

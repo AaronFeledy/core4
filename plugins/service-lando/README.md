@@ -13,13 +13,13 @@ Layers. See [Embedding Lando](../../docs/embedding.md) for runtime configuration
 Language-runtime `ServiceType`s accept an optional `framework:` field that
 selects port, environment, and supported root-context defaults. It does not
 start an application server. Framework presets are pure config:
-they emit the same fields a user would write by hand and any value can be
-overridden in the Landofile.
+they supply defaults you can change in the Landofile. Port-bearing listener
+variables are derived from `port:` and must not disagree with it; ordinary
+host and framework environment defaults remain overridable.
 
-The Beta scope is intentionally narrower than the canonical GA-target catalog
-(full version sets and framework coverage for every service type). New
-framework presets ship post-GA; the table below tracks what
-`@lando/service-lando` ships today. The generated [service type version reference](../../docs/reference/service-types.mdx)
+The table below lists the `framework:` values `@lando/service-lando` ships
+presets for today. Python, Ruby, and Go reject values outside their list; PHP
+and Node accept other names without adding a preset. The generated [service type version reference](../../docs/reference/service-types.mdx)
 lists the shipped runtime matrix and pinned artifacts directly from ServiceType metadata.
 
 | Type       | Supported `framework:` values        | Notes                                                                                                                       |
@@ -28,7 +28,7 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
 | `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets set port (django/fastapi 8000, flask 5000) and environment defaults. |
 | `ruby`     | `rails`, `none`                      | `rails` defaults to `webroot: public`; `none` defaults to `.`. Set `webroot:` directly to override either context default. Rails also supplies development environment defaults. |
-| `go`       | `none`                               | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
+| `go`       | `none`                               | Only `framework: none` is accepted. There are no presets for Echo, Fiber, Gin, Chi, or other Go web frameworks; author `port:`, `environment:`, and `command:` for them directly.    |
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
 | `mssql`    | n/a                                  | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
 | `phpmyadmin` | n/a                                | Serves phpMyAdmin and wires it to app-local MySQL or MariaDB services unless `hosts:` is set. |
@@ -95,7 +95,17 @@ below 1024. The warning is conditional on the identity resolving to non-root;
 it neither probes bind permission nor changes ports or fails start. Provider
 names and rootless mode are not proof of effective bind permission.
 
-Node exposes port `3000` and sets `PORT=3000` by default. Set `port:` to change the endpoint and default `PORT`. The default idle Node process exits cleanly on SIGTERM or SIGINT and has no healthcheck. When `command:` is authored, Lando generates a TCP healthcheck against the configured service port. An authored `environment.PORT` still wins without changing the endpoint or healthcheck target.
+## Language runtime listeners
+
+Set `port:` to change the internal HTTP endpoint and the corresponding process variables together. The generated [service listener reference](https://aaronfeledy.github.io/core4/reference/service-listeners/) lists default ports, port and bind variables, host defaults, secondary listeners, and launcher or custom-image requirements for each family and variant.
+
+Each runtime exports its `ListenerContract` constants from its service module. The feature validates authored port variables through `validateEffective` before plan-cache lookup. A malformed value or one unequal to the planned port fails at `services.<name>.environment.<VAR>`, including inherited `appEnv` and env-file values. Set `port:` instead. Authored host variables still win over the ordinary defaults in the reference.
+
+Next.js, Nuxt, Remix, Gunicorn, Rails, and Sinatra read `PORT`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`. FastAPI CLI reads `PORT`, not `UVICORN_*`: `fastapi run` binds all interfaces, while `fastapi dev` still needs `--host 0.0.0.0`. Django `runserver` needs `0.0.0.0:<port>` in argv. Vite needs matching `--port` and `--host` flags or configuration. Sinatra in development still needs `-o 0.0.0.0`. Go applications must read `os.Getenv("PORT")` themselves; net/http, Echo, and Fiber do not do so automatically.
+
+Use `dotnet run --no-launch-profile` so a launch profile's `applicationUrl` does not override `ASPNETCORE_HTTP_PORTS` through `ASPNETCORE_URLS`. Authored `ASPNETCORE_URLS`, `--urls`, and Kestrel code remain author-owned overrides and must match the endpoint.
+
+Presets never start an application server. Python, Ruby, Go, and .NET keep `tail -f /dev/null`; Node keeps its idle process, which exits cleanly on SIGTERM or SIGINT. Author `command:` or use tooling to run the app. These runtimes do not infer healthchecks from ports or authored commands.
 
 ## Capture PHP mail
 
@@ -112,22 +122,22 @@ Canonical upstream
 `php:` images ending in `-bookworm` or `-bullseye` remain supported without a
 contextual build; additive build scripts alone do not change that selection.
 
-## Beta scope vs. the GA-target catalog
+## Catalog boundaries
 
-The canonical catalog target for v4.0 GA distinguishes new service types from
-new versions of existing types. Adding or removing a canonical `type:` changes
-that catalog; versions within an existing entry can follow upstream releases.
-`@lando/service-lando` ships a subset of that target catalog through Beta:
+Adding or removing a canonical `type:` changes the service catalog; versions
+within an existing entry follow upstream releases. What the bundled catalog
+does and does not cover:
 
 - PHP ships 8.1-8.6. Official Hub currently publishes 8.6 as RC bookworm tags.
   PHP uses explicit `webroot:` and `allowOverride:` parameters. Its WordPress
   preset installs WP-CLI on stock images without changing the webroot.
-- Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA;
-  `go:<version>` accepts only `framework: none` today.
-- New canonical service types (Drupal/Laravel/Symfony framework presets
-  outside `php:*`) are not added in Beta beyond what Alpha already shipped.
+- `go:<version>` accepts only `framework: none`. There are no Go framework
+  presets (Echo, Fiber, Gin, Chi).
+- There are no standalone Drupal, Laravel, or Symfony service types. Those
+  frameworks run on `php:*`; the bundled recipes set `framework:` and the
+  webroot on the PHP service for you.
 
-Plugins can still contribute additional `ServiceType` implementations that
+Plugins can contribute additional `ServiceType` implementations that
 compose with these presets through the feature priority list; a name collision
 with a canonical type is rejected at plugin load with
 `ServiceTypeCollisionError`.

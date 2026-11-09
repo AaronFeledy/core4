@@ -1,8 +1,8 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { HttpTrustError } from "@lando/sdk/errors";
+import { mapFailures } from "@lando/sdk/command-result";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
 import { REDACTED } from "@lando/sdk/secrets";
-import { ConfigService, EventService } from "@lando/sdk/services";
+import { EventService } from "@lando/sdk/services";
 import { Clock, Context, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
@@ -12,16 +12,15 @@ import { type DirectHttpTransport, directHttpRequest } from "./direct-http.ts";
 import { requestWithNetworkTrust } from "./network-request.ts";
 import {
   NetworkTrust,
-  type ResolvedNetworkTrust,
   type SystemCaProvider,
   defaultSystemCaPems,
-  loadCaPems,
-  resolveNetworkTrustPlan,
+  resolveTrust,
   withWindowsHostTrust,
 } from "./network-trust.ts";
 import { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 import { requestBody } from "./request-body.ts";
 import { failureDetail, observeResponse } from "./response-events.ts";
+import { trustFailure } from "./trust-failure.ts";
 
 export { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 
@@ -46,75 +45,6 @@ const redactedUrl = (url: URL, policy: RequestPolicyShape): string => {
 
 const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unknown) =>
   new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
-
-const isProxyTunnelError = (cause: unknown): cause is Error & { code: "ERR_PROXY_TUNNEL"; status: number } =>
-  cause instanceof Error &&
-  "code" in cause &&
-  cause.code === "ERR_PROXY_TUNNEL" &&
-  "status" in cause &&
-  typeof cause.status === "number";
-
-const trustFailure = (url: URL, cause: unknown, redact: (value: string) => string): unknown => {
-  if (isProxyTunnelError(cause)) {
-    return new HttpTrustError({
-      message: redact(cause.message),
-      urlOrigin: url.origin,
-      kind: "proxy-tunnel-refused",
-      remediation: `Proxy answered ${cause.status}; check network.proxy / HTTPS_PROXY credentials or add the host to network.proxy.noProxy / NO_PROXY.`,
-      cause,
-    });
-  }
-  if (
-    url.protocol === "https:" &&
-    cause instanceof Error &&
-    /cert|tls|ssl|self.signed|issuer/i.test(cause.message)
-  ) {
-    return new HttpTrustError({
-      message: "TLS trust verification failed",
-      urlOrigin: url.origin,
-      kind: "missing-custom-ca",
-      remediation: "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS.",
-      cause,
-    });
-  }
-  return cause;
-};
-
-const resolveTrust = Effect.fnUntraced(function* (
-  context: Context.Context<never>,
-  injected: ResolvedNetworkTrust | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-) {
-  if (injected !== undefined) return injected;
-  const config = Context.getOption(context, ConfigService);
-  if (Option.isNone(config)) return undefined;
-  const globalConfig = yield* config.value.load;
-  const plan = yield* Effect.try({
-    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }, env),
-    catch: (cause) =>
-      new HttpTrustError({
-        message: cause instanceof Error ? cause.message : "Could not resolve network trust",
-        urlOrigin: "unknown",
-        kind: "missing-custom-ca",
-        remediation:
-          "Check network.ca.certs, LANDO_NETWORK_CA_CERTS, and proxy trust settings (HTTPS_PROXY / network.proxy), then retry.",
-        cause,
-      }),
-  });
-  const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
-    Effect.mapError(
-      (cause) =>
-        new HttpTrustError({
-          message: cause.message,
-          urlOrigin: "unknown",
-          kind: "missing-custom-ca",
-          remediation: cause.remediation,
-          cause,
-        }),
-    ),
-  );
-  return { proxy: plan.proxy, caPems: loaded.map((cert) => cert.pem), trustHost: plan.trustHost };
-});
 
 export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.HttpClient> => {
   const env = { ...(options.env ?? process.env) };
@@ -221,7 +151,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
               Context.merge(layerContext, fiber.context),
               fiber.getRef(NetworkTrust),
               env,
-            ).pipe(Effect.mapError((cause) => transportError(safeRequest, cause)));
+            ).pipe(mapFailures((cause) => transportError(safeRequest, cause)));
             const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];
             const trust = resolved === undefined ? undefined : withWindowsHostTrust(resolved, hostCaPems);
             const body = yield* requestBody(request);

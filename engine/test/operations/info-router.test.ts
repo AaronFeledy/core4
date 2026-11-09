@@ -18,7 +18,7 @@ const route = {
 const infoOf = (
   service: ServicePlan,
   options: {
-    readonly state?: string;
+    readonly run?: "exited" | "unknown" | "paused" | "restarting" | "running";
     readonly publications?: PublicationObservation;
     readonly routerEnabled?: boolean;
     readonly observedRoute?: boolean;
@@ -37,7 +37,7 @@ const infoOf = (
         app: planned.id,
         service: service.name,
         providerId: planned.provider,
-        status: options.state ?? "running",
+        status: options.run ?? "running",
         publications: options.publications ?? { status: "unknown" as const },
       }),
   };
@@ -113,17 +113,19 @@ test.each(["unknown", "present", "missing"] as const)(
   },
 );
 
-test.each(["stopped", "unknown", "paused", "restarting"])(
-  "preserves the %s state vocabulary and configured route prefix",
-  async (state) => {
-    const result = await infoOf(web, { state, observedRoute: true });
-    expect(result.services[0]?.status).toBe(state);
-    expect(result.services[0]?.connections.find((row) => row.source === "route")).toMatchObject({
-      url: "https://web.demo.lndo.site:38443/api",
-      state: state === "unknown" || state === "restarting" ? "unknown" : "inactive",
-    });
-  },
-);
+test.each([
+  ["exited", "stopped"],
+  ["unknown", "unknown"],
+  ["paused", "paused"],
+  ["restarting", "restarting"],
+] as const)("projects the %s run state as %s and keeps the configured route prefix", async (run, state) => {
+  const result = await infoOf(web, { run, observedRoute: true });
+  expect(result.services[0]?.status).toBe(state);
+  expect(result.services[0]?.connections.find((row) => row.source === "route")).toMatchObject({
+    url: "https://web.demo.lndo.site:38443/api",
+    state: state === "unknown" || state === "restarting" ? "unknown" : "inactive",
+  });
+});
 
 test("retains disabled routes but never describes them as active", async () => {
   const result = await infoOf(web, { routerEnabled: false, observedRoute: true });
@@ -141,7 +143,7 @@ test.each([
   ["valkey", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
   ["valkey:8", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
 ] as const)("preserves %s client URIs only for its declared listener", async (type, url, alternateUrls) => {
-  const { connection: _connection, nonSqlCreds: _nonSqlCreds, ...serviceBase } = web;
+  const { connection: _connection, nonSqlCreds: _nonSqlCreds, sqlite: _sqlite, ...serviceBase } = web;
   const service: ServicePlan = {
     ...serviceBase,
     type,

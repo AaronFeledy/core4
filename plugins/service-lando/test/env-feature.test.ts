@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { landoServiceStoreName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 import { landoEnvFeature } from "../src/features/env.ts";
@@ -16,6 +17,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     appRoot: "/srv/apps/myapp",
     normalizedConfig: {},
     config,
+    serviceStoreName: (role) => landoServiceStoreName("myapp", "web", role),
     addEnv(name, value) {
       env[name] = value;
     },
@@ -28,6 +30,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     addHostAlias() {},
     setHealthcheck() {},
     setReadiness() {},
+    setListenerAuthority() {},
     setCerts() {},
     setEntrypoint() {},
     setCommand() {},

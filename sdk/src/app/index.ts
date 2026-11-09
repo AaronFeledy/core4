@@ -39,6 +39,7 @@ import type {
   LandofileEventsSkippedError,
   LandofileFormConflictError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLockMismatchError,
   LandofileNotFoundError as LandofileMissingError,
   LandofileParseError,
@@ -292,6 +293,7 @@ export type StopAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | LandoCommandError
@@ -432,6 +434,7 @@ export type LogsAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | LandoCommandError
@@ -479,6 +482,7 @@ export type RemoteSyncError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | RemoteSourceError
@@ -539,7 +543,10 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
-    LandofileNotFoundError | LandofileValidationError | NotImplementedError
+    | LandofileNotFoundError
+    | LandofileValidationError
+    | NotImplementedError
+    | import("../errors/app.ts").AppDataIdentityError
   >;
 }
 

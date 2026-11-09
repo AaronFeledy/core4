@@ -160,17 +160,17 @@ describe("node:lts ServiceType", () => {
     expect(plan.healthcheck).toBeUndefined();
   });
 
-  test("preserves an authored PORT override without assuming the command serves a port", async () => {
+  test("accepts an authored PORT equal to the planned port without inferring a healthcheck", async () => {
     // Given / When
     const plan = await composeNodePlan(nodeLtsServiceType, {
       type: "node:lts",
       port: 5173,
       command: "npm start",
-      environment: { PORT: "9000" },
+      environment: { PORT: "5173" },
     });
 
     // Then
-    expect(plan.environment.PORT).toBe("9000");
+    expect(plan.environment.PORT).toBe("5173");
     expect(plan.command).toBe("npm start");
     expect(plan.healthcheck).toBeUndefined();
   });

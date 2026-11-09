@@ -14,15 +14,16 @@
  */
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Schema } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
+import { CertificateSpec } from "@lando/sdk/schema";
 import type {
   CaSetupOptions,
   CertificateAuthorityShape,
   CertificateResult,
-  CertificateSpec,
   ProcessResult,
   ProcessRunner,
 } from "@lando/sdk/services";
@@ -86,7 +87,7 @@ export const makeMkcertCertificateAuthority = (
   const runMkcert = Effect.fn("Mkcert.run")(
     (args: ReadonlyArray<string>, env?: Readonly<Record<string, string>>) =>
       options.processRunner.run({ cmd: binary, args, ...(env === undefined ? {} : { env }) }),
-    Effect.mapError((cause) => caError(`Failed to run mkcert: ${cause.message}`, cause)),
+    mapFailures((cause) => caError(`Failed to run mkcert: ${cause.message}`, cause)),
   );
 
   const caRoot: Effect.Effect<string, CaError> = Effect.gen(function* () {
@@ -106,10 +107,12 @@ export const makeMkcertCertificateAuthority = (
           `mkcert ${MKCERT_TOOL_VERSION} does not publish a binary for this host (${resolveHostKey(platform, arch)}). Install mkcert manually, or contribute a CertificateAuthority plugin for this platform.`,
           cause,
         )
-      : caError(
-          `Failed to provision mkcert ${MKCERT_TOOL_VERSION} for ${resolveHostKey(platform, arch)}: ${cause.message}. ${SETUP_REMEDIATION}`,
+      : new CaError({
+          message: cause.message,
+          caId: CA_ID,
           cause,
-        );
+          remediation: `${cause.remediation} Then run \`lando setup\`.`,
+        });
 
   // CertificateAuthorityShape has no Effect requirements channel; inject Downloader here.
   const provision = (force: boolean): Effect.Effect<void, CaError> =>
@@ -121,7 +124,7 @@ export const makeMkcertCertificateAuthority = (
         arch,
         force,
       }),
-    ).pipe(Effect.provideService(Downloader, options.downloader), Effect.mapError(provisionError));
+    ).pipe(Effect.provideService(Downloader, options.downloader), mapFailures(provisionError));
 
   const trustInstallError = (result: ProcessResult): CaError =>
     caError(
@@ -143,6 +146,18 @@ export const makeMkcertCertificateAuthority = (
   const issueCert = Effect.fn("CertificateAuthority.issueCert")(function* (
     spec: CertificateSpec,
   ): Effect.fn.Return<CertificateResult, CaError> {
+    yield* Schema.decodeUnknownEffect(CertificateSpec)(spec).pipe(
+      mapFailures(
+        (cause) =>
+          new CaError({
+            message: `Certificate request names are invalid: ${cause.message}`,
+            caId: CA_ID,
+            cause,
+            remediation:
+              "Request DNS names, leftmost *. wildcards, or IP addresses. Report the component that requested this certificate.",
+          }),
+      ),
+    );
     const installed = yield* Effect.promise(() => readInstalledMkcertStatus(options.binDir, platform, arch));
     if (!installed.isCurrent) {
       return yield* Effect.fail(

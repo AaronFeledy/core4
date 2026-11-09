@@ -38,13 +38,23 @@ const baseSpec: ManagedRuntimeServiceSpec = {
   pidPath: "/tmp/udr/runtime/run/podman.pid",
 };
 
-const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => ({
-  readPid: () => Effect.succeed("123\n"),
-  isAlive: () => Effect.succeed(true),
-  readCmdline: () => Effect.succeed([baseSpec.command, ...baseSpec.args]),
-  terminate: () => Effect.void,
-  ...overrides,
-});
+const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => {
+  let terminated = false;
+  return {
+    readPid: () => Effect.succeed("123\n"),
+    isAlive: () => Effect.sync(() => !terminated),
+    readCmdline: () => Effect.succeed([baseSpec.command, ...baseSpec.args]),
+    ...overrides,
+    terminate: (pid) =>
+      (overrides.terminate?.(pid) ?? Effect.void).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            terminated = true;
+          }),
+        ),
+      ),
+  };
+};
 
 describe("managed runtime service spec", () => {
   test("builds the canonical managed Podman service argv from Lando paths", () => {
@@ -110,6 +120,59 @@ describe("verifyOwnedRuntimePid", () => {
 });
 
 describe("terminateOwnedRuntimeService", () => {
+  test.each(["running", "paused", "created", "list-failure", "exited", "service-alive"])(
+    "private pause teardown with %s",
+    async (state) => {
+      const actions: string[] = [];
+      const result = await run(
+        terminateOwnedRuntimeService(baseSpec, {
+          process: makeProcessSeam({
+            ...(state === "service-alive" ? { isAlive: () => Effect.succeed(true) } : {}),
+            terminate: () =>
+              Effect.sync(() => {
+                actions.push("SIGTERM");
+              }),
+          }),
+          fs: { unlink: () => Effect.void },
+          terminationPolicy: { maxAttempts: 1, delay: Duration.zero, timeout: Duration.seconds(1) },
+          apiClient: () => ({
+            request: () =>
+              state === "list-failure"
+                ? Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: "lando",
+                      operation: "cleanup",
+                      message: "list failed",
+                      remediation: "test",
+                    }),
+                  )
+                : Effect.succeed({
+                    status: 200,
+                    body: JSON.stringify([
+                      { Id: "container", State: state === "service-alive" ? "exited" : state },
+                    ]),
+                  }),
+          }),
+          execConmon: {
+            listArgv: Effect.sync(() => {
+              actions.push("conmons");
+              return [];
+            }),
+            kill: () => Effect.void,
+          },
+          privateRuntimeDir: () => Effect.succeed("/private/this-root"),
+          terminatePause: (path) =>
+            Effect.sync(() => {
+              actions.push(`pause ${path}`);
+            }),
+        }),
+      );
+      expect(result).toEqual({ terminated: true, pid: 123 });
+      expect(actions).toEqual(
+        state === "exited" ? ["SIGTERM", "conmons", "pause /private/this-root"] : ["SIGTERM", "conmons"],
+      );
+    },
+  );
   test("removes only storage containers sequentially before SIGTERM", async () => {
     const actions: string[] = [];
     const result = await run(
@@ -153,6 +216,7 @@ describe("terminateOwnedRuntimeService", () => {
       "GET /libpod/containers/json?all=true&external=true",
       "DELETE /libpod/containers/build%2Fone?force=true",
       "DELETE /libpod/containers/build-two?force=true",
+      "GET /libpod/containers/json?all=true",
       "SIGTERM",
       `unlink ${baseSpec.socketPath}`,
       `unlink ${baseSpec.pidPath}`,
@@ -267,7 +331,7 @@ describe("terminateOwnedRuntimeService", () => {
         { pid: 10, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "orphaned-id", "--exec-attach"] },
         {
           pid: 11,
-          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global-traefik"],
+          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global--traefik"],
         },
         { pid: 12, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "--exec-attach"] },
       ]),

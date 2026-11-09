@@ -2,7 +2,7 @@
 id: magento
 provider: test
 timeout: 90000
-tags: [beta, docs, magento, php, mariadb, opensearch, service]
+tags: [docs, magento, php, mariadb, opensearch, service]
 ---
 
 # Run Magento Open Source with Mage-OS
@@ -30,7 +30,7 @@ services:
     build:
       artifact:
         - "apt-get update && apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev && rm -rf /var/lib/apt/lists/*"
-        - "docker-php-ext-install -j\"$(nproc)\" bcmath ftp soap sockets xsl"
+        - "docker-php-ext-install -j\"$(nproc)\" ftp soap sockets xsl"
     mounts:
       - source: ./php.ini
         target: /usr/local/etc/php/conf.d/zz-magento.ini
@@ -101,7 +101,7 @@ lando composer show mage-os/product-community-edition
 lando exec appserver -- test -f /app/bin/magento
 ```
 
-The package version should be `3.6.0`, all platform requirements should pass, and `bin/magento` should exist. Don't bypass a missing extension with `--ignore-platform-reqs`. The build steps add `bcmath`, `ftp`, `soap`, `sockets`, and `xsl` to Lando's stock PHP image; Composer checks the installed packages against the complete PHP extension set.
+The package version should be `3.6.0`, all platform requirements should pass, and `bin/magento` should exist. Don't bypass a missing extension with `--ignore-platform-reqs`. The build steps add `ftp`, `soap`, `sockets`, and `xsl` to Lando's stock PHP image, which already ships `bcmath`; Composer checks the installed packages against the complete PHP extension set.
 
 Set permissions for this new development project. The first ownership command assigns files the numeric UID that owns `/app` inside the container and Apache's `www-data` group. The next command keeps existing file sessions in `var/session` owned by `www-data`. On a direct Linux bind mount, the source UID normally belongs to your host user. A VM or file-sync provider can use a different container-side owner, so also check host editing below. The `chmod` commands give the group read access and directory traversal across the source, then write access to Magento's writable paths:
 
@@ -290,7 +290,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"pub\",\\s*\"allowOverride\":\\s*true" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bcmath ftp soap sockets xsl" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ftp soap sockets xsl" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zz-magento\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"search\":\\s*\\{[^}]*\"type\":\\s*\"opensearch\"" } }} />

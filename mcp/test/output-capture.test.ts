@@ -5,6 +5,7 @@ import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Fiber, Layer, Schema } from "effect";
 import { DEFAULT_OUTPUT_BYTES, OutputCapture } from "../src/output-capture";
+import { testAppGenerations } from "../src/testing.ts";
 import { serverLayer, startServer } from "./server";
 
 const redactor = createRedactor("secrets", { values: [] });
@@ -49,7 +50,7 @@ describe("bounded final output capture", () => {
               {
                 commandEntries: [{ spec }],
                 defaultAllowlist: [spec.id],
-                runtimeLayer: Layer.succeed(RedactionService, redaction),
+                apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),
               },
               [],
               redaction,
@@ -122,7 +123,7 @@ describe("bounded final output capture", () => {
               {
                 commandEntries: [{ spec }],
                 defaultAllowlist: [spec.id],
-                runtimeLayer: Layer.succeed(RedactionService, redaction),
+                apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),
               },
               [],
               redaction,

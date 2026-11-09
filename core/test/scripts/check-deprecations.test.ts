@@ -653,6 +653,43 @@ describe("deprecation release gate", () => {
     });
   });
 
+  test("enforces notices attached through deprecateSchema and deprecateField", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/schema/services/legacy.ts",
+        `
+          import { Schema } from "effect";
+          import { DeprecationNotice, deprecateField, deprecateSchema } from "../deprecation.ts";
+          export const LEGACY_NOTICE = Schema.decodeUnknownSync(DeprecationNotice)({
+            since: "4.2.0",
+            removeIn: "5.0.0",
+            note: "Use modern instead.",
+          });
+          export const LegacyConfig = deprecateSchema(Schema.String, LEGACY_NOTICE);
+          export const legacyField = deprecateField(Schema.String, {
+            since: "4.2.0",
+            removeIn: "4.2.1",
+            note: "Use modernField instead.",
+          });
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.2.0", "5.0.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/schema/services/legacy.ts:9:LegacyConfig:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+        "sdk/src/schema/services/legacy.ts:10:legacyField:removeIn must be a future major or minor release",
+        "sdk/src/schema/services/legacy.ts:10:legacyField:DeprecationOverdueError: surface is still present after removeIn 4.2.1",
+      ]);
+    });
+  });
+
   test("checks registry-style deprecated contract surfaces that are not exports", async () => {
     await withFixtureRoot(async (root) => {
       await write(

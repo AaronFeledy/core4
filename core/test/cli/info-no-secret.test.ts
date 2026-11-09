@@ -167,7 +167,6 @@ const makeInfoLayer = () => {
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
@@ -225,7 +224,8 @@ describe("lando info never leaks secret values", () => {
     expect(text).not.toContain(SECRET_VALUE);
     expect(json).not.toContain(SECRET_VALUE);
     expect(json).toContain("postgres");
-    expect(result.services[0]?.creds?.password).toBe(REDACTED);
+    const creds = result.services[0]?.creds;
+    expect(creds !== undefined && "password" in creds ? creds.password : undefined).toBe(REDACTED);
   });
 });
 

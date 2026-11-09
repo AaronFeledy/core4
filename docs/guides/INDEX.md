@@ -1,14 +1,14 @@
-# Beta Feature Coverage Matrix
+# Feature Coverage Matrix
 
-This matrix maps each user-facing Beta PRD feature to the executable guide(s) that
+This matrix maps each user-facing PRD feature to the executable guide(s) that
 exercise it. The first table is the union of every PRD's `## Guide Coverage` section;
 internal/infra PRD 13 declares no guides and is intentionally absent. The
-supplementary sections at the end list capability guides that are **not owned by a Beta
-PRD** (core service types and end-to-end tutorials that predate the Beta milestone). They
+supplementary sections at the end list capability guides that are **not owned by a
+PRD** (core service types and end-to-end tutorials that predate the PRD set). They
 carry no PRD or User Story and exist purely as capability documentation plus tests.
 
 `Status` is `Shipped` when the guide file exists on disk and `Planned` when the owning
-story has not yet landed its guide. `bun run check:guide-coverage` validates that every
+story has no guide on disk. `bun run check:guide-coverage` validates that every
 guide path declared in a PRD's `## Guide Coverage` section appears below and that every
 `Shipped` row references a real `docs/guides/<path>.mdx` file.
 
@@ -136,9 +136,9 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 
 ## Core service catalog (capability guides, no PRD mapping)
 
-These service types shipped before the Beta milestone, so they are not owned by a Beta PRD
+These service types predate the PRD set, so they are not owned by a PRD
 and carry no User Story. Their guides run on the same `provider: test` scenario harness as
-the Beta guides above.
+the PRD-owned guides above.
 
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
@@ -217,7 +217,7 @@ Run Lando 4 as `lando` and keep an explicit executable path for Lando 3, then co
 
 ## Lando 3 parity (capability guides, no PRD mapping)
 
-These guides close Lando 3 workflow gaps that have no Beta PRD owner yet, so they carry no User Story.
+These guides close Lando 3 workflow gaps that have no PRD owner, so they carry no User Story.
 They document everyday CLI, config, service, tooling, install, and Landofile capabilities on the same `provider: test` harness as the other capability sections.
 
 | PRD | User Story | Feature | Guide Path | Status |
@@ -231,6 +231,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | `lando exec` one-off commands, including piped backup and restore of service files | `docs/guides/cli/exec.mdx` | Shipped |
 | - | - | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | - | - | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
+| - | - | `lando sources:gc` remote source cache report and prune | `docs/guides/cli/sources-gc.mdx` | Shipped |
 | - | - | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | - | - | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
 | - | - | service timezone configuration | `docs/guides/services/timezone.mdx` | Shipped |
@@ -298,7 +299,9 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |
 | L3-PARITY-05 | US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` | Shipped |
 | L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| - | - | SQLite file target for db import, export, snapshot, restore, and reset | `docs/guides/tooling/sqlite-database.mdx` | Shipped |
 | - | - | orphaned native snapshot inspection (`meta:snapshots:gc`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| - | - | streaming dumps through stdout and stdin (`db:export -`, `db:import -`, `db:seed -`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | - | - | git worktree as its own app with a seeded database | `docs/guides/tooling/git-worktrees.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | app plan cache refresh | `docs/guides/cli/cache-refresh.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |

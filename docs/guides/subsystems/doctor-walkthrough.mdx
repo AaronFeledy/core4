@@ -3,7 +3,7 @@ id: doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, doctor, diagnostics]
+tags: [docs, subsystems, doctor, diagnostics]
 ---
 
 # Run lando doctor
@@ -55,6 +55,7 @@ inspection is available. Certificate selection errors still appear as findings.
 | provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
 | host-dns | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-dns.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
+| legacy-route-files | A router file doesn't use the current per-app layout, so its hostnames stay published. Delete the listed files (on Windows, then run `lando global:restart`), then republish what you still need with the owning app's start command. See [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check). |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
@@ -65,7 +66,7 @@ inspection is available. Certificate selection errors still appear as findings.
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
+If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Inspect leftover snapshot images
 
@@ -76,6 +77,12 @@ Read the orphan report before deleting anything. Without `--prune`, this command
     <Step name="inspect">
       <Run command="lando snapshots:gc --format=json" />
       <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="listeners-without-applied-plan" render={false} reason="The test provider cannot observe real container listeners; verify the no-applied-plan skip instead.">
+    <Step name="inspect-unstarted-app">
+      <Run command="lando doctor --app --format=json" />
+      <Verify command="lando doctor --app --format=json" expect={{ stdout: { regex: "No applied plan was found" } }} />
     </Step>
   </Scenario>
 </Guide>
@@ -180,7 +187,45 @@ The router has its own, separate watcher record. That one reports what the Traef
 lando doctor --app
 ```
 
-That adds Landofile lint and version-constraint checks for this app. A missing or invalid Landofile shows up as its own section. The rest of the report still runs.
+That adds Landofile lint (the same pass as
+[`lando app:config:lint`](../landofile/config-lint.mdx), including its offline
+final-planning stage), version-constraint checks, and a point-in-time TCP
+listener check for this app. A missing or invalid Landofile shows up as its own
+section. The rest of the report still runs.
+
+### Check the app's TCP listeners
+
+Run from the app directory after starting it:
+
+```sh
+lando doctor --app --all
+```
+
+Doctor uses the last applied plan and its provider, even if you've since changed
+the Landofile's provider or port. For each running service with an expected TCP
+listener, it reads the container's network-namespace listener tables. It does
+not run your readiness command or scan URLs. Each read is limited to two seconds
+and 128 KiB, with at most four reads at once and an overall section deadline.
+
+| Result | Meaning and next action |
+| --- | --- |
+| `pass`, `listening` | A non-loopback binding exists on the planned port. This does not prove that the application is ready or that a particular process owns the socket. |
+| `warn`, `loopback-only` | Only loopback bindings were found on that port. Bind the server to `0.0.0.0` so other services can reach it. |
+| `warn`, `not-listening` | No binding was found on that port at this instant. If the app is still starting, rerun `lando doctor --app`; otherwise follow the action line. |
+| `skipped` | There is no applied plan, the service isn't running, no expected TCP listener is recorded, or the observation is unavailable. An unreadable table or expired budget is not evidence of an absent listener. |
+
+A not-listening finding for planned port `8080` reads:
+
+```text
+finding: No TCP listener was observed on planned port 8080 at this instant. If the application is still starting, rerun `lando doctor --app`.
+```
+
+The action also names what your application, command, or custom image must
+configure when it owns that listener. `--fix` does not change your server's
+configuration. Without `--app`, doctor does not perform this listener check.
+JSON keeps observations in `result.appListeners.checks`, with string context fields
+`service`, `port`, `listenerState`, `finding`, and `bindings`, plus `solutions`.
+Unavailable observations go in the report's `skipped` array.
 
 ## Machine-readable output
 

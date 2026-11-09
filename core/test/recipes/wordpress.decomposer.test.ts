@@ -61,6 +61,7 @@ describe("wordpress decomposition", () => {
             type: "php:{{ recipe.php }}",
             primary: true,
             framework: "wordpress",
+            uploadDirs: ["wp-content/uploads"],
             port: 80,
             dependsOn: options.redis ? [{ service: "database" }, { service: "cache" }] : ["database"],
             routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
@@ -69,11 +70,17 @@ describe("wordpress decomposition", () => {
           ...(options.redis ? { cache: { type: "redis" } } : {}),
         },
         tooling: {
-          wp: { service: "appserver", description: "Run WP-CLI inside the appserver service.", cmds: ["wp"] },
+          wp: {
+            service: "appserver",
+            description: "Run WP-CLI inside the appserver service.",
+            cmds: ["wp"],
+            wrapper: true,
+          },
           composer: {
             service: "appserver",
             description: "Run Composer inside the appserver service.",
             cmds: ["composer"],
+            wrapper: true,
           },
         },
       },

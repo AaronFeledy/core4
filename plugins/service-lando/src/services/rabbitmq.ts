@@ -1,6 +1,12 @@
 import { Effect, Schema } from "effect";
 
-import { PortNumber, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import {
+  PortNumber,
+  PortablePath,
+  type ServiceConfig,
+  landoServiceContainerName,
+  normalizeAppSlug,
+} from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -12,7 +18,6 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { rabbitmqProbes } from "./rabbitmq-probes.ts";
@@ -21,8 +26,10 @@ const DEFAULT_AMQP_PORT = Schema.decodeUnknownSync(PortNumber)(5672);
 export const MANAGEMENT_PORT = Schema.decodeUnknownSync(PortNumber)(15672);
 export const RABBITMQ_LISTENER = {
   port: DEFAULT_AMQP_PORT,
-  variable: "RABBITMQ_NODE_PORT",
+  variables: ["RABBITMQ_NODE_PORT"],
   daemon: "RabbitMQ",
+  when: "All RabbitMQ services",
+  derived: [{ use: "distribution listener", offset: 20000, variable: "RABBITMQ_DIST_PORT" }],
   reserved: [
     { port: 4369, use: "EPMD" },
     { port: MANAGEMENT_PORT, use: "management UI" },
@@ -32,33 +39,34 @@ export const RABBITMQ_LISTENER = {
 
 const assertDistributionPort = (service: ServiceConfig): void => {
   const port = plannedPort(service, RABBITMQ_LISTENER);
-  const authored = service.environment?.RABBITMQ_DIST_PORT;
+  const secondary = RABBITMQ_LISTENER.derived[0];
+  const authored = service.environment?.[secondary.variable];
   const distribution =
     authored === undefined
-      ? port + 20000
+      ? port + secondary.offset
       : typeof authored === "string" && /^[0-9]+$/.test(authored)
         ? Number(authored)
         : Number.NaN;
   if (authored === undefined && distribution > 65535) {
     throw new ServiceConfigIssue(
       ["port"],
-      `Port ${port} makes RabbitMQ's distribution port (port + 20000 = ${distribution}) exceed 65535.`,
-      "Set port: to at most 45535, or set RABBITMQ_DIST_PORT to a TCP port number.",
+      `Port ${port} makes RabbitMQ's distribution port (port + ${secondary.offset} = ${distribution}) exceed 65535.`,
+      `Set port: to at most ${65535 - secondary.offset}, or set ${secondary.variable} to a TCP port number.`,
     );
   }
   if (!Number.isInteger(distribution) || distribution < 1 || distribution > 65535) {
     throw new ServiceConfigIssue(
-      ["environment", "RABBITMQ_DIST_PORT"],
-      `RABBITMQ_DIST_PORT is ${JSON.stringify(authored)}, which is not a TCP port number (1-65535).`,
-      "Set RABBITMQ_DIST_PORT to a TCP port number (1-65535).",
+      ["environment", secondary.variable],
+      `${secondary.variable} is ${JSON.stringify(authored)}, which is not a TCP port number (1-65535).`,
+      `Set ${secondary.variable} to a TCP port number (1-65535).`,
     );
   }
   const collision = RABBITMQ_LISTENER.reserved.find((entry) => entry.port === distribution);
   if (distribution === port || collision !== undefined) {
     throw new ServiceConfigIssue(
-      authored === undefined ? ["port"] : ["environment", "RABBITMQ_DIST_PORT"],
+      authored === undefined ? ["port"] : ["environment", secondary.variable],
       `RabbitMQ's distribution port is ${distribution}, which conflicts with the ${collision?.use ?? "AMQP listener"} port.`,
-      "Set RABBITMQ_DIST_PORT to a different TCP port number.",
+      `Set ${secondary.variable} to a different TCP port number.`,
     );
   }
 };
@@ -71,9 +79,22 @@ const ARTIFACTS = {
 
 export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 
+/**
+ * RabbitMQ keeps its database under its node name. Naming the node after the container name the
+ * folder's data identity would give it keeps that name stable: it equals the container hostname
+ * until the app is renamed, and afterwards a loopback host alias keeps the original name resolvable.
+ */
+const applyDataNodeName = (ctx: ServiceFeatureContext): void => {
+  const host = (name: string) =>
+    landoServiceContainerName(normalizeAppSlug(name, ctx.appRoot), ctx.serviceName);
+  const appName = ctx.appName ?? "app";
+  const node = host(ctx.dataName ?? appName);
+  ctx.addEnv("RABBITMQ_NODENAME", `rabbit@${node}`);
+  if (node !== host(appName)) ctx.addHostAlias({ hostname: node, ip: "127.0.0.1" });
+};
+
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, RABBITMQ_LISTENER);
   assertDistributionPort(service);
   const port = plannedPort(service, RABBITMQ_LISTENER);
@@ -82,8 +103,11 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
   ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addEnv("RABBITMQ_NODE_PORT", String(port));
+  const authoredNode = service.environment?.RABBITMQ_NODENAME;
+  if (authoredNode === undefined) applyDataNodeName(ctx);
+  else ctx.addEnv("RABBITMQ_NODENAME", authoredNode);
   ctx.addStorage({
-    store: `${appName}-rabbitmq-data`,
+    store: ctx.serviceStoreName("rabbitmq-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -147,7 +171,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
         },
         features: [{ id: RABBITMQ_FEATURE_ID }],
         tooling: {
-          rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
+          rabbitmqctl: { service: input.name, cmd: "rabbitmqctl", wrapper: true },
           rabbitmqadmin: {
             service: input.name,
             cmd: [
@@ -157,6 +181,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
               "--password",
               literalEnvironmentValue(managementPass, ["environment", "RABBITMQ_DEFAULT_PASS"]),
             ],
+            wrapper: true,
           },
         },
       };

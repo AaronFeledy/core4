@@ -309,6 +309,7 @@ describe("CI selection", () => {
       ];
       const runtime = [
         ...guides,
+        "runtime-bundle-linux-arm64",
         "unit-tests-linux-x64-shard",
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
@@ -321,6 +322,7 @@ describe("CI selection", () => {
         "provider-integration-linux-x64",
       ];
       const expected = { docs, guides, runtime, providers, broad: Object.keys(CI_JOB_TIERS) }[profile];
+      expect(Object.keys(jobs)).toEqual(expect.arrayContaining(expected));
       const needs = {
         ...Object.fromEntries(
           Object.keys(CI_JOB_TIERS).map((id) => [
@@ -354,7 +356,7 @@ describe("CI selection", () => {
     },
   );
 
-  test("typechecks docs-only PRs in the Linux static cell instead of repeating it in guide jobs", () => {
+  test("typechecks docs-only PRs in the static cells instead of repeating it in guide jobs", () => {
     const jobs = Schema.decodeUnknownSync(
       Schema.Struct({
         jobs: Schema.Record(
@@ -373,7 +375,6 @@ describe("CI selection", () => {
     )(Bun.YAML.parse(renderCiWorkflow())).jobs;
     expect(jobs["static-checks-platform"]?.steps.find((step) => step.run === "bun run typecheck")).toEqual({
       name: "Typecheck",
-      if: "matrix.platform == 'linux-x64'",
       run: "bun run typecheck",
     });
     expect(
@@ -386,6 +387,7 @@ describe("CI selection", () => {
 
 describe("platform build path selection", () => {
   test.each([
+    "engine/src/runtime/libc.ts",
     "core/test/build/host-execution-compiled.test.ts",
     "core/test/build/opentui-compiled-acceptance.test.ts",
     "core/test/build/support/fixture.ts",

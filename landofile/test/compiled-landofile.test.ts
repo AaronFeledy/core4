@@ -71,7 +71,7 @@ test.each(["$${BROKEN}", "{{{{", "${secret:X}", "{{ malformed ("])(
   },
 );
 
-test("registers mixed, credential, Redis and tooling binding sites without store access", async () => {
+test("registers mixed, credential, Redis, tooling and event binding sites without store access", async () => {
   const compiled = await load({
     services: {
       db: {
@@ -81,6 +81,7 @@ test("registers mixed, credential, Redis and tooling binding sites without store
       cache: { password: "${secret:CACHE}" },
     },
     tooling: { task: { cmd: "echo", env: { TOKEN: "${secret:TOKEN}" } } },
+    events: { "post-start": [{ cmd: "echo", service: "db", env: { HOOK: "${secret:HOOK}" } }] },
   });
   expect(compiled.document.services?.[ServiceName.make("db")]?.creds?.password).toEqual({
     _tag: "SecretRef",
@@ -95,6 +96,9 @@ test("registers mixed, credential, Redis and tooling binding sites without store
     reference: "CACHE",
   });
   expect(compiled.document.tooling?.task?.env?.TOKEN).toEqual({ _tag: "SecretRef", reference: "TOKEN" });
+  expect(compiled.document.events?.["post-start"]?.[0]).toMatchObject({
+    env: { HOOK: { _tag: "SecretRef", reference: "HOOK" } },
+  });
   expect(compiled.pendingSites).toEqual([]);
 });
 

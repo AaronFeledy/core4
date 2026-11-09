@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect, Schema } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
@@ -14,7 +15,7 @@ export const makePublishRender = (
   Effect.fnUntraced(function* (event) {
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
     const decoded = yield* Schema.decodeUnknownEffect(RenderEvent)(redactor.redactValue(event)).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new EventError({
             event: event._tag,

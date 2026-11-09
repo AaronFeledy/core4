@@ -19,6 +19,10 @@ export const RUBY_FEATURE_PRIORITY = 600;
 export const FRAMEWORK_PRESETS: Readonly<Record<SupportedRubyFramework, LanguageFrameworkPreset>> = {
   rails: {
     port: 3000,
+    daemon: "Rails",
+    variables: ["PORT"],
+    hostDefaults: { BINDING: "0.0.0.0" },
+    when: "framework: rails",
     webroot: "public",
     env: new Map([
       ["RAILS_ENV", "development"],
@@ -27,10 +31,14 @@ export const FRAMEWORK_PRESETS: Readonly<Record<SupportedRubyFramework, Language
   },
   none: {
     port: 3000,
+    daemon: "Ruby",
+    variables: ["PORT"],
+    when: "framework omitted or none",
     webroot: ".",
     env: new Map(),
   },
 };
+export const RUBY_LISTENERS = FRAMEWORK_PRESETS;
 
 const RubyFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_RUBY_FRAMEWORKS]),

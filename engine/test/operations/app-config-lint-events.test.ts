@@ -112,3 +112,24 @@ test("accepts remote sync hooks and rejects tasks whose brackets bind reserved e
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("flags host event cmd dialect and ignores container steps", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-events-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\nevents:\n  post-start:\n    - service: ":host"\n      cmd: "echo $${TOKEN}"\n    - service: web\n      cmd: "echo $${TOKEN}"\n    - echo plain\n    - service: ":host"\n      defer: "echo done >&2"\n  pre-greet:\n    - service: ":host"\n      cmd: "echo $${TOKEN}"\ntooling:\n  greet:\n    service: ":host"\n    cmd: echo hi\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    const hostShell = result.violations.filter((v) => v.rule === "landofile.host-shell");
+    expect(hostShell.map((v) => v.path)).toEqual([
+      ["events", "post-start", 0, "cmd"],
+      ["events", "post-start", 3, "defer"],
+      ["events", "pre-greet", 0, "cmd"],
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

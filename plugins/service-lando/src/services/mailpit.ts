@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
@@ -13,6 +14,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 import { resolveMailListeners } from "./_mail-listeners.ts";
+export { MAILPIT_LISTENER } from "./_mail-listeners.ts";
 
 import { MAILPIT_IMAGE } from "../mailpit-constants.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -57,7 +59,7 @@ export const mailpitServiceType: ServiceType = {
   schema: MailpitServiceConfig,
   resolve: (input) =>
     Schema.decodeUnknownEffect(MailpitServiceName)(input.name).pipe(
-      Effect.mapError(
+      mapFailures(
         () =>
           new ServiceTypeError({
             serviceType: "mailpit",

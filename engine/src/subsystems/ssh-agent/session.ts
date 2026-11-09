@@ -61,15 +61,15 @@ export const runtimeSshAgentCheck = Effect.gen(function* () {
   const provider = yield* registry.value.select(yield* globalApp.value.providerId);
   const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
   const service = yield* provider.inspect(target);
-  const status = service.state ?? service.status;
-  if (status !== "running")
+  if (service.status !== "running")
     return {
-      state: status === "restarting" ? ("starting" as const) : ("stopped" as const),
-      detail: `SSH agent sidecar container status: ${status}${service.exitCode === undefined ? "" : `; container exit code: ${service.exitCode}`}.`,
+      state: service.status === "restarting" ? ("starting" as const) : ("stopped" as const),
+      detail: `SSH agent sidecar container status: ${service.status}${service.exitCode === undefined ? "" : `; container exit code: ${service.exitCode}`}.`,
     };
   const result = yield* provider.exec(target, {
     command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
     stdin: "ignore",
+    raw: true,
   });
   return result.exitCode === 0
     ? { state: "ready" as const }

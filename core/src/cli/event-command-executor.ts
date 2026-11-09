@@ -1,4 +1,5 @@
 import { Cause, Context, Effect, Layer } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { commandFailureCause } from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
@@ -9,10 +10,11 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
-import { withShellRedactionTokens } from "@lando/engine/services/shell-runner";
+import { type ShellRedactionCarrier, withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { classifyLoweredEnvRedaction, planRedactionValues } from "@lando/redaction/plan-values";
+import { RedactionService } from "@lando/redaction/service";
 import * as RendererOutput from "@lando/renderer/output";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
 import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
@@ -95,29 +97,44 @@ export const makeEventCommandExecutor = (
                 raw: resolved.argv,
               });
 
-        const toolingEnvTokens =
+        const toolingEnv =
           target.kind === "tooling" && target.toolingTask?.env !== undefined
-            ? collectSecretEnvValues(
-                Object.fromEntries(
-                  Object.entries(target.toolingTask.env).map(([name, value]) => [name, String(value)]),
-                ),
+            ? Object.fromEntries(
+                Object.entries(target.toolingTask.env).map(([name, value]) => [name, String(value)]),
               )
-            : [];
-        const redactionTokens = [
-          ...(resolved.redactionTokens ?? []),
-          ...toolingEnvTokens,
-          ...(target.kind === "tooling"
+            : undefined;
+        const planValues = resolved.plan === undefined ? undefined : planRedactionValues(resolved.plan);
+        const wholeToken = planValues?.wholeTokenValues ?? new Set<string>();
+        const classifiedToolingEnv = classifyLoweredEnvRedaction(toolingEnv, {
+          wholeToken,
+          ...(planValues === undefined ? {} : { publicValues: planValues.publicValues }),
+        });
+        const inputTokens =
+          target.kind === "tooling"
             ? toolingInputRedactionTokens([target.toolingInput], {
                 _tag: "NamedMaps",
                 flags: input.flags,
                 args: input.args,
                 passthroughArgv: input.argv,
               })
-            : []),
-        ];
+            : [];
+        const shellRedaction: ShellRedactionCarrier = {
+          substring: [...(resolved.redactionTokens ?? []), ...classifiedToolingEnv.substring, ...inputTokens],
+          wholeToken,
+          ...(planValues === undefined ? {} : { publicValues: planValues.publicValues }),
+        };
         const lifecycleRedaction = yield* RedactionService;
-        yield* lifecycleRedaction.registerValues(redactionTokens);
-        const inputRedactor = yield* lifecycleRedaction.forProfile("secrets", { sourceEnv: process.env });
+        if (planValues !== undefined) {
+          yield* lifecycleRedaction.registerValues(planValues.substring);
+          yield* lifecycleRedaction.registerValues(planValues.wholeToken, { match: "whole-token" });
+        }
+        yield* lifecycleRedaction.registerValues(shellRedaction.substring);
+        yield* lifecycleRedaction.registerValues(classifiedToolingEnv.wholeToken, { match: "whole-token" });
+        const inputRedactor = yield* lifecycleRedaction.forProfile("secrets", {
+          sourceEnv: (yield* CliInvocation).env,
+          redactionTokens: shellRedaction.substring,
+          wholeTokenValues: [...(planValues?.wholeToken ?? []), ...classifiedToolingEnv.wholeToken],
+        });
         const baseRenderer = yield* Renderer;
         const renderer = resolved.silent === true ? silentRenderer : baseRenderer;
 
@@ -144,10 +161,11 @@ export const makeEventCommandExecutor = (
                 Effect.scoped,
                 Effect.ensuring(streamOwner.finish()),
               );
+        const redactionTokens = shellRedaction.substring;
         const command = withRedactedRenderer(streamingCommand, { redactionTokens }).pipe(
           Effect.provideService(Renderer, renderer),
         );
-        const redactedCommand = withShellRedactionTokens(redactionTokens, command);
+        const redactedCommand = withShellRedactionTokens(shellRedaction, command);
         const invocation = yield* makeNestedCommandInvocation(target.spec.id, {
           argv: target.kind === "tooling" ? [] : input.argv,
           args: target.kind === "tooling" ? {} : input.args,

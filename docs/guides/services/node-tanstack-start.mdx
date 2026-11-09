@@ -2,7 +2,7 @@
 id: node-tanstack-start
 provider: test
 timeout: 90000
-tags: [beta, docs, node, tanstack, postgres, drizzle, service]
+tags: [docs, node, tanstack, postgres, drizzle, service]
 ---
 
 # Run a TanStack Start app on Postgres
@@ -111,7 +111,7 @@ export default defineConfig({
 
 This config uses the service environment and checks that the URL exists. It also avoids the scaffold's `string | undefined` TypeScript error. Run database commands through `lando npm`, not host npm.
 
-Inside `web`, Postgres is at `database:5432`, not `localhost`. Lando fills the URL from the database service's credentials: user `lando`, database name `tanstack-start-demo`, and a password derived from the app name. These are development credentials. This Landofile doesn't publish the database port to your host.
+Inside `web`, Postgres is at `database:5432`, not `localhost`. Lando fills the URL from the database service's credentials: user `lando`, database name `tanstack-start-demo`, and a password derived from the folder's data name. The database name and password survive a rename. These are development credentials. This Landofile doesn't publish the database port to your host.
 
 `condition: service_healthy` waits for Postgres to accept connections before starting `web`. It doesn't create the application's tables; that's the next command.
 

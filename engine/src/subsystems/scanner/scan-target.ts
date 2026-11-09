@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Clock, Duration, Effect, Ref } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
@@ -73,14 +74,18 @@ export interface ScanTarget {
 const isAccepted = (status: number, okCodes: ReadonlyArray<number>): boolean =>
   (status >= 200 && status < 300) || okCodes.includes(status);
 
-const transportMessage = (error: HttpClientError.HttpClientError): string => {
+/** Bun appends a developer hint to fetch transport errors; it means nothing to a Lando user. */
+const BUN_FETCH_HINT =
+  /\s*For more information, pass `verbose: true` in the second argument to fetch\(\)\.?$/u;
+
+export const transportMessage = (error: HttpClientError.HttpClientError): string => {
   const reason = error.reason;
   if (reason._tag === "TransportError") {
     const cause = reason.cause;
-    if (cause instanceof Error) return cause.message;
-    if (typeof cause === "string") return cause;
+    if (cause instanceof Error) return cause.message.replace(BUN_FETCH_HINT, "");
+    if (typeof cause === "string") return cause.replace(BUN_FETCH_HINT, "");
   }
-  return error.message;
+  return error.message.replace(BUN_FETCH_HINT, "");
 };
 
 const makeAttempt = Effect.fnUntraced(function* (
@@ -225,7 +230,7 @@ export const scanTarget = Effect.fnUntraced(function* (
       },
     },
     makeAttempt(deps, config, { target, status, attempts, redactor, verdict: verdictRef, startedAt }),
-  ).pipe(Effect.mapError((cause) => probeRunError(target.url, cause, redactor)));
+  ).pipe(mapFailures((cause) => probeRunError(target.url, cause, redactor)));
   const finalStatus = yield* Ref.get(status);
   const statusCode = finalStatus._tag === "response" ? finalStatus.status : undefined;
 

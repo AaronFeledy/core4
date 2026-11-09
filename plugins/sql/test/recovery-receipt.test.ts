@@ -1,8 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
-import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
+import {
+  DataTransferError,
+  ProviderUnavailableError,
+  SqlCommandFailedError,
+  SqlRecoveryOperationError,
+} from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { executeDbCommand } from "../src/execute.ts";
-import { FakeRestoreError, FakeStartError, cleanupSqlTestDeps } from "./support/fakes.ts";
+import { FakeRestoreError, cleanupSqlTestDeps } from "./support/fakes.ts";
 import { makeRetentionTestDeps } from "./support/retention-store.ts";
 
 afterEach(cleanupSqlTestDeps);
@@ -30,6 +35,12 @@ test.each(["transfer", "resume"] as const)(
   "normalizes wire-encoded %s failures before attaching recovery context",
   async (phase) => {
     const fixture = await makeRetentionTestDeps();
+    const providerCause = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "exec",
+      message: "Runtime unavailable.",
+      remediation: "Start the runtime.",
+    });
     const failure =
       phase === "transfer"
         ? new DataTransferError({
@@ -38,6 +49,7 @@ test.each(["transfer", "resume"] as const)(
             exitCode: 3,
             stderrTail: "denied\n",
             remediation: "Fix database load permissions, then retry import.",
+            cause: providerCause,
           })
         : new SqlCommandFailedError({
             message: "Readiness failed.",
@@ -46,6 +58,7 @@ test.each(["transfer", "resume"] as const)(
             exitCode: 7,
             stderrTail: "unavailable\n",
             remediation: "Repair database access.",
+            cause: providerCause,
           });
     const wire = Schema.encodeUnknownSync(Schema.Union([DataTransferError, SqlCommandFailedError]))(failure);
     const deps =
@@ -62,6 +75,7 @@ test.each(["transfer", "resume"] as const)(
     expect(error).toBeInstanceOf(phase === "transfer" ? DataTransferError : SqlCommandFailedError);
     expect(error).toMatchObject({
       _tag: failure._tag,
+      cause: providerCause,
       exitCode: failure.exitCode,
       stderrTail: failure.stderrTail,
       recoverySnapshotId: fixture.captured[0],
@@ -70,6 +84,33 @@ test.each(["transfer", "resume"] as const)(
     expect(fixture.removed).toEqual([]);
   },
 );
+
+test("keeps the provider failure behind a transfer failure as its cause", async () => {
+  const fixture = await makeRetentionTestDeps();
+  const providerFailure = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "runStream",
+    message: "The Lando runtime is not reachable.",
+    remediation: "Run lando setup, then retry.",
+  });
+  const failure = new DataTransferError({
+    message: "Provider runStream failed during data transfer.",
+    operation: "runStream",
+    cause: providerFailure,
+    remediation: providerFailure.remediation,
+  });
+  const deps = { ...fixture.deps, transfer: () => Effect.fail(failure) };
+
+  const exit = await Effect.runPromiseExit(
+    executeDbCommand(deps, { action: "import", file: "dump.sql", yes: true }),
+  );
+
+  if (!Exit.isFailure(exit)) throw new Error("expected transfer failure");
+  const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(DataTransferError);
+  expect(fixture.captured).toHaveLength(1);
+  expect(error).toMatchObject({ cause: providerFailure, recoverySnapshotId: fixture.captured[0] });
+});
 
 test.each(["import", "reset", "restore", "snapshot"] as const)(
   "%s preserves diagnostics and the captured snapshot when post-capture readiness fails",
@@ -115,9 +156,15 @@ test.each(["import", "reset", "restore", "snapshot"] as const)(
   },
 );
 
-test("a manual snapshot remains discoverable when its provider cannot resume the database", async () => {
+test("a manual snapshot remains discoverable with provider remediation when resume fails", async () => {
   const fixture = await makeRetentionTestDeps();
-  const deps = { ...fixture.deps, resume: () => Effect.fail(new FakeStartError()) };
+  const providerCause = new ProviderUnavailableError({
+    providerId: "test",
+    operation: "resume",
+    message: "Runtime unavailable.",
+    remediation: "Start the runtime.",
+  });
+  const deps = { ...fixture.deps, resume: () => Effect.fail(providerCause) };
 
   const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
 
@@ -127,6 +174,8 @@ test("a manual snapshot remains discoverable when its provider cannot resume the
   const encoded = Schema.encodeUnknownSync(SqlRecoveryOperationError)(error);
   const decoded = Schema.decodeUnknownSync(SqlRecoveryOperationError)(encoded);
   expect(decoded).toMatchObject({ operation: "snapshot", recoverySnapshotId: fixture.captured[0] });
+  expect(decoded.remediation).toContain(providerCause.remediation);
+  expect(decoded.remediation).toContain(fixture.captured[0] ?? "missing snapshot");
   expect(fixture.captured).toHaveLength(1);
   const catalog = await Effect.runPromise(fixture.mover.listSnapshots({}));
   expect(catalog.some((snapshot) => snapshot.id === fixture.captured[0])).toBe(true);

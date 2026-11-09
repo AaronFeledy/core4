@@ -25,6 +25,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
+import { HostExecutionDefaults } from "../../src/services/host-execution-context.ts";
 import * as ProviderExecToolingEngineSource from "../../src/services/tooling-engine";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
@@ -269,36 +270,53 @@ describe("ProviderExecToolingEngine.layer", () => {
     expect(provider.calls[0]?.command.cwd).toBe("/app");
   });
 
-  test("maps a host cwd under the app mount to the matching container path", async () => {
-    const service = {
-      ...baseServicePlan("appserver", true),
-      workingDirectory: PortablePath.make("/app/web"),
-      mounts: [
-        {
-          type: "bind",
-          role: "app",
-          source: AbsolutePath.make("/workspace/drupal"),
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          realization: "passthrough",
-          excludes: [],
-          includes: [],
-        },
-      ],
-    } satisfies ServicePlan;
-    const plan = makePlan([service]);
-    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
-    const invocation: ToolingInvocation = {
-      tool: "drush",
-      service: "appserver",
-      cwd: "/workspace/drupal/web",
-      commands: [["drush", "status"]],
-    };
+  test.each([undefined, "/workspace/drupal/web"])(
+    "maps the invocation host cwd with override %s to its container path",
+    async (cwd) => {
+      const service = {
+        ...baseServicePlan("appserver", true),
+        workingDirectory: PortablePath.make("/app/web"),
+        mounts: [
+          {
+            type: "bind",
+            role: "app",
+            source: AbsolutePath.make("/workspace/drupal"),
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "passthrough",
+            excludes: [],
+            includes: [],
+          },
+        ],
+      } satisfies ServicePlan;
+      const plan = makePlan([service]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = {
+        tool: "drush",
+        service: "appserver",
+        ...(cwd === undefined ? {} : { cwd }),
+        tty: true,
+        commands: [["drush", "status"]],
+      };
 
-    await Effect.runPromise(runEngine(invocation, plan, provider));
+      await Effect.runPromise(
+        runEngine(invocation, plan, provider).pipe(
+          Effect.provideService(HostExecutionDefaults, {
+            cwd: cwd === undefined ? "/workspace/drupal/web" : "/workspace/drupal/other",
+            env: { COLUMNS: "123", LINES: "41", CLAUDE_CODE: "invocation-agent" },
+            platform: "linux",
+          }),
+        ),
+      );
 
-    expect(provider.calls[0]?.command.cwd).toBe("/app/web");
-  });
+      expect(provider.calls[0]?.command.cwd).toBe("/app/web");
+      expect(provider.calls[0]?.command.env).toMatchObject({
+        COLUMNS: "123",
+        LINES: "41",
+        CLAUDE_CODE: "invocation-agent",
+      });
+    },
+  );
 
   test("keeps an explicit container dir that is not under a host mount", async () => {
     const service = {
@@ -662,7 +680,7 @@ describe("ProviderExecToolingEngine.layer", () => {
       stdout += new TextDecoder().decode(payload.flush());
       expect(base.calls[0]?.command.env?.OPENCODE_CLIENT).toBe("true");
       expect(stdout).toBe('{"ok":true}');
-      expect([...values()]).not.toContain("true");
+      expect([...values().substring, ...values().wholeToken]).not.toContain("true");
     } finally {
       if (prior === undefined) Reflect.deleteProperty(process.env, "OPENCODE_CLIENT");
       else process.env.OPENCODE_CLIENT = prior;

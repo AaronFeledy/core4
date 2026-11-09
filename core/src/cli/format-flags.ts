@@ -106,7 +106,7 @@ export const parseJsonFieldList = (raw: string): readonly string[] => {
   return fields;
 };
 
-const isSpaceFormJsonFieldList = (token: string): boolean =>
+export const isSpaceFormJsonFieldList = (token: string): boolean =>
   !token.startsWith("-") && JSON_FIELD_LIST.test(token) && (token.includes(",") || token.includes("."));
 
 export interface ExtractFormatFlagsResult {

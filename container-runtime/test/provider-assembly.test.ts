@@ -76,9 +76,7 @@ const paths = PathsService.of({
   toolDownloadsDir: () => "",
   logsDir: "",
   scratchDir: "",
-  scratchRegistryFile: "",
-  scratchRegistryLockFile: "",
-  tunnelRegistryFile: "",
+  transferStagingDir: "",
   tunnelRunDir: "",
   appCacheDir: () => "",
   appPlanCacheFile: () => "",
@@ -171,7 +169,7 @@ describe("provider assembly", () => {
   });
   test("preserves the unavailable error fields with a concrete remediation", () => {
     const error = notImplementedError("lando", "exec");
-    expect(error.message).toBe("provider-lando does not implement exec yet.");
+    expect(error.message).toBe("provider-lando does not implement exec.");
     expect(error.providerId).toBe("lando");
     expect(error.operation).toBe("exec");
     expect(error.remediation).toBe(

@@ -1,6 +1,13 @@
 import type { NormalizedToolingArg, NormalizedToolingFlag, ToolingInputDeclaration } from "@lando/sdk/schema";
 import type { JsonSchemaObject } from "./registry";
 
+/** The per-call app selector every command and tooling tool accepts (a fresh object per schema). */
+export const appPathInputSchema = (): JsonSchemaObject => ({
+  type: "string",
+  description:
+    "App directory, relative to the session directory. Targeting it exposes its allowed plugin tools. Find known paths in lando://apps (apps[].appRoot).",
+});
+
 const group = (members: readonly (NormalizedToolingFlag | NormalizedToolingArg)[]): JsonSchemaObject => {
   const required = members.filter((member) => member.required).map((member) => member.name);
   return {
@@ -37,6 +44,7 @@ export const toolingInputSchema = (input: ToolingInputDeclaration): JsonSchemaOb
             additionalProperties: false,
           }
         : group(input.args),
+      appPath: appPathInputSchema(),
     },
     ...(required.length === 0 ? {} : { required }),
     "x-lando-input-revision": input.revision,

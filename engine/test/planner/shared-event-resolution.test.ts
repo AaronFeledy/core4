@@ -139,6 +139,7 @@ toolingIncludes:
 services:
   web:
     type: ${serviceType.id}
+    image: alpine:3.22
     home: false
 tooling:
   authored:

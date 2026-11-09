@@ -9,6 +9,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
+import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { RedactionService } from "@lando/redaction/service";
 import "../../src/runtime/engine-composition.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
@@ -116,6 +117,8 @@ test.each([
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+            return { status: 200, body: "[]" };
           if (request.method === "GET" && request.path.endsWith("/json"))
             return created
               ? { status: 200, body: JSON.stringify({ Id: "db", State: { Running: true } }) }
@@ -128,6 +131,9 @@ test.each([
     await Effect.runPromise(
       bringUp(app, {
         api,
+        helperTarget: { os: "linux", arch: "x64" },
+        resolveContainerHelper: () =>
+          Effect.succeed(stubContainerHelper(join(root, "lando-container-helper"))),
         ctx: { providerId: "lando", remediation: "Repair test engine.", env: {} },
         resolveServiceEnvironment: (service) => Effect.succeed(overrides[service.name] ?? {}),
       }),

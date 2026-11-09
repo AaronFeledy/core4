@@ -196,10 +196,10 @@ test("retains independent route findings when LocalStack requires a literal gate
     );
     expect(result.valid).toBe(false);
     expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual([
-      { rule: "landofile.service", path: ["services", "cloud"] },
+      { rule: "landofile.service", path: ["services", "cloud", "environment", "GATEWAY_LISTEN"] },
       { rule: "landofile.route", path: ["services", "web", "routes", 0] },
     ]);
-    expect(result.violations[0]?.message).toContain("services.cloud.environment.GATEWAY_LISTEN");
+    expect(result.violations[0]?.message).toContain("GATEWAY_LISTEN requires literal text");
     expect(result.violations[0]?.source).toMatchObject({ file: join(root, ".lando.yml") });
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -35,6 +35,7 @@ export const moreRows = (pluginTopics = bundledPluginTopics) =>
   [
     { token: "lando help app", summary: "Config, remotes, share, includes" },
     { token: "lando help apps", summary: "Poweroff and scratch apps" },
+    { token: "lando help meta", summary: "Config, setup, updates, and diagnostics" },
     { token: "lando help plugin", summary: "Install and author plugins" },
     { token: "lando help global", summary: "Host-level global app" },
     { token: "lando help recipes", summary: "Bundled recipes" },

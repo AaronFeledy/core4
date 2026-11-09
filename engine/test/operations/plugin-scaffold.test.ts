@@ -55,9 +55,14 @@ describe("plugin scaffold", () => {
         ]) {
           expect(sources).not.toMatch(banned);
         }
-        expect(packageJson.devDependencies.typescript).toBe("^5.9.0");
+        expect(packageJson.devDependencies.typescript).toBe("^7.0.2");
         const compiler = Bun.spawn(
-          [process.execPath, join(repositoryRoot, "node_modules/typescript/bin/tsc"), "-p", "tsconfig.json"],
+          [
+            process.execPath,
+            join(repositoryRoot, "node_modules/@typescript/native/bin/tsc"),
+            "-p",
+            "tsconfig.json",
+          ],
           { cwd: destination, stdout: "pipe", stderr: "pipe" },
         );
         const [compileCode, compileOutput, compileErrors] = await Promise.all([

@@ -66,6 +66,7 @@ export type RedactionProfile = (typeof REDACTION_PROFILES)[number];
 export interface CreateRedactorOptions {
   /** Known secret values masked by the value layer before any pattern pass. */
   readonly values?: Iterable<string>;
+  readonly wholeTokenValues?: Iterable<string>;
   /** Explicit secret values; unsafe exact matches suppress the whole affected detail. */
   readonly authoritativeValues?: Iterable<string>;
   /** Environment roots for the `transcript` profile's literal masking. */
@@ -204,7 +205,11 @@ export const createRedactor = (
   profile: RedactionProfile,
   options: CreateRedactorOptions = {},
 ): Redactor & typeof redactedInspection => {
-  const valueLayer = createSecretRedactor(options.values ?? [], options.authoritativeValues);
+  const valueLayer = createSecretRedactor(
+    options.values ?? [],
+    options.authoritativeValues,
+    options.wholeTokenValues,
+  );
   const env = options.env ?? {};
 
   let patternString: (text: string) => string;

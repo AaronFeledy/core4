@@ -4,13 +4,27 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  assertListenerConfig,
+  launcherAuthority,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
+export const VARNISH_LISTENER = {
+  port: DEFAULT_PORT,
+  daemon: "Varnish",
+  when: "All Varnish services; management reservation applies to the bundled launcher",
+  reserved: [{ port: 6082, use: "management interface" }],
+  launcher: { setting: (port: number) => `-a :${port}` },
+} as const satisfies ListenerContract;
 const DEFAULT_BACKEND_PORT = "80";
 const VCL_TARGET = "/etc/varnish/default.vcl";
 const GENERATED_VCL_PATH = "/tmp/lando-backend.vcl";
@@ -48,15 +62,25 @@ const varnishdCommand = (vclFile: string, listenPort: number): string =>
 const generatedVclCommand = (listenPort: number): string =>
   `printf 'vcl 4.0;\\nbackend default { .host = "%s"; .port = "%s"; }\\n' "$VARNISH_BACKEND_HOST" "$VARNISH_BACKEND_PORT" > ${GENERATED_VCL_PATH} && ${varnishdCommand(GENERATED_VCL_PATH, listenPort)}`;
 
+const ownsLandoLauncher = (service: ServiceFeatureContext["normalizedConfig"]): boolean =>
+  service.command === undefined && service.entrypoint === undefined;
+
+const varnishListener = (service: ServiceFeatureContext["normalizedConfig"]): ListenerContract =>
+  ownsLandoLauncher(service)
+    ? VARNISH_LISTENER
+    : { port: VARNISH_LISTENER.port, daemon: VARNISH_LISTENER.daemon };
+
 const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  assertListenerConfig(service, varnishListener(service));
+  const port = plannedPort(service, VARNISH_LISTENER);
   const backend = service.backend ?? "";
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["7"] });
   ctx.addEnv("VARNISH_BACKEND_HOST", backend);
   ctx.addEnv("VARNISH_BACKEND_PORT", service.environment?.VARNISH_BACKEND_PORT ?? DEFAULT_BACKEND_PORT);
-  ctx.setHealthcheck(commandHealthcheck(["varnishadm", "ping"], 5));
+  // Primary HTTP loopback works for both Lando and authored launchers; varnishadm needs the management interface.
+  ctx.setHealthcheck(tcpProbe(port, 5));
   if (backend.length > 0) {
     ctx.addDependency({
       service: ServiceName.make(backend),
@@ -72,7 +96,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
 
   const vclSource = vclOverrideBindSource(service, ctx.appRoot);
 
-  if (service.command === undefined && service.entrypoint === undefined) {
+  if (ownsLandoLauncher(service)) {
     ctx.setEntrypoint(["/bin/sh", "-c"]);
     if (vclSource === undefined) {
       ctx.addEnv("VARNISH_VCL_FILE", GENERATED_VCL_PATH);
@@ -80,6 +104,8 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
     } else {
       ctx.setCommand([varnishdCommand(VCL_TARGET, port)]);
     }
+  } else {
+    ctx.setListenerAuthority(launcherAuthority(VARNISH_LISTENER, port));
   }
 };
 
@@ -87,9 +113,16 @@ export const varnishServiceFeature: ServiceFeatureDefinition = {
   id: VARNISH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: serviceFeatureValidateEffective(VARNISH_FEATURE_ID, (ctx) => {
+    assertListenerConfig(ctx.normalizedConfig, varnishListener(ctx.normalizedConfig));
+    return { handledServiceFields: [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, VARNISH_LISTENER),
+        protocol: "http",
+      }),
     ),
   apply: serviceFeatureApply(
     VARNISH_FEATURE_ID,

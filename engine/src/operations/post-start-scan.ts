@@ -1,11 +1,15 @@
 import { DateTime, Effect } from "effect";
 
+import { listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { expectedTcpListener } from "@lando/container-runtime/listener-observation";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type CheckResult,
   type EndpointRef,
+  type ListenerObservation,
   ServiceName,
+  type ServicePlan,
   type StartedService,
 } from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
@@ -20,6 +24,7 @@ export interface PostStartScanInput {
   readonly scanner: UrlScannerShape;
   readonly plan: AppPlan;
   readonly events: Pick<EventServiceShape, "publish">;
+  readonly observeListener?: (service: ServicePlan) => Effect.Effect<ListenerObservation | undefined>;
   readonly urls: ReadonlyArray<{
     readonly service: ServiceName;
     readonly url: string;
@@ -67,6 +72,13 @@ export const runPostStartScan = Effect.fnUntraced(function* (
   if (targets.length === 0) return [];
   const redactor = yield* resolveRedactor;
   const redact = (value: string): string => redactor.redactString(value);
+  const listeners = new Map(
+    yield* Effect.forEach(Object.values(input.plan.services), (service) =>
+      Effect.cached(Effect.suspend(() => input.observeListener?.(service) ?? Effect.succeed(undefined))).pipe(
+        Effect.map((observe) => [service.name, observe] as const),
+      ),
+    ),
+  );
   const events = {
     publish: (event: Parameters<EventServiceShape["publish"]>[0]) =>
       Effect.suspend(() => input.events.publish(event)).pipe(Effect.catchCause(() => Effect.void)),
@@ -124,6 +136,24 @@ export const runPostStartScan = Effect.fnUntraced(function* (
                 : (endpoint.detail ?? "no response reported"),
           );
           const status = endpoint.statusCode ?? "HTTP response";
+          const service = input.plan.services[target.service];
+          const listener =
+            endpoint.verdict === "lando-error" &&
+            (endpoint.routerMarker === "upstream-unreachable" ||
+              (scanned._tag === "Success" &&
+                scanned.success.endpoints.length > 0 &&
+                endpoint.routerMarker === undefined &&
+                !endpoint.reachable)) &&
+            service !== undefined &&
+            target.endpoint !== undefined &&
+            target.endpoint.transport === "tcp" &&
+            target.endpoint.port === expectedTcpListener(service)?.port
+              ? yield* listeners.get(service.name) ?? Effect.succeed(undefined)
+              : undefined;
+          const diagnostic =
+            listener === undefined || service === undefined
+              ? undefined
+              : listenerDiagnostic(listener, service, "scan");
           let message: string;
           switch (endpoint.verdict) {
             case "ready":
@@ -143,7 +173,9 @@ export const runPostStartScan = Effect.fnUntraced(function* (
               yield* tree.warnTask(target.id, redact(message));
               yield* events.publish(
                 MessageWarnEvent.make({
-                  body: redact(`Lando could not reach ${target.url}: ${detail}`),
+                  body: redact(
+                    `Lando could not reach ${target.url}: ${detail}${diagnostic === undefined ? "" : `. ${diagnostic.finding.charAt(0).toUpperCase()}${diagnostic.finding.slice(1)}. ${diagnostic.action}${diagnostic.authority === undefined ? "" : ` ${diagnostic.authority}`}`}`,
+                  ),
                   timestamp: yield* DateTime.now,
                 }),
               );
@@ -162,6 +194,18 @@ export const runPostStartScan = Effect.fnUntraced(function* (
             ...(endpoint.statusCode === undefined ? {} : { statusCode: endpoint.statusCode }),
             message: redact(message),
             ...(endpoint.verdict === "ready" ? {} : { detail }),
+            ...(listener === undefined
+              ? {}
+              : {
+                  listener: {
+                    ...listener,
+                    service: redact(listener.service),
+                    listening: listener.listening.map((binding) => ({
+                      ...binding,
+                      address: redact(binding.address),
+                    })),
+                  },
+                }),
           } satisfies CheckResult;
         }),
         { concurrency: 4 },

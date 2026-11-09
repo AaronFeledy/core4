@@ -43,6 +43,12 @@ as the default way to run project tools.
 Prefer a named tooling command over raw \`lando exec\` when the Landofile
 already defines the tool.
 
+Stopping a \`lando exec\` or tooling command with SIGINT or SIGTERM also stops
+it inside the container, along with everything it started, before Lando exits
+130 or 143, so you do not need to kill leftover container processes or restart
+the service to free a port after an interrupt. Native Windows with the managed
+\`lando\` provider does not get this cleanup yet.
+
 ## Read the existing Lando guides
 
 Do not paste product docs into this app. When you need more than this pack,

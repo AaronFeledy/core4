@@ -1,0 +1,9 @@
+name: secret-command-misuse
+services:
+  app:
+    type: "node:22"
+    primary: true
+tooling:
+  deploy:
+    service: app
+    cmd: 'curl -fsS -X POST -H "Authorization: Bearer ${secret:DEPLOY_TOKEN}" https://deploy.example.com/hooks/secret-command-misuse'

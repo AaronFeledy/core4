@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { BunShellScriptFrontMatterError, LandofileParseError, NotImplementedError } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -67,7 +68,7 @@ export const parseBunShellScriptFrontMatter = Effect.fnUntraced(function* (
     cwd: dirname(scriptPath),
     content: "\n".repeat(region.start + 1) + region.body.join("\n"),
   }).pipe(
-    Effect.mapError((cause) => {
+    mapFailures((cause) => {
       const column = cause.column === undefined ? undefined : cause.column + 2;
       const location =
         cause.line === undefined
@@ -93,9 +94,9 @@ export const parseBunShellScriptFrontMatter = Effect.fnUntraced(function* (
     if (unsupported !== undefined)
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `.bun.sh front-matter field "${unsupported}:" at ${scriptPath} is not supported yet.`,
+          message: `.bun.sh front-matter field "${unsupported}:" at ${scriptPath} is not supported.`,
           commandId: "landofile.parse",
-          remediation: "Remove the field from the .bun.sh front-matter; this surface is not supported yet.",
+          remediation: "Remove the field from the .bun.sh front-matter; this surface is not supported.",
         }),
       );
   }
@@ -103,7 +104,7 @@ export const parseBunShellScriptFrontMatter = Effect.fnUntraced(function* (
     onExcessProperty: "error",
     errors: "all",
   }).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new BunShellScriptFrontMatterError({
           message: `.bun.sh front-matter at ${scriptPath} is malformed.`,

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -58,7 +59,7 @@ export const guardCoreReplacement = <A, E, R>(
     "meta:update",
     checkCoreReplacement(input).pipe(Effect.andThen(body)),
   ).pipe(
-    Effect.mapError((error) =>
+    mapFailures((error) =>
       error instanceof NotImplementedError
         ? new UpdatePermissionError({ message: error.message, remediation: error.remediation })
         : error,

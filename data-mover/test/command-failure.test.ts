@@ -1,12 +1,17 @@
 import { expect, test } from "bun:test";
 import { RedactionService } from "@lando/redaction/service";
 import {
+  FailureRoleAnnotation,
   annotateFailureRole,
+  encodeCommandResult,
   failureDefectCause,
   failureOutcomeFromCause,
+  identityRedactor,
   mergeFailure,
+  taggedErrorJson,
 } from "@lando/sdk/command-result";
-import { Cause, Effect, Exit, Stream } from "effect";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Context, Effect, Exit, Schema, Stream } from "effect";
 import { checkedTransferCommand } from "../src/command-failure.ts";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -19,21 +24,35 @@ const failed = async <A>(effect: Effect.Effect<A, unknown>) => {
 test.each([undefined, "peer", "rollback"] as const)(
   "sanitizes provider failures while preserving role %s",
   async (role) => {
-    const raw = Cause.fail({
-      _tag: "ProviderUnavailableError",
-      message: "PRIVATE",
-      cause: "PRIVATE",
-      details: { exitCode: 7, stderrTail: "PRIVATE" },
-    });
+    const raw = Cause.fail(
+      new ProviderUnavailableError({
+        providerId: "test",
+        operation: "runStream",
+        message: "PRIVATE",
+        cause: "PRIVATE",
+        details: { exitCode: 7, stderrTail: "PRIVATE" },
+        remediation: "Start the runtime, then retry.",
+      }),
+    );
     const source = Stream.failCause(role === undefined ? raw : annotateFailureRole(raw, role));
-    const outcome = await failed(checkedTransferCommand(source, "exec"));
+    const exit = await Effect.runPromiseExit(checkedTransferCommand(source, "exec", ["PRIVATE"]));
+    if (!Exit.isFailure(exit)) throw new Error("Expected transfer failure");
+    expect(
+      exit.cause.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([role]);
+    const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.error).toMatchObject({
       _tag: "DataTransferError",
       reason: "provider",
       exitCode: undefined,
       stderrTail: undefined,
+      cause: { _tag: "ProviderUnavailableError", message: "[redacted]" },
+      remediation: "Start the runtime, then retry.",
     });
     expect(JSON.stringify(outcome)).not.toContain("PRIVATE");
+    expect(JSON.stringify(taggedErrorJson(outcome.error))).not.toContain("PRIVATE");
   },
 );
 
@@ -59,6 +78,62 @@ test("preserves primary and cleanup reasons with distinct remediation", async ()
   ]);
   expect(JSON.stringify(outcome)).not.toContain("PRIVATE");
 });
+
+test.each([false, true])(
+  "encoded transfer failure keeps provider identity with live registry=%s",
+  async (live) => {
+    const secret = "transfer-authoritative-canary";
+    const late = "transfer-late-canary";
+    const original = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "exec",
+      message: `Cannot connect ${secret} ${late} https://user:transfer-url-canary@example.test`,
+      remediation: "Start the runtime and retry.",
+      cause: "nested-transfer-canary",
+    });
+    const effect = Effect.gen(function* () {
+      const service = yield* Effect.serviceOption(RedactionService);
+      const source = Stream.unwrap(
+        Effect.gen(function* () {
+          if (service._tag === "Some") yield* service.value.registerValues([late]);
+          return Stream.fail(original);
+        }),
+      );
+      return yield* checkedTransferCommand(source, "exec", [secret, ...(live ? [] : [late])]).pipe(
+        Effect.exit,
+      );
+    });
+    const exit = await Effect.runPromise(
+      live ? effect.pipe(Effect.provide(RedactionService.layer), Effect.scoped) : effect,
+    );
+    if (!Exit.isFailure(exit)) throw new Error("Expected transfer failure");
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({
+      cause: { _tag: original._tag },
+      remediation: original.remediation,
+    });
+    const encoded = await Effect.runPromise(
+      encodeCommandResult({
+        command: "transfer",
+        resultSchema: Schema.Void,
+        outcome,
+        redactor: identityRedactor,
+      }),
+    );
+    expect(JSON.parse(encoded)).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "DataTransferError",
+        cause: { _tag: original._tag, remediation: original.remediation },
+        remediation: original.remediation,
+      },
+    });
+    for (const value of [secret, late, "transfer-url-canary", "nested-transfer-canary"]) {
+      expect(encoded).not.toContain(value);
+      expect(JSON.stringify(taggedErrorJson(outcome.error))).not.toContain(value);
+    }
+  },
+);
 
 test.each(["exec", "run"])(
   "discards arbitrary stdout while preserving safe stderr for %s",

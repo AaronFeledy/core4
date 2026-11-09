@@ -25,30 +25,25 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
 import {
-  evaluateHostVar as evaluateHostVarEffect,
   resolveScriptPath,
   runHostScript as runHostScriptEffect,
   runHostToolingWith as runHostToolingWithEffect,
 } from "../../src/services/host-tooling-engine";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
 const runHostToolingWith = (...args: Parameters<typeof runHostToolingWithEffect>) =>
   runHostToolingWithEffect(...args).pipe(Effect.provide(testEnvironmentResolverLayer));
+const hostShellLayer = BunShellRunner.layerWithPrivateFileAccess(() => {
+  throw new TypeError("Interactive host tooling is unavailable in tests.");
+}).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
-  Layer.provide(
-    Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer, testEnvironmentResolverLayer),
-  ),
+  Layer.provide(Layer.mergeAll(hostShellLayer, BunProcessRunner.layer, testEnvironmentResolverLayer)),
 );
 const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
-  runHostScriptEffect(...args).pipe(
-    Effect.provide(Layer.merge(BunProcessRunner.layer, PrivateFileAccessService.layer)),
-  );
-const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
-  evaluateHostVarEffect(...args).pipe(
-    Effect.provide(Layer.merge(BunProcessRunner.layer, PrivateFileAccessService.layer)),
-  );
+  runHostScriptEffect(...args).pipe(Effect.provide(hostShellLayer));
 
 const providerId = ProviderId.make("lando");
 
@@ -160,11 +155,18 @@ type ShellExecCall = {
   readonly argv: ReadonlyArray<string>;
 };
 
+type ShellRunScriptCall = {
+  readonly path: string;
+  readonly argv: ReadonlyArray<string>;
+};
+
 const makeRecordingShell = (): {
   readonly shell: Context.Service.Shape<typeof ShellRunner>;
   readonly calls: () => ReadonlyArray<ShellExecCall>;
+  readonly runScriptCalls: () => ReadonlyArray<ShellRunScriptCall>;
 } => {
   const calls: ShellExecCall[] = [];
+  const runScriptCalls: ShellRunScriptCall[] = [];
   const shell: Context.Service.Shape<typeof ShellRunner> = ShellRunner.of({
     exec: (source: string, options?: ShellCommandOptions) =>
       Effect.sync(() => {
@@ -172,10 +174,14 @@ const makeRecordingShell = (): {
         return { exitCode: 0, stdout: "recorded", stderr: "" };
       }),
     run: (source, options) => shell.exec(source, options),
-    runScript: () => Effect.die("not used"),
+    runScript: (path, options) =>
+      Effect.sync(() => {
+        runScriptCalls.push({ path, argv: options?.argv ?? [] });
+        return { exitCode: 0, stdout: "recorded-script", stderr: "" };
+      }),
     interactive: () => Effect.die("not used"),
   });
-  return { shell, calls: () => calls };
+  return { shell, calls: () => calls, runScriptCalls: () => runScriptCalls };
 };
 
 describe("HostToolingEngine.layer", () => {
@@ -339,20 +345,25 @@ describe("HostToolingEngine.layer", () => {
     expect(recording.calls()).toEqual([]);
   });
 
-  test("decodes plain argv command arrays into argv host steps", async () => {
+  test("decodes plain argv command arrays and executes them through ProcessRunner instead of ShellRunner", async () => {
     // Given a commands-only argv array (not sh -c)
     const plan = makePlan([baseServicePlan("web", true)]);
     const recording = makeRecordingShell();
     const invocation: ToolingInvocation = {
       tool: "argv-only",
-      commands: [["printf", "%s", "from-argv"]],
+      commands: [["printf", "%s", "${X} $@ >&2"]],
     };
 
     // When the host engine falls back to commands
-    await Effect.runPromise(runHostToolingWith(recording.shell, invocation, plan, stubProvider));
+    const result = await Effect.runPromise(
+      runHostToolingWith(recording.shell, invocation, plan, stubProvider).pipe(
+        Effect.provide(BunProcessRunner.layer),
+      ),
+    );
 
-    // Then the step is argv-shaped (empty shell source, full argv)
-    expect(recording.calls()).toEqual([{ source: "", argv: ["printf", "%s", "from-argv"] }]);
+    // Then the real process receives literal bytes and the selected shell is not used.
+    expect(result).toMatchObject({ exitCode: 0, stdout: "${X} $@ >&2", stderr: "" });
+    expect(recording.calls()).toEqual([]);
   });
 
   test("prefers explicit hostSteps over commands when both are present", async () => {
@@ -394,7 +405,7 @@ describe("HostToolingEngine.layer", () => {
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingCompileError");
         if (failure.value._tag === "ToolingCompileError") {
-          expect(failure.value.message).toContain("positional");
+          expect(failure.value.message).toContain("$1 is not bound to forwarded arguments");
         }
       }
     }
@@ -468,6 +479,35 @@ describe("HostToolingEngine.layer", () => {
     }
     expect(result.value.exitCode).not.toBe(0);
     expect(result.value.stderr.length).toBeGreaterThan(0);
+  });
+  test("host layer uses the selected context ShellRunner for shell steps", async () => {
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const recording = makeRecordingShell();
+    const layer = HostToolingEngine.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(ShellRunner, recording.shell),
+          BunProcessRunner.layer,
+          testEnvironmentResolverLayer,
+        ),
+      ),
+    );
+    const result = await Effect.runPromise(
+      Effect.flatMap(ToolingEngine, (engine) =>
+        engine.run(
+          {
+            tool: "injected-shell",
+            commands: [],
+            hostSteps: [{ kind: "shell", source: "printf from-injected", argv: [] }],
+          },
+          plan,
+          stubProvider,
+        ),
+      ).pipe(Effect.provide(layer)),
+    );
+    expect(result).toMatchObject({ exitCode: 0, stdout: "recorded" });
+    expect(recording.calls()).toEqual([{ source: "printf from-injected", argv: [] }]);
+    expect(recording.runScriptCalls()).toEqual([]);
   });
 });
 
@@ -594,33 +634,23 @@ describe("runHostScript", () => {
   });
 });
 
-describe("evaluateHostVar", () => {
-  test("returns trimmed stdout for a successful expression", async () => {
-    const value = await Effect.runPromise(evaluateHostVar("printf 'abc\\n'"));
-    expect(value).toBe("abc");
-  });
-
-  test("honors cwd when evaluating", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "lando-host-var-cwd-"));
+describe("selected script runner", () => {
+  test("uses the injected ShellRunner.runScript after containment", async () => {
+    const base = await mkdtemp(join(tmpdir(), "lando-host-run-script-inject-"));
     try {
-      await writeFile(join(cwd, "marker.txt"), "marker-value");
-      const value = await Effect.runPromise(evaluateHostVar("cat marker.txt", { cwd }));
-      expect(value).toBe("marker-value");
+      const scriptPath = join(base, "say.bun.sh");
+      await writeFile(scriptPath, "echo -n should-not-run\n");
+      const recording = makeRecordingShell();
+      const result = await Effect.runPromise(
+        runHostScriptEffect(scriptPath, [base], { argv: ["a", "b"] }).pipe(
+          Effect.provideService(ShellRunner, recording.shell),
+        ),
+      );
+      expect(result).toEqual({ exitCode: 0, stdout: "recorded-script", stderr: "" });
+      expect(recording.calls()).toEqual([]);
+      expect(recording.runScriptCalls()).toEqual([{ path: await realpath(scriptPath), argv: ["a", "b"] }]);
     } finally {
-      await rm(cwd, { recursive: true, force: true });
-    }
-  });
-
-  test("fails with ShellExecError when the expression exits non-zero", async () => {
-    const exit = await Effect.runPromiseExit(evaluateHostVar("printf 'oh-no' 1>&2; exit 9"));
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.findErrorOption(exit.cause);
-      if (failure._tag === "Some") {
-        expect(failure.value._tag).toBe("ShellExecError");
-        expect(failure.value.exitCode).toBe(9);
-        expect(failure.value.stderr).toContain("oh-no");
-      }
+      await rm(base, { recursive: true, force: true });
     }
   });
 });

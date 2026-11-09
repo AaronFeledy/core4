@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { GpgAgentUnavailableError } from "@lando/sdk/errors";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -54,7 +55,7 @@ export const discoverHostGpgAgent = Effect.fnUntraced(function* (
   const run = (args: ReadonlyArray<string>) =>
     options.runner
       .run({ cmd: "gpgconf", args, timeoutMs: 5_000 })
-      .pipe(Effect.mapError((cause) => unavailable("gpg-missing", undefined, cause)));
+      .pipe(mapFailures((cause) => unavailable("gpg-missing", undefined, cause)));
   const path = yield* options.explicitSocket === undefined
     ? run(["--list-dirs", "agent-extra-socket"]).pipe(
         Effect.flatMap((result) =>

@@ -2,7 +2,7 @@
 id: mongodb
 provider: test
 timeout: 300000
-tags: [beta, docs, mongodb, service]
+tags: [docs, mongodb, service]
 ---
 
 # Add MongoDB
@@ -16,7 +16,7 @@ services:
     type: mongodb
 ```
 
-Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the app name.
+Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the folder's data name (the name this folder's data was first created under).
 
 ```yaml
 services:
@@ -72,17 +72,17 @@ lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="write">
-      <Verify command="lando mongosh --eval db.notes.insertOne({_id:'guide',value:'persisted'})" expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.insertOne({_id: 'guide', value: 'persisted'})"`} expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
     </Step>
     <Step name="read">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="stop-and-start">
       <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"command\":\"app:stop\",\"ok\":true" } }} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="read-persisted">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -138,7 +138,9 @@ This allows other services to connect over the app network, and it is what the d
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
-If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append `--config` to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
+If you also set `command:` or `entrypoint:` on the service, yours wins. Lando
+never appends `--config` to a command you wrote yourself, so pass it in your
+own command if you still want the file loaded.
 
 ### Loopback-only or TLS-only servers
 
@@ -187,9 +189,12 @@ Lando starts `mongod` with `--port 27018`, including when `config.server` is mou
 
 With `config.server` and no `port:`, Lando pins the default `27017` on its command line. With neither, Lando leaves the image's default command alone.
 
-If you author `command:` or `entrypoint:`, you own the daemon's flags. Include `--port 27018` in your own launcher; Lando won't append it for you.
+If you author `command:` or `entrypoint:`, you own the daemon's flags. Include
+`--port 27018` in your own launcher; Lando never appends it for you. When
+startup fails with this override, Lando includes a hint naming `--port 27018`.
+Check that your process binds the planned port.
 
-If MongoDB never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for observed ports and listener troubleshooting.
 
 Apply the change with `lando rebuild` on an existing app, or `lando start` on a fresh one. Then ask the server which port it parsed from its command line:
 
@@ -205,20 +210,20 @@ That prints `27018`, through a client that found the server on the planned port 
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="write">
-      <Verify command="lando mongosh --eval db.notes.insertOne({_id:'guide',value:'persisted'})" expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.insertOne({_id: 'guide', value: 'persisted'})"`} expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
     </Step>
     <Step name="read">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="listener">
-      <Verify command="lando mongosh --eval db.serverCmdLineOpts().parsed.net.port" expect={{ stdout: { regex: "\\b27018\\b" } }} />
+      <Verify command={`lando mongosh --eval "db.serverCmdLineOpts().parsed.net.port"`} expect={{ stdout: { regex: "\\b27018\\b" } }} />
     </Step>
     <Step name="stop-and-start">
       <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"command\":\"app:stop\",\"ok\":true" } }} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="read-persisted">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

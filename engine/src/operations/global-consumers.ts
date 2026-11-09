@@ -1,5 +1,5 @@
 import { GlobalAppError, causeMessage } from "@lando/sdk/errors";
-import type { AppPlan, ProviderId } from "@lando/sdk/schema";
+import { type AppPlan, type ProviderId, isActiveRunStatus, isIdleRunStatus } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 
@@ -36,9 +36,6 @@ export class GlobalConsumerProtectionError extends Schema.TaggedError<GlobalCons
   },
 ) {}
 
-const active = new Set(["running", "paused", "restarting", "starting", "healthy", "unhealthy"]);
-const inactive = new Set(["stopped", "exited", "dead", "created", "completed"]);
-
 /** Join fresh ownership observations to applied intent; missing evidence never proves absence. */
 export const resolveGlobalConsumerImpact = (input: {
   readonly providerId: ProviderId;
@@ -59,9 +56,8 @@ export const resolveGlobalConsumerImpact = (input: {
   });
   for (const observation of input.services) {
     if (String(observation.app) === "global") continue;
-    const state = observation.state ?? observation.status;
-    if (inactive.has(state)) continue;
-    if (!active.has(state)) {
+    if (isIdleRunStatus(observation.status)) continue;
+    if (!isActiveRunStatus(observation.status)) {
       uncertainties.add(`Runtime state for ${observation.app}/${observation.service} is unknown.`);
       continue;
     }
@@ -85,7 +81,7 @@ export const resolveGlobalConsumerImpact = (input: {
           other.app === observation.app &&
           other.appRoot === observation.appRoot &&
           other.service === observation.service &&
-          active.has(other.state ?? other.status),
+          isActiveRunStatus(other.status),
       ).length > 1
     )
       uncertainties.add(
@@ -100,11 +96,14 @@ export const resolveGlobalConsumerImpact = (input: {
         observation.appRoot === root &&
         observation.providerId === input.providerId &&
         !!observation.containerId &&
-        active.has(observation.state ?? observation.status),
+        isActiveRunStatus(observation.status),
     );
     if (running.length === 0) continue;
     const requirements = (plan.requires?.globalServices ?? []).filter((id) => selected.has(id));
-    const routed = selected.has(input.routerId) && routerEnabled(plan) && plan.routes.length > 0;
+    const routed =
+      routerEnabled(plan) &&
+      plan.routes.length > 0 &&
+      (plan.router?.id === undefined ? selected.has(input.routerId) : requirements.length > 0);
     if (requirements.length === 0 && !routed) continue;
     consumers.push({
       id: String(plan.id),
@@ -113,7 +112,9 @@ export const resolveGlobalConsumerImpact = (input: {
       root,
       provider: String(plan.provider),
       services: [...new Set(running.map((service) => String(service.service)))].sort(),
-      globalServices: [...new Set([...requirements, ...(routed ? [input.routerId] : [])])].sort(),
+      globalServices: [
+        ...new Set([...requirements, ...(routed && plan.router?.id === undefined ? [input.routerId] : [])]),
+      ].sort(),
       routes: routed ? [...new Set(plan.routes.map((route) => route.hostname))].sort() : [],
     });
   }
@@ -162,7 +163,10 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
       (plan) =>
         String(plan.id) !== "global" &&
         ((plan.requires?.globalServices ?? []).some((id) => selectedIds.has(id)) ||
-          (selectedIds.has(input.routerId) && routerEnabled(plan) && plan.routes.length > 0)),
+          (plan.router?.id === undefined &&
+            selectedIds.has(input.routerId) &&
+            routerEnabled(plan) &&
+            plan.routes.length > 0)),
     );
     if (
       providerId !== input.providerId &&

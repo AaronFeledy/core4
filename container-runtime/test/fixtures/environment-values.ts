@@ -8,8 +8,8 @@ import {
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../../src/engine-api.ts";
-import { commonContainerLabels } from "../../src/plan.ts";
 import { ownedNetworkInspection } from "../network-inspection-fixture.ts";
+import { commonContainerLabels } from "../support/service-creation.ts";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-10-23T00:00:00Z"),
@@ -61,6 +61,9 @@ export const fakeEngine = (existing?: AppPlan, initiallyRunning = true) => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return exists
             ? {

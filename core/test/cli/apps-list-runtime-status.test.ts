@@ -11,6 +11,7 @@ import { McpToolInputError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { appsListStatusFromInput, listSpec } from "../../src/cli/command-specs/apps/list.ts";
 import {
   appsFromContainerList,
@@ -26,7 +27,6 @@ import {
   renderAppsListResult,
 } from "../../src/cli/commands/list.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
-import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { applyJqToRedactedJsonLine } from "../../src/cli/jq/eval.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 

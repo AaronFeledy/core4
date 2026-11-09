@@ -17,6 +17,7 @@ import { type EventService, Renderer } from "@lando/sdk/services";
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
+import { RendererHost } from "./host.ts";
 import { type RendererIO, createStdioRendererIO } from "./io.ts";
 import * as RendererRuntime from "./runtime.ts";
 
@@ -129,8 +130,13 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
 export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandResultFormat) {
   const renderer = yield* Renderer;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-  const values = yield* redaction.payloadValues({ sourceEnv: process.env });
+  const sourceEnv = (yield* RendererHost)?.env ?? process.env;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv });
+  const bodyRedactor = yield* redaction.forProfile("secrets", {
+    sourceEnv,
+    excludeWholeTokenValues: true,
+  });
+  const values = yield* redaction.payloadValues({ sourceEnv });
   const encoder = new TextEncoder();
   const states = new Map<
     string,
@@ -153,9 +159,9 @@ export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandR
       if (textChunk.length === 0) return;
       const streamFrameOptions = {
         chunk: textChunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        ...(frame.source === undefined ? {} : { source: frame.source }),
-        redactor,
+        ...(frame.service === undefined ? {} : { service: redactor.redactString(frame.service) }),
+        ...(frame.source === undefined ? {} : { source: redactor.redactString(frame.source) }),
+        redactor: bodyRedactor,
       };
       const line =
         frame._tag === "stdout"

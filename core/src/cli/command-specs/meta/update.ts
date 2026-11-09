@@ -1,8 +1,10 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { Flags } from "../../spec/metadata";
 
 import {
+  type UpdateExecve,
   type UpdateOptions,
   type UpdateResult,
   UpdateResultSchema,
@@ -11,8 +13,12 @@ import {
 } from "@lando/engine/operations/update";
 import { StateStore } from "@lando/sdk/services";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
+import { execProcess } from "../../process-lifecycle";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf } from "../../spec/input-coercion";
+
+const execve: UpdateExecve = (input) =>
+  Effect.try({ try: () => execProcess(input), catch: (cause) => cause });
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   const flags = specFlagsOf(input);
@@ -24,14 +30,14 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
     ...(only === "core" || only === "plugins" ? { only } : {}),
     // The CLI shell owns process-entry facts; the engine operation must not
     // read process.argv itself (engine-closure), so supply the re-exec argv here.
-    selfUpdate: { argv: process.argv },
+    selfUpdate: { argv: process.argv, execve },
   };
 };
 
 export const runUpdateCommand = Effect.fn("UpdateCommand.run")(function* (input: unknown) {
   const runPluginUpdates = yield* makePluginUpdateRunner();
   const stateStore = yield* StateStore;
-  const handoff = makeUpdateHandoff(stateStore, process.env.LANDO_UPDATE_HANDOFF_TOKEN);
+  const handoff = makeUpdateHandoff(stateStore, (yield* CliInvocation).env.LANDO_UPDATE_HANDOFF_TOKEN);
   return yield* update({ ...updateOptionsFromInput(input), runPluginUpdates, handoff });
 });
 
@@ -73,6 +79,7 @@ export const renderUpdateResult = (result: UpdateResult): string => {
 export const updateSpec: LandoCommandSpec<UpdateResult> = {
   resultSchema: UpdateResultSchema,
   id: "meta:update",
+  onlineAcquisition: true,
   summary: "Update Lando core and plugins.",
   description: "Update Lando core and plugins.",
   namespace: "meta",

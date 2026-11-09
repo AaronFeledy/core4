@@ -27,6 +27,7 @@ const composeCerts = (config: Readonly<Record<string, unknown>> = {}, serviceNam
     },
     baseKind: "lando",
     appName: "certs-test",
+    appSlug: "certs-test",
     appRoot: "/srv/apps/certs-test",
     normalizedConfig: { type: "node:22" },
     features: [{ id: LANDO_CERTS_FEATURE_ID, config, definition: certsFeature() }],
@@ -138,6 +139,24 @@ describe("lando.certs feature", () => {
     expect(
       Schema.decodeSync(ServicePlan)(Schema.encodeSync(ServicePlan)(plan)).extensions["@lando/core/certs"],
     ).toBe("custom");
+  });
+
+  test("rejects certificate names that are not CertificateName", async () => {
+    const exit = await Effect.runPromiseExit(
+      composeCerts({
+        certPath: "/host/certs/generated.crt",
+        keyPath: "/host/certs/generated.key",
+        cn: "*-app.lndo.site",
+        sans: ["web", "*-app.lndo.site"],
+        caId: "mkcert",
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("expected feature failure");
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    expect(failure._tag).toBe("ServiceFeatureError");
+    expect(failure.feature).toBe(LANDO_CERTS_FEATURE_ID);
   });
 
   test("rejects malformed config through the feature schema", async () => {

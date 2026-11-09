@@ -2,7 +2,7 @@
 id: app-name-edge-cases
 provider: test
 timeout: 90000
-tags: [beta, docs, landofile, naming]
+tags: [docs, landofile, naming]
 ---
 
 # Name an app
@@ -78,3 +78,22 @@ Automatic default routes use `<service>.<slug>.<domain>`, where `<domain>` is `p
 Set `proxy.defaultDomain` to a plain DNS domain like `lndo.test`, without a scheme, port, path, or wildcard. `lando config set` rejects other values with an issue naming `proxy.defaultDomain`. See [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
 
 A 100-character lowercase name is preserved in `lando app:config`, but its runtime slug is the first 57 characters. The network and route stay valid instead of producing an overlong label.
+
+## Change an app's name
+
+In the same app folder, edit `name:` in `.lando.yml` (or `.lando.local.yml`), then start the app:
+
+```sh
+lando start
+lando info
+```
+
+Your data comes along. Lando replaces the old name's containers and networks, and the renamed app keeps this folder's volumes, home stores, default database names, and generated passwords. Those keep the **data name**: the name this folder's data was first created under. `lando info` shows it as `Data name` (`dataName` in JSON) when it differs from the app name, and services you add later use it too. Container names, hostnames, URLs, and `LANDO_APP_NAME` follow the new name.
+
+A whole-app `lando restart` or `lando rebuild` also handles the rename. If you select services with `--service`, first run `lando start` for the whole app. Changing providers still requires explicit teardown on the previous provider. If an accelerated start was interrupted, finish that start with the recorded app name and settings before renaming; the error identifies the app to restore.
+
+Renaming doesn't free the original name for another folder. A second app folder whose name matches this folder's data name is refused when it starts, because its volumes would collide with this folder's data; give it a different name.
+
+To start over under the current name, run `lando destroy --volumes`. It deletes this folder's data volumes and forgets its data name, so the next `lando start` uses the current name. Plain `lando destroy` keeps both.
+
+`lando info` lists URLs built from the new name, like `web.new-name.lndo.site`. Routes and certificates belong to the app folder, not the name, so `lando start` replaces the folder's earlier routes and hostnames built from the old name stop routing; you don't restart the proxy after a rename. Hostnames you authored without the app name keep routing because they're still in your Landofile. Route files written by development builds are named after the app instead, so `lando start` can't replace them and their hostnames keep routing until you remove them; if `lando doctor` reports `legacy-route-files`, see [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check).

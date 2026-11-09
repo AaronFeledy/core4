@@ -1,16 +1,21 @@
-import { Schema } from "effect";
+import { UnknownCommandError } from "@lando/sdk/errors";
 
 import { escapeDiagnosticText } from "./diagnostic-text";
 
-export class UnknownCommandError extends Schema.TaggedError<UnknownCommandError>()("UnknownCommandError", {
-  message: Schema.String,
-  commandToken: Schema.String,
-  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-}) {}
+export const UNKNOWN_COMMAND_FALLBACK = "Run `lando help --all` to list commands.";
 
-export const unknownCommandError = (commandToken: string, remediation?: string): UnknownCommandError =>
+export interface UnknownCommandGuidance {
+  readonly remediation?: string;
+  readonly suggestions?: ReadonlyArray<string>;
+}
+
+export const unknownCommandError = (
+  commandToken: string,
+  guidance: UnknownCommandGuidance = {},
+): UnknownCommandError =>
   new UnknownCommandError({
-    message: `Command ${escapeDiagnosticText(commandToken)} not found`,
+    message: `Unknown command "${escapeDiagnosticText(commandToken)}".`,
     commandToken,
-    remediation: remediation ?? "Run `lando help --all` to list commands.",
+    suggestions: [...(guidance.suggestions ?? [])],
+    remediation: guidance.remediation ?? UNKNOWN_COMMAND_FALLBACK,
   });

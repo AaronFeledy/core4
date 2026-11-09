@@ -92,6 +92,14 @@ describe("workflow performance report", () => {
     expect(evaluateWorkflowPerformanceReport(report(samples))).toEqual({
       exitCode: 1,
       reason: "workflow correctness or report plumbing failed",
+      failures: [
+        {
+          lane: "cold-first-start",
+          sample: workflowPerformanceSampleKey("cold-first-start", 1),
+          step: "start",
+          exitCode: 7,
+        },
+      ],
     });
     expect(evaluateWorkflowPerformanceReport(report([sample(0, "passed", 90_000)])).exitCode).toBe(0);
   });

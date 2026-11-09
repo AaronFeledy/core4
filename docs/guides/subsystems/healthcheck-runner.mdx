@@ -3,7 +3,7 @@ id: healthcheck-runner
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, healthcheck, provider-exec]
+tags: [docs, subsystems, healthcheck, provider-exec]
 ---
 
 # How the healthcheck runner gates readiness
@@ -31,7 +31,7 @@ services:
     readiness: false
 ```
 
-The engine owns readiness attempt execution. Service execution uses the selected `RuntimeProvider.exec`: strings use `sh -c`, argv stays exact, and an explicit `user` selects only the probe's container identity. Host execution uses `ShellRunner` with Bun Shell for strings or `ProcessRunner` for exact argv, with the CLI machine's current identity and the app root as cwd. It is not the provider VM or a sandbox. `kind: none` skips the command gate, not process-running or completion supervision. Authored HTTP/TCP kinds fail planning with `LandofileValidationError` before provider actions; use a command probe instead.
+The engine owns readiness attempt execution. Service execution uses the selected `RuntimeProvider.exec`: strings use `sh -c`, argv stays exact, and an explicit `user` selects only the probe's container identity. Host execution uses `ShellRunner` with Bun Shell for strings or `ProcessRunner` for exact argv, with the CLI machine's current identity and the app root as cwd. Planning rejects a host string that uses a form Bun Shell would misread, such as `${NAME}` or `>&2`, with `LandofileValidationError`. It is not the provider VM or a sandbox. `kind: none` skips the command gate, not process-running or completion supervision. Authored HTTP/TCP kinds fail planning with `LandofileValidationError` before provider actions; use a command probe instead.
 
 The runner probes immediately, including during `startPeriodSeconds`. Failed probes during that period do not consume retries; probes run at one-second intervals or `intervalSeconds` when shorter. The first passing probe returns immediately. After the start period, the runner permits `retries` attempts (at least one) at `intervalSeconds`, with `timeoutSeconds` per attempt.
 

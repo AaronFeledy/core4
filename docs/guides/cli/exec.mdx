@@ -3,22 +3,26 @@ id: exec
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 60000
-tags: [beta, docs, cli, exec]
+tags: [docs, cli, exec]
 ---
 
 # Run commands inside a service
 
 `lando exec` runs a one-off command inside a running service. At a terminal it doesn't attach your keyboard, so commands finish without waiting for input. Add `-i` when you want to type into the command. Piped or redirected input always reaches the command.
 
-Run these commands from your app directory on the host. A service name before `--` selects that service; otherwise Lando uses the primary service. Everything after `--` belongs to the command inside the service, including its flags. Replace `appserver`, the user, and the working directory with values from your app.
+Run these commands from your app directory on the host. Select a service with `-s` / `--service` or a service name before `--`; otherwise Lando uses the primary service. Everything after `--` belongs to the command inside the service, including its flags. Replace `appserver`, `db`, the user, and the working directory with values from your app.
 
 ```sh
 lando exec -- echo hello world
 lando exec -i -- cat
 lando exec appserver -- echo hello world
+lando exec -s db -- psql
+lando exec db -- psql
 lando exec --user www-data -- whoami
 lando exec --cwd /srv/app -- pwd
 ```
+
+Put Lando's own flags (`-s`, `-i`, `--user`, `--cwd`) before `--`. Without `--`, the command starts at the first other word, and every token from there on is the command's, including flags such as `--help`. An unknown flag in front of the command fails with `UnknownCliFlagError` before anything runs. A service name followed directly by a flag, as in `lando exec web -c 'echo hi'`, fails with `ToolingExecError` because Lando can't tell where the command starts; write `lando exec -s web -- sh -c 'echo hi'` instead.
 
 Open a shell with `lando ssh` or `lando shell --service <name>`.
 
@@ -35,7 +39,7 @@ The command gets a terminal only when your stdin and stdout are both terminals. 
 
 ## Back up and restore service files
 
-Redirected stdout is not a terminal, so `lando exec` allocates no PTY and streams raw bytes without keeping a second copy in its result. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. Human formats mask only registered secret values, even across chunk boundaries. Uncompressed tar files and text assignments such as `PASSWORD=public` keep their bytes unless a registered value appears in them. Terminal and redirected output follow the same rule.
+Redirected stdout is not a terminal, so `lando exec` allocates no PTY and streams raw bytes without keeping a second copy in its result. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. Human formats mask only known secret values, even across chunk boundaries. Uncompressed tar files and text assignments such as `PASSWORD=public` keep their bytes unless a known value appears in them. Terminal and redirected output follow the same rule.
 
 These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
 
@@ -104,9 +108,21 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 `app:exec` sets its own command exit code to the executed command's `exitCode`. A non-zero result is mirrored onto the CLI process, so `lando exec` propagates the target command's failure to the shell.
 
+## Interrupt a command
+
+At a terminal, Ctrl-C reaches the command through its terminal, the same as in any shell.
+
+Without a terminal, when a script, editor task, CI step, or agent runs `lando exec` and sends it `SIGINT` or `SIGTERM`, Lando stops the command inside the container along with everything it started, waits for them to exit, and then exits `130` for `SIGINT` or `143` for `SIGTERM` with a `CommandInterruptedError`. A port the command was listening on is free for the next run, so you don't need to hunt down leftover processes or restart the service. When the command exits on its own, processes it deliberately backgrounded keep running, as with `docker exec`.
+
+If Lando cannot set up that supervision for a command, it fails with a tagged error and remediation before the command runs rather than running it unsupervised. On native Windows with the default `lando` provider, non-TTY exec does not yet get this cleanup.
+
+The same rules apply to tooling commands, `lando ssh -- <command>`, and `lando run`.
+
 ## Masked output
 
 Human modes for `lando exec`, tooling, and `lando run` mask only known secret values on the live byte stream. Pattern classes stay off that path so binary dumps keep their shape. `lando logs` and other structured surfaces still use the full secrets profile. The service itself still gets the real value.
+
+A secret-store value is masked wherever it appears, even inside a longer word. A password written as a plain literal in a committed YAML Landofile layer is masked only where it stands alone as a whole token: `PASSWORD=wordpress` and `user:wordpress@host` are masked, while `wp-content/plugins/wordpress-seo` and `/srv/wordpress/` print as written. Copies of that value in other plan inputs keep the whole-token rule. Other collected values, including passwords that come only from an env file or a generator, are masked everywhere. Because a whole-token value needs the next byte to decide, the stream may hold back at most the length of the longest known value before printing. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where) for the token rules and which sources fall into each mode.
 
 Lando does not add its published defaults, `lando` and `landolando`, to the list of known secret values just because they appear under a sensitive configuration key. The same exception applies to a database password or root password that exactly matches its own user or database name. For example, with `creds: { user: magento, password: magento, database: magento }`, the word `magento` remains readable in package names and paths.
 

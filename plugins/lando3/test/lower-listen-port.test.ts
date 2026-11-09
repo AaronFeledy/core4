@@ -25,6 +25,13 @@ test.each([
   ["mssql:2022", "MSSQL_TCP_PORT", 1435],
   ["rabbitmq", "RABBITMQ_NODE_PORT", 5673],
   ["phpmyadmin:5", "APACHE_PORT", 8081],
+  ["node:22", "PORT", 8081],
+  ["python:3.12", "PORT", 8081],
+  ["ruby:3.3", "PORT", 8081],
+  ["go:1.22", "PORT", 8081],
+  ["dotnet:8.0", "ASPNETCORE_HTTP_PORTS", 8081],
+  ["elasticsearch:8", "http.port", 9201],
+  ["opensearch:2", "http.port", 9201],
 ] as const)("moves the native listener variable for %s", async (type, variable, port) => {
   // Given
   const text = `services: {server: {type: ${type}, environment: {${variable}: "${port}"}}}`;
@@ -136,21 +143,21 @@ test.each([
   expect(result.outputs[0]?.fragment).toHaveProperty("services.db.ports", [published]);
 });
 
-test.each([
-  ["apache", "APACHE_PORT"],
-  ["node:22", "PORT"],
-] as const)("leaves unrelated environment intent on %s", async (type, variable) => {
-  // Given
-  const text = `services: {web: {type: "${type}", environment: {${variable}: 8081}}}`;
-  // When
-  const result = await translate(text);
-  // Then
-  expect(result.outputs[0]?.fragment).toMatchObject({
-    services: { web: { type, environment: { [variable]: "8081" } } },
-  });
-  expect(result.outputs[0]?.fragment).not.toHaveProperty("services.web.port");
-  expect(result.diagnostics).toEqual([]);
-});
+test.each([["apache", "APACHE_PORT"]] as const)(
+  "leaves unrelated environment intent on %s",
+  async (type, variable) => {
+    // Given
+    const text = `services: {web: {type: "${type}", environment: {${variable}: 8081}}}`;
+    // When
+    const result = await translate(text);
+    // Then
+    expect(result.outputs[0]?.fragment).toMatchObject({
+      services: { web: { type, environment: { [variable]: "8081" } } },
+    });
+    expect(result.outputs[0]?.fragment).not.toHaveProperty("services.web.port");
+    expect(result.diagnostics).toEqual([]);
+  },
+);
 
 test("publishes the base listener when portforward is authored only in the local layer", async () => {
   // Given

@@ -3,7 +3,10 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import { sha256Hex } from "@lando/sdk/digest";
 import { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
-import type { AppCommandIndexPayload } from "../../../src/cache/command-index.ts";
+import {
+  type AppCommandIndexPayload,
+  COMMAND_INDEX_SCHEMA_VERSION,
+} from "../../../src/cache/command-index.ts";
 
 export const input = Result.getOrThrowWith(
   normalizeToolingInput("deploy", {
@@ -22,7 +25,7 @@ export const input = Result.getOrThrowWith(
 export const encodedInput = Schema.encodeSync(ToolingInputDeclaration)(input);
 export const entry = { id: "app:deploy", summary: "Deploy", hidden: false, service: "appserver", input };
 export const app = {
-  schemaVersion: 6,
+  schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
   landoVersion: "4.0.0",
   appName: "codec",
   sourceFile: "/app/.lando.yml",
@@ -43,10 +46,10 @@ export const app = {
 } satisfies AppCommandIndexPayload;
 
 // Deliberately bypass the typed encoder to model untrusted persisted v8 objects.
-export const abi6Bytes = (magic: "LCAC", payload: unknown): Uint8Array => {
+export const currentAbiBytes = (magic: "LCAC", payload: unknown): Uint8Array => {
   const header = Buffer.alloc(12);
   header.write(magic);
-  header.writeBigUInt64LE(6n, 4);
+  header.writeBigUInt64LE(COMMAND_INDEX_SCHEMA_VERSION, 4);
   return Buffer.concat([header, serialize(payload)]);
 };
 

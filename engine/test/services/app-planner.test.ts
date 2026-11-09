@@ -377,6 +377,7 @@ const socketOnlyServiceType = makeLegacyServiceTypeFake({
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "socket-only",
+      artifact: { kind: "ref", ref: "alpine:3.22" },
       provider,
       primary,
       ...(service.user === undefined ? {} : { user: service.user }),
@@ -404,6 +405,7 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "published-endpoint",
+      artifact: { kind: "ref", ref: "alpine:3.22" },
       provider,
       primary,
       environment: {},
@@ -704,7 +706,7 @@ describe("AppPlannerLayer.layer", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "scanner-type-plan",
       runtime: 4,
-      services: { worker: { type: serviceType.id, home: false } },
+      services: { worker: { type: serviceType.id, image: "alpine:3.22", home: false } },
     });
     // When
     const appPlan = await Effect.runPromise(
@@ -959,7 +961,7 @@ describe("AppPlannerLayer.layer", () => {
           {
             id: "authored-artifact:1",
             phase: "build",
-            command: ["sh", "-lc", "install-dependencies"],
+            command: ["sh", "-c", "install-dependencies"],
           },
         ],
       });
@@ -1024,8 +1026,7 @@ describe("AppPlannerLayer.layer", () => {
             scenario.entries.map((entry, index) => ({
               id: `authored-${phase}:${index + 1}`,
               phase: phase === "artifact" ? "build" : "app",
-              command:
-                phase === "artifact" ? ["sh", "-lc", entry.run] : { command: ["sh", "-lc", entry.run] },
+              command: phase === "artifact" ? ["sh", "-c", entry.run] : { command: ["sh", "-c", entry.run] },
               ...("user" in entry ? { user: entry.user } : {}),
             })),
           );
@@ -1041,7 +1042,7 @@ describe("AppPlannerLayer.layer", () => {
         ...socketOnlyServiceType.testFeature,
         apply: Effect.fnUntraced(function* (ctx) {
           yield* socketOnlyServiceType.testFeature.apply(ctx);
-          ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-lc", "a"] });
+          ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-c", "a"] });
           ctx.setUser("node");
         }),
       };
@@ -1072,8 +1073,8 @@ describe("AppPlannerLayer.layer", () => {
         appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"],
       ).toMatchObject({
         buildSteps: [
-          { id: "feature-build", phase: "build", command: ["sh", "-lc", "a"], user: "node" },
-          { id: "authored-artifact:1", phase: "build", command: ["sh", "-lc", "authored"], user: "node" },
+          { id: "feature-build", phase: "build", command: ["sh", "-c", "a"], user: "node" },
+          { id: "authored-artifact:1", phase: "build", command: ["sh", "-c", "authored"], user: "node" },
         ],
       });
     });
@@ -1099,8 +1100,8 @@ describe("AppPlannerLayer.layer", () => {
       expect(extension).toMatchObject({
         buildSteps: [
           { id: "lando.boot:scaffold", phase: "build" },
-          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "npm ci"] } },
-          { id: "authored-app:2", phase: "app", command: { command: ["sh", "-lc", "npm run build"] } },
+          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "npm ci"] } },
+          { id: "authored-app:2", phase: "app", command: { command: ["sh", "-c", "npm run build"] } },
         ],
       });
     });
@@ -1146,14 +1147,14 @@ describe("AppPlannerLayer.layer", () => {
         {
           id: "authored-artifact:1",
           phase: "build",
-          command: ["sh", "-lc", "artifact-one"],
+          command: ["sh", "-c", "artifact-one"],
         },
         {
           id: "authored-artifact:2",
           phase: "build",
-          command: ["sh", "-lc", "artifact-two"],
+          command: ["sh", "-c", "artifact-two"],
         },
-        { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "app-one"] } },
+        { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "app-one"] } },
       ]);
     });
   });
@@ -1273,7 +1274,7 @@ describe("AppPlannerLayer.layer", () => {
       ).toMatchObject({
         buildSteps: [
           { id: "lando.boot:scaffold", phase: "build" },
-          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "echo ready"] } },
+          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "echo ready"] } },
         ],
       });
     });
@@ -1367,7 +1368,7 @@ describe("AppPlannerLayer.layer", () => {
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
-              services: { worker: { type: serviceType.id, home: false } },
+              services: { worker: { type: serviceType.id, image: "alpine:3.22", home: false } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
@@ -1401,7 +1402,7 @@ describe("AppPlannerLayer.layer", () => {
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
-              services: { worker: { type: serviceType.id, home: false } },
+              services: { worker: { type: serviceType.id, image: "alpine:3.22", home: false } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
@@ -1455,6 +1456,7 @@ describe("AppPlannerLayer.layer", () => {
           capabilities,
         );
         const inspected: string[] = [];
+        await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(appPlan, { reconcile: true })));
         const provider = {
           ...TestRuntimeProvider,
           capabilities,
@@ -2445,7 +2447,11 @@ describe("AppPlannerLayer.layer", () => {
       const serviceFeature: ServiceFeatureDefinition = {
         id: "test.service-feature",
         priority: 100,
-        apply: (ctx) => Effect.sync(() => ctx.addEnv("SERVICE_FEATURE_COMPOSED", "1")),
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.setArtifact({ kind: "ref", ref: "alpine:3.22" });
+            ctx.addEnv("SERVICE_FEATURE_COMPOSED", "1");
+          }),
       };
       const serviceType: ServiceType = {
         id: "feature-backed",
@@ -2541,6 +2547,7 @@ describe("AppPlannerLayer.layer", () => {
           Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "build-step-backed",
+            artifact: { kind: "ref", ref: "alpine:3.22" },
             provider,
             primary,
             environment: {},
@@ -3549,9 +3556,12 @@ describe("AppPlannerLayer.layer", () => {
       });
 
       const storeNames = appPlan.stores.map((s) => s.name);
-      expect(storeNames).toContain("composeapp-worker-cache");
-      expect(storeNames).toContain("composeapp-worker-state");
-      expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
+      expect(storeNames).toContain("lando-composeapp_worker-cache");
+      expect(storeNames).toContain("lando-composeapp_worker-state");
+      expect(appPlan.stores.filter((s) => s.name.startsWith("lando-composeapp_"))).toEqual([
+        { name: "lando-composeapp_worker-cache", scope: "app", kind: "data" },
+        { name: "lando-composeapp_worker-state", scope: "app", kind: "data" },
+      ]);
     });
   });
 
@@ -3637,7 +3647,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.stores.map((store) => store.name)).toEqual(
         expect.arrayContaining(["lando-cache-var-cache", "extra-data"]),
       );
-      expect(appPlan.stores.some((store) => store.name === "overlapapp-worker-cache")).toBe(false);
+      expect(appPlan.stores.some((store) => store.name === "lando-overlapapp_worker-cache")).toBe(false);
     });
   });
 
@@ -3898,9 +3908,9 @@ describe("AppPlannerLayer.layer", () => {
 
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
-        "shadowapp-web-app-node-modules-ad806e3f",
-        "shadowapp-web-app-tmp-43bdc5ce",
-        "shadowapp-web-app-vendor-64784057",
+        "lando-shadowapp--web--shadow--app-node-modules-ad806e3f",
+        "lando-shadowapp--web--shadow--app-tmp-43bdc5ce",
+        "lando-shadowapp--web--shadow--app-vendor-64784057",
       ]);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
 
@@ -3939,9 +3949,9 @@ describe("AppPlannerLayer.layer", () => {
 
       const namesUnderscored = planUnderscored.stores.map((s) => s.name);
       const namesHyphenated = planHyphenated.stores.map((s) => s.name);
-      expect(namesUnderscored).toContain("shadowapp-web-app-node-modules-ad806e3f");
-      expect(namesHyphenated).toContain("shadowapp-web-app-node-modules-6a42fc95");
-      expect(namesUnderscored).not.toContain("shadowapp-web-app-node-modules-6a42fc95");
+      expect(namesUnderscored).toContain("lando-shadowapp--web--shadow--app-node-modules-ad806e3f");
+      expect(namesHyphenated).toContain("lando-shadowapp--web--shadow--app-node-modules-6a42fc95");
+      expect(namesUnderscored).not.toContain("lando-shadowapp--web--shadow--app-node-modules-6a42fc95");
     });
   });
 
@@ -4321,7 +4331,11 @@ describe("AppPlannerLayer.layer", () => {
       const resolutionFeature: ServiceFeatureDefinition = {
         id: "test.resolution-feature",
         priority: 700,
-        apply: (ctx) => Effect.sync(() => ctx.addEnv("RESOLUTION_FEATURE_APPLIED", "1")),
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.setArtifact({ kind: "ref", ref: "alpine:3.22" });
+            ctx.addEnv("RESOLUTION_FEATURE_APPLIED", "1");
+          }),
       };
       const serviceType: ServiceType = {
         id: "base-default-backed",
@@ -4491,7 +4505,12 @@ describe("AppPlannerLayer.layer", () => {
               name: "myapp",
               runtime: 4,
               services: {
-                [ServiceName.make("api")]: { type: serviceType.id, primary: true, home: false },
+                [ServiceName.make("api")]: {
+                  type: serviceType.id,
+                  image: "alpine:3.22",
+                  primary: true,
+                  home: false,
+                },
               },
             },
             providerLandoCapabilities,
@@ -4528,7 +4547,11 @@ describe("AppPlannerLayer.layer", () => {
       const compositionGateFeature: ServiceFeatureDefinition = {
         id: "test.composition-gate",
         priority: 900,
-        apply: (ctx) => Effect.sync(() => ctx.addEnv("COMPOSITION_GATE", "1")),
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.setArtifact({ kind: "ref", ref: "alpine:3.22" });
+            ctx.addEnv("COMPOSITION_GATE", "1");
+          }),
       };
       const serviceType: ServiceType = {
         id: "base-default-ids-only",
@@ -4701,7 +4724,7 @@ describe("AppPlannerLayer.layer", () => {
       const landofile: LandofileShape = {
         name: "feature-flip-app",
         runtime: 4,
-        services: { [ServiceName.make("web")]: { type: serviceType.id, home: false } },
+        services: { [ServiceName.make("web")]: { type: serviceType.id, image: "alpine:3.22", home: false } },
       };
 
       try {
@@ -5551,6 +5574,7 @@ describe("Compose runtime knobs", () => {
       Schema.decodeUnknownSync(ServicePlan)({
         name: ServiceName.make(name),
         type: "knob-injecting",
+        artifact: { kind: "ref", ref: "alpine:3.22" },
         provider,
         primary,
         environment: {},

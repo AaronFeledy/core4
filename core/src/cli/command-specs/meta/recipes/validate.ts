@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -15,6 +16,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,
   id: "meta:recipes:validate",
+  onlineAcquisition: true,
   mcpAllowed: true,
   summary: "Validate a recipe.yml against the published schema.",
   namespace: "meta",
@@ -38,7 +40,7 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
         }),
       );
     }
-    return recipesValidate(path, { cwd: process.cwd() });
+    return Effect.flatMap(CliInvocation, ({ cwd }) => recipesValidate(path, { cwd }));
   },
   render: (result) => renderRecipesValidateResult(result),
 };

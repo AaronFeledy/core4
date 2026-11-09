@@ -3,7 +3,7 @@ id: install-from-npm
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, npm]
+tags: [docs, plugins, npm]
 ---
 
 # Install a plugin from npm
@@ -17,7 +17,7 @@ it skips the trust prompt and saves the package name.
 lando plugin:add @lando/plugin-php --trust
 ```
 
-Only npm registry specifications are supported in this Beta. Git URLs, tarball
+Only npm registry specifications are supported. Git URLs, tarball
 URLs, and `file:` paths fail with `NotImplementedError`. To develop a checkout,
 use [Link a local plugin](./link-local-plugin.mdx).
 
@@ -36,6 +36,14 @@ trust or `--trust`, behavior depends on the package: a package with a non-empty
 without that script takes the trust-prompt path and fails with
 `InteractionRequiredError` when no interaction is available. See
 [Trust plugin postinstall](./trust-postinstall.mdx).
+
+Lando checks the downloaded tarball against the first hash in the registry's
+`dist.integrity` before anything is unpacked. When that hash is missing,
+malformed, or uses an algorithm Lando doesn't support, it checks the older
+sha1 `shasum` instead. A package the registry publishes neither usable value
+for fails the `verify` step; so does a tarball that doesn't match. The verified package is
+kept in the shared source store under your user cache root and copied from
+there into the install.
 
 Packages land at `<userDataRoot>/plugins/<name>/<version>/`. A directory that already exists is left in place.
 

@@ -14,9 +14,8 @@ import {
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { APPLY_REMEDIATION, bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -27,7 +26,7 @@ const metadata = {
   source: "container-runtime/bring-up-recreate.test.ts",
   runtime: 4 as const,
 };
-const containerName = "lando-recreate-ports-web";
+const containerName = "lando-recreate-ports--web";
 
 const hostProxySessionDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
 const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
@@ -201,6 +200,9 @@ const makeFakeApi = (input: {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
@@ -771,7 +773,24 @@ describe("Podman publish-port recreate", () => {
   test("Given a fingerprint mismatch and a failed remove, When bringing up, Then start fails instead of keeping old PortBindings", async () => {
     // Given: existing container still publishes 18080; planned host port is 38080; DELETE is rejected.
     const fake = makeFakeApi({ deleteStatus: 409 });
-    const plan = planWithHostPort(38080);
+    const original = planWithHostPort(38080);
+    const plan = {
+      ...original,
+      services: Object.fromEntries(
+        Object.entries(original.services).map(([name, service]) => [
+          name,
+          {
+            ...service,
+            listenerAuthority: {
+              owner: "launcher" as const,
+              daemon: "node",
+              port: 3000,
+              setting: "--port 3000",
+            },
+          },
+        ]),
+      ),
+    };
 
     // When
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
@@ -781,7 +800,12 @@ describe("Podman publish-port recreate", () => {
       ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
       : [];
     expect(failures).toContainEqual(
-      expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.remove", service: "web" }),
+      expect.objectContaining({
+        _tag: "ServiceStartError",
+        operation: "bringUp.remove",
+        service: "web",
+        remediation: APPLY_REMEDIATION,
+      }),
     );
     expect(createCalls(fake.calls)).toEqual([]);
   });
@@ -992,7 +1016,7 @@ describe("Podman publish-port recreate", () => {
 
     const fake = makeFakeApi({
       deleteStatus: 204,
-      existingContainerName: "lando-global-web",
+      existingContainerName: "lando-global--web",
       existingPlan: plan,
     });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));

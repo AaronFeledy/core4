@@ -26,8 +26,7 @@ const provider = {
       app: target.app,
       service: target.service,
       providerId: ProviderId.make("lando"),
-      status: "running",
-      state: "running",
+      status: "running" as const,
       publications: { status: "present" as const, bindings: [] },
     }),
 };
@@ -46,7 +45,7 @@ const router = Layer.succeed(
   RouterService,
   RouterService.of({
     ...makeTestRouterService(),
-    observeRoutes: (_app, routes) => {
+    observeRoutes: (_owner, routes) => {
       const publications = routes.flatMap((route) => {
         const schemes = route.scheme === "both" ? (["http", "https"] as const) : [route.scheme];
         return schemes.map((scheme) => ({
@@ -84,8 +83,8 @@ mock.module("../../../src/runtime/layer.ts", () => ({
         const service = yield* RouterService;
         return RouterService.of({
           ...service,
-          observeRoutes: (app, routes) =>
-            service.observeRoutes(app, routes).pipe(
+          observeRoutes: (owner, routes) =>
+            service.observeRoutes(owner, routes).pipe(
               Effect.map((result) => ({
                 ...result,
                 configuredAuthorities: result.configuredAuthorities.map((authority) => ({

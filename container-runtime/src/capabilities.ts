@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect";
+import { mapFailures } from "@lando/sdk/command-result";
+import { Schema } from "effect";
 
 import { ProviderCapabilityError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
@@ -9,13 +10,14 @@ import {
   type ProviderCapabilities as ProviderCapabilitiesShape,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
+import { redactDetails, standaloneSecretsRedactor } from "./redact.ts";
 
 export type HostProxyCapabilities = NonNullable<ProviderCapabilitiesShape["hostProxy"]>;
 export type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
 
 export const decodeProviderCapabilitiesFor = (providerId: string) => (input: unknown) =>
   Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ProviderCapabilityError({
           providerId,
@@ -23,7 +25,9 @@ export const decodeProviderCapabilitiesFor = (providerId: string) => (input: unk
           message: `provider-${providerId} returned invalid ProviderCapabilities.`,
           capability: "ProviderCapabilities",
           requiredValue: "@lando/sdk/schema ProviderCapabilities",
-          actualValue: input,
+          ...(input === undefined
+            ? {}
+            : { actualValue: redactDetails(input, standaloneSecretsRedactor({})) }),
           cause,
           remediation:
             "Choose a provider that supports `ProviderCapabilities`, or remove that requirement from the app.",

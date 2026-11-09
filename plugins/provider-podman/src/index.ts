@@ -1,5 +1,6 @@
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
+import { mapFailures } from "@lando/sdk/command-result";
 
 /**
  * `@lando/provider-podman` — opt-in RuntimeProvider for a user-installed
@@ -688,7 +689,7 @@ const assembleRuntimeProvider = (
         }),
       ),
     ),
-    Effect.mapError((cause) => {
+    mapFailures((cause) => {
       if (cause instanceof PodmanServerVersionUnsupportedError) return cause;
       if (cause instanceof ProviderUnavailableError) {
         if ((family === "darwin" || family === "win32") && isLikelyMachineNotRunning(cause)) {
@@ -710,6 +711,10 @@ const assembleRuntimeProvider = (
   return Effect.gen(function* () {
     yield* conflictCheck;
     const { serverVersion, capabilities: resolvedCapabilities, logSourceBinding } = yield* gatedRuntime;
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const agentBridge = yield* resolvePodmanAgentBridge({ ...options, platform });
     const planState = makeProviderPlanState({
       ctx: PODMAN_CTX,
@@ -757,10 +762,19 @@ const assembleRuntimeProvider = (
             dialect: libpodWaitDialect,
             ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           }),
-        exec: (plan, target, command) => exec(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+        exec: (plan, target, command) =>
+          exec(plan, target, command, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            ...execHelper,
+          }),
         execStream: (plan, target, command) =>
-          execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
-        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
+          execStream(plan, target, command, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            ...execHelper,
+          }),
+        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX, ...execHelper }),
       },
     });
 
@@ -821,6 +835,7 @@ const assembleRuntimeProvider = (
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: podmanApi,
           ctx: PODMAN_CTX,
+          ...execHelper,
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
           platform,
           daemonUrl: socketPath,
@@ -902,7 +917,8 @@ const assembleRuntimeProvider = (
                 ...snapshot,
                 appRoot: plan.root,
                 providerId: providerIdBranded,
-                labels: scratchLabelsForPlan(plan),
+                // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
+                labels: snapshot.labels ?? scratchLabelsForPlan(plan),
               })),
             ),
           ),

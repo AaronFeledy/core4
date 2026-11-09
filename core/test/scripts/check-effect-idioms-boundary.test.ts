@@ -215,6 +215,79 @@ const failingFixtures = [
 ] as const;
 
 describe("effect idioms boundary lint gate", () => {
+  test("rejects error mapping forms in every shipped source root and accepts SDK helpers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-provider-mapping-"));
+    const prefixes = [
+      "container-runtime/src",
+      "sdk/src",
+      "sdk/src/test",
+      "core/src",
+      "engine/src/operations",
+      "landofile/src",
+      "plugins/proxy-traefik/src",
+      "plugins/sql/src",
+    ];
+    const forms = [
+      'import { Effect } from "effect";\nEffect.mapError(value, f);',
+      'import { Effect } from "effect";\nvalue.pipe(Effect.mapError(f));',
+      'import { Stream } from "effect";\nStream.mapError(value, f);',
+      'import { Stream } from "effect";\nvalue.pipe(Stream.mapError(f));',
+      'import * as Fx from "effect/Effect";\nconst mapper = Fx.mapError;',
+      'import * as S from "effect/Stream";\nconst mapper = S.mapError;',
+      'import { mapError as map } from "effect/Effect";\nmap(value, f);',
+      'import { mapError } from "effect/Stream";\nmapError(f);',
+      'import { Effect } from "effect";\nconst { mapError } = Effect; mapError(value, f);',
+      'import { Stream } from "effect";\nconst { mapError: map } = Stream; map(value, f);',
+    ];
+    try {
+      for (const prefix of prefixes) {
+        for (const [index, code] of forms.entries()) await write(root, `${prefix}/banned-${index}.ts`, code);
+        await write(
+          root,
+          `${prefix}/supported.ts`,
+          'import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";\nmapFailures(value, f); stream.pipe(mapStreamFailures(f));',
+        );
+      }
+      for (const [index, code] of forms.entries()) await write(root, `scripts/allowed-${index}.ts`, code);
+      await write(
+        root,
+        "sdk/src/other-idioms.ts",
+        'import { Data } from "effect";\nData.Error(); Date.now();',
+      );
+      await write(
+        root,
+        "container-runtime/src/other-idioms.ts",
+        'import { Cause, Data, Effect } from "effect";\nData.Error(); Cause.combine(a, b); Date.now(); const work = () => Effect.gen(function* () {}); export const FooLive = {}; promise.catch(() => null);',
+      );
+
+      const result = await checkEffectIdiomsBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders
+          .map((offender) => ({
+            file: relative(root, offender.file).replaceAll("\\", "/"),
+            line: offender.line,
+            match: offender.match,
+          }))
+          .sort((a, b) => a.file.localeCompare(b.file)),
+      ).toEqual(
+        prefixes
+          .flatMap((prefix) =>
+            forms.map((_, index) => ({
+              file: `${prefix}/banned-${index}.ts`,
+              line: 2,
+              match:
+                "Use mapFailures/mapStreamFailures from @lando/sdk/command-result: Effect 4 mapError keeps only the first failure and drops cleanup reasons, defects, and interrupts.",
+            })),
+          )
+          .sort((a, b) => a.file.localeCompare(b.file)),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("keeps the public gate messages stable", () => {
     expect(effectIdiomsRule.passMessage).toBe("Effect idioms boundary check passed.");
     expect(effectIdiomsRule.failureHeadline).toBe(

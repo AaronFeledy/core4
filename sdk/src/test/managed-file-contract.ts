@@ -1,4 +1,5 @@
 import { type Context, Effect, Fiber, Result } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import type { ManagedFileError } from "../errors/index.ts";
 import type {
@@ -94,8 +95,8 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
   const createFile = managedContractTextFile("create.txt", "v1\n");
   const plan: ManagedFilePlan = yield* service
     .plan([createFile])
-    .pipe(Effect.mapError(failWith("plan resolves for a new file")));
-  const created = yield* apply([createFile]).pipe(Effect.mapError(failWith("apply creates a new file")));
+    .pipe(mapFailures(failWith("plan resolves for a new file")));
+  const created = yield* apply([createFile]).pipe(mapFailures(failWith("apply creates a new file")));
   yield* requireManagedFileContract(
     plan.entries[0]?.action === "create" && created.entries[0]?.action === "create",
     "plan and apply agree the first write is a create",
@@ -107,7 +108,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
     "the created file exists in the working tree",
     createdContent,
   );
-  const statusAfterCreate = yield* service.status.pipe(Effect.mapError(failWith("status resolves")));
+  const statusAfterCreate = yield* service.status.pipe(mapFailures(failWith("status resolves")));
   yield* requireManagedFileContract(
     statusAfterCreate.some(
       (info: ManagedFileInfo) =>
@@ -119,7 +120,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
 
   // 2. update replaces prior content wholesale.
   const updateFile = managedContractTextFile("create.txt", "v2\n");
-  const updated = yield* apply([updateFile]).pipe(Effect.mapError(failWith("apply updates a managed file")));
+  const updated = yield* apply([updateFile]).pipe(mapFailures(failWith("apply updates a managed file")));
   yield* requireManagedFileContract(
     updated.entries[0]?.action === "update",
     "changed content yields an update",
@@ -133,7 +134,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
   );
 
   // 3. identical re-apply is skip-unchanged.
-  const skipped = yield* apply([updateFile]).pipe(Effect.mapError(failWith("re-apply resolves")));
+  const skipped = yield* apply([updateFile]).pipe(mapFailures(failWith("re-apply resolves")));
   yield* requireManagedFileContract(
     skipped.entries[0]?.action === "skip-unchanged",
     "an identical re-apply is skip-unchanged",
@@ -143,7 +144,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
   // 4. an in-place user edit is reported as a conflict.
   yield* harness.seed("create.txt" as PortablePath, `${updatedContent ?? ""}tampered\n`);
   const conflicted = yield* apply([updateFile]).pipe(
-    Effect.mapError(failWith("apply over a user edit resolves")),
+    mapFailures(failWith("apply over a user edit resolves")),
   );
   yield* requireManagedFileContract(
     conflicted.entries[0]?.action === "conflict",
@@ -162,17 +163,15 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
 
   // 6. adopt + skip-adopted.
   const adoptFile = managedContractTextFile("adopt.txt", "a1\n");
-  yield* apply([adoptFile]).pipe(Effect.mapError(failWith("apply creates the adopt fixture")));
-  yield* service.adopt("adopt.txt" as PortablePath).pipe(Effect.mapError(failWith("adopt resolves")));
-  const adoptStatus = yield* service.status.pipe(Effect.mapError(failWith("status resolves after adopt")));
+  yield* apply([adoptFile]).pipe(mapFailures(failWith("apply creates the adopt fixture")));
+  yield* service.adopt("adopt.txt" as PortablePath).pipe(mapFailures(failWith("adopt resolves")));
+  const adoptStatus = yield* service.status.pipe(mapFailures(failWith("status resolves after adopt")));
   yield* requireManagedFileContract(
     adoptStatus.some((info: ManagedFileInfo) => info.path === "adopt.txt" && info.state === "adopted"),
     "adopt marks the file adopted",
     adoptStatus,
   );
-  const skipAdopted = yield* apply([adoptFile]).pipe(
-    Effect.mapError(failWith("re-apply after adopt resolves")),
-  );
+  const skipAdopted = yield* apply([adoptFile]).pipe(mapFailures(failWith("re-apply after adopt resolves")));
   yield* requireManagedFileContract(
     skipAdopted.entries[0]?.action === "skip-adopted",
     "a re-apply after adopt is skip-adopted",
@@ -181,11 +180,9 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
 
   // 7. release marks a file adopted.
   const releaseFile = managedContractTextFile("release.txt", "r1\n");
-  yield* apply([releaseFile]).pipe(Effect.mapError(failWith("apply creates the release fixture")));
-  yield* service.release("release.txt" as PortablePath).pipe(Effect.mapError(failWith("release resolves")));
-  const releaseStatus = yield* service.status.pipe(
-    Effect.mapError(failWith("status resolves after release")),
-  );
+  yield* apply([releaseFile]).pipe(mapFailures(failWith("apply creates the release fixture")));
+  yield* service.release("release.txt" as PortablePath).pipe(mapFailures(failWith("release resolves")));
+  const releaseStatus = yield* service.status.pipe(mapFailures(failWith("status resolves after release")));
   yield* requireManagedFileContract(
     releaseStatus.some((info: ManagedFileInfo) => info.path === "release.txt" && info.state === "adopted"),
     "release marks the file adopted",
@@ -194,10 +191,10 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
 
   // 8. remove deletes the file; a repeat remove is a no-op.
   const removeFile = managedContractTextFile("remove.txt", "x1\n");
-  yield* apply([removeFile]).pipe(Effect.mapError(failWith("apply creates the remove fixture")));
+  yield* apply([removeFile]).pipe(mapFailures(failWith("apply creates the remove fixture")));
   const removed = yield* service
     .remove({ owner: MANAGED_FILE_CONTRACT_OWNER, path: "remove.txt" as PortablePath })
-    .pipe(Effect.mapError(failWith("remove resolves")));
+    .pipe(mapFailures(failWith("remove resolves")));
   yield* requireManagedFileContract(
     removed.entries.length >= 1,
     "remove reports the removed entry",
@@ -211,7 +208,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
   );
   const removeAgain = yield* service
     .remove({ owner: MANAGED_FILE_CONTRACT_OWNER, path: "remove.txt" as PortablePath })
-    .pipe(Effect.mapError(failWith("a repeat remove resolves")));
+    .pipe(mapFailures(failWith("a repeat remove resolves")));
   yield* requireManagedFileContract(
     removeAgain.entries.length === 0,
     "removing an already-removed file is a no-op",
@@ -230,7 +227,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
       content: spec.content,
     };
     const createdFormat = yield* apply([formatFile]).pipe(
-      Effect.mapError(failWith(`apply creates a ${spec.format} file`)),
+      mapFailures(failWith(`apply creates a ${spec.format} file`)),
     );
     yield* requireManagedFileContract(
       createdFormat.entries[0]?.action === "create",
@@ -244,7 +241,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
       formatContent,
     );
     const reappliedFormat = yield* apply([formatFile]).pipe(
-      Effect.mapError(failWith(`re-apply for a ${spec.format} file resolves`)),
+      mapFailures(failWith(`re-apply for a ${spec.format} file resolves`)),
     );
     yield* requireManagedFileContract(
       reappliedFormat.entries[0]?.action === "skip-unchanged",
@@ -261,9 +258,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
     mode: "block",
     marker: "contract-block",
   });
-  const blockFirst = yield* apply([blockFile]).pipe(
-    Effect.mapError(failWith("apply inserts a managed block")),
-  );
+  const blockFirst = yield* apply([blockFile]).pipe(mapFailures(failWith("apply inserts a managed block")));
   yield* requireManagedFileContract(
     blockFirst.entries[0]?.action === "create",
     "the first block apply creates the fenced region",
@@ -275,7 +270,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
     `# user header line\n${blockCreated ?? ""}# user footer line\n`,
   );
   const blockReapply = yield* apply([blockFile]).pipe(
-    Effect.mapError(failWith("re-apply of a managed block resolves")),
+    mapFailures(failWith("re-apply of a managed block resolves")),
   );
   yield* requireManagedFileContract(
     blockReapply.entries[0]?.action === "skip-unchanged",
@@ -294,9 +289,9 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
 
   // 11. an interrupted update leaves the file fully old or fully new (never torn).
   const atomicFile = managedContractTextFile("atomic.txt", "alpha\n");
-  yield* apply([atomicFile]).pipe(Effect.mapError(failWith("apply creates the atomic fixture")));
+  yield* apply([atomicFile]).pipe(mapFailures(failWith("apply creates the atomic fixture")));
   const atomicBeta = managedContractTextFile("atomic.txt", "beta\n");
-  yield* apply([atomicBeta]).pipe(Effect.mapError(failWith("apply updates the atomic fixture")));
+  yield* apply([atomicBeta]).pipe(mapFailures(failWith("apply updates the atomic fixture")));
   const beforeInterrupt = yield* harness.read("atomic.txt" as PortablePath);
   const atomicGamma = managedContractTextFile("atomic.txt", "gamma\n");
   const fiber = yield* Effect.forkChild(apply([atomicGamma]));
@@ -316,7 +311,7 @@ export const runManagedFileContract = Effect.fnUntraced(function* (
   // 12. a secret in managed content never appears in an emitted event.
   const secret = "ULW-MANAGED-SECRET-d41d8cd9f00b204e";
   const secretFile = managedContractTextFile("secret.txt", `token=${secret}\n`);
-  yield* apply([secretFile]).pipe(Effect.mapError(failWith("apply of a secret-bearing file resolves")));
+  yield* apply([secretFile]).pipe(mapFailures(failWith("apply of a secret-bearing file resolves")));
   const emitted = yield* harness.events();
   yield* requireManagedFileContract(emitted.length > 0, "apply emits lifecycle events", emitted.length);
   yield* requireManagedFileContract(

@@ -9,6 +9,7 @@ import { shareFlags, shareFormatFromInput, shareOptionsFromInput } from "./share
 
 export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
   id: "app:share",
+  onlineAcquisition: true,
   summary: "Start a public tunnel for the current app.",
   namespace: "app",
   topLevelAlias: true,

@@ -203,6 +203,13 @@ export const CODEGEN_CATALOG = [
     ],
   },
   {
+    id: "persisted-schema-snapshot",
+    ownership: "derived",
+    script: "build-persisted-schema-snapshot.ts",
+    workspace: "repo",
+    dependsOn: ["core-service-env-catalog"],
+  },
+  {
     id: "command-reference",
     ownership: "derived",
     script: "build-command-reference.ts",
@@ -221,6 +228,21 @@ export const CODEGEN_CATALOG = [
     id: "service-type-reference",
     ownership: "derived",
     script: "build-service-type-reference.ts",
+    workspace: "repo",
+  },
+  {
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
+    id: "service-listener-reference",
+    ownership: "derived",
+    script: "build-service-listener-reference.ts",
+    workspace: "repo",
+  },
+  {
+    // Imports CONFIG_LINT_RULES from @lando/sdk/schema; see core-service-env-catalog consumers.
+    dependsOn: ["core-service-env-catalog"],
+    id: "config-lint-rule-reference",
+    ownership: "derived",
+    script: "build-config-lint-rule-reference.ts",
     workspace: "repo",
   },
   {

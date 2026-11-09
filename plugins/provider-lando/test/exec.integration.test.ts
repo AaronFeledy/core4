@@ -6,6 +6,11 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import {
+  containerHelperTestOptions,
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
@@ -99,7 +104,9 @@ const makeFakeApi = (
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
-        if (request.method === "POST" && request.path === "/containers/lando-execapp-node/exec") {
+        if (request.method === "GET" && request.path === "/containers/lando-execapp--node/json")
+          return { status: 200, body: JSON.stringify({ Id: "lando-execapp--node" }) };
+        if (request.method === "POST" && request.path === "/containers/lando-execapp--node/exec") {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
         }
         if (request.method === "GET" && request.path === "/exec/exec-1/json") {
@@ -107,6 +114,9 @@ const makeFakeApi = (
         }
         if (request.method === "POST" && request.path.startsWith("/exec/exec-1/resize?")) {
           return { status: 200, body: "" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -121,6 +131,7 @@ const makeFakeApi = (
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -151,7 +162,7 @@ describe("provider-lando exec", () => {
         plan,
         { app: appId, service: node.name },
         { command: ["node", "-e", "console.log('hi')"] },
-        { api: fake.api },
+        { api: fake.api, ...supervisedExecFixtureOptions(fake.api) },
       ).pipe(Stream.runCollect, Effect.scoped),
     );
     const decoded = decodeChunks(chunks);
@@ -170,11 +181,11 @@ describe("provider-lando exec", () => {
         plan,
         { app: appId, service: node.name },
         { command: ["sh", "-l"], stdin: "inherit", tty: true },
-        { api: fake.api },
+        { api: fake.api, ...supervisedExecFixtureOptions(fake.api) },
       ).pipe(Stream.runCollect, Effect.scoped),
     );
 
-    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp-node/exec");
+    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp--node/exec");
     const start = fake.calls.find((call) => call.path === "/exec/exec-1/start");
     expect(create?.body).toMatchObject({ AttachStdin: true, Tty: true });
     expect(start?.body).toMatchObject({ Tty: true });
@@ -198,7 +209,7 @@ describe("provider-lando exec", () => {
           terminalSize: { columns: 132, rows: 43 },
           terminalResize: Stream.fromIterable([{ columns: 100, rows: 20 }]),
         },
-        { api: fake.api },
+        { api: fake.api, ...supervisedExecFixtureOptions(fake.api) },
       ).pipe(Stream.runCollect, Effect.scoped),
     );
     const decoded = decodeChunks(chunks);
@@ -220,7 +231,7 @@ describe("provider-lando exec", () => {
             plan,
             { app: appId, service: node.name },
             { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
-            { api: fake.api },
+            { api: fake.api, ...supervisedExecFixtureOptions(fake.api) },
           ).pipe(Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           controller.abort();
@@ -239,7 +250,12 @@ describe("provider-lando exec", () => {
     const fake = makeFakeApi(1, "");
 
     const result = await Effect.runPromise(
-      exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { api: fake.api }),
+      exec(
+        plan,
+        { app: appId, service: node.name },
+        { command: ["false"] },
+        { api: fake.api, ...supervisedExecFixtureOptions(fake.api) },
+      ),
     );
 
     expect(result).toEqual({ exitCode: 1, stdout: "", stderr: "" });
@@ -251,20 +267,21 @@ describe("provider-lando exec", () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath;
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
 
-      await Effect.runPromise(bringUp(plan, { api }));
+      await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
       try {
         const chunks = await Effect.runPromise(
           execStream(
             plan,
             { app: appId, service: node.name },
             { command: ["node", "-e", "console.log('hi')"] },
-            { api },
+            { api, ...helperOptions },
           ).pipe(Stream.runCollect, Effect.scoped),
         );
         const streamed = decodeChunks(chunks);
         const failed = await Effect.runPromise(
-          exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { api }),
+          exec(plan, { app: appId, service: node.name }, { command: ["false"] }, { api, ...helperOptions }),
         );
 
         expect(streamed.stdout).toContain("hi\n");

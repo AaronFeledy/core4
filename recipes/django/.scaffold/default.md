@@ -1,6 +1,6 @@
 # Start a Django project
 
-Create a Django development stack with Python, PostgreSQL, Redis, and an
+Create a Django development stack with Python, PostgreSQL or SQLite, Redis, and an
 optional Celery worker. The recipe writes `.lando.yml`, not a Django project.
 Starting the stack keeps the web container available for setup; it does not
 start the Django server.
@@ -29,6 +29,7 @@ lando init --recipe django --name=my-django --yes \
 
 | Option | Values | Default |
 | --- | --- | --- |
+| `database` | `postgres`, `sqlite` | `postgres` |
 | `celery` | `true`, `false` | `false` |
 
 The scaffold writes only `.lando.yml`. It declares a `web` service on `python:3.12` with the `django` framework on port 8000, a `database` service on `postgres`, and a `cache` service on `redis` that `web` waits on. Answer `celery=true` and you also get a `worker` service running `celery -A app worker --loglevel=info` against the same database and cache. Leave it `false` and there is no `worker` service at all.
@@ -48,9 +49,15 @@ lando pip install -r requirements.txt
 
 `lando django` wraps `python manage.py`. After creating your project and installing its dependencies, run `lando django runserver 0.0.0.0:8000` to serve it through the proxy.
 
-`web` (and `worker`, if you added it) starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. Parse `DATABASE_URL` with `dj-database-url` or `urllib.parse` in `settings.py`; nothing there needs to name the host or password. `lando info` shows the user and database name and redacts the rest.
+`web` (and `worker`, if you added it) starts with `DATABASE_URL` for the chosen
+database and `REDIS_URL` pointing at `cache`. Parse `DATABASE_URL` with
+`dj-database-url` in `settings.py` without hard-coding a host or password.
+PostgreSQL uses the `database` service. SQLite omits that service and
+uses `sqlite:////app/db.sqlite3` at the app root, matching Django's
+`BASE_DIR / "db.sqlite3"` after `django-admin startproject config .` creates
+`config/settings.py`. See [Use SQLite](../../docs/guides/recipes/django-workflow.mdx#use-sqlite).
 
-The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit either value if your project uses another module. Port `8000` is editable on `web`; keep the server bind in sync.
+The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit either value if your project uses another module. `port:` on `web` sets the endpoint and `PORT` (default `8000`). Django `runserver` does not read `PORT`, so keep the `0.0.0.0:8000` argument aligned with `port:`. An authored `environment.PORT` must equal the planned port or planning fails; change `port:` instead.
 
 `lando start` keeps the web container running for project setup; it does not start Django's server. The route from `lando info` reaches your app only while the server is running.
 
@@ -93,6 +100,14 @@ lando init --recipe django --name=my-django-celery --yes --answer=celery=true
 ```bash
 lando app:config --format=json
 ```
+
+## 7. init
+
+```bash
+lando init --recipe django --name=django-sqlite --answer=database=sqlite --answer=celery=true --yes
+```
+
+## 8. inspect
 
 ## Cleanup
 

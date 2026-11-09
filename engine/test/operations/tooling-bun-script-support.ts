@@ -5,8 +5,15 @@ import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Queue, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 
-export const scriptHostLayer = Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer);
+const nonInteractiveRepl = (): never => {
+  throw new TypeError("Interactive host tooling is unavailable in tests.");
+};
+
+export const scriptHostLayer = BunShellRunner.layerWithPrivateFileAccess(nonInteractiveRepl).pipe(
+  Layer.provideMerge(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)),
+);
 
 export const withBunScript = async <T>(content: string, run: (root: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-script-input-"));

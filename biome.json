@@ -8,8 +8,6 @@
   "files": {
     "maxSize": 4194304,
     "ignore": [
-      "dist",
-      "**/dist",
       "node_modules",
       "**/node_modules",
       ".local",
@@ -61,6 +59,10 @@
     "enabled": true
   },
   "overrides": [
+    {
+      "include": ["container-runtime/test/fixtures/applied-state-v3/**/*.json"],
+      "formatter": { "enabled": false }
+    },
     {
       "include": ["**/tsconfig*.json"],
       "json": {

@@ -6,8 +6,9 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { afterEach, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -20,34 +21,15 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-const collect = async (input: AsyncIterable<Uint8Array>): Promise<Uint8Array> => {
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of input) chunks.push(chunk);
-  const output = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return output;
-};
-
 test("keeps copy-in tar framing valid when the source grows before upload", async () => {
   const root = mkdtempSync(join(tmpdir(), "lando-copy-race-"));
   roots.push(root);
   const sourcePath = join(root, "payload.sql");
   writeFileSync(sourcePath, "original");
   let uploaded: Uint8Array<ArrayBufferLike> = new Uint8Array();
-  const api: DataPlaneApiClient = {
-    request: (request) =>
-      Effect.promise(async () => {
-        if (request.stdin !== undefined) {
-          appendFileSync(sourcePath, "-concurrent-write");
-          uploaded = await collect(request.stdin);
-        }
-        return { status: 200, body: "{}" };
-      }),
-  };
+  const engine = new FakeEngine().seedContainer("lando-app-slug--web");
+  engine.observers.set("archive.put", () => appendFileSync(sourcePath, "-concurrent-write"));
+  const api = engine.api;
   const app = AppId.make("app-id");
   const provider = makeProviderDataPlane({
     providerId: "test",
@@ -83,6 +65,7 @@ test("keeps copy-in tar framing valid when the source grows before upload", asyn
     ),
   );
 
+  uploaded = engine.assets.uploads[0] ?? new Uint8Array();
   const declaredSize = Number.parseInt(new TextDecoder().decode(uploaded.subarray(124, 136)).trim(), 8);
   expect(declaredSize).toBe(8);
   expect(uploaded.byteLength).toBe(2048);
@@ -94,16 +77,9 @@ test("fails copy-in when the source shrinks before upload", async () => {
   roots.push(root);
   const sourcePath = join(root, "payload.sql");
   writeFileSync(sourcePath, "original");
-  const api: DataPlaneApiClient = {
-    request: (request) =>
-      Effect.promise(async () => {
-        if (request.stdin !== undefined) {
-          truncateSync(sourcePath, 4);
-          await collect(request.stdin);
-        }
-        return { status: 200, body: "{}" };
-      }),
-  };
+  const engine = new FakeEngine().seedContainer("lando-app-slug--web");
+  engine.observers.set("archive.put", () => truncateSync(sourcePath, 4));
+  const api = engine.api;
   const app = AppId.make("app-id");
   const provider = makeProviderDataPlane({
     providerId: "test",

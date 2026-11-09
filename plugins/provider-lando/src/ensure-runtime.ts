@@ -1,3 +1,6 @@
+import { dirname } from "node:path";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Duration, Effect, Exit } from "effect";
 
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
@@ -7,6 +10,7 @@ import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
+import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
@@ -17,6 +21,7 @@ import {
   linuxRuntimeIsHealthy,
   reapLegacyStaleRuntime,
   stopDiscoveredRuntimeProcesses,
+  verifyReplacedServiceTransition,
 } from "./linux-runtime-health.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
@@ -24,6 +29,7 @@ import {
   type PodmanServiceSpec,
   type RuntimeLaunchError,
   buildPodmanServiceArgs,
+  podmanServiceLogPath,
   readPodmanServiceLogTail,
 } from "./podman-service-runner.ts";
 import {
@@ -37,7 +43,8 @@ import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodman
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
-export interface EnsureRuntimeDeps extends LinuxRuntimeHealthDeps {
+export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "privateRuntimeDir"> {
+  readonly privateRuntimeDir?: string | undefined;
   readonly platform: HostPlatform;
   readonly arch?: string;
   readonly prepareNativeInit?: boolean;
@@ -58,6 +65,9 @@ export interface EnsureRuntimeDeps extends LinuxRuntimeHealthDeps {
     spec: PodmanServiceSpec,
   ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly setupProgress?: {
+    readonly helpers: (
+      body: Effect.Effect<void, ProviderUnavailableError>,
+    ) => Effect.Effect<void, ProviderUnavailableError>;
     readonly launch: (
       body: Effect.Effect<void, ProviderUnavailableError>,
     ) => Effect.Effect<void, ProviderUnavailableError>;
@@ -121,14 +131,15 @@ const mapLaunchLockError = (
     : cause;
 
 const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
-  deps: EnsureRuntimeDeps,
-): Effect.fn.Return<void, ProviderUnavailableError> {
+  deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+): Effect.fn.Return<number, ProviderUnavailableError> {
   const spec = buildPodmanServiceArgs({
     podmanBin: deps.podmanBin,
     storageDir: deps.storageDir,
     runRoot: deps.runRoot,
     configDir: deps.configDir,
     socketPath: deps.socketPath,
+    privateRuntimeDir: deps.privateRuntimeDir,
   });
 
   const pid = yield* deps.serviceRunner.launch(spec).pipe(
@@ -147,6 +158,7 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
   yield* recordLaunch.pipe(
     Effect.onExit((exit) => (Exit.isFailure(exit) ? deps.serviceRunner.terminate(pid) : Effect.void)),
   );
+  return pid;
 });
 
 const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
@@ -188,7 +200,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
             ),
           ),
     ),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ProviderUnavailableError
         ? cause
         : new ProviderUnavailableError({
@@ -203,9 +215,11 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
   );
 
 const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(function* (
-  deps: EnsureRuntimeDeps,
+  deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
 ): Effect.fn.Return<void, ProviderUnavailableError> {
-  const repair = Effect.gen(function* () {
+  const socketPathError = validateManagedSocketPathLength(deps.socketPath);
+  if (socketPathError !== undefined) return yield* Effect.fail(socketPathError);
+  const helpers = Effect.gen(function* () {
     if (deps.catatonitProvision !== undefined) {
       yield* ensureManagedCatatonit(deps.catatonitProvision);
     }
@@ -230,6 +244,9 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
         });
       }
     }
+  });
+  const repair = Effect.gen(function* () {
+    yield* deps.setupProgress?.helpers(helpers) ?? helpers;
     if (yield* linuxRuntimeIsHealthy(deps)) {
       const adopted =
         deps.generationStore === undefined
@@ -253,6 +270,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
         return;
       }
     }
+    yield* verifyReplacedServiceTransition(deps);
     if (deps.generationStore === undefined) {
       yield* stopDiscoveredRuntimeProcesses(deps);
       yield* reapLegacyStaleRuntime(deps);
@@ -272,19 +290,66 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
         socketPath: deps.socketPath,
         pidPath: deps.pidPath,
         generationStore: deps.generationStore,
+        privateRuntimeDir: deps.privateRuntimeDir,
         ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
         ...(deps.pidNamespaceReader === undefined ? {} : { pidNamespaceReader: deps.pidNamespaceReader }),
         ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
         ...(deps.terminationPolicy === undefined ? {} : { terminationPolicy: deps.terminationPolicy }),
       });
     }
-    const launch = launchRuntime(deps);
+    let launchedPid: number | undefined;
+    const launch = launchRuntime(deps).pipe(
+      Effect.tap((pid) =>
+        Effect.sync(() => {
+          launchedPid = pid;
+        }),
+      ),
+      Effect.asVoid,
+    );
     yield* deps.setupProgress?.launch(launch) ?? launch;
-    const readiness = verifyRuntimeReachable(deps);
+    const earlyExit =
+      launchedPid === undefined
+        ? undefined
+        : deps.serviceRunner.waitForExit?.(launchedPid).pipe(
+            Effect.flatMap((exitCode) =>
+              readPodmanServiceLogTail(deps.socketPath).pipe(
+                Effect.flatMap((stderr) => {
+                  const classified = classifyRootlessFailure(
+                    (deps.rootlessProbes ?? makeSystemRootlessProbes()).probe(),
+                    stderr,
+                  );
+                  const logPath = podmanServiceLogPath(deps.socketPath);
+                  return Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: "lando",
+                      operation: "setup",
+                      message:
+                        classified?.message ??
+                        `The managed Podman service exited before becoming ready (exit ${exitCode}).`,
+                      remediation: `${classified?.remediation ?? "Check the managed Podman startup failure."} Inspect ${logPath}, then rerun the command.`,
+                      details: redactDetails(
+                        {
+                          exitCode,
+                          logPath,
+                          stderr,
+                          ...(classified === undefined ? {} : { prerequisite: classified.prerequisite }),
+                        },
+                        hostSecretsRedactor(),
+                      ),
+                    }),
+                  );
+                }),
+              ),
+            ),
+          );
+    const readiness =
+      earlyExit === undefined
+        ? verifyRuntimeReachable(deps)
+        : Effect.raceFirst(verifyRuntimeReachable(deps), earlyExit);
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
   const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(
-    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    mapFailures((cause) => mapLaunchLockError(deps, cause)),
   );
   yield* launchAndReadiness;
 });
@@ -325,7 +390,7 @@ const ensureMachineRuntime = (
     Effect.flatMap((ready) =>
       ready ? completeProgress : (deps.withLaunchLock?.(launchAndReadiness) ?? launchAndReadiness),
     ),
-    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    mapFailures((cause) => mapLaunchLockError(deps, cause)),
   );
 };
 
@@ -362,5 +427,7 @@ export const ensureRuntime = Effect.fn("ProviderLando.ensureRuntime")(function* 
         );
   }
 
-  return yield* ensureLinuxRuntime(deps);
+  const privateRuntimeDir =
+    deps.privateRuntimeDir ?? (yield* resolveManagedRuntimeDir(dirname(deps.runRoot)));
+  return yield* ensureLinuxRuntime({ ...deps, privateRuntimeDir });
 });

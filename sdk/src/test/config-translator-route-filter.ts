@@ -1,4 +1,5 @@
 import { Effect, Result, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { ConfigTranslateError } from "../errors/config.ts";
 import { validateConfigTranslateInput, validateConfigTranslateResult } from "../landofile/index.ts";
@@ -83,7 +84,7 @@ export const runConfigTranslatorContractSuite = Effect.fnUntraced(function* (
 
   const resolve = <A, E>(effect: Effect.Effect<A, E>) =>
     effect.pipe(
-      Effect.mapError((cause) => configTranslatorContractFailure(`${label}: operation resolves`, cause)),
+      mapFailures((cause) => configTranslatorContractFailure(`${label}: operation resolves`, cause)),
     );
   if (harness.detectInput) {
     const matches = yield* resolve(translator.detect(harness.detectInput));
@@ -257,7 +258,7 @@ export const runRouteFilterContractSuite = Effect.fnUntraced(function* <Route, O
   const applied = yield* harness
     .apply(harness.input, harness.validOptions)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         routeFilterContractFailure(`${label}: apply(input, validOptions) resolves`, cause),
       ),
     );
@@ -279,7 +280,7 @@ export const runRouteFilterContractSuite = Effect.fnUntraced(function* <Route, O
   // --- apply is deterministic ---
   const appliedAgain = yield* harness
     .apply(harness.input, harness.validOptions)
-    .pipe(Effect.mapError((cause) => routeFilterContractFailure(`${label}: repeat apply resolves`, cause)));
+    .pipe(mapFailures((cause) => routeFilterContractFailure(`${label}: repeat apply resolves`, cause)));
   yield* requireRouteFilterContract(
     stableJson(applied) === stableJson(appliedAgain),
     `${label}: apply is deterministic for identical input/options`,
@@ -289,9 +290,7 @@ export const runRouteFilterContractSuite = Effect.fnUntraced(function* <Route, O
   // --- apply is idempotent (applying to its own output yields the same output) ---
   const reapplied = yield* harness
     .apply(applied, harness.validOptions)
-    .pipe(
-      Effect.mapError((cause) => routeFilterContractFailure(`${label}: idempotent reapply resolves`, cause)),
-    );
+    .pipe(mapFailures((cause) => routeFilterContractFailure(`${label}: idempotent reapply resolves`, cause)));
   yield* requireRouteFilterContract(
     stableJson(reapplied) === stableJson(applied),
     `${label}: apply is idempotent (apply twice equals apply once)`,
@@ -316,9 +315,7 @@ export const runRouteFilterContractSuite = Effect.fnUntraced(function* <Route, O
         harness
           .apply(route, harness.validOptions)
           .pipe(
-            Effect.mapError((cause) =>
-              routeFilterContractFailure(`${label}: sequence apply resolves`, cause),
-            ),
+            mapFailures((cause) => routeFilterContractFailure(`${label}: sequence apply resolves`, cause)),
           ),
       );
     const firstPass = yield* runSequence();

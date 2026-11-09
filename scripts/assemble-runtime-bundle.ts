@@ -14,7 +14,7 @@
  * filesystem, network, and subprocesses directly.
  */
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -27,6 +27,7 @@ import {
   verifyLinuxPodmanPortability,
   verifyManagedLinuxPodman,
 } from "./linux-podman-source-build.ts";
+import { runWithCleanup } from "./runtime-bundle-cleanup.ts";
 import { extractVerifiedDebianBinary } from "./runtime-bundle-debian.ts";
 import { fetchOverHttps } from "./runtime-bundle-fetch.ts";
 import { stageRuntimeBundleLicenses } from "./runtime-bundle-licenses.ts";
@@ -35,6 +36,7 @@ import {
   RUNTIME_BUNDLE_SOURCES_PATH,
   type RuntimeBundleBinaryComponent,
   type RuntimeBundleSources,
+  isLinuxRuntimeBundle,
   parseRuntimeBundleSources,
 } from "./runtime-bundle-sources.ts";
 
@@ -103,17 +105,29 @@ const packDeterministic = async (stageDir: string, artifactPath: string, isZip: 
   if (isZip) {
     await run(["find", ".", "-exec", "touch", "-d", "@0", "{}", "+"], stageDir);
     await run(
-      ["sh", "-c", 'files=$(find . -type f | sort); zip -X -D -q "$1" $files', "sh", artifactPath],
+      [
+        "bash",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        'files=$(find . -type f | sort); zip -X -D -q "$1" $files',
+        "bash",
+        artifactPath,
+      ],
       stageDir,
     );
     return;
   }
   await run(
     [
-      "sh",
+      "bash",
+      "-e",
+      "-o",
+      "pipefail",
       "-c",
       'tar --format=gnu --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . | gzip -n -9 > "$1"',
-      "sh",
+      "bash",
       artifactPath,
     ],
     stageDir,
@@ -146,79 +160,87 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
   const target = targetFor(options.hostKey);
   const verifyCommand = options.verifyCommand ?? run;
   const stageDir = await mkdtemp(join(tmpdir(), "rb-stage-"));
-  const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
-  try {
-    await stageRuntimeBundleLicenses({
-      components: group.components,
-      runtimeVersion: options.sources.runtimeVersion,
-      repository: options.repository,
-      stageDir,
-      fetchArtifact: options.fetchArtifact,
-    });
-    for (const component of group.components) {
-      if ("inputs" in component) {
-        const artifactPaths = new Map<string, string>();
-        for (const input of component.inputs) {
-          const bytes = await options.fetchArtifact(input.url);
-          const actual = sha256Hex(bytes);
-          if (actual !== input.sha256) {
-            throw new Error(
-              `assemble-runtime-bundle: sha256 verify failed for ${component.name} ${input.name} (${input.url}): expected ${input.sha256}, got ${actual}`,
-            );
+  const ownedDirs = [stageDir];
+  return runWithCleanup(
+    async () => {
+      const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
+      ownedDirs.push(downloadDir);
+      await stageRuntimeBundleLicenses({
+        components: group.components,
+        runtimeVersion: options.sources.runtimeVersion,
+        repository: options.repository,
+        stageDir,
+        fetchArtifact: options.fetchArtifact,
+      });
+      for (const component of group.components) {
+        if ("inputs" in component) {
+          const artifactPaths = new Map<string, string>();
+          for (const input of component.inputs) {
+            const bytes = await options.fetchArtifact(input.url);
+            const actual = sha256Hex(bytes);
+            if (actual !== input.sha256) {
+              throw new Error(
+                `assemble-runtime-bundle: sha256 verify failed for ${component.name} ${input.name} (${input.url}): expected ${input.sha256}, got ${actual}`,
+              );
+            }
+            const artifactPath = join(downloadDir, `${component.name}-${input.name}-${options.hostKey}`);
+            await writeFile(artifactPath, bytes);
+            artifactPaths.set(input.name, artifactPath);
           }
-          const artifactPath = join(downloadDir, `${component.name}-${input.name}-${options.hostKey}`);
-          await writeFile(artifactPath, bytes);
-          artifactPaths.set(input.name, artifactPath);
-        }
-        await buildLinuxHelperFromSource({
-          component,
-          artifactPaths,
-          stageDir,
-          execute: verifyCommand,
-        });
-      } else if (component.archive === "deb") {
-        const bytes = await options.fetchArtifact(component.url);
-        const payload = await extractVerifiedDebianBinary(component, bytes);
-        const destPath = join(stageDir, component.installName);
-        await mkdir(dirname(destPath), { recursive: true });
-        await writeFile(destPath, payload);
-        await chmod(destPath, component.mode);
-      } else {
-        const bytes = await options.fetchArtifact(component.url);
-        const actual = sha256Hex(bytes);
-        if (actual !== component.sha256) {
-          throw new Error(
-            `assemble-runtime-bundle: sha256 verify failed for ${component.name} (${component.url}): expected ${component.sha256}, got ${actual}`,
-          );
-        }
-        const artifactPath = join(downloadDir, `${component.name}-${options.hostKey}`);
-        await writeFile(artifactPath, bytes);
-        if (component.sourceBuild === LinuxPodmanSourceBuild) {
-          await buildLinuxPodmanFromSource(component, artifactPath, stageDir, verifyCommand);
-        } else {
+          await buildLinuxHelperFromSource({
+            component,
+            artifactPaths,
+            stageDir,
+            execute: verifyCommand,
+          });
+        } else if (component.archive === "deb") {
+          const bytes = await options.fetchArtifact(component.url);
+          const payload = await extractVerifiedDebianBinary(component, bytes);
           const destPath = join(stageDir, component.installName);
           await mkdir(dirname(destPath), { recursive: true });
-          await extractMember(component, artifactPath, destPath);
+          await writeFile(destPath, payload);
           await chmod(destPath, component.mode);
+        } else {
+          const bytes = await options.fetchArtifact(component.url);
+          const actual = sha256Hex(bytes);
+          if (actual !== component.sha256) {
+            throw new Error(
+              `assemble-runtime-bundle: sha256 verify failed for ${component.name} (${component.url}): expected ${component.sha256}, got ${actual}`,
+            );
+          }
+          const artifactPath = join(downloadDir, `${component.name}-${options.hostKey}`);
+          await writeFile(artifactPath, bytes);
+          if (component.sourceBuild === LinuxPodmanSourceBuild) {
+            await buildLinuxPodmanFromSource(component, artifactPath, stageDir, verifyCommand);
+          } else {
+            const destPath = join(stageDir, component.installName);
+            await mkdir(dirname(destPath), { recursive: true });
+            await extractMember(component, artifactPath, destPath);
+            await chmod(destPath, component.mode);
+          }
         }
       }
-    }
-    await verifyLinuxPodmanPortability(options.hostKey, stageDir, options.inspectCommand);
-    await verifyManagedLinuxPodman(options.hostKey, stageDir, verifyCommand);
-    await mkdir(options.outDir, { recursive: true });
-    const outPath = join(options.outDir, target.filename);
-    await packDeterministic(stageDir, outPath, target.filename.endsWith(".zip"));
-    const sha256 = sha256Hex(await readFile(outPath));
-    return { hostKey: options.hostKey, filename: target.filename, artifactPath: outPath, sha256 };
-  } finally {
-    await rm(stageDir, { recursive: true, force: true });
-    await rm(downloadDir, { recursive: true, force: true });
-  }
+      await verifyLinuxPodmanPortability(options.hostKey, stageDir, options.inspectCommand);
+      await verifyManagedLinuxPodman(options.hostKey, stageDir, verifyCommand);
+      await mkdir(options.outDir, { recursive: true });
+      const outPath = join(options.outDir, target.filename);
+      const temporaryDir = await mkdtemp(join(options.outDir, ".rb-assembly-"));
+      ownedDirs.push(temporaryDir);
+      const temporaryPath = join(temporaryDir, target.filename);
+      await packDeterministic(stageDir, temporaryPath, target.filename.endsWith(".zip"));
+      const sha256 = sha256Hex(await readFile(temporaryPath));
+      await rename(temporaryPath, outPath);
+      return { hostKey: options.hostKey, filename: target.filename, artifactPath: outPath, sha256 };
+    },
+    () => ownedDirs.map((path) => rm(path, { recursive: true, force: true })),
+  );
 };
 
 const main = async (argv: ReadonlyArray<string>): Promise<void> => {
   let hostKey: string | undefined;
   let outDir = DEFAULT_OUT_DIR;
+  let printCacheKey = false;
+  let engine: string | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--platform") {
       hostKey = argv[i + 1];
@@ -226,11 +248,58 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
     } else if (argv[i] === "--out-dir") {
       outDir = resolve(argv[i + 1] ?? "");
       i += 1;
+    } else if (argv[i] === "--cache-key") {
+      printCacheKey = true;
+    } else if (argv[i] === "--engine") {
+      engine = argv[i + 1];
+      i += 1;
     } else {
       throw new Error(`assemble-runtime-bundle: unknown argument ${argv[i]}`);
     }
   }
   if (hostKey === undefined) throw new Error("assemble-runtime-bundle: --platform <host-key> is required");
+  if (isLinuxRuntimeBundle(hostKey)) {
+    const builder = await import("./linux-runtime-bundle-builder.ts");
+    const repository = await resolveManifestRepository();
+    if (printCacheKey) {
+      process.stdout.write(`${await builder.linuxRuntimeBundleCacheKey({ hostKey, repository })}\n`);
+      return;
+    }
+    const engines = await import("./linux-runtime-bundle-engines.ts");
+    const requested = engines.LINUX_BUNDLE_ENGINE_IDS.find((id) => id === engine);
+    if (engine !== undefined && requested === undefined) {
+      throw new Error(
+        `assemble-runtime-bundle: --engine must be one of ${engines.LINUX_BUNDLE_ENGINE_IDS.join(", ")}`,
+      );
+    }
+    const platform = builder.buildxPlatform(hostKey);
+    const selected = await engines.selectLinuxBundleBuildEngine({
+      hostKey,
+      platform,
+      requested,
+      engines: {
+        docker: engines.dockerBuildEngine(engines.engineCommandRunner()),
+        lando: engines.landoRuntimeBuildEngine(
+          engines.engineCommandRunner({
+            PATH: process.env.PATH ?? "/usr/bin:/bin",
+            HOME: process.env.HOME ?? "/",
+          }),
+        ),
+      },
+    });
+    process.stderr.write(`assemble-runtime-bundle: building ${hostKey} with ${selected.id} on ${platform}\n`);
+    const artifactPath = await builder.buildLinuxRuntimeBundle({
+      hostKey,
+      outDir,
+      repository,
+      engine: selected,
+    });
+    process.stdout.write(`${artifactPath}\n`);
+    return;
+  }
+  if (printCacheKey || engine !== undefined) {
+    throw new Error("assemble-runtime-bundle: --cache-key and --engine apply only to Linux host keys");
+  }
   const sources = parseRuntimeBundleSources(JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")));
   const result = await assembleBundle({
     hostKey,

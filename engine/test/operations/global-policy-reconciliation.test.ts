@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { GlobalAppError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
@@ -8,6 +9,7 @@ import {
   recordGlobalGeneration,
   recordGlobalReconciliation,
   recordGlobalResourceCleanup,
+  transitionGlobalPending,
 } from "../../src/global-app/reconciliation.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -38,6 +40,20 @@ const fixture = () => {
   };
 };
 
+test.each(["adds", "clears"] as const)("route cleanup rejects an unauthorized containers %s", (action) => {
+  const work = { phase: "containers" as const, services: ["mail"], message: "Removal is incomplete." };
+  const pending = [work];
+  const result = transitionGlobalPending(pending, "routes", { [action]: [work] });
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") {
+    expect(result.failure).toBeInstanceOf(GlobalAppError);
+    expect(result.failure.operation).toBe("routes");
+    expect(result.failure.message).toContain("containers");
+    expect(result.failure.remediation).toBeString();
+  }
+  expect(pending).toEqual([{ phase: "containers", services: ["mail"], message: "Removal is incomplete." }]);
+});
+
 test("a new selection preserves unrelated pending cleanup across receipt reads", async () => {
   const f = fixture();
   await f.run(
@@ -47,7 +63,7 @@ test("a new selection preserves unrelated pending cleanup across receipt reads",
       contributions: ["mail"],
       servicesRemoved: ["mail"],
       pending: [
-        { phase: "routes", services: ["mail"], message: "Route withdrawal failed." },
+        { phase: "routes", services: ["mail", "sibling"], message: "Route withdrawal failed." },
         { phase: "generation", services: ["mail"], message: "Generation failed." },
       ],
     }),
@@ -64,7 +80,7 @@ test("a new selection preserves unrelated pending cleanup across receipt reads",
   const saved = await f.run(readGlobalReconciliation());
   expect(saved.revision).toBe(2);
   expect(saved.pending).toEqual([
-    { phase: "routes", services: ["mail"], message: "Route withdrawal failed." },
+    { phase: "routes", services: ["mail", "sibling"], message: "Route withdrawal failed." },
     { phase: "containers", services: ["proxy"], message: "Provider is offline." },
   ]);
   await f.run(
@@ -77,6 +93,7 @@ test("a new selection preserves unrelated pending cleanup across receipt reads",
     }),
   );
   expect((await f.run(readGlobalReconciliation())).pending).toEqual([
+    { phase: "routes", services: ["sibling"], message: "Route withdrawal failed." },
     { phase: "containers", services: ["proxy"], message: "Provider is offline." },
   ]);
 });

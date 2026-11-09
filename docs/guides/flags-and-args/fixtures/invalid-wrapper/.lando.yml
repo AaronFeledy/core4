@@ -1,0 +1,8 @@
+name: invalid-wrapper
+tooling:
+  invalid:
+    service: :host
+    wrapper: true
+    cmds:
+      - echo first
+      - echo second

@@ -1,6 +1,7 @@
 import { data } from "@actions/expressions";
 import { isMapping, isString } from "@actions/workflow-parser";
 import type { MappingToken, TemplateToken } from "@actions/workflow-parser/templates/tokens/index";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import {
   type VerifiedActionSource,
@@ -560,7 +561,7 @@ export const planWorkflow = Effect.fn("ActionsPlanning.planWorkflow")(function* 
   });
   parsed = captured.parsed;
   options = captured.options;
-  yield* admitLimits(options).pipe(Effect.mapError((error) => planningError(error.code, parsed.source)));
+  yield* admitLimits(options).pipe(mapFailures((error) => planningError(error.code, parsed.source)));
   const jobs = parsed.workflow.jobs.map((job) => ({
     expansionBudget: 0,
     outputNames: (() => {

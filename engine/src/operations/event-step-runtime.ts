@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 // allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
 import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 
@@ -106,6 +107,42 @@ const failureExitCode = (error: unknown): number => {
   return 1;
 };
 
+const wrappedRemediation = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("remediation" in error)) return undefined;
+  const value = error.remediation;
+  return typeof value === "string" && /\S/u.test(value) ? value : undefined;
+};
+
+const leafTargetsHost = (
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  result?: ToolingEngineResult,
+): boolean => {
+  if (leaf.kind === "cmd" && leaf.service === ":host") return true;
+  if (result !== undefined && String(result.service) === ":host") return true;
+  return false;
+};
+
+const lifecycleRemediation = (
+  options: EventRuntimeOptions,
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  error?: unknown,
+  result?: ToolingEngineResult,
+): string => {
+  if (error instanceof ToolingDisabledError) {
+    return options.redactor.redactString(error.remediation);
+  }
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  let remediation = `Fix ${label}, then rerun the lifecycle command.`;
+  if (leafTargetsHost(leaf, result)) {
+    remediation += " The step runs in Bun Shell.";
+  }
+  const wrapped = error === undefined ? undefined : wrappedRemediation(error);
+  if (wrapped !== undefined) {
+    remediation += ` ${options.redactor.redactString(wrapped)}`;
+  }
+  return remediation;
+};
+
 const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
@@ -120,10 +157,7 @@ const stepFailure = (
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation:
-      error instanceof ToolingDisabledError
-        ? options.redactor.redactString(error.remediation)
-        : `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, error),
   });
 };
 
@@ -145,7 +179,7 @@ const nonzeroFailure = (
       options.redactor.redactString(output.stdout),
       options.redactor.redactString(output.stderr),
     ),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, undefined, result),
   });
 };
 
@@ -242,7 +276,7 @@ const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: 
     ...(leaf.user === undefined ? {} : { user: leaf.user }),
     redactionTokens,
     ...(env === undefined ? {} : { env }),
-  }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
+  }).pipe(mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)));
   return { leaf, result, startedAt, redactor };
 });
 
@@ -255,10 +289,21 @@ const runTask = Effect.fnUntraced(function* (
   const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
   const variableRedaction = yield* options.redactorFor({ env: [leaf.vars] });
   if (task === undefined) {
+    if (options.hostRunner === undefined)
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "ShellRunner is unavailable for script-backed event execution.",
+          tool: leaf.task,
+          remediation: "Provide the selected ShellRunner in the event runtime.",
+        }),
+      );
     const script = yield* runBunShellTooling(
       { name: leaf.task, cwd: String(options.plan.root) },
       String(options.plan.root),
-    ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
+    ).pipe(
+      Effect.provideService(PrivateFileAccessService, options.privateFileAccess),
+      Effect.provideService(ShellRunner, options.hostRunner),
+    );
     if (script !== undefined) {
       return {
         leaf,
@@ -288,7 +333,7 @@ const runTask = Effect.fnUntraced(function* (
   const resolved = yield* resolveToolingTaskShape(client.task, context, client.sites);
   const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
   const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
-    Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
+    mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)),
   );
   return { leaf, result, startedAt, redactor };
 });
@@ -400,7 +445,7 @@ export const makeEventStepRunners = (
             options.redactorFor({ input: [leaf.flags, leaf.args], directTokens: leaf.raw }).pipe(
               Effect.flatMap(({ redactor, redactionTokens }) =>
                 options.runCanonical(leaf, redactionTokens).pipe(
-                  Effect.mapError((error) =>
+                  mapFailures((error) =>
                     isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
                   ),
                   Effect.map((result) => ({ leaf, result, startedAt, redactor })),

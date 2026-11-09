@@ -1,4 +1,5 @@
 import { readdir } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Option, Schema } from "effect";
 
@@ -24,7 +25,7 @@ export const listAppliedPlanInventory = (
       (cause: unknown) => isErrnoCode(cause, "ENOENT"),
       () => Effect.succeed([]),
     ),
-    Effect.mapError(onError),
+    mapFailures(onError),
     Effect.map((entries) =>
       entries.flatMap((entry) => {
         if (!entry.endsWith(".json")) return [];

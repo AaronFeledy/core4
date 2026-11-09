@@ -1,5 +1,8 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
+import { planRedactionValues } from "@lando/redaction/plan-values";
+import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   HealthcheckError,
   ProviderCapabilityError,
@@ -18,7 +21,6 @@ import {
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type Context, Effect, type Option } from "effect";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import {
   type HostProbeRunners,
   interruptOnAbort,
@@ -26,7 +28,6 @@ import {
   validateHealthcheckExecution,
 } from "../subsystems/healthcheck/attempt.ts";
 import { withProviderErrorRedaction } from "./error-policy.ts";
-import { redactProviderError } from "./error-redaction.ts";
 import { withOutputRegistration } from "./output-policy.ts";
 import { registerProviderOutput } from "./output-redaction.ts";
 
@@ -91,13 +92,22 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
             }),
             apply: Effect.fnUntraced(function* (plan, options) {
               yield* validateHealthcheckExecution(plan, services.hostProbeRunners ?? {});
-              const tokens = [...collectAppPlanRedactionTokens(plan)];
-              const redactorOptions = { sourceEnv: { ...process.env }, redactionTokens: tokens };
+              const values = planRedactionValues(plan);
+              const redactorOptions = {
+                sourceEnv: { ...process.env },
+                redactionTokens: values.substring,
+                wholeTokenValues: values.wholeToken,
+              };
               const redactor =
                 redaction._tag === "Some"
                   ? yield* redaction.value
-                      .registerValues(tokens)
-                      .pipe(Effect.andThen(redaction.value.forProfile("secrets", redactorOptions)))
+                      .registerValues(values.substring)
+                      .pipe(
+                        Effect.andThen(
+                          redaction.value.registerValues(values.wholeToken, { match: "whole-token" }),
+                        ),
+                        Effect.andThen(redaction.value.forProfile("secrets", redactorOptions)),
+                      )
                   : createStandaloneRedactor("secrets", redactorOptions);
               return yield* runtime
                 .apply(plan, {
@@ -115,7 +125,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
                           : { runners: services.hostProbeRunners }),
                         ...(options.signal === undefined ? {} : { signal: options.signal }),
                       }).pipe(
-                        Effect.mapError((error) =>
+                        mapFailures((error) =>
                           error instanceof HealthcheckError
                             ? new ServiceExecError({
                                 providerId: runtime.id,
@@ -137,7 +147,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
           errorRedactor,
         ),
       ),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         redactProviderError(
           cause instanceof ProviderCapabilityError
             ? new ProviderUnavailableError({

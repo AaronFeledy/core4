@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
@@ -31,7 +36,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("crossprocessapp");
 const appRoot = AbsolutePath.make("/tmp/docker-crossprocess-app");
 const webName = ServiceName.make("web");
-const containerName = "lando-crossprocessapp-web";
+const containerName = "lando-crossprocessapp--web";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
@@ -194,6 +199,19 @@ const makeFakeApi = () => {
       running.delete(name);
       return { status: deleted ? 204 : 404, body: "" };
     }
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      return {
+        status: 200,
+        body: JSON.stringify(
+          Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: labels.get(name) ?? { "dev.lando.app": "crossprocessapp" },
+          })),
+        ),
+      };
+    }
     return { status: 500, body: `unexpected ${method} ${path}` };
   };
 
@@ -212,6 +230,7 @@ const makeFakeApi = () => {
     },
   };
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -229,6 +248,7 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
     makeRuntimeProvider({
       platform: "linux",
       dockerApi,
+      ...supervisedExecFixtureOptions(dockerApi),
       appliedPlanState: makePluginStateStore(
         makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
         AbsolutePath.make(stateDir),
@@ -246,11 +266,11 @@ const applyPlan = async (stateDir: string, dockerApi: DockerApiClient) => {
 
 const isUnavailableExec = (error: unknown): boolean => {
   if (!(error instanceof ProviderUnavailableError)) return false;
-  return error.message.includes("does not implement exec yet");
+  return error.message.includes("does not implement exec");
 };
 
 describe("provider-docker cross-process state", () => {
-  test("apply with appliedPlanState writes a version-3 envelope", async () => {
+  test("apply with appliedPlanState writes the current applied-state envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
       await applyPlan(stateDir, fake.api);
@@ -258,7 +278,7 @@ describe("provider-docker cross-process state", () => {
       const path = appliedPlanPath(stateDir, plan.id);
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
-      expect(raw.version).toBe(3);
+      expect(raw.version).toBe(APPLIED_STATE_VERSION);
       expect(raw.data).toBeDefined();
     });
   });
@@ -296,7 +316,7 @@ describe("provider-docker cross-process state", () => {
 
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("running");
+      expect(snapshot.status).toBe("running");
     });
   });
 

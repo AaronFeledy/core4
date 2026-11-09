@@ -8,16 +8,31 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceFeatureValidateEffective,
+} from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  assertListenerConfig,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
 const VERSIONS = ["1"] as const;
 const ARTIFACTS = { "1": DEFAULT_IMAGE } as const;
 export const DEFAULT_PORT = 7700;
+export const MEILISEARCH_LISTENER: ListenerContract = {
+  port: DEFAULT_PORT,
+  daemon: "Meilisearch",
+  bindVariables: ["MEILI_HTTP_ADDR"],
+  when: "All Meilisearch services",
+};
 const DATA_TARGET = PortablePath.make("/meili_data");
 
 export const MEILISEARCH_FEATURE_ID = "service-lando.meilisearch";
@@ -36,8 +51,7 @@ export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed s
 
 const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, MEILISEARCH_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("MEILI_MASTER_KEY", MEILISEARCH_DEFAULT_MASTER_KEY);
@@ -45,7 +59,7 @@ const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("MEILI_ENV", "development");
   ctx.addEnv("MEILI_HTTP_ADDR", `0.0.0.0:${port}`);
   ctx.addStorage({
-    store: `${appName}-meilisearch-data`,
+    store: ctx.serviceStoreName("meilisearch-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -58,9 +72,16 @@ export const meilisearchServiceFeature: ServiceFeatureDefinition = {
   id: MEILISEARCH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: serviceFeatureValidateEffective(MEILISEARCH_FEATURE_ID, (ctx) => {
+    assertListenerConfig(ctx.normalizedConfig, MEILISEARCH_LISTENER);
+    return { handledServiceFields: [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, MEILISEARCH_LISTENER),
+        protocol: "http",
+      }),
     ),
   apply: serviceFeatureApply(
     MEILISEARCH_FEATURE_ID,

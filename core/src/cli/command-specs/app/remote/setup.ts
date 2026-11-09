@@ -7,6 +7,7 @@ import { remoteEnvArg, remoteSetupFlags, remoteSetupOptionsFromInput } from "./c
 
 export const remoteSetupSpec: LandoCommandSpec<RemoteTestResult> = {
   id: "app:remote:setup",
+  onlineAcquisition: true,
   summary: "Run remote setup checks for the current app.",
   namespace: "app",
   bootstrap: "app",

@@ -8,11 +8,18 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import {
+  SOCKET_PROXY_POLKIT_PATH,
+  SOCKET_PROXY_UNIT_PATHS,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "../src/socket-proxy-helper.ts";
 
 import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 
@@ -68,11 +75,17 @@ const makePrivilege = (
 const makeLifecycleHarness = (input: {
   readonly mode: "socket-helper" | "occupied-hop";
   readonly helperInstalled: boolean;
+  readonly helperOwner?: string;
 }) => {
   const files = new Map<string, string>();
   const runner = makeRunner();
   const privilege = makePrivilege();
   const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
+  if (input.helperInstalled) {
+    const owner = input.helperOwner ?? "/lando";
+    for (const path of SOCKET_PROXY_UNIT_PATHS) files.set(path, socketProxyUnitHeader(owner));
+    files.set(SOCKET_PROXY_POLKIT_PATH, socketProxyPolkitHeader(owner));
+  }
   files.set(
     acquisitionStateFile(paths),
     `${JSON.stringify({
@@ -83,10 +96,12 @@ const makeLifecycleHarness = (input: {
       fingerprint: defaultAcquisitionFingerprint(),
       helperInstalled: input.helperInstalled,
       socketsActive: input.mode === "socket-helper",
+      ...(input.mode === "socket-helper" ? { bindHttpPort: 38080, bindHttpsPort: 38443 } : {}),
     })}\n`,
   );
   const socketProxy: SocketProxyDependencies = {
     user: "lando-dev",
+    userDataRoot: "/lando",
     hasHostSystemd: () => true,
     exists: (path) => Effect.succeed(files.has(path)),
     readText: (path) =>
@@ -128,8 +143,14 @@ const stopInvocations = (
   privilege: ReturnType<typeof makePrivilege>,
 ) =>
   [
-    ...runner.calls().filter((call) => call.cmd === "systemctl" && call.args[0] === "stop"),
-    ...privilege.calls().filter((command) => command[0] === "systemctl" && command[1] === "stop"),
+    ...runner
+      .calls()
+      .flatMap((call) => socketProxyControlCommands([call.cmd, ...call.args]))
+      .filter((command) => command[0] === "stop"),
+    ...privilege
+      .calls()
+      .flatMap(socketProxyControlCommands)
+      .filter((command) => command[0] === "stop"),
   ] as const;
 
 describe("socket proxy lifecycle stop", () => {
@@ -141,7 +162,7 @@ describe("socket proxy lifecycle stop", () => {
     await Effect.runPromise(harness.service.stop);
 
     // Then: systemctl stop is issued for the helper sockets and acquisition state is cleared.
-    expect(stopInvocations(harness.runner, harness.privilege).length).toBeGreaterThan(0);
+    expect(stopInvocations(harness.runner, harness.privilege)).toHaveLength(1);
     expect(harness.files.has(acquisitionStateFile(harness.paths))).toBe(false);
   });
 
@@ -154,5 +175,16 @@ describe("socket proxy lifecycle stop", () => {
 
     // Then: no socket stop is issued.
     expect(stopInvocations(harness.runner, harness.privilege)).toEqual([]);
+  });
+
+  test("stop never controls a helper now owned by another data root", async () => {
+    const harness = makeLifecycleHarness({
+      mode: "socket-helper",
+      helperInstalled: true,
+      helperOwner: "/other",
+    });
+    await Effect.runPromise(harness.service.stop);
+    expect(harness.runner.calls()).toEqual([]);
+    expect(harness.privilege.calls()).toEqual([]);
   });
 });

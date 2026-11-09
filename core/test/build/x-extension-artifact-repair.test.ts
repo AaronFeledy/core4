@@ -38,16 +38,20 @@ import { evolveHistoricalContainerUser } from "./x-extension-container-user-proo
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
+  evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -59,33 +63,39 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 };
 
 const repairedLandofile = (): JsonSchema =>
-  normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
+  evolveHistoricalSqliteTarget(
+    normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile")),
+  );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalConsolePort(
-    evolveHistoricalToolingSensitivity(
-      evolveHistoricalAppMountAcceleration(
-        evolveHistoricalToolingShorthand(
-          evolveHistoricalEnvironment(
-            evolveHistoricalEndpointMetadata(
-              evolveHistoricalServicePort(
-                evolveHistoricalTimestamps(
-                  evolveHistoricalContainerUser(
-                    evolveHistoricalReadiness(
-                      evolveHistoricalShorthand(
-                        evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+  evolveHistoricalToolingWrapper(
+    evolveHistoricalUploadDirs(
+      evolveHistoricalConsolePort(
+        evolveHistoricalToolingSensitivity(
+          evolveHistoricalAppMountAcceleration(
+            evolveHistoricalToolingShorthand(
+              evolveHistoricalEnvironment(
+                evolveHistoricalEndpointMetadata(
+                  evolveHistoricalServicePort(
+                    evolveHistoricalTimestamps(
+                      evolveHistoricalContainerUser(
+                        evolveHistoricalReadiness(
+                          evolveHistoricalShorthand(
+                            evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+                          ),
+                        ),
                       ),
+                      "bare",
                     ),
                   ),
-                  "bare",
                 ),
               ),
+              "bare",
             ),
           ),
           "bare",
         ),
       ),
-      "bare",
     ),
   );
 
@@ -154,6 +164,7 @@ describe("closed x-* extension artifact repair", () => {
     expect(shorthandDelta.provenanceCommit).toBe("4b13bf3bf278475b194cf0d82a3bc01de83325b2");
     expect(timestampsDelta.provenanceCommit).toBe("08d1490c6ae5773be71abfd3283faf8ebe4f9189");
     expect(includeChecksumDelta.provenanceCommit).toBe("e397cae8cb39233d4ec3a693dc533549f7cbb7f3");
+    expect(includeWhenDelta.provenanceCommit).toBe("ddce3e78790bd7522778b7e5f813a4a07294c2b2");
   });
 
   test("repairs the captured landofile onto every current production embedding", async () => {

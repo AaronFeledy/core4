@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Option, Schema } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -129,7 +130,7 @@ export function makeAppliedPlanStore(
             case "readable":
               return Effect.succeed(read.plan);
             case "unreadable":
-              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path, appId }));
           }
         }),
       );
@@ -159,12 +160,12 @@ export function makeAppliedPlanStore(
               Effect.as(bucket.path),
             ),
           ),
-          Effect.mapError((cause) => error("persist", cause)),
+          mapFailures((cause) => error("persist", cause)),
         ),
       removeAppliedPlan: (stateStore, appId) =>
         open(stateStore, appId).pipe(
           Effect.flatMap((bucket) => bucket.remove),
-          Effect.mapError((cause) => error("remove", cause)),
+          mapFailures((cause) => error("remove", cause)),
         ),
     };
   }
@@ -182,19 +183,25 @@ export function makeAppliedPlanStore(
     });
   const inspectRecord = (stateStore: PluginStateStore) =>
     inspectAppliedPlansRecordBucket(open(stateStore), APPLIED_PLANS_KEY);
-  const readRecord = (stateStore: PluginStateStore) =>
+  const readRecord = (stateStore: PluginStateStore, appId?: AppId) =>
     inspectRecord(stateStore).pipe(
       Effect.flatMap((read) => {
         switch (read.status) {
           case "unreadable":
-            return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+            return Effect.fail(
+              unreadableAppliedStateError({
+                ...options,
+                path: read.path,
+                ...(appId === undefined ? {} : { appId }),
+              }),
+            );
           case "readable":
             return Effect.succeed(read.plans);
         }
       }),
     );
   const loadAppliedPlanStrict = (stateStore: PluginStateStore, appId: AppId) =>
-    readRecord(stateStore).pipe(Effect.map((plans) => plans?.[appId]));
+    readRecord(stateStore, appId).pipe(Effect.map((plans) => plans?.[appId]));
   return {
     loadAppliedPlanStrict,
     inspectAppliedPlan: (stateStore, appId) =>
@@ -219,7 +226,7 @@ export function makeAppliedPlanStore(
             ),
           ),
         ),
-        Effect.mapError((cause) => error("persist", cause)),
+        mapFailures((cause) => error("persist", cause)),
       ),
     loadAppliedPlan: (stateStore, appId) =>
       loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined))),
@@ -247,7 +254,7 @@ export function makeAppliedPlanStore(
             return [undefined, remaining];
           }),
         ),
-        Effect.mapError((cause) => error("remove", cause)),
+        mapFailures((cause) => error("remove", cause)),
       ),
   };
 }

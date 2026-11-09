@@ -1,0 +1,19 @@
+name: conditional-includes
+recipe:
+  id: lamp
+  version: "0.1.0"
+  producer:
+    sourceKind: bundled
+    packageName: "@lando/recipe-lamp"
+    recipeId: lamp
+    manifestVersion: "0.1.0"
+    contentDigest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  options:
+    cache: none
+includes:
+  - source: ./cache.yml
+    when: "{{ recipe.cache == 'redis' }}"
+services:
+  web:
+    type: compose
+    image: alpine:3

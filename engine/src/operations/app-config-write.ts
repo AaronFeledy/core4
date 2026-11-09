@@ -57,6 +57,7 @@ const mutationIo = Effect.fnUntraced(function* (
       ),
     ),
     editCommand: "lando app:config edit",
+    schema: "LandofileShape" as const,
     parse: (content: string) =>
       parseLandofile({ file: inputPath, content, cwd: appRoot }).pipe(
         Effect.flatMap((value) =>

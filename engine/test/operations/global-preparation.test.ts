@@ -79,19 +79,23 @@ test("a changed authored input rejects prepared publication until explicit fresh
     await mkdir(f.root);
     const authored = join(f.root, ".lando.yml");
     await writeFile(authored, "name: global\n");
-    const prepared = await Effect.runPromise(
-      Effect.gen(function* () {
-        const preparation = yield* prepareGlobalConfiguration();
-        return yield* preparation.compile(yield* preparation.resolve());
-      }).pipe(Effect.provide(f.layer)),
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const preparation = yield* prepareGlobalConfiguration();
+          const prepared = yield* preparation.compile(yield* preparation.resolve());
+          yield* Effect.promise(() =>
+            writeFile(
+              authored,
+              "name: global\nservices:\n  custom:\n    type: compose\n    image: changed:v1\n",
+            ),
+          );
+          const result = yield* Effect.result(prepared.verify);
+          expect(result._tag).toBe("Failure");
+          expect(yield* Effect.promise(() => Bun.file(prepared.paths.distLandofile).exists())).toBe(false);
+        }).pipe(Effect.provide(f.layer)),
+      ),
     );
-    await writeFile(
-      authored,
-      "name: global\nservices:\n  custom:\n    type: compose\n    image: changed:v1\n",
-    );
-    const result = await Effect.runPromise(Effect.result(prepared.verify));
-    expect(result._tag).toBe("Failure");
-    expect(await Bun.file(prepared.paths.distLandofile).exists()).toBe(false);
   });
 });
 

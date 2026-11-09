@@ -22,6 +22,8 @@ This part defines the single machine-readable deprecation contract for every pub
 
 `AppPlacementError`, required `RuntimeProviderRegistry.appliedPlansFor`, `resolveAppliedPlan`, and `resolveTeardownEvidence` members (§5.3.1), and `GlobalAppService.providerId` (§20.5) are additive pre-release SDK contract changes. Registry implementations MUST supply the required members; consumers MUST preserve the declared placement-error channels, including scratch acquisition. These unreleased contract additions require public-surface fixture updates, not a deprecation cycle or compatibility adapters.
 
+`ListenerAuthority`, `ServicePlan.listenerAuthority`, and `ServiceFeatureContext.setListenerAuthority` replace the unreleased `startupFailureHint` and `setStartupFailureHint` contracts. The replacement requires updated public-surface fixtures, regenerated schema artifacts, and app-plan cache invalidation, not a deprecation cycle or compatibility adapter. Historical applied plans remain readable for observation and teardown without reconstructing authority.
+
 ### 18.2 The `DeprecationNotice` schema
 
 `DeprecationNotice` is an Effect Schema in `@lando/sdk`, re-exported by `@lando/core/schema`, and published through the §13.2 artifact set.
@@ -29,7 +31,7 @@ This part defines the single machine-readable deprecation contract for every pub
 | Field | Contract |
 |---|---|
 | `since` | Required semver that introduced the deprecation. |
-| `removeIn` | Optional scheduled removal semver; required once the notice is older than 12 months. |
+| `removeIn` | Optional scheduled removal semver; MUST be strictly later than `since`. |
 | `severity` | `info`, `warn`, or `error`; defaults to `warn`. |
 | `replacement` | Optional canonical replacement id. |
 | `note` | Required actionable user-facing sentence. |
@@ -106,12 +108,14 @@ The renderer emits one warning per `(kind, id)` per process. The warning names t
 
 ### 18.7 Removal policy and release-time gates
 
+The schema enforces structure and `removeIn` strictly later than `since` for every author in the author's own version space. Lando-owned surfaces follow the policy below; the release gate enforces its version and removal scheduling rules:
+
 - `since` is REQUIRED and MUST name a released or pending semver.
 - `removeIn` is REQUIRED once a notice is older than 12 months.
-- `removeIn` MUST be a future major or minor version; patch removals are forbidden.
+- `removeIn` MUST be a future major or minor version with patch `0`; patch removals are forbidden.
 - `severity` defaults to `warn`. `info` is advisory. `error` is reserved for the final release before removal and requires at least one prior minor cycle at `warn`.
 
-`scripts/check-deprecations.ts` runs after codegen in §17.1 and through PR lint. If `removeIn` equals the release and the surface remains registered, release fails with `DeprecationStaleError`. If `removeIn` is earlier than the release, release fails with `DeprecationOverdueError`. A notice without `removeIn` older than 12 months produces a soft warning. Removing a surface MUST also remove its notice.
+`scripts/check-deprecations.ts` runs after codegen in §17.1 and through PR lint. If `removeIn` equals the release and the surface remains registered, release fails with `DeprecationStaleError`. If `removeIn` is earlier than the release, release fails with `DeprecationOverdueError`. A Lando-owned notice without `removeIn` older than 12 months MUST fail the gate. Removing a surface MUST also remove its notice.
 
 Adding a deprecation requires a canonical registry declaration, a test that triggers it, and migration docs when the change is non-trivial. Removing one requires deleting the surface and notice together, updating tests and generated artifacts, and recording the removal in the relevant changelog.
 

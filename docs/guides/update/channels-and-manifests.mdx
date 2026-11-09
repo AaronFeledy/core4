@@ -3,23 +3,29 @@ id: update-channels-and-manifests
 provider: test
 platforms: [linux]
 timeout: 60000
-tags: [beta, docs, update, supply-chain]
+tags: [docs, update, supply-chain]
 ---
 
 # Update channels and manifests
 
-> **Alpha status:** `https://update.lando.dev` is **not serving v4**. `lando update` cannot fetch a signed channel manifest. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+`lando update` resolves exactly three channel names: `stable`, `next`, and `dev`. Each channel publishes a signed manifest:
 
-For now, [install a newer GitHub prerelease](../install/github-releases.mdx) for your platform or build from source. Verify the download and use `lando --version` to confirm the replacement before running setup.
-
-The updater code will resolve three channel names, and only these three: `stable`, `next`, `dev`. Planned URLs:
-
-| Channel | Planned manifest |
+| Channel | Manifest |
 | --- | --- |
 | `stable` | `https://update.lando.dev/v4/stable.json` |
 | `next` | `https://update.lando.dev/v4/next.json` |
 | `dev` | `https://update.lando.dev/v4/dev.json` |
 
-`LANDO_CHANNEL` on the POSIX installer script uses the same three names. Those URLs 404 today. A version like `v4.0.0-dev.N` maps to the `dev` channel in code. That mapping does not make a host exist.
+The installers read the same manifests, and `LANDO_CHANNEL` on the installer scripts uses the same three names.
 
-When the host is up, a signed manifest older than the last signed version seen for that channel is refused as possible replay. Until then, there is no manifest to trust and no auto-update to run.
+## Which channel you are on
+
+Without a `--channel` flag, update derives the channel from the running version. A `-dev.N` prerelease resolves against `dev`, a `-next.N` or `-rc.N` prerelease against `next`, and any other version against `stable`. Pass `lando update --channel=next` to resolve a different channel on purpose.
+
+## What update verifies
+
+Update downloads the manifest, its cosign signature, and its certificate, and verifies the signature against the release workflow identity before it trusts anything inside. It then downloads the binary for your platform and `SHA256SUMS` with its signature, verifies that signature, and checks the binary's checksum against the verified manifest. Only then does it stage and swap the executable.
+
+Update also keeps a freshness record per channel. A verified manifest whose version is older than the last verified version seen for that channel is refused as a possible replay. The remediation is to wait for a newer signed release; freshness checks cannot be disabled from the command line.
+
+Run `lando update --dry-run` to see the resolved channel and target version without changing anything. See [Update permission errors](./permission-errors.mdx) when the swap cannot write the install path.

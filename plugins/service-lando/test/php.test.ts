@@ -6,8 +6,12 @@ import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } fro
 import type { ServiceType } from "@lando/sdk/services";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
-import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
+import {
+  APACHE_LISTEN_BUILD_STEP_ID,
+  apacheForwardedDirectoryRedirectDirectives,
+} from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
+import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
 import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
 import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import {
@@ -105,6 +109,66 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 describe("php ServiceType — supported versions and frameworks", () => {
   test("exposes the complete PHP version catalog", () => {
     expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]);
+  });
+});
+
+describe("PHP Apache upload directories", () => {
+  test.each([undefined, 8080])("protects upload directories inside the site with port %j", async (port) => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      webroot: "public.v1",
+      allowOverride: true,
+      uploadDirs: ["sites/*/files", "uploads*"],
+      ...(port === undefined ? {} : { port }),
+    });
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    const start = directives.indexOf(
+      '<DirectoryMatch "(?i)^/app/public\\\\.v1/(?:sites/[^/]*/files|uploads[^/]*)(?:/|$)">',
+    );
+    expect(start).toBeGreaterThan(-1);
+    expect(directives.slice(start, start + 8)).toEqual([
+      '<DirectoryMatch "(?i)^/app/public\\\\.v1/(?:sites/[^/]*/files|uploads[^/]*)(?:/|$)">',
+      "<IfModule php_module>",
+      "php_admin_flag engine off",
+      "</IfModule>",
+      '<FilesMatch "(?i)\\.php$">',
+      "Require all denied",
+      "</FilesMatch>",
+      "</DirectoryMatch>",
+    ]);
+    if (port !== undefined) {
+      expect(start).toBeGreaterThan(directives.indexOf("<VirtualHost *:8080>"));
+      expect(start + 8).toBeLessThan(directives.indexOf("</VirtualHost>"));
+    }
+  });
+
+  test("joins a filesystem-root webroot with exactly one separator", async () => {
+    // Given
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      webroot: "/",
+      uploadDirs: ["app/uploads"],
+    });
+    // When
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    // Then
+    expect(directives).toContain('<DirectoryMatch "(?i)^/(?:app/uploads)(?:/|$)">');
+  });
+
+  test.each([
+    { command: ["custom"] },
+    { entrypoint: ["custom"] },
+    { image: "custom/php:8.3" },
+    { build: { context: "." } },
+    { uploadDirs: [] },
+  ])("does not add upload directives for %j", async (config) => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      uploadDirs: ["uploads"],
+      ...config,
+    });
+    const command = Array.isArray(plan.command) ? plan.command.join("\n") : (plan.command ?? "");
+    expect(command).not.toContain("DirectoryMatch");
   });
 });
 
@@ -430,7 +494,13 @@ describe("php serving modes (via:)", () => {
       "AllowOverride None",
       "Require all granted",
       "</Directory>",
+      'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+      '<FilesMatch "\\.(?!php$)(?i:php)$">',
+      "Require all denied",
+      "</FilesMatch>",
+      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
+      ...apacheHiddenPathDirectives(),
       "</VirtualHost>",
     ]);
 
@@ -458,7 +528,13 @@ describe("php serving modes (via:)", () => {
       "AllowOverride None",
       "Require all granted",
       "</Directory>",
+      'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+      '<FilesMatch "\\.(?!php$)(?i:php)$">',
+      "Require all denied",
+      "</FilesMatch>",
+      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
+      ...apacheHiddenPathDirectives(),
     ]);
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });

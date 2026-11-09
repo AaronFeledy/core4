@@ -8,8 +8,9 @@
  * for readability here so the feature stays a pure mount/env application.
  */
 import { resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Result, Schema } from "effect";
 
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import {
@@ -18,11 +19,20 @@ import {
   type NoCertificateAuthorityError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
-import type { ServiceConfig } from "@lando/sdk/schema";
+import {
+  CertificateName,
+  type HostPlatform,
+  type ServiceConfig,
+  certificateNameForHostname,
+  validationIssue,
+} from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
-import { validationIssue } from "@lando/sdk/schema";
+import {
+  type CertificateAuthorityCandidateDefinition,
+  selectCertificateAuthorityCandidate,
+} from "../plugins/certificate-authority-resolver.ts";
 
 export const CERTS_FEATURE_ID = "lando.certs" as const;
 
@@ -52,6 +62,10 @@ interface ResolveCertsFeatureInput {
       >
     | undefined;
   readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
+  readonly validation?: {
+    readonly authorities: readonly CertificateAuthorityCandidateDefinition[];
+    readonly platform: HostPlatform;
+  };
 }
 
 const validationError = (
@@ -69,17 +83,49 @@ const validationError = (
 
 const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;
 
+/** Keep first occurrence; compare case-insensitively. */
+const dedupeCertificateNames = (names: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of names) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+};
+
 const certificateSans = (input: ResolveCertsFeatureInput): ReadonlyArray<string> => {
-  const candidates = [
+  const routeHostnames = [
+    ...input.routes.map((route) => route.hostname),
+    ...(input.defaultRouteHostname === undefined ? [] : [input.defaultRouteHostname]),
+  ];
+  return dedupeCertificateNames([
     input.serviceName,
     internalAlias(input.serviceName, input.appName),
     ...input.hostnames,
-    ...input.routes.map((route) => route.hostname),
-    ...(input.defaultRouteHostname === undefined ? [] : [input.defaultRouteHostname]),
+    ...routeHostnames.flatMap((hostname) => certificateNameForHostname(hostname) ?? []),
     "localhost",
     "127.0.0.1",
-  ];
-  return [...new Set(candidates)];
+  ]);
+};
+
+/** Mandatory identities must be certificate names before the CA is contacted. */
+const requireMandatoryCertificateIdentities = (
+  input: ResolveCertsFeatureInput,
+): Effect.Effect<void, LandofileValidationError> => {
+  const identity = [input.serviceName, internalAlias(input.serviceName, input.appName)].find(
+    (name) => !Schema.is(CertificateName)(name),
+  );
+  return identity === undefined
+    ? Effect.void
+    : Effect.fail(
+        validationError(
+          input,
+          `identity ${identity} is not a valid certificate name. Use a DNS-shaped service name (letters, digits, hyphens, underscores) or disable certs.`,
+        ),
+      );
 };
 
 const resolveAuthoredPath = (
@@ -111,10 +157,10 @@ const resolveAuthoredPath = (
           cause,
         );
       return fileSystem.stat(containedPath).pipe(
-        Effect.mapError(unreadable),
+        mapFailures(unreadable),
         Effect.flatMap((stat) =>
           stat.isFile
-            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), Effect.mapError(unreadable))
+            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), mapFailures(unreadable))
             : Effect.fail(validationError(input, `path ${authoredPath} must be a regular file.`)),
         ),
       );
@@ -124,6 +170,20 @@ const resolveAuthoredPath = (
 const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
   input: ResolveCertsFeatureInput,
 ): Effect.fn.Return<CertsFeatureConfig, LandofileValidationError> {
+  yield* requireMandatoryCertificateIdentities(input);
+  const cn = internalAlias(input.serviceName, input.appName);
+  const sans = certificateSans(input);
+  if (input.validation !== undefined) {
+    const selected = selectCertificateAuthorityCandidate(
+      input.validation.authorities,
+      input.validation.platform,
+    );
+    if (Result.isFailure(selected))
+      return yield* Effect.fail(
+        validationError(input, `${selected.failure.message} ${selected.failure.remediation}`),
+      );
+    return { cn, sans, caId: selected.success.id };
+  }
   const resolveAuthority = input.resolveCertificateAuthority;
   if (resolveAuthority === undefined) {
     return yield* Effect.fail(
@@ -131,20 +191,21 @@ const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
     );
   }
   const ca = yield* resolveAuthority.pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       validationError(
         input,
         `${cause.message} ${"remediation" in cause ? cause.remediation : CA_REMEDIATION}`,
       ),
     ),
   );
-  const cn = internalAlias(input.serviceName, input.appName);
-  const sans = certificateSans(input);
   const issued = yield* ca
     .issueCert({ cn, sans })
     .pipe(
-      Effect.mapError((cause) =>
-        validationError(input, `could not be issued: ${cause.message}. ${CA_REMEDIATION}`),
+      mapFailures((cause) =>
+        validationError(
+          input,
+          `could not be issued: ${cause.message.replace(/\.$/u, "")}. ${CA_REMEDIATION}`,
+        ),
       ),
     );
   return { certPath: issued.certPath, keyPath: issued.keyPath, cn, sans, caId: ca.id };

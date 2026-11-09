@@ -39,7 +39,9 @@ test.skipIf(!machineTrustEligibility.available)(
     const ensureMachine =
       machinePlatform === "darwin" ? ensureMacOSPodmanMachine : ensureWindowsPodmanMachine;
 
-    await Effect.runPromise(ensureMachine(runner, { name: "lando", createdByLando: true }));
+    if (runner.createdAt === undefined) throw new Error("Expected a machine creation fingerprint");
+    const createdAt = await Effect.runPromise(runner.createdAt);
+    await Effect.runPromise(ensureMachine(runner, { name: "lando", createdByLando: true, createdAt }));
 
     let userOwnedTrustSyncAttempted = false;
     await Effect.runPromise(

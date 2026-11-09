@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, type ServiceConfig, ServiceName, landoAppStoreName } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
@@ -84,7 +84,9 @@ describe("compose ServiceType (raw passthrough)", () => {
       },
     ]);
     expect(plan.mounts.filter((mount) => mount.type === "volume")).toHaveLength(1);
-    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe("myapp-worker-data");
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
+      landoAppStoreName("myapp", "worker-data"),
+    );
     expect(String(plan.mounts.find((mount) => mount.type === "volume")?.target)).toBe("/var/lib/worker");
     expect(serviceAppMount(plan)).toMatchObject({
       source: "/srv/apps/myapp",

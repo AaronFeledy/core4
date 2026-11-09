@@ -2,7 +2,7 @@
 id: joomla-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, joomla, php, mariadb]
+tags: [docs, recipes, joomla, php, mariadb]
 ---
 
 # Run the Joomla recipe
@@ -86,6 +86,8 @@ lando open --print
 Add `/administrator/` to the URL it prints and sign in as `admin` with the password you saved. If the proxy picked a fallback port, use the URL from `lando info` instead; it includes the port.
 
 ## See what the recipe writes
+
+The appserver sets `uploadDirs: [images]` to keep PHP out of uploaded files.
 
 | Piece | What you get |
 | --- | --- |

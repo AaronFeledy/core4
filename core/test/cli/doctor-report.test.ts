@@ -28,6 +28,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
+import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
@@ -97,10 +98,26 @@ const buildConfigService = (
   });
 };
 
+// The report must not depend on the host's inotify budget; filesystem-watch diagnoses have their own tests.
+const healthyFilesystemWatch = Layer.succeed(
+  FilesystemWatchIO,
+  FilesystemWatchIO.of({
+    observe: Effect.succeed({
+      limits: { max_user_watches: "65536", max_user_instances: "128", max_queued_events: "16384" },
+      allocation: { stage: "complete" },
+      cleanup: "complete",
+      eventDelivery: "confirmed",
+    }),
+  }),
+);
+
 const buildLayers = (
   provider: typeof TestRuntimeProvider,
-): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService> =>
+): Layer.Layer<
+  ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService | FilesystemWatchIO
+> =>
   Layer.mergeAll(
+    healthyFilesystemWatch,
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(
@@ -161,6 +178,7 @@ describe("meta:doctor combined report", () => {
         violations: [
           {
             rule: "landofile.load",
+            reason: "LandofileParseError",
             severity: "error",
             path: [],
             message: "Use a block mapping.",
@@ -208,7 +226,7 @@ describe("meta:doctor combined report", () => {
           ...(withError
             ? [
                 {
-                  rule: "env-file.read",
+                  rule: "env-file.read" as const,
                   severity: "error" as const,
                   path: ["env_file", 1],
                   message: "Missing env file",
@@ -579,13 +597,14 @@ describe("meta:doctor combined report", () => {
     }
   });
 
-  test("doctor --app fails version-constraint reporting when includes cannot resolve", async () => {
+  test.each([1, 2])("doctor --app reports all %s unresolved includes", async (count) => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-include-")));
     await writeFile(
       join(dir, ".lando.yml"),
       ["name: doctor-app", "includes:", "  - ./missing.yml", ""].join("\n"),
     );
+    if (count === 2) await writeFile(join(dir, ".lando.local.yml"), "includes: [./also-missing.yml]\n");
     const previousCwd = process.cwd();
     try {
       process.chdir(dir);
@@ -597,10 +616,14 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "fail",
         severity: "error",
-        context: { declared: "(unresolved includes)" },
+        context: { declared: count === 1 ? "(unresolved includes)" : "(Landofile load failures)" },
       });
       expect(report.appVersionConstraints?.checks[0]?.context.includeResolution).toContain("missing.yml");
-      expect(renderDoctorReport(report)).toContain("lando app:includes:update");
+      if (count === 1) expect(renderDoctorReport(report)).toContain("lando app:includes:update");
+      else
+        expect(report.appVersionConstraints?.checks[0]?.context.includeResolution).toContain(
+          "also-missing.yml",
+        );
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });

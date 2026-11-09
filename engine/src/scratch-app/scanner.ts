@@ -1,4 +1,5 @@
 import { SCRATCH_ID_LABEL, SCRATCH_LABEL } from "@lando/container-runtime/labels";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Context, Effect, Layer, Option } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
@@ -89,7 +90,7 @@ export class ScratchResourceScanner extends Context.Service<
             { concurrency: "unbounded" },
           ).pipe(Effect.map((observations) => observations.flat()));
         },
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           scannerError("gc", "Unable to list labeled scratch provider resources.", cause),
         ),
       );
@@ -143,7 +144,7 @@ export class ScratchResourceScanner extends Context.Service<
           { concurrency: "unbounded" },
         ).pipe(
           Effect.map((results) => results.flat().some((result) => result.kind === "removed")),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             scannerError("gc", `Unable to prune provider resources for scratch app ${id}.`, cause),
           ),
         );
@@ -153,9 +154,7 @@ export class ScratchResourceScanner extends Context.Service<
           { concurrency: "unbounded", discard: true },
         ).pipe(
           Effect.as(uniqueVolumes.length > 0),
-          Effect.mapError((cause) =>
-            scannerError("gc", `Unable to prune volumes for scratch app ${id}.`, cause),
-          ),
+          mapFailures((cause) => scannerError("gc", `Unable to prune volumes for scratch app ${id}.`, cause)),
         );
         return { stop, destroy };
       });

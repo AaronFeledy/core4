@@ -1,0 +1,46 @@
+{
+  "name": "@lando/source-acquisition",
+  "description": "Private pinned source acquisition store (git, npm, archive) for Lando runtimes.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/AaronFeledy/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
+    "directory": "source-acquisition"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./locator": "./src/locator.ts",
+    "./npm": "./src/npm.ts",
+    "./integrity": "./src/integrity.ts",
+    "./archive": "./src/archive.ts",
+    "./git": "./src/git.ts",
+    "./testing": "./src/testing.ts",
+    "./errors": "./src/errors.ts",
+    "./types": "./src/types.ts",
+    "./gc": "./src/gc.ts"
+  },
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
+  "keywords": ["lando", "source-acquisition"],
+  "dependencies": {
+    "@lando/paths": "workspace:*",
+    "@lando/sdk": "workspace:*",
+    "@lando/state-store": "workspace:*",
+    "effect": "catalog:"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist .tsbuildinfo",
+    "test": "bun test ./test",
+    "typecheck": "tsc -b"
+  }
+}

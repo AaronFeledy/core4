@@ -2,7 +2,7 @@
 id: php-customization
 provider: test
 timeout: 90000
-tags: [beta, docs, php, service, customization]
+tags: [docs, php, service, customization]
 ---
 
 # Customize PHP
@@ -22,11 +22,12 @@ lando exec app -- php --ri pcntl
 Stock PHP services using Apache, FPM, or CLI include these extensions alongside PHP's standard modules:
 
 ```text
-gd, intl, mbstring, mysqli, opcache, pcntl, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
+bcmath, gd, intl, mbstring, mysqli, opcache, pcntl, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 ```
 
 | Extension | Purpose |
 | --- | --- |
+| `bcmath` | Arbitrary-precision math for Craft CMS, Magento, and money handling |
 | `gd` | Image processing (GD) |
 | `intl` | ICU internationalization functions |
 | `mbstring` | Multibyte string handling |

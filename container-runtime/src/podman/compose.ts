@@ -1,4 +1,5 @@
 import { join as pathJoin } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   APP_LABEL,
   PROVIDER_LABEL,
@@ -15,22 +16,27 @@ import {
   type ServicePlan,
   landoServiceNetworkAttachments,
   landoSharedNetworkName,
+  planDataId,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
+import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
 import { previewEnvironmentValue } from "../environment-values.ts";
+import type { ExecSupervisionOptions } from "../exec-supervision.ts";
 import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
 import { commonContainerLabels } from "../plan.ts";
+import { redactDetails, redactorFor } from "../redact.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
 import { composeHealthcheck } from "./compose-healthcheck.ts";
 import { type ComposeVolumeEntry, serviceComposeMounts } from "./compose-mounts.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
-export interface EmitComposeOptions {
+export interface EmitComposeOptions
+  extends Pick<ExecSupervisionOptions, "resolveContainerHelper" | "helperTarget"> {
   readonly userDataRoot: string;
   readonly ctx: ProviderErrorContext;
 }
@@ -74,7 +80,7 @@ const composeError = (ctx: ProviderErrorContext, message: string, details?: unkn
     providerId: ctx.providerId,
     operation: "emitCompose",
     message,
-    details,
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(ctx)) }),
     remediation: ctx.remediation,
   });
 
@@ -189,7 +195,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
     ...plan.stores.map(
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
         const labels = {
-          [APP_LABEL]: plan.id,
+          [APP_LABEL]: planDataId(plan),
           [PROVIDER_LABEL]: plan.provider,
           [STORE_LABEL]: store.name,
           [STORAGE_SCOPE_LABEL]: store.scope,
@@ -389,7 +395,8 @@ export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
     const fileSystem = yield* FileSystem;
     const appRoot = pathJoin(options.userDataRoot, "apps", String(plan.id));
     const outputPath = composePath(plan, options);
-    const prepared = yield* prepareFileModeMounts(plan, options.ctx, options.userDataRoot);
+    const files = yield* prepareFileModeMounts(plan, options.ctx, options.userDataRoot);
+    const prepared = yield* prepareContainerHelperMounts(files, options);
     // Wrap synchronous renderCompose in Effect.try so that any throw from
     // serviceImage/serviceVolumes surfaces as a typed ProviderInternalError
     // failure (not an unhandled defect bypassing the mapError handler below).
@@ -408,7 +415,7 @@ export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
     return { path: outputPath, content };
   },
   (effect, _plan, options) =>
-    Effect.mapError(effect, (cause) => {
+    mapFailures(effect, (cause) => {
       if (cause instanceof ProviderInternalError) {
         return cause;
       }

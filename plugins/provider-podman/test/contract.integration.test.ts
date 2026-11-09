@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
+import {
+  installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
@@ -22,6 +27,7 @@ import {
   ServiceName,
   type ServicePlan,
   appIdentityKey,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import {
@@ -36,7 +42,9 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]> = {}) =>
   providerLayer({
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
     ...options,
+    ...supervisedExecFixtureOptions(options.podmanApi),
     appliedPlanState:
       options.appliedPlanState ??
       makePluginStateStore(
@@ -393,6 +401,7 @@ const makeFakeApi = () => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -595,6 +604,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         return Stream.make(attachBytesFrame(1, containers.get(name)?.stdout ?? new Uint8Array()));
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
+        request.onResponseHead?.();
         const name = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/attach?")),
         );
@@ -619,7 +629,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             ) {
               volumes.set(volume, await collectAsyncBytes(request.stdin));
             }
-            return Stream.empty;
+            return Stream.make(attachBytesFrame(1, container?.stdout ?? new Uint8Array()));
           }),
         );
       }
@@ -654,6 +664,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -842,6 +853,18 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
             }),
           };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          const containers = Array.from(existing).map((name) => ({
+            Id: containerIds.get(name) ?? `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: {
+              "dev.lando.app": appId,
+              "dev.lando.service": name.includes("--db") || name.endsWith("-db") ? "db" : "web",
+            },
+          }));
+          return { status: 200, body: JSON.stringify(containers) };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
     stream: (request) => {
@@ -851,6 +874,7 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls, running, existing, volumes, containerIds, retentionHooks };
 };
 
@@ -1086,7 +1110,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     await Effect.runPromise(
       fake.api.request({
         method: "POST",
-        path: `/containers/create?name=lando-${plan.slug}-${serviceName}`,
+        path: `/containers/create?name=${landoServiceContainerName(plan.slug, serviceName)}`,
         body: {
           Labels: {
             "dev.lando.app": plan.id,
@@ -1101,7 +1125,7 @@ describe("provider-podman RuntimeProvider contract", () => {
         Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
       ),
     );
-    const containerName = `lando-${plan.slug}-${serviceName}`;
+    const containerName = landoServiceContainerName(plan.slug, serviceName);
 
     const chunks = await Effect.runPromise(
       Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
@@ -1174,7 +1198,7 @@ describe("provider-podman RuntimeProvider contract", () => {
   });
 
   test("retains containers and network when a service start fails", async () => {
-    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-persisted-podman-web"]) });
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-persisted-podman--web"]) });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
@@ -1186,8 +1210,8 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.has("lando-persisted-podman-db")).toBe(true);
-    expect(fake.existing.has("lando-persisted-podman-web")).toBe(true);
+    expect(fake.existing.has("lando-persisted-podman--db")).toBe(true);
+    expect(fake.existing.has("lando-persisted-podman--web")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
       false,
     );

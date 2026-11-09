@@ -9,9 +9,12 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type AppRouteOwner,
   type ProviderCapabilities,
   ProviderId,
+  appIdentityKey,
   landoAppNetworkName,
+  planAppIdentity,
   serviceAppMount,
 } from "@lando/core/schema";
 import {
@@ -48,6 +51,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { makeStateStore } from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -59,23 +63,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      fetchTarball: async () => {
-        throw new Error("Unexpected npm download");
-      },
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -233,8 +221,8 @@ interface DestroyCall {
 }
 
 interface RouteRecorder {
-  readonly applied: string[];
-  readonly removed: string[];
+  readonly applied: AppRouteOwner[];
+  readonly removed: AppRouteOwner[];
 }
 
 const makeScratchForkLayer = (
@@ -370,14 +358,15 @@ const makeScratchForkLayer = (
     }),
   );
   const scratchRegistryLive = (() => {
-    if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLayer.ScratchRegistry.layer;
-    const registry = makeScratchRegistry(ownerOnlyFileAccess);
+    if (options.failSecondRegistryUpsert !== true)
+      return ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer));
+    const registry = makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
     let upsertCount = 0;
     return Layer.succeed(
       ScratchRegistry,
       ScratchRegistry.of({
         ...registry,
-        upsert: (entry) => {
+        upsert: (...write) => {
           upsertCount += 1;
           if (upsertCount === 2) {
             return Effect.fail(
@@ -389,7 +378,7 @@ const makeScratchForkLayer = (
               }),
             );
           }
-          return registry.upsert(entry);
+          return registry.upsert(...write);
         },
       }),
     );
@@ -421,12 +410,12 @@ const makeScratchForkLayer = (
           (options.applyRoutes ?? Effect.void).pipe(
             Effect.andThen(
               Effect.sync(() => {
-                routeRecorder.applied.push(String(app));
-                return { app, appliedRoutes: routes, authorities: [] };
+                routeRecorder.applied.push(app);
+                return { app: app.id, appliedRoutes: routes, authorities: [] };
               }),
             ),
           ),
-        removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(String(app))),
+        removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(app)),
         status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
         stop: Effect.void,
       }),
@@ -554,36 +543,44 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
-  test("applies proxy routes on acquire and removes them on scope finalize", async () => {
-    await withTempProject(routedForkLandofile, async () => {
-      const appliedPlans: AppPlan[] = [];
-      const routes: RouteRecorder = { applied: [], removed: [] };
-      const handleId = await Effect.runPromise(
-        Effect.gen(function* () {
-          const service = yield* ScratchAppService;
-          return yield* Effect.scoped(
-            Effect.gen(function* () {
-              const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
-              expect(routes.applied).toEqual([handle.id]);
-              expect(routes.removed).toEqual([]);
-              return handle.id;
-            }),
-          );
-        }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, [], { routes }))),
-      );
+  test.each(["full", "cwd"] as const)(
+    "applies distinct %s scratch route ownership and removes it on scope finalize",
+    async (isolate) => {
+      await withTempProject(routedForkLandofile, async () => {
+        const appliedPlans: AppPlan[] = [];
+        const routes: RouteRecorder = { applied: [], removed: [] };
+        const handleId = await Effect.runPromise(
+          Effect.gen(function* () {
+            const service = yield* ScratchAppService;
+            return yield* Effect.scoped(
+              Effect.gen(function* () {
+                const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false, isolate });
+                expect(routes.applied.map((owner) => String(owner.id))).toEqual([handle.id]);
+                expect(routes.removed).toEqual([]);
+                return handle.id;
+              }),
+            );
+          }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, [], { routes }))),
+        );
 
-      expect(routes.applied).toEqual([handleId]);
-      expect(routes.removed).toEqual([handleId]);
-      expect(appliedPlans[0]?.routes[0]?.hostname).toBe(`forkme--${handleId}.lndo.site`);
-      expect(appliedPlans[0]?.routes[0]?.backend).toMatchObject({ service: "appserver", port: 3000 });
-      expect(appliedPlans[0]?.routes[0]?.backend.host).toBeUndefined();
-      expect(
-        Object.values(appliedPlans[0]?.services ?? {})
-          .flatMap((service) => service.endpoints)
-          .every((endpoint) => endpoint._tag === "internal"),
-      ).toBe(true);
-    });
-  });
+        expect(routes.applied).toEqual([
+          { id: AppId.make(handleId), ownerKey: appIdentityKey("owner", `scratch:${handleId}`) },
+        ]);
+        expect(routes.removed).toEqual(routes.applied);
+        const [appliedPlan] = appliedPlans;
+        if (appliedPlan === undefined) throw new Error("scratch plan missing");
+        expect(routes.applied[0]?.ownerKey).not.toBe(planAppIdentity(appliedPlan).ownerKey);
+        expect(appliedPlans[0]?.routes[0]?.hostname).toBe(`forkme--${handleId}.lndo.site`);
+        expect(appliedPlans[0]?.routes[0]?.backend).toMatchObject({ service: "appserver", port: 3000 });
+        expect(appliedPlans[0]?.routes[0]?.backend.host).toBeUndefined();
+        expect(
+          Object.values(appliedPlans[0]?.services ?? {})
+            .flatMap((service) => service.endpoints)
+            .every((endpoint) => endpoint._tag === "internal"),
+        ).toBe(true);
+      });
+    },
+  );
 
   test.each(["routes", "global-services"] as const)(
     "scratch with %s refuses mismatched global placement before provider apply",
@@ -822,7 +819,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(appliedPlans[0]?.routes ?? []).toHaveLength(1);
       expect(appliedPlans[0]?.router?.enabled).toBe(false);
       expect(routes.applied).toEqual([]);
-      expect(routes.removed).toEqual([acquired]);
+      expect(routes.removed.map((owner) => String(owner.id))).toEqual([acquired]);
     });
   });
 

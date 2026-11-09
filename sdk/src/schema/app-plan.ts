@@ -7,6 +7,7 @@ import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { FileSyncPolicy } from "./file-sync-policy.ts";
 import { EventsPlan } from "./landofile-events.ts";
+import { ListenerAuthority } from "./listener.ts";
 import { LogSource } from "./log-source.ts";
 import { DataStorePlan, MountPlan } from "./mounts.ts";
 import {
@@ -21,6 +22,7 @@ import {
   RouteRef,
   ScanPlan,
 } from "./networking.ts";
+import { normalizeAppSlug } from "./physical-names.ts";
 import {
   AbsoluteContainerPath,
   AbsolutePath,
@@ -32,6 +34,8 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
+import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
@@ -109,6 +113,9 @@ const ServicePlanFields = {
     description:
       "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
   }),
+  listenerAuthority: Schema.optionalKey(ListenerAuthority).annotate({
+    description: "Structured ownership and configuration advice for the planned listener.",
+  }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
   }),
@@ -124,6 +131,9 @@ const ServicePlanFields = {
 export const ServicePlan = Schema.Union([
   Schema.Struct({
     ...ServicePlanFields,
+    sqlite: Schema.optionalKey(Schema.Never).annotate({
+      description: "SQLite cannot coexist with database connections or non-SQL credentials.",
+    }),
     connection: Schema.optionalKey(DatabaseConnection).annotate({
       description: "Canonical database connection resolved by the service type.",
     }),
@@ -133,10 +143,21 @@ export const ServicePlan = Schema.Union([
   }),
   Schema.Struct({
     ...ServicePlanFields,
+    sqlite: Schema.optionalKey(Schema.Never).annotate({
+      description: "SQLite cannot coexist with database connections or non-SQL credentials.",
+    }),
     connection: Schema.optionalKey(Schema.Never),
     nonSqlCreds: ServiceCreds.annotate({
       description: "Published non-SQL credentials, mutually exclusive with a database connection.",
     }),
+  }),
+  Schema.Struct({
+    ...ServicePlanFields,
+    sqlite: SqliteTargetConfig.annotate({
+      description: "File-backed SQLite database copied from the service's authored sqlite.path.",
+    }),
+    connection: Schema.optionalKey(Schema.Never),
+    nonSqlCreds: Schema.optionalKey(Schema.Never),
   }),
 ]);
 export type ServicePlan = typeof ServicePlan.Type;
@@ -361,6 +382,9 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
  * canonicalizes an app root before hashing it, and every other producer of an
  * ownership key — including volume labels written by a provider — derives it
  * from this function so one root always yields one key.
+ * Scratch routes are the exception: they reserve `scratch:<unique scratch id>`
+ * as the owner input because cwd forks share a source root and their configured
+ * instance path need not be canonical or survive until orphan cleanup.
  */
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);
@@ -377,8 +401,21 @@ export const AppIdentity = Schema.Struct({
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({
     description: "Stable identity shared by worktrees from one Git common directory.",
   }),
+  dataName: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The app name this folder's persisted data was first created under. Volume names, volume ownership, and generated defaults stored in data (database names, passwords) follow it, so a renamed app keeps its data.",
+  }),
 });
 export type AppIdentity = typeof AppIdentity.Type;
+
+/**
+ * The app id that owns a plan's persisted data. Plans recorded without a data name use their own
+ * id, which is what their volumes were labeled with.
+ */
+export const planDataId = (plan: Pick<AppPlan, "id" | "root" | "identity">): AppId =>
+  plan.identity?.dataName === undefined
+    ? plan.id
+    : AppId.make(normalizeAppSlug(plan.identity.dataName, plan.identity.appRoot));
 
 export const AppPlan = Schema.Struct({
   valueModel: Schema.optionalKey(Schema.Literal(1)).annotate({
@@ -431,15 +468,22 @@ export const AppPlan = Schema.Struct({
     description:
       "Effective event steps resolved from current project and host configuration, never applied state.",
   }),
+  committedLiteralDigests: Schema.optionalKey(Schema.Array(patternString(SHA256_HEX_PATTERN))).annotate({
+    description:
+      "Value-free SHA-256 digests of sensitive values written as literals in committed YAML Landofile layers; such values are masked only as whole tokens wherever they appear.",
+  }),
   metadata: PlanMetadata.annotate({ description: "Plan provenance and resolution timestamp." }),
   extensions: ProviderExtensionConfig.annotate({ description: "Provider-specific extension intent." }),
   router: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
+      id: Schema.optionalKey(Schema.String).annotate({
+        description: "Selected router contribution id for enabled routes; absent in legacy applied plans.",
+      }),
     }),
   ).annotate({
     description:
-      "Resolved router enablement; optional only because persisted cached plans predate this field.",
+      "Resolved router enablement and selected contribution identity; optional for legacy applied plans.",
   }),
   /**
    * Global-app services this app depends on at start, aggregated by the planner

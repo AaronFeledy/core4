@@ -1,10 +1,12 @@
+import { serviceContainerName } from "@lando/container-runtime/plan";
 // Windows stdin exec uses the Podman CLI and never enters the shared exec path
 // in container-runtime/src/podman/exec.ts, so it does not receive umask
 // compensation. Read-only internal probes that POST /exec directly (agent-socket
 // readiness and log-file helpers) likewise bypass that path.
-import { serviceContainerName } from "@lando/container-runtime/plan";
+import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { Effect, Stream } from "effect";
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
+import { type Effect, Stream } from "effect";
 
 import { ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
@@ -13,6 +15,14 @@ import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
+
+export const windowsStdinExecSpawnEnv = (
+  commandEnv: Readonly<Record<string, string>> | undefined,
+  hostEnv: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<Record<string, string>> => ({
+  ...withoutPodmanRedirectsDefined(hostEnv),
+  ...(commandEnv ?? {}),
+});
 
 type Runner = Context.Service.Shape<typeof ProcessRunner>;
 
@@ -46,12 +56,13 @@ export const windowsStdinExec = (
     .run({
       cmd: input.podmanBin,
       args: windowsStdinExecArgs(plan, target, command, input.connectionName),
-      ...(command.env === undefined ? {} : { env: command.env }),
+      env: windowsStdinExecSpawnEnv(command.env),
+      replaceEnv: true,
       ...(command.signal === undefined ? {} : { signal: command.signal }),
       ...(command.stdinStream === undefined ? {} : { stdinStream: command.stdinStream }),
     })
     .pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ServiceExecError({
             providerId: "lando",
@@ -74,13 +85,14 @@ export const windowsStdinExecStream = (
     .streamWithExit({
       cmd: input.podmanBin,
       args: windowsStdinExecArgs(plan, target, command, input.connectionName),
-      ...(command.env === undefined ? {} : { env: command.env }),
+      env: windowsStdinExecSpawnEnv(command.env),
+      replaceEnv: true,
       ...(command.signal === undefined ? {} : { signal: command.signal }),
       ...(command.stdinStream === undefined ? {} : { stdinStream: command.stdinStream }),
     })
     .pipe(
       Stream.map((event): ExecChunk => event),
-      Stream.mapError(
+      mapStreamFailures(
         (cause) =>
           new ServiceExecError({
             providerId: "lando",

@@ -3,8 +3,11 @@ import { LogSourceId } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
-import { apacheDirectivePath } from "./apache.ts";
+import type { ListenerContract } from "./_port-helpers.ts";
+import { apacheDirectivePath, apacheForwardedDirectoryRedirectDirectives } from "./apache.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
+import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
+import { uploadDirRegex } from "./upload-dirs.ts";
 
 export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
 export type PhpVia = (typeof PHP_VIA_MODES)[number];
@@ -15,6 +18,23 @@ export const APACHE_DEFAULT_SITE_BUILD_STEP_ID = "service-lando.php:apache-defau
 
 export const PHP_FPM_PORT = 9000;
 export const PHP_APACHE_PORT = 80;
+export const PHP_LISTENERS = {
+  apache: {
+    port: PHP_APACHE_PORT,
+    daemon: "Apache",
+    when: "via omitted or apache",
+    launcher: { setting: (port: number) => `Listen ${port}` },
+    image: { setting: (port: number) => `Listen ${port}` },
+  },
+  fpm: {
+    port: PHP_FPM_PORT,
+    daemon: "php-fpm",
+    when: "via: fpm",
+    launcher: { setting: (port: number) => `listen = ${port}` },
+    image: { setting: (port: number) => `listen = ${port}` },
+  },
+} as const satisfies Readonly<Record<"apache" | "fpm", ListenerContract>>;
+export const PHP_LISTENER = PHP_LISTENERS.apache;
 export const PHP_CLI_KEEP_ALIVE: ReadonlyArray<string> = ["tail", "-f", "/dev/null"];
 
 export const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -150,7 +170,7 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
   command: [
     "sh",
     "-c",
-    "a2enmod rewrite env && rm -f /etc/apache2/sites-enabled/000-default.conf /etc/apache2/conf-enabled/other-vhosts-access-log.conf",
+    "a2enmod rewrite env setenvif && rm -f /etc/apache2/sites-enabled/000-default.conf /etc/apache2/conf-enabled/other-vhosts-access-log.conf",
   ],
 });
 
@@ -202,6 +222,7 @@ export const apacheStartCommand = (
   allowOverride: boolean,
   listenPort: number | undefined,
   mapWindowsWorker = true,
+  uploadDirs: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
   const site = [
@@ -211,7 +232,29 @@ export const apacheStartCommand = (
     `AllowOverride ${allowOverride ? "All" : "None"}`,
     "Require all granted",
     "</Directory>",
+    // SetEnvIf survives .htaccess internal redirects, unlike a rewrite environment flag.
+    'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+    // The PHP handler only claims lowercase extensions; variants must never serve source.
+    '<FilesMatch "\\.(?!php$)(?i:php)$">',
+    "Require all denied",
+    "</FilesMatch>",
+    ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
+    // engine off cannot be overridden by an uploaded .htaccess AddHandler.
+    // FilesMatch also gives PHP requests the same 403 page as nginx.
+    ...(uploadDirs.length === 0
+      ? []
+      : [
+          `<DirectoryMatch "(?i)^${apacheDirectivePath(webroot.replace(/\/$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))}/(?:${apacheDirectivePath(uploadDirs.map(uploadDirRegex).join("|"))})(?:/|$)">`,
+          "<IfModule php_module>",
+          "php_admin_flag engine off",
+          "</IfModule>",
+          '<FilesMatch "(?i)\\.php$">',
+          "Require all denied",
+          "</FilesMatch>",
+          "</DirectoryMatch>",
+        ]),
     ...apacheErrorPageDirectives(),
+    ...apacheHiddenPathDirectives(),
   ];
   const directives = [
     "ServerName localhost",

@@ -24,6 +24,7 @@ const inputFor = (definition: ServiceFeatureDefinition): ComposeServiceInput => 
   },
   baseKind: "l337",
   appRoot: "/srv/prepared",
+  appSlug: "prepared",
   normalizedConfig: { environment: { AUTHORED: "yes" } },
   features: [
     { id: definition.id, definition, config: { port: 8123 } },

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AUTHORING_READS } from "./authoring-semantics.ts";
 
 import {
   RecipeId,
@@ -37,21 +38,24 @@ export const LandofileRecipeProvenance = Schema.Struct({
 })
   .pipe(
     Schema.check(
-      Schema.makeFilter((value) => {
-        if (value.id !== value.producer.recipeId) {
-          return {
-            path: ["producer", "recipeId"],
-            issue: `Recipe provenance id "${value.id}" disagrees with producer.recipeId "${value.producer.recipeId}".`,
-          };
-        }
-        if (value.version !== value.producer.manifestVersion) {
-          return {
-            path: ["producer", "manifestVersion"],
-            issue: `Recipe provenance version "${value.version}" disagrees with producer.manifestVersion "${value.producer.manifestVersion}".`,
-          };
-        }
-        return true;
-      }),
+      Schema.makeFilter(
+        (value) => {
+          if (value.id !== value.producer.recipeId) {
+            return {
+              path: ["producer", "recipeId"],
+              issue: `Recipe provenance id "${value.id}" disagrees with producer.recipeId "${value.producer.recipeId}".`,
+            };
+          }
+          if (value.version !== value.producer.manifestVersion) {
+            return {
+              path: ["producer", "manifestVersion"],
+              issue: `Recipe provenance version "${value.version}" disagrees with producer.manifestVersion "${value.producer.manifestVersion}".`,
+            };
+          }
+          return true;
+        },
+        { [AUTHORING_READS]: ["id", "version", "producer"] },
+      ),
     ),
   )
   .annotate(

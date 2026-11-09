@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type AppPlacementError,
   GlobalAppError,
@@ -10,6 +11,7 @@ import { Context, Effect, Ref } from "effect";
 import {
   type GlobalActivationReservation,
   GlobalActivationScope,
+  admitsGlobalConsumers,
   withGlobalActivationPolicyGate,
 } from "../global-app/activation-scope.ts";
 import { globalPolicyIdentity } from "../global-app/mutation.ts";
@@ -43,7 +45,7 @@ const reservationError = (cause: unknown) =>
 
 /** Other processes must own a lease; nested operations share this scoped activation intent. */
 export const readGlobalConsumerReservations = Effect.fnUntraced(function* (selected: ReadonlyArray<string>) {
-  const policy = yield* globalPolicyIdentity.pipe(Effect.mapError(reservationError));
+  const policy = yield* globalPolicyIdentity.pipe(mapFailures(reservationError));
   const scope = yield* GlobalActivationScope;
   const active = scope === undefined ? [] : (yield* Ref.get(scope.state)).entries;
   const required = new Set(selected);
@@ -56,13 +58,14 @@ export const withGlobalConsumerReservation = Effect.fnUntraced(function* <A, E, 
   plan: AppPlan,
   services: ReadonlyArray<string>,
   body: Effect.Effect<A, E, R>,
+  exclusive: ReadonlyArray<string> = [],
 ) {
-  const selected = [...new Set(services)].sort();
+  const selected = [...new Set([...services, ...exclusive])].sort();
   if (selected.length === 0) return yield* body;
-  const policy = yield* globalPolicyIdentity.pipe(Effect.mapError(reservationError));
+  const policy = yield* globalPolicyIdentity.pipe(mapFailures(reservationError));
   const global = yield* GlobalAppService;
   const paths = yield* global.paths;
-  const globalRoot = yield* canonicalMissingAppRoot(paths.root).pipe(Effect.mapError(reservationError));
+  const globalRoot = yield* canonicalMissingAppRoot(paths.root).pipe(mapFailures(reservationError));
   const scope = yield* GlobalActivationScope;
   if (scope === undefined)
     return yield* Effect.fail(reservationError("The global mutation coordinator is not held."));
@@ -81,26 +84,38 @@ export const withGlobalConsumerReservation = Effect.fnUntraced(function* <A, E, 
             : "user",
     },
     services: selected,
+    exclusive,
   };
   return yield* Effect.acquireUseRelease(
     withGlobalActivationPolicyGate(
-      Ref.modify(scope.state, (state) =>
-        state.policyOwner === undefined
-          ? ([true, { ...state, entries: [...state.entries, reservation], epoch: state.epoch + 1 }] as const)
-          : ([false, state] as const),
-      ).pipe(
-        Effect.flatMap((added) =>
-          added
-            ? Effect.void
-            : Effect.fail(
-                new GlobalAppError({
-                  operation: "consumer-admission",
-                  message: "A global policy change is still reconciling.",
-                  remediation: "Retry application startup after the policy operation finishes.",
-                }),
-              ),
-        ),
-      ),
+      Ref.modify(scope.state, (state) => {
+        let error: GlobalAppError | undefined;
+        if (!admitsGlobalConsumers(state))
+          error = new GlobalAppError({
+            operation: "consumer-admission",
+            message: "A global policy change is still reconciling.",
+            remediation: "Retry application startup after the policy operation finishes.",
+          });
+        for (const entry of state.entries) {
+          if (error !== undefined) break;
+          if (entry.policy !== policy || entry.globalRoot !== globalRoot) continue;
+          const id =
+            selected.find((id) => entry.exclusive?.includes(id)) ??
+            exclusive.find((id) => entry.services.includes(id));
+          if (id !== undefined)
+            error = new GlobalAppError({
+              operation: "consumer-admission",
+              message: `Global service ${id} is reserved by ${entry.app.name} while it starts.`,
+              remediation: `Retry after ${entry.app.name} finishes starting.`,
+            });
+        }
+        return [
+          error,
+          error === undefined
+            ? { ...state, entries: [...state.entries, reservation], epoch: state.epoch + 1 }
+            : state,
+        ] as const;
+      }).pipe(Effect.flatMap((error) => (error === undefined ? Effect.void : Effect.fail(error)))),
     ),
     () => body,
     () =>

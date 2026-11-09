@@ -86,6 +86,7 @@ describe("tomcat ServiceType", () => {
             defaultFeatures: [],
           },
           baseKind: "lando",
+          appSlug: "myapp",
           appRoot: "/srv/apps/myapp",
           normalizedConfig: {},
           features: [{ id: TOMCAT_FEATURE_ID, definition: tomcatServiceFeature, config }],

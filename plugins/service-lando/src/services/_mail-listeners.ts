@@ -1,44 +1,37 @@
 import { type EndpointPlan, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
 import { MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
-import { assertListenerConfig } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  assertListenerConfig,
+  parseWildcardBind,
+  plannedPort,
+} from "./_port-helpers.ts";
 
-const WILDCARD_BIND_REMEDIATION =
-  "Use :port, 0.0.0.0:port, or [::]:port for app-network reachability, or manage the listener explicitly with a Compose service.";
-
-const nativeBind = (service: ServiceConfig, variable: string, fallback: string) => {
-  const address = service.environment?.[variable] ?? fallback;
-  if (typeof address !== "string") {
-    throw new ServiceConfigIssue(
-      ["environment", variable],
-      `${variable} requires a literal wildcard bind address.`,
-      WILDCARD_BIND_REMEDIATION,
-    );
-  }
-  const match = /^(?:0\.0\.0\.0|\[::\])?:([0-9]+)$/.exec(address);
-  const port = Number(match?.[1]);
-  if (match === null || !Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new ServiceConfigIssue(
-      ["environment", variable],
-      `${variable} requires a literal bind address with a TCP port from 1 to 65535.`,
-      WILDCARD_BIND_REMEDIATION,
-    );
-  }
-  return { address, port: PortNumber.make(port) };
+export const MAILPIT_LISTENER: ListenerContract = {
+  port: MAILPIT_SMTP_PORT,
+  daemon: "mailpit",
+  bindVariables: ["MP_SMTP_BIND_ADDR"],
+  when: "All Mailpit services; HTTP reservations follow the effective UI bind",
+  reserved: [{ port: MAILPIT_WEB_PORT, use: "HTTP UI listener" }],
 };
+export const MAILHOG_LISTENER: ListenerContract = {
+  port: MAILPIT_SMTP_PORT,
+  daemon: "mailhog",
+  bindVariables: ["MH_SMTP_BIND_ADDR"],
+  when: "All MailHog services; HTTP reservations follow the effective UI/API binds",
+  reserved: [{ port: MAILPIT_WEB_PORT, use: "HTTP UI listener" }],
+};
+
+const nativeBind = (service: ServiceConfig, variable: string, fallback: string) =>
+  parseWildcardBind(service.environment?.[variable] ?? fallback, variable);
 
 export const resolveMailListeners = (service: ServiceConfig, type: "mailpit" | "mailhog") => {
   const prefix = type === "mailpit" ? "MP" : "MH";
-  const smtpPort = service.port ?? MAILPIT_SMTP_PORT;
+  const listener = type === "mailpit" ? MAILPIT_LISTENER : MAILHOG_LISTENER;
+  const smtpPort = plannedPort(service, listener);
   const smtpVariable = `${prefix}_SMTP_BIND_ADDR`;
   const smtp = nativeBind(service, smtpVariable, `0.0.0.0:${smtpPort}`);
-  if (smtp.port !== smtpPort) {
-    throw new ServiceConfigIssue(
-      ["environment", smtpVariable],
-      `${smtpVariable} must match the primary SMTP port.`,
-      `Set its port to ${smtpPort}, change port: to match, or omit ${smtpVariable}.`,
-    );
-  }
   const ui = nativeBind(service, `${prefix}_UI_BIND_ADDR`, `0.0.0.0:${MAILPIT_WEB_PORT}`);
   const api =
     type === "mailhog" ? nativeBind(service, "MH_API_BIND_ADDR", `0.0.0.0:${MAILPIT_WEB_PORT}`) : ui;
@@ -50,8 +43,7 @@ export const resolveMailListeners = (service: ServiceConfig, type: "mailpit" | "
     );
   }
   assertListenerConfig(service, {
-    port: MAILPIT_SMTP_PORT,
-    daemon: type,
+    ...listener,
     reserved: [
       { port: ui.port, use: "HTTP UI listener" },
       { port: api.port, use: "HTTP API listener" },

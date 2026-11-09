@@ -7,12 +7,19 @@ import {
   type MountInput,
   type MountPlan,
   type ValidationIssuePath,
+  landoAppStoreName,
+  landoServiceStorageName,
   parseShortVolume,
   validationIssue,
 } from "@lando/sdk/schema";
 import { Schema, SchemaIssue } from "effect";
-import { kebab } from "./naming.ts";
+import type { AuthoredStorageInfo } from "./service-types.ts";
 import { plannedContainerDestination } from "./storage.ts";
+
+export interface CompiledAuthoredMount {
+  readonly mount: MountPlan;
+  readonly storage?: AuthoredStorageInfo;
+}
 
 export interface MountAuthoringContext {
   readonly appRoot: string;
@@ -74,7 +81,7 @@ export const classifyMount = (
   input: MountInput | ComposeVolumeEntry,
   context: MountAuthoringContext,
   path: ValidationIssuePath,
-): MountPlan | LandofileValidationError => {
+): CompiledAuthoredMount | LandofileValidationError => {
   let entry: Exclude<MountInput, string> | ComposeVolumeEntry;
   try {
     entry = typeof input === "string" ? parseShortVolume(input) : input;
@@ -121,28 +128,33 @@ export const classifyMount = (
           "Set source to a host path.",
         );
       return {
-        type,
-        origin: "authored",
-        target,
-        source: bindSource(entry.source, context.appRoot),
-        ...(isAppRelativeSource(entry.source) ? { relativeTo: "app" } : {}),
-        readOnly: entry.readOnly ?? false,
-        realization: "passthrough",
-        ...("createHostPath" in entry && entry.createHostPath === false ? { createHostPath: false } : {}),
-        ...(excludes === undefined ? {} : { excludes }),
-        ...(includes === undefined ? {} : { includes }),
+        mount: {
+          type,
+          origin: "authored",
+          target,
+          source: bindSource(entry.source, context.appRoot),
+          ...(isAppRelativeSource(entry.source) ? { relativeTo: "app" } : {}),
+          readOnly: entry.readOnly ?? false,
+          realization: "passthrough",
+          ...("createHostPath" in entry && entry.createHostPath === false ? { createHostPath: false } : {}),
+          ...(excludes === undefined ? {} : { excludes }),
+          ...(includes === undefined ? {} : { includes }),
+        },
       };
     case "volume":
       return {
-        type,
-        origin: "authored",
-        target,
-        store:
-          entry.source === undefined
-            ? `${context.appSlug}-${context.serviceName}-${kebab(target)}`
-            : `${context.appSlug}-${entry.source}`,
-        readOnly: entry.readOnly ?? false,
-        ...("subpath" in entry && entry.subpath !== undefined ? { subpath: entry.subpath } : {}),
+        mount: {
+          type,
+          origin: "authored",
+          target,
+          store:
+            entry.source === undefined
+              ? landoServiceStorageName(context.appSlug, context.serviceName, target)
+              : landoAppStoreName(context.appSlug, entry.source),
+          readOnly: entry.readOnly ?? false,
+          ...("subpath" in entry && entry.subpath !== undefined ? { subpath: entry.subpath } : {}),
+        },
+        storage: { scope: entry.source === undefined ? "service" : "app", kind: "data" },
       };
     case "tmpfs": {
       const tmpfs = "tmpfs" in entry ? entry.tmpfs : undefined;
@@ -152,7 +164,8 @@ export const classifyMount = (
       ]
         .filter((token) => token !== undefined)
         .join(",");
-      return normalizeTmpfs({ target, readOnly: entry.readOnly ?? false, options }, context, path);
+      const mount = normalizeTmpfs({ target, readOnly: entry.readOnly ?? false, options }, context, path);
+      return mount instanceof LandofileValidationError ? mount : { mount };
     }
   }
 };

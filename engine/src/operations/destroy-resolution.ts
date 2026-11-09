@@ -1,8 +1,11 @@
 import { resolve as resolvePath } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppResolveError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { FileSystem } from "@lando/sdk/services";
+import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { TeardownProvider } from "../providers/app-placement.ts";
+import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 import { shellArg } from "../services/shell-quote.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget, teardownResolutionAt } from "./applied-state-target.ts";
@@ -13,7 +16,7 @@ export const resolveMissingDestroyRoot = Effect.fn("AppOperation.resolveMissingD
   const requested = AbsolutePath.make(resolvePath(root));
   const canonical = AbsolutePath.make(
     yield* canonicalMissingAppRoot(root).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new AppResolveError({
             reason: "missing-root",
@@ -44,8 +47,21 @@ export const resolveMissingDestroyRoot = Effect.fn("AppOperation.resolveMissingD
         }),
       );
   }
-  const resolveAt = (recorded: AbsolutePath) =>
-    teardownResolutionAt(recorded, false, (plan) => missingRootAppliedTarget(plan, recorded));
+  const registry = yield* RuntimeProviderRegistry;
+  const providerId = yield* TeardownProvider;
+  const resolveAt = Effect.fnUntraced(function* (recorded: AbsolutePath) {
+    const plans = (yield* registry.appliedPlansFor(recorded)).filter(
+      (plan) =>
+        (providerId === undefined || plan.provider === providerId) &&
+        matchesAppPlanIdentity(plan, { kind: "user", id: "" }),
+    );
+    return yield* teardownResolutionAt(
+      recorded,
+      false,
+      (plan) => missingRootAppliedTarget(plan, recorded),
+      plans[0] === undefined ? undefined : { kind: "user", id: plans[0].id },
+    );
+  });
   const requestedResolution = yield* resolveAt(requested);
   const resolution =
     requestedResolution.kind === "absent" && canonical !== requested

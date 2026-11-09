@@ -11,6 +11,7 @@ import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import { AbsolutePath, type ProviderId, StopAppOutcome, StopAppResult } from "@lando/sdk/schema";
 import { EventService, FileSystem, GlobalAppService, RouterService } from "@lando/sdk/services";
 import { makeGlobalAppServiceForRoot } from "../global-app/service.ts";
+import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import * as DeferredCertificateAuthority from "../subsystems/proxy/deferred-certificate-authority.ts";
@@ -73,7 +74,7 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
     if (loaded.evidence.kind === "absent") {
       if (!options.services?.length) {
         const router = yield* RouterService;
-        yield* router.removeRoutes(globalTeardownAppRef(loaded).id);
+        yield* router.removeRoutes(routeOwnerFromGlobalTeardown(loaded));
         yield* recordGlobalRouteCleanup();
       }
       return { app: "global", outcome: "unchanged", materialized: loaded.materialized, servicesStopped: [] };
@@ -115,7 +116,7 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
             : yield* executeGlobalStopSelection(loaded, selection);
         if (selection === undefined) {
           const router = yield* RouterService;
-          yield* router.removeRoutes(app.id);
+          yield* router.removeRoutes(routeOwnerFromGlobalTeardown(loaded));
           yield* recordGlobalResourceCleanup();
         }
         return withShutdownObservations(

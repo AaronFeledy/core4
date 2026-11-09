@@ -5,7 +5,7 @@ import { dispatchTool } from "@lando/mcp/dispatch";
 import { McpCommandExecutor } from "@lando/mcp/port";
 import { deriveToolInputSchema } from "@lando/mcp/registry";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
-import { startStdioClient } from "@lando/mcp/testing";
+import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
@@ -263,7 +263,7 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
               Layer.succeed(McpRuntimeConfig, {
                 commandEntries: [entry],
                 defaultAllowlist: [command.id],
-                runtimeLayer: Layer.empty,
+                apps: testAppGenerations(),
               }),
               Layer.succeed(McpCommandExecutor, {
                 execute: (command, execution) =>

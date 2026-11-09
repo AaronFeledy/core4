@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { mapStreamFailures } from "@lando/sdk/command-result";
 import { GpgAgentTransportError, GpgAgentUnavailableError } from "@lando/sdk/errors";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Stream } from "effect";
@@ -49,7 +50,7 @@ export const exportPublicKeyring = Effect.fn("GpgAgent.exportPublicKeyring")(fun
           yield* options.runner
             .streamWithExit({ cmd: "gpg", args: ["--batch", flag], timeoutMs: 30_000 })
             .pipe(
-              Stream.mapError(unavailable),
+              mapStreamFailures(unavailable),
               Stream.runForEach(
                 (event): Effect.Effect<void, GpgAgentUnavailableError | GpgAgentTransportError> => {
                   if ("exitCode" in event) {
