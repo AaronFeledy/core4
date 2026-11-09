@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import {
   type DataPlaneApiClient,
-  type DataPlaneHttpRequest,
   dataHelperImage,
   makeProviderDataPlane,
 } from "@lando/container-runtime/data-plane";
@@ -24,6 +23,7 @@ import {
 import { AppId, PortablePath } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 import { Cause, Context, Effect, Exit, Result, Schema, Stream } from "effect";
+import { FakeEngine, type Operation } from "./support/fake-engine.ts";
 
 const secret = "ephemeral-registered-secret-identity-canary";
 const debugCause = { private: secret };
@@ -42,17 +42,14 @@ const spec = {
   remove: true,
 };
 const modes = ["run", "runStream"] as const;
-const requestPhase = (input: DataPlaneHttpRequest) => {
-  if (input.method === "DELETE") return "remove";
-  if (input.path.includes("/create?")) return "create";
-  if (input.path.endsWith("/json")) return "inspect";
-  if (input.path.endsWith("/wait")) return "wait";
-  return "start";
-};
-const emptyStream = (input: DataPlaneHttpRequest) => {
-  input.onResponseHead?.();
-  return Stream.empty;
-};
+const phaseOperation = (
+  phase: "create" | "start" | "attach" | "attach without stdin" | "logs" | "wait" | "inspect" | "remove",
+): Operation =>
+  phase === "remove"
+    ? "container.delete"
+    : phase === "attach without stdin"
+      ? "container.attach"
+      : `container.${phase}`;
 type Mode = (typeof modes)[number];
 const invoke = (provider: ReturnType<typeof makeProviderDataPlane>, mode: Mode) =>
   Effect.scoped(
@@ -113,22 +110,12 @@ for (const mode of modes) {
   ] as const)(`${mode} preserves typed provider identity at %s ingress`, async (phase) => {
     const original = new ProviderUnavailableError(fields);
     let removals = 0;
-    const api: DataPlaneApiClient = {
-      request: (input) => {
-        const current = requestPhase(input);
-        if (current === "remove") removals++;
-        if (current === phase) return Effect.fail(original);
-        return Effect.succeed({
-          status: current === "remove" ? 204 : 201,
-          body: current === "inspect" ? '{"State":{"ExitCode":0}}' : "{}",
-        });
-      },
-      stream: (input) => {
-        const streamPhase = phase === "attach without stdin" ? "attach" : phase;
-        if (input.path.includes(`/${streamPhase}?`)) return Stream.fail(original);
-        return emptyStream(input);
-      },
-    };
+    const engine = new FakeEngine();
+    engine.observers.set("container.delete", () => {
+      removals++;
+    });
+    engine.fail(phaseOperation(phase), original);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -171,9 +158,10 @@ for (const mode of modes) {
     new ServiceExecError({ ...fields, service: secret }),
     new VolumeOperationError({ ...fields, store: secret }),
   ])(`${mode} preserves alternate canonical provider class $_tag`, async (original) => {
+    const engine = new FakeEngine().fail("container.create", original);
     const provider = makeProviderDataPlane({
       providerId: "test",
-      api: { request: () => Effect.fail(original) },
+      api: engine.api,
       capabilities: { volumeSnapshot: "none" },
       redactor: await redactionForTest(),
     });
@@ -188,24 +176,16 @@ for (const mode of modes) {
     async (phase) => {
       const defect = phase === "primary" ? new ProviderUnavailableError(fields) : { private: secret };
       let removals = 0;
+      const engine = new FakeEngine();
+      engine.observers.set("container.delete", () => {
+        removals++;
+      });
+      engine.inject(phase === "primary" ? "container.inspect" : "container.delete", Effect.die(defect));
       const provider = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: "none" },
         redactor: await redactionForTest(),
-        api: {
-          request: (input) => {
-            if (input.method === "DELETE") {
-              removals++;
-              return phase === "cleanup" ? Effect.die(defect) : Effect.succeed({ status: 204, body: "" });
-            }
-            if (input.path.endsWith("/json"))
-              return phase === "primary"
-                ? Effect.die(defect)
-                : Effect.succeed({ status: 200, body: '{"State":{"ExitCode":0}}' });
-            return Effect.succeed({ status: 201, body: "{}" });
-          },
-          stream: emptyStream,
-        },
+        api: engine.api,
       });
       const exit = await Effect.runPromiseExit(invoke(provider, mode));
       if (!Exit.isFailure(exit)) throw new Error("Expected defect");
@@ -218,19 +198,13 @@ for (const mode of modes) {
   test(`${mode} retains primary and annotated cleanup errors in order`, async () => {
     const primary = new ProviderUnavailableError(fields);
     const cleanup = new ServiceExecError({ ...fields, operation: "cleanup.original", service: secret });
+    const engine = new FakeEngine().fail("container.start", primary);
+    engine.inject("container.delete", Effect.failCause(annotateFailureRole(Cause.fail(cleanup), "rollback")));
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "none" },
       redactor: await redactionForTest(),
-      api: {
-        stream: emptyStream,
-        request: (input) =>
-          input.method === "DELETE"
-            ? Effect.failCause(annotateFailureRole(Cause.fail(cleanup), "rollback"))
-            : input.path.endsWith("/start")
-              ? Effect.fail(primary)
-              : Effect.succeed({ status: 201, body: "{}" }),
-      },
+      api: engine.api,
     });
     const exit = await Effect.runPromiseExit(invoke(provider, mode));
     if (!Exit.isFailure(exit)) throw new Error("Expected failure");
@@ -250,24 +224,15 @@ for (const mode of modes) {
   test.each(["create", "start", "wait", "inspect", "remove"] as const)(
     `${mode} omits untrusted HTTP bodies at %s with a passthrough redactor`,
     async (phase) => {
+      const engine = new FakeEngine().fail(phaseOperation(phase), {
+        status: 500,
+        body: "unregistered-private-http-body",
+      });
       const provider = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: "none" },
         redactor: identityRedactor,
-        api: {
-          request: (input) => {
-            const current = requestPhase(input);
-            return Effect.succeed(
-              current === phase
-                ? { status: 500, body: "unregistered-private-http-body" }
-                : {
-                    status: current === "remove" ? 204 : 201,
-                    body: current === "inspect" ? '{"State":{"ExitCode":0}}' : "{}",
-                  },
-            );
-          },
-          stream: emptyStream,
-        },
+        api: engine.api,
       });
       const exit = await Effect.runPromiseExit(invoke(provider, mode));
       if (!Exit.isFailure(exit)) throw new Error("Expected failure");
@@ -287,20 +252,15 @@ for (const mode of modes) {
     '{"State":{"ExitCode":"unregistered-private-exit-code"}}',
   ])(`${mode} fails closed without raw inspection parser diagnostics: %s`, async (body) => {
     let removals = 0;
+    const engine = new FakeEngine().fail("container.inspect", { status: 200, body });
+    engine.observers.set("container.delete", () => {
+      removals++;
+    });
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "none" },
       redactor: identityRedactor,
-      api: {
-        request: (input) => {
-          if (input.method === "DELETE") removals++;
-          return Effect.succeed({
-            status: input.method === "DELETE" ? 204 : 201,
-            body: input.path.endsWith("/json") ? body : "{}",
-          });
-        },
-        stream: emptyStream,
-      },
+      api: engine.api,
     });
     const exit = await Effect.runPromiseExit(invoke(provider, mode));
     if (!Exit.isFailure(exit)) throw new Error("Expected failure");
@@ -316,19 +276,15 @@ for (const mode of modes) {
     `${mode} reports a missing %s client as provider unavailable`,
     async (client) => {
       let removals = 0;
+      const engine = new FakeEngine();
+      engine.observers.set("container.delete", () => {
+        removals++;
+      });
       const provider = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: "none" },
         redactor: await redactionForTest(),
-        api:
-          client === "request"
-            ? {}
-            : {
-                request: (input) => {
-                  if (input.method === "DELETE") removals++;
-                  return Effect.succeed({ status: 201, body: "{}" });
-                },
-              },
+        api: client === "request" ? {} : { request: engine.request },
       });
       const exit = await Effect.runPromiseExit(invoke(provider, mode));
       if (!Exit.isFailure(exit)) throw new Error("Expected failure");
@@ -341,17 +297,16 @@ for (const mode of modes) {
 test("helper acquisition preserves typed identity before any container is created", async () => {
   const original = new ProviderUnavailableError(fields);
   let requests = 0;
+  const engine = new FakeEngine();
+  engine.observers.set("container.create", () => {
+    requests++;
+  });
   const provider = makeProviderDataPlane({
     providerId: "test",
     capabilities: { volumeSnapshot: "native" },
     redactor: await redactionForTest(),
     pullHelperImage: () => Effect.fail(original),
-    api: {
-      request: () => {
-        requests++;
-        return Effect.succeed({ status: 201, body: "{}" });
-      },
-    },
+    api: engine.api,
   });
   const exit = await Effect.runPromiseExit(
     Effect.scoped(provider.snapshotVolume({ volume: { app: AppId.make("fixture"), store: "data" } })),
@@ -417,31 +372,22 @@ for (const mode of modes) {
       const tokens = ["lando", "test", "run", "truncated"];
       await Effect.runPromise(service.registerValues(tokens));
       let removals = 0;
+      const engine = new FakeEngine({ exitCode: phase === "nonzero-cleanup" ? 7 : 0 });
+      engine.observers.set("container.delete", () => {
+        removals++;
+      });
+      if (phase === "http")
+        engine.fail("container.create", { status: 500, body: "unregistered-private-http-body" });
+      if (phase === "cleanup-http" || phase === "nonzero-cleanup")
+        engine.fail("container.delete", { status: 500, body: "unregistered-private-http-body" });
+      if (phase === "malformed" || phase === "missing-exit")
+        engine.fail("container.inspect", {
+          status: 200,
+          body: phase === "malformed" ? "unregistered-private-malformed" : "{}",
+        });
       const api: DataPlaneApiClient = {
-        ...(phase === "missing-request"
-          ? {}
-          : ({
-              request: (input) => {
-                if (input.method === "DELETE") {
-                  removals++;
-                  return Effect.succeed({
-                    status: phase === "cleanup-http" || phase === "nonzero-cleanup" ? 500 : 204,
-                    body: "unregistered-private-http-body",
-                  });
-                }
-                return Effect.succeed({
-                  status: phase === "http" ? 500 : 201,
-                  body: input.path.endsWith("/json")
-                    ? phase === "malformed"
-                      ? "unregistered-private-malformed"
-                      : phase === "missing-exit"
-                        ? "{}"
-                        : JSON.stringify({ State: { ExitCode: phase === "nonzero-cleanup" ? 7 : 0 } })
-                    : "{}",
-                });
-              },
-            } satisfies Pick<DataPlaneApiClient, "request">)),
-        ...(phase === "missing-stream" ? {} : { stream: emptyStream }),
+        ...(phase === "missing-request" ? {} : { request: engine.request }),
+        ...(phase === "missing-stream" ? {} : { stream: engine.stream }),
       };
       const provider = makeProviderDataPlane({
         providerId: "test",

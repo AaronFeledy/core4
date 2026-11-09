@@ -1,20 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { makeRedactionService } from "@lando/redaction/service";
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
-
-const multiplexedStderr = (payload: Uint8Array): Uint8Array => {
-  const frame = new Uint8Array(8 + payload.byteLength);
-  frame[0] = 2;
-  new DataView(frame.buffer).setUint32(4, payload.byteLength, false);
-  frame.set(payload, 8);
-  return frame;
-};
 
 type Cleanup =
   | { readonly kind: "status"; readonly status: number; readonly body?: string }
@@ -44,47 +37,35 @@ const recordedPlane = (
   script: Script,
   waiting?: Deferred.Deferred<void>,
 ) => {
-  const api: DataPlaneApiClient = {
-    request: (request) => {
-      requests.push({ method: request.method, path: request.path });
-      if (request.method === "DELETE") {
-        return script.cleanup.kind === "transport"
-          ? Effect.fail(
-              new ProviderUnavailableError({
-                providerId: "test",
-                operation: "transport",
-                message: "socket down",
-                remediation: "retry",
-              }),
-            )
-          : Effect.succeed({ status: script.cleanup.status, body: script.cleanup.body ?? "" });
-      }
-      if (request.path.endsWith("/start") && script.failStart === true) {
-        return Effect.succeed({ status: 500, body: "start failed" });
-      }
-      if (request.path.endsWith("/wait") && script.hangWait === true && waiting !== undefined) {
-        return Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Effect.never));
-      }
-      if (request.path.endsWith("/json")) {
-        return Effect.succeed({
-          status: 200,
-          body: JSON.stringify({ State: { ExitCode: script.exitCode ?? 0 } }),
-        });
-      }
-      return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
-    },
-    stream: (request) => {
-      request.onResponseHead?.();
-      return Stream.fromIterable(
-        (script.stderrChunks ?? (script.stderr === undefined ? [] : [bytes(script.stderr)])).map(
-          multiplexedStderr,
-        ),
-      );
-    },
-  };
+  const engine = new FakeEngine({
+    exitCode: script.exitCode ?? 0,
+    stderrChunks: script.stderrChunks ?? (script.stderr === undefined ? [] : [bytes(script.stderr)]),
+  });
+  for (const operation of [
+    "container.create",
+    "container.start",
+    "container.wait",
+    "container.inspect",
+    "container.delete",
+  ] as const) {
+    engine.observers.set(operation, ({ method, path }) => requests.push({ method, path }));
+  }
+  engine.fail(
+    "container.delete",
+    script.cleanup.kind === "transport"
+      ? new ProviderUnavailableError({
+          providerId: "test",
+          operation: "transport",
+          message: "socket down",
+          remediation: "retry",
+        })
+      : { status: script.cleanup.status, body: script.cleanup.body ?? "" },
+  );
+  if (script.failStart === true) engine.fail("container.start", { status: 500, body: "start failed" });
+  if (script.hangWait === true) engine.hang("container.wait", waiting);
   return makeProviderDataPlane({
     providerId: "test",
-    api,
+    api: engine.api,
     capabilities: { volumeSnapshot: "none" },
     redactor: scriptRedactor(script.redact ?? ((value) => value)),
   });

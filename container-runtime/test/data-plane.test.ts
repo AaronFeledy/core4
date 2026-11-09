@@ -4,7 +4,7 @@ import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-res
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { echoHelperPull } from "./helper-pull-support.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -30,7 +31,7 @@ const stdinBytes = (value: string): AsyncIterable<Uint8Array> => ({
   },
 });
 
-const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): Promise<Uint8Array> => {
+const _collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): Promise<Uint8Array> => {
   const chunks: Uint8Array[] = [];
   if (input !== undefined) for await (const chunk of input) chunks.push(chunk);
   const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
@@ -50,8 +51,8 @@ const multiplexedFrame = (stream: "stdout" | "stderr", payload: Uint8Array): Uin
   return frame;
 };
 
-const multiplexedStdoutFrame = (payload: Uint8Array): Uint8Array => multiplexedFrame("stdout", payload);
-const multiplexedStderrFrame = (payload: Uint8Array): Uint8Array => multiplexedFrame("stderr", payload);
+const _multiplexedStdoutFrame = (payload: Uint8Array): Uint8Array => multiplexedFrame("stdout", payload);
+const _multiplexedStderrFrame = (payload: Uint8Array): Uint8Array => multiplexedFrame("stderr", payload);
 
 const appId = AppId.make("app-id");
 const serviceName = ServiceName.make("web");
@@ -79,16 +80,15 @@ describe("snapshot artifact removal", () => {
     "rejects $operation with capability $capability and format $format before HTTP",
     async ({ capability, operation, format }) => {
       let requests = 0;
+      const engine = new FakeEngine();
+      engine.observers.set("image.delete", () => {
+        requests += 1;
+      });
       const plane = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: capability },
         redactor: passthroughRedactor,
-        api: {
-          request: () => {
-            requests += 1;
-            return Effect.succeed({ status: 204, body: "" });
-          },
-        },
+        api: engine.api,
       });
       const snapshot = { ...removableSnapshot, format };
       const action =
@@ -120,27 +120,25 @@ describe("snapshot artifact removal", () => {
 
   test.each([200, 204, 404])("native removal accepts HTTP %s", async (status) => {
     const requests: string[] = [];
+    const engine = new FakeEngine().fail("image.delete", { status, body: "" });
+    engine.observers.set("image.delete", (request) => requests.push(`${request.method} ${request.path}`));
     const plane = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
       redactor: passthroughRedactor,
-      api: {
-        request: (request) => {
-          requests.push(`${request.method} ${request.path}`);
-          return Effect.succeed({ status, body: "" });
-        },
-      },
+      api: engine.api,
     });
     await Effect.runPromise(Effect.scoped(plane.removeVolumeSnapshot(removableSnapshot)));
     expect(requests).toEqual(["DELETE /images/localhost%2Flando-volume-snapshot%3Asnap-name"]);
   });
 
   test("native removal fails tagged on an image in use", async () => {
+    const engine = new FakeEngine().fail("image.delete", { status: 409, body: "image in use" });
     const plane = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
       redactor: passthroughRedactor,
-      api: { request: () => Effect.succeed({ status: 409, body: "image in use" }) },
+      api: engine.api,
     });
     const result = await Effect.runPromise(
       Effect.scoped(plane.removeVolumeSnapshot(removableSnapshot)).pipe(Effect.result),
@@ -153,16 +151,15 @@ describe("snapshot artifact removal", () => {
 
   test("foreign provider snapshots fail without HTTP requests", async () => {
     let requests = 0;
+    const engine = new FakeEngine();
+    engine.observers.set("image.delete", () => {
+      requests += 1;
+    });
     const plane = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
       redactor: passthroughRedactor,
-      api: {
-        request: () => {
-          requests += 1;
-          return Effect.succeed({ status: 204, body: "" });
-        },
-      },
+      api: engine.api,
     });
     const result = await Effect.runPromise(
       Effect.scoped(plane.removeVolumeSnapshot({ ...removableSnapshot, provider: "docker" })).pipe(
@@ -198,73 +195,37 @@ const makeWitnessVolumeApi = (
   initialGeneration = adoptedGeneration,
   labels: Readonly<Record<string, string>> = {},
 ) => {
-  let generation = initialGeneration;
-  const requests: Array<{ readonly method: string; readonly path: string; readonly body?: unknown }> = [];
-  const volume = () => ({
+  const engine = new FakeEngine();
+  const volume = {
     Name: "data",
     Driver: "local",
     Options: {},
     ...(Object.keys(labels).length === 0 ? {} : { Labels: labels }),
-  });
-  const api: DataPlaneApiClient = {
-    request: (request) =>
-      Effect.suspend(() => {
-        requests.push(request);
-        if (request.path === "/volumes" && request.method === "GET") {
-          return Effect.succeed({ status: 200, body: JSON.stringify({ Volumes: [volume()] }) });
-        }
-        if (request.path === "/volumes/data" && request.method === "GET") {
-          return Effect.succeed({ status: 200, body: JSON.stringify(volume()) });
-        }
-        if (request.path === "/containers/service/json") {
-          return Effect.succeed({
-            status: 200,
-            body: JSON.stringify({ Mounts: [{ Type: "volume", Destination: "/data", Name: "data" }] }),
-          });
-        }
-        if (request.path.startsWith("/images/"))
-          return Effect.succeed({
-            status: 200,
-            body: JSON.stringify({ Id: "sha256:snapshot", Size: 8 }),
-          });
-        if (request.path.startsWith("/containers/create?name=")) {
-          return Effect.succeed({ status: 201, body: "{}" });
-        }
-        if (request.path.endsWith("/wait")) {
-          return Effect.succeed({ status: 200, body: JSON.stringify({ StatusCode: 0 }) });
-        }
-        if (request.path.endsWith("/json")) {
-          return Effect.succeed({ status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) });
-        }
-        return Effect.succeed({ status: 204, body: "" });
-      }),
-    stream: (request) =>
-      request.path.includes("/logs?")
-        ? Stream.make(
-            multiplexedStdoutFrame(
-              bytes(`${JSON.stringify({ version: 1, generation, ownerRoot: adoptedOwnerRoot })}\n`),
-            ),
-          )
-        : Stream.empty,
   };
+  engine.assets.volumes.set("data", volume);
+  engine.assets.images.set("localhost/lando-volume-snapshot:snapshot", { Id: "sha256:snapshot", Size: 8 });
+  const setGeneration = (generation: string) => {
+    engine.containers.behavior = {
+      stdout: bytes(`${JSON.stringify({ version: 1, generation, ownerRoot: adoptedOwnerRoot })}\n`),
+    };
+  };
+  setGeneration(initialGeneration);
   return {
-    api,
-    requests,
+    api: engine.api,
+    requests: engine.httpRequests,
     replace: () => {
-      generation = replacementGeneration;
+      engine.assets.volumes.set("data", { ...volume });
+      setGeneration(replacementGeneration);
     },
   };
 };
 
 describe("provider data plane", () => {
   test("imports artifacts from newline-delimited provider load progress", async () => {
-    const api: DataPlaneApiClient = {
-      request: () =>
-        Effect.succeed({
-          status: 200,
-          body: `${JSON.stringify({ stream: "Loading layer 1/1\n" })}\n${JSON.stringify({ stream: "Loaded image: example/app:latest\n" })}\n`,
-        }),
-    };
+    const engine = new FakeEngine();
+    engine.assets.loadRef = "example/app:latest";
+    engine.assets.loadFormat = "progress";
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -297,26 +258,12 @@ describe("provider data plane", () => {
       })(),
       (cause) => (cause instanceof ArtifactTransferError ? cause : sourceError),
     );
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        requestStarted = true;
-        return Effect.tryPromise({
-          try: async () => {
-            uploaded = text(await collectAsyncBytes(request.stdin));
-            return { status: 200, body: JSON.stringify({ aux: { ID: "sha256:streamed" } }) };
-          },
-          catch: (cause) =>
-            new ArtifactTransferError({
-              providerId: "test",
-              operation: "importArtifact",
-              message: "Failed to consume artifact upload.",
-              cause,
-              remediation:
-                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
-            }),
-        });
-      },
-    };
+    const engine = new FakeEngine();
+    engine.assets.loadRef = "sha256:streamed";
+    engine.observers.set("image.load", () => {
+      requestStarted = true;
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -328,6 +275,7 @@ describe("provider data plane", () => {
     const ref = await Effect.runPromise(provider.importArtifact(source));
 
     // Then: request consumption and producer emission interleave without buffering the payload first.
+    uploaded = text(engine.assets.uploads[0] ?? new Uint8Array());
     expect(uploaded).toBe("firstsecond");
     expect(ref.ref).toBe("sha256:streamed");
   });
@@ -338,15 +286,10 @@ describe("provider data plane", () => {
     const chunkCount = 2049;
     const source = Stream.fromIterable(Array.from({ length: chunkCount })).pipe(Stream.map(() => chunk));
     let uploadedBytes = 0;
-    const api: DataPlaneApiClient = {
-      request: (request) =>
-        Effect.promise(async () => {
-          if (request.stdin !== undefined) {
-            for await (const part of request.stdin) uploadedBytes += part.byteLength;
-          }
-          return { status: 200, body: JSON.stringify({ aux: { ID: "sha256:large" } }) };
-        }),
-    };
+    const engine = new FakeEngine();
+    engine.assets.retainUploads = false;
+    engine.assets.loadRef = "sha256:large";
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -358,6 +301,7 @@ describe("provider data plane", () => {
     const ref = await Effect.runPromise(provider.importArtifact(source));
 
     // Then: every byte crosses the production boundary without a whole-payload allocation.
+    uploadedBytes = engine.assets.uploadedBytes;
     expect(uploadedBytes).toBe(chunk.byteLength * chunkCount);
     expect(uploadedBytes).toBeGreaterThan(2 * 1024 * 1024 * 1024);
     expect(ref.ref).toBe("sha256:large");
@@ -372,24 +316,8 @@ describe("provider data plane", () => {
       remediation:
         "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
-    const api: DataPlaneApiClient = {
-      request: (request) =>
-        Effect.tryPromise({
-          try: async () => {
-            await collectAsyncBytes(request.stdin);
-            return { status: 200, body: JSON.stringify({ aux: { ID: "sha256:unreachable" } }) };
-          },
-          catch: (cause) =>
-            new ArtifactTransferError({
-              providerId: "test",
-              operation: "importArtifact",
-              message: "Artifact upload failed.",
-              cause,
-              remediation:
-                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
-            }),
-        }),
-    };
+    const engine = new FakeEngine();
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -409,13 +337,9 @@ describe("provider data plane", () => {
   });
 
   test("imports artifacts from image-load aux ids", async () => {
-    const api: DataPlaneApiClient = {
-      request: () =>
-        Effect.succeed({
-          status: 200,
-          body: `${JSON.stringify({ stream: "Loading layer 1/1\n" })}\n${JSON.stringify({ aux: { ID: "sha256:abc123" } })}\n`,
-        }),
-    };
+    const engine = new FakeEngine();
+    engine.assets.loadRef = "sha256:abc123";
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -429,9 +353,11 @@ describe("provider data plane", () => {
   });
 
   test("fails artifact imports when the provider omits an image ref", async () => {
-    const api: DataPlaneApiClient = {
-      request: () => Effect.succeed({ status: 200, body: JSON.stringify({ stream: "Loading layer 1/1\n" }) }),
-    };
+    const engine = new FakeEngine().fail("image.load", {
+      status: 200,
+      body: JSON.stringify({ stream: "Loading layer 1/1\n" }),
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -451,26 +377,16 @@ describe("provider data plane", () => {
     const paths: string[] = [];
     const deletedImages: string[] = [];
     const commits: unknown[] = [];
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        paths.push(request.path);
-        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
-          deletedImages.push(request.path);
-        }
-        if (request.path.startsWith("/commit?")) {
-          commits.push(request.body);
-          return Effect.succeed({ status: 201, body: JSON.stringify({ Id: "sha256:native-snapshot" }) });
-        }
-        if (request.path.startsWith("/images/")) {
-          return Effect.succeed({
-            status: 200,
-            body: JSON.stringify({ Id: "sha256:native-snapshot", Size: 4096 }),
-          });
-        }
-        if (request.path.includes("/wait")) return Effect.succeed({ status: 200, body: "{}" });
-        return Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: "{}" });
-      },
-    };
+    const engine = new FakeEngine().fail("container.wait", { status: 200, body: "{}" });
+    engine.observers.set("image.commit", (request) => {
+      paths.push(request.path);
+      commits.push(request.body);
+    });
+    engine.observers.set("image.delete", (request) => {
+      paths.push(request.path);
+      deletedImages.push(request.path);
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -532,27 +448,19 @@ describe("provider data plane", () => {
         message: "Image deletion unavailable.",
         remediation: "Inspect provider volume state and retry the `delete` volume operation.",
       });
+      const engine = new FakeEngine().fail("image.inspect", inspectError);
+      engine.fail(
+        "image.delete",
+        deleteResult === "transport failure" ? deleteError : { status: deleteResult, body: "" },
+      );
+      for (const operation of ["image.commit", "image.delete"] as const)
+        engine.observers.set(operation, (request) => requests.push(`${request.method} ${request.path}`));
       const provider = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: "native" },
         redactor: passthroughRedactor,
         pullHelperImage: echoHelperPull(),
-        api: {
-          request: (request) =>
-            Effect.suspend(() => {
-              requests.push(`${request.method} ${request.path}`);
-              if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
-                return Effect.succeed({ status: 204, body: "" });
-              }
-              if (request.path.startsWith("/images/")) {
-                if (request.method === "GET") return Effect.fail(inspectError);
-                return deleteResult === "transport failure"
-                  ? Effect.fail(deleteError)
-                  : Effect.succeed({ status: deleteResult, body: "" });
-              }
-              return Effect.succeed({ status: 201, body: "{}" });
-            }),
-        },
+        api: engine.api,
       });
 
       // When: the snapshot fails before a reference can be returned.
@@ -582,23 +490,14 @@ describe("provider data plane", () => {
     // Given: the daemon receives the commit but never returns a response.
     const commitStarted = Deferred.makeUnsafe<void>();
     const deletedImages: string[] = [];
+    const engine = new FakeEngine().hang("image.commit", commitStarted);
+    engine.observers.set("image.delete", (request) => deletedImages.push(request.path));
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
       redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
-      api: {
-        request: (request) =>
-          Effect.suspend(() => {
-            if (request.path.startsWith("/commit?")) {
-              return Deferred.succeed(commitStarted, undefined).pipe(Effect.andThen(Effect.never));
-            }
-            if (request.method === "DELETE" && request.path.startsWith("/images/")) {
-              deletedImages.push(request.path);
-            }
-            return Effect.succeed({ status: 201, body: "{}" });
-          }),
-      },
+      api: engine.api,
     });
 
     // When: the snapshot fiber is interrupted only after the commit request starts.
@@ -626,24 +525,17 @@ describe("provider data plane", () => {
   ])("leaves snapshot images alone on failure $phase", async ({ phase, snapshotId }) => {
     // Given: either commit has not been reached or no caller-supplied id exists.
     const deletedImages: string[] = [];
+    const engine = new FakeEngine().fail(phase === "before commit" ? "container.start" : "image.inspect", {
+      status: 500,
+      body: "{}",
+    });
+    engine.observers.set("image.delete", (request) => deletedImages.push(request.path));
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
       redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
-      api: {
-        request: (request) =>
-          Effect.suspend(() => {
-            if (request.method === "DELETE" && request.path.startsWith("/images/")) {
-              deletedImages.push(request.path);
-            }
-            const failingRequest =
-              phase === "before commit"
-                ? request.path.endsWith("/start")
-                : request.method === "GET" && request.path.startsWith("/images/");
-            return Effect.succeed({ status: failingRequest ? 500 : 201, body: "{}" });
-          }),
-      },
+      api: engine.api,
     });
 
     // When: snapshot creation fails at the selected boundary.
@@ -662,35 +554,8 @@ describe("provider data plane", () => {
   });
 
   test("forwards ephemeral stdin and lets the transport end it without aborting the attach", async () => {
-    let attached = "";
-    const api: DataPlaneApiClient = {
-      request: (request) =>
-        Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        ),
-      stream: (request) =>
-        request.path.includes("/attach?")
-          ? Stream.fromAsyncIterable(
-              (async function* () {
-                attached = text(await collectAsyncBytes(request.stdin));
-                // Like the socket transport: an aborted request surfaces as AbortError.
-                if (request.signal?.aborted === true)
-                  throw new DOMException("Socket stream aborted.", "AbortError");
-                yield new Uint8Array();
-              })(),
-              (cause) =>
-                new VolumeOperationError({
-                  providerId: "test",
-                  operation: "run.attach",
-                  message: "Failed to collect stdin.",
-                  remediation: "Retry the test.",
-                  cause,
-                }),
-            )
-          : Stream.empty,
-    };
+    const engine = new FakeEngine();
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -709,27 +574,18 @@ describe("provider data plane", () => {
       ),
     );
 
+    const attached = text(engine.containers.history[0]?.stdin ?? new Uint8Array());
     expect(attached).toBe("streamed stdin");
     expect(result.exitCode).toBe(0);
   });
 
   test("does not leave ephemeral stdin open without a forwarded stream", async () => {
-    let createBody: { OpenStdin?: boolean; AttachStdin?: boolean; StdinOnce?: boolean } | undefined;
     let attachCalled = false;
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        if (request.path.startsWith("/containers/create?name=")) createBody = request.body as never;
-        return Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        );
-      },
-      stream: (request) => {
-        if (request.path.includes("/attach?")) attachCalled = true;
-        return Stream.empty;
-      },
-    };
+    const engine = new FakeEngine();
+    engine.observers.set("container.attach", () => {
+      attachCalled = true;
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -748,6 +604,7 @@ describe("provider data plane", () => {
       ),
     );
 
+    const createBody = engine.containers.history[0]?.config;
     expect(createBody).toMatchObject({ OpenStdin: false, AttachStdin: false, StdinOnce: false });
     expect(attachCalled).toBe(false);
   });
@@ -755,17 +612,17 @@ describe("provider data plane", () => {
   test("creates owned data-store volumes before ephemeral containers", async () => {
     // Given: an app-owned store and a provider API that records creation order and payloads.
     const requests: Array<{ readonly method: string; readonly path: string; readonly body?: unknown }> = [];
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        requests.push(request);
-        return Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        );
-      },
-      stream: () => Stream.empty,
-    };
+    const engine = new FakeEngine();
+    for (const operation of [
+      "volume.create",
+      "container.create",
+      "container.start",
+      "container.wait",
+      "container.inspect",
+      "container.delete",
+    ] as const)
+      engine.observers.set(operation, (request) => requests.push(request));
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -829,28 +686,22 @@ describe("provider data plane", () => {
         async (remove) => {
           const requests: Array<{ readonly method: string; readonly path: string }> = [];
           const entered = Deferred.makeUnsafe<void>();
+          const engine = new FakeEngine();
+          for (const operation of [
+            "container.create",
+            "container.start",
+            "container.wait",
+            "container.inspect",
+            "container.delete",
+          ] as const)
+            engine.observers.set(operation, (request) => requests.push(request));
+          if (outcome === "interruption") engine.hang("container.start", entered);
+          if (outcome === "failure") engine.fail("container.start", { status: 500, body: "start failed" });
           const provider = makeProviderDataPlane({
             providerId: "test",
             capabilities: { volumeSnapshot: "none" },
             redactor: passthroughRedactor,
-            api: {
-              request: (request) => {
-                requests.push(request);
-                if (request.path.endsWith("/start")) {
-                  if (outcome === "interruption")
-                    return Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
-                  if (outcome === "failure") return Effect.succeed({ status: 500, body: "start failed" });
-                }
-                return Effect.succeed({
-                  status: 200,
-                  body: request.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
-                });
-              },
-              stream: (request) => {
-                request.onResponseHead?.();
-                return Stream.empty;
-              },
-            },
+            api: engine.api,
           });
           const spec = { image: "alpine:3.20", command: ["true"], remove };
           const run = Effect.scoped(
@@ -885,17 +736,11 @@ describe("provider data plane", () => {
   test("preserves colon targets in ephemeral API Mounts", async () => {
     // Given
     let createBody: unknown;
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        if (request.path.startsWith("/containers/create?name=")) createBody = request.body;
-        return Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        );
-      },
-      stream: () => Stream.empty,
-    };
+    const engine = new FakeEngine();
+    engine.observers.set("container.create", (request) => {
+      createBody = request.body;
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -934,18 +779,10 @@ describe("provider data plane", () => {
   test("adopts an existing ephemeral volume without treating submitted labels as observed", async () => {
     // Given: the daemon reports that the declared volume already exists.
     const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        requests.push(request);
-        if (request.path === "/volumes/create") return Effect.succeed({ status: 409, body: "{}" });
-        return Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        );
-      },
-      stream: () => Stream.empty,
-    };
+    const engine = new FakeEngine();
+    engine.assets.volumes.set("data", { Name: "data" });
+    engine.onRequest = (request) => requests.push(request);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -980,15 +817,11 @@ describe("provider data plane", () => {
   test("rejects data-store mounts without resolved canonical ownership", async () => {
     // Given: a direct data-plane caller supplies only an app id.
     const requests: string[] = [];
+    const engine = new FakeEngine();
+    engine.onRequest = (request) => requests.push(request.path);
     const provider = makeProviderDataPlane({
       providerId: "test",
-      api: {
-        request: (request) => {
-          requests.push(request.path);
-          return Effect.succeed({ status: 201, body: "{}" });
-        },
-        stream: () => Stream.empty,
-      },
+      api: engine.api,
       capabilities: { volumeSnapshot: "none" },
       redactor: passthroughRedactor,
     });
@@ -1011,15 +844,8 @@ describe("provider data plane", () => {
   });
 
   test("decodes Docker multiplexed stdout frames with big-endian lengths", async () => {
-    const api: DataPlaneApiClient = {
-      request: (request) =>
-        Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        ),
-      stream: () => Stream.make(multiplexedStdoutFrame(bytes("hello from logs"))),
-    };
+    const engine = new FakeEngine({ stdout: bytes("hello from logs") });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1043,20 +869,9 @@ describe("provider data plane", () => {
 
   test("captures Docker multiplexed stderr frames from ephemeral runs", async () => {
     const paths: string[] = [];
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        paths.push(request.path);
-        return Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 1 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        );
-      },
-      stream: (request) => {
-        paths.push(request.path);
-        return Stream.make(multiplexedStderrFrame(bytes("helper failed")));
-      },
-    };
+    const engine = new FakeEngine({ exitCode: 1, stderr: bytes("helper failed") });
+    engine.onRequest = (request) => paths.push(request.path);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1079,18 +894,8 @@ describe("provider data plane", () => {
   });
 
   test("streams Docker multiplexed stderr frames from ephemeral runs", async () => {
-    const api: DataPlaneApiClient = {
-      request: (request) =>
-        Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 1 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        ),
-      stream: (request) => {
-        request.onResponseHead?.();
-        return Stream.make(multiplexedStdoutFrame(bytes("stdout")), multiplexedStderrFrame(bytes("stderr")));
-      },
-    };
+    const engine = new FakeEngine({ exitCode: 1, stdout: bytes("stdout"), stderr: bytes("stderr") });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1120,20 +925,11 @@ describe("provider data plane", () => {
   test("emits provider run output before waiting for process completion", async () => {
     // Given: a provider whose wait request records whether streaming was deferred until completion.
     let waited = false;
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        if (request.path.endsWith("/wait")) waited = true;
-        return Effect.succeed(
-          request.path.endsWith("/json")
-            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
-            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-        );
-      },
-      stream: (request) => {
-        request.onResponseHead?.();
-        return Stream.make(multiplexedStdoutFrame(bytes("first")));
-      },
-    };
+    const engine = new FakeEngine({ stdout: bytes("first") });
+    engine.observers.set("container.wait", () => {
+      waited = true;
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1157,27 +953,16 @@ describe("provider data plane", () => {
 
   test("rejects restore and removal when the observed volume generation changed", async () => {
     const mutations: string[] = [];
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        if (request.path.startsWith("/images/") && request.method === "GET") {
-          return Effect.succeed({ status: 200, body: JSON.stringify({ Id: "sha256:snapshot", Size: 0 }) });
-        }
-        if (request.path === "/volumes/data" && request.method === "GET") {
-          return Effect.succeed({
-            status: 200,
-            body: JSON.stringify({
-              Name: "data",
-              Labels: { "dev.lando.volume-instance": volumeGeneration },
-            }),
-          });
-        }
-        return Effect.sync(() => {
-          mutations.push(`${request.method} ${request.path}`);
-          return { status: 204, body: "" };
-        });
-      },
-      stream: () => Stream.empty,
+    const engine = new FakeEngine();
+    engine.assets.images.set("localhost/lando-volume-snapshot:snap", { Id: "sha256:snapshot", Size: 0 });
+    engine.assets.volumes.set("data", {
+      Name: "data",
+      Labels: { "dev.lando.volume-instance": volumeGeneration },
+    });
+    engine.onRequest = (request) => {
+      if (request.method !== "GET") mutations.push(`${request.method} ${request.path}`);
     };
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1211,30 +996,25 @@ describe("provider data plane", () => {
   });
 
   test("filters volume listings to matching Lando labels", async () => {
-    const api: DataPlaneApiClient = {
-      request: () =>
-        Effect.succeed({
-          status: 200,
-          body: JSON.stringify({
-            Volumes: [
-              { Name: "unrelated" },
-              {
-                Name: "app-data",
-                Labels: {
-                  "dev.lando.app": "app",
-                  "dev.lando.scope": "app",
-                  "dev.lando.store": "data",
-                  "dev.lando.volume-instance": "volume-instance-1",
-                },
-              },
-              {
-                Name: "other-data",
-                Labels: { "dev.lando.app": "other", "dev.lando.scope": "app", "dev.lando.store": "data" },
-              },
-            ],
-          }),
-        }),
-    };
+    const engine = new FakeEngine();
+    for (const volume of [
+      { Name: "unrelated" },
+      {
+        Name: "app-data",
+        Labels: {
+          "dev.lando.app": "app",
+          "dev.lando.scope": "app",
+          "dev.lando.store": "data",
+          "dev.lando.volume-instance": "volume-instance-1",
+        },
+      },
+      {
+        Name: "other-data",
+        Labels: { "dev.lando.app": "other", "dev.lando.scope": "app", "dev.lando.store": "data" },
+      },
+    ])
+      engine.assets.volumes.set(volume.Name, volume);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1250,23 +1030,21 @@ describe("provider data plane", () => {
   });
 
   test("reads Podman bare-array volume listings", async () => {
-    const api: DataPlaneApiClient = {
-      request: () =>
-        Effect.succeed({
-          status: 200,
-          body: JSON.stringify([
-            {
-              Name: "app-data",
-              Labels: {
-                "dev.lando.app": "app",
-                "dev.lando.scope": "app",
-                "dev.lando.store": "data",
-                "dev.lando.volume-instance": "volume-instance-1",
-              },
-            },
-          ]),
-        }),
-    };
+    const engine = new FakeEngine();
+    engine.assets.volumeListFormat = "podman";
+    for (const volume of [
+      {
+        Name: "app-data",
+        Labels: {
+          "dev.lando.app": "app",
+          "dev.lando.scope": "app",
+          "dev.lando.store": "data",
+          "dev.lando.volume-instance": "volume-instance-1",
+        },
+      },
+    ])
+      engine.assets.volumes.set(volume.Name, volume);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1281,15 +1059,10 @@ describe("provider data plane", () => {
   });
 
   test("includes legacy unlabeled volumes for exact app and store lookups", async () => {
-    const api: DataPlaneApiClient = {
-      request: () =>
-        Effect.succeed({
-          status: 200,
-          body: JSON.stringify({
-            Volumes: [{ Name: "data" }, { Name: "cache" }],
-          }),
-        }),
-    };
+    const engine = new FakeEngine();
+    for (const volume of [{ Name: "data" }, { Name: "cache" }])
+      engine.assets.volumes.set(volume.Name, volume);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1424,20 +1197,12 @@ describe("provider data plane", () => {
     { status: 500, body: "volume data is in use by container plain-db", reason: "plain-db" },
     { status: 500, body: JSON.stringify({ message: "internal daemon error" }), reason: undefined },
   ])("explains volume users only for remove conflicts: $status $body", async ({ status, body, reason }) => {
-    const api: DataPlaneApiClient = {
-      request: (input) =>
-        Effect.succeed(
-          input.method === "GET"
-            ? {
-                status: 200,
-                body: JSON.stringify({
-                  Name: "data",
-                  Labels: { "dev.lando.volume-instance": volumeGeneration },
-                }),
-              }
-            : { status, body },
-        ),
-    };
+    const engine = new FakeEngine().fail("volume.delete", { status, body });
+    engine.assets.volumes.set("data", {
+      Name: "data",
+      Labels: { "dev.lando.volume-instance": volumeGeneration },
+    });
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1529,12 +1294,9 @@ describe("provider data plane", () => {
 
   test("fails service copy when the applied plan is unavailable", async () => {
     const calls: string[] = [];
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        calls.push(request.path);
-        return Effect.succeed({ status: 200, body: "{}" });
-      },
-    };
+    const engine = new FakeEngine();
+    engine.onRequest = (request) => calls.push(request.path);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1562,17 +1324,13 @@ describe("provider data plane", () => {
   test("uses the plan slug for service copy container names", async () => {
     const calls: string[] = [];
     let uploadChunks = 0;
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        calls.push(request.path);
-        return Effect.promise(async () => {
-          if (request.stdin !== undefined) {
-            for await (const _chunk of request.stdin) uploadChunks += 1;
-          }
-          return { status: 200, body: "{}" };
-        });
-      },
-    };
+    const engine = new FakeEngine();
+    engine.containers.create(
+      { method: "POST", path: "/containers/create?name=lando-app-slug--web", body: { Image: "fixture" } },
+      new URL("http://fake/containers/create?name=lando-app-slug--web"),
+    );
+    engine.onRequest = (request) => calls.push(request.path);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1591,6 +1349,7 @@ describe("provider data plane", () => {
     );
 
     expect(calls[0]).toContain("/containers/lando-app-slug--web/archive?");
+    uploadChunks = engine.assets.uploadChunks;
     expect(uploadChunks).toBeGreaterThan(1);
   });
 });
@@ -1605,20 +1364,11 @@ test.each([
   "PRIVATE MALFORMED JSON",
 ])("fails closed for invalid ephemeral exit inspection: %s", async (body) => {
   let removed = false;
-  const api: DataPlaneApiClient = {
-    request: (request) => {
-      if (request.method === "DELETE") removed = true;
-      return Effect.succeed(
-        request.path.endsWith("/json")
-          ? { status: 200, body }
-          : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
-      );
-    },
-    stream: (request) => {
-      request.onResponseHead?.();
-      return Stream.empty;
-    },
-  };
+  const engine = new FakeEngine().fail("container.inspect", { status: 200, body });
+  engine.observers.set("container.delete", () => {
+    removed = true;
+  });
+  const api = engine.api;
   const provider = makeProviderDataPlane({
     providerId: "test",
     api,
@@ -1641,40 +1391,36 @@ test.each(["http", "typed", "defect", "interrupt"] as const)(
   "preserves ephemeral inspection %s failure and closes the container",
   async (mode) => {
     let removals = 0;
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        if (request.method === "DELETE") removals += 1;
-        if (request.path.endsWith("/json")) {
-          switch (mode) {
-            case "http":
-              return Effect.succeed({ status: 500, body: "PRIVATE INSPECTION RESPONSE" });
-            case "typed":
-              return Effect.fail(
-                new ProviderUnavailableError({
-                  providerId: "test",
-                  operation: "inspect",
-                  message: "PRIVATE INSPECTION CAUSE",
-                  cause: "PRIVATE INSPECTION CAUSE",
-                  remediation: "Retry the fixture inspection.",
-                }),
-              );
-            case "defect":
-              return Effect.die({
-                _tag: "TransportDefect",
-                message: "PRIVATE INSPECTION DEFECT",
-                cause: "PRIVATE INSPECTION DEFECT",
-              });
-            case "interrupt":
-              return Effect.interrupt;
-          }
-        }
-        return Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: "{}" });
-      },
-      stream: (request) => {
-        request.onResponseHead?.();
-        return Stream.empty;
-      },
-    };
+    const engine = new FakeEngine();
+    engine.observers.set("container.delete", () => {
+      removals += 1;
+    });
+    const failure = (() => {
+      switch (mode) {
+        case "http":
+          return Effect.succeed({ status: 500, body: "PRIVATE INSPECTION RESPONSE" });
+        case "typed":
+          return Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "test",
+              operation: "inspect",
+              message: "PRIVATE INSPECTION CAUSE",
+              cause: "PRIVATE INSPECTION CAUSE",
+              remediation: "Retry the fixture inspection.",
+            }),
+          );
+        case "defect":
+          return Effect.die({
+            _tag: "TransportDefect",
+            message: "PRIVATE INSPECTION DEFECT",
+            cause: "PRIVATE INSPECTION DEFECT",
+          });
+        case "interrupt":
+          return Effect.interrupt;
+      }
+    })();
+    engine.inject("container.inspect", failure);
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -1721,24 +1467,13 @@ for (const mode of ["run", "runStream"] as const) {
     async (status) => {
       const requests: Array<{ method: string; path: string }> = [];
       const privateBody = "unregistered-volume-body".repeat(50000);
+      const engine = new FakeEngine().fail("volume.create", { status, body: privateBody });
+      engine.onRequest = (input) => requests.push(input);
       const provider = makeProviderDataPlane({
         providerId: "test",
         redactor: passthroughRedactor,
         capabilities: { volumeSnapshot: "none" },
-        api: {
-          request: (input) => {
-            requests.push(input);
-            if (input.path === "/volumes/create") return Effect.succeed({ status, body: privateBody });
-            return Effect.succeed({
-              status: input.method === "DELETE" ? 204 : 201,
-              body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
-            });
-          },
-          stream: (input) => {
-            input.onResponseHead?.();
-            return Stream.empty;
-          },
-        },
+        api: engine.api,
       });
       const work = {
         image: "fixture",
@@ -1818,20 +1553,25 @@ for (const mode of ["run", "runStream"] as const) {
       });
       const defect = { arbitrary: "defect" };
       const requests: Array<{ method: string; path: string }> = [];
+      const engine = new FakeEngine();
+      engine.onRequest = (input) => requests.push(input);
+      if (phase === "partial") {
+        engine.fail("volume.create", { status: 201, body: "private-body" });
+        engine.fail("volume.create", { status: 503, body: "private-body" });
+      } else
+        engine.inject(
+          "volume.create",
+          phase === "typed"
+            ? Effect.fail(original)
+            : phase === "defect"
+              ? Effect.die(defect)
+              : Effect.interrupt,
+        );
       const provider = makeProviderDataPlane({
         providerId: "test",
         redactor: passthroughRedactor,
         capabilities: { volumeSnapshot: "none" },
-        api: {
-          request: (input) => {
-            requests.push(input);
-            if (phase === "partial")
-              return Effect.succeed({ status: requests.length === 1 ? 201 : 503, body: "private-body" });
-            if (phase === "typed") return Effect.fail(original);
-            if (phase === "defect") return Effect.die(defect);
-            return Effect.interrupt;
-          },
-        },
+        api: engine.api,
       });
       const work =
         phase === "partial"
@@ -1872,16 +1612,15 @@ for (const mode of ["run", "runStream"] as const) {
     `${mode} retains ownership error for missing or mismatched %s`,
     async (field) => {
       let requests = 0;
+      const engine = new FakeEngine();
+      engine.onRequest = () => {
+        requests++;
+      };
       const provider = makeProviderDataPlane({
         providerId: "test",
         redactor: passthroughRedactor,
         capabilities: { volumeSnapshot: "none" },
-        api: {
-          request: () => {
-            requests++;
-            return Effect.succeed({ status: 201, body: "{}" });
-          },
-        },
+        api: engine.api,
       });
       const { identity: _identity, ...withoutIdentity } = volumeRunSpec.owner.plan;
       const { owner: _owner, ...withoutOwner } = volumeRunSpec;
@@ -1950,27 +1689,17 @@ for (const mode of ["run", "runStream"] as const) {
         return failure;
       };
       let removals = 0;
+      const engine = new FakeEngine().fail("container.delete", error());
+      engine.observers.set("container.delete", () => {
+        removals++;
+      });
+      if (primary) engine.fail("container.start", error());
+      engine.assets.volumes.set("data", { Name: "data" });
       const provider = makeProviderDataPlane({
         providerId: "test",
         redactor,
         capabilities: { volumeSnapshot: "none" },
-        api: {
-          request: (input) => {
-            if (input.method === "DELETE") {
-              removals++;
-              return Effect.fail(error());
-            }
-            if (primary && input.path.endsWith("/start")) return Effect.fail(error());
-            return Effect.succeed({
-              status: input.path === "/volumes/create" ? 409 : 201,
-              body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
-            });
-          },
-          stream: (input) => {
-            input.onResponseHead?.();
-            return Stream.empty;
-          },
-        },
+        api: engine.api,
       });
       const exit = await Effect.runPromiseExit(
         Effect.scoped(

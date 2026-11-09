@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { makeRedactionService } from "@lando/redaction/service";
 import { FailureRoleAnnotation, failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Context, Deferred, Effect, Exit, Fiber, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -34,38 +35,28 @@ const recordedPlane = (
   },
   redactor: Redactor,
 ) => {
-  const api: DataPlaneApiClient = {
-    request: (request) => {
-      requests.push({ method: request.method, path: request.path });
-      if (request.method === "DELETE") {
-        return Deferred.succeed(gates.deleting, undefined).pipe(
-          Effect.andThen(Effect.promise(() => gates.teardown)),
-          Effect.as({ status: 204, body: "" }),
-        );
-      }
-      if (request.path.endsWith("/start") && outcome === "failed-body") {
-        return Effect.succeed({ status: 500, body: "start failed" });
-      }
-      if (request.path.endsWith("/wait") && outcome === "interrupted") {
-        return Deferred.succeed(gates.waiting, undefined).pipe(Effect.andThen(Effect.never));
-      }
-      if (request.path.endsWith("/json")) {
-        return Effect.succeed({
-          status: 200,
-          body: JSON.stringify({ State: { ExitCode: outcome === "nonzero" ? 9 : 0 } }),
-        });
-      }
-      return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
-    },
-    stream: (request) =>
-      Stream.suspend(() => {
-        request.onResponseHead?.();
-        return Stream.empty;
-      }),
-  };
+  const engine = new FakeEngine({ exitCode: outcome === "nonzero" ? 9 : 0 });
+  for (const operation of [
+    "container.create",
+    "container.start",
+    "container.wait",
+    "container.inspect",
+    "container.delete",
+  ] as const) {
+    engine.observers.set(operation, ({ method, path }) => requests.push({ method, path }));
+  }
+  engine.inject(
+    "container.delete",
+    Deferred.succeed(gates.deleting, undefined).pipe(
+      Effect.andThen(Effect.promise(() => gates.teardown)),
+      Effect.as({ status: 204, body: "" }),
+    ),
+  );
+  if (outcome === "failed-body") engine.fail("container.start", { status: 500, body: "start failed" });
+  if (outcome === "interrupted") engine.hang("container.wait", gates.waiting);
   return makeProviderDataPlane({
     providerId: "test",
-    api,
+    api: engine.api,
     capabilities: { volumeSnapshot: "none" },
     redactor,
   });

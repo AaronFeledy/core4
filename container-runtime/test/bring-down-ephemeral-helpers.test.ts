@@ -8,6 +8,7 @@ import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const data = { name: "data", scope: "app", kind: "data" } as const;
 const cache = { name: "cache", scope: "app", kind: "cache" } as const;
@@ -122,24 +123,20 @@ describe("volume holder preservation during teardown", () => {
   test("direct removal retains the generation check and reports holders without mutating them", async () => {
     const generation = "00000000-0000-4000-8000-000000000001";
     const calls: EngineHttpRequest[] = [];
+    const engine = new FakeEngine().seedContainer("lando-docker-data-SENSITIVE", {
+      Image: "fixture",
+      HostConfig: { Binds: ["data:/data"] },
+    });
+    const holder = engine.containers.get("lando-docker-data-SENSITIVE");
+    if (holder === undefined) throw new Error("Missing holder fixture");
+    engine.containers.entries.set(holder.name, { ...holder, id: "exact-SENSITIVE-id" });
+    engine.assets.volumes.set("data", { Name: "data", Labels: { "dev.lando.volume-instance": generation } });
+    engine.onRequest = (input) => calls.push(input);
     const plane = makeProviderDataPlane({
       providerId: "docker",
       capabilities: { volumeSnapshot: "none" },
       redactor,
-      api: {
-        request: (input) =>
-          Effect.sync(() => {
-            calls.push(input);
-            if (input.path === "/volumes/data" && input.method === "GET")
-              return {
-                status: 200,
-                body: JSON.stringify({ Name: "data", Labels: { "dev.lando.volume-instance": generation } }),
-              };
-            if (input.path === "/volumes/data" && input.method === "DELETE")
-              return { status: 409, body: "SENSITIVE is in use" };
-            return { status: 200, body: JSON.stringify([helper("created", {})]) };
-          }),
-      },
+      api: engine.api,
     });
     const result = await Effect.runPromise(
       plane.removeVolume({ app: basePlan.id, store: "data" }, generation).pipe(Effect.result),

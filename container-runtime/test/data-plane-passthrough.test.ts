@@ -5,8 +5,9 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Schema, type Scope, Stream } from "effect";
-import { type DataPlaneApiClient, type ProviderDataPlane, makeProviderDataPlane } from "../src/data-plane.ts";
+import { type ProviderDataPlane, makeProviderDataPlane } from "../src/data-plane.ts";
 import { echoHelperPull } from "./helper-pull-support.ts";
+import { FakeEngine, type Operation } from "./support/fake-engine.ts";
 
 const plan = Schema.decodeSync(AppPlan)({
   id: "fixture",
@@ -41,18 +42,29 @@ const original = new ProviderUnavailableError({
 const redactor = createStandaloneRedactor("secrets", { authoritativeTokens: [secret] });
 const members: ReadonlyArray<{
   readonly name: string;
+  readonly operation: Operation;
   readonly invoke: (plane: ProviderDataPlane) => Effect.Effect<unknown, ProviderError, Scope.Scope>;
 }> = [
-  { name: "snapshotVolume", invoke: (plane) => plane.snapshotVolume({ volume }) },
+  {
+    name: "snapshotVolume",
+    operation: "container.start",
+    invoke: (plane) => plane.snapshotVolume({ volume }),
+  },
   {
     name: "restoreVolume",
+    operation: "image.inspect",
     invoke: (plane) =>
       plane.restoreVolume({ snapshot, target: volume, expectedTargetGeneration: "generation" }),
   },
-  { name: "listVolumes", invoke: (plane) => plane.listVolumes({}) },
-  { name: "removeVolume", invoke: (plane) => plane.removeVolume(volume, "generation") },
+  { name: "listVolumes", operation: "volume.list", invoke: (plane) => plane.listVolumes({}) },
+  {
+    name: "removeVolume",
+    operation: "volume.inspect",
+    invoke: (plane) => plane.removeVolume(volume, "generation"),
+  },
   {
     name: "copyToService",
+    operation: "archive.put",
     invoke: (plane) =>
       plane.copyToService(target, {
         sourcePath: AbsolutePath.make(import.meta.path),
@@ -61,24 +73,27 @@ const members: ReadonlyArray<{
   },
   {
     name: "copyFromService",
+    operation: "archive.get",
     invoke: (plane) =>
       Stream.runDrain(plane.copyFromService(target, { sourcePath: PortablePath.make("/payload") })),
   },
   {
     name: "exportArtifact",
+    operation: "image.get",
     invoke: (plane) =>
       Stream.runDrain(plane.exportArtifact({ providerId: ProviderId.make("test"), ref: "fixture" })),
   },
-  { name: "importArtifact", invoke: (plane) => plane.importArtifact(Stream.empty) },
+  { name: "importArtifact", operation: "image.load", invoke: (plane) => plane.importArtifact(Stream.empty) },
 ];
 
-test.each(members)("$name keeps transport identity and remediation", async ({ invoke }) => {
+test.each(members)("$name keeps transport identity and remediation", async ({ invoke, operation }) => {
+  const engine = new FakeEngine().fail(operation, original);
   const plane = makeProviderDataPlane({
     providerId: "test",
     redactor,
     capabilities: { volumeSnapshot: "native" },
     pullHelperImage: echoHelperPull(),
-    api: { request: () => Effect.fail(original), stream: () => Stream.fail(original) },
+    api: engine.api,
   });
   const exit = await Effect.runPromiseExit(Effect.scoped(invoke(plane)));
   if (!Exit.isFailure(exit)) throw new Error("Expected transport failure");
@@ -93,24 +108,14 @@ test.each(members)("$name keeps transport identity and remediation", async ({ in
 
 test.each(members.filter(({ name }) => !["copyFromService", "exportArtifact"].includes(name)))(
   "$name classifies a locally detected HTTP failure",
-  async ({ name, invoke }) => {
+  async ({ name, invoke, operation }) => {
+    const engine = new FakeEngine().fail(operation, { status: 503, body: secret });
     const plane = makeProviderDataPlane({
       providerId: "test",
       redactor,
       capabilities: { volumeSnapshot: "native" },
       pullHelperImage: echoHelperPull(),
-      api: {
-        request: (input) =>
-          Effect.succeed({
-            status:
-              input.method === "DELETE" && name === "snapshotVolume"
-                ? 204
-                : input.path.includes("/create?")
-                  ? 201
-                  : 503,
-            body: secret,
-          }),
-      },
+      api: engine.api,
     });
     const exit = await Effect.runPromiseExit(Effect.scoped(invoke(plane)));
     if (!Exit.isFailure(exit)) throw new Error("Expected HTTP failure");
@@ -134,19 +139,21 @@ test("copyFromService preserves a mid-stream transport cause with all reasons", 
     message: original.message,
     operation: "transport.secondary",
   });
+  const engine = new FakeEngine();
+  engine.feeds.set(
+    "archive.get",
+    Stream.concat(
+      Stream.make(new Uint8Array(128)),
+      Stream.failCause(
+        Cause.combine(Cause.fail(original), annotateFailureRole(Cause.fail(secondary), "cleanup")),
+      ),
+    ),
+  );
   const plane = makeProviderDataPlane({
     providerId: "test",
     redactor,
     capabilities: { volumeSnapshot: "native" },
-    api: {
-      stream: () =>
-        Stream.concat(
-          Stream.make(new Uint8Array(128)),
-          Stream.failCause(
-            Cause.combine(Cause.fail(original), annotateFailureRole(Cause.fail(secondary), "cleanup")),
-          ),
-        ),
-    },
+    api: engine.api,
   });
   const exit = await Effect.runPromiseExit(
     Effect.scoped(
@@ -168,16 +175,17 @@ test("removeVolume keeps multiple transport reasons", async () => {
     message: original.message,
     operation: "transport.secondary",
   });
+  const engine = new FakeEngine().inject(
+    "volume.inspect",
+    Effect.failCause(
+      Cause.combine(Cause.fail(original), annotateFailureRole(Cause.fail(secondary), "cleanup")),
+    ),
+  );
   const plane = makeProviderDataPlane({
     providerId: "test",
     redactor,
     capabilities: { volumeSnapshot: "native" },
-    api: {
-      request: () =>
-        Effect.failCause(
-          Cause.combine(Cause.fail(original), annotateFailureRole(Cause.fail(secondary), "cleanup")),
-        ),
-    },
+    api: engine.api,
   });
   const exit = await Effect.runPromiseExit(plane.removeVolume(volume, "generation"));
   if (!Exit.isFailure(exit)) throw new Error("Expected multiple failures");
@@ -191,10 +199,11 @@ test("removeVolume keeps multiple transport reasons", async () => {
 test.each(["listVolumes", "snapshotVolume"] as const)(
   "%s classifies invalid JSON locally",
   async (member) => {
-    const api: DataPlaneApiClient = {
-      request: (request) =>
-        Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: `invalid-json-${secret}` }),
-    };
+    const engine = new FakeEngine().fail(member === "listVolumes" ? "volume.list" : "container.wait", {
+      status: 201,
+      body: `invalid-json-${secret}`,
+    });
+    const api = engine.api;
     const plane = makeProviderDataPlane({
       providerId: "test",
       redactor,
@@ -221,11 +230,13 @@ test.each(["listVolumes", "snapshotVolume"] as const)(
 test.each([new Uint8Array(1), new Uint8Array(512).fill(120)])(
   "copyFromService classifies malformed tar data locally",
   async (payload) => {
+    const engine = new FakeEngine();
+    engine.feeds.set("archive.get", Stream.make(payload));
     const plane = makeProviderDataPlane({
       providerId: "test",
       redactor,
       capabilities: { volumeSnapshot: "native" },
-      api: { stream: () => Stream.make(payload) },
+      api: engine.api,
     });
     const exit = await Effect.runPromiseExit(
       Effect.scoped(

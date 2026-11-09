@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppId } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Schema } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { VOLUME_WITNESS_FILE } from "../src/volume-witness-helper.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -26,35 +27,23 @@ test("native restore preserves target witness and excludes source witness", asyn
     await writeFile(join(source, "payload"), "backup");
     await writeFile(join(target, VOLUME_WITNESS_FILE), "target-generation");
     await writeFile(join(target, "stale"), "stale");
+    const engine = new FakeEngine();
+    engine.assets.volumes.set("actual", {
+      Name: "actual",
+      Labels: { "dev.lando.volume-instance": generation },
+    });
+    engine.assets.images.set("localhost/lando-volume-snapshot:snap", {
+      Id: "sha256:native-snapshot",
+      Size: 4096,
+    });
+    engine.observers.set("container.create", (input) => {
+      command = Schema.decodeUnknownSync(Schema.Struct({ Cmd: Schema.Array(Schema.String) }))(input.body).Cmd;
+    });
     const plane = makeProviderDataPlane({
       providerId: "fixture",
       capabilities: { volumeSnapshot: "native" },
       redactor: passthroughRedactor,
-      api: {
-        request: (input) => {
-          if (input.path === "/volumes/actual") {
-            return Effect.succeed({
-              status: 200,
-              body: JSON.stringify({
-                Name: "actual",
-                Labels: { "dev.lando.volume-instance": generation },
-              }),
-            });
-          }
-          if (input.path.startsWith("/images/")) {
-            return Effect.succeed({
-              status: 200,
-              body: JSON.stringify({ Id: "sha256:native-snapshot", Size: 4096 }),
-            });
-          }
-          if (input.path.startsWith("/containers/create"))
-            command = Schema.decodeUnknownSync(Schema.Struct({ Cmd: Schema.Array(Schema.String) }))(
-              input.body,
-            ).Cmd;
-          return Effect.succeed({ status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) });
-        },
-        stream: () => Stream.empty,
-      },
+      api: engine.api,
     });
     await Effect.runPromise(
       Effect.scoped(

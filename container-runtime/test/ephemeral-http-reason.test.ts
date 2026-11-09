@@ -3,9 +3,9 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import { AppPlan, PortablePath, ProviderId } from "@lando/sdk/schema";
 import { Effect, Exit, Schema, Stream } from "effect";
-import type { DataPlaneHttpRequest } from "../src/data-plane.ts";
 import { makeProviderPlanState } from "../src/provider-assembly.ts";
 import { runtimeDiagnosticContext } from "../src/redact.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const plan = Schema.decodeSync(AppPlan)({
   id: "fixture",
@@ -21,16 +21,6 @@ const plan = Schema.decodeSync(AppPlan)({
   identity: { appRoot: "/fixture", ownerKey: "fixture-owner" },
   metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/fixture/.lando.yml", runtime: 4 },
 });
-const phaseOf = (input: DataPlaneHttpRequest) =>
-  input.path === "/volumes/create"
-    ? "volume"
-    : input.path.includes("/create?")
-      ? "create"
-      : input.path.endsWith("/start")
-        ? "start"
-        : input.path.endsWith("/wait")
-          ? "wait"
-          : "inspect";
 const cases: ReadonlyArray<{
   readonly name: string;
   readonly env: Readonly<Record<string, string>>;
@@ -104,6 +94,11 @@ for (const mode of ["run", "runStream"] as const) {
             env: { PRIVATE_TOKEN: "host-secret-canary" },
           }).pipe(Effect.provideService(RedactionService, service)),
         );
+        const engine = new FakeEngine();
+        engine.fail(phase === "volume" ? "volume.create" : `container.${phase}`, {
+          status: 404,
+          body: JSON.stringify({ message: reason }),
+        });
         const state = makeProviderPlanState({
           ctx,
           redactor: ctx.redactor,
@@ -113,20 +108,7 @@ for (const mode of ["run", "runStream"] as const) {
           load: () => Effect.succeed(undefined),
           persist: () => Effect.void,
           remove: () => Effect.void,
-          api: {
-            request: (input) =>
-              Effect.succeed(
-                input.method === "DELETE"
-                  ? { status: 204, body: "" }
-                  : phaseOf(input) === phase
-                    ? { status: 404, body: JSON.stringify({ message: reason }) }
-                    : { status: 201, body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}" },
-              ),
-            stream: (input) => {
-              input.onResponseHead?.();
-              return Stream.empty;
-            },
-          },
+          api: engine.api,
         });
         if (state.dataPlane === undefined) throw new Error("Expected assembled data plane");
         await Effect.runPromise(service.registerValues(["late-registered-canary", "overlap-canary"]));
@@ -184,6 +166,11 @@ test.each([false, true])(
       withService ? context.pipe(Effect.provideService(RedactionService, service)) : context,
     );
     const secret = "a".repeat(700);
+    const engine = new FakeEngine();
+    engine.fail("container.create", {
+      status: 500,
+      body: JSON.stringify({ cause: `denied ${secret} host-secret-canary ${"é".repeat(800)}` }),
+    });
     const state = makeProviderPlanState({
       ctx,
       redactor: ctx.redactor,
@@ -193,13 +180,7 @@ test.each([false, true])(
       load: () => Effect.succeed(undefined),
       persist: () => Effect.void,
       remove: () => Effect.void,
-      api: {
-        request: () =>
-          Effect.succeed({
-            status: 500,
-            body: JSON.stringify({ cause: `denied ${secret} host-secret-canary ${"é".repeat(800)}` }),
-          }),
-      },
+      api: engine.api,
     });
     if (state.dataPlane === undefined) throw new Error("Expected data plane");
     const exit = await Effect.runPromiseExit(
