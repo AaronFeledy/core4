@@ -195,7 +195,7 @@ test.each(cases)(
           return;
         case "nonzero":
           expect(projected.error).toMatchObject({
-            _tag: "VolumeOperationError",
+            _tag: "ProviderInternalError",
             operation,
             details: { exitCode: 9 },
           });

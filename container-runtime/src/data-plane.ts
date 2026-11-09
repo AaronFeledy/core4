@@ -287,20 +287,16 @@ const volumeError = (
   details?: unknown,
   cause?: unknown,
   store?: string,
-) => {
-  const error = new VolumeOperationError({
+) =>
+  new VolumeOperationError({
     providerId: options.providerId,
     operation,
     message,
     remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-    ...(details === undefined
-      ? {}
-      : { details: operation.startsWith("run.") ? details : redactDetails(details, options.redactor) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(store === undefined ? {} : { store }),
   });
-  return operation.startsWith("run.") ? redactProviderError(error, options.redactor) : error;
-};
 
 const copyError = (
   options: ProviderDataPlaneOptions,
@@ -438,27 +434,25 @@ const legacyVolumeInfoFromEngineVolume = (
   };
 };
 
+const redactFailures = (redactor: Redactor) =>
+  Effect.catchCause((cause: Cause.Cause<ProviderError>) =>
+    Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, redactor))),
+  );
+
+const redactStreamFailures = (redactor: Redactor) =>
+  Stream.catchCause((cause: Cause.Cause<ProviderError>) =>
+    Stream.failCause(mapFailureCause(cause, (error) => redactProviderError(error, redactor))),
+  );
+
 const request = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.request === undefined
     ? Effect.fail(missingDataPlaneClient(options, operation, "request"))
-    : options.api
-        .request(input)
-        .pipe(
-          Effect.catchCause((cause) =>
-            Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
-          ),
-        );
+    : options.api.request(input).pipe(redactFailures(options.redactor));
 
 const stream = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.stream === undefined
     ? Stream.fail(missingDataPlaneClient(options, operation, "stream"))
-    : options.api
-        .stream(input)
-        .pipe(
-          Stream.catchCause((cause) =>
-            Stream.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
-          ),
-        );
+    : options.api.stream(input).pipe(redactStreamFailures(options.redactor));
 
 const missingDataPlaneClient = (
   options: ProviderDataPlaneOptions,
@@ -481,33 +475,40 @@ const ensure2xx = (
   operation: string,
   response: DataPlaneHttpResponse,
   store?: string,
-): Effect.Effect<void, ProviderUnavailableError | VolumeOperationError> =>
+): Effect.Effect<void, VolumeOperationError> =>
   response.status >= 200 && response.status < 300
     ? Effect.void
-    : operation.startsWith("run.")
-      ? Effect.fail(
-          redactProviderError(
-            new ProviderUnavailableError({
-              providerId: options.providerId,
-              operation,
-              message: `Provider data-plane API returned HTTP ${response.status}.`,
-              details: { status: response.status },
-              remediation:
-                "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-            }),
-            options.redactor,
-          ),
-        )
-      : Effect.fail(
-          volumeError(
-            options,
+    : Effect.fail(
+        volumeError(
+          options,
+          operation,
+          `Provider data-plane API returned HTTP ${response.status}.`,
+          response,
+          undefined,
+          store,
+        ),
+      );
+
+const ensureEphemeral2xx = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  response: DataPlaneHttpResponse,
+): Effect.Effect<void, ProviderUnavailableError> =>
+  response.status >= 200 && response.status < 300
+    ? Effect.void
+    : Effect.fail(
+        redactProviderError(
+          new ProviderUnavailableError({
+            providerId: options.providerId,
             operation,
-            `Provider data-plane API returned HTTP ${response.status}.`,
-            response,
-            undefined,
-            store,
-          ),
-        );
+            message: `Provider data-plane API returned HTTP ${response.status}.`,
+            details: { status: response.status },
+            remediation:
+              "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+          }),
+          options.redactor,
+        ),
+      );
 
 /**
  * Acquire a pinned helper image and prove it is the pinned content before any
@@ -523,17 +524,6 @@ const ensureHelperImage = (
   const pull = options.pullHelperImage;
   const remediation =
     "Check network and registry access, then retry. Lando only runs data-plane helpers from pinned image digests; run `lando doctor` if the problem persists.";
-  const fail = (message: string, details: Readonly<Record<string, unknown>>) =>
-    redactProviderError(
-      new ProviderInternalError({
-        providerId: options.providerId,
-        operation,
-        message,
-        remediation,
-        details: redactDetails(details, options.redactor),
-      }),
-      options.redactor,
-    );
   if (pull === undefined) {
     return Effect.fail(
       redactProviderError(
@@ -549,17 +539,27 @@ const ensureHelperImage = (
     );
   }
   return pull(helper.ref).pipe(
-    Effect.catchCause((cause) =>
-      Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
-    ),
+    redactFailures(options.redactor),
     Effect.flatMap((pulled) =>
       pulled.digest === helper.digest
         ? Effect.void
         : Effect.fail(
-            fail("Pinned data-plane helper image digest did not match the pin.", {
-              reference: helper.ref,
-              expectedDigest: helper.digest,
-            }),
+            redactProviderError(
+              new ProviderInternalError({
+                providerId: options.providerId,
+                operation,
+                message: "Pinned data-plane helper image digest did not match the pin.",
+                remediation,
+                details: {
+                  reference: helper.ref,
+                  expectedDigest: helper.digest,
+                  ...(typeof pulled.digest === "string" && /^sha256:[0-9a-f]{64}$/u.test(pulled.digest)
+                    ? { actualDigest: pulled.digest }
+                    : {}),
+                },
+              }),
+              options.redactor,
+            ),
           ),
     ),
   );
@@ -572,13 +572,18 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
   const plan = owner?.plan;
   if (owner === undefined || plan === undefined || plan.identity === undefined || plan.id !== owner.app) {
     return Effect.fail(
-      volumeError(
-        options,
-        "run.volume",
-        "Provider ephemeral data-store mounts require an app plan with canonical ownership identity.",
-        owner,
-        undefined,
-        mounts[0]?.store,
+      redactProviderError(
+        new VolumeOperationError({
+          providerId: options.providerId,
+          operation: "run.volume",
+          message:
+            "Provider ephemeral data-store mounts require an app plan with canonical ownership identity.",
+          remediation:
+            "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+          ...(owner === undefined ? {} : { details: { app: String(owner.app) } }),
+          ...(mounts[0] === undefined ? {} : { store: mounts[0].store }),
+        }),
+        options.redactor,
       ),
     );
   }
@@ -587,13 +592,17 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
     const store = plan.stores.find((candidate) => candidate.name === name);
     if (store === undefined) {
       return Effect.fail(
-        volumeError(
-          options,
-          "run.volume",
-          "Provider ephemeral data-store mount is not declared by the app plan.",
-          { app: plan.id, store: name },
-          undefined,
-          name,
+        redactProviderError(
+          new VolumeOperationError({
+            providerId: options.providerId,
+            operation: "run.volume",
+            message: "Provider ephemeral data-store mount is not declared by the app plan.",
+            remediation:
+              "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+            details: { app: plan.id, store: name },
+            store: name,
+          }),
+          options.redactor,
         ),
       );
     }
@@ -686,7 +695,7 @@ const createEphemeralContainer = (
       AttachStderr: true,
     },
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.create", response, mount?.store)),
+    Effect.tap((response) => ensureEphemeral2xx(options, "run.create", response)),
     Effect.as(name),
   );
 };
@@ -713,7 +722,7 @@ const ephemeralCompletionFailure = (
 ) => {
   const stderrTail = boundedDiagnostic(outcome.stderr, (value) => options.redactor.redactValue(value));
   return redactProviderError(
-    new VolumeOperationError({
+    new ProviderInternalError({
       providerId: options.providerId,
       operation,
       message: "Provider ephemeral command completed but container cleanup failed.",
@@ -792,9 +801,7 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
           }),
         ),
     }),
-    Effect.catchCause((cause) =>
-      Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
-    ),
+    redactFailures(options.redactor),
   );
   return removal.pipe(
     Effect.asVoid,
@@ -837,18 +844,18 @@ const attachEphemeralStdin = (options: ProviderDataPlaneOptions, name: string, s
   );
 };
 
-const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
+const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: string) =>
   request(options, "run.wait", {
     method: "POST",
     path: `/containers/${encodeURIComponent(name)}/wait`,
-  }).pipe(Effect.tap((response) => ensure2xx(options, "run.wait", response, spec.mounts?.[0]?.store)));
+  }).pipe(Effect.tap((response) => ensureEphemeral2xx(options, "run.wait", response)));
 
-const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
+const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: string) =>
   request(options, "run.inspect", {
     method: "GET",
     path: `/containers/${encodeURIComponent(name)}/json`,
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.inspect", response, spec.mounts?.[0]?.store)),
+    Effect.tap((response) => ensureEphemeral2xx(options, "run.inspect", response)),
     Effect.flatMap((response) =>
       tryParseJson(response.body, () =>
         redactProviderError(
@@ -899,11 +906,11 @@ const runBytes = (
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/start`,
         });
-        yield* ensure2xx(options, "run.start", start, spec.mounts?.[0]?.store);
+        yield* ensureEphemeral2xx(options, "run.start", start);
         if (spec.stdinStream !== undefined) {
           yield* Fiber.join(stdinFiber);
         }
-        yield* waitForEphemeralContainer(options, name, spec);
+        yield* waitForEphemeralContainer(options, name);
         const captureStdout = spec.captureStdout === true;
         const logs = yield* collectStreamBytes(
           stream(options, "run.logs", {
@@ -911,7 +918,7 @@ const runBytes = (
             path: `/containers/${encodeURIComponent(name)}/logs?stdout=${captureStdout ? "true" : "false"}&stderr=true`,
           }),
         ).pipe(Effect.map((payload) => decodeDockerRunLogs(payload, captureStdout ? "stdout" : "stderr")));
-        const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
+        const exitCode = yield* inspectEphemeralExitCode(options, name);
         return {
           exitCode,
           stdout: logs.stdout,
@@ -988,12 +995,12 @@ const runByteStream = (
             method: "POST",
             path: `/containers/${encodeURIComponent(name)}/start`,
           });
-          yield* ensure2xx(options, "run.start", started, spec.mounts?.[0]?.store);
+          yield* ensureEphemeral2xx(options, "run.start", started);
           const output = Stream.fromQueue(chunks);
           const completed = Stream.fromEffect(
             Effect.gen(function* () {
-              yield* waitForEphemeralContainer(options, name, spec);
-              const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
+              yield* waitForEphemeralContainer(options, name);
+              const exitCode = yield* inspectEphemeralExitCode(options, name);
               observed.exitCode = exitCode;
               return { exitCode } satisfies ExecChunk;
             }),

@@ -36,6 +36,12 @@ test("provider details omit secret keys recursively and mask native Error name a
   expect(wire.details.error).toEqual({ name: "[redacted]", message: "[redacted]" });
   expect(wire.details["[redacted]"]).toBe("safe marker");
 });
+test("provider details omit undefined properties and preserve undefined array elements", async () => {
+  const result = await project({ status: 500, body: undefined, list: [undefined, 1] });
+  expect(result.details).toEqual({ status: 500, list: [undefined, 1] });
+  expect(result.details).not.toHaveProperty("body");
+});
+
 test("provider details never execute accessors, serialization hooks, or proxy traps", async () => {
   let calls = 0;
   const revoked = Proxy.revocable({}, {});
@@ -63,7 +69,7 @@ test("provider details never execute accessors, serialization hooks, or proxy tr
   };
   const result = await project(input);
   expect(calls).toBe(0);
-  expect((result.details as { safe: number }).safe).toBe(503);
+  expect(result.details).toMatchObject({ safe: 503 });
   expect(() => JSON.stringify(taggedErrorJson(result))).not.toThrow();
 });
 test("provider details bound cycles, deep trees, wide arrays and repeated references", async () => {
@@ -82,7 +88,7 @@ test("provider details bound cycles, deep trees, wide arrays and repeated refere
   expect(wire.length).toBeLessThan(100000);
 });
 
-test("projection skips array hooks, inherited fields, and exotic values", async () => {
+test("projection skips array hooks and masks exotic values while preserving prototype-named keys", async () => {
   let calls = 0;
   const array = [secret, { status: 503 }];
   Object.defineProperty(array, "map", {
@@ -110,6 +116,7 @@ test("projection skips array hooks, inherited fields, and exotic values", async 
   const result = await project({ array, proto, exotic: new Date(), bigint: 1n, symbol: Symbol(secret) });
   const details = result.details as Record<string, unknown>;
   expect(details.array).toEqual(["[redacted]", { status: 503 }]);
+  expect(details).toMatchObject({ exotic: "[redacted]", bigint: "[redacted]", symbol: "[redacted]" });
   expect(Object.getPrototypeOf(details)).toBeNull();
   expect(Object.getPrototypeOf(details.proto)).toBeNull();
   expect(Object.hasOwn(details.proto as object, "__proto__")).toBe(true);
@@ -220,7 +227,7 @@ test("local cycle depth and width limits retain safe sibling diagnostics", async
     Object.fromEntries(Array.from({ length: 257 }, (_, i) => [`key${i}`, secret])),
   ]) {
     const result = await project({ status: 503, subtree });
-    expect((result.details as Record<string, unknown>).status).toBe(503);
+    expect(result.details).toMatchObject({ status: 503 });
     expect(JSON.stringify(result.details)).not.toContain(secret);
   }
 });

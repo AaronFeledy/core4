@@ -1731,7 +1731,10 @@ for (const mode of ["run", "runStream"] as const) {
               body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
             });
           },
-          stream: () => Stream.empty,
+          stream: (input) => {
+            input.onResponseHead?.();
+            return Stream.empty;
+          },
         },
       });
       const work = {
@@ -1904,7 +1907,16 @@ for (const mode of ["run", "runStream"] as const) {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("Expected failure");
-      expect(exit.cause.reasons.find(Cause.isFailReason)?.error).toBeInstanceOf(VolumeOperationError);
+      const error = exit.cause.reasons.find(Cause.isFailReason)?.error;
+      expect(error).toBeInstanceOf(VolumeOperationError);
+      if (!(error instanceof VolumeOperationError)) throw new Error("Expected volume ownership failure");
+      expect(error.details).toEqual(
+        field === "owner"
+          ? undefined
+          : field === "store"
+            ? { app: String(appId), store: "undeclared" }
+            : { app: String(work.owner?.app) },
+      );
       expect(requests).toBe(0);
     },
   );
@@ -1947,7 +1959,10 @@ for (const mode of ["run", "runStream"] as const) {
               body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
             });
           },
-          stream: () => Stream.empty,
+          stream: (input) => {
+            input.onResponseHead?.();
+            return Stream.empty;
+          },
         },
       });
       const exit = await Effect.runPromiseExit(

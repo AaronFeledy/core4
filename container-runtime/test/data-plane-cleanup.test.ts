@@ -237,7 +237,7 @@ describe("ephemeral cleanup", () => {
     if (!Exit.isFailure(exit)) return;
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.error).toMatchObject({
-      _tag: "VolumeOperationError",
+      _tag: "ProviderInternalError",
       operation: "run",
       details: { exitCode: 9 },
     });
@@ -393,7 +393,7 @@ describe("ephemeral cleanup", () => {
     if (!Exit.isFailure(exit)) return;
     expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
       error: {
-        _tag: "VolumeOperationError",
+        _tag: "ProviderInternalError",
         operation: "runStream",
         details: { exitCode: 4, stderrTail: "safe [redacted] stream failure" },
       },

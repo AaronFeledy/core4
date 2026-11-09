@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import {
+  type DataPlaneApiClient,
+  type DataPlaneHttpRequest,
+  dataHelperImage,
+  makeProviderDataPlane,
+} from "@lando/container-runtime/data-plane";
 import { makeRedactionService } from "@lando/redaction/service";
 import {
   FailureRoleAnnotation,
@@ -37,6 +42,17 @@ const spec = {
   remove: true,
 };
 const modes = ["run", "runStream"] as const;
+const requestPhase = (input: DataPlaneHttpRequest) => {
+  if (input.method === "DELETE") return "remove";
+  if (input.path.includes("/create?")) return "create";
+  if (input.path.endsWith("/json")) return "inspect";
+  if (input.path.endsWith("/wait")) return "wait";
+  return "start";
+};
+const emptyStream = (input: DataPlaneHttpRequest) => {
+  input.onResponseHead?.();
+  return Stream.empty;
+};
 type Mode = (typeof modes)[number];
 const invoke = (provider: ReturnType<typeof makeProviderDataPlane>, mode: Mode) =>
   Effect.scoped(
@@ -86,66 +102,64 @@ const assertIdentity = async (error: unknown, original: ProviderError) => {
 };
 
 for (const mode of modes) {
-  test.each(["create", "start", "attach", "logs", "wait", "inspect", "remove"] as const)(
-    `${mode} preserves typed provider identity at %s ingress`,
-    async (phase) => {
-      const original = new ProviderUnavailableError(fields);
-      let removals = 0;
-      const api: DataPlaneApiClient = {
-        request: (input) => {
-          const current =
-            input.method === "DELETE"
-              ? "remove"
-              : input.path.includes("/create?")
-                ? "create"
-                : input.path.endsWith("/json")
-                  ? "inspect"
-                  : input.path.endsWith("/wait")
-                    ? "wait"
-                    : "start";
-          if (current === "remove") removals++;
-          if (current === phase) return Effect.fail(original);
-          return Effect.succeed({
-            status: current === "remove" ? 204 : 201,
-            body: current === "inspect" ? '{"State":{"ExitCode":0}}' : "{}",
-          });
-        },
-        stream: (input) => (input.path.includes(`/${phase}?`) ? Stream.fail(original) : Stream.empty),
-      };
-      const provider = makeProviderDataPlane({
-        providerId: "test",
-        api,
-        capabilities: { volumeSnapshot: "none" },
-        redactor: await redactionForTest(),
-      });
-      const work =
-        phase === "attach"
-          ? Effect.scoped(
-              mode === "run"
-                ? provider
-                    .run({ ...spec, stdinStream: { async *[Symbol.asyncIterator]() {} } })
-                    .pipe(Effect.asVoid)
-                : provider
-                    .runStream({ ...spec, stdinStream: { async *[Symbol.asyncIterator]() {} } })
-                    .pipe(Stream.runDrain),
-            )
-          : invoke(provider, mode);
-      const exit = await Effect.runPromiseExit(work);
-      if (!Exit.isFailure(exit)) throw new Error("Expected typed failure");
-      expect(removals).toBe(phase === "create" ? 0 : 1);
-      const reason = exit.cause.reasons.find(
-        (reason) => Cause.isFailReason(reason) || Cause.isDieReason(reason),
-      );
-      if (reason === undefined || Cause.isInterruptReason(reason)) throw new Error("Expected failure reason");
-      // Stream finalizers convert typed cleanup errors to defects without losing the error.
-      expect(reason._tag).toBe(phase === "remove" && mode === "runStream" ? "Die" : "Fail");
-      if (phase === "remove")
-        expect(Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation)).toBe(
-          "cleanup",
-        );
-      await assertIdentity(Cause.isFailReason(reason) ? reason.error : reason.defect, original);
-    },
-  );
+  test.each([
+    "create",
+    "start",
+    "attach",
+    mode === "runStream" ? "attach without stdin" : "logs",
+    "wait",
+    "inspect",
+    "remove",
+  ] as const)(`${mode} preserves typed provider identity at %s ingress`, async (phase) => {
+    const original = new ProviderUnavailableError(fields);
+    let removals = 0;
+    const api: DataPlaneApiClient = {
+      request: (input) => {
+        const current = requestPhase(input);
+        if (current === "remove") removals++;
+        if (current === phase) return Effect.fail(original);
+        return Effect.succeed({
+          status: current === "remove" ? 204 : 201,
+          body: current === "inspect" ? '{"State":{"ExitCode":0}}' : "{}",
+        });
+      },
+      stream: (input) => {
+        const streamPhase = phase === "attach without stdin" ? "attach" : phase;
+        if (input.path.includes(`/${streamPhase}?`)) return Stream.fail(original);
+        return emptyStream(input);
+      },
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: await redactionForTest(),
+    });
+    const work =
+      phase === "attach"
+        ? Effect.scoped(
+            mode === "run"
+              ? provider
+                  .run({ ...spec, stdinStream: { async *[Symbol.asyncIterator]() {} } })
+                  .pipe(Effect.asVoid)
+              : provider
+                  .runStream({ ...spec, stdinStream: { async *[Symbol.asyncIterator]() {} } })
+                  .pipe(Stream.runDrain),
+          )
+        : invoke(provider, mode);
+    const exit = await Effect.runPromiseExit(work);
+    if (!Exit.isFailure(exit)) throw new Error("Expected typed failure");
+    expect(removals).toBe(phase === "create" ? 0 : 1);
+    const reason = exit.cause.reasons.find(
+      (reason) => Cause.isFailReason(reason) || Cause.isDieReason(reason),
+    );
+    if (reason === undefined || Cause.isInterruptReason(reason)) throw new Error("Expected failure reason");
+    // Stream finalizers convert typed cleanup errors to defects without losing the error.
+    expect(reason._tag).toBe(phase === "remove" && mode === "runStream" ? "Die" : "Fail");
+    if (phase === "remove")
+      expect(Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation)).toBe("cleanup");
+    await assertIdentity(Cause.isFailReason(reason) ? reason.error : reason.defect, original);
+  });
 
   test.each([
     new ProviderCapabilityError({
@@ -190,7 +204,7 @@ for (const mode of modes) {
                 : Effect.succeed({ status: 200, body: '{"State":{"ExitCode":0}}' });
             return Effect.succeed({ status: 201, body: "{}" });
           },
-          stream: () => Stream.empty,
+          stream: emptyStream,
         },
       });
       const exit = await Effect.runPromiseExit(invoke(provider, mode));
@@ -209,6 +223,7 @@ for (const mode of modes) {
       capabilities: { volumeSnapshot: "none" },
       redactor: await redactionForTest(),
       api: {
+        stream: emptyStream,
         request: (input) =>
           input.method === "DELETE"
             ? Effect.failCause(annotateFailureRole(Cause.fail(cleanup), "rollback"))
@@ -238,19 +253,10 @@ for (const mode of modes) {
       const provider = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: "none" },
-        redactor: { redactString: (value) => value, redactValue: (value) => value },
+        redactor: identityRedactor,
         api: {
           request: (input) => {
-            const current =
-              input.method === "DELETE"
-                ? "remove"
-                : input.path.includes("/create?")
-                  ? "create"
-                  : input.path.endsWith("/json")
-                    ? "inspect"
-                    : input.path.endsWith("/wait")
-                      ? "wait"
-                      : "start";
+            const current = requestPhase(input);
             return Effect.succeed(
               current === phase
                 ? { status: 500, body: "unregistered-private-http-body" }
@@ -260,7 +266,7 @@ for (const mode of modes) {
                   },
             );
           },
-          stream: () => Stream.empty,
+          stream: emptyStream,
         },
       });
       const exit = await Effect.runPromiseExit(invoke(provider, mode));
@@ -284,7 +290,7 @@ for (const mode of modes) {
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "none" },
-      redactor: { redactString: (value) => value, redactValue: (value) => value },
+      redactor: identityRedactor,
       api: {
         request: (input) => {
           if (input.method === "DELETE") removals++;
@@ -293,7 +299,7 @@ for (const mode of modes) {
             body: input.path.endsWith("/json") ? body : "{}",
           });
         },
-        stream: () => Stream.empty,
+        stream: emptyStream,
       },
     });
     const exit = await Effect.runPromiseExit(invoke(provider, mode));
@@ -362,7 +368,7 @@ test("helper digest proof failure omits untrusted observed image metadata", asyn
   const provider = makeProviderDataPlane({
     providerId: "test",
     capabilities: { volumeSnapshot: "native" },
-    redactor: { redactString: (value) => value, redactValue: (value) => value },
+    redactor: identityRedactor,
     pullHelperImage: () =>
       Effect.succeed({ ref: "unregistered-private-ref", digest: "unregistered-private-digest" }),
     api: {},
@@ -374,6 +380,27 @@ test("helper digest proof failure omits untrusted observed image metadata", asyn
   const wrapper = failureOutcomeFromCause(exit.cause).error;
   if (!(wrapper instanceof VolumeOperationError)) throw new Error("Expected snapshot wrapper");
   expect(JSON.stringify(wrapper.cause)).not.toContain("unregistered-private");
+});
+
+test("helper digest proof failure reports a well-formed mismatching digest", async () => {
+  const actualDigest = `sha256:${"0".repeat(64)}`;
+  const provider = makeProviderDataPlane({
+    providerId: "test",
+    capabilities: { volumeSnapshot: "native" },
+    redactor: identityRedactor,
+    pullHelperImage: () => Effect.succeed({ ref: dataHelperImage.ref, digest: actualDigest }),
+    api: {},
+  });
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(provider.snapshotVolume({ volume: { app: AppId.make("fixture"), store: "data" } })),
+  );
+  if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+  const wrapper = failureOutcomeFromCause(exit.cause).error;
+  if (!(wrapper instanceof VolumeOperationError)) throw new Error("Expected snapshot wrapper");
+  expect(wrapper.cause).toBeInstanceOf(ProviderInternalError);
+  expect(wrapper.cause).toMatchObject({
+    details: { expectedDigest: dataHelperImage.digest, actualDigest },
+  });
 });
 
 for (const mode of modes) {
@@ -418,7 +445,7 @@ for (const mode of modes) {
                 });
               },
             } satisfies Pick<DataPlaneApiClient, "request">)),
-        ...(phase === "missing-stream" ? {} : { stream: () => Stream.empty }),
+        ...(phase === "missing-stream" ? {} : { stream: emptyStream }),
       };
       const provider = makeProviderDataPlane({
         providerId: "test",
