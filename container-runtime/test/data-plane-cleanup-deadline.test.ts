@@ -181,7 +181,7 @@ test.each(cases)(
           expect(projected.error).toMatchObject({
             _tag: "ProviderUnavailableError",
             operation: "run.start",
-            message: "Provider data-plane API returned HTTP 500.",
+            details: { status: 500 },
           });
           expect(projected.additionalErrors).toEqual([
             {

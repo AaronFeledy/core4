@@ -142,7 +142,13 @@ describe("data-plane helper image acquisition", () => {
 
     // Then: it fails with the digest mismatch and never creates the helper.
     expect(result._tag).toBe("Failure");
-    expect(JSON.stringify(result)).toContain("digest did not match the pin");
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "ProviderInternalError",
+        operation: "snapshotVolume",
+        details: { expectedDigest: dataHelperImage.digest, actualDigest: wrong },
+      },
+    });
     expect(engine.containerCreates()).toEqual([]);
   });
 

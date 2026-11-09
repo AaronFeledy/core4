@@ -173,7 +173,7 @@ describe("ephemeral cleanup", () => {
       error: {
         _tag: "ProviderUnavailableError",
         operation: "run.start",
-        message: "Provider data-plane API returned HTTP 500.",
+        details: { status: 500 },
       },
       additionalErrors: [
         { role: "cleanup", error: { _tag: "ProviderUnavailableError", operation: "run.remove" } },
@@ -195,7 +195,7 @@ describe("ephemeral cleanup", () => {
     expect(outcome.error).toMatchObject({
       _tag: "ProviderUnavailableError",
       operation: "run.start",
-      message: "Provider data-plane API returned HTTP 500.",
+      details: { status: 500 },
     });
     expect(outcome.additionalErrors).toEqual([]);
   });

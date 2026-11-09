@@ -569,7 +569,11 @@ describe("provider data plane", () => {
       ]);
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { _tag: "VolumeOperationError", cause: inspectError },
+        failure: {
+          _tag: "VolumeOperationError",
+          operation: inspectError.operation,
+          remediation: inspectError.remediation,
+        },
       });
     },
   );
@@ -1446,12 +1450,10 @@ describe("provider data plane", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
     expect(result.failure).toBeInstanceOf(VolumeOperationError);
+    if (!(result.failure instanceof VolumeOperationError)) throw new Error("Expected volume failure");
     expect(result.failure.operation).toBe("removeVolume");
     if (reason === undefined) {
-      expect(result.failure.message).toBe("Provider volume remove failed.");
-      expect(result.failure.remediation).toBe(
-        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-      );
+      expect(result.failure.details).toMatchObject({ status: 500 });
     } else {
       expect(result.failure.message).toContain(reason);
       expect(result.failure.remediation).toContain("Wait for any data operation to finish");

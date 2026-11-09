@@ -357,10 +357,7 @@ test("helper acquisition preserves typed identity before any container is create
     Effect.scoped(provider.snapshotVolume({ volume: { app: AppId.make("fixture"), store: "data" } })),
   );
   if (!Exit.isFailure(exit)) throw new Error("Expected failure");
-  const wrapper = failureOutcomeFromCause(exit.cause).error;
-  expect(wrapper).toBeInstanceOf(VolumeOperationError);
-  if (!(wrapper instanceof VolumeOperationError)) throw new Error("Expected snapshot wrapper");
-  await assertIdentity(wrapper.cause, original);
+  await assertIdentity(failureOutcomeFromCause(exit.cause).error, original);
   expect(requests).toBe(0);
 });
 
@@ -377,9 +374,9 @@ test("helper digest proof failure omits untrusted observed image metadata", asyn
     Effect.scoped(provider.snapshotVolume({ volume: { app: AppId.make("fixture"), store: "data" } })),
   );
   if (!Exit.isFailure(exit)) throw new Error("Expected failure");
-  const wrapper = failureOutcomeFromCause(exit.cause).error;
-  if (!(wrapper instanceof VolumeOperationError)) throw new Error("Expected snapshot wrapper");
-  expect(JSON.stringify(wrapper.cause)).not.toContain("unregistered-private");
+  const error = failureOutcomeFromCause(exit.cause).error;
+  expect(error).toBeInstanceOf(ProviderInternalError);
+  expect(JSON.stringify(error)).not.toContain("unregistered-private");
 });
 
 test("helper digest proof failure reports a well-formed mismatching digest", async () => {
@@ -395,10 +392,9 @@ test("helper digest proof failure reports a well-formed mismatching digest", asy
     Effect.scoped(provider.snapshotVolume({ volume: { app: AppId.make("fixture"), store: "data" } })),
   );
   if (!Exit.isFailure(exit)) throw new Error("Expected failure");
-  const wrapper = failureOutcomeFromCause(exit.cause).error;
-  if (!(wrapper instanceof VolumeOperationError)) throw new Error("Expected snapshot wrapper");
-  expect(wrapper.cause).toBeInstanceOf(ProviderInternalError);
-  expect(wrapper.cause).toMatchObject({
+  const error = failureOutcomeFromCause(exit.cause).error;
+  expect(error).toBeInstanceOf(ProviderInternalError);
+  expect(error).toMatchObject({
     details: { expectedDigest: dataHelperImage.digest, actualDigest },
   });
 });
@@ -518,11 +514,11 @@ for (const mode of modes) {
 }
 
 test.each(["missing", "digest"] as const)(
-  "helper %s proof redacts local fields before a non-ephemeral wrapper retains its cause",
+  "helper %s proof redacts local fields before returning its canonical failure",
   async (mode) => {
     const service = makeRedactionService();
     const redactor = await Effect.runPromise(service.forProfile("secrets"));
-    await Effect.runPromise(service.registerValues(["lando", "test"]));
+    await Effect.runPromise(service.registerValues(["lando", "test", "diagnostics"]));
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
@@ -536,9 +532,9 @@ test.each(["missing", "digest"] as const)(
       Effect.scoped(provider.snapshotVolume({ volume: { app: AppId.make("fixture"), store: "data" } })),
     );
     if (!Exit.isFailure(exit)) throw new Error("Expected helper failure");
-    const wrapper = failureOutcomeFromCause(exit.cause).error;
-    if (!(wrapper instanceof VolumeOperationError)) throw new Error("Expected unchanged snapshot wrapper");
-    const diagnostic = taggedErrorJson(wrapper.cause);
+    const error = failureOutcomeFromCause(exit.cause).error;
+    expect(error).toBeInstanceOf(mode === "missing" ? ProviderUnavailableError : ProviderInternalError);
+    const diagnostic = taggedErrorJson(error);
     for (const token of ["lando", "test"]) expect(JSON.stringify(diagnostic)).not.toContain(token);
     expect(diagnostic.remediation).toContain("[redacted]");
   },

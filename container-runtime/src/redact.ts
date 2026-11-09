@@ -29,7 +29,11 @@ export const runtimeDiagnosticContext = Effect.fnUntraced(function* (ctx: Provid
   const redactor = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
     : redactorFor(ctx);
-  return { ...ctx, redactor };
+  const forTokens = (tokens: { readonly authoritativeTokens: readonly string[] }) =>
+    Option.isSome(service)
+      ? service.value.forProfile("secrets", { ...options, ...tokens })
+      : Effect.sync(() => createStandaloneRedactor("secrets", { ...options, ...tokens }));
+  return { ...ctx, redactor, redactorFor: forTokens };
 });
 
 /**
@@ -60,7 +64,7 @@ export const redactResponseDetails = (
   redactor: Redactor,
 ): unknown => redactDetails(httpResponseDetails(response), redactor);
 
-const apiReasonFromBody = (details: unknown, redactor: Redactor): string | undefined => {
+export const apiReasonFromBody = (details: unknown, redactor: Redactor): string | undefined => {
   if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
   const body = details.body;
   if (typeof body !== "string" || body.trim().length === 0) return undefined;
