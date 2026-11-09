@@ -55,6 +55,9 @@ not required for scripts.
 User apps stop first, followed by scratch cleanup, then the global app.
 The next `lando start` brings back the global services that app uses,
 including Traefik and the SSH agent sidecar.
+After poweroff, `lando list` reports apps as `stopped` when the API confirms no running containers or an absent endpoint and stopped managed machine establish idle on macOS or Windows. For that idle state, `lando stop` finishes host-side cleanup without launching the runtime, and `lando destroy` launches it to remove the app's resources.
+
+On Linux and WSL, an absent API leaves app status `unknown`. Workloads can outlive the API, so process observations alone cannot prove they stopped. `lando stop` fails closed in that state. Inspect the runtime service log named by `lando doctor`; `lando start` can restore runtime access. Neither status observation nor stop launches it.
 Lando stops the managed runtime service only after all targeted apps stop.
 Before it does, Lando removes containers that image builds left behind, so
 their storage helpers don't keep running.

@@ -232,6 +232,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | - | - | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
 | - | - | `lando sources:gc` remote source cache report and prune | `docs/guides/cli/sources-gc.mdx` | Shipped |
+| - | - | `lando apps:gc` missing-folder app cleanup and retained file-sync data | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | - | - | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | - | - | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
 | - | - | service timezone configuration | `docs/guides/services/timezone.mdx` | Shipped |

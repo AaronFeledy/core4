@@ -93,7 +93,8 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:start` | `start` | `app` | Start current app; finishes an unfinished accelerated attempt first (§10.6.3) |
 | `app:stop` | `stop` | `app` | Stop current app |
 | `apps:init` | `init` | `plugins` | Scaffold an app (§8.8) |
-| `apps:list` | `list` | `minimal` | List apps; `--all`, filters, `--path`, JSON, table |
+| `apps:gc` | — | `provider` | Reports user apps whose recorded root no longer exists (applied plans, containers, volumes, unfinished accelerated-start journals) and exits 0; reporting never launches a runtime, so a provider that is not running lists recorded state only. `--prune` asks one confirmation listing every candidate root and what it deletes, then tears each down through the missing-root destroy path (§5.3.1), sequentially, revalidating each root and acting only on confirmed roots. `--volumes`, `--purge`, `--purge-caches`, and `--provider` mean what they mean for `destroy`. Pruning prepares an `idle` owning provider the way `destroy` does. A root that fails, or a journal document that cannot be read, does not stop the others; the result lists per-root outcomes, keeping data that the selected flags retain as success, and the command exits non-zero only when requested cleanup failed or was withheld. |
+| `apps:list` | `list` | `minimal` | List apps; `--all`, filters, `--path`, JSON, table. Status is `active`, `stopped` (its provider answered or proved it runs nothing, as an `idle` managed runtime does), or `unknown`. `--prune` removes recorded state only after a successful resource listing proves the app's resources absent, never from `idle` evidence. |
 | `apps:poweroff` | `poweroff` | `provider` | Stop managed services; `--keep-global`, `--keep-scratch` |
 | `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy by `<id>`; `--keep-volumes` |
 | `apps:scratch:gc` | `scratch:gc` | `scratch` | Report or reap orphans; `--prune` |

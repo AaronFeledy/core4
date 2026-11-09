@@ -53,8 +53,8 @@ Use `type: mailpit` when this app needs its own capture server.
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mailhog\"" } }} />
-      <Run command="lando doctor --deprecations" />
-      <Verify command="lando doctor --deprecations" expect={{ stdout: { regex: "mailhog" } }} />
+      <Run command="lando doctor --deprecations --format=json" />
+      <Verify command="lando doctor --deprecations --format=json" expect={{ stdout: { regex: "mailhog" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

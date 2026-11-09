@@ -150,8 +150,25 @@ lando destroy -y
 
 `pre-destroy` fires before anything is removed, and `post-destroy` only after everything, leftovers included, is gone. When Lando finds no trace of the app, destroy reports `unchanged` and fires neither.
 
-If you've deleted or moved an app folder before tearing it down, use its old path to
-remove the leftovers. `lando doctor` lists app folders that no longer exist.
+If you've deleted or moved app folders before tearing them down, inspect their
+leftovers with `lando apps:gc`. `lando apps:gc --prune` asks once before cleaning
+up all reported roots. The prompt lists observed containers and volumes for each
+root, marks which categories are kept or deleted, and includes the completed
+start-journal sweep. An idle runtime's live holdings and snapshot inventory are
+not available in this preview. Lando revalidates roots and ownership before
+deleting anything; changed evidence is retained for another review.
+Add `--volumes` to delete data volumes and file-sync copies
+of app files; add `--purge-caches` to delete caches. Data you keep by leaving off
+`--volumes` is listed in the result. A failed root doesn't prevent the others from
+being cleaned up, but makes the command exit nonzero.
+
+```sh
+lando apps:gc
+lando apps:gc --prune --volumes
+```
+
+`lando doctor` points missing-folder findings at this command. To clean up just
+one root, use its old path:
 `--root` refuses folders that still exist; run `lando destroy` from inside those
 folders instead. `--volumes` deletes the app's retained data, so use it only when
 you no longer need that data.
@@ -161,6 +178,10 @@ lando destroy --root <path> --volumes
 ```
 
 `poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
+
+When the managed runtime is positively identified as idle, `lando stop` finishes the app's host-side cleanup without starting it. Its `:host` event steps still run; steps that would run in a service container are skipped with a notice. `lando destroy` starts the idle runtime holding the app's resources so it can remove them, including when you use `--root`. Normal data-retention rules still apply.
+
+On macOS and Windows, an absent API and a managed machine inspected as stopped establish idle. On Linux and WSL, an absent API remains unavailable, including after `poweroff` or a reboot: process observations cannot prove that no workloads survive. `lando list` reports `unknown` and stop fails closed. Inspect the runtime service log named by `lando doctor`; `lando start` can restore runtime access. Observation and stop never launch it.
 
 To stop everything Lando is running:
 
@@ -175,8 +196,8 @@ from runtime discovery, not the saved plan:
 | Status | Meaning |
 | --- | --- |
 | `active` | At least one container for this app is running. This does not mean every service is healthy. |
-| `stopped` | The app's provider answered discovery, and no running containers were found for the app. |
-| `unknown` | Discovery could not confirm the app's provider, including when its API socket is gone after `poweroff`. |
+| `stopped` | The app's provider answered discovery with no running containers, or an absent endpoint and stopped managed machine establish idle on macOS or Windows. |
+| `unknown` | Lando could not observe the provider or establish that it runs no workloads. Read failures and an unresponsive live runtime remain unknown. |
 
 Use `lando list --format=json` for the same `status` on each entry in `result.apps`.
 `--status` keeps only matching rows after that one discovery pass. Repeat it to
@@ -194,7 +215,7 @@ The service list includes saved service names; it is not a list of running servi
 The table adds `(stale)` when the recorded root no longer exists; JSON reports
 that separately as `stale: true`.
 Pruning also requires the provider to confirm that no matching containers or
-volumes remain. Remove those exact stale records with:
+volumes remain through a successful resource listing. An idle runtime proves nothing is running, but can still hold stopped containers and volumes; it never authorizes pruning. Remove those exact stale records with:
 
 ```sh
 lando list --prune
