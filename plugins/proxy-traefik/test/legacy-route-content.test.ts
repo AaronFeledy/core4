@@ -5,7 +5,6 @@ import { legacyContent, legacyHttpContent, legacyName } from "./legacy-route-fix
 test.each([
   [legacyName, legacyContent, true],
   ["routes-plain.yml", legacyHttpContent, false],
-  ["routes-empty.yml", "http:\n  routers:\n  services:\n", false],
 ])("recognizes the historical writer output for %s", (name, content, hasCertificate) => {
   expect(recognizeLegacyRouteFile(name, content)).toMatchObject({ hasCertificate });
 });
@@ -14,6 +13,7 @@ test.each([
   [`routes-${"ab".repeat(32)}.yml`, legacyContent.replaceAll("old%2Fapp", "ab".repeat(32))],
   [`routes-${"AB".repeat(32)}.yml`, legacyContent.replaceAll("old%2Fapp", "AB".repeat(32))],
   ["routes-.yml", "http:\n  routers:\n  services:\n"],
+  ["routes-empty.yml", "http:\n  routers:\n  services:\n"],
   ["routes-%FF.yml", legacyContent],
   ["routes-%00.yml", legacyContent],
   ["routes-%70lain.yml", legacyHttpContent],

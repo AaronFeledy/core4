@@ -89,6 +89,8 @@ export const recognizeLegacyRouteFile = (name: string, content: string) => {
   const routers = Object.entries(config.http.routers ?? {});
   const services = Object.entries(config.http.services ?? {});
   const middlewares = Object.entries(config.http.middlewares ?? {});
+  // That writer removed the file instead of writing an empty route set.
+  if (routers.length === 0) return undefined;
   const lines = ["http:", "  routers:"];
   const usedMiddleware = new Set<string>();
   for (const [index, [serviceName, service]] of services.entries()) {
