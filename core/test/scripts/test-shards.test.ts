@@ -106,10 +106,12 @@ test("bounds Windows command lines while preserving every collected file exactly
     expect(command.reduce((size, arg) => size + arg.length * 2 + 3, 1)).toBeLessThanOrEqual(16_000);
   }
   expect(localUnitTestCommands(files, "linux")).toEqual([localUnitTestCommand(files)]);
-  let calls = 0;
-  const code = await runLocalUnitTests(files, async () => (calls++ === 0 ? 7 : 0), "win32");
-  expect(calls).toBe(commands.length);
-  expect(code).toBe(7);
+  for (const laterCode of [0, 9]) {
+    let calls = 0;
+    const code = await runLocalUnitTests(files, async () => (calls++ === 0 ? 7 : laterCode), "win32");
+    expect(calls).toBe(commands.length);
+    expect(code).toBe(7);
+  }
   expect(() => localUnitTestCommands(["x".repeat(16_000)], "win32")).toThrow("Windows command budget");
 });
 
@@ -117,12 +119,15 @@ test("local, shard and timings commands select exact files rather than matching 
   const root = await mkdtemp(join(tmpdir(), "test-exact-selection-"));
   const file = "core/test/unit.test.ts";
   try {
-    for (const [path, name] of [
-      [file, "intended unit"],
-      ["docs/test/core/test/unit.test.ts", "excluded docs"],
+    for (const [path, body] of [
+      [file, 'test("intended unit", () => {});'],
+      [
+        "docs/test/core/test/unit.test.ts",
+        'test("excluded docs", () => { throw new Error("excluded fixture selected"); });',
+      ],
     ] as const) {
       await mkdir(dirname(join(root, path)), { recursive: true });
-      await writeFile(join(root, path), `import { test } from "bun:test"; test("${name}", () => {});`);
+      await writeFile(join(root, path), `import { test } from "bun:test"; ${body}`);
     }
     for (const command of [
       localUnitTestCommand([file]),
@@ -138,8 +143,6 @@ test("local, shard and timings commands select exact files rather than matching 
       const output = Bun.stripANSI(`${stdout}\n${stderr}`);
       expect(code, output).toBe(0);
       expect(output).toMatch(/^\s*1 pass\s*$/mu);
-      expect(output).toContain("intended unit");
-      expect(output).not.toContain("excluded docs");
     }
   } finally {
     await rm(root, { recursive: true, force: true });

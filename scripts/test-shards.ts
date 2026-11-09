@@ -70,15 +70,14 @@ export const localUnitTestCommands = (
   const limit = 16_000;
   for (const file of files) {
     if (cost(localUnitTestCommand([...batch, file])) > limit) {
-      if (batch.length === 0) throw new Error(`test path exceeds Windows command budget: ${file}`);
-      commands.push(localUnitTestCommand(batch));
-      batch = [];
       if (cost(localUnitTestCommand([file])) > limit)
         throw new Error(`test path exceeds Windows command budget: ${file}`);
+      commands.push(localUnitTestCommand(batch));
+      batch = [];
     }
     batch.push(file);
   }
-  if (batch.length > 0) commands.push(localUnitTestCommand(batch));
+  commands.push(localUnitTestCommand(batch));
   return commands;
 };
 
