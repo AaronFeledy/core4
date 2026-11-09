@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
@@ -36,11 +43,14 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
   const fail = new Set<string>();
   const interrupt = new Set<string>();
   let launches = 0;
+  let running = true;
   const provider = {
     ...TestRuntimeProvider,
     id: providerId,
+    getStatus: Effect.sync(() => ({ state: running ? ("running" as const) : ("idle" as const) })),
     ensureReady: Effect.sync(() => {
       launches++;
+      running = true;
     }),
     destroy: (target: Parameters<typeof TestRuntimeProvider.destroy>[0]) =>
       Effect.suspend(() => {
@@ -75,9 +85,20 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
     observeRuntime: Effect.sync((): readonly ProviderRuntimeSnapshot[] => [
       {
         providerId,
-        runtimeObserved: true,
+        runtimeObserved: running,
         appliedPlans: plans,
-        services: [],
+        // The idle runtime's containers are only listed once it runs.
+        services: running
+          ? plans.map((plan) => ({
+              app: plan.id,
+              appRoot: plan.root,
+              service: ServiceName.make("web"),
+              providerId,
+              status: "created" as const,
+              publications: { status: "unknown" as const },
+              containerId: `${plan.id}-web`,
+            }))
+          : [],
         volumes: retainData
           ? [
               {
@@ -112,6 +133,9 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
     },
     changePlan: () => {
       plans = plans.map((plan) => ({ ...plan, name: "changed after confirmation" }));
+    },
+    idle: () => {
+      running = false;
     },
     vanishUnscanned: () => {
       plans = [];
@@ -193,6 +217,29 @@ test("prune does not call a root absent when its provider was not scanned again"
   const result = await Effect.runPromise(prepared.prune.pipe(Effect.provide(f.layer)));
   expect(result.roots).toMatchObject([{ outcome: "retained", confirmed: true }]);
   expect(f.destroyed).toEqual([]);
+});
+
+test("prune confirms the holdings an idle runtime only lists once it runs", async () => {
+  const f = fixture(["one"]);
+  f.idle();
+  const reported = await Effect.runPromise(prepareAppsGc().pipe(Effect.provide(f.layer)));
+  expect(f.launches()).toBe(0);
+  expect(reported.report.candidates).toMatchObject([{ runtimeObserved: false, services: [] }]);
+
+  const prepared = await Effect.runPromise(prepareAppsGc({}, { prune: true }).pipe(Effect.provide(f.layer)));
+  expect(f.launches()).toBe(1);
+  expect(prepared.report.candidates).toMatchObject([{ runtimeObserved: true, services: ["one/web"] }]);
+  const result = await Effect.runPromise(prepared.prune.pipe(Effect.provide(f.layer)));
+  expect(result.roots).toMatchObject([{ outcome: "destroyed", confirmed: true }]);
+});
+
+test("prune relaunches an owner that went idle after confirmation and still prunes", async () => {
+  const f = fixture(["one"]);
+  const prepared = await Effect.runPromise(prepareAppsGc({}, { prune: true }).pipe(Effect.provide(f.layer)));
+  f.idle();
+  const result = await Effect.runPromise(prepared.prune.pipe(Effect.provide(f.layer)));
+  expect(f.launches()).toBe(1);
+  expect(result.roots).toMatchObject([{ outcome: "destroyed", confirmed: true }]);
 });
 
 test("prune retains a root whose folder reappeared after confirmation", async () => {

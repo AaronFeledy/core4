@@ -64,7 +64,7 @@ export const runAppsGcCommand = Effect.fn("AppsGcCommand.run")(function* (input:
     purgeSnapshots: booleanFlag(flags, "purge"),
     yes: booleanFlag(flags, "yes"),
   };
-  const prepared = yield* prepareAppsGc(options);
+  const prepared = yield* prepareAppsGc(options, { prune: booleanFlag(flags, "prune") });
   if (!booleanFlag(flags, "prune")) return prepared.report;
   yield* requireConfirmation({
     yes: options.yes === true,

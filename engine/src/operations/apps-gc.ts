@@ -1,8 +1,10 @@
 import type { DestroyAppOptions } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
-import { FileSystem } from "@lando/sdk/services";
+import { ProviderId } from "@lando/sdk/schema";
+import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
+import { prepareTeardownOwners } from "../providers/runtime-observation.ts";
 import { UnreadableStartJournal, sweepCompletedAcceleratedStarts } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
@@ -33,10 +35,36 @@ export const AppsGcReport = Schema.Struct({
 });
 export type AppsGcReport = typeof AppsGcReport.Type;
 
+const prepareOwners = Effect.fnUntraced(function* (providerIds: readonly string[]) {
+  const registry = yield* RuntimeProviderRegistry;
+  const providers = yield* Effect.forEach([...new Set(providerIds)], (id) =>
+    registry.select(ProviderId.make(id)),
+  );
+  yield* prepareTeardownOwners(providers);
+});
+
+/**
+ * Reporting never launches a runtime. Pruning launches owners whose runtime was not observed before
+ * the confirmation is built, so the user confirms the holdings that teardown will actually remove.
+ */
 export const prepareAppsGc = Effect.fn("AppOperation.prepareAppsGc")(function* (
   options: DestroyAppOptions = {},
+  intent: { readonly prune?: boolean } = {},
 ) {
-  const scan = yield* scanMissingAppRoots().pipe(Effect.provideService(TeardownProvider, options.providerId));
+  const scanRoots = scanMissingAppRoots().pipe(Effect.provideService(TeardownProvider, options.providerId));
+  const reported = yield* scanRoots;
+  const unobserved = reported.candidates
+    .filter((candidate) => !candidate.runtimeObserved)
+    .flatMap((candidate) => candidate.providers);
+  // A failed launch keeps the unobserved report; pruning that root then fails with the launch error.
+  const prepared =
+    intent.prune === true && unobserved.length > 0
+      ? yield* prepareOwners(unobserved).pipe(
+          Effect.as(true),
+          Effect.catch(() => Effect.succeed(false)),
+        )
+      : false;
+  const scan = prepared ? yield* scanRoots : reported;
   const report: AppsGcReport = {
     candidates: scan.candidates,
     scans: scan.scans,
@@ -65,6 +93,8 @@ const pruneAppsGc = Effect.fn("AppOperation.pruneAppsGc")(function* (
       Effect.gen(function* () {
         if (yield* fs.exists(candidate.root))
           return { outcome: "retained" as const, reason: "The app folder exists again." };
+        // Revalidate against live holdings: holdings that appear only now differ from what was confirmed.
+        yield* prepareOwners(candidate.providers);
         const current = yield* scanMissingAppRoots();
         const failedScan = current.scans.find(
           (scan) => candidate.providers.includes(scan.providerId) && scan.errorTag !== undefined,
