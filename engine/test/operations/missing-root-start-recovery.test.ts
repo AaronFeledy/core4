@@ -199,6 +199,17 @@ test("missing-root destroy skips a target that earlier teardown already removed"
   expect(await f.journal()).toBeNull();
 });
 
+test("missing-root destroy keeps the journal when a listed target's presence is unknown at removal", async () => {
+  const f = await fixture();
+  f.lookup("unknown");
+
+  const result = await f.run();
+
+  expect(Exit.isFailure(result)).toBe(true);
+  expect(f.removed).toEqual([]);
+  expect(await f.journal()).not.toBeNull();
+});
+
 test("missing-root destroy keeps the journal when a target verified absent reappears", async () => {
   const f = await fixture();
   f.replace([]);

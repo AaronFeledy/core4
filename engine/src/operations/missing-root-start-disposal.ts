@@ -100,7 +100,11 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
                   app: AppId.make(record.appId),
                   store: target.volumeName,
                 });
-                if (located.nativeName === target.volumeName && located.presence === "absent") return;
+                if (located.nativeName !== target.volumeName || located.presence === undefined)
+                  return yield* Effect.fail(
+                    failure(`The presence of file-sync target ${target.volumeName} cannot be verified.`),
+                  );
+                if (located.presence === "absent") return;
                 if (volume?.identity === undefined)
                   return yield* Effect.fail(
                     failure(`File-sync target ${target.volumeName} appeared after its absence was verified.`),
