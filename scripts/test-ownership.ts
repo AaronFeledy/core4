@@ -12,28 +12,6 @@ const GO_TEST_FILE = /_test\.go$/u;
 const INTEGRATION_FILE = /\.integration[._](?:test|spec)\.[cm]?[jt]sx?$/u;
 const isTestFile = (path: string): boolean => TEST_FILE.test(path) || GO_TEST_FILE.test(path);
 
-export const FAKE_CLIENT_PROVIDER_TESTS: readonly string[] = [
-  "plugins/provider-lando/test/contract.integration.test.ts",
-  "plugins/provider-docker/test/contract.integration.test.ts",
-  "plugins/provider-podman/test/contract.integration.test.ts",
-];
-
-// These files run without a live provider; cases with additional prerequisites skip.
-// A .integration suffix alone must not keep local tests out of PR coverage.
-export const LOCAL_INTEGRATION_TESTS: readonly string[] = [
-  "container-runtime/test/fake-engine-parity.integration.test.ts",
-  "core/test/cli/host-terminal.integration.test.ts",
-  "core/test/lifecycle/subscribers.integration.test.ts",
-  "plugins/provider-docker/test/applied-state.integration.test.ts",
-  "plugins/provider-docker/test/cross-process.integration.test.ts",
-  "plugins/provider-lando/test/applied-state.integration.test.ts",
-  "plugins/provider-lando/test/cross-process.integration.test.ts",
-  "plugins/provider-lando/test/ensure-runtime.integration.test.ts",
-  "plugins/provider-lando/test/exec-env-contract.integration.test.ts",
-  "plugins/provider-podman/test/applied-state.integration.test.ts",
-  "plugins/service-lando/test/php-prerequisites-rebuild.integration.test.ts",
-];
-
 export const NIGHTLY_TIER_TESTS: readonly string[] = [
   "core/test/scripts/codegen-ci.test.ts",
   "core/test/build/linux-acceptance-criteria-10-14.test.ts",
@@ -136,17 +114,20 @@ export const testOwnership = (input: string): TestOwnership | undefined => {
       "ci.yml: container-helper / container-helper-arm64",
       "Requires real built Go helpers; Linux only.",
     );
-  if (FAKE_CLIENT_PROVIDER_TESTS.includes(path))
+  if (
+    path === "plugins/provider-podman/test/contract.integration.test.ts" ||
+    path === "core/test/cli/host-terminal.integration.test.ts"
+  )
     return ownership(
-      "unit",
-      UNIT_INVOCATION,
-      "Mixed suite: fake clients run in shards; provider jobs also select live/native cases, which may skip.",
+      "providers",
+      "ci.yml: provider-integration-<platform> (contract steps)",
+      "Native contract steps select this file; live socket or real PTY prerequisites may skip.",
     );
-  if (LOCAL_INTEGRATION_TESTS.includes(path))
+  if (path === "container-runtime/test/fake-engine-parity.integration.test.ts")
     return ownership(
-      "unit",
-      UNIT_INVOCATION,
-      "No live provider required; live or platform-specific cases skip without their prerequisites.",
+      "providers",
+      "ci.yml: provider-integration-linux-x64 (providers suite)",
+      "Requires LANDO_TEST_PODMAN_SOCKET for live engine parity.",
     );
   if (INTEGRATION_FILE.test(path)) {
     if (
@@ -223,8 +204,6 @@ export const collectTestInventory = async (root = ROOT): Promise<readonly TestIn
 export const staleTestOwners = (paths: readonly string[]): readonly string[] => {
   const found = new Set(paths);
   return [
-    ...FAKE_CLIENT_PROVIDER_TESTS,
-    ...LOCAL_INTEGRATION_TESTS,
     ...NIGHTLY_TIER_TESTS,
     ...Object.keys(MANUAL_TESTS),
     "core/test/container-helper/helper.integration.test.ts",

@@ -104,14 +104,24 @@ test("keeps dedicated docs, helper, nightly, library and recipe owners out of PR
     ["core/test/recipes/node.test.ts", "recipes"],
   ] as const;
   for (const [path, owner] of cases) expect(testOwnership(path)?.owner).toBe(owner);
-  expect(testOwnership("container-runtime/test/fake-engine-parity.integration.test.ts")?.owner).toBe("unit");
+  expect(testOwnership("container-runtime/test/fake-engine-parity.test.ts")?.owner).toBe("unit");
+  expect(testOwnership("container-runtime/test/fake-engine-parity.integration.test.ts")?.owner).toBe(
+    "providers",
+  );
+  expect(testOwnership("core/test/cli/host-terminal.test.ts")?.owner).toBe("unit");
+  expect(testOwnership("core/test/cli/host-terminal.integration.test.ts")?.owner).toBe("providers");
   for (const path of [
     "plugins/sql/test/sqlite.integration.test.ts",
     "plugins/sql/test/sqlite-integrity.integration.test.ts",
     "plugins/sql/test/sqlite-borrowed-mounts.integration.test.ts",
   ])
     expect(testOwnership(path)?.owner).toBe("manual");
-  expect(testOwnership("plugins/provider-lando/test/contract.integration.test.ts")?.owner).toBe("unit");
+  for (const provider of ["lando", "docker", "podman"]) {
+    expect(testOwnership(`plugins/provider-${provider}/test/contract.test.ts`)?.owner).toBe("unit");
+    expect(testOwnership(`plugins/provider-${provider}/test/contract.integration.test.ts`)?.owner).toBe(
+      "providers",
+    );
+  }
 });
 
 test("detects stale explicit ownership after a suite is renamed or removed", async () => {

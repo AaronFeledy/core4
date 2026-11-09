@@ -31,7 +31,7 @@ const serviceName = ServiceName.make("web");
 const baseTag = "localhost/lando-php-moved-base:bookworm";
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-10-21T00:00:00Z"),
-  source: "php-prerequisites-rebuild.integration.test",
+  source: "php-prerequisites-rebuild.test",
   runtime: 4 as const,
 };
 

@@ -387,9 +387,10 @@ export const landoManagedPodmanTeardownCommands = `${landoManagedPodmanRuntimeDi
 const contractProviderTestSteps = `      - name: Run provider contract tests
         run: |
           bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
+          bun test plugins/provider-lando/test/contract.test.ts plugins/provider-lando/test/contract.integration.test.ts
+          bun test plugins/provider-docker/test/contract.test.ts plugins/provider-docker/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/contract.test.ts plugins/provider-podman/test/contract.integration.test.ts
+          bun test core/test/cli/host-terminal.integration.test.ts
           bun test plugins/provider-podman/test/capabilities.test.ts`;
 
 export const landoRuntimeSocketPath = '"$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"';
@@ -529,6 +530,7 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
           set -o pipefail
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
+              bun test container-runtime/test/fake-engine-parity.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log
               bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
               bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
               bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log

@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { timingRefreshCommand } from "../../../scripts/update-test-timings.ts";
 
 import {
-  FAKE_CLIENT_PROVIDER_TESTS,
   NIGHTLY_TIER_TESTS,
   TEST_TIMINGS_FILE,
   UNIT_SHARD_COUNT,
@@ -17,8 +16,6 @@ import {
   shardedUnitTestCommand,
   unitShardCommands,
 } from "../../../scripts/test-shards.ts";
-
-import { LOCAL_INTEGRATION_TESTS } from "../../../scripts/test-ownership.ts";
 
 const repoRoot = new URL("../../..", import.meta.url);
 
@@ -55,10 +52,11 @@ describe("test shards", () => {
     const command = localUnitTestCommand(files);
     expect(command.slice(4)).toEqual(files.map((path) => `./${path}`));
     expect(command.slice(0, 4)).toEqual([process.execPath, "--no-orphans", "test", "--timeout=20000"]);
-    expect(files.filter((file) => file.endsWith(".integration.test.ts")).sort()).toEqual(
-      [...FAKE_CLIENT_PROVIDER_TESTS, ...LOCAL_INTEGRATION_TESTS].sort(),
-    );
-    for (const file of FAKE_CLIENT_PROVIDER_TESTS) expect(isShardedUnitTest(file)).toBe(true);
+    expect(files.filter((file) => file.endsWith(".integration.test.ts"))).toEqual([]);
+    for (const provider of ["lando", "docker", "podman"]) {
+      expect(files).toContain(`plugins/provider-${provider}/test/contract.test.ts`);
+      expect(isShardedUnitTest(`plugins/provider-${provider}/test/contract.integration.test.ts`)).toBe(false);
+    }
     expect(files.some((file) => file.startsWith("core/test/library/"))).toBe(false);
     expect(files.some((file) => file.startsWith("sdk/test/library/"))).toBe(false);
     expect(files.some((file) => file.startsWith("core/test/recipes/"))).toBe(false);

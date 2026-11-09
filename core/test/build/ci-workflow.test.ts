@@ -1195,13 +1195,13 @@ describe("ci workflow", () => {
       "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
+      "          bun test plugins/provider-lando/test/contract.test.ts plugins/provider-lando/test/contract.integration.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
+      "          bun test plugins/provider-docker/test/contract.test.ts plugins/provider-docker/test/contract.integration.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
+      "          bun test plugins/provider-podman/test/contract.test.ts plugins/provider-podman/test/contract.integration.test.ts",
     );
 
     expect(providerIntegration).toContain("      - name: Provision rootless runtime prerequisites");
@@ -1398,6 +1398,7 @@ describe("ci workflow", () => {
         const providers = await runSuite("providers");
         expect(providers.status).toBe(0);
         expect(providers.commands).toEqual([
+          "test container-runtime/test/fake-engine-parity.integration.test.ts",
           "test core/test/live",
           "test plugins/provider-lando/test/*.integration.test.ts",
           "test plugins/provider-docker/test/*.integration.test.ts",
@@ -1407,7 +1408,9 @@ describe("ci workflow", () => {
         expect(services.commands).toEqual(["test plugins/service-lando/test/*.integration.test.ts"]);
         const failed = await runSuite("providers", 23);
         expect(failed.status).toBe(23);
-        expect(failed.commands).toEqual(["test core/test/live"]);
+        expect(failed.commands).toEqual([
+          "test container-runtime/test/fake-engine-parity.integration.test.ts",
+        ]);
         expect(failed.stream).toContain("simulated Bun stderr");
         const unknown = await runSuite("unknown");
         expect(unknown.status).toBe(1);
@@ -1452,13 +1455,13 @@ describe("ci workflow", () => {
       "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
+      "          bun test plugins/provider-lando/test/contract.test.ts plugins/provider-lando/test/contract.integration.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
+      "          bun test plugins/provider-docker/test/contract.test.ts plugins/provider-docker/test/contract.integration.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
+      "          bun test plugins/provider-podman/test/contract.test.ts plugins/provider-podman/test/contract.integration.test.ts",
     );
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");

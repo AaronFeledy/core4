@@ -40,7 +40,7 @@ const containerName = "lando-crossprocessapp--web";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
-  source: "cross-process.integration.test",
+  source: "cross-process.test",
   runtime: 4 as const,
 };
 

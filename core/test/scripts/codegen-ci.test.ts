@@ -835,7 +835,9 @@ describe("ci workflow codegen", () => {
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
       );
       expect(workflow).toContain("run: bun test core/test/library sdk/test/library");
-      expect(workflow).toContain("bun test plugins/provider-podman/test/contract.integration.test.ts");
+      expect(workflow).toContain(
+        "bun test plugins/provider-podman/test/contract.test.ts plugins/provider-podman/test/contract.integration.test.ts",
+      );
       expect(workflow).toContain("::notice title=ci-timing::");
       expect(workflow).toContain("timeout-minutes:");
     },

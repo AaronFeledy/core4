@@ -25,7 +25,7 @@ export const unitShardCommands = (): ReadonlyArray<string> =>
     (_, index) => `bun run test:unit:shard ${index + 1}/${UNIT_SHARD_COUNT}`,
   );
 
-export { FAKE_CLIENT_PROVIDER_TESTS, NIGHTLY_TIER_TESTS } from "./test-ownership.ts";
+export { NIGHTLY_TIER_TESTS } from "./test-ownership.ts";
 
 /**
  * `--parallel` implies `--isolate` unless `--no-isolate`. This suite shares
