@@ -23,6 +23,23 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
 ) {
   const { appRoot } = context;
   const errors: LandofileValidationError[] = [];
+  if (
+    seed.service.sqlite !== undefined &&
+    (seed.resolution.connection !== undefined || seed.resolution.nonSqlCreds !== undefined)
+  ) {
+    const message =
+      "SQLite cannot coexist with a service type that publishes database connections or non-SQL credentials.";
+    const suggestion =
+      "Remove sqlite from this service, or move it to a separate app service without published credentials.";
+    errors.push(
+      new LandofileValidationError({
+        message,
+        file: landofilePath,
+        remediation: suggestion,
+        issues: [{ ...validationIssue(["services", seed.name, "sqlite"], message), suggestion }],
+      }),
+    );
+  }
   if (seed.resolution.connection !== undefined && seed.resolution.nonSqlCreds !== undefined) {
     const message = "A service type must publish either connection or nonSqlCreds, not both.";
     errors.push(

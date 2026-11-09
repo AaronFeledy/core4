@@ -1,4 +1,3 @@
-import { SNAPSHOT_SIDECAR_VERSION } from "@lando/data-mover/service";
 import { GLOBAL_POLICY_VERSION, GlobalPolicy } from "@lando/engine/global-app/enablement";
 import { INCLUDE_LOCKFILE_VERSION, LockEntriesSchema } from "@lando/landofile/include-lockfile";
 import { Schema } from "effect";
@@ -54,7 +53,8 @@ import {
   WindowsSyncHelperReceipt,
   transitions as windowsSyncHelperTransitions,
 } from "../../plugins/provider-lando/src/windows-sync-helper-receipt.ts";
-import { SnapshotInfo } from "../../sdk/src/schema/data-transfer.ts";
+import { SqliteSnapshotInfo } from "../../plugins/sql/src/sqlite-snapshot.ts";
+import { SNAPSHOT_INFO_VERSION, SnapshotInfo } from "../../sdk/src/schema/data-transfer.ts";
 import { VolumeInitializationRecord } from "../../sdk/src/schema/volume-initialization.ts";
 import {
   VOLUME_INITIALIZATION_VERSION,
@@ -123,6 +123,13 @@ export const INTERNAL_PERSISTED_STORES = [
     version: RUNTIME_SHUTDOWN_VERSION,
     source: { file: "plugins/provider-lando/src/runtime-shutdown.ts", schema: "RuntimeShutdownReceipt" },
     lifecycle: shutdownTransitions,
+  },
+  {
+    id: "sqlite-snapshot-sidecar",
+    schema: SqliteSnapshotInfo,
+    version: SNAPSHOT_INFO_VERSION,
+    source: { file: "plugins/sql/src/sqlite-snapshot.ts", schema: "SqliteSnapshotInfo" },
+    lifecycle: "none",
   },
   {
     id: "app-data-identity",
@@ -233,7 +240,7 @@ export const INTERNAL_PERSISTED_STORES = [
   {
     id: "snapshot-sidecar",
     schema: SnapshotInfo,
-    version: SNAPSHOT_SIDECAR_VERSION,
+    version: SNAPSHOT_INFO_VERSION,
     source: { file: "data-mover/src/snapshot-catalog.ts", schema: "SnapshotInfo" },
     lifecycle: "none",
   },

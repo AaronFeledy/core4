@@ -85,6 +85,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         MYSQL_DATABASE: "sql-app",
         ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
+      mounts: [],
       extensions: {},
       storage,
     },
@@ -94,6 +95,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
+      mounts: [],
       extensions: {},
       storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
@@ -301,6 +303,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
+    waitForReady: () => Effect.void,
     resume: Effect.fnUntraced(function* () {
       lifecycle.push("resume");
       if (options.startFails === true) return yield* Effect.fail(new FakeStartError());

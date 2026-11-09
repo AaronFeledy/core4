@@ -1,7 +1,7 @@
 # laravel
 
 Use this recipe for Laravel with PHP 8.1-8.6, Composer, Node 22 for Vite,
-MariaDB or PostgreSQL, and Redis. You can also add a PHP CLI queue worker.
+MariaDB, PostgreSQL or SQLite, and Redis. You can also add a PHP CLI queue worker.
 The recipe configures the stack; create the Laravel application afterward.
 
 ## Host prerequisites
@@ -28,6 +28,9 @@ and it starts on its own once installation finishes. Check `lando logs --service
 
 - `appserver`: `php:<8.1-8.6>`, `framework: laravel`, app-relative webroot `public`.
 - `database`: `mariadb:11.4` or `postgres:16` (prompt: `database`).
+- With `database=sqlite`, no database service is generated. `appserver` declares
+  `sqlite.path: database/database.sqlite` beneath its `/app` mount. Composer
+  creates and migrates this file when it creates the Laravel project.
 - `cache`: `redis`.
 - `node`: `node:22`, `primary: false`, no `command`, so it idles until
   `lando npm` runs. It shares the app root at `/app` (sources, lockfiles,
@@ -37,6 +40,12 @@ and it starts on its own once installation finishes. Check `lando logs --service
   `php artisan queue:work` with `restart: unless-stopped` when prompt `worker` answers `true`.
 
 ## Generated tooling
+
+The appserver and worker receive `DB_CONNECTION` (`mysql`, `pgsql`, or `sqlite`).
+MariaDB and PostgreSQL also supply `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`,
+and `DB_PASSWORD` from the database service's planned port and credentials.
+Laravel's immutable dotenv repository gives these environment values precedence
+over `.env`. SQLite sets only `DB_CONNECTION` and has no database dependency.
 
 - `lando artisan`: Laravel Artisan.
 - `lando composer`: Composer.

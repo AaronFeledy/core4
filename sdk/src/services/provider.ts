@@ -234,11 +234,29 @@ export type ExecChunk =
   | { readonly kind: "stdout" | "stderr"; readonly chunk: Uint8Array }
   | { readonly exitCode: number };
 
+export const EphemeralBindMount = Schema.Struct({
+  source: Schema.NonEmptyString,
+  target: Schema.NonEmptyString,
+  readOnly: Schema.optionalKey(Schema.Boolean),
+});
+export type EphemeralBindMount = typeof EphemeralBindMount.Type;
+
+export const EphemeralMountSource = Schema.Struct({
+  containerId: Schema.NonEmptyString,
+  readOnly: Schema.Boolean,
+});
+export type EphemeralMountSource = typeof EphemeralMountSource.Type;
+
 export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
   readonly mounts?: ReadonlyArray<VolumeMountPlan>;
+  readonly binds?: ReadonlyArray<EphemeralBindMount>;
+  /** Borrow the realized mounts of an existing service container. */
+  readonly mountsFrom?: EphemeralMountSource;
+  readonly user?: string;
+  readonly entrypoint?: ReadonlyArray<string>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;

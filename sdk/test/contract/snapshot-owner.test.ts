@@ -3,6 +3,7 @@ import {
   AbsolutePath,
   AppId,
   SnapshotInfo,
+  SnapshotMetadata,
   appIdentityKey,
   planAppIdentity,
   snapshotHandle,
@@ -20,6 +21,29 @@ test("preserves planned ownership when the plan carries an identity", () => {
   const owner = planAppIdentity({ root: AbsolutePath.make("/older-root"), identity });
   // Then
   expect(owner).toBe(identity);
+});
+
+test("SQLite snapshot metadata records path and provenance without physical storage identity", () => {
+  const metadata = {
+    service: "appserver",
+    family: "sqlite",
+    path: "data/site.sqlite",
+    version: "3.45.0",
+    recoveryReason: "manual",
+  };
+  const decode = Schema.decodeUnknownOption(SnapshotMetadata);
+  expect(decode(metadata)._tag).toBe("Some");
+  expect(decode({ ...metadata, family: "postgres" })._tag).toBe("None");
+  expect(
+    decode({
+      service: "database",
+      family: "postgres",
+      version: "16",
+      recoveryReason: "manual",
+      volumeInstanceId: "generation",
+      imageIdentity: "sha256:image",
+    })._tag,
+  ).toBe("Some");
 });
 
 test("derives canonical ownership when an older plan lacks identity", () => {

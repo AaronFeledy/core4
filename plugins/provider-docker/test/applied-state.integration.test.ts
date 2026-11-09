@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Option, Schema } from "effect";
 import { makeRuntimeProvider } from "../src/index.ts";
 
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
@@ -314,7 +315,7 @@ describe("provider-docker applied state persistence", () => {
       expect(written).toBe(appliedPlanPath(stateDir, proxyPlan.id));
 
       const raw = JSON.parse(await readFile(written, "utf8"));
-      expect(raw.version).toBe(4);
+      expect(raw.version).toBe(APPLIED_STATE_VERSION);
       expect(raw.data).toBeDefined();
 
       const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));
