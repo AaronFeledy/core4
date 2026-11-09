@@ -1,16 +1,11 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import type { FileSyncError, StateWrite } from "@lando/sdk/services";
+import type { FileSyncError } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { openJournal, readJournal, readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
-import {
-  type PendingStart,
-  digest,
-  journalRecovery,
-  pendingStartTransitions,
-} from "./accelerated-start-record.ts";
+import { digest, journalRecovery, pendingStartTransitions } from "./accelerated-start-record.ts";
 
 export const acceleratedStartStopError = (app: AppRef, cause: FileSyncError) =>
   new FileSyncStopError({
@@ -42,15 +37,18 @@ export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, pl
   return {
     record: pending,
     clear: bucket
-      .mutate(
-        (current): Effect.Effect<StateWrite<PendingStart, void>, FileSyncStopError> =>
-          current !== null &&
-          digest(current) === digest(pending) &&
-          pendingStartTransitions.step("abandon", current.phase)._tag === "Advance"
-            ? Effect.succeed({ _tag: "Set", value: { ...current, phase: "completed" }, result: undefined })
-            : Effect.fail(failure("Pending journal ownership changed during destroy.")),
-      )
+      .transition({
+        transitions: pendingStartTransitions,
+        operation: "abandon",
+        state: (current) => {
+          if (current === null) return "absent";
+          return digest(current) === digest(pending) ? current.phase : "foreign";
+        },
+        next: () => null,
+        illegal: () => failure("Pending journal ownership changed during destroy."),
+      })
       .pipe(
+        Effect.asVoid,
         Effect.catchTag("StateStoreError", (cause) =>
           Effect.fail(failure("Unable to complete pending-start disposal.", cause)),
         ),

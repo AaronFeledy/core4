@@ -16,6 +16,7 @@ import { PrivilegeService } from "@lando/sdk/services";
 
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { makeStateStore } from "@lando/state-store/service";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
@@ -340,7 +341,18 @@ const defaultTeardownRuntimeService = (
   const paths = makeLandoPaths({ userDataRoot, platform });
   return Option.match(registry, {
     onNone: () => Promise.resolve({ terminated: false }),
-    onSome: (service) => Effect.runPromise(teardownHostMaintainers(service, { paths, platform })),
+    onSome: (service) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const privateFileAccess = yield* PrivateFileAccessService;
+          return yield* teardownHostMaintainers(service, {
+            paths,
+            platform,
+            privateFileAccess,
+            stateStore: makeStateStore({ privateFileAccess, roots: paths.roots }),
+          });
+        }).pipe(Effect.provide(PrivateFileAccessService.layer)),
+      ),
   });
 };
 

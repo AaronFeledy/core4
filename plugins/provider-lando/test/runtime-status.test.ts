@@ -41,6 +41,7 @@ const serviceRunner = (options: {
   launch: () => Effect.succeed(9999),
   isAlive: (pid) => Effect.succeed(options.alivePids?.has(pid) ?? false),
   isServiceProcess: (pid) => Effect.succeed(options.servicePids?.has(pid) ?? false),
+  isDescendant: () => Effect.succeed(false),
   ...(options.matchingPids === undefined
     ? {}
     : {
@@ -50,6 +51,35 @@ const serviceRunner = (options: {
 });
 
 describe("probeRuntimeServiceStatus", () => {
+  test.each([true, undefined])(
+    "does not report descendants or unreadable ancestry as orphans (%s)",
+    async (descendant) => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-runtime-ancestry-"));
+      try {
+        const pidPath = join(dir, "podman.pid");
+        await writeFile(pidPath, "1500");
+        const status = await Effect.runPromise(
+          probeRuntimeServiceStatus({
+            podmanApi: reachableApi(),
+            spec: spec(dir),
+            pidPath,
+            serviceRunner: {
+              ...serviceRunner({
+                alivePids: new Set([1500, 1512]),
+                servicePids: new Set([1500]),
+                matchingPids: [1500, 1512],
+              }),
+              isDescendant: () => Effect.succeed(descendant),
+            },
+          }),
+        );
+        expect(status.ownedServiceProcess).toBe(true);
+        expect(status.orphanPids).toBeUndefined();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
   test("running/socketReachable=false when podmanApi.info fails", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-runtime-status-"));
     try {
@@ -204,7 +234,7 @@ describe("provider-lando runtime status", () => {
     });
     expect(starts).toBe(0);
   });
-  test("getStatus returns narrow {running, message} shape matching reachability", async () => {
+  test("getStatus returns narrow {state, message} shape matching reachability", async () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
@@ -215,8 +245,8 @@ describe("provider-lando runtime status", () => {
 
     const status = await Effect.runPromise(provider.getStatus);
 
-    expect(Object.keys(status).sort()).toEqual(["message", "running"]);
-    expect(status.running).toBe(true);
+    expect(Object.keys(status).sort()).toEqual(["message", "state"]);
+    expect(status.state).toBe("running");
     expect(status.message).toContain("runtime socket reachable");
   });
 

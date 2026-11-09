@@ -72,7 +72,7 @@ export const makeGlobalLifecycleFixture = (
       return capabilities;
     },
     isAvailable: Effect.sync(() => online),
-    getStatus: Effect.sync(() => ({ running: online })),
+    getStatus: Effect.sync(() => ({ state: online ? ("running" as const) : ("idle" as const) })),
     appliedPlans: Effect.sync(plans),
     appliedStateInventory: Effect.sync(() => ({ plans: plans(), unreadable: [] })),
     list: () => Effect.sync(inventory),

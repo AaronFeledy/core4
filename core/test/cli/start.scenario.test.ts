@@ -585,7 +585,7 @@ const makeStartLayer = (
     capabilities: providerCapabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -943,7 +943,7 @@ const makeAutoStartLayer = async (options: {
     capabilities: { ...capabilities, sharedCrossAppNetwork: true },
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -2490,7 +2490,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -2662,7 +2662,7 @@ describe("lando start", () => {
         Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -2820,7 +2820,7 @@ describe("lando start", () => {
         Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -2982,7 +2982,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3158,7 +3158,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3367,7 +3367,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3564,7 +3564,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(

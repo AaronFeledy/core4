@@ -52,3 +52,19 @@ test("allows a pre-creation locator without fabricating a generation", () => {
   expect(result).toEqual(encoded);
   expect(result.identity).toBeUndefined();
 });
+
+test("rejects a volume locator that claims absence and a live identity", () => {
+  const result = Schema.decodeUnknownResult(VolumeLocator)({
+    coordinationKey: "key",
+    nativeName: "volume",
+    presence: "absent",
+    identity: {
+      coordinationKey: "key",
+      nativeName: "volume",
+      generation: "generation",
+      ownerRoot: "/root",
+      origin: "created",
+    },
+  });
+  expect(result._tag).toBe("Failure");
+});

@@ -405,15 +405,15 @@ describe("RuntimeProvider contract", () => {
     await expectContractFailure(incompleteProvider, "capability matrix decodes");
   });
 
-  test("fails with ContractFailure when getStatus omits the running boolean", async () => {
+  test("fails with ContractFailure when getStatus omits its state", async () => {
     const provider = {
       ...TestRuntimeProvider,
       getStatus: Effect.succeed({ message: "missing-running" } as unknown as {
-        readonly running: boolean;
+        readonly state: "running" | "idle";
       }),
     } as typeof TestRuntimeProvider;
 
-    await expectContractFailure(provider, "getStatus returns a running boolean");
+    await expectContractFailure(provider, "getStatus returns running or idle");
   });
 
   test("fails with ContractFailure when getVersions returns an empty provider string", async () => {

@@ -26,6 +26,11 @@ const collectListeners = Effect.fnUntraced(function* (
     );
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(target.plan);
+  if ((yield* provider.getStatus).state === "idle")
+    return skipped(
+      "app-listeners",
+      `Provider ${provider.id} holding the applied app is idle; no listeners were inspected.`,
+    );
   const running = yield* provider.list({ app: target.plan.id });
   const results = yield* Effect.forEach(
     Object.values(target.plan.services),

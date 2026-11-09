@@ -62,7 +62,17 @@ export const stopAndRemoveContainer = Effect.fn("ContainerShutdown.stopAndRemove
       kind: "absent",
       shutdownObservations: [absentShutdown(identity)],
     } satisfies ObservedServiceRemoval & { readonly changed: boolean };
-  if (response.status !== 204 && response.status !== 304)
+  const stopped = response.status === 204 || response.status === 304;
+  const inspected = observeShutdown({ ...identity, containerId: identity.containerId }, options);
+  // A failed stop that still left the container exited has done its job: Podman records a container
+  // whose monitor died as exited when its stop fails, so otherwise only a retry would succeed.
+  const observation = stopped
+    ? yield* inspected
+    : yield* inspected.pipe(
+        Effect.map((observed) => (observed.status === "exited" ? observed : undefined)),
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
+  if (observation === undefined)
     return yield* Effect.fail(
       new ProviderUnavailableError({
         providerId: options.ctx.providerId,
@@ -75,14 +85,13 @@ export const stopAndRemoveContainer = Effect.fn("ContainerShutdown.stopAndRemove
         remediation: options.ctx.remediation,
       }),
     );
-  const observation = yield* observeShutdown({ ...identity, containerId: identity.containerId }, options);
   const shutdownObservations: readonly ServiceShutdownObservation[] = [observation];
   const removed = yield* removeRuntimeContainer(options.api, identity.containerId, {
     ...options.ctx,
     operation: "bringDown.remove",
   }).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
   return {
-    changed: response.status === 204 || removed,
+    changed: response.status !== 304 || removed,
     kind: removed ? "removed" : "absent",
     shutdownObservations,
   } satisfies ObservedServiceRemoval & { readonly changed: boolean };

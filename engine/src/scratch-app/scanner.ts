@@ -4,6 +4,7 @@ import { Context, Effect, Layer, Option } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 
 const CANONICAL_SCRATCH_ID = /^scratch-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6}$/u;
 
@@ -70,10 +71,7 @@ export class ScratchResourceScanner extends Context.Service<
               Effect.gen(function* () {
                 const provider = yield* registry.select(id).pipe(
                   Effect.flatMap((selected) =>
-                    Effect.gen(function* () {
-                      if (!(yield* selected.isAvailable)) return undefined;
-                      return (yield* selected.getStatus).running ? selected : undefined;
-                    }),
+                    runtimeOnline(selected).pipe(Effect.map((online) => (online ? selected : undefined))),
                   ),
                   Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(undefined)),
                 );

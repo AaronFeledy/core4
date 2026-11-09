@@ -60,6 +60,7 @@ export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "private
   readonly readinessPolicy?: RetryPolicy;
   readonly withLaunchLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly terminationPolicy?: RetryPolicy;
+  readonly admit?: Effect.Effect<void, ProviderUnavailableError>;
   readonly recordLaunch?: (
     pid: number,
     spec: PodmanServiceSpec,
@@ -142,6 +143,7 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
     privateRuntimeDir: deps.privateRuntimeDir,
   });
 
+  yield* deps.admit ?? Effect.void;
   const pid = yield* deps.serviceRunner.launch(spec).pipe(
     Effect.catch((launchError: RuntimeLaunchError) => {
       const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();

@@ -17,6 +17,8 @@ import * as HealthcheckRunnerLayer from "@lando/engine/subsystems/healthcheck/ap
 import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
 import * as UrlScannerLayer from "@lando/engine/subsystems/scanner/api";
 import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import {
@@ -28,6 +30,42 @@ import {
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
+
+test("doctor --fix skips idle global router and sidecar readiness", async () => {
+  const provider = {
+    ...TestRuntimeProvider,
+    getStatus: Effect.succeed({ state: "idle" as const }),
+    ensureReady: Effect.die("must not launch"),
+  };
+  const result = await Effect.runPromise(
+    subsystemDoctor({ fix: true, sshAgent: { globalConfig: { sshAgent: { sidecar: true } } } }).pipe(
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([]),
+          capabilities: Effect.succeed(provider.capabilities),
+          appliedPlansFor: () => Effect.die("not requested"),
+          resolveAppliedPlan: () => Effect.die("not requested"),
+          resolveTeardownEvidence: () => Effect.die("not requested"),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
+      Effect.provideService(RouterService, {
+        ...TestRouterService,
+        setup: () => Effect.die("must not start router"),
+      }),
+      Effect.provideService(SshService, {
+        ...makeTestSshService(),
+        setup: () => Effect.die("must not start sidecar"),
+      }),
+    ),
+  );
+  expect(result.checks.find((check) => check.name === "router")).toBeUndefined();
+  expect(result.skipped?.map((entry) => entry.section)).toEqual(
+    expect.arrayContaining(["router", "ssh-sidecar"]),
+  );
+  expect(result.checks.find((check) => check.name === "ssh")?.context.fixOutcome).toBeUndefined();
+});
 
 const AUTOMATIC_SUBSYSTEMS = ["router", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "host-dns"] as const;

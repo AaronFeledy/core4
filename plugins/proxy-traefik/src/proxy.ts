@@ -32,6 +32,7 @@ import { makeRouteApplication } from "./apply-routes.ts";
 import { ensureDashboardFile } from "./dashboard.ts";
 import { deferredRouter } from "./deferred-router.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
+import { migrateLegacyRoutes } from "./legacy-routes.ts";
 import { makeRouteObserver } from "./observe-routes.ts";
 import { fingerprintsEqual } from "./port-acquisition-helpers.ts";
 import {
@@ -312,6 +313,7 @@ export const makeTraefikRouterService = (
           guardRouterMutation(
             Effect.gen(function* () {
               const decision = yield* acquire(config);
+              yield* migrateLegacyRoutes(dependencies);
               defaultDomain = normalizeDefaultDomain(config.defaultDomain);
               yield* dependencies.fileSystem.writeAtomic(
                 defaultDomainFile(dependencies.paths),
@@ -339,6 +341,7 @@ export const makeTraefikRouterService = (
             Effect.gen(function* () {
               yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
               yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
+              yield* migrateLegacyRoutes(dependencies);
               const socketProxy = yield* resolveSocketProxy(dependencies);
               const intent = options?.intent ?? "ensure";
               const previousAcquisition = yield* readAcquisitionState(
@@ -548,8 +551,8 @@ export const layer = (stateStore: PluginStateStore) =>
                 onSome: (registry) => ({
                   readTraefikState: Effect.fn("TraefikRouter.readTraefikState")(function* () {
                     const provider = yield* registry.select(yield* globalApp.providerId);
-                    if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
-                      return "unknown" as const;
+                    if (!(yield* provider.isAvailable)) return "unknown" as const;
+                    if ((yield* provider.getStatus).state === "idle") return "stopped" as const;
                     const root = (yield* globalApp.paths).root;
                     const services = yield* provider.list({
                       app: AppId.make("global"),

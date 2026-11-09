@@ -15,6 +15,7 @@ import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { hasResourceOwnershipRecords } from "./resource-ownership-records.ts";
 export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";

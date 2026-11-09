@@ -1,12 +1,23 @@
 import type { Dirent } from "node:fs";
 import { access, readFile, readdir, realpath } from "node:fs/promises";
-import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
 import { APP_LABEL, PROVIDER_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths } from "@lando/paths";
+import type { ProcessRunner } from "@lando/sdk/services";
+import type { Context } from "effect";
 import { Predicate } from "effect";
+import {
+  WINDOWS_MANAGED_MACHINE_PIPE,
+  httpSocketPath,
+  isAbsentEndpoint,
+  isNamedPipeSocketPath,
+  observeIdleManagedProvider,
+  requestJsonOnSocket,
+} from "./list-runtime-observation.ts";
+
+export { isNamedPipeSocketPath } from "./list-runtime-observation.ts";
 
 export interface AppsListEntry {
   readonly appId: string;
@@ -23,6 +34,7 @@ export interface AppsDiscoveryEvidence {
   readonly providerConfirmed: boolean;
   readonly confirmedProviderIds: ReadonlyArray<string>;
   readonly ownedAppIds: ReadonlyArray<string>;
+  readonly idleProviderIds?: ReadonlyArray<string>;
 }
 
 const LEGACY_PROVIDER_DIRS = ["provider-lando", "provider-docker"] as const;
@@ -33,7 +45,6 @@ export const appliedPlansDirectory = (userDataRoot: string, pluginId = "@lando/p
 
 const APPLIED_PLANS_RECORD = "applied-plans.json";
 const GLOBAL_APP_ID = "global";
-const CONTAINER_LIST_TIMEOUT_MS = 1500;
 
 const uniqueSorted = (values: ReadonlyArray<string>): string[] =>
   [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -286,16 +297,7 @@ export const appsFromContainerList = (
   }));
 };
 
-// Matches provider-lando: win32 managed machines listen on this pipe, not data-root podman.sock.
-const WINDOWS_MANAGED_MACHINE_PIPE = "\\\\.\\pipe\\podman-lando";
-
 const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
-
-export const isNamedPipeSocketPath = (socketPath: string): boolean =>
-  isNpipeDockerHost(socketPath) || socketPath.startsWith("\\\\.\\pipe\\");
-
-const httpSocketPath = (socketPath: string): string =>
-  isNpipeDockerHost(socketPath) ? normalizeNamedPipePath(socketPath) : socketPath;
 
 export interface ContainerSocketCandidateOptions {
   readonly platform?: NodeJS.Platform;
@@ -329,42 +331,6 @@ export const containerSocketCandidates = (
   return [...new Set(candidates)];
 };
 
-const requestJsonOnSocket = (socketPath: string, path: string): Promise<unknown> =>
-  new Promise((resolve, reject) => {
-    const req = httpRequest(
-      {
-        socketPath: httpSocketPath(socketPath),
-        path,
-        method: "GET",
-        headers: { Host: "localhost" },
-      },
-      (response) => {
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => {
-          chunks.push(chunk);
-        });
-        response.on("end", () => {
-          const status = response.statusCode ?? 500;
-          if (status < 200 || status >= 300) {
-            reject(new Error(`Container list failed with HTTP ${status}.`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-          } catch (cause) {
-            reject(cause);
-          }
-        });
-      },
-    );
-    req.on("error", reject);
-    req.setTimeout(CONTAINER_LIST_TIMEOUT_MS, () => {
-      req.destroy();
-      reject(new Error("Container list timed out."));
-    });
-    req.end();
-  });
-
 const listContainersOnSocket = (socketPath: string): Promise<unknown> => {
   const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL] }));
   return requestJsonOnSocket(socketPath, `/containers/json?all=true&filters=${filters}`);
@@ -387,15 +353,28 @@ const providerIdOnSocket = async (socketPath: string, userDataRoot: string): Pro
 export const discoverRunningAppsEvidenceFromSockets = async (
   userDataRoot: string,
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
-  options: { readonly includeScratch?: boolean } = {},
+  options: {
+    readonly includeScratch?: boolean;
+    readonly platform?: NodeJS.Platform;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly processRunner?: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
+  } = {},
 ): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
+  const discoveredApps: AppsListEntry[] = [];
+  const listedProviders = new Set<string>();
+  const owned = new Set<string>();
+  const platform = options.platform ?? process.platform;
+  const managedSocket = platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
+  let managedEndpointFailed = false;
   for (const socket of sockets) {
     // Named pipes are not filesystem nodes; fs.access ENOENTs even when the pipe is live.
     if (!isNamedPipeSocketPath(socket)) {
       try {
         await access(socket);
-      } catch {
+      } catch (error) {
+        if (httpSocketPath(socket) === httpSocketPath(managedSocket) && !isAbsentEndpoint(error))
+          managedEndpointFailed = true;
         continue;
       }
     }
@@ -405,6 +384,8 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         listVolumesOnSocket(socket),
       ]);
       const volumes = Predicate.isObject(volumesBody) ? volumesBody.Volumes : undefined;
+      if (!Array.isArray(containers) || (volumes !== null && !Array.isArray(volumes)))
+        throw new TypeError("Container runtime returned an invalid resource inventory.");
       const apps = appsFromContainerList(containers, {
         globalAppRoot: await realpath(paths.globalAppRoot).catch(() => paths.globalAppRoot),
         ...(options.includeScratch === true ? { includeScratch: true } : {}),
@@ -417,18 +398,26 @@ export const discoverRunningAppsEvidenceFromSockets = async (
       ]);
       const confirmedProviderIds =
         labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
-      // First successful list wins so a live managed socket is not mixed with host Docker/Podman.
-      return {
-        apps,
-        providerConfirmed: true,
-        confirmedProviderIds,
-        ownedAppIds: uniqueSorted([...containerEvidence.appIds, ...volumeEvidence.appIds]),
-      };
-    } catch {
+      discoveredApps.push(...apps);
+      for (const provider of confirmedProviderIds) listedProviders.add(provider);
+      for (const id of [...containerEvidence.appIds, ...volumeEvidence.appIds]) owned.add(id);
+    } catch (error) {
+      if (httpSocketPath(socket) === httpSocketPath(managedSocket) && !isAbsentEndpoint(error))
+        managedEndpointFailed = true;
       // Socket present but not a Docker/Podman compat API, or the daemon is mid-start.
     }
   }
-  return { apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] };
+  const idleProviderIds =
+    listedProviders.has("lando") || managedEndpointFailed
+      ? []
+      : await observeIdleManagedProvider(paths, options);
+  return {
+    apps: discoveredApps,
+    providerConfirmed: listedProviders.size > 0,
+    confirmedProviderIds: [...listedProviders],
+    ownedAppIds: [...owned],
+    idleProviderIds,
+  };
 };
 
 export const discoverRunningAppsFromSockets = async (

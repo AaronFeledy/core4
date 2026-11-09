@@ -122,7 +122,7 @@ test.each([undefined, "inventory", "orphans"] as const)(
       stateStore: store,
       listVolumes: () => Effect.succeed([]),
       providerOverrides: {
-        getStatus: Effect.succeed({ running: true }),
+        getStatus: Effect.succeed({ state: "running" as const }),
         cleanupOwnedResources: () =>
           Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
       },
@@ -165,7 +165,7 @@ test.each([
       listVolumes: () => Effect.succeed(remaining),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "applied", plan, ownership: [ownership] }),
       providerOverrides: {
-        getStatus: Effect.succeed({ running: true }),
+        getStatus: Effect.succeed({ state: "running" as const }),
         cleanupOwnedResources: () =>
           Effect.succeed({
             servicesRemoved: [],

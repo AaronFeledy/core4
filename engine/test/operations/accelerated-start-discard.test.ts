@@ -45,7 +45,7 @@ test.each([false, true])(
         "destroy:false",
       ]);
       const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-      expect(pending?.phase).toBe("completed");
+      expect(pending).toBeNull();
     }
   },
 );
