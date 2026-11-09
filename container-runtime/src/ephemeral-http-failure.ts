@@ -7,8 +7,8 @@ import { Effect } from "effect";
 import type { DataPlaneHttpResponse, ProviderDataPlaneOptions } from "./data-plane.ts";
 import { apiReasonFromBody } from "./redact.ts";
 
-export const runtimeRemediation =
-  "Run `lando doctor` to check the container runtime, then retry the command.";
+import { runtimeRemediation } from "./transport-error.ts";
+export { runtimeRemediation } from "./transport-error.ts";
 
 const actions = {
   "run.create": "create Lando's helper container",
