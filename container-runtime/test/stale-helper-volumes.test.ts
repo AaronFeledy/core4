@@ -38,6 +38,32 @@ test("volume removal reclaims stale holders and retries once", async () => {
   ).toHaveLength(2);
 });
 
+test("volume removal retries when another process already removed a stale holder", async () => {
+  const engine = helperEngine([staleHelper("stale"), staleHelper("vanished")]);
+  const plane = makeProviderDataPlane({
+    providerId: "test",
+    capabilities: { volumeSnapshot: "none" },
+    redactor,
+    api: {
+      ...engine.api,
+      request: (input) => {
+        // The holder listing still names it, but it is gone by the time Lando inspects it.
+        if (input.method === "GET" && input.path === "/containers/vanished/json")
+          engine.containers.delete("vanished");
+        return engine.api.request(input);
+      },
+    },
+  });
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* TestClock.setTime(NOW);
+      yield* plane.removeVolume({ app: AppId.make("app"), store: "data" }, generation);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect([...engine.containers.keys()]).toEqual([]);
+  expect([...engine.volumes.keys()]).toEqual([]);
+});
+
 test.each([
   { ...staleHelper("remaining"), finishedAt: freshTime },
   { ...staleHelper("remaining"), state: "running" },

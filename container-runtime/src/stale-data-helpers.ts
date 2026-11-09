@@ -112,11 +112,15 @@ export const removeAllStaleVolumeHolders = (
   if (request === undefined || input.holders.length === 0) return Effect.succeed(false);
   return Effect.gen(function* () {
     const nowMs = yield* Clock.currentTimeMillis;
+    const stale: string[] = [];
     for (const holder of input.holders) {
       const life = yield* inspectHelper(request, holder.id);
-      if (life === undefined || !staleLifecycle(life, input.providerId, nowMs)) return false;
+      // A holder another process already removed no longer blocks the volume.
+      if (life === undefined) continue;
+      if (!staleLifecycle(life, input.providerId, nowMs)) return false;
+      stale.push(holder.id);
     }
-    for (const holder of input.holders) yield* removeHelper(request, holder.id);
+    for (const id of stale) yield* removeHelper(request, id);
     return true;
   }).pipe(
     Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE),
