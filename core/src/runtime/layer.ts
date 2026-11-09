@@ -33,6 +33,7 @@ import type {
   RuntimeProviderRegistry,
   ScratchAppService,
   SecretStore,
+  ServiceReadiness,
   ShellRunner,
   StateStore,
   Telemetry,
@@ -169,6 +170,7 @@ type ProviderRuntimeServices =
   | CertificateAuthorityResolver
   | FileSyncResolver
   | DataMover
+  | ServiceReadiness
   | AppPlanSanitizer
   | ContainerHelperAssets
   | GlobalAppService;

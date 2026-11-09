@@ -2,7 +2,8 @@ import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { effectiveReadiness } from "@lando/sdk/schema";
 import type { HealthcheckRunnerShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { Duration, Effect, Fiber, Ref, Result } from "effect";
+import { ServiceReadiness } from "@lando/sdk/services";
+import { Duration, Effect, Fiber, Layer, Ref, Result } from "effect";
 import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { makeHealthcheckRunner } from "../subsystems/healthcheck/runner-factory.ts";
 import { failReadiness, inspectReadinessRuntime } from "./service-readiness-error.ts";
@@ -126,4 +127,8 @@ export const waitForServiceReadiness = Effect.fn("ServiceReadiness.wait")(functi
       return Effect.sync(() => signal.removeEventListener("abort", abort));
     }),
   );
+});
+
+export const layer = Layer.succeed(ServiceReadiness, {
+  wait: (options) => waitForServiceReadiness(options).pipe(Effect.asVoid),
 });

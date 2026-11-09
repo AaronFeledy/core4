@@ -12,6 +12,7 @@ const makePluginStateStore = (
   store: Parameters<typeof makePluginStateStoreWithAccess>[0],
   root: Parameters<typeof makePluginStateStoreWithAccess>[1],
 ) => makePluginStateStoreWithAccess(store, root, ownerOnlyFileAccess);
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import {
   appliedPlanPath,
   listAppliedPlans,
@@ -213,7 +214,7 @@ describe("provider-lando applied state persistence", () => {
       expect(written).toBe(appliedPlanPath(stateDir, proxyPlan.id));
 
       const raw = JSON.parse(await readFile(written, "utf8"));
-      expect(raw.version).toBe(4);
+      expect(raw.version).toBe(APPLIED_STATE_VERSION);
       expect(raw.data).toBeDefined();
 
       const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));

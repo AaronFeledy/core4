@@ -19,6 +19,7 @@ test.each(["lando", "wp"])(
           type: "mysql",
           environment: {},
           extensions: {},
+          mounts: [],
           storage: [],
           connection: {
             family: "mysql",

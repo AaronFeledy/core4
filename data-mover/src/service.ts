@@ -89,7 +89,6 @@ import {
   removeSnapshotArchive,
   resolveSnapshotInfo,
 } from "./snapshot-catalog.ts";
-export { SNAPSHOT_SIDECAR_VERSION } from "./snapshot-catalog.ts";
 import {
   matchesSnapshotSource,
   physicalVolumeGeneration,
@@ -1240,7 +1239,7 @@ export const makeDataMoverService = (
               new SnapshotOwnershipError({
                 message: "Physical snapshot source identity changed before creation.",
                 snapshotId,
-                sourceVolumeInstanceId: opts.metadata.volumeInstanceId,
+                sourceVolumeInstanceId: opts.metadata.volumeInstanceId ?? "unknown",
                 ...(physicalVolumeGeneration(source) === undefined
                   ? {}
                   : { targetVolumeInstanceId: physicalVolumeGeneration(source) }),
@@ -1433,7 +1432,7 @@ export const makeDataMoverService = (
               new SnapshotOwnershipError({
                 message: "Physical snapshot ownership does not match the target volume instance.",
                 snapshotId: info.id,
-                sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+                sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
                 ...(physicalVolumeGeneration(target) === undefined
                   ? {}
                   : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
@@ -1506,7 +1505,7 @@ export const makeDataMoverService = (
             new SnapshotOwnershipError({
               message: "Physical snapshot ownership does not match the target volume instance.",
               snapshotId: info.id,
-              sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+              sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
               ...(physicalVolumeGeneration(target) === undefined
                 ? {}
                 : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),

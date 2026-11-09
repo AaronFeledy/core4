@@ -156,9 +156,9 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: ["@lando/state-store"],
   },
   "@lando/sql": {
-    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction", "@lando/data-mover"],
     // Recovery retention tests compose the real snapshot store without a live container runtime.
-    devDependencies: ["@lando/data-mover", "@lando/paths", "@lando/state-store"],
+    devDependencies: ["@lando/paths", "@lando/state-store"],
   },
   "@lando/provider-docker": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

@@ -37,7 +37,7 @@ const commandHealthcheck: HealthcheckPlan = {
 
 const service = (
   name: string,
-  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds" | "sqlite">> = {},
 ): readonly [string, ServicePlan] => {
   const serviceName = ServiceName.make(name);
   return [

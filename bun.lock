@@ -337,13 +337,13 @@
       "version": "0.0.0",
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/data-mover": "workspace:*",
         "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {
-        "@lando/data-mover": "workspace:*",
         "@lando/paths": "workspace:*",
       },
     },
