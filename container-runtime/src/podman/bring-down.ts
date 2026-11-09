@@ -22,6 +22,7 @@ import {
 } from "../ephemeral-data-helpers.ts";
 import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import { removeAllStaleVolumeHolders } from "../stale-data-helpers.ts";
 import { retainShutdownObservations } from "../stop-container.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
@@ -165,6 +166,45 @@ const removeVolume = Effect.fnUntraced(function* (
   if (isVolumeInUse(response)) {
     const redactor = redactorFor(deps.options.ctx);
     const holders = deps.api.request === undefined ? [] : yield* listVolumeHolders(deps.api.request, name);
+    const recovered = yield* removeAllStaleVolumeHolders(deps.api.request, {
+      providerId: deps.options.ctx.providerId,
+      holders,
+      redactor,
+    });
+    if (recovered) {
+      const retry = yield* request(deps, {
+        method: "DELETE",
+        path: `/volumes/${encodeURIComponent(name)}`,
+      });
+      if (retry.status === 200 || retry.status === 204) return true;
+      if (retry.status === 404) return false;
+      if (!isVolumeInUse(retry)) {
+        return yield* Effect.fail(
+          podmanFailure(
+            deps,
+            "bringDown.volume",
+            `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${retry.status}.`,
+            { name, body: retry.body },
+          ),
+        );
+      }
+      const remaining =
+        deps.api.request === undefined ? holders : yield* listVolumeHolders(deps.api.request, name);
+      return yield* Effect.fail(
+        new ProviderUnavailableError({
+          providerId: deps.options.ctx.providerId,
+          operation: "bringDown.volume",
+          message: volumeInUseMessage(
+            `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${retry.status}.`,
+            remaining,
+            retry,
+            redactor,
+          ),
+          remediation: volumeInUseRemediation(redactor),
+          details: redactDetails({ name, body: retry.body, status: retry.status }, redactor),
+        }),
+      );
+    }
     return yield* Effect.fail(
       new ProviderUnavailableError({
         providerId: deps.options.ctx.providerId,

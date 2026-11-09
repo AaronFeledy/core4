@@ -110,7 +110,9 @@ describe("volume holder preservation during teardown", () => {
     expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringDown.volume" } });
     if (!Result.isFailure(result)) return;
     expect(result.failure.message).toContain("lando-docker-data-[REDACTED] (exact-[REDACTED]-id)");
-    expect(result.failure.remediation).toContain("cannot verify that a leftover helper is inactive");
+    expect(result.failure.remediation).toContain("10 minutes");
+    expect(result.failure.remediation).toContain("database or snapshot");
+    expect(result.failure.remediation).not.toContain("cannot verify");
     expect(JSON.stringify(result.failure)).not.toContain("SENSITIVE");
     expect(api.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
       "/volumes/data",
@@ -146,7 +148,7 @@ describe("volume holder preservation during teardown", () => {
     if (!Result.isFailure(result)) return;
     expect(result.failure.message).toContain("exact-[REDACTED]-id");
     expect(JSON.stringify(result.failure)).not.toContain("SENSITIVE");
-    expect(calls.map((call) => call.method)).toEqual(["GET", "DELETE", "GET"]);
+    expect(calls.map((call) => call.method)).toEqual(["GET", "DELETE", "GET", "GET"]);
     expect(calls[1]?.path).toBe("/volumes/data");
   });
 });

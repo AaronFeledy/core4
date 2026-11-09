@@ -8,6 +8,7 @@ import { tryParseJson } from "./engine-json.ts";
 import {
   ephemeralDataHelperLabels,
   isVolumeInUse,
+  leftoverHelperRemediation,
   listVolumeHolders,
   volumeInUseMessage,
   volumeInUseRemediation,
@@ -30,6 +31,7 @@ import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
 import { redactDetails } from "./redact.ts";
 import { listNativeSnapshots } from "./snapshot-images.ts";
+import { makeStaleHelperSweepGate, removeAllStaleVolumeHolders } from "./stale-data-helpers.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { extractFirstTarFile } from "./tar-file-stream.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
@@ -586,6 +588,20 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
   }).pipe(Effect.asVoid);
 };
 
+const staleSweepByOptions = new WeakMap<ProviderDataPlaneOptions, () => Effect.Effect<void>>();
+
+const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effect<void> => {
+  let gate = staleSweepByOptions.get(options);
+  if (gate === undefined) {
+    gate = makeStaleHelperSweepGate(options.api.request, {
+      providerId: options.providerId,
+      redactor: options.redactor,
+    });
+    staleSweepByOptions.set(options, gate);
+  }
+  return gate();
+};
+
 interface WitnessMountSource {
   readonly containerId: string;
   readonly readOnly: boolean;
@@ -617,39 +633,45 @@ const createEphemeralContainer = (
       : [],
   );
   const attachStdin = spec.stdinStream !== undefined;
-  return request(options, "run.create", {
-    method: "POST",
-    path: `/containers/create?name=${encodeURIComponent(name)}`,
-    body: {
-      Image: spec.image,
-      Cmd: spec.command,
-      Labels: ephemeralDataHelperLabels({
-        providerId: options.providerId,
-        ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
-        ...(spec.owner?.plan?.identity === undefined ? {} : { appRoot: spec.owner.plan.identity.appRoot }),
-        ...(mount === undefined ? {} : { store: mount.store }),
-      }),
-      ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
-      ...(witnessSource === undefined
-        ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
-        : {
-            User: "0:0",
-            Entrypoint: [],
-            HostConfig: {
-              VolumesFrom: [`${witnessSource.containerId}:${witnessSource.readOnly ? "ro" : "rw"}`],
-              NetworkMode: "none",
-              ReadonlyRootfs: true,
-            },
+  return ensureStaleHelperSweep(options).pipe(
+    Effect.andThen(() =>
+      request(options, "run.create", {
+        method: "POST",
+        path: `/containers/create?name=${encodeURIComponent(name)}`,
+        body: {
+          Image: spec.image,
+          Cmd: spec.command,
+          Labels: ephemeralDataHelperLabels({
+            providerId: options.providerId,
+            ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
+            ...(spec.owner?.plan?.identity === undefined
+              ? {}
+              : { appRoot: spec.owner.plan.identity.appRoot }),
+            ...(mount === undefined ? {} : { store: mount.store }),
           }),
-      OpenStdin: attachStdin,
-      AttachStdin: attachStdin,
-      StdinOnce: attachStdin,
-      AttachStdout: spec.captureStdout === true,
-      AttachStderr: true,
-    },
-  }).pipe(
-    Effect.tap((response) => ensureEphemeral2xx(options, spec, { operation: "run.create", response })),
-    Effect.as(name),
+          ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
+          ...(witnessSource === undefined
+            ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
+            : {
+                User: "0:0",
+                Entrypoint: [],
+                HostConfig: {
+                  VolumesFrom: [`${witnessSource.containerId}:${witnessSource.readOnly ? "ro" : "rw"}`],
+                  NetworkMode: "none",
+                  ReadonlyRootfs: true,
+                },
+              }),
+          OpenStdin: attachStdin,
+          AttachStdin: attachStdin,
+          StdinOnce: attachStdin,
+          AttachStdout: spec.captureStdout === true,
+          AttachStderr: true,
+        },
+      }).pipe(
+        Effect.tap((response) => ensureEphemeral2xx(options, spec, { operation: "run.create", response })),
+        Effect.as(name),
+      ),
+    ),
   );
 };
 
@@ -679,8 +701,7 @@ const ephemeralCompletionFailure = (
       providerId: options.providerId,
       operation,
       message: `Lando's helper command exited with status ${outcome.exitCode}, and Lando couldn't remove its helper container.`,
-      remediation:
-        "Check the helper's error output in `stderrTail` for why it failed. The cleanup failure reported with this error names the leftover helper container.",
+      remediation: `Check the helper's error output in \`stderrTail\` for why it failed. ${leftoverHelperRemediation(options.redactor)}`,
       details:
         stderrTail === undefined
           ? { exitCode: outcome.exitCode }
@@ -717,11 +738,7 @@ const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
 const releaseEphemeralContainer = (release: EphemeralRelease) => {
   const { options, name, remove, exit, operation, observed } = release;
   if (!remove) return Effect.void;
-  // Only system Docker and Podman users have the engine CLI on PATH; the managed runtime has no Lando command for this yet.
-  const cleanupRemediation =
-    options.providerId === "docker" || options.providerId === "podman"
-      ? `Run \`lando doctor\` to check the container runtime, then remove the leftover helper container with \`${options.providerId} rm -f ${name}\`.`
-      : `Run \`lando doctor\` to check the Lando runtime. Lando can't remove the leftover helper container ${name} for you yet.`;
+  const cleanupRemediation = leftoverHelperRemediation(options.redactor);
   // Finalizers are uninterruptible. The removal stays interruptible so this
   // deadline can stop it; the finalizer stays masked so parent cancellation
   // still waits for that bounded attempt instead of abandoning cleanup.
@@ -1074,7 +1091,9 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, spec: Nativ
     Effect.andThen(() => snapshotCommitHelper(options, spec)),
   );
 
-export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
+export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
+  // Each data-plane owns its sweep even when callers reuse the same options object.
+  const options = { ...input };
   const unsupportedSnapshot = (operation: string, format?: VolumeSnapshotRef["format"]) =>
     new ProviderCapabilityError({
       providerId: options.providerId,
@@ -1433,16 +1452,43 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           );
         }),
       )) satisfies RuntimeProviderShape["listVolumes"],
-    removeVolume: ((ref, expectedGeneration) =>
-      verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
-        Effect.andThen(
-          request(options, "removeVolume", {
-            method: "DELETE",
-            path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
-          }),
-        ),
+    removeVolume: ((ref, expectedGeneration) => {
+      const volume = volumeName(ref.store);
+      const deleteVolume = request(options, "removeVolume", {
+        method: "DELETE",
+        path: `/volumes/${encodeURIComponent(volume)}`,
+      }).pipe(
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
+      );
+      const volumeInUseFailure = (
+        cause: Cause.Cause<ProviderError>,
+        holders: ReadonlyArray<{
+          readonly id: string;
+          readonly name: string;
+        }>,
+      ) =>
+        Effect.failCause(
+          mapFailureCause(cause, (error) => {
+            if (!(error instanceof VolumeOperationError) || !isVolumeInUse(error.details)) return error;
+            return new VolumeOperationError({
+              providerId: options.providerId,
+              operation: "removeVolume",
+              store: ref.store,
+              message: volumeInUseMessage(
+                "The container engine couldn't remove the storage volume because it is in use.",
+                holders,
+                error.details,
+                options.redactor,
+              ),
+              remediation: volumeInUseRemediation(options.redactor),
+              details: redactDetails(error.details, options.redactor),
+              cause: error,
+            });
+          }),
+        );
+      return verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
+        Effect.andThen(deleteVolume),
         Effect.catchCause(
           Effect.fnUntraced(function* (cause) {
             const inUse = cause.reasons.some(
@@ -1451,35 +1497,39 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 reason.error instanceof VolumeOperationError &&
                 isVolumeInUse(reason.error.details),
             );
-            if (inUse) {
-              const holders =
-                options.api.request === undefined
-                  ? []
-                  : yield* listVolumeHolders(options.api.request, volumeName(ref.store));
-              return yield* Effect.failCause(
-                mapFailureCause(cause, (error) => {
-                  if (!(error instanceof VolumeOperationError) || !isVolumeInUse(error.details)) return error;
-                  return new VolumeOperationError({
-                    providerId: options.providerId,
-                    operation: "removeVolume",
-                    store: ref.store,
-                    message: volumeInUseMessage(
-                      "The container engine couldn't remove the storage volume because it is in use.",
-                      holders,
-                      error.details,
-                      options.redactor,
-                    ),
-                    remediation: volumeInUseRemediation(options.redactor),
-                    details: redactDetails(error.details, options.redactor),
-                    cause: error,
+            if (!inUse) return yield* Effect.failCause(cause);
+            const holders =
+              options.api.request === undefined ? [] : yield* listVolumeHolders(options.api.request, volume);
+            const recovered = yield* removeAllStaleVolumeHolders(options.api.request, {
+              providerId: options.providerId,
+              holders,
+              redactor: options.redactor,
+            });
+            if (recovered) {
+              return yield* deleteVolume.pipe(
+                Effect.catchCause((retryCause) => {
+                  const stillInUse = retryCause.reasons.some(
+                    (reason) =>
+                      Cause.isFailReason(reason) &&
+                      reason.error instanceof VolumeOperationError &&
+                      isVolumeInUse(reason.error.details),
+                  );
+                  if (!stillInUse) return Effect.failCause(retryCause);
+                  return Effect.gen(function* () {
+                    const remaining =
+                      options.api.request === undefined
+                        ? holders
+                        : yield* listVolumeHolders(options.api.request, volume);
+                    return yield* volumeInUseFailure(retryCause, remaining);
                   });
                 }),
               );
             }
-            return yield* Effect.failCause(cause);
+            return yield* volumeInUseFailure(cause, holders);
           }),
         ),
-      )) satisfies RuntimeProviderShape["removeVolume"],
+      );
+    }) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
         try: () => stat(spec.sourcePath),

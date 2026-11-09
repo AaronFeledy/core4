@@ -1456,8 +1456,9 @@ describe("provider data plane", () => {
       expect(result.failure.details).toMatchObject({ status: 500 });
     } else {
       expect(result.failure.message).toContain(reason);
-      expect(result.failure.remediation).toContain("Wait for any data operation to finish");
-      expect(result.failure.remediation).toContain("cannot verify that a leftover helper is inactive");
+      expect(result.failure.remediation).toContain("Wait for any running data operation to finish");
+      expect(result.failure.remediation).toContain("10 minutes");
+      expect(result.failure.remediation).not.toContain("cannot verify");
     }
   });
 

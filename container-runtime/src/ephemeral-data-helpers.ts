@@ -55,7 +55,12 @@ export const listVolumeHolders = (
       return decoded.value.flatMap((holder) =>
         holder.Id.length > 0 &&
         holder.Mounts.some((mount) => mount.Type === "volume" && mount.Name === volumeName)
-          ? [{ id: holder.Id, name: holder.Names[0]?.replace(/^\//u, "") || holder.Id }]
+          ? [
+              {
+                id: holder.Id,
+                name: holder.Names[0]?.replace(/^\//u, "") || holder.Id,
+              },
+            ]
           : [],
       );
     }),
@@ -74,7 +79,7 @@ export const isVolumeInUse = (details: unknown): boolean => {
 
 export const volumeInUseRemediation = (redactor: Redactor): string =>
   redactString(
-    "A container still uses this volume. Wait for any data operation to finish, then inspect the holder before removing it and retrying. Lando cannot verify that a leftover helper is inactive.",
+    "A container still uses this volume. Wait for any running data operation to finish. If a leftover data helper still holds the volume after 10 minutes, Lando removes it automatically the next time it runs a database or snapshot command. Run `lando doctor` to check the runtime.",
     redactor,
   );
 
@@ -95,3 +100,10 @@ export const volumeInUseMessage = (
       : "";
   return redactString(withReason === named && body.length > 0 ? `${named} ${body}` : withReason, redactor);
 };
+
+/** Cleanup failed after the helper command finished; Lando reclaims the leftover on a later data op. */
+export const leftoverHelperRemediation = (redactor: Redactor): string =>
+  redactString(
+    "The command already finished. Lando removes the leftover helper container automatically the next time it runs a database or snapshot command. Run `lando doctor` to check the runtime.",
+    redactor,
+  );
