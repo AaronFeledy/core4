@@ -3,15 +3,8 @@ import ts from "@typescript/typescript6";
 import type { BoundaryRule } from "../types.ts";
 import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
-const providerSourcePrefixes = [
-  "container-runtime/src/",
-  "plugins/provider-docker/src/",
-  "plugins/provider-lando/src/",
-  "plugins/provider-podman/src/",
-  "engine/src/providers/",
-  "data-mover/src/",
-  "plugins/sql/src/",
-] as const;
+// These shipped roots get only the mapError ban; the other idioms predate them and stay scoped to core and plugins.
+const mapErrorOnlyPrefixes = ["container-runtime/src/", "sdk/src/"] as const;
 
 const unwrap = (expression: ts.Expression): ts.Expression => {
   if (
@@ -93,7 +86,7 @@ const exported = (node: ts.Node): boolean => {
 export const effectIdiomsRule = {
   id: "effect-idioms",
   scope: {
-    roots: [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src"],
+    roots: [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src", "sdk/src"],
     extensions: [".ts"],
     excludeDirNames: ["dist", "node_modules"],
     excludeTestFiles: true,
@@ -141,9 +134,8 @@ export const effectIdiomsRule = {
       };
       const visit = (node: ts.Node): void => {
         if (
-          providerSourcePrefixes.some((prefix) => file.relativePath.startsWith(prefix)) &&
-          (ts.isPropertyAccessExpression(node) ||
-            (ts.isIdentifier(node) && !ts.isImportSpecifier(node.parent)))
+          ts.isPropertyAccessExpression(node) ||
+          (ts.isIdentifier(node) && !ts.isImportSpecifier(node.parent))
         ) {
           const path = importedPath(node, checker);
           if (path === "effect/Effect/mapError" || path === "effect/Stream/mapError") {
@@ -153,7 +145,7 @@ export const effectIdiomsRule = {
             );
           }
         }
-        if (file.relativePath.startsWith("container-runtime/src/")) {
+        if (mapErrorOnlyPrefixes.some((prefix) => file.relativePath.startsWith(prefix))) {
           ts.forEachChild(node, visit);
           return;
         }

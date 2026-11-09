@@ -215,15 +215,16 @@ const failingFixtures = [
 ] as const;
 
 describe("effect idioms boundary lint gate", () => {
-  test("rejects error mapping forms only in the provider tier and accepts SDK helpers", async () => {
+  test("rejects error mapping forms in every shipped source root and accepts SDK helpers", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-provider-mapping-"));
     const prefixes = [
       "container-runtime/src",
-      "plugins/provider-docker/src",
-      "plugins/provider-lando/src",
-      "plugins/provider-podman/src",
-      "engine/src/providers",
-      "data-mover/src",
+      "sdk/src",
+      "sdk/src/test",
+      "core/src",
+      "engine/src/operations",
+      "landofile/src",
+      "plugins/proxy-traefik/src",
       "plugins/sql/src",
     ];
     const forms = [
@@ -247,8 +248,12 @@ describe("effect idioms boundary lint gate", () => {
           'import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";\nmapFailures(value, f); stream.pipe(mapStreamFailures(f));',
         );
       }
-      for (const [index, code] of forms.entries())
-        await write(root, `engine/src/operations/allowed-${index}.ts`, code);
+      for (const [index, code] of forms.entries()) await write(root, `scripts/allowed-${index}.ts`, code);
+      await write(
+        root,
+        "sdk/src/other-idioms.ts",
+        'import { Data } from "effect";\nData.Error(); Date.now();',
+      );
       await write(
         root,
         "container-runtime/src/other-idioms.ts",

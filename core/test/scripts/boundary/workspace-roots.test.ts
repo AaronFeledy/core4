@@ -138,7 +138,7 @@ describe("workspace source-root drift gate", () => {
       expect(rule).toBeDefined();
       expect(rule?.scope.roots).toEqual(
         id === "effect-idioms"
-          ? [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src"]
+          ? [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src", "sdk/src"]
           : CORE_AND_PLUGIN_SOURCE_ROOTS,
       );
     }
