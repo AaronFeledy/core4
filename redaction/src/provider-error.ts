@@ -142,7 +142,9 @@ export function redactProviderError(
         ...baseFields(error, redactor, options),
         capability: redactor.redactString(error.capability),
         requiredValue: redactProviderDetails(error.requiredValue, redactor),
-        actualValue: redactProviderDetails(error.actualValue, redactor),
+        ...(error.actualValue === undefined
+          ? {}
+          : { actualValue: redactProviderDetails(error.actualValue, redactor) }),
       });
     case "ProviderConfigError":
       return new ProviderConfigError(baseFields(error, redactor, options));

@@ -50,7 +50,7 @@ const readPodmanServiceLogTailSync = (socketPath: string): string | undefined =>
 
 const stderrFromCause = (cause: unknown): string | undefined => {
   if (typeof cause !== "object" || cause === null || !("stderr" in cause)) return undefined;
-  const stderr = (cause as { readonly stderr?: unknown }).stderr;
+  const stderr = cause.stderr;
   return typeof stderr === "string" ? stderr : undefined;
 };
 
@@ -75,7 +75,7 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
     if (typeof this.details !== "object" || this.details === null || !("stderr" in this.details)) {
       return undefined;
     }
-    const stderr = (this.details as { readonly stderr?: unknown }).stderr;
+    const stderr = this.details.stderr;
     return typeof stderr === "string" ? stderr : undefined;
   }
 }

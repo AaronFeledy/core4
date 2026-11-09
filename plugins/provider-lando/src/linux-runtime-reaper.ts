@@ -3,6 +3,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 
 import { Duration, Effect } from "effect";
 
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 
@@ -32,7 +33,7 @@ const reaperError = (message: string, details: object, cause?: unknown) =>
     operation: "setup",
     message,
     remediation: "Stop the managed runtime service, then retry the command.",
-    details,
+    details: redactDetails(details, standaloneSecretsRedactor({ ...process.env })),
     ...(cause === undefined ? {} : { cause }),
   });
 

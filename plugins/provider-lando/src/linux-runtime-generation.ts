@@ -4,6 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect } from "effect";
 
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 
 import { launchStatePath } from "./runtime-launch-state.ts";
@@ -58,7 +59,7 @@ const generationError = (message: string, details: object, cause?: unknown) =>
     operation: "setup",
     message,
     remediation: "Verify the managed runtime directory and /proc are accessible, then retry the command.",
-    details,
+    details: redactDetails(details, standaloneSecretsRedactor({ ...process.env })),
     ...(cause === undefined ? {} : { cause }),
   });
 

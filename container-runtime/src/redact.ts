@@ -1,6 +1,7 @@
+import { redactProviderDetails } from "@lando/redaction/provider-details";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Context, Effect, Option } from "effect";
+import { Context, Effect, Option, type Schema } from "effect";
 import type { ProviderErrorContext } from "./engine-api.ts";
 
 /** Prefer the retained redactor; otherwise use ctx.env, never process.env. */
@@ -46,7 +47,8 @@ export class StartFailureLogRedactor extends Context.Service<StartFailureLogReda
 
 export const redactString = (value: string, redactor: Redactor): string => redactor.redactString(value);
 
-export const redactDetails = (value: unknown, redactor: Redactor): unknown => redactor.redactValue(value);
+export const redactDetails = (value: unknown, redactor: Redactor): Schema.Json =>
+  redactProviderDetails(value, redactor);
 
 export const httpResponseDetails = (response: {
   readonly status: number;
@@ -62,7 +64,7 @@ export const redactResponseDetails = (
     readonly body: string;
   },
   redactor: Redactor,
-): unknown => redactDetails(httpResponseDetails(response), redactor);
+): Schema.Json => redactDetails(httpResponseDetails(response), redactor);
 
 export const apiReasonFromBody = (details: unknown, redactor: Redactor): string | undefined => {
   if (typeof details !== "object" || details === null || !("body" in details)) return undefined;

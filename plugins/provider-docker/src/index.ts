@@ -308,7 +308,6 @@ export const introspectProviderCapabilities = (
             message: "Docker API info inspection failed.",
             capability: "docker-info",
             requiredValue: "Docker info response",
-            actualValue: undefined,
             cause,
             remediation:
               "Choose a provider that supports `docker-info`, or remove that requirement from the app.",

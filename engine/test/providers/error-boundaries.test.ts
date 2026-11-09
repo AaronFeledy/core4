@@ -95,8 +95,10 @@ test.each(Object.entries(contributionCalls))(
     detailError.name = `name ${canary}`;
     const first = new ProviderUnavailableError({
       ...errorFields,
-      details: { [canary]: { [`key-${canary}`]: canary }, error: detailError },
       cause: { debug: "original" },
+    });
+    Object.defineProperty(first, "details", {
+      value: { [canary]: { [`key-${canary}`]: canary }, error: detailError },
     });
     const second = new ProviderUnavailableError({
       ...errorFields,
@@ -248,7 +250,8 @@ test("contribution diagnostics fail closed when a detail value cannot be inspect
     },
   });
   hostile.length = 1;
-  const original = new ProviderUnavailableError({ ...errorFields, details: hostile });
+  const original = new ProviderUnavailableError(errorFields);
+  Object.defineProperty(original, "details", { value: hostile });
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       yield* (yield* RedactionService).registerValues([canary]);
@@ -272,10 +275,8 @@ test("contribution diagnostics fail closed when a detail value cannot be inspect
 });
 
 test("contribution diagnostics suppress callable serialization hooks", async () => {
-  const original = new ProviderUnavailableError({
-    ...errorFields,
-    details: { toJSON: () => canary, nested: [canary] },
-  });
+  const original = new ProviderUnavailableError(errorFields);
+  Object.defineProperty(original, "details", { value: { toJSON: () => canary, nested: [canary] } });
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       yield* (yield* RedactionService).registerValues([canary]);
@@ -327,7 +328,7 @@ test("contribution diagnostics safely project adversarial structures", async () 
     },
   );
   const shared = { value: canary };
-  const cases: ReadonlyArray<{ name: string; details: unknown; expected: unknown }> = [
+  const cases: ReadonlyArray<{ name: string; details: unknown; expected: Schema.Json }> = [
     { name: "array subclass", details: subclass, expected: ["[redacted]"] },
     { name: "accessor", details: accessor, expected: { safe: "visible", danger: "[redacted]" } },
     { name: "proxy", details: proxy, expected: "[redacted]" },
@@ -343,7 +344,8 @@ test("contribution diagnostics safely project adversarial structures", async () 
     },
   ];
   for (const item of cases) {
-    const original = new ProviderUnavailableError({ ...errorFields, details: item.details });
+    const original = new ProviderUnavailableError(errorFields);
+    Object.defineProperty(original, "details", { value: item.details });
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* (yield* RedactionService).registerValues([canary]);

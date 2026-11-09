@@ -4,13 +4,14 @@ import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/erro
 
 import type { DataPlaneHttpResponse } from "./data-plane.ts";
 import { tryParseJson } from "./engine-json.ts";
+import { redactDetails, standaloneSecretsRedactor } from "./redact.ts";
 
 export const internal = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
   new ProviderInternalError({
     providerId,
     operation: "logFileAccess",
     message,
-    ...(details === undefined ? {} : { details }),
+    ...(details === undefined ? {} : { details: redactDetails(details, standaloneSecretsRedactor({})) }),
     ...(cause === undefined ? {} : { cause }),
     remediation:
       "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
@@ -21,7 +22,7 @@ export const unavailable = (providerId: string, message: string, details?: unkno
     providerId,
     operation: "logFileAccess",
     message,
-    ...(details === undefined ? {} : { details }),
+    ...(details === undefined ? {} : { details: redactDetails(details, standaloneSecretsRedactor({})) }),
     ...(cause === undefined ? {} : { cause }),
     remediation: "Install or start the selected runtime provider and confirm it can perform `logFileAccess`.",
   });

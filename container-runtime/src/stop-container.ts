@@ -5,7 +5,7 @@ import { Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi } from "./engine-errors.ts";
-import { redactorFor, withApiReason } from "./redact.ts";
+import { redactDetails, redactorFor, standaloneSecretsRedactor, withApiReason } from "./redact.ts";
 import { type ShutdownIdentity, absentShutdown, observeShutdown } from "./shutdown-observation.ts";
 
 const FailureFacts = Schema.Struct({ shutdownObservations: Schema.Array(ServiceShutdownObservation) });
@@ -26,7 +26,7 @@ export const retainShutdownObservations = (
     message: error.message,
     remediation: error.remediation,
     cause: error,
-    details: { shutdownObservations },
+    details: redactDetails({ shutdownObservations }, standaloneSecretsRedactor({})),
   };
   switch (error._tag) {
     case "ProviderInternalError":

@@ -1933,18 +1933,22 @@ for (const mode of ["run", "runStream"] as const) {
       const service = makeRedactionService();
       await Effect.runPromise(service.registerValues([secret]));
       const redactor = await Effect.runPromise(service.forProfile("secrets"));
-      const error = () =>
-        new ProviderUnavailableError({
+      const error = () => {
+        const failure = new ProviderUnavailableError({
           providerId: "test",
           operation: "fixture.original",
           message: "Unavailable",
           remediation: "Run doctor",
-          details: {
+        });
+        Object.defineProperty(failure, "details", {
+          value: {
             [secret]: "hidden",
             safe: { status: 503 },
             error: Object.assign(new Error(secret), { name: secret }),
           },
         });
+        return failure;
+      };
       let removals = 0;
       const provider = makeProviderDataPlane({
         providerId: "test",

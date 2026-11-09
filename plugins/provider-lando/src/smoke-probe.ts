@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mapFailures } from "@lando/sdk/command-result";
 
-import { Effect, type Scope } from "effect";
+import { Effect, type Schema, type Scope } from "effect";
 
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
@@ -28,7 +28,7 @@ const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 const failureFromResult = (
   operation: "run" | "build" | "health",
   result: ProbeResult,
-  details: Readonly<Record<string, unknown>> = {},
+  details: Readonly<Record<string, Schema.Json>> = {},
 ) => {
   const operationDetails =
     result.lastError instanceof ProviderLandoSmokeError &&
@@ -64,7 +64,7 @@ const mapProbeError = (operation: "run" | "build" | "health") => (cause: unknown
         smokeOperation: operation,
         message: `The provider-lando ${operation} smoke probe could not run.`,
         remediation: smokeRemediation(operation),
-        details: cause,
+        details: redactDetails(cause, hostSecretsRedactor()),
         cause,
       });
 
@@ -95,7 +95,7 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
             smokeOperation: "run",
             message: `The Podman run smoke container exited with code ${String(exitCode ?? "unknown")}.`,
             remediation: smokeRemediation("run"),
-            details: { exitCode },
+            details: { ...(exitCode === undefined ? {} : { exitCode }) },
           }),
         );
       }),

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { encodeCommandResult, identityRedactor, taggedErrorJson } from "@lando/sdk/command-result";
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
+import { redactProviderDetails } from "../src/provider-details.ts";
 import { redactProviderError } from "../src/provider-error.ts";
 import { makeRedactionService } from "../src/service.ts";
 
@@ -16,7 +17,7 @@ const project = async (details: unknown) => {
       operation: "run.volume",
       message: "Failed",
       remediation: "Run doctor",
-      details,
+      details: redactProviderDetails(details, redactor),
     }),
     redactor,
   );
@@ -36,9 +37,9 @@ test("provider details omit secret keys recursively and mask native Error name a
   expect(wire.details.error).toEqual({ name: "[redacted]", message: "[redacted]" });
   expect(wire.details["[redacted]"]).toBe("safe marker");
 });
-test("provider details omit undefined properties and preserve undefined array elements", async () => {
+test("provider details omit undefined properties and replace undefined array elements with null", async () => {
   const result = await project({ status: 500, body: undefined, list: [undefined, 1] });
-  expect(result.details).toEqual({ status: 500, list: [undefined, 1] });
+  expect(result.details).toEqual({ status: 500, list: [null, 1] });
   expect(result.details).not.toHaveProperty("body");
 });
 
@@ -114,12 +115,18 @@ test("projection skips array hooks and masks exotic values while preserving prot
   proto.constructor = "safe";
   proto.prototype = "safe";
   const result = await project({ array, proto, exotic: new Date(), bigint: 1n, symbol: Symbol(secret) });
-  const details = result.details as Record<string, unknown>;
+  const details = result.details;
+  if (typeof details !== "object" || details === null || !("proto" in details)) {
+    throw new Error("Expected projected object details");
+  }
   expect(details.array).toEqual(["[redacted]", { status: 503 }]);
   expect(details).toMatchObject({ exotic: "[redacted]", bigint: "[redacted]", symbol: "[redacted]" });
   expect(Object.getPrototypeOf(details)).toBeNull();
   expect(Object.getPrototypeOf(details.proto)).toBeNull();
-  expect(Object.hasOwn(details.proto as object, "__proto__")).toBe(true);
+  if (typeof details.proto !== "object" || details.proto === null) {
+    throw new Error("Expected projected prototype-named keys");
+  }
+  expect(Object.hasOwn(details.proto, "__proto__")).toBe(true);
   expect(calls).toBe(0);
 });
 
@@ -137,7 +144,7 @@ test("capability values and identity command wires omit colliding Unicode and co
   const tokens = [secret, "二番目秘密", "control\n\tsecret"];
   await Effect.runPromise(service.registerValues(tokens));
   const redactor = await Effect.runPromise(service.forProfile("secrets"));
-  const values: Record<string, unknown> = Object.fromEntries(
+  const values: Record<string, Schema.Json> = Object.fromEntries(
     tokens.flatMap((token) => [
       [token, "hidden"],
       [`prefix${token}suffix`, "hidden"],
@@ -289,4 +296,32 @@ test("failed canonical redaction fails closed", async () => {
     },
   });
   expect(redacted.details).toBe("[redacted]");
+});
+
+test.each([
+  { input: undefined, expected: null },
+  { input: Array<unknown>(2).concat([1]), expected: [null, null, 1] },
+  { input: { omitted: undefined, value: 1 }, expected: { value: 1 } },
+  { input: Number.NaN, expected: "[redacted]" },
+  { input: Number.POSITIVE_INFINITY, expected: "[redacted]" },
+  { input: () => "unsafe", expected: "[redacted]" },
+])("provider detail projection produces JSON for $input", ({ input, expected }) => {
+  const result = redactProviderDetails(input, identityRedactor);
+  expect(result).toEqual(expected);
+  expect(Schema.is(Schema.Json)(result)).toBe(true);
+});
+
+test("provider detail projection masks non-JSON canonical redactor output", () => {
+  class Diagnostic {
+    value = "unsafe";
+  }
+  const result = redactProviderDetails(
+    { status: 503 },
+    {
+      redactString: (value) => value,
+      redactValue: () => new Diagnostic(),
+    },
+  );
+  expect(result).toBe("[redacted]");
+  expect(Schema.is(Schema.Json)(result)).toBe(true);
 });

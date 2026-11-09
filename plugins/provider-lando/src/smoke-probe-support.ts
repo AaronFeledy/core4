@@ -1,6 +1,6 @@
 import { buildContainerRemoveRequest } from "@lando/container-runtime/engine-api";
 import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
-import { Duration, Effect } from "effect";
+import { Duration, Effect, type Schema } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -29,7 +29,7 @@ export class ProviderLandoSmokeError extends ProviderUnavailableError {
     readonly smokeOperation: SmokeOperation;
     readonly message: string;
     readonly remediation: string;
-    readonly details?: unknown;
+    readonly details?: Schema.Json;
     readonly cause?: unknown;
   }) {
     super({
@@ -86,7 +86,7 @@ export const smokeApiRequest = (
           smokeOperation: operation,
           message: `The provider-lando ${operation} smoke operation could not call the Podman API.`,
           remediation: smokeRemediation(operation),
-          details: cause,
+          details: redactDetails(cause, hostSecretsRedactor()),
           cause,
         }),
     ),
@@ -105,7 +105,7 @@ export const expectSmokeSuccess = (
           smokeOperation: operation,
           message,
           remediation: smokeRemediation(operation),
-          details: response,
+          details: redactDetails(response, hostSecretsRedactor()),
         }),
       );
 

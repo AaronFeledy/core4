@@ -1,12 +1,13 @@
 import { types } from "node:util";
 import type { Redactor } from "@lando/sdk/secrets";
+import type { Schema } from "effect";
 
 const masked = "[redacted]";
 
 // Provider diagnostics accept arbitrary caller values. Never let their hooks run at
 // the canonical redactor boundary. Object.keys allocates its intrinsic key list;
 // the limits below bound projection work/output, not that initial allocation.
-const project = (input: unknown, redactor: Redactor): unknown => {
+const project = (input: unknown, redactor: Redactor): Schema.Json => {
   let visits = 0;
   let units = 0;
   // Set when a budget is exhausted or the redactor returns a non-string key; the whole field is masked.
@@ -18,14 +19,15 @@ const project = (input: unknown, redactor: Redactor): unknown => {
     if (units > 65536) unsafe = true;
     return bounded;
   };
-  const walk = (value: unknown, depth: number): unknown => {
+  const walk = (value: unknown, depth: number): Schema.Json => {
     if (unsafe || ++visits > 2048) {
       unsafe = true;
       return masked;
     }
     if (depth > 16) return masked;
     if (typeof value === "string") return charge(value);
-    if (value === undefined || value === null || typeof value === "boolean") return value;
+    if (value === undefined) return null;
+    if (value === null || typeof value === "boolean") return value;
     if (typeof value === "number") return Number.isFinite(value) ? value : masked;
     if (typeof value !== "object") return masked;
     // Must precede even Array.isArray: revoked proxies throw there.
@@ -44,14 +46,19 @@ const project = (input: unknown, redactor: Redactor): unknown => {
       if (array) {
         const length = Object.getOwnPropertyDescriptor(value, "length")?.value;
         if (typeof length !== "number" || length > 256) return masked;
-        const output: unknown[] = [];
+        const output: Schema.Json[] = [];
         for (let index = 0; index < length && !unsafe; index++) {
           const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-          output[index] = descriptor && "value" in descriptor ? walk(descriptor.value, depth + 1) : masked;
+          output[index] =
+            descriptor === undefined
+              ? null
+              : "value" in descriptor
+                ? walk(descriptor.value, depth + 1)
+                : masked;
         }
         return output;
       }
-      const output: Record<string, unknown> = Object.create(null);
+      const output: Record<string, Schema.Json> = Object.create(null);
       for (const key of keys) {
         if (unsafe) break;
         if (key === "toJSON" || key === "stack" || key === "cause") continue;
@@ -77,7 +84,7 @@ const project = (input: unknown, redactor: Redactor): unknown => {
   return unsafe ? masked : output;
 };
 
-export const redactProviderDetails = (value: unknown, redactor: Redactor): unknown => {
+export const redactProviderDetails = (value: unknown, redactor: Redactor): Schema.Json => {
   try {
     const safe = project(value, redactor);
     // Re-project after canonical redaction to bound expansions and fail closed on

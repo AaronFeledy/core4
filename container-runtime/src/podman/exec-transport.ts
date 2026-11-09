@@ -279,7 +279,8 @@ const waitForExecCompletion = Effect.fnUntraced(function* (
     mapFailures((cause) =>
       execFailure(session, {
         message: "Podman exec completion probe failed.",
-        details: { execId, cause },
+        details: { execId },
+        cause,
       }),
     ),
   );
@@ -314,7 +315,8 @@ const waitForExecCompletion = Effect.fnUntraced(function* (
     mapFailures((cause) =>
       execFailure(session, {
         message: "Podman exec output drain probe failed.",
-        details: { execId, cause },
+        details: { execId },
+        cause,
       }),
     ),
   );

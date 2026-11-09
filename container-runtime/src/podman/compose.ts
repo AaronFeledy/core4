@@ -29,6 +29,7 @@ import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
 import { commonContainerLabels } from "../plan.ts";
+import { redactDetails, redactorFor } from "../redact.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
 import { composeHealthcheck } from "./compose-healthcheck.ts";
 import { type ComposeVolumeEntry, serviceComposeMounts } from "./compose-mounts.ts";
@@ -79,7 +80,7 @@ const composeError = (ctx: ProviderErrorContext, message: string, details?: unkn
     providerId: ctx.providerId,
     operation: "emitCompose",
     message,
-    details,
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(ctx)) }),
     remediation: ctx.remediation,
   });
 
