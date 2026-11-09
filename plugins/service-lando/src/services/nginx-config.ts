@@ -77,18 +77,20 @@ const rejectUnquotableLine = (line: string): void => {
  *
  * `nginx -c` replaces the main configuration file rather than adding a
  * `conf.d` drop-in, so this reproduces the image's own `nginx.conf` and then
- * differs from it in exactly three places: the pid path and the temp paths
- * move under `/tmp`, and the caller's server block is declared here instead of
- * arriving through the retired stock `default.conf`. The rest of `conf.d` is
- * still included. `-c` makes this file's own directory the configuration
- * prefix, so every `include` here names an absolute path; a bare
+ * differs from it in four places: the pid path and the temp paths move under
+ * `/tmp`, nginx-generated redirects are relative, and the caller's http-level
+ * lines (its server block plus anything that block depends on, such as a
+ * `map`) are declared here instead of arriving through the retired stock
+ * `default.conf`. The rest of `conf.d` is still included. `-c` makes this
+ * file's own directory the configuration prefix, so every `include` here names
+ * an absolute path; a bare
  * `fastcgi_params` would resolve under `/tmp` and nginx would refuse to start.
  */
 export const renderNginxConfig = (input: {
   readonly user: string | undefined;
-  readonly serverBlock: ReadonlyArray<string>;
+  readonly httpBlock: ReadonlyArray<string>;
 }): string => {
-  for (const line of input.serverBlock) rejectUnquotableLine(line);
+  for (const line of input.httpBlock) rejectUnquotableLine(line);
   return [
     // A non-root master cannot change worker identity, and nginx warns twice
     // when asked to; emit the directive only where it can be honored.
@@ -109,7 +111,9 @@ export const renderNginxConfig = (input: {
     ...NGINX_TEMP_PATHS.map(([directive, path]) => `  ${directive} ${path};`),
     "  sendfile on;",
     "  keepalive_timeout 65;",
-    ...input.serverBlock,
+    // Relative nginx-generated redirects retain the browser's scheme and router port.
+    "  absolute_redirect off;",
+    ...input.httpBlock,
     "  include /etc/nginx/conf.d/*.conf;",
     "}",
   ].join("\n");
@@ -120,11 +124,12 @@ export const renderNginxConfig = (input: {
  *
  * The configuration is written where the planned user can write and nginx is
  * pointed at it explicitly, so the command needs no permission on any path the
- * image owns and runs unchanged as a non-root `user:`.
+ * image owns and runs unchanged as a non-root `user:`. `httpBlock` supplies the
+ * generated server and the http-level directives it depends on.
  */
 export const nginxLauncherCommand = (input: {
   readonly user: string | undefined;
-  readonly serverBlock: ReadonlyArray<string>;
+  readonly httpBlock: ReadonlyArray<string>;
 }): ReadonlyArray<string> => [
   "sh",
   "-c",

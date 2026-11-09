@@ -160,6 +160,8 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" });
 
     const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
+    expect(command).toContain("absolute_redirect off;");
+    expect(command).toContain("location ~ /\\.(?!well-known(?:/|$)) {\n    return 403;\n  }");
     expectSharedErrorPagesBuildStep(plan);
     expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("error_page 403 /_lando/errors/403.html;");

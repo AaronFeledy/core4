@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
+import { withContainerHelper } from "./convenience-helper.ts";
 
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -401,11 +402,13 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
   makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env }));
 
 export const bringUp = (plan: AppPlan, options: Omit<BringUpOptions, "ctx" | "startFailureRemediation">) =>
-  runtimeBringUp(plan, {
-    ...options,
-    ctx: providerContextForEnv({ ...process.env }),
-    startFailureRemediation: landoStartFailureRemediation,
-  });
+  Effect.flatMap(withContainerHelper(options), (resolved) =>
+    runtimeBringUp(plan, {
+      ...resolved,
+      ctx: providerContextForEnv({ ...process.env }),
+      startFailureRemediation: landoStartFailureRemediation,
+    }),
+  );
 
 export const bringDown = (
   plan: AppPlan,
@@ -428,14 +431,33 @@ export const exec = (
   target: Parameters<typeof runtimeExec>[1],
   command: Parameters<typeof runtimeExec>[2],
   options: Omit<ExecOptions, "ctx">,
-) => runtimeExec(plan, target, command, { ...options, ctx: providerContextForEnv({ ...process.env }) });
+) =>
+  Effect.flatMap(
+    command.tty === true || command.raw === true || options.raw === true
+      ? Effect.succeed(options)
+      : withContainerHelper(options),
+    (resolved) =>
+      runtimeExec(plan, target, command, { ...resolved, ctx: providerContextForEnv({ ...process.env }) }),
+  );
 
 export const execStream = (
   plan: AppPlan,
   target: Parameters<typeof runtimeExecStream>[1],
   command: Parameters<typeof runtimeExecStream>[2],
   options: Omit<ExecOptions, "ctx">,
-) => runtimeExecStream(plan, target, command, { ...options, ctx: providerContextForEnv({ ...process.env }) });
+) =>
+  Stream.unwrap(
+    Effect.map(
+      command.tty === true || command.raw === true || options.raw === true
+        ? Effect.succeed(options)
+        : withContainerHelper(options),
+      (resolved) =>
+        runtimeExecStream(plan, target, command, {
+          ...resolved,
+          ctx: providerContextForEnv({ ...process.env }),
+        }),
+    ),
+  );
 
 export const inspect = (
   plan: AppPlan,
@@ -864,6 +886,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         };
       }),
     );
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const planState = makeProviderPlanState({
       ctx: LANDO_CTX,
       ...(podmanApi === undefined
@@ -1104,16 +1130,28 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             ? windowsStdinOptions === undefined
               ? Effect.fail(missingWindowsStdinRunner(target))
               : windowsStdinExec(plan, target, command, windowsStdinOptions)
-            : runtimeExec(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
+            : runtimeExec(plan, target, command, {
+                ...apiOptions,
+                ctx: LANDO_CTX,
+                ...execHelper,
+              }),
         execStream: (plan, target, command) =>
           shouldUseWindowsStdinCli(command)
             ? windowsStdinOptions === undefined
               ? Stream.fail(missingWindowsStdinRunner(target))
               : windowsStdinExecStream(plan, target, command, windowsStdinOptions)
-            : runtimeExecStream(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
+            : runtimeExecStream(plan, target, command, {
+                ...apiOptions,
+                ctx: LANDO_CTX,
+                ...execHelper,
+              }),
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
-          const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
+          const runtime = yield* runtimeInspect(physical, target, {
+            ...apiOptions,
+            ctx: LANDO_CTX,
+            ...execHelper,
+          });
           if (physical === plan) return runtime;
           const logicalRuntime = {
             ...runtime,
@@ -1736,6 +1774,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     }),
                   }),
               ctx: LANDO_CTX,
+              ...execHelper,
               startFailureRemediation: makeLandoStartFailureRemediation(platform),
               platform,
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),

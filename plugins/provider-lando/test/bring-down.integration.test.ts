@@ -9,7 +9,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import { volumeSelectorValue } from "@lando/container-runtime/podman/volume-prune";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
+import { bringDown, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -23,6 +23,7 @@ import {
 import type { LandoEvent } from "@lando/sdk/services";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 import { decodeNetworkCreate } from "./network-fixture.ts";
+import { bringUp } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringdownapp");

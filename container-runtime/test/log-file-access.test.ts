@@ -54,18 +54,6 @@ const dockerFrame = (stream: 1 | 2, payload: Uint8Array): Uint8Array => {
   return frame;
 };
 
-const tarEntryNames = (archive: Uint8Array): readonly string[] => {
-  const names: string[] = [];
-  for (let offset = 0; offset + 512 <= archive.byteLength; offset += 512) {
-    const header = archive.slice(offset, offset + 512);
-    if (header.every((byte) => byte === 0)) break;
-    names.push(text(header.slice(0, 100)).split("\0")[0] ?? "");
-    const size = Number.parseInt(text(header.slice(124, 136)).replaceAll("\0", "").trim(), 8);
-    offset += Math.ceil(size / 512) * 512;
-  }
-  return names;
-};
-
 interface FakeExec {
   readonly command: readonly string[];
   readonly user: unknown;
@@ -156,7 +144,7 @@ const protocolApi = (chunks: readonly Uint8Array[]): DataPlaneApiClient => ({
 });
 
 describe("Docker-compatible scoped log file access", () => {
-  test("uploads one archive and creates one reader exec across many stat/open/read calls in a scope", async () => {
+  test("uses one mounted reader exec without uploads across many stat/open/read calls", async () => {
     // Given
     const fake = makeFakeApi();
     let resolutions = 0;
@@ -189,38 +177,28 @@ describe("Docker-compatible scoped log file access", () => {
     );
     // Then
     expect(resolutions).toBe(1);
-    expect(fake.archives).toHaveLength(1);
-    expect(fake.requests.filter((r) => r.method === "PUT")).toHaveLength(1);
-    const upload = fake.requests.find((r) => r.method === "PUT");
-    expect(upload?.path).toBe("/containers/service/archive?path=/tmp");
-    expect(upload?.body instanceof Uint8Array).toBe(false);
-    expect(upload?.headers?.["Content-Type"]).toBe("application/x-tar");
+    expect(fake.archives).toHaveLength(0);
+    expect(fake.requests.filter((r) => r.method === "PUT")).toHaveLength(0);
     expect(fake.requests.some((r) => r.method === "GET" && r.path.includes("archive"))).toBe(false);
-    expect(fake.execs).toHaveLength(2);
+    expect(fake.execs).toHaveLength(1);
     const path = fake.execs[0]?.command[0];
     if (path === undefined) throw new TypeError("Expected helper executable");
-    expect(path).toMatch(/^\/tmp\/lando-log-file-helper-[0-9a-f]{32}\/lando-container-helper$/);
+    expect(path).toBe("/run/lando/helper/log-file-access.test.ts");
     expect(fake.execs[0]).toEqual({ command: [path, "log-file"], user: undefined });
-    const directory = path.slice(0, -"/lando-container-helper".length);
-    expect(tarEntryNames(fake.archives[0] ?? new Uint8Array())).toEqual([
-      `${directory.slice(5)}/`,
-      path.slice(5),
-    ]);
-    expect(fake.execs[1]).toEqual({ command: [path, "log-file-cleanup", directory], user: "0" });
-    expect(fake.events).toEqual(["upload", "abort", "cleanup"]);
+    expect(fake.events).toEqual(["abort"]);
     expect(fake.commands.filter((op) => op === "close")).toHaveLength(6);
   });
 
-  test("uses distinct installation directories for separate scopes", async () => {
+  test("reuses the stable mounted helper across scopes", async () => {
     const fake = makeFakeApi();
     for (let i = 0; i < 2; i++) {
       await Effect.runPromise(
         Effect.scoped(Effect.flatMap(accessFor(fake.api), (access) => access.stat("/app.log"))),
       );
     }
-    expect(fake.archives).toHaveLength(2);
-    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(2);
-    expect(fake.execs[0]?.command[0]).not.toBe(fake.execs[2]?.command[0]);
+    expect(fake.archives).toHaveLength(0);
+    expect(fake.execs).toHaveLength(2);
+    expect(fake.execs[0]?.command[0]).toBe(fake.execs[1]?.command[0]);
   });
 
   test("keeps stat sessions open until their scope ends", async () => {
@@ -237,7 +215,7 @@ describe("Docker-compatible scoped log file access", () => {
     );
     expect(fake.commands).toEqual(["stat", "close"]);
     expect(fake.signal()?.aborted).toBe(true);
-    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(1);
+    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(0);
   });
 
   const utf8 = helperLine({ ok: true, stat: { dev: "dé", ino: "2", size: "0" } });
@@ -342,7 +320,7 @@ describe("Docker-compatible scoped log file access", () => {
     expect(read.nextOffset).toBe(65_536n);
   });
 
-  test("closes and aborts the session even when root cleanup hangs", async () => {
+  test("closes and aborts the session without a root cleanup exec", async () => {
     const fake = makeFakeApi();
     let cleanups = 0;
     const api: DataPlaneApiClient = {
@@ -361,13 +339,13 @@ describe("Docker-compatible scoped log file access", () => {
       ),
     );
     expect(Option.isSome(result)).toBe(true);
-    expect(cleanups).toBe(1);
+    expect(cleanups).toBe(0);
     expect(fake.commands).toContain("close");
     expect(fake.signal()?.aborted).toBe(true);
-    expect(fake.events).toEqual(["upload", "abort", "cleanup"]);
+    expect(fake.events).toEqual(["abort"]);
   });
 
-  test("attempts root cleanup exactly once when startup fails after upload", async () => {
+  test("does not upload or create cleanup execs when reader creation fails", async () => {
     const fake = makeFakeApi();
     const api: DataPlaneApiClient = {
       ...fake.api,
@@ -378,14 +356,11 @@ describe("Docker-compatible scoped log file access", () => {
     };
     const exit = await Effect.runPromiseExit(Effect.scoped(accessFor(api)));
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.archives[0]?.byteLength).toBeGreaterThan(0);
-    expect(fake.execs).toHaveLength(1);
-    expect(fake.execs[0]?.user).toBe("0");
-    expect(fake.execs[0]?.command[1]).toBe("log-file-cleanup");
-    expect(fake.execs[0]?.command[2]).toMatch(/^\/tmp\/lando-log-file-helper-[0-9a-f]{32}$/);
+    expect(fake.archives).toHaveLength(0);
+    expect(fake.execs).toHaveLength(0);
   });
 
-  test("aborts an unresponsive session close before running root cleanup", async () => {
+  test("aborts an unresponsive session close", async () => {
     const fake = makeFakeApi();
     let signal: AbortSignal | undefined;
     let closes = 0;
@@ -421,10 +396,10 @@ describe("Docker-compatible scoped log file access", () => {
     expect(Option.isSome(result)).toBe(true);
     expect(closes).toBe(1);
     expect(signal?.aborted).toBe(true);
-    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(1);
+    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(0);
   });
 
-  test("cleans up once when the scope is interrupted after upload", async () => {
+  test("closes the mounted reader when its scope is interrupted", async () => {
     const fake = makeFakeApi();
     const ready = Deferred.makeUnsafe<void>();
     const fiber = Effect.runFork(
@@ -441,8 +416,8 @@ describe("Docker-compatible scoped log file access", () => {
     await Effect.runPromise(Fiber.interrupt(fiber));
     const exit = await Effect.runPromise(Fiber.await(fiber));
     expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
-    expect(fake.archives).toHaveLength(1);
-    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(1);
+    expect(fake.archives).toHaveLength(0);
+    expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(0);
     expect(fake.signal()?.aborted).toBe(true);
   });
 
@@ -611,9 +586,9 @@ test("one scoped helper survives missing-file readiness, rotation, and truncatio
       ).pipe(Stream.take(3)),
     ),
   );
-  // Then: all lines came through one installed reader and its scope cleaned up once.
+  // Then: all lines came through one mounted reader.
   expect(lines.map((line) => line.line)).toEqual(["initial-long-line", "rotated-long-line", "x"]);
-  expect(fake.archives).toHaveLength(1);
+  expect(fake.archives).toHaveLength(0);
   expect(fake.execs.filter((exec) => exec.user === undefined)).toHaveLength(1);
-  expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(1);
+  expect(fake.execs.filter((exec) => exec.user === "0")).toHaveLength(0);
 });

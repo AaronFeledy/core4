@@ -115,4 +115,6 @@ on `lando.certs`, so `lando info` shows an `https://` URL after start. Set
 lando info --format=json
 ```
 
+The proxy ends HTTPS and forwards plain HTTP to Tomcat. On a catalog image, Lando's `server.xml` reads the proxy's `X-Forwarded-Proto` and `X-Forwarded-Port` headers, so `request.isSecure()` is `true` and `request.getRequestURL()` starts with the `https://` URL and port from `lando info`. A custom image or `build.context` owns its `server.xml`; add a `RemoteIpValve` there for the same result.
+
 </Guide>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -95,6 +95,19 @@ describe("resolveContainerHelper", () => {
     expect(error.remediation).toContain("build:container-helper");
   });
 
+  test("resolves replacement bytes at the same helper path after a successful resolution", async () => {
+    const root = await tempRoot();
+    const path = join(root, "linux-x64", "lando-container-helper");
+    await mkdir(join(root, "linux-x64"));
+    await writeFile(path, "first-helper");
+    const resolve = () =>
+      Effect.runPromise(resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }));
+    const first = await resolve();
+    expect((await resolve()).digest).toBe(first.digest);
+    await writeFile(path, "other-helper");
+    expect((await resolve()).digest).toBe(sha256Hex(new TextEncoder().encode("other-helper")));
+  });
+
   test("compiled mode extracts the embedded helper for the target arch", async () => {
     const bytes = new TextEncoder().encode("static-helper");
     const digest = sha256Hex(bytes);
@@ -143,8 +156,10 @@ describe("extractEmbeddedContainerHelper", () => {
     const files = [embedded(`lando-container-helper-linux-x64-${digest}.gz`, bytes)];
     const first = await extractEmbeddedContainerHelper({ target, files, cacheRoot });
     const before = (await stat(first.path)).mtimeMs;
+    await chmod(join(cacheRoot, "linux-x64"), 0o700);
     const second = await extractEmbeddedContainerHelper({ target, files, cacheRoot });
     expect(second).toEqual(first);
     expect((await stat(second.path)).mtimeMs).toBe(before);
+    expect((await stat(join(cacheRoot, "linux-x64"))).mode & 0o777).toBe(0o755);
   });
 });

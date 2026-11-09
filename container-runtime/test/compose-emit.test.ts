@@ -18,8 +18,9 @@ import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { commonContainerLabels, containerHostConfigFragment } from "../src/plan.ts";
-import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
+import { composePath, renderCompose } from "../src/podman/compose.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
+import { emitCompose } from "./support/service-creation.ts";
 
 test("emits member-only authored networks, bridge aliases, external names and owned drivers", () => {
   // Given / When

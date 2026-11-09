@@ -130,6 +130,8 @@ describe("nginx ServiceType", () => {
     expect(command).toContain("error_page 404 /_lando/errors/404.html;");
     expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("include /etc/nginx/conf.d/*.conf;");
+    expect(command).toContain("absolute_redirect off;");
+    expect(command).toContain("location ~ /\\.(?!well-known(?:/|$)) {\n    return 403;\n  }");
     expect(command).not.toContain("fastcgi_pass");
     expectSharedErrorPagesBuildStep(plan);
     expect(plan.extensions["@lando/core/service-features"]).toMatchObject({
@@ -264,6 +266,22 @@ describe("nginx PHP FastCGI preset", () => {
 
     const command = planCommandText(plan.command);
     expect(command).toContain("fastcgi_pass appserver:9000");
+    const hiddenLocation = "location ~ /\\.(?!well-known(?:/|$)) {";
+    expect(command).toContain(hiddenLocation);
+    expect(command.indexOf(hiddenLocation)).toBeLessThan(command.indexOf("location ~ [^/]\\.php(/|$)"));
+    expect(command.indexOf(hiddenLocation)).toBeLessThan(command.indexOf("location ~* \\.php(/|$)"));
+    expect(command).toContain("absolute_redirect off;");
+    expect(command).toContain(
+      "map $http_x_forwarded_proto $lando_fastcgi_https {\n  default $https;\n  https on;\n}",
+    );
+    expect(command.indexOf("map $http_x_forwarded_proto")).toBeLessThan(command.indexOf("server {"));
+    expect(command).toContain(
+      "include /etc/nginx/fastcgi_params;\n    fastcgi_param HTTPS $lando_fastcgi_https if_not_empty;",
+    );
+    expect(command).toContain("location ~* \\.php(/|$) {\n    return 403;\n  }");
+    expect(command.indexOf("location ~* \\.php(/|$)")).toBeGreaterThan(
+      command.indexOf("fastcgi_index index.php;"),
+    );
     expect(command).toContain("root /app/web");
     expect(command).not.toContain("location ~* ^/");
     expectPhpFpmPathInfoWire(command);
@@ -455,7 +473,7 @@ describe("nginx PHP FPM app-feature wire", () => {
 
       await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
 
-      expect(commandText(commands.get("edge"))).not.toContain("return 403;");
+      expect(commandText(commands.get("edge"))).not.toContain("if ($fastcgi_script_name ~*");
     },
   );
 
@@ -557,7 +575,7 @@ describe("uploadDirs glob translation", () => {
         backend: "appserver",
         ...(uploadDirs === undefined ? {} : { uploadDirs }),
       });
-      expect(planCommandText(plan.command)).not.toContain("return 403;");
+      expect(planCommandText(plan.command)).not.toContain("if ($fastcgi_script_name ~*");
     },
   );
 

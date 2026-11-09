@@ -493,6 +493,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
   );
   return Effect.gen(function* () {
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* runtimeCapabilities;
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const planState = makeProviderPlanState({
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
@@ -542,10 +546,19 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             dialect: dockerWaitDialect,
             ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           }),
-        exec: (plan, target, command) => exec(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
+        exec: (plan, target, command) =>
+          exec(plan, target, command, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            ...execHelper,
+          }),
         execStream: (plan, target, command) =>
-          execStream(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
-        inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX }),
+          execStream(plan, target, command, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            ...execHelper,
+          }),
+        inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX, ...execHelper }),
       },
     });
 
@@ -627,6 +640,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: dockerApi,
           ctx: DOCKER_CTX,
+          ...execHelper,
           dialect: dockerLifecycleDialect,
           ensureImage: dockerEnsureImage(dockerApi),
           retryCreateOnMissingImage: true,

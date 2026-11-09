@@ -24,6 +24,8 @@ lando composer install < /dev/null
 
 Redirected input still reaches the command as plain bytes, with no terminal in between, so `lando psql < dump.sql` runs the dump and exits.
 
+Interrupting that non-PTY run with `SIGINT` or `SIGTERM`, say from an editor task or a CI step that runs `lando npm run dev`, stops the command inside the container and everything it started, waits for them to exit, and exits `130` or `143`. The port the dev server held is free for the next run. Processes a command backgrounds on purpose keep running after a normal exit, as with `docker exec`. See [Interrupt a command](../cli/exec.mdx#interrupt-a-command).
+
 The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. Command output does not ride that tree as per-line `task.detail` events. Host and container tools share one sink: bytes print as they arrive, value-only redacted and byte-exact, including a last line with no trailing newline.
 
 Redirect stdout and the file or pipe gets the command's output and nothing else. The examples below use an app-defined task named `gen`; replace it with your own task. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:

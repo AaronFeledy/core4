@@ -15,7 +15,7 @@ import { wordsBeforeSeparator } from "../../command-tail";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import type { LandoCommandSpec } from "../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
@@ -83,7 +83,9 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
           ? namedCommand.filter((arg): arg is string => typeof arg === "string")
           : [];
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
+    const signal = extractSpecAbortSignal(input);
     const base = {
+      ...(signal === undefined ? {} : { signal }),
       command,
       ...(execInputUsesCliHostIo(input) ? { cliSeparatorAt: cliSeparatorAt(input) } : {}),
       ...(service === undefined ? {} : { service }),

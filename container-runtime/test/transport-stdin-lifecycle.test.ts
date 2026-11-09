@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { Socket } from "node:net";
+import { setImmediate } from "node:timers/promises";
 
 import {
   type SocketHttpConnection,
@@ -106,4 +107,42 @@ test("guards closed socket writes and handles late writer error events", () => {
   // Then
   expect(handled).toBe(true);
   expect(socket.writableLength).toBe(0);
+});
+
+test("attach stdin waits for a blocked write and remains abortable", async () => {
+  const writing = Promise.withResolvers<void>();
+  const closed = Promise.withResolvers<void>();
+  const controller = new AbortController();
+  let reads = 0;
+  const connection: SocketHttpConnection = {
+    write: (data) => {
+      if (typeof data === "string") return;
+      writing.resolve();
+      return closed.promise;
+    },
+    end: () => undefined,
+    destroy: () => closed.resolve(),
+    async *[Symbol.asyncIterator]() {
+      yield new TextEncoder().encode("HTTP/1.1 101 UPGRADED\r\n\r\n");
+      await closed.promise;
+    },
+  };
+  const stdin = {
+    async *[Symbol.asyncIterator]() {
+      for (let i = 0; i < 1000; i++) {
+        reads++;
+        yield new Uint8Array(65536);
+      }
+    },
+  };
+  const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+  const result = Array.fromAsync(
+    client.stream({ method: "POST", path: "/exec/abc/start", stdin, signal: controller.signal }),
+  );
+  await writing.promise;
+  await setImmediate();
+  const consumed = reads;
+  controller.abort();
+  await expect(result).rejects.toMatchObject({ name: "AbortError" });
+  expect(consumed).toBe(1);
 });

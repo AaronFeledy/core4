@@ -17,7 +17,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { appliedPlanPath, loadAppliedPlan, layer as makeProviderLayer } from "@lando/provider-lando";
+import { appliedPlanPath, loadAppliedPlan } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -34,6 +34,7 @@ import { makeStateStore } from "@lando/state-store/service";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 import { decodeNetworkCreate } from "./network-fixture.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
+import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("crossprocessapp");

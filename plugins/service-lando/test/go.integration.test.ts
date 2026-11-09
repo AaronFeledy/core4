@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
@@ -181,6 +182,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
               makeProviderLayer({
                 platform: "linux",
                 podmanApi: api,
+                resolveContainerHelper,
                 sanitizeAppliedPlan: stripHostProxyRunLando,
               }),
             ),

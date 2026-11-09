@@ -1,14 +1,11 @@
-import { SchemaAST as AST, Schema } from "effect";
-import { authoringSource, recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
+import { type SchemaAST as AST, Schema } from "effect";
+import { deriveAuthoringAst } from "./landofile-authoring-ast.ts";
 import {
   type AuthoringExpression,
   type AuthoringExpressionExpectedType,
   authoringExpressionSlot,
-  isPlainAuthoringString,
 } from "./landofile-authoring-expression.ts";
-import { authoringContainerFilter } from "./landofile-authoring-refinement.ts";
-import { authoringJsonContainer, authoringWireAst } from "./landofile-authoring-wire.ts";
-import { directiveMember } from "./landofile-directive-codec.ts";
+import { authoringWireAst } from "./landofile-authoring-wire.ts";
 import type {
   LandofileOverride,
   LandofileOverrideWire,
@@ -16,6 +13,8 @@ import type {
   LandofileResetWire,
 } from "./landofile-directive.ts";
 import { LandofileShape } from "./landofile.ts";
+
+export { type DeriveAuthoringOptions, deriveAuthoringAst } from "./landofile-authoring-ast.ts";
 
 type OverrideWire<T> = ReturnType<typeof LandofileOverrideWire<Schema.Codec<T>>>["Type"];
 type ResetWire = typeof LandofileResetWire.Type;
@@ -79,199 +78,6 @@ export type AuthoringDeepPartial<T> = T extends
     : T extends object
       ? { readonly [K in keyof T]?: AuthoringDeepPartial<T[K]> | undefined }
       : T;
-
-// ==== Memoized authoring projection
-export interface DeriveAuthoringOptions {
-  readonly partial: boolean;
-  readonly slotFor: (kind: AuthoringExpressionExpectedType) => AST.AST;
-  readonly rootExpression?: boolean;
-  readonly nativeDirectives?: boolean;
-  readonly directives?: boolean;
-}
-
-const caches = new WeakMap<
-  DeriveAuthoringOptions["slotFor"],
-  readonly [
-    WeakMap<AST.AST, AST.AST>,
-    WeakMap<AST.AST, AST.AST>,
-    WeakMap<AST.AST, AST.AST>,
-    WeakMap<AST.AST, AST.AST>,
-  ]
->();
-
-const union = (members: ReadonlyArray<AST.AST>, annotations?: Schema.Annotations.Annotations): AST.AST => {
-  const flattened = members.flatMap((member) =>
-    AST.isUnion(member) && Reflect.ownKeys(member.annotations ?? {}).length === 0 && !member.context
-      ? member.types
-      : [member],
-  );
-  return new AST.Union([...new Set(flattened)], undefined, annotations);
-};
-
-const authoringAnnotations = (ast: AST.AST, partial: boolean): Schema.Annotations.Annotations | undefined => {
-  const identifier = AST.resolveIdentifier(ast);
-  return identifier !== undefined
-    ? {
-        ...AST.resolve(ast),
-        identifier: `${identifier}${partial ? "AuthoringFragment" : "Authoring"}`,
-      }
-    : AST.resolve(ast);
-};
-
-const leafKind = (ast: AST.AST): "string" | "number" | "boolean" | undefined => {
-  switch (ast._tag) {
-    case "String":
-    case "TemplateLiteral":
-      return "string";
-    case "Number":
-      return "number";
-    case "Boolean":
-      return "boolean";
-    case "Literal": {
-      switch (typeof ast.literal) {
-        case "string":
-          return "string";
-        case "number":
-          return "number";
-        case "boolean":
-          return "boolean";
-        default:
-          return undefined;
-      }
-    }
-    default:
-      return undefined;
-  }
-};
-
-export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions): AST.AST => {
-  let pair = caches.get(options.slotFor);
-  if (!pair) {
-    pair = [new WeakMap(), new WeakMap(), new WeakMap(), new WeakMap()];
-    caches.set(options.slotFor, pair);
-  }
-  const derive = (node: AST.AST, allowExpression: boolean): AST.AST => {
-    const memo = options.partial
-      ? allowExpression
-        ? pair[3]
-        : pair[2]
-      : allowExpression
-        ? pair[1]
-        : pair[0];
-    const cached = memo.get(node);
-    if (cached) return cached;
-    const walked = walk(node, allowExpression);
-    const contextual = Schema.make<Schema.Codec<unknown>>(walked).annotateKey(
-      node.context?.annotations ?? {},
-    );
-    const result = AST.isOptional(node) ? Schema.optionalKey(contextual).ast : contextual.ast;
-    const source = node.encoding === undefined ? node : AST.toEncoded(node);
-    recordAuthoringSource(walked, source);
-    recordAuthoringSource(result, source);
-    memo.set(node, result);
-    return result;
-  };
-  const member = (node: AST.AST, partialKey = true): AST.AST => {
-    const derived = derive(node, true);
-    if (!options.directives) {
-      if (!options.partial) return derived;
-      const partial = Schema.optionalKey(Schema.make<Schema.Codec<unknown>>(derived)).ast;
-      recordAuthoringSource(partial, authoringSource(derived) ?? node);
-      return partial;
-    }
-    const schema = directiveMember(
-      Schema.make<Schema.Codec<unknown>>(derived),
-      options.nativeDirectives === true,
-    );
-    return (partialKey && options.partial) || AST.isOptional(derived)
-      ? Schema.optionalKey(schema).ast
-      : schema.ast;
-  };
-  const slot = (kind: AuthoringExpressionExpectedType): AST.AST => {
-    const ast = options.slotFor(kind);
-    recordExpressionSlot(ast);
-    return ast;
-  };
-  const walk = (node: AST.AST, allowExpression: boolean): AST.AST => {
-    if (node.encoding !== undefined) return derive(AST.toEncoded(node), allowExpression);
-    const kind = leafKind(node);
-    if (kind) {
-      const leaf =
-        kind === "string"
-          ? Schema.make<Schema.Codec<string>>(node).check(
-              Schema.makeFilter(isPlainAuthoringString, {
-                identifier: AST.resolveIdentifier(node),
-                title: AST.resolveTitle(node),
-                description: AST.resolveDescription(node),
-                message: "Expected plain authoring text",
-              }),
-            ).ast
-          : node;
-      return allowExpression ? union([leaf, slot(kind)]) : leaf;
-    }
-    switch (node._tag) {
-      case "Declaration": {
-        if (node.annotations?.["lando/map-input"] !== true) return node;
-        const project = node.annotations.toCodecJson;
-        const projection: unknown = typeof project === "function" ? project(node.typeParameters) : undefined;
-        return projection instanceof AST.Link ? derive(projection.to, allowExpression) : node;
-      }
-      case "Objects": {
-        const object = new AST.Objects(
-          node.propertySignatures.map(
-            (property) => new AST.PropertySignature(property.name, member(property.type)),
-          ),
-          node.indexSignatures.map(
-            (index) =>
-              new AST.IndexSignature(
-                index.parameter,
-                options.directives ? member(index.type, false) : derive(index.type, true),
-              ),
-          ),
-          authoringAnnotations(node, options.partial),
-          node.checks && [authoringContainerFilter(node, options.partial)],
-          undefined,
-          node.context,
-        );
-        const container = authoringJsonContainer(node, object) ?? object;
-        recordAuthoringSource(object, node);
-        recordAuthoringSource(container, node);
-        return allowExpression ? union([container, slot("object")]) : container;
-      }
-      case "Arrays": {
-        const tuple = new AST.Arrays(
-          node.isMutable,
-          node.elements.map((element) => derive(element, true)),
-          node.rest.map((rest) => derive(rest, true)),
-          node.annotations,
-          node.checks && [authoringContainerFilter(node, options.partial)],
-          undefined,
-          node.context,
-        );
-        const container = authoringJsonContainer(node, tuple) ?? tuple;
-        recordAuthoringSource(tuple, node);
-        recordAuthoringSource(container, node);
-        return allowExpression ? union([container, slot("array")]) : container;
-      }
-      case "Union":
-        return union(
-          node.types.map((member) => derive(member, allowExpression)),
-          authoringAnnotations(node, options.partial),
-        );
-      case "Suspend":
-        return new AST.Suspend(
-          () => derive(node.thunk(), allowExpression),
-          node.annotations,
-          undefined,
-          undefined,
-          node.context,
-        );
-      default:
-        return node;
-    }
-  };
-  return derive(ast, options.rootExpression ?? true);
-};
 
 // ==== Public schemas retain expression source on their encoded side
 interface LandofileEncoded extends Schema.Codec.Encoded<typeof LandofileShape> {}

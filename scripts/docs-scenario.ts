@@ -94,7 +94,7 @@ const run = async (
   env: Record<string, string | undefined> = {},
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
   const proc = Bun.spawn({
-    cmd,
+    cmd: [...cmd],
     cwd: REPO_ROOT,
     env: { ...process.env, ...env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}` },
     stdout: "pipe",

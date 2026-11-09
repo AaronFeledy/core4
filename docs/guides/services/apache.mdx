@@ -35,6 +35,10 @@ Your repository is mounted at `/app`. The default `webroot` is `.`, resolving to
 
 The proxy derives an HTTPS hostname from the service's HTTP endpoint without a `proxy:` block. You'll get something like `web.<app>.lndo.site`.
 
+When a request for a directory arrives through the proxy without its trailing slash, Apache redirects to the same scheme, host, and port the browser used, with the slash added.
+
+Hidden paths, meaning any path segment that starts with `.` such as `/.git/config` or `/.env`, get a 403, so your repository's dotfiles stay private even though the app root is the default webroot. `/.well-known/` stays served.
+
 Set `webroot:` to an app-relative path when Apache should serve a subdirectory. Lando resolves it against `/app`, writes the absolute path into Apache's generated config, and exposes that resolved absolute path as `LANDO_WEBROOT` and `APACHE_DOCUMENT_ROOT`. Omit it or use `.` for the app root. An absolute container path is allowed when you need a very specific location outside the usual app layout:
 
 ```yaml

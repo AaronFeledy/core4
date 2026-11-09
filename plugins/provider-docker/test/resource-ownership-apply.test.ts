@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { loadAppliedPlan, makeRuntimeProvider } from "@lando/provider-docker";
+import { loadAppliedPlan } from "@lando/provider-docker";
 import { ServiceName, landoAppNetworkName } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
 
 const CreateBodyLabels = Schema.Struct({
