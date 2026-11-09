@@ -11,7 +11,9 @@ const PendingStartPhase = Schema.Literals(["preparing", "sessions-ready", "apply
  * effect already holds is settled. Only `lando stop` and `lando destroy` abandon an
  * open attempt; `lando start` completes only after the provider applied the plan.
  */
-export const pendingStartTransitions = defineTransitions<typeof PendingStartPhase.Type>()({
+export const pendingStartTransitions = defineTransitions<
+  typeof PendingStartPhase.Type | "absent" | "foreign"
+>()({
   "record-sessions": {
     from: ["preparing"],
     to: "sessions-ready",
@@ -22,8 +24,12 @@ export const pendingStartTransitions = defineTransitions<typeof PendingStartPhas
     to: "apply-intent",
     settledIn: ["apply-intent", "completed"],
   },
-  complete: { from: ["apply-intent"], to: "completed", settledIn: ["completed"] },
-  abandon: { from: ["preparing", "sessions-ready", "apply-intent"], to: "completed" },
+  complete: { from: ["apply-intent", "completed"], to: "absent", settledIn: ["absent"] },
+  abandon: {
+    from: ["preparing", "sessions-ready", "apply-intent", "completed"],
+    to: "absent",
+    settledIn: ["absent"],
+  },
 });
 
 export type PendingStartStep = Exclude<keyof typeof pendingStartTransitions.edges, "abandon">;

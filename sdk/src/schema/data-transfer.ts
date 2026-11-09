@@ -83,15 +83,30 @@ export const VolumeRef = Schema.Struct({
 export type VolumeRef = typeof VolumeRef.Type;
 
 /** Stable provider locator for one native volume, available before creation. */
-export const VolumeLocator = Schema.Struct({
+const volumeLocatorFields = {
   coordinationKey: Schema.NonEmptyString.annotate({
     description: "Opaque configured-endpoint and native-volume key, stable across recreation.",
   }),
   nativeName: Schema.NonEmptyString.annotate({ description: "Provider-native volume name." }),
-  identity: Schema.optionalKey(VolumeIdentity).annotate({
-    description: "Observed generation and owner when the volume currently exists with provenance.",
+};
+export const VolumeLocator = Schema.Union([
+  Schema.Struct({
+    ...volumeLocatorFields,
+    presence: Schema.optionalKey(Schema.Literal("present")).annotate({
+      description: "Explicit native presence; omission means presence was not established.",
+    }),
+    identity: Schema.optionalKey(VolumeIdentity).annotate({
+      description: "Observed generation and owner when the volume currently exists with provenance.",
+    }),
   }),
-});
+  Schema.Struct({
+    ...volumeLocatorFields,
+    presence: Schema.Literal("absent").annotate({
+      description: "A successful native inspection proved the volume does not exist.",
+    }),
+    identity: Schema.optionalKey(Schema.Never),
+  }),
+]);
 export type VolumeLocator = typeof VolumeLocator.Type;
 
 /**

@@ -30,7 +30,7 @@ test.each(["ENOTDIR", "EIO", "EPERM"])(
     );
     // Then only an absent directory is empty; other errors retain their original identity.
     if (code === "ENOTDIR") {
-      expect(result).toEqual(Exit.succeed([]));
+      expect(result).toEqual(Exit.succeed({ records: [], unreadable: [] }));
     } else {
       expect(Exit.isFailure(result)).toBe(true);
       if (Exit.isFailure(result))

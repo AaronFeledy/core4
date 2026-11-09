@@ -173,7 +173,7 @@ export const INTERNAL_PERSISTED_STORES = [
     schema: PendingStart,
     version: PENDING_START_VERSION,
     source: { file: "engine/src/operations/accelerated-start-record.ts", schema: "PendingStart" },
-    lifecycle: pendingStartTransitions,
+    lifecycle: { fields: { phase: pendingStartTransitions } },
   },
   {
     id: "global-reconciliation",

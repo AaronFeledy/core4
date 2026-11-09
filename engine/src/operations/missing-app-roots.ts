@@ -1,29 +1,21 @@
 import { isGlobalScopedVolume, volumeClassFromLabels } from "@lando/container-runtime/volume-classes";
-import type { AppResolveError, NoProviderInstalledError } from "@lando/sdk/errors";
-import type { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
-import { FileSystem, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import {
+  FileSystem,
+  type ProviderRuntimeSnapshot,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
+import { Effect, Option, Result } from "effect";
+import { TeardownProvider } from "../providers/app-placement.ts";
+import { acceleratedStartInventory } from "./accelerated-start-inventory.ts";
+import { type PendingStart, digest } from "./accelerated-start-record.ts";
+import { appRootIdentityKey } from "./app-root-identity.ts";
+import type { MissingAppRoot, MissingRootScan } from "./missing-app-root-schema.ts";
+export { MissingAppRoot } from "./missing-app-root-schema.ts";
 
-export interface MissingAppRoot {
-  readonly root: AbsolutePath;
-  readonly apps: ReadonlyArray<AppId>;
-  readonly providers: ReadonlyArray<ProviderId>;
-  readonly appliedState: boolean;
-  readonly runtimeObserved: boolean;
-  readonly services: ReadonlyArray<string>;
-  readonly dataVolumes: ReadonlyArray<string>;
-  readonly cacheVolumes: ReadonlyArray<string>;
-}
-
-export const findMissingAppRoots: Effect.Effect<
-  ReadonlyArray<MissingAppRoot>,
-  AppResolveError | ProviderError | NoProviderInstalledError,
-  RuntimeProviderRegistry | FileSystem
-> = Effect.gen(function* () {
-  const registry = yield* RuntimeProviderRegistry;
+const collectMissingAppRoots = Effect.fnUntraced(function* (snapshots: readonly ProviderRuntimeSnapshot[]) {
   const fs = yield* FileSystem;
-  if (registry.observeRuntime === undefined) return [];
-  const snapshots = yield* registry.observeRuntime;
   const groups = new Map<
     AbsolutePath,
     {
@@ -34,6 +26,8 @@ export const findMissingAppRoots: Effect.Effect<
       services: Set<string>;
       dataVolumes: Set<string>;
       cacheVolumes: Set<string>;
+      journals: PendingStart[];
+      observations: Set<string>;
     }
   >();
   const groupFor = (root: AbsolutePath, app: AppId, providerId: ProviderId, runtimeObserved: boolean) => {
@@ -47,6 +41,8 @@ export const findMissingAppRoots: Effect.Effect<
         services: new Set(),
         dataVolumes: new Set(),
         cacheVolumes: new Set(),
+        journals: [],
+        observations: new Set(),
       };
       groups.set(root, group);
     }
@@ -64,8 +60,9 @@ export const findMissingAppRoots: Effect.Effect<
         plan.extensions["@lando/core/scratch"] !== undefined
       )
         continue;
-      groupFor(plan.identity.appRoot, plan.id, snapshot.providerId, snapshot.runtimeObserved).appliedState =
-        true;
+      const group = groupFor(plan.identity.appRoot, plan.id, snapshot.providerId, snapshot.runtimeObserved);
+      group.appliedState = true;
+      group.observations.add(digest(plan));
     }
     for (const service of snapshot.services) {
       if (
@@ -75,9 +72,9 @@ export const findMissingAppRoots: Effect.Effect<
         service.labels?.["dev.lando.scratch"] === "TRUE"
       )
         continue;
-      groupFor(service.appRoot, service.app, snapshot.providerId, snapshot.runtimeObserved).services.add(
-        `${service.app}/${service.service}`,
-      );
+      const group = groupFor(service.appRoot, service.app, snapshot.providerId, snapshot.runtimeObserved);
+      group.services.add(`${service.app}/${service.service}`);
+      group.observations.add(digest(service));
     }
     for (const volume of snapshot.volumes) {
       if (
@@ -95,7 +92,31 @@ export const findMissingAppRoots: Effect.Effect<
       );
       const names = volumeClassFromLabels(volume.labels) === "cache" ? group.cacheVolumes : group.dataVolumes;
       names.add(volume.identity.nativeName);
+      group.observations.add(digest(volume));
     }
+  }
+  const store = yield* Effect.serviceOption(StateStore);
+  const selected = yield* TeardownProvider;
+  const journals = Option.isNone(store)
+    ? { records: [], unreadable: [] }
+    : yield* acceleratedStartInventory.pipe(Effect.provideService(StateStore, store.value));
+  for (const { path, remediation: _remediation, ...journal } of journals.records) {
+    if (journal.appId === "global" || (selected !== undefined && selected !== journal.providerId)) continue;
+    // The filename binds app kind and root; scratch journals cannot claim a user root.
+    if (
+      !path.endsWith(
+        `${digest(appRootIdentityKey({ kind: "user", id: AppId.make(journal.appId), root: AbsolutePath.make(journal.appRoot) }, journal.appRoot))}.json`,
+      )
+    )
+      continue;
+    const observed =
+      snapshots.find((snapshot) => snapshot.providerId === journal.providerId)?.runtimeObserved ?? false;
+    groupFor(
+      AbsolutePath.make(journal.appRoot),
+      AppId.make(journal.appId),
+      ProviderId.make(journal.providerId),
+      observed,
+    ).journals.push(journal);
   }
   const results = yield* Effect.forEach(
     [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)),
@@ -116,10 +137,96 @@ export const findMissingAppRoots: Effect.Effect<
                     services: [...group.services].sort(),
                     dataVolumes: [...group.dataVolumes].sort(),
                     cacheVolumes: [...group.cacheVolumes].sort(),
+                    journals: group.journals,
                   },
                 ],
         ),
       ),
   );
-  return results.flat();
+  return {
+    candidates: results.flat(),
+    unreadableJournals: journals.unreadable,
+    identities: new Map(
+      [...groups.entries()].map(([root, group]) => [root, digest([...group.observations].sort())]),
+    ),
+  };
 });
+
+export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")(function* () {
+  const registry = yield* RuntimeProviderRegistry;
+  const selected = yield* TeardownProvider;
+  const ids = (yield* registry.list).filter((id) => selected === undefined || id === selected);
+  const scans: (typeof MissingRootScan.Type)[] = [];
+  const snapshots: ProviderRuntimeSnapshot[] = [];
+  if (registry.observeRuntime !== undefined) {
+    // Scope each scan so a broken provider cannot hide another provider's leftovers.
+    for (const id of ids) {
+      const state =
+        registry.appliedStateInventory === undefined
+          ? undefined
+          : yield* registry.appliedStateInventory(id).pipe(Effect.result);
+      const result = yield* registry.observeRuntime.pipe(
+        Effect.provideService(TeardownProvider, id),
+        Effect.result,
+      );
+      if (Result.isFailure(result)) {
+        if (state !== undefined && Result.isSuccess(state))
+          snapshots.push({
+            providerId: id,
+            runtimeObserved: false,
+            appliedPlans: state.success.plans,
+            services: [],
+            volumes: [],
+          });
+        scans.push({
+          providerId: id,
+          runtimeObserved: false,
+          complete: false,
+          message: result.failure.message,
+          errorTag: result.failure._tag,
+          remediation: result.failure.remediation,
+        });
+      } else {
+        const providerSnapshots = result.success.filter((item) => item.providerId === id);
+        snapshots.push(...providerSnapshots);
+        const observed = providerSnapshots[0]?.runtimeObserved === true;
+        const stateFailure = state !== undefined && Result.isFailure(state) ? state.failure : undefined;
+        const unreadable =
+          state !== undefined && Result.isSuccess(state) ? state.success.unreadable.length : 0;
+        scans.push({
+          providerId: id,
+          runtimeObserved: observed,
+          complete: observed && stateFailure === undefined && unreadable === 0,
+          message:
+            stateFailure?.message ??
+            (unreadable > 0
+              ? `${unreadable} applied-state records could not be read.`
+              : observed
+                ? "Runtime resources inspected."
+                : "Runtime not observed; containers and volumes are not listed."),
+          ...(stateFailure !== undefined
+            ? { errorTag: stateFailure._tag, remediation: stateFailure.remediation }
+            : unreadable > 0
+              ? {
+                  errorTag: "AppResolveError",
+                  remediation: "Repair the unreadable applied-state records, then rerun apps:gc.",
+                }
+              : {}),
+        });
+      }
+    }
+    if (ids.length === 0 && selected === undefined) snapshots.push(...(yield* registry.observeRuntime));
+  } else {
+    for (const id of ids)
+      scans.push({
+        providerId: id,
+        runtimeObserved: false,
+        complete: false,
+        message: "The provider has no runtime observer; containers and volumes are not listed.",
+      });
+  }
+  const inventory = yield* collectMissingAppRoots(snapshots);
+  return { ...inventory, scans };
+});
+
+export const findMissingAppRoots = scanMissingAppRoots().pipe(Effect.map(({ candidates }) => candidates));

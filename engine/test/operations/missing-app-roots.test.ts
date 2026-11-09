@@ -109,6 +109,7 @@ test("groups applied state, services and native data/cache volumes across provid
       services: ["app/web", "other/db"],
       dataVolumes: ["data"],
       cacheVolumes: ["cache"],
+      journals: [],
     },
   ]);
 });
