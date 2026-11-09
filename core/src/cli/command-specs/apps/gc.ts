@@ -90,7 +90,10 @@ export const appsGcSpec: LandoCommandSpec<AppsGcReport> = {
   render: renderAppsGcReport,
   completion: (report) =>
     report.prune &&
-    report.roots.some((root) => root.confirmed && (root.outcome === "failed" || root.outcome === "retained"))
+    (report.unreadableJournals.length > 0 ||
+      report.roots.some(
+        (root) => root.confirmed && (root.outcome === "failed" || root.outcome === "retained"),
+      ))
       ? { ok: false, exitCode: 1 }
       : { ok: true, exitCode: 0 },
 };

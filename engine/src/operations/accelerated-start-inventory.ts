@@ -71,6 +71,7 @@ export const sweepCompletedAcceleratedStarts = Effect.fn("AppOperation.sweepComp
       if (record.phase !== "completed") continue;
       if (providerId !== undefined && record.providerId !== providerId) continue;
       const key = basename(record.path);
+      let swept = false;
       const result = yield* Effect.gen(function* () {
         const bucket = yield* store.open(pendingStartBucketSpec(key));
         yield* bucket.transition({
@@ -83,7 +84,10 @@ export const sweepCompletedAcceleratedStarts = Effect.fn("AppOperation.sweepComp
             !sameStartIdentity(current, record)
               ? "absent"
               : "completed",
-          next: () => null,
+          next: () => {
+            swept = true;
+            return null;
+          },
           illegal: () =>
             new StateStoreError({
               reason: "io",
@@ -93,8 +97,8 @@ export const sweepCompletedAcceleratedStarts = Effect.fn("AppOperation.sweepComp
             }),
         });
       }).pipe(Effect.result);
-      if (Result.isSuccess(result)) removed++;
-      else unreadable.push(unreadableJournal(record.path, result.failure));
+      if (Result.isFailure(result)) unreadable.push(unreadableJournal(record.path, result.failure));
+      else if (swept) removed++;
     }
     return { removed, unreadable };
   },

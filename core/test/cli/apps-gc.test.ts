@@ -148,6 +148,22 @@ test("apps:gc retains its batch result and exits nonzero when a confirmed root d
     ).toEqual({ ok: false, exitCode: 1 });
   }
   expect(appsGcSpec.completion?.(report, undefined)).toEqual({ ok: true, exitCode: 0 });
+  const unreadableJournals = [
+    {
+      path: "/state/broken.json",
+      _tag: "StateStoreError",
+      message: "Cannot decode",
+      remediation: "Repair it.",
+    },
+  ];
+  expect(appsGcSpec.completion?.({ ...report, prune: true, unreadableJournals }, undefined)).toEqual({
+    ok: false,
+    exitCode: 1,
+  });
+  expect(appsGcSpec.completion?.({ ...report, unreadableJournals }, undefined)).toEqual({
+    ok: true,
+    exitCode: 0,
+  });
 });
 
 test("apps:gc is destructive and does not self-allow MCP or claim a top-level alias", () => {
