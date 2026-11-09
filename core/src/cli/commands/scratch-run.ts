@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Option, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 
@@ -161,7 +162,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
       });
       const service = yield* resolveRunService(options.service, plan);
       const provider = yield* registry.select(plan).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ScratchAppError({
               message: `Unable to select a provider for scratch app ${handle.id}.`,
@@ -194,7 +195,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         },
         sink,
       ).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ScratchAppError({
               message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,

@@ -11,6 +11,7 @@ export {
   commandFailureCause,
   failureDefectCause,
   failureOutcomeFromCause,
+  mapDefectCause,
   mapFailureCause,
   mapFailures,
   mapStreamFailures,

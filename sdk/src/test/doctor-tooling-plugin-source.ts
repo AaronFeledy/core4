@@ -1,4 +1,5 @@
 import { sep } from "node:path";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
 
@@ -137,7 +138,7 @@ export const runDoctorCheckContractSuite = Effect.fnUntraced(function* (
   const result = yield* harness.check
     .run({ fix: false })
     .pipe(
-      Effect.mapError((cause) => doctorCheckContractFailure(`${label}: run({ fix: false }) resolves`, cause)),
+      mapFailures((cause) => doctorCheckContractFailure(`${label}: run({ fix: false }) resolves`, cause)),
     );
   yield* requireDoctorCheckContract(
     Array.isArray(result.issues),
@@ -189,9 +190,7 @@ export const runDoctorCheckContractSuite = Effect.fnUntraced(function* (
     yield* harness.check
       .run({ fix: false })
       .pipe(
-        Effect.mapError((cause) =>
-          doctorCheckContractFailure(`${label}: read-only probe run resolves`, cause),
-        ),
+        mapFailures((cause) => doctorCheckContractFailure(`${label}: read-only probe run resolves`, cause)),
       );
     const unchanged = yield* harness.readOnlyProbe.assertUnchanged(readOnlyBaseline);
     yield* requireDoctorCheckContract(
@@ -206,9 +205,7 @@ export const runDoctorCheckContractSuite = Effect.fnUntraced(function* (
     yield* harness.check
       .run({ fix: true })
       .pipe(
-        Effect.mapError((cause) =>
-          doctorCheckContractFailure(`${label}: run({ fix: true }) resolves`, cause),
-        ),
+        mapFailures((cause) => doctorCheckContractFailure(`${label}: run({ fix: true }) resolves`, cause)),
       );
     const fixed = yield* harness.fixProbe;
     yield* requireDoctorCheckContract(
@@ -394,9 +391,7 @@ export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
   const okRun = harness.okScenario.makeProvider();
   const okResult = yield* engine
     .run(harness.okScenario.invocation, harness.okScenario.plan, okRun.provider)
-    .pipe(
-      Effect.mapError((cause) => toolingEngineContractFailure(`${label}: ok scenario run resolves`, cause)),
-    );
+    .pipe(mapFailures((cause) => toolingEngineContractFailure(`${label}: ok scenario run resolves`, cause)));
   yield* requireToolingEngineContract(
     stableJson(okResult) === stableJson(harness.okScenario.expected),
     `${label}: run produces the expected aggregated result`,
@@ -413,7 +408,7 @@ export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
   const okResultAgain = yield* engine
     .run(harness.okScenario.invocation, harness.okScenario.plan, okRunAgain.provider)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         toolingEngineContractFailure(`${label}: repeat ok scenario run resolves`, cause),
       ),
     );
@@ -428,7 +423,7 @@ export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
   const failResult = yield* engine
     .run(harness.failScenario.invocation, harness.failScenario.plan, failRun.provider)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         toolingEngineContractFailure(`${label}: fail scenario run resolves with a non-zero result`, cause),
       ),
     );
@@ -505,7 +500,7 @@ export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
     const result = yield* engine
       .run(probe.invocation, probe.plan, probe.makeProvider().provider)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           toolingEngineContractFailure(`${label}: redaction scenario run resolves`, cause),
         ),
       );
@@ -607,9 +602,7 @@ export const runPluginSourceContractSuite = Effect.fnUntraced(function* <Spec>(
   // --- a contained spec resolves to a realpath under the managed store ---
   const contained = yield* harness
     .resolve(harness.containedSpec)
-    .pipe(
-      Effect.mapError((cause) => pluginSourceContractFailure(`${label}: contained spec resolves`, cause)),
-    );
+    .pipe(mapFailures((cause) => pluginSourceContractFailure(`${label}: contained spec resolves`, cause)));
   const root = harness.managedStoreRoot;
   const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
   yield* requirePluginSourceContract(
@@ -622,9 +615,7 @@ export const runPluginSourceContractSuite = Effect.fnUntraced(function* <Spec>(
   const containedAgain = yield* harness
     .resolve(harness.containedSpec)
     .pipe(
-      Effect.mapError((cause) =>
-        pluginSourceContractFailure(`${label}: repeat contained spec resolves`, cause),
-      ),
+      mapFailures((cause) => pluginSourceContractFailure(`${label}: repeat contained spec resolves`, cause)),
     );
   yield* requirePluginSourceContract(
     contained === containedAgain,
@@ -656,9 +647,7 @@ export const runPluginSourceContractSuite = Effect.fnUntraced(function* <Spec>(
   if (harness.networkTrustProbe) {
     const probe = harness.networkTrustProbe;
     yield* probe.resolve.pipe(
-      Effect.mapError((cause) =>
-        pluginSourceContractFailure(`${label}: network-trust resolve resolves`, cause),
-      ),
+      mapFailures((cause) => pluginSourceContractFailure(`${label}: network-trust resolve resolves`, cause)),
     );
     const observed = yield* probe.observed;
     yield* requirePluginSourceContract(
@@ -685,7 +674,7 @@ export const runPluginSourceContractSuite = Effect.fnUntraced(function* <Spec>(
     yield* probe
       .resolve(probe.spec)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           pluginSourceContractFailure(`${label}: offline-locked resolve resolves`, cause),
         ),
       );

@@ -2,6 +2,7 @@ import { join, normalize, sep } from "node:path";
 import { canonicalMissingAppRoot } from "@lando/engine/operations/app-mutation-lock";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { eligibleBindingPath } from "@lando/landofile/secret-reference";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   optionValueMatchesDescriptor,
   validateOptionValues,
@@ -51,7 +52,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   };
   const { compiled } = request;
   const appRoot = yield* canonicalMissingAppRoot(request.appRoot).pipe(
-    Effect.mapError(() => blocked("validate")),
+    mapFailures(() => blocked("validate")),
   );
   const destinationAnchor = yield* Effect.tryPromise({
     try: () => observeInitDestinationAnchor(appRoot),
@@ -60,7 +61,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   const manifest = compiled.manifest;
   const snapshot = compiled.snapshot;
   const secrets = yield* Effect.fromResult(validateRecipeSecretPrompts(manifest)).pipe(
-    Effect.mapError(() => blocked("secret-prompts")),
+    mapFailures(() => blocked("secret-prompts")),
   );
   for (const { disposition } of secrets) {
     if (disposition.kind !== "secret-store") continue;
@@ -134,7 +135,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   );
   const answers = yield* Effect.fromResult(
     validateOptionValues(presentTypes, snapshot.defaults, supplied),
-  ).pipe(Effect.mapError(() => blocked("validate")));
+  ).pipe(mapFailures(() => blocked("validate")));
   if (missing.length > 0) return { status: "requires-input", missing } as const;
   const encoded = yield* encodeRecipeLandofile({
     ...request,

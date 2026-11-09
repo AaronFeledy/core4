@@ -551,6 +551,7 @@
       "identityRedactor",
       "internalErrorRemediation",
       "listSelectableResultKeys",
+      "mapDefectCause",
       "mapFailureCause",
       "mapFailures",
       "mapStreamFailures",

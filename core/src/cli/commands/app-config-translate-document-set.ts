@@ -1,6 +1,7 @@
 import { basename, relative } from "node:path";
 import { LANDOFILE_LAYER_POSITIONS, presentLandofileLayers } from "@lando/landofile/layers";
 import { parseLandofile } from "@lando/landofile/parser";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError, type LandofileFormConflictError } from "@lando/sdk/errors";
 import { decodeLandofileAuthoringLayer } from "@lando/sdk/landofile";
 import type {
@@ -137,7 +138,7 @@ export const lowerV4LayerFragments: (
       Effect.flatMap((value) =>
         Schema.encodeEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
       ),
-      Effect.mapError(invalidFragment),
+      mapFailures(invalidFragment),
       Effect.map((fragment): ConfigTranslateLayerFragment => ({ layerId: layer, fragment })),
     );
   });

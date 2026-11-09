@@ -1,4 +1,5 @@
 import { Duration, Effect, Fiber, Result } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import {
   DatasetBindingError,
@@ -142,10 +143,10 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
 
   const firstEnvs = yield* source
     .listEnvironments(harness.config)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("listEnvironments resolves")));
+    .pipe(mapFailures(mapRemoteSyncFailure("listEnvironments resolves")));
   const secondEnvs = yield* source
     .listEnvironments(harness.config)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("listEnvironments is repeatable")));
+    .pipe(mapFailures(mapRemoteSyncFailure("listEnvironments is repeatable")));
   yield* requireRemoteSyncContract(
     JSON.stringify(firstEnvs) === JSON.stringify(secondEnvs) &&
       firstEnvs.some((env) => env.id === harness.supportedEnv) &&
@@ -156,10 +157,10 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
 
   const locator = yield* source
     .resolve(harness.config, harness.supportedEnv, harness.supportedDataset)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("resolve returns a locator for a supported env/dataset")));
+    .pipe(mapFailures(mapRemoteSyncFailure("resolve returns a locator for a supported env/dataset")));
   const locatorAgain = yield* source
     .resolve(harness.config, harness.supportedEnv, harness.supportedDataset)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("resolve is repeatable")));
+    .pipe(mapFailures(mapRemoteSyncFailure("resolve is repeatable")));
   yield* requireRemoteSyncContract(
     JSON.stringify(locator) === JSON.stringify(locatorAgain) &&
       locator.env === harness.supportedEnv &&
@@ -192,7 +193,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
   const delegationsBefore = (yield* harness.observations.datasetDelegations()).length;
   const finalizersBefore = (yield* harness.observations.finalizers()).length;
   const fetched = yield* Effect.scoped(source.fetch(locator)).pipe(
-    Effect.mapError(mapRemoteSyncFailure("fetch resolves under a Scope")),
+    mapFailures(mapRemoteSyncFailure("fetch resolves under a Scope")),
   );
   yield* requireRemoteSyncContract(
     fetched._tag === "hostArchive" || fetched._tag === "stream" || fetched._tag === "artifact",
@@ -244,7 +245,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
 
   const noPushLocator = yield* harness.noPushSource
     .resolve(harness.config, harness.supportedEnv, harness.supportedDataset)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("no-push source resolves supported locator")));
+    .pipe(mapFailures(mapRemoteSyncFailure("no-push source resolves supported locator")));
   const noPushSend = yield* Effect.result(
     Effect.scoped(harness.noPushSource.send(noPushLocator, harness.artifact)),
   );
@@ -256,7 +257,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
 
   const protectedLocator = yield* source
     .resolve(harness.config, harness.protectedEnv, harness.supportedDataset)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("resolve returns a protected locator")));
+    .pipe(mapFailures(mapRemoteSyncFailure("resolve returns a protected locator")));
   const protectedWithoutForce = yield* Effect.result(
     Effect.scoped(source.send(protectedLocator, harness.artifact)),
   );
@@ -271,7 +272,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
   const sendDelegationsBefore = (yield* harness.observations.datasetDelegations()).length;
   const sendFinalizersBefore = (yield* harness.observations.finalizers()).length;
   yield* Effect.scoped(source.send(protectedLocator, harness.artifact, { protectedEnvConfirmed: true })).pipe(
-    Effect.mapError(mapRemoteSyncFailure("confirmed protected send resolves under a Scope")),
+    mapFailures(mapRemoteSyncFailure("confirmed protected send resolves under a Scope")),
   );
   const egressAfterSend = yield* harness.observations.egressRequests();
   const delegationsAfterSend = yield* harness.observations.datasetDelegations();
@@ -317,7 +318,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
   const testResult = yield* (
     source.test?.(harness.config, harness.supportedEnv) ??
     Effect.fail(remoteSyncContractFailure("RemoteSource exposes a readiness test method"))
-  ).pipe(Effect.mapError(mapRemoteSyncFailure("readiness test resolves")));
+  ).pipe(mapFailures(mapRemoteSyncFailure("readiness test resolves")));
   yield* requireRemoteSyncContract(
     testResult.ok === true &&
       (yield* harness.observations.probes()).length > probesBefore &&
@@ -370,13 +371,13 @@ export const runDatasetContract = Effect.fnUntraced(function* (
 
   const localStore = yield* dataset
     .localStore(harness.context)
-    .pipe(Effect.mapError(mapRemoteSyncFailure("localStore resolves")));
+    .pipe(mapFailures(mapRemoteSyncFailure("localStore resolves")));
   yield* requireRemoteSyncContract(localStore !== null, "Dataset reports its local store", localStore);
 
   const transfersBefore = (yield* harness.observations.dataMoverTransfers()).length;
   const streamsBefore = (yield* harness.observations.dataMoverStreams()).length;
   const artifact = yield* Effect.scoped(dataset.capture(harness.context)).pipe(
-    Effect.mapError(mapRemoteSyncFailure("capture produces an artifact")),
+    mapFailures(mapRemoteSyncFailure("capture produces an artifact")),
   );
   yield* requireRemoteSyncContract(
     artifact._tag === "hostArchive" || artifact._tag === "stream" || artifact._tag === "artifact",
@@ -384,7 +385,7 @@ export const runDatasetContract = Effect.fnUntraced(function* (
     artifact,
   );
   const applied = yield* Effect.scoped(dataset.apply(harness.context, artifact, { snapshot: true })).pipe(
-    Effect.mapError(mapRemoteSyncFailure("apply consumes the artifact")),
+    mapFailures(mapRemoteSyncFailure("apply consumes the artifact")),
   );
   yield* requireRemoteSyncContract(applied.changed === true, "first apply reports a change", applied);
   const appliedBytes = yield* harness.readAppliedBytes();
@@ -424,7 +425,7 @@ export const runDatasetContract = Effect.fnUntraced(function* (
   );
 
   const replay = yield* Effect.scoped(dataset.apply(harness.context, artifact)).pipe(
-    Effect.mapError(mapRemoteSyncFailure("replay apply resolves")),
+    mapFailures(mapRemoteSyncFailure("replay apply resolves")),
   );
   yield* requireRemoteSyncContract(
     replay.changed === false,
@@ -534,7 +535,7 @@ export const runTunnelServiceContract = Effect.fnUntraced(function* (
   const probesBefore = (yield* harness.observations.probes()).length;
   const finalizersBefore = (yield* harness.observations.finalizers()).length;
   const session = yield* Effect.scoped(service.start({ app: TEST_APP_ID, target })).pipe(
-    Effect.mapError(mapTunnelFailure("foreground start resolves under a Scope")),
+    mapFailures(mapTunnelFailure("foreground start resolves under a Scope")),
   );
   yield* requireTunnelContract(
     session.provider === service.id && session.status === "ready" && session.detached === false,
@@ -559,10 +560,10 @@ export const runTunnelServiceContract = Effect.fnUntraced(function* (
 
   const status = yield* service
     .status({ sessionId: session.id })
-    .pipe(Effect.mapError(mapTunnelFailure("status resolves for a started session")));
+    .pipe(mapFailures(mapTunnelFailure("status resolves for a started session")));
   const listed = yield* service
     .list({ app: TEST_APP_ID })
-    .pipe(Effect.mapError(mapTunnelFailure("list resolves for an app filter")));
+    .pipe(mapFailures(mapTunnelFailure("list resolves for an app filter")));
   yield* requireTunnelContract(
     status === "ready" && listed.some((entry) => entry.id === session.id),
     "status/list report a started session",
@@ -570,16 +571,16 @@ export const runTunnelServiceContract = Effect.fnUntraced(function* (
   );
   yield* service
     .stop({ sessionId: session.id })
-    .pipe(Effect.mapError(mapTunnelFailure("stop resolves for a started session")));
+    .pipe(mapFailures(mapTunnelFailure("stop resolves for a started session")));
   const stopped = yield* service
     .status({ sessionId: session.id })
-    .pipe(Effect.mapError(mapTunnelFailure("status resolves after stop")));
+    .pipe(mapFailures(mapTunnelFailure("status resolves after stop")));
   yield* requireTunnelContract(stopped === "stopped", "stop updates session status to stopped", stopped);
 
   let detached: TunnelSession | undefined;
   if (service.capabilities.detached) {
     detached = yield* Effect.scoped(service.start({ app: TEST_APP_ID, target, detached: true })).pipe(
-      Effect.mapError(mapTunnelFailure("detached start resolves when advertised")),
+      mapFailures(mapTunnelFailure("detached start resolves when advertised")),
     );
   }
   if (detached !== undefined) {
@@ -592,10 +593,10 @@ export const runTunnelServiceContract = Effect.fnUntraced(function* (
   if (detached !== undefined) {
     const detachedStatus = yield* service
       .status({ sessionId: detached.id })
-      .pipe(Effect.mapError(mapTunnelFailure("status resolves for a detached session")));
+      .pipe(mapFailures(mapTunnelFailure("status resolves for a detached session")));
     const detachedListed = yield* service
       .list({ app: TEST_APP_ID })
-      .pipe(Effect.mapError(mapTunnelFailure("list resolves for a detached session")));
+      .pipe(mapFailures(mapTunnelFailure("list resolves for a detached session")));
     yield* requireTunnelContract(
       detachedStatus === "ready" && detachedListed.some((entry) => entry.id === detached.id),
       "status/list reconcile detached session state when advertised",
@@ -603,10 +604,10 @@ export const runTunnelServiceContract = Effect.fnUntraced(function* (
     );
     yield* service
       .stop({ sessionId: detached.id })
-      .pipe(Effect.mapError(mapTunnelFailure("stop resolves for a detached session")));
+      .pipe(mapFailures(mapTunnelFailure("stop resolves for a detached session")));
     const detachedStopped = yield* service
       .status({ sessionId: detached.id })
-      .pipe(Effect.mapError(mapTunnelFailure("status resolves after detached stop")));
+      .pipe(mapFailures(mapTunnelFailure("status resolves after detached stop")));
     yield* requireTunnelContract(
       detachedStopped === "stopped",
       "detached stop updates session status to stopped when advertised",

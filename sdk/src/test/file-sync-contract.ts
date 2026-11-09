@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { DateTime, Effect, Result, Schema, Stream } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import {
@@ -141,7 +142,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
   yield* requireFileSyncContract(isStream(engine.streamEvents(sentinelRef)), "streamEvents returns a Stream");
 
   const isAvailable = yield* engine.isAvailable.pipe(
-    Effect.mapError((details: FileSyncError) =>
+    mapFailures((details: FileSyncError) =>
       fileSyncContractFailure("isAvailable resolves", details as unknown),
     ),
   );
@@ -152,9 +153,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
   );
 
   yield* Effect.scoped(engine.setup({ force: false })).pipe(
-    Effect.mapError((details: FileSyncError) =>
-      fileSyncContractFailure("setup resolves", details as unknown),
-    ),
+    mapFailures((details: FileSyncError) => fileSyncContractFailure("setup resolves", details as unknown)),
   );
 
   yield* Effect.scoped(
@@ -163,7 +162,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       const ref = yield* engine
         .createSession(lifecycleSpec)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("createSession resolves for the contract fixture", details as unknown),
           ),
         );
@@ -176,7 +175,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       const listed = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves", details as unknown),
           ),
         );
@@ -194,7 +193,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .flushSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("flushSession resolves after create", details as unknown),
           ),
         );
@@ -202,14 +201,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .pauseSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("pauseSession resolves", details as unknown),
           ),
         );
       const afterPause = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves after pause", details as unknown),
           ),
         );
@@ -222,7 +221,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .pauseSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("pauseSession is idempotent", details as unknown),
           ),
         );
@@ -230,14 +229,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .resumeSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("resumeSession resolves", details as unknown),
           ),
         );
       const afterResume = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves after resume", details as unknown),
           ),
         );
@@ -249,7 +248,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .flushSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("flushSession resolves after resume", details as unknown),
           ),
         );
@@ -257,14 +256,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .terminateSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("terminateSession resolves", details as unknown),
           ),
         );
       const afterTerminate = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves after terminate", details as unknown),
           ),
         );
@@ -277,7 +276,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .terminateSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("terminateSession is idempotent", details as unknown),
           ),
         );
@@ -290,7 +289,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
     engine
       .createSession(buildFileSyncContractSpec("scope-finalizer"))
       .pipe(
-        Effect.mapError((details: FileSyncError) =>
+        mapFailures((details: FileSyncError) =>
           fileSyncContractFailure("createSession registers a scope finalizer", details as unknown),
         ),
       ),
@@ -298,7 +297,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
   const afterScope = yield* engine
     .listSessions({})
     .pipe(
-      Effect.mapError((details: FileSyncError) =>
+      mapFailures((details: FileSyncError) =>
         fileSyncContractFailure("listSessions resolves after scope finalization", details as unknown),
       ),
     );
@@ -313,14 +312,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
     yield* engine
       .terminateSession(scopeFinalizedRef)
       .pipe(
-        Effect.mapError((details: FileSyncError) =>
+        mapFailures((details: FileSyncError) =>
           fileSyncContractFailure("persistent session explicit teardown resolves", details),
         ),
       );
     const afterTeardown = yield* engine
       .listSessions({})
       .pipe(
-        Effect.mapError((details: FileSyncError) =>
+        mapFailures((details: FileSyncError) =>
           fileSyncContractFailure("listSessions resolves after persistent session teardown", details),
         ),
       );
@@ -375,7 +374,7 @@ export const runFileSyncAppLifecycleContract = Effect.fnUntraced(function* (
     lifecycle
       .disposalPhase(app)
       .pipe(
-        Effect.mapError((details) => fileSyncContractFailure(`disposalPhase resolves ${assertion}`, details)),
+        mapFailures((details) => fileSyncContractFailure(`disposalPhase resolves ${assertion}`, details)),
       );
   const requirePhase = (expected: FileSyncDisposalPhase, assertion: string) =>
     phase(assertion).pipe(
@@ -397,9 +396,7 @@ export const runFileSyncAppLifecycleContract = Effect.fnUntraced(function* (
       const before = yield* phase(`before ${operation}`);
       const expected = yield* nextPhase(operation, before);
       yield* invoke(operation).pipe(
-        Effect.mapError((details) =>
-          fileSyncContractFailure(`${operation} resolves from ${before}`, details),
-        ),
+        mapFailures((details) => fileSyncContractFailure(`${operation} resolves from ${before}`, details)),
       );
       yield* requirePhase(expected, `after ${operation} from ${before}`);
     });
@@ -407,7 +404,7 @@ export const runFileSyncAppLifecycleContract = Effect.fnUntraced(function* (
     const before = yield* phase("before createSession");
     const expected = yield* nextPhase("createSession", before);
     yield* Effect.scoped(engine.createSession(spec)).pipe(
-      Effect.mapError((details) => fileSyncContractFailure(`createSession resolves from ${before}`, details)),
+      mapFailures((details) => fileSyncContractFailure(`createSession resolves from ${before}`, details)),
     );
     yield* requirePhase(expected, `after createSession from ${before}`);
   });
@@ -540,7 +537,7 @@ export const runFileSyncEngineContractMatrix = Effect.fnUntraced(function* (
       );
       const engine = yield* cell
         .factory()
-        .pipe(Effect.mapError(mapFileSyncFailure(`matrix cell ${cell.platform} factory resolves`)));
+        .pipe(mapFailures(mapFileSyncFailure(`matrix cell ${cell.platform} factory resolves`)));
       yield* runFileSyncEngineContract(engine);
       results.push({ platform: cell.platform, outcome: "passed" });
     } else {

@@ -37,6 +37,19 @@ export const mapFailureCause = <E, E2>(
     }),
   );
 
+/** Sanitize defects at payload boundaries without changing reason kinds, roles or annotations. */
+export const mapDefectCause = <E>(
+  cause: Cause.Cause<E>,
+  f: (defect: unknown, role: FailureRole | undefined) => unknown,
+): Cause.Cause<E> =>
+  Cause.fromReasons(
+    cause.reasons.map((reason) =>
+      Cause.isDieReason(reason)
+        ? Cause.makeDieReason(f(reason.defect, roleOf(reason))).annotate(Cause.reasonAnnotations(reason))
+        : reason,
+    ),
+  );
+
 /** Map every typed failure with its role and annotations, leaving Die and Interrupt reasons untouched. */
 export const mapFailures: {
   <E, E2>(

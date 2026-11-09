@@ -1,11 +1,42 @@
 import { expect, test } from "bun:test";
 import {
   FailureRoleAnnotation,
+  mapDefectCause,
   mapFailures,
   mapStreamFailures,
   mergeFailure,
 } from "@lando/sdk/command-result";
 import { Cause, Context, Effect, Exit, Stream } from "effect";
+
+test("defect sanitization retains every reason, its kind and annotations", () => {
+  const annotation = Context.Reference("test/defect-mapping", { defaultValue: () => "absent" });
+  const cause = Cause.annotate(
+    Cause.combine(
+      mergeFailure(Cause.die("private-primary"), Cause.die("private-cleanup"), "cleanup"),
+      Cause.combine(Cause.fail("typed"), Cause.interrupt(7)),
+    ),
+    Context.make(annotation, "present"),
+  );
+
+  const sanitized = mapDefectCause(cause, (_defect, role) => `safe:${role ?? "primary"}`);
+
+  expect(sanitized.reasons.map((reason) => reason._tag)).toEqual(["Die", "Die", "Fail", "Interrupt"]);
+  expect(sanitized.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual([
+    "safe:primary",
+    "safe:cleanup",
+  ]);
+  expect(sanitized.reasons.filter((reason) => !Cause.isDieReason(reason))).toEqual(
+    cause.reasons.filter((reason) => !Cause.isDieReason(reason)),
+  );
+  expect(
+    sanitized.reasons.map((reason) =>
+      Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+    ),
+  ).toEqual([undefined, "cleanup", undefined, undefined]);
+  expect(sanitized.reasons.map((reason) => Context.get(Cause.reasonAnnotations(reason), annotation))).toEqual(
+    ["present", "present", "present", "present"],
+  );
+});
 
 for (const kind of ["effect", "stream"] as const) {
   for (const style of ["data-first", "pipeable"] as const) {

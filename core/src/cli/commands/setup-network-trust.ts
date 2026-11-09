@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
@@ -183,7 +184,7 @@ export const resolveSetupNetworkTrust = Effect.fnUntraced(function* (
   });
 
   const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new SetupNetworkTrustError({
           kind: "missing-custom-ca",

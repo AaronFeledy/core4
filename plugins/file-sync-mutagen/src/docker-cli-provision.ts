@@ -1,5 +1,6 @@
 import { lstat, mkdir, readdir, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Schema, type Scope } from "effect";
 
@@ -132,7 +133,7 @@ const ensurePrivateConfigDir = Effect.fn("MutagenDockerCli.ensurePrivateConfigDi
     ) {
       const result = yield* runner
         .run({ cmd, args, timeoutMs: 15000, windowsHide: true })
-        .pipe(Effect.mapError(configPathError));
+        .pipe(mapFailures(configPathError));
       if (result.exitCode !== 0) {
         return yield* Effect.fail(
           configPathError(new Error(`ACL command failed with exit code ${result.exitCode}.`)),
