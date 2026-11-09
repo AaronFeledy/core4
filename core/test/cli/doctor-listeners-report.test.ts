@@ -6,6 +6,7 @@ import { TestClock } from "effect/testing";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { doctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { listenerProvider, listenerReportLayers, withListenerApp } from "./doctor-listeners-fixture.ts";
+import { healthyFilesystemWatch } from "./doctor-watch-fixture.ts";
 
 test("preserves provider results and success when the app listener section exhausts its budget", async () => {
   // Given a readable applied plan whose listener inspection cannot finish.
@@ -28,7 +29,7 @@ test("preserves provider results and success when the app listener section exhau
         yield* Deferred.await(started);
         yield* TestClock.adjust("1000 millis");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer())),
+      }).pipe(Effect.provide(healthyFilesystemWatch), Effect.provide(TestClock.layer())),
     );
     // Then the provider verdict survives and listener unavailability cannot fail completion.
     expect(report.provider.checks).toContainEqual(expect.objectContaining({ name: "selected-provider" }));

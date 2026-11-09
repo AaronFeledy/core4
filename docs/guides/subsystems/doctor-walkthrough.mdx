@@ -105,8 +105,14 @@ Read the orphan report before deleting anything. Without `--prune`, this command
   <Scenario id="listeners-no-plan" render={false} reason="The test provider cannot observe real container listeners; verify the no-applied-plan skip instead.">
     <Step name="inspect-unstarted-app">
       <UseFixture name="unstarted-app" />
-      <Run command="lando doctor --app --format=json" />
-      <Verify command="lando doctor --app --format=json" expect={{ stdout: { regex: "No applied plan was found" } }} />
+      <Run runtime="library" displayCode="lando doctor --app --format=json" code={`const run = yield* context.runCli(["doctor", "--app", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.appListeners.checks).toEqual([]);
+expect(report.result.skipped).toContainEqual({
+  section: "app-listeners",
+  status: "skipped",
+  reason: "No applied plan was found for the current app; no listeners were observed.",
+});`} />
     </Step>
   </Scenario>
 </Guide>
