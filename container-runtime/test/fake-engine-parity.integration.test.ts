@@ -108,6 +108,10 @@ for (const backend of ["fake", "live"] as const) {
         })),
       ).toEqual([{ ref: { app, store: name, scope: "app" }, instanceId: generation, provenance: "known" }]);
       expect(await Effect.runPromise(plane.removeVolume({ app, store: name }, generation))).toBeUndefined();
+      const inspected = await Effect.runPromise(
+        request({ method: "GET", path: `/volumes/${encodeURIComponent(name)}` }),
+      );
+      expect(inspected.status).toBe(404);
     } finally {
       const removed = await Effect.runPromise(
         request({ method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }),

@@ -19,18 +19,13 @@ import {
 
 import { Filters, type Operation, route } from "./fake-engine-routes.ts";
 export type { Operation } from "./fake-engine-routes.ts";
-type Injection = {
-  readonly effect: Effect.Effect<DataPlaneHttpResponse, ProviderError>;
-  readonly once: boolean;
-};
-
 export class FakeEngine implements DataPlaneApiClient {
   readonly containers = new FakeContainers();
   readonly assets = new FakeAssets();
   readonly requests: { readonly operation: Operation; readonly method: string; readonly path: string }[] = [];
   readonly httpRequests: DataPlaneHttpRequest[] = [];
   onRequest: (input: DataPlaneHttpRequest) => void = () => {};
-  readonly injections = new Map<Operation, Injection[]>();
+  private readonly injections = new Map<Operation, Effect.Effect<DataPlaneHttpResponse, ProviderError>[]>();
   readonly observers = new Map<Operation, (input: DataPlaneHttpRequest) => void>();
   readonly feeds = new Map<Operation, Stream.Stream<Uint8Array, ProviderError>>();
   readonly api: DataPlaneApiClient = {
@@ -51,13 +46,13 @@ export class FakeEngine implements DataPlaneApiClient {
     return this;
   }
 
-  fail(operation: Operation, failure: ProviderError | DataPlaneHttpResponse, once = true) {
-    return this.inject(operation, "status" in failure ? Effect.succeed(failure) : Effect.fail(failure), once);
+  fail(operation: Operation, failure: ProviderError | DataPlaneHttpResponse) {
+    return this.inject(operation, "status" in failure ? Effect.succeed(failure) : Effect.fail(failure));
   }
 
-  inject(operation: Operation, effect: Effect.Effect<DataPlaneHttpResponse, ProviderError>, once = true) {
+  inject(operation: Operation, effect: Effect.Effect<DataPlaneHttpResponse, ProviderError>) {
     const queue = this.injections.get(operation) ?? [];
-    queue.push({ effect, once });
+    queue.push(effect);
     this.injections.set(operation, queue);
     return this;
   }
@@ -77,16 +72,14 @@ export class FakeEngine implements DataPlaneApiClient {
     this.httpRequests.push(input);
     this.onRequest(input);
     this.observers.get(result.operation)?.(input);
-    const queue = this.injections.get(result.operation);
-    const injection = queue?.[0];
-    if (injection?.once === true) queue?.shift();
+    const injection = this.injections.get(result.operation)?.shift();
     return { ...result, injection };
   }
 
   request = (input: DataPlaneHttpRequest): Effect.Effect<DataPlaneHttpResponse, ProviderError> =>
     Effect.suspend(() => {
       const { operation, url, name, injection } = this.begin(input);
-      if (injection !== undefined) return injection.effect;
+      if (injection !== undefined) return injection;
       const filters = () => Schema.decodeUnknownSync(Filters)(url.searchParams.get("filters") ?? "{}");
       switch (operation) {
         case "engine.info":
@@ -171,7 +164,7 @@ export class FakeEngine implements DataPlaneApiClient {
       Effect.suspend(() => {
         const { operation, name, url, injection } = this.begin(input);
         if (injection !== undefined)
-          return injection.effect.pipe(
+          return injection.pipe(
             Effect.map((response) => Stream.make(new TextEncoder().encode(response.body))),
           );
         const feed = this.feeds.get(operation);

@@ -1,4 +1,3 @@
-import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 /**
  * Bundled `recipe` config translator: decode-only, never matches an app root.
  *
@@ -7,6 +6,7 @@ import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
  */
 import { Effect, Match, Result, Schema } from "effect";
 
+import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { validateConfigTranslateResult } from "@lando/sdk/landofile";
 import type {

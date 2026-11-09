@@ -34,6 +34,12 @@ export const Filters = Schema.fromJsonString(
   }),
 );
 
+export const matchesLabels = (filters: readonly string[], labels: Readonly<Record<string, string>> = {}) =>
+  filters.every((label) => {
+    const [key = "", value] = label.split("=");
+    return value === undefined ? key in labels : labels[key] === value;
+  });
+
 export const route = (input: DataPlaneHttpRequest) => {
   const url = new URL(input.path, "http://fake-engine");
   const parts = url.pathname.split("/").slice(1).map(decodeURIComponent);

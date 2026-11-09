@@ -95,7 +95,7 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
             smokeOperation: "run",
             message: `The Podman run smoke container exited with code ${String(exitCode ?? "unknown")}.`,
             remediation: smokeRemediation("run"),
-            details: { ...(exitCode === undefined ? {} : { exitCode }) },
+            details: exitCode === undefined ? {} : { exitCode },
           }),
         );
       }),

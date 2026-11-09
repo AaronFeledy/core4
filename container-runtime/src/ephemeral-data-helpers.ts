@@ -101,7 +101,6 @@ export const volumeInUseMessage = (
   return redactString(withReason === named && body.length > 0 ? `${named} ${body}` : withReason, redactor);
 };
 
-/** Cleanup failed after the helper command finished; Lando reclaims the leftover on a later data op. */
 export const leftoverHelperRemediation = (redactor: Redactor): string =>
   redactString(
     "The command already finished. Lando removes the leftover helper container automatically the next time it runs a database or snapshot command. Run `lando doctor` to check the runtime.",

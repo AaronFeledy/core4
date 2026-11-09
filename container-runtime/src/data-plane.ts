@@ -6,6 +6,7 @@ import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion
 import { removeRuntimeContainer } from "./container-removal.ts";
 import { tryParseJson } from "./engine-json.ts";
 import {
+  type VolumeHolder,
   ephemeralDataHelperLabels,
   isVolumeInUse,
   leftoverHelperRemediation,
@@ -31,7 +32,7 @@ import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
 import { redactDetails } from "./redact.ts";
 import { listNativeSnapshots } from "./snapshot-images.ts";
-import { makeStaleHelperSweepGate, removeAllStaleVolumeHolders } from "./stale-data-helpers.ts";
+import { removeAllStaleVolumeHolders, sweepStaleDataHelpers } from "./stale-data-helpers.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { extractFirstTarFile } from "./tar-file-stream.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
@@ -588,19 +589,17 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
   }).pipe(Effect.asVoid);
 };
 
-const staleSweepByOptions = new WeakMap<ProviderDataPlaneOptions, () => Effect.Effect<void>>();
+const staleSweepStarted = new WeakSet<ProviderDataPlaneOptions>();
 
-const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effect<void> => {
-  let gate = staleSweepByOptions.get(options);
-  if (gate === undefined) {
-    gate = makeStaleHelperSweepGate(options.api.request, {
+const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effect<void> =>
+  Effect.suspend(() => {
+    if (staleSweepStarted.has(options)) return Effect.void;
+    staleSweepStarted.add(options);
+    return sweepStaleDataHelpers(options.api.request, {
       providerId: options.providerId,
       redactor: options.redactor,
     });
-    staleSweepByOptions.set(options, gate);
-  }
-  return gate();
-};
+  });
 
 interface WitnessMountSource {
   readonly containerId: string;
@@ -667,11 +666,10 @@ const createEphemeralContainer = (
           AttachStdout: spec.captureStdout === true,
           AttachStderr: true,
         },
-      }).pipe(
-        Effect.tap((response) => ensureEphemeral2xx(options, spec, { operation: "run.create", response })),
-        Effect.as(name),
-      ),
+      }),
     ),
+    Effect.tap((response) => ensureEphemeral2xx(options, spec, { operation: "run.create", response })),
+    Effect.as(name),
   );
 };
 
@@ -1461,13 +1459,7 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
       );
-      const volumeInUseFailure = (
-        cause: Cause.Cause<ProviderError>,
-        holders: ReadonlyArray<{
-          readonly id: string;
-          readonly name: string;
-        }>,
-      ) =>
+      const volumeInUseFailure = (cause: Cause.Cause<ProviderError>, holders: ReadonlyArray<VolumeHolder>) =>
         Effect.failCause(
           mapFailureCause(cause, (error) => {
             if (!(error instanceof VolumeOperationError) || !isVolumeInUse(error.details)) return error;

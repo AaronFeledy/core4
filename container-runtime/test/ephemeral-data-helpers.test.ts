@@ -104,9 +104,12 @@ describe("data helper diagnostics", () => {
       );
       expect(message).toContain("Held by [REDACTED] (id-[REDACTED])");
       expect(message).not.toContain("SENSITIVE");
-      expect(volumeInUseRemediation(redactor)).toContain("Wait for any running data operation to finish");
-      expect(volumeInUseRemediation(redactor)).toContain("10 minutes");
-      expect(volumeInUseRemediation(redactor)).not.toContain("cannot verify");
+      const remediation = volumeInUseRemediation({
+        ...redactor,
+        redactString: (value) => value.replaceAll("lando doctor", "[REDACTED]"),
+      });
+      expect(remediation).toContain("[REDACTED]");
+      expect(remediation).not.toContain("lando doctor");
     },
   );
 });

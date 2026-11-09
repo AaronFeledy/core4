@@ -15,7 +15,6 @@ export type StaleHelperRequester = (input: {
   readonly path: `/${string}`;
 }) => Effect.Effect<{ readonly status: number; readonly body: string }, unknown>;
 
-const Labels = Schema.Record(Schema.String, Schema.String);
 const ListedHelpers = Schema.fromJsonString(Schema.Array(Schema.Struct({ Id: Schema.String })));
 const Lifecycle = Schema.fromJsonString(
   Schema.Struct({
@@ -26,7 +25,7 @@ const Lifecycle = Schema.fromJsonString(
       FinishedAt: Schema.optionalKey(Schema.String),
     }),
     Created: Schema.optionalKey(Schema.String),
-    Config: Schema.Struct({ Labels }),
+    Config: Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
   }),
 );
 
@@ -150,17 +149,4 @@ export const sweepStaleDataHelpers = (
     Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE),
     Effect.catchCause((cause) => logJanitorFailure(cause, input.redactor)),
   );
-};
-
-export const makeStaleHelperSweepGate = (
-  request: StaleHelperRequester | undefined,
-  input: { readonly providerId: string; readonly redactor: Redactor },
-): (() => Effect.Effect<void>) => {
-  let started = false;
-  return () =>
-    Effect.suspend(() => {
-      if (started) return Effect.void;
-      started = true;
-      return sweepStaleDataHelpers(request, input);
-    });
 };

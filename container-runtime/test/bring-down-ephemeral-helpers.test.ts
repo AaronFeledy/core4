@@ -5,6 +5,7 @@ import { Effect, Result } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
+import { volumeInUseRemediation } from "../src/ephemeral-data-helpers.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
@@ -111,16 +112,14 @@ describe("volume holder preservation during teardown", () => {
     expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringDown.volume" } });
     if (!Result.isFailure(result)) return;
     expect(result.failure.message).toContain("lando-docker-data-[REDACTED] (exact-[REDACTED]-id)");
-    expect(result.failure.remediation).toContain("10 minutes");
-    expect(result.failure.remediation).toContain("database or snapshot");
-    expect(result.failure.remediation).not.toContain("cannot verify");
+    expect(result.failure.remediation).toBe(volumeInUseRemediation(redactor));
     expect(JSON.stringify(result.failure)).not.toContain("SENSITIVE");
     expect(api.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
       "/volumes/data",
     ]);
   });
 
-  test("direct removal retains the generation check and reports holders without mutating them", async () => {
+  test("direct removal reports an in-use holder and preserves it and its volume", async () => {
     const generation = "00000000-0000-4000-8000-000000000001";
     const calls: EngineHttpRequest[] = [];
     const engine = new FakeEngine().seedContainer("lando-docker-data-SENSITIVE", {
@@ -145,7 +144,14 @@ describe("volume holder preservation during teardown", () => {
     if (!Result.isFailure(result)) return;
     expect(result.failure.message).toContain("exact-[REDACTED]-id");
     expect(JSON.stringify(result.failure)).not.toContain("SENSITIVE");
-    expect(calls.map((call) => call.method)).toEqual(["GET", "DELETE", "GET", "GET"]);
+    expect(engine.containers.get("lando-docker-data-SENSITIVE")).toMatchObject({
+      id: "exact-SENSITIVE-id",
+      status: "created",
+    });
+    expect(engine.assets.volumes.get("data")).toEqual({
+      Name: "data",
+      Labels: { "dev.lando.volume-instance": generation },
+    });
     expect(calls[1]?.path).toBe("/volumes/data");
   });
 });

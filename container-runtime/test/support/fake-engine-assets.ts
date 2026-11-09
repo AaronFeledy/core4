@@ -2,6 +2,7 @@ import { ArtifactTransferError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 import type { DataPlaneHttpRequest } from "../../src/data-plane.ts";
 import type { FakeContainers } from "./fake-engine-containers.ts";
+import { matchesLabels } from "./fake-engine-routes.ts";
 import { type FakeImage, type FakeVolume, VolumeConfig, concat, json, missing } from "./fake-engine-state.ts";
 
 export class FakeAssets {
@@ -15,7 +16,6 @@ export class FakeAssets {
   loadRef = "sha256:loaded";
   loadFormat: "aux" | "progress" = "aux";
   volumeListFormat: "docker" | "podman" = "docker";
-  snapshotIdentity = { Id: "sha256:native-snapshot", Size: 4096 };
 
   createVolume(input: DataPlaneHttpRequest) {
     const volume = Schema.decodeUnknownSync(VolumeConfig)(input.body);
@@ -30,12 +30,7 @@ export class FakeAssets {
   }
 
   listVolumes(labels: readonly string[]) {
-    const volumes = [...this.volumes.values()].filter((volume) =>
-      labels.every((label) => {
-        const [key = "", value] = label.split("=");
-        return value === undefined ? key in (volume.Labels ?? {}) : volume.Labels?.[key] === value;
-      }),
-    );
+    const volumes = [...this.volumes.values()].filter((volume) => matchesLabels(labels, volume.Labels));
     return json(200, this.volumeListFormat === "podman" ? volumes : { Volumes: volumes });
   }
 
@@ -59,7 +54,7 @@ export class FakeAssets {
       Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
     )(input.body);
     const ref = `${url.searchParams.get("repo")}:${url.searchParams.get("tag")}`;
-    const image = { ...this.snapshotIdentity, Config: config };
+    const image = { Id: "sha256:native-snapshot", Size: 4096, Config: config };
     this.images.set(ref, image);
     return json(201, { Id: image.Id });
   }

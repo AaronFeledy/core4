@@ -1,6 +1,7 @@
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import type { DataPlaneHttpRequest } from "../../src/data-plane.ts";
 import { DATA_HELPER_ROLE, PROVIDER_LABEL, ROLE_LABEL } from "../../src/labels.ts";
+import { FakeEngine } from "./fake-engine.ts";
 
 export const NOW = 1_700_000_000_000;
 export const generation = "00000000-0000-4000-8000-000000000001";
@@ -33,58 +34,48 @@ export const staleHelper = (id: string): Helper => ({
 });
 
 export const helperEngine = (initial: ReadonlyArray<Helper>) => {
-  const containers = new Map(initial.map((helper) => [helper.id, helper]));
+  const engine = new FakeEngine();
+  const helpers = new Map(initial.map((helper) => [helper.id, helper]));
+  for (const helper of initial) {
+    engine.seedContainer(helper.id, {
+      Image: "fixture",
+      Labels: helper.labels,
+      HostConfig: { Binds: ["data:/data"] },
+    });
+    const container = engine.containers.get(helper.id);
+    if (container === undefined) throw new Error("Missing seeded helper");
+    engine.containers.entries.set(helper.id, { ...container, id: helper.id });
+  }
+  engine.assets.volumes.set("data", { Name: "data", Labels: { "dev.lando.volume-instance": generation } });
   const calls: DataPlaneHttpRequest[] = [];
   const request = (input: DataPlaneHttpRequest) =>
-    Effect.sync(() => {
+    Effect.suspend(() => {
       calls.push(input);
-      if (input.path === "/volumes/data") {
-        if (input.method === "GET")
-          return {
-            status: 200,
-            body: JSON.stringify({ Name: "data", Labels: { "dev.lando.volume-instance": generation } }),
-          };
-        return containers.size === 0 ? { status: 204, body: "" } : { status: 409, body: "volume is in use" };
-      }
-      if (input.path.startsWith("/containers/json?"))
-        return {
-          status: 200,
-          body: JSON.stringify(
-            [...containers.values()].map((helper) => ({
-              Id: helper.id,
-              Names: [`/${helper.id}`],
-              State: helper.state,
-              Labels: helper.labels,
-              Mounts: [{ Type: "volume", Name: "data" }],
-            })),
-          ),
-        };
+      // Ignore list filters so the sweep must independently verify each inspected helper's ownership.
+      if (input.path.startsWith("/containers/json?")) return Effect.succeed(engine.containers.list({}));
       const id = decodeURIComponent(input.path.split("/")[2]?.split("?")[0] ?? "");
-      if (input.method === "DELETE" && input.path.startsWith("/containers/")) {
-        containers.delete(id);
-        return { status: 204, body: "" };
-      }
-      if (input.path.endsWith("/json")) {
-        const helper = containers.get(id);
-        return {
+      const helper = helpers.get(id);
+      if (input.path.endsWith("/json") && helper !== undefined && engine.containers.get(id) !== undefined) {
+        return Effect.succeed({
           status: 200,
-          body: JSON.stringify(
-            helper === undefined
-              ? { State: { ExitCode: 0 } }
-              : {
-                  State: {
-                    Status: helper.state,
-                    StartedAt: helper.startedAt,
-                    Running: helper.running ?? helper.state === "running",
-                    FinishedAt: helper.finishedAt,
-                  },
-                  Created: helper.created,
-                  Config: { Labels: helper.labels },
-                },
-          ),
-        };
+          body: JSON.stringify({
+            State: {
+              Status: helper.state,
+              StartedAt: helper.startedAt,
+              Running: helper.running ?? helper.state === "running",
+              FinishedAt: helper.finishedAt,
+            },
+            Created: helper.created,
+            Config: { Labels: helper.labels },
+          }),
+        });
       }
-      return { status: 201, body: "{}" };
+      return engine.request(input);
     });
-  return { containers, calls, api: { request, stream: () => Stream.empty } };
+  return {
+    containers: engine.containers.entries,
+    volumes: engine.assets.volumes,
+    calls,
+    api: { request, stream: engine.stream },
+  };
 };

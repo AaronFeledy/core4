@@ -118,12 +118,12 @@ describe("redactDetails", () => {
 
   test("redacts Error messages while preserving an own error name", () => {
     const error = new Error("connection refused; POSTGRES_PASSWORD=hunter2 in url");
-    error.name = "Error";
+    error.name = "TransportError";
     const out = redactDetails(error, patternRedactor);
     if (typeof out !== "object" || out === null || !("name" in out) || !("message" in out)) {
       throw new Error("Expected redacted error details");
     }
-    expect(out.name).toBe("Error");
+    expect(out.name).toBe("TransportError");
     expect(out.message).toContain("[redacted]");
     expect(out.message).not.toContain("hunter2");
   });

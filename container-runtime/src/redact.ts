@@ -47,8 +47,7 @@ export class StartFailureLogRedactor extends Context.Service<StartFailureLogReda
 
 export const redactString = (value: string, redactor: Redactor): string => redactor.redactString(value);
 
-export const redactDetails = (value: unknown, redactor: Redactor): Schema.Json =>
-  redactProviderDetails(value, redactor);
+export const redactDetails = redactProviderDetails;
 
 export const httpResponseDetails = (response: {
   readonly status: number;

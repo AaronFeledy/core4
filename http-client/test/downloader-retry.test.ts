@@ -188,7 +188,7 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
 
 describe("Downloader transient retry", () => {
   test.each([true, false])(
-    "preserves mapped failure roles and never retries a mixed interruption (compound: %p)",
+    "preserves mapped failure roles (mixed interruption and retry enabled: %p)",
     async (compound) => {
       await withTempDir(async (dir) => {
         const transport = scriptedClient([{ kind: "annotated-error", compound }]);

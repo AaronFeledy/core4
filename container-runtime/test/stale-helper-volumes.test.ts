@@ -32,6 +32,7 @@ test("volume removal reclaims stale holders and retries once", async () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
   expect([...engine.containers.keys()]).toEqual([]);
+  expect([...engine.volumes.keys()]).toEqual([]);
   expect(
     engine.calls.filter((call) => call.method === "DELETE" && call.path === "/volumes/data"),
   ).toHaveLength(2);
@@ -58,10 +59,14 @@ test.each([
         .pipe(Effect.result);
     }).pipe(Effect.provide(TestClock.layer())),
   );
-  expect(Result.isFailure(result)).toBe(true);
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "VolumeOperationError", operation: "removeVolume" },
+  });
   if (!Result.isFailure(result)) return;
   expect(result.failure.message).toContain("remaining (remaining)");
   expect([...engine.containers.keys()]).toEqual(["stale", "remaining"]);
+  expect([...engine.volumes.keys()]).toEqual(["data"]);
   expect(engine.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
 });
 
@@ -72,10 +77,15 @@ test("volume removal does not retry endlessly when the engine still reports in-u
     capabilities: { volumeSnapshot: "none" },
     redactor,
     api: {
-      request: (input) =>
-        input.method === "DELETE" && input.path === "/volumes/data"
-          ? engine.api.request(input).pipe(Effect.as({ status: 409, body: "volume is in use" }))
-          : engine.api.request(input),
+      request: (input) => {
+        if (input.method === "DELETE" && input.path === "/volumes/data") {
+          return Effect.sync(() => {
+            engine.calls.push(input);
+            return { status: 409, body: "volume is in use" };
+          });
+        }
+        return engine.api.request(input);
+      },
     },
   });
   const result = await Effect.runPromise(
@@ -86,7 +96,12 @@ test("volume removal does not retry endlessly when the engine still reports in-u
         .pipe(Effect.result);
     }).pipe(Effect.provide(TestClock.layer())),
   );
-  expect(Result.isFailure(result)).toBe(true);
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "VolumeOperationError", operation: "removeVolume" },
+  });
+  expect([...engine.containers.keys()]).toEqual([]);
+  expect([...engine.volumes.keys()]).toEqual(["data"]);
   expect(
     engine.calls.filter((call) => call.method === "DELETE" && call.path === "/volumes/data"),
   ).toHaveLength(2);
@@ -114,7 +129,8 @@ test("bringDown reclaims stale holders before retrying its selected volume", asy
                 status: 200,
                 body: JSON.stringify({ Labels: volumeOwnershipLabels(plan, store) }),
               });
-            return engine.api.request(input);
+            // This scenario injects no engine failures, so any failure here is a broken fixture.
+            return engine.api.request(input).pipe(Effect.orDie);
           },
         },
         ctx: { providerId: "test", remediation: "Retry.", env: {}, redactor },
@@ -125,6 +141,7 @@ test("bringDown reclaims stale holders before retrying its selected volume", asy
   );
   expect(result.changed).toBe(true);
   expect([...engine.containers.keys()]).toEqual([]);
+  expect([...engine.volumes.keys()]).toEqual([]);
   expect(
     engine.calls.filter((call) => call.method === "DELETE" && call.path === "/volumes/data"),
   ).toHaveLength(2);

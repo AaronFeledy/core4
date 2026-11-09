@@ -21,7 +21,6 @@ test("an unreachable runtime renders runtime guidance once without a bug-report 
   const remediation = lines.filter((line) => line.startsWith("  ↳ "));
 
   expect(lines.some((line) => line.includes("github.com"))).toBe(false);
-  expect(remediation).toHaveLength(1);
-  expect(remediation[0]?.match(/lando doctor/gu)).toHaveLength(1);
+  expect(remediation).toEqual([`  ↳ ${error.remediation}`]);
   expect(report.remediation).toBe(error.remediation);
 });

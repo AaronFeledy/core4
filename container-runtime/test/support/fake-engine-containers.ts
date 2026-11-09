@@ -1,5 +1,6 @@
 import { Deferred, Effect, Schema, Stream } from "effect";
 import type { DataPlaneHttpRequest } from "../../src/data-plane.ts";
+import { matchesLabels } from "./fake-engine-routes.ts";
 import {
   ContainerConfig,
   type FakeContainer,
@@ -109,12 +110,7 @@ export class FakeContainers {
         .filter(
           (container) =>
             (filters.volume ?? []).every((name) => container.mounts.some((mount) => mount.Name === name)) &&
-            (filters.label ?? []).every((label) => {
-              const [key = "", value] = label.split("=");
-              return value === undefined
-                ? key in (container.config.Labels ?? {})
-                : container.config.Labels?.[key] === value;
-            }),
+            matchesLabels(filters.label ?? [], container.config.Labels),
         )
         .map((container) => ({
           Id: container.id,

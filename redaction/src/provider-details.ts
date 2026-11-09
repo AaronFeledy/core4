@@ -49,12 +49,11 @@ const project = (input: unknown, redactor: Redactor): Schema.Json => {
         const output: Schema.Json[] = [];
         for (let index = 0; index < length && !unsafe; index++) {
           const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-          output[index] =
-            descriptor === undefined
-              ? null
-              : "value" in descriptor
-                ? walk(descriptor.value, depth + 1)
-                : masked;
+          if (descriptor === undefined) {
+            output[index] = null;
+            continue;
+          }
+          output[index] = "value" in descriptor ? walk(descriptor.value, depth + 1) : masked;
         }
         return output;
       }
