@@ -18,7 +18,7 @@ There is no top-level `lando cache:refresh` alias. Use the `app:` form.
 
 You do not need this command to make your commands show up or update. Lando keeps the command index current on its own; see [Commands update themselves](#commands-update-themselves).
 
-To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands. A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. The same run prints refresh warnings, such as `LANDO_HOST_SHELL_SYNTAX` for a host task written in POSIX-only syntax; `lando app:config:lint` reports those too.
+To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands. A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. The same run prints refresh warnings, such as `LANDO_HOST_SHELL_SYNTAX` for a host task whose `cmd` or `vars.<name>.sh` is written in POSIX-only syntax; `lando app:config:lint` reports those too.
 
 ## Commands update themselves
 

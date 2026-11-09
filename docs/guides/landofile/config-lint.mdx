@@ -187,6 +187,17 @@ With a script that has no front matter, one that sets `wrapper: true`, and one w
 
 The location names the script by its path relative to the app. In JSON, each script finding carries `source: { "layer": "script", "file": <absolute path>, "path": <front-matter key path> }`, with `line` and `column` when lint knows them; `path` is the key inside the front matter, such as `["wrapper"]`, or `[]` for a problem with the whole file. A broken script still makes `lando start` and every app command fail while Lando rebuilds the app's command index, so run lint, fix what it names, and run your command again. See [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts.mdx#write-the-front-matter) for the front-matter keys.
 
+## Read computed var findings
+
+A task var written as `{ sh: <command> }` is computed when the task runs. Two positions cannot read such a value: another var's definition and the task-level `service`, `user`, and `dir`. Lint reports a read from one of those positions as a `landofile.tooling` finding at the var or field that reads it, with the same message `lando <task>` fails with (`ToolingCompileError`):
+
+```
+  tooling.badref.vars.LABEL: error [landofile.tooling] Dynamic tooling vars cannot be read by var definitions or task-level service, user, or dir.
+    at /tmp/lint-dynamic-vars-demo/.lando.yml:9:7 (canonical layer; effective)
+    fix: Use a literal or invocation input in this field; read shell-computed vars in commands or step overrides.
+```
+
+When the task runs on the host (`service: ":host"`), its `vars.<name>.sh` is a host Bun Shell command, so `landofile.host-shell` checks it at `tooling.<task>.vars.<name>.sh` the same way it checks `cmd`. A `{ default: ... }` or `{ prompt: ... }` var is not a var form; it fails the load with `NotImplementedError`, which lint reports as `landofile.load`. See [Compute a value with a shell command](../tooling/flags-and-args.mdx#compute-a-value-with-a-shell-command).
 
 ## Run it from doctor
 
@@ -341,6 +352,19 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <Verify command="lando app:config:lint" expectExit={1} expect={{ stdout: { regex: "\\.lando/scripts/greet\\.bun\\.sh: error \\[script\\.host-shell\\]" } }} />
     </Step>
     <Step name="cleanup-scripts"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="computed-var-findings" render>
+    <Step name="lint-computed-vars">
+      <UseFixture name="config-lint-dynamic-vars" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.tooling\"[^}]*\"path\":\\s*\\[\"tooling\",\"badref\",\"vars\",\"LABEL\"\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.host-shell\"[\\s\\S]*?\"path\":\\s*\\[\"tooling\",\"badsh\",\"vars\",\"HOME_DIR\",\"sh\"\\]" } }} />
+    </Step>
+    <Step name="refuse-computed-var-read">
+      <Run command="lando badref --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "tooling\\.badref\\.vars\\.LABEL" }} />
+    </Step>
+    <Step name="cleanup-computed-vars"><Cleanup /></Step>
   </Scenario>
   <Scenario id="warning-only-marker" render>
     <Step name="lint-literal-argv">

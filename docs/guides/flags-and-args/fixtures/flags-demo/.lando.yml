@@ -54,3 +54,24 @@ tooling:
     service: web
     cmd: echo legacy
   retired-shorthand: false
+  pkg-version:
+    description: Print the version from package.json
+    service: ":host"
+    vars:
+      VERSION:
+        sh: bun -p "require('./package.json').version"
+    cmd: echo "version {{ vars.VERSION }}"
+  tagged:
+    description: Print the tag stored in VERSION
+    service: ":host"
+    vars:
+      TAG:
+        sh: cat VERSION
+    cmd: echo "tag {{ vars.TAG }}"
+  literal:
+    description: Show that a computed value is data, not shell
+    service: ":host"
+    vars:
+      TEXT:
+        sh: printf '%s' 'a$(echo PWNED)b'
+    cmd: echo "[{{ vars.TEXT }}]"

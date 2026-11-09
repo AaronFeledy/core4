@@ -94,6 +94,15 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
 });
 
 describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
+  test.each([
+    ["default", "Write the value directly: vars.V: <value>."],
+    ["prompt", "Declare a flag or arg, or compute the value with vars.V.sh."],
+    ["raw", UNSUPPORTED_REMEDIATION],
+  ])("rejects %s var form before decoding with remediation", async (form, remediation) => {
+    const outcome = await run({ tooling: { build: { cmd: "echo", vars: { V: { [form]: "value" } } } } });
+    expect(outcome).toMatchObject({ _tag: "Failure", failure: { _tag: "NotImplementedError", remediation } });
+    if (outcome._tag === "Failure") expect(outcome.failure.message).toContain(form);
+  });
   test("rejects step-object defer and names it in the message", async () => {
     // Given
     const parsed = {

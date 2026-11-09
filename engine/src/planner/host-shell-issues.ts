@@ -73,14 +73,24 @@ export const hostToolingCommands = (
     if (task.disabled === true) return [];
     const normalized = normalizeToolingTask(name, task);
     if (Result.isFailure(normalized)) return [];
-    return normalized.success.steps.flatMap((step, index) => {
-      const path = toolingCommandPath(name, task, index);
-      return (step.service ?? normalized.success.service)?.kind === "host" &&
-        step.argv === undefined &&
-        !isDynamic(sites, path)
-        ? [{ path, command: step.cmd }]
+    const variables =
+      normalized.success.service?.kind === "host"
+        ? Object.entries(task.vars ?? {}).flatMap(([key, value]) => {
+            const path = ["tooling", name, "vars", key, "sh"];
+            return typeof value === "object" && !isDynamic(sites, path) ? [{ path, command: value.sh }] : [];
+          })
         : [];
-    });
+    return [
+      ...variables,
+      ...normalized.success.steps.flatMap((step, index) => {
+        const path = toolingCommandPath(name, task, index);
+        return (step.service ?? normalized.success.service)?.kind === "host" &&
+          step.argv === undefined &&
+          !isDynamic(sites, path)
+          ? [{ path, command: step.cmd }]
+          : [];
+      }),
+    ];
   });
 
 /** Host string commands of event steps, as the event step compiler sees them. */

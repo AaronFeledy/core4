@@ -1,5 +1,53 @@
 [
   {
+    "surface": "schema:ToolingVar",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #2004 intentionally removes the unreleased default and prompt tooling var object forms. Literals and sh remain. The loader rejects removed forms before decode with form-specific NotImplementedError remediation; no deprecated aliases remain."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.vars.additionalProperties",
+    "justification": "Issue #2004 intentionally narrows task vars to literals and sh, removing unreleased default and prompt forms. Pre-decode rejection and focused schema and invocation tests cover the new contract."
+  },
+  {
+    "surface": "schema:ToolingDefaultsShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
     "surface": "command:app:config:lint",
     "changeKind": "union-widened",
     "path": "$.violations.items.source.anyOf",

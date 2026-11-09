@@ -45,6 +45,38 @@ const registryLayer = Layer.effect(
   ),
 ).pipe(Layer.provide(PluginRegistryLayer.layer));
 
+test("lint reports dynamic var reference rules without making them planning checks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-dynamic-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: dynamic",
+        "tooling:",
+        "  inspect:",
+        "    service: ':host'",
+        "    cmd: echo body",
+        "    dir: '{{ vars.V }}'",
+        "    vars:",
+        "      A: '{{ vars.V }}'",
+        "      V:",
+        "        sh: echo computed",
+        "",
+      ].join("\n"),
+    );
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    expect(result.valid).toBe(false);
+    expect(
+      result.violations.filter((issue) => issue.rule === "landofile.tooling").map((issue) => issue.path),
+    ).toEqual([
+      ["tooling", "inspect", "dir"],
+      ["tooling", "inspect", "vars", "A"],
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.each([
   {
     label: "authored task",

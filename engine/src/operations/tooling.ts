@@ -53,6 +53,8 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
+import { makeDynamicToolingVarResolver } from "./tooling-dynamic-vars.ts";
+import { admitToolingTask } from "./tooling-input-admission.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 import { resolveToolingPlan } from "./tooling-plan.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
@@ -194,14 +196,20 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     sites: sitesUnder(sites, ["tooling", toolingLookupKey]),
     currentLandofile: landofile,
   });
-  const resolvedTask = yield* resolveToolingTaskShape(client.task, {}, client.sites);
-  const compiled = yield* compileToolingInvocations({
+  const compileOptions = {
     ...options,
     lookupKey: toolingLookupKey,
-    task: resolvedTask,
+    task: client.task,
     source,
     agentEnvAllowlist,
+  };
+  const admitted = yield* admitToolingTask({ ...compileOptions, name: toolingLookupKey });
+  yield* registerPlanRedaction(plan);
+  const resolvedTask = yield* resolveToolingTaskShape(client.task, {}, client.sites, {
+    name: toolingLookupKey,
+    evaluate: makeDynamicToolingVarResolver({ plan, options: compileOptions, admitted }),
   });
+  const compiled = yield* compileToolingInvocations({ ...compileOptions, task: resolvedTask, admitted });
   const invocations = compiled.invocations;
   const planValues = yield* registerPlanRedaction(
     plan,

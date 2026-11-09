@@ -193,6 +193,73 @@ tooling:
 
 `lando deploy -s worker` runs in `worker`. Plain `lando deploy` falls back to `web`. Leave out `default` and skip the flag, or name a service that isn't in the app, and the run fails before any command starts.
 
+## Compute a value with a shell command
+
+A task var is a literal, or an object with one `sh` key that names a command. Lando runs that command once per invocation and substitutes its output wherever the task reads `{{ vars.<name> }}`. This task reads the version out of `package.json` on the host:
+
+```yaml
+tooling:
+  pkg-version:
+    description: Print the version from package.json
+    service: ":host"
+    vars:
+      VERSION:
+        sh: bun -p "require('./package.json').version"
+    cmd: echo "version {{ vars.VERSION }}"
+```
+
+With `"version": "1.4.2"` in `package.json`, `lando pkg-version` prints `version 1.4.2`, and `lando pkg-version --format=json` returns it as `result.stdout`.
+
+The command runs where the task runs: `service: ":host"` runs it on the host through Bun Shell, a service name or `:<flag>` runs it inside that container, and no `service` at all runs it in the primary service. It uses the task-level `user` (containers only) and `dir`, but not the task's `env` or the arguments you passed; `env` values commonly derive from vars, so the command cannot see them. Lando runs it after it has validated your flags and args and before any `pre-<task>` event step or task step. Output is captured, never streamed: the value is stdout with its trailing newlines removed, up to 64 KiB. Help never runs it.
+
+A non-zero exit fails the whole command before any step runs. `lando tagged` with this task and no `VERSION` file exits `1`:
+
+```yaml
+tooling:
+  tagged:
+    description: Print the tag stored in VERSION
+    service: ":host"
+    vars:
+      TAG:
+        sh: cat VERSION
+    cmd: echo "tag {{ vars.TAG }}"
+```
+
+```
+tooling.tagged.vars.TAG.sh exited with code 1 on the host. /usr/bin/cat: VERSION: No such file or directory
+  ↳ Run the command on the host to see why it fails, then fix tooling.tagged.vars.TAG.sh in /tmp/vars-demo/.lando.yml.
+code: ToolingExecError
+commandId: app:tagged
+tool: tagged
+variable: TAG
+exitCode: 1
+logsDir: /tmp/vars-demo-roots/cache/logs
+cacheDir: /tmp/vars-demo-roots/cache
+```
+
+The message carries the command's own stderr. With `--format=json`, `error._tag` is `ToolingExecError` and `error.variable` and `error.exitCode` carry the same values.
+
+An event step that calls the task with `task:` can set the same var name under its own `vars:`. That caller value wins and the command never runs. See [Reuse a task inside an event](../events/task-events.mdx#reuse-a-task-inside-an-event).
+
+When a computed value lands inside a shell command string (`cmd` text or a `cmds` entry), Lando inserts it as data, quoted for the spot it lands in: an unquoted site becomes one single-quoted word, and a site inside `'...'` or `"..."` is escaped for those quotes. A value such as `a$(echo PWNED)b` prints literally and is never run:
+
+```yaml
+tooling:
+  literal:
+    description: Show that a computed value is data, not shell
+    service: ":host"
+    vars:
+      TEXT:
+        sh: printf '%s' 'a$(echo PWNED)b'
+    cmd: echo "[{{ vars.TEXT }}]"
+```
+
+`lando literal` prints `[a$(echo PWNED)b]`. A site inside backticks, a here-document, `$((...))`, or `${...}` cannot be quoted safely, so Lando refuses the task with `ToolingCompileError`. Argv-list `cmd` entries and `env` values receive the value unchanged. Literal vars keep their old behavior: raw command text, no quoting.
+
+A few positions cannot read a computed var: another var's definition and the task-level `service`, `user`, and `dir`. Lando refuses the task with `ToolingCompileError` when you run it, and `lando app:config:lint` reports the same site as a `landofile.tooling` finding. Use a literal or a declared flag there, and read the computed value in commands or step-level overrides. A `:host` task's `vars.<name>.sh` is a host Bun Shell command, so lint also checks its syntax (`landofile.host-shell` at `tooling.<task>.vars.<name>.sh`) and `lando app:cache:refresh` warns about it. Values are not secrets; they appear in output and errors like any other command text. Keep credentials in `env` with `${secret:...}`.
+
+`{ default: ... }` and `{ prompt: ... }` are not var forms. Lando rejects them at load with `NotImplementedError`. Write the value directly as `vars.<name>: <value>`; for a value the caller should supply, declare a flag or argument, or compute it with `sh`.
+
 ## Turn a task off
 
 Set a task to `false` to drop an inherited or service-type task of the same name:
@@ -324,6 +391,27 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
     <Step name="run-legacy-help">
       <Run command="lando legacy --help --format=json" expectExit={1} />
       <Verify errorTag="ToolingDisabledError" expect={{ regex: "legacy" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="compute-var-with-sh" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="run-pkg-version">
+      <Verify command="lando pkg-version --format=json" expect={{ stdout: { regex: "\"stdout\":\\s*\"version 1\\.4\\.2\\\\n\"" } }} />
+      <Verify command="lando pkg-version --help" expect={{ stdout: { regex: "Runs `echo` on the host\\." } }} />
+    </Step>
+    <Step name="fail-before-any-step">
+      <Run command="lando tagged --format=json" expectExit={1} />
+      <Verify errorTag="ToolingExecError" expect={{ regex: "tooling\\.tagged\\.vars\\.TAG\\.sh exited with code 1 on the host" }} />
+      <Verify command="lando tagged --format=json" expectExit={1} expect={{ stdout: { regex: "\"variable\":\\s*\"TAG\",\\s*\"exitCode\":\\s*1", not: { regex: "tag " } } }} />
+    </Step>
+    <Step name="insert-value-as-data">
+      <Verify command="lando literal --format=json" expect={{ stdout: { regex: "\"stdout\":\\s*\"\\[a\\$\\(echo PWNED\\)b\\]\\\\n\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

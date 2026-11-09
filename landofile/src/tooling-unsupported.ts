@@ -57,6 +57,7 @@ interface ToolingUnsupportedFinding {
   readonly key: string;
   readonly description: string;
   readonly event?: string;
+  readonly remediation?: string;
 }
 
 const scanEventsForUnsupported = (
@@ -185,6 +186,18 @@ export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFi
     if (Predicate.isObject(vars)) {
       for (const [varName, varValue] of Object.entries(vars as Record<string, unknown>)) {
         if (Predicate.isObject(varValue)) {
+          for (const form of ["default", "prompt"] as const) {
+            if (Object.hasOwn(varValue, form))
+              return {
+                task: taskName,
+                key: `vars.${varName}.${form}`,
+                description: `Tooling var form "${form}:" in tooling var "${varName}"`,
+                remediation:
+                  form === "default"
+                    ? `Write the value directly: vars.${varName}: <value>.`
+                    : `Declare a flag or arg, or compute the value with vars.${varName}.sh.`,
+              };
+          }
           if (Object.hasOwn(varValue, "raw")) {
             return {
               task: taskName,
@@ -213,7 +226,7 @@ export const rejectUnsupportedToolingFeatures = (
           ? `${finding.description} in tooling task "${finding.task}" is not supported at ${filePath}.`
           : `${finding.description} in event "${finding.event}" is not supported at ${filePath}.`,
       commandId: "landofile.parse",
-      remediation: UNSUPPORTED_REMEDIATION,
+      remediation: finding.remediation ?? UNSUPPORTED_REMEDIATION,
     }),
   );
 };

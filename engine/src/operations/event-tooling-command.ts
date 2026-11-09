@@ -11,8 +11,11 @@ import { toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
+import { makeDynamicToolingVarResolver } from "./tooling-dynamic-vars.ts";
+import { admitToolingTask } from "./tooling-input-admission.ts";
 
 export interface EventToolingInvocation {
   readonly plan: AppPlan;
@@ -38,11 +41,10 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
     task,
     sites: sitesUnder(invocationAuthorityForPlan(plan)?.sites ?? [], ["tooling", name]),
   });
-  const resolved = yield* resolveToolingTaskShape(client.task, {}, client.sites);
-  return yield* compileToolingInvocations({
+  const options = {
     name,
     lookupKey: name,
-    task: resolved,
+    task: client.task,
     input: input.input,
     ...(input.expectedInputRevision === undefined
       ? {}
@@ -52,7 +54,14 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
       path: toolingSourcePathForPlan(plan, name),
       task: name,
     },
-  }).pipe(
+  };
+  const admitted = yield* admitToolingTask(options);
+  yield* registerPlanRedaction(plan);
+  const resolved = yield* resolveToolingTaskShape(client.task, {}, client.sites, {
+    name,
+    evaluate: makeDynamicToolingVarResolver({ plan, options, admitted }),
+  });
+  return yield* compileToolingInvocations({ ...options, task: resolved, admitted }).pipe(
     Effect.flatMap((compiled) =>
       runBracketedInvocations({
         plan,

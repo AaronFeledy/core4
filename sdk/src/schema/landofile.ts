@@ -880,24 +880,12 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(
 );
 
 /**
- * ToolingVarDefault — `vars.<name>: { default: <literal> }`.
- */
-export const ToolingVarDefault = Schema.Struct({ default: ToolingVarLiteral });
-export type ToolingVarDefault = typeof ToolingVarDefault.Type;
-
-/**
- * ToolingVarSh — `vars.<name>: { sh: <command> }`. Evaluated at task
- * invocation time via the task's selected engine.
+ * ToolingVarSh — `vars.<name>: { sh: <command> }`. Captured once after input
+ * admission in the task target, unless caller vars supply the name. Shell
+ * command interpolations bind its output as escaped data; results are never cached.
  */
 export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
 export type ToolingVarSh = typeof ToolingVarSh.Type;
-
-/**
- * ToolingVarPrompt — `vars.<name>: { prompt: <message> }`. Resolved at task
- * invocation time by prompting the user.
- */
-export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
-export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 
 /**
  * ToolingVar — var forms accepted by this schema. Unsupported
@@ -905,12 +893,7 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
  * are rejected before schema decode with a tagged
  * `NotImplementedError`.
  */
-export const ToolingVar = Schema.Union([
-  ToolingVarLiteral,
-  ToolingVarDefault,
-  ToolingVarSh,
-  ToolingVarPrompt,
-]);
+export const ToolingVar = Schema.Union([ToolingVarLiteral, ToolingVarSh]);
 export type ToolingVar = typeof ToolingVar.Type;
 
 export const ToolingStepShape = Schema.Struct({
@@ -943,7 +926,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * - `wrapper:` — mark a thin wrapper around one CLI tool.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
- * - `vars:` — accepted `ToolingVar` forms only.
+ * - `vars:` — literals and `{ sh: <command> }` only; caller vars win.
  *
  * Supported deprecation metadata:
  * `deprecated:`, `flags.<name>.deprecated:`, and `args.<name>.deprecated:`.
@@ -1047,8 +1030,9 @@ export const ToolingDefaultsShape = Schema.Struct({
   env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Default environment variables inherited by tooling tasks.",
   }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
-    description: "Default tooling variables inherited by tooling tasks.",
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotate({
+    description:
+      "Default literal tooling variables inherited by tooling tasks. Shell-computed vars belong on the task that reads them.",
   }),
 });
 export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;
