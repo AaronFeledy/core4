@@ -23,7 +23,7 @@ import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest
 import { HelpCommandDescriptor } from "./help-command-descriptor";
 import { commandHelpInput } from "./help-command-input";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
-import { helpRedactor } from "./help-redaction";
+import { helpRedactor, redactHelpText } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
 import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
@@ -80,6 +80,7 @@ const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): T
   ...(entry.input === undefined ? {} : { input: entry.input }),
   ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
   ...(entry.source === undefined ? {} : { source: entry.source }),
+  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
 });
 
 export const toolingHelpEntryForToken = (
@@ -279,13 +280,14 @@ export const printToolingHelp = (
         summary: entry.summary,
         source: "tooling",
         ...(entry.input === undefined ? {} : { input: entry.input }),
+        ...(entry.runs === undefined ? {} : { runs: entry.runs }),
       },
       activeResultFormat,
       context,
     );
   }
   const argv = process.argv.slice(2);
-  return emitResultLine(
+  return redactHelpText(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: context.io.stdoutIsTTY === true,
@@ -296,5 +298,5 @@ export const printToolingHelp = (
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),
     context,
-  );
+  ).then((text) => emitResultLine(text, context));
 };

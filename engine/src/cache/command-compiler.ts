@@ -7,6 +7,7 @@ import { getInternalToolingTasks } from "@lando/landofile/tooling-include-proven
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import type { EffectiveTooling } from "../planner/effective-tooling.ts";
 import type { CommandIndexEntry } from "./command-index.ts";
+import { toolingRunSummary } from "./tooling-run-summary.ts";
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
@@ -21,6 +22,7 @@ export const compileToolingCommands = (
     .map(([name, authored]) => {
       // Preserve the synchronous API by throwing the tagged error into callers' Effect boundaries.
       const task = Result.getOrThrowWith(normalizeToolingTask(name, authored), (error) => error);
+      const runs = toolingRunSummary(task);
       let service: string | undefined;
       switch (task.service?.kind) {
         case "service":
@@ -40,6 +42,7 @@ export const compileToolingCommands = (
         ...(task.disabled ? { disabled: true as const } : {}),
         ...(service === undefined ? {} : { service }),
         input: task.input,
+        ...(runs === undefined ? {} : { runs }),
         ...(task.wrapper ? { wrapper: true as const } : {}),
       };
     });
@@ -55,6 +58,9 @@ export const compileBunShellScriptCommand = (script: DiscoveredBunShellScript) =
       ...(task.disabled ? { disabled: true as const } : {}),
       service: task.rawService,
       source: "bun-script",
+      ...(script.relativePath.length + ".lando/scripts/".length > 512
+        ? {}
+        : { runs: { kind: "script" as const, path: `.lando/scripts/${script.relativePath}` } }),
       input: task.input,
     }),
   );

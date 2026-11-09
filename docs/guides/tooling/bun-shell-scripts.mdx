@@ -91,7 +91,7 @@ lando greet prod release -n team --loud
 
 The first call prints a greeting for `world` with `target=dev`, `label=latest`, and `loud=false`. The second uses `team`, `prod`, `release`, and `loud=true`. This example prints the switch's value; it does not change the greeting's case. `lando greet` without a target, or `lando greet staging`, fails with `ToolingInputError` before running the body. Supply `dev` or `prod` to recover.
 
-For a structured description of this script, run `lando help app:greet --format=json` from the same app. Read `result.target.input` for its flags, arguments, and declaration revision. Unknown targets and unavailable metadata return a tagged failure instead of an unrelated command catalog.
+`lando greet --help` ends with `Runs .lando/scripts/greet.bun.sh on the host.`, so you can tell a script from a Landofile task without opening the file. For a structured description of this script, run `lando help app:greet --format=json` from the same app. Read `result.target.input` for its flags, arguments, and declaration revision, and `result.target.runs` for the same path as `{ "kind": "script", "path": ".lando/scripts/greet.bun.sh" }`. Unknown targets and unavailable metadata return a tagged failure instead of an unrelated command catalog.
 
 The nested declarations follow the [tooling flag and argument rules](../flags-and-args/): flags accept `alias`, `boolean`, `choices`, `default`, `required`, `description`, and `sensitive: true`; arguments accept `order`, `choices`, `default`, `required`, `description`, and `sensitive: true`. Use `required: true` or a `default`, not both. Boolean flags accept `--loud`, `--loud=true`, or `--loud=false`; explicit false overrides a true default. Lando does not generate `--no-loud`, and `--loud false` does not set the flag to false. Booleans cannot have choices.
 
@@ -520,6 +520,8 @@ lando stamp abc1234
     <Step name="prepare-declared-inputs">
       <UseFixture name="declared-inputs" />
       <Verify command="lando help app:greet --format=json" expect={{ stdout: { regex: "\"canonicalId\":\"app:greet\"[\\s\\S]*\"revision\":\"[^\"]+\"" } }} />
+      <Verify command="lando help app:greet --format=json" expect={{ stdout: { regex: "\"runs\":\\s*\\{\"kind\":\"script\",\"path\":\"\\.lando/scripts/greet\\.bun\\.sh\"\\}" } }} />
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "Runs \\.lando/scripts/greet\\.bun\\.sh on the host\\." } }} />
     </Step>
     <Step name="use-declared-defaults">
       <Verify command="lando greet dev --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0[\\s\\S]*\"stdout\":\\s*\"Hello world: target=dev label=latest loud=false\\\\n\"" } }} />

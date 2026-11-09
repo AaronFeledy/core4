@@ -14,7 +14,7 @@ import {
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
   test("uses version seven for help forwarding metadata", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(7n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(8n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(

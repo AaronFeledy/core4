@@ -530,6 +530,7 @@ import {
   ToolingInputValues,
   ToolingInvocationInput,
 } from "./tooling-input.ts";
+import { ToolingRunSummary, ToolingRunTarget } from "./tooling-run-summary.ts";
 import {
   ShareStopAppResult,
   TunnelCapabilities,
@@ -751,6 +752,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   NormalizedToolingFlag,
   NormalizedToolingArg,
   ToolingInputDeclaration,
+  ToolingRunSummary,
+  ToolingRunTarget,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,

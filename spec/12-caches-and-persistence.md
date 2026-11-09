@@ -54,7 +54,7 @@ Router and tooling hot-path caches MUST use binary encoding. `Bun.serialize` is 
 
 Every cache is versioned. Binary files carry a cache identity, schema/Lando version, and optional freshness hash; mismatch or partial-write detection invalidates and regenerates without surfacing a user error. Command caches retain all inputs needed to validate routing freshness.
 
-Tooling caches MUST contain only expression ASTs and static redacted metadata. They MUST NOT contain dynamic shell-variable results, decrypted secrets, host output, provider connection state, or status/precondition results.
+Tooling caches MUST contain only expression ASTs and static redacted metadata. The app command index MAY keep the bounded static run summary (§8.5) verbatim, its program token and service targets included; help applies the `secrets` profile before emitting it. This exception does not admit dynamic shell results or decrypted secret bindings. They MUST NOT contain dynamic shell-variable results, decrypted secrets, host output, provider connection state, or status/precondition results.
 
 Execution observations are bounded in-memory metadata (§22.7), not replay journals. They do not change build-cache eligibility or permit caching resolved secrets and arbitrary Effect values.
 

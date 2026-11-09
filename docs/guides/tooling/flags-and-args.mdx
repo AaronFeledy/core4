@@ -38,6 +38,29 @@ lando greet dev -n team
 lando greet prod --loud
 ```
 
+The help page lists the declared input and ends with one sentence that says what the task runs and where:
+
+```
+Greet a target environment
+
+USAGE
+  lando greet [flags] <TARGET>
+
+ALIASES
+  app:greet
+
+FLAGS
+  --name=<value>, -n Who to greet [default: world]
+  --loud[=true|false] Shout the greeting
+
+ARGUMENTS
+  target Environment to greet (dev, prod) [required]
+
+Runs `echo` in web.
+```
+
+The program name appears only when the task is a single step whose command is one simple program: the first item of an argv list, or the first word of shell text after any leading `NAME=value` assignments, as long as nothing in the text could start a second command (an unquoted operator such as `&&` or `|`, `$(...)`, backticks, or a line break). Quoted arguments are fine, so `echo "version {{ vars.VERSION }}"` still reports `echo`. Otherwise the sentence describes the shape instead: `Runs a command on the host.`, `Runs a command in the service named by --service.`, `Runs 2 commands in web and on the host.`, or `Runs .lando/scripts/deploy.bun.sh on the host.` for a script. `lando help greet --format=json` carries the same data as `result.target.runs`: `{ "kind": "commands", "steps": 1, "targets": [{ "kind": "service", "name": "web" }], "program": "echo" }`, where a target is a named `service`, `host`, `flag` (with the flag name), `primary`, or `dynamic`, and a script reports `{ "kind": "script", "path": ".lando/scripts/deploy.bun.sh" }`. Help never runs the task, and it redacts this data like the rest of the page.
+
 Host `.bun.sh` scripts support the same nested input declarations in their comment front matter. Use `LANDO_FLAG_<NAME>` and `LANDO_ARG_<NAME>` inside those scripts to read the resolved values. See [Declare flags and read inputs by name](../bun-shell-scripts/#declare-flags-and-read-inputs-by-name) for a working host example; service-targeted scripts still require a Landofile task.
 
 ## Declare flags
@@ -232,6 +255,9 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
     <Step name="greet-help">
       <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
       <Verify command="lando greet --help" expect={{ stdout: { regex: "target" } }} />
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "Runs `echo` in web\\." } }} />
+      <Verify command="lando deploy --help" expect={{ stdout: { regex: "Runs `echo` in the service named by --service\\." } }} />
+      <Verify command="lando help greet --format=json" expect={{ stdout: { regex: "\"runs\":\\s*\\{\"kind\":\"commands\",\"steps\":1,\"targets\":\\[\\{\"kind\":\"service\",\"name\":\"web\"\\}\\],\"program\":\"echo\"\\}" } }} />
     </Step>
     <Step name="run-greet">
       <Verify command="lando greet dev -n team --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"greet\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />

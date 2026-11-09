@@ -1817,6 +1817,8 @@
       "ToolingInputValues",
       "ToolingInvocationInput",
       "ToolingResult",
+      "ToolingRunSummary",
+      "ToolingRunTarget",
       "ToolingStepShape",
       "ToolingTaskInput",
       "ToolingTaskShape",

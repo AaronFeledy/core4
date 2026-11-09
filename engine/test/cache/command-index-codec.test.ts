@@ -22,7 +22,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n, 6n])("rejects old header %s with a current body", (version) => {
+    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n])("rejects old header %s with a current body", (version) => {
       // Given
       const bytes = currentAbiBytes(magic, payload);
       new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);

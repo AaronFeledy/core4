@@ -3,6 +3,7 @@ export * from "./default-key.ts";
 export * from "./renderer-mode.ts";
 export * from "./host-maintenance.ts";
 export * from "./tooling-input.ts";
+export * from "./tooling-run-summary.ts";
 export * from "./app-plan.ts";
 export * from "./physical-names.ts";
 export * from "./file-sync-policy.ts";

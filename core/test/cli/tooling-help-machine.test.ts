@@ -149,6 +149,7 @@ test.each([true, false])("machine help returns the selected declaration when cac
         target: {
           canonicalId: "app:probe",
           source: "tooling",
+          runs: { kind: "script", path: ".lando/scripts/probe.bun.sh" },
           input: {
             flags: [{ name: "mode", choices: ["dev", "prod"], default: "dev" }],
             revision: expect.any(String),

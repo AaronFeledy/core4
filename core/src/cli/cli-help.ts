@@ -1,10 +1,11 @@
-import type { ToolingInputDeclaration } from "@lando/sdk/schema";
+import type { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { argStdioDescription } from "./arg-stdio";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
 import { resolveTopLevelAliases } from "./spec/command-base";
+import { toolingRunHelp } from "./tooling-run-help";
 
 const UNIVERSAL_FLAGS = new Set(["format", "json", "jq"]);
 
@@ -59,6 +60,7 @@ export type ToolingHelpEntry = {
   readonly input?: ToolingHelpInput;
   readonly wrapper?: true;
   readonly source?: "bun-script";
+  readonly runs?: ToolingRunSummary;
 };
 
 type HelpStyle = {
@@ -245,7 +247,7 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
     ...helpSection("FLAGS", flagRows, style),
     ...helpSection("ARGUMENTS", argRows, style),
   ];
-  if (entry.service !== undefined) lines.push("", `Runs in service ${entry.service}`);
+  if (entry.runs !== undefined) lines.push("", toolingRunHelp(entry.runs));
   if (input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0))
     lines.push(
       "",
