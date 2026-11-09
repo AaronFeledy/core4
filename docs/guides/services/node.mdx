@@ -29,9 +29,10 @@ Save the configuration as `.lando.yml`, then create `.nvmrc` beside it with this
 
 That `.nvmrc` resolves to `node:22.11.0`. A major pin such as `22`, `24`, or
 `26` selects that image channel. LTS codenames work the same way: `jod` or
-`lts/jod` resolve to `node:22`, and `krypton` or `lts/krypton` resolve to
-`node:24`. Lando does not define a codename alias for Node 26. The `lts` and
-`lts/*` selectors resolve to `node:24`, not the floating `node:lts` Docker tag.
+`lts/jod` resolve to `node:22`, `krypton` or `lts/krypton` resolve to
+`node:24`, and `lithium` or `lts/lithium` resolve to `node:26`. The `lts` and
+`lts/*` selectors still resolve to `node:24`, not the floating `node:lts`
+Docker tag.
 
 If `package.json` also declares `engines.node`, that range must allow the
 version selected by `.nvmrc`. For a major or minor pin, it must allow the

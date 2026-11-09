@@ -29,7 +29,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 export const SUPPORTED_NODE_MAJORS = [
   { major: 22, codename: "jod" },
   { major: 24, codename: "krypton", lts: true },
-  { major: 26 },
+  { major: 26, codename: "lithium" },
 ] as const;
 
 export type SupportedNodeMajor = (typeof SUPPORTED_NODE_MAJORS)[number]["major"];
@@ -44,9 +44,7 @@ const NODE_ARTIFACTS: Readonly<Record<SupportedNodeVersion, string>> = Object.fr
 ]) as Readonly<Record<SupportedNodeVersion, string>>;
 
 const NODE_MAJOR_IDS = SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major));
-const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.flatMap((entry) =>
-  "codename" in entry && entry.codename !== undefined ? [entry.codename] : [],
-);
+const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.map((entry) => entry.codename);
 const NVMRC_REMEDIATION = `Use a supported Node major (${NODE_MAJOR_IDS.join(", ")}), an LTS codename (${NODE_CODENAMES.join(", ")}), lts/*, or an exact pin of a supported major.`;
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
@@ -131,7 +129,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
     const exact = new RegExp(`^v?${major}\\.(\\d+)\\.(\\d+)$`, "u").exec(constraint);
     const minor = new RegExp(`^v?${major}\\.(\\d+)$`, "u").exec(constraint);
     const isMajor = new RegExp(`^v?${major}$`, "u").test(constraint);
-    const codename = "codename" in entry ? entry.codename : undefined;
+    const codename = entry.codename;
 
     if (exact !== null) {
       const normalized = constraint.replace(/^v/u, "");
@@ -159,10 +157,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
         exactVersion: undefined,
       };
     }
-    if (
-      isMajor ||
-      (codename !== undefined && (constraint === codename || constraint === `lts/${codename}`))
-    ) {
+    if (isMajor || constraint === codename || constraint === `lts/${codename}`) {
       return majorSelection(major, input.path);
     }
   }
