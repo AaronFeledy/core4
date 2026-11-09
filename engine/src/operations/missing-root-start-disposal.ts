@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStopError } from "@lando/sdk/errors";
 import { AppId, type AppRef, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -24,7 +25,7 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
         failure("The selected provider differs from the journal's recorded provider."),
       );
     const checked = yield* readPendingAcceleratedStart(recordedApp).pipe(
-      Effect.mapError((cause) => acceleratedStartStopError(recordedApp, cause)),
+      mapFailures((cause) => acceleratedStartStopError(recordedApp, cause)),
     );
     if (checked === null || digest(checked) !== digest(record) || record.appRoot !== app.root)
       return yield* Effect.fail(failure("The missing-root journal identity changed."));
@@ -33,7 +34,7 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
     if (provider.id !== record.providerId)
       return yield* Effect.fail(failure("The recorded provider does not match."));
     const engine = yield* acquireFileSyncEngine(record.engineId).pipe(
-      Effect.mapError((cause) => acceleratedStartStopError(recordedApp, cause)),
+      mapFailures((cause) => acceleratedStartStopError(recordedApp, cause)),
     );
     if (engine.id !== record.engineId || !(yield* engine.isAvailable))
       return yield* Effect.fail(failure("The recorded file-sync engine is unavailable."));
@@ -81,7 +82,7 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
         );
     }
     const bucket = yield* openJournal(recordedApp).pipe(
-      Effect.mapError((cause) => acceleratedStartStopError(recordedApp, cause)),
+      mapFailures((cause) => acceleratedStartStopError(recordedApp, cause)),
     );
     return {
       app: recordedApp,
@@ -132,7 +133,7 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
               })
               .pipe(
                 Effect.asVoid,
-                Effect.mapError(() => failure("Unable to settle the missing-root journal.")),
+                mapFailures(() => failure("Unable to settle the missing-root journal.")),
               ),
     };
   },

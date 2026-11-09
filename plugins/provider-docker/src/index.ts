@@ -606,7 +606,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: dockerApi.info.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof ProviderUnavailableError ? unreachableDocker(error) : error,
         ),
       ),

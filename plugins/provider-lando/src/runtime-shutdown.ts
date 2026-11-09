@@ -5,6 +5,7 @@ import {
   RUNTIME_SHUTDOWN_VERSION,
   RuntimeShutdownReceipt,
 } from "@lando/container-runtime/podman/runtime-shutdown";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { defineTransitions } from "@lando/sdk/transitions";
@@ -42,11 +43,11 @@ export const makeRuntimeShutdownStore = Effect.fnUntraced(function* (
   stateStore: PluginStateStore,
   bootIdReader: () => Effect.Effect<string, unknown> = readLinuxBootId,
 ) {
-  const bucket = yield* openRuntimeShutdown(stateStore).pipe(Effect.mapError(receiptError));
+  const bucket = yield* openRuntimeShutdown(stateStore).pipe(mapFailures(receiptError));
   return {
     read: bucket.get,
     admit: Effect.gen(function* () {
-      const bootId = yield* bootIdReader().pipe(Effect.mapError(receiptError));
+      const bootId = yield* bootIdReader().pipe(mapFailures(receiptError));
       const generation = yield* Effect.sync(randomUUID);
       yield* bucket
         .transition({
@@ -56,7 +57,7 @@ export const makeRuntimeShutdownStore = Effect.fnUntraced(function* (
           next: () => ({ generation, bootId, state: "admitted" }),
           illegal: receiptError,
         })
-        .pipe(Effect.mapError(receiptError));
+        .pipe(mapFailures(receiptError));
     }),
     quiesce: (generation: string) =>
       bucket
@@ -68,7 +69,7 @@ export const makeRuntimeShutdownStore = Effect.fnUntraced(function* (
           next: (_to, current) => (current === null ? null : { ...current, state: "stopped" }),
           illegal: receiptError,
         })
-        .pipe(Effect.mapError(receiptError), Effect.asVoid),
+        .pipe(mapFailures(receiptError), Effect.asVoid),
   };
 });
 

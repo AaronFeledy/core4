@@ -815,7 +815,7 @@ const assembleRuntimeProvider = (
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: podmanApi.ping.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof ProviderUnavailableError ? unreachablePodman(error) : error,
         ),
       ),
