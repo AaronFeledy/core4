@@ -52,6 +52,7 @@ const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): Readon
     summary: entry.summary,
     hidden: entry.hidden,
     ...(entry.input === undefined ? {} : { input: entry.input }),
+    ...(entry.runs === undefined ? {} : { runs: entry.runs }),
   }));
 
 export const layerWith = (
