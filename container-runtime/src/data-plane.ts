@@ -12,7 +12,7 @@ import {
   volumeInUseMessage,
   volumeInUseRemediation,
 } from "./ephemeral-data-helpers.ts";
-import { ensureEphemeral2xx, internalRemediation, runtimeRemediation } from "./ephemeral-http-failure.ts";
+import { ensureEphemeral2xx, runtimeRemediation } from "./ephemeral-http-failure.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 import type { PulledImage } from "./image-pull.ts";
 import {
@@ -57,6 +57,7 @@ import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stre
 import {
   annotateFailureRole,
   failureDefectCause,
+  internalErrorRemediation,
   mapFailureCause,
   mapFailures,
   mapStreamFailures,
@@ -440,7 +441,7 @@ const missingDataPlaneClient = (
       providerId: options.providerId,
       operation,
       message: `Lando couldn't contact the container engine because its ${client} client is missing.`,
-      remediation: internalRemediation,
+      remediation: internalErrorRemediation,
     }),
     options.redactor,
   );
@@ -453,6 +454,8 @@ const volumeActions = {
   removeVolumeSnapshot: "remove the storage snapshot",
   listVolumes: "list storage volumes",
 } as const;
+
+const inspectionRemediation = `Run \`lando doctor\` to check the container runtime. If this persists, ${internalErrorRemediation}`;
 
 const ensure2xx = (
   options: ProviderDataPlaneOptions,
@@ -494,7 +497,7 @@ const ensureHelperImage = (
           providerId: options.providerId,
           operation,
           message: "Lando couldn't prepare its helper image because the provider's image client is missing.",
-          remediation: internalRemediation,
+          remediation: internalErrorRemediation,
           details: { reference: helper.ref },
         }),
         options.redactor,
@@ -542,7 +545,7 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
           operation: "run.volume",
           message:
             "Lando couldn't attach storage to its helper container because the app's ownership information is missing.",
-          remediation: internalRemediation,
+          remediation: internalErrorRemediation,
           ...(owner === undefined ? {} : { details: { app: String(owner.app) } }),
           ...(mounts[0] === undefined ? {} : { store: mounts[0].store }),
         }),
@@ -560,7 +563,7 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
             providerId: options.providerId,
             operation: "run.volume",
             message: "Lando's helper requested storage that isn't declared by the app plan.",
-            remediation: internalRemediation,
+            remediation: internalErrorRemediation,
             details: { app: plan.id, store: name },
             store: name,
           }),
@@ -708,19 +711,17 @@ interface EphemeralRelease {
   readonly observed?: { readonly exitCode?: number; readonly stderr: string };
 }
 
-// Only system Docker and Podman users have the engine CLI on PATH; the managed runtime has no Lando command for this yet.
-const leftoverHelperRemediation = (providerId: string, name: string): string =>
-  providerId === "docker" || providerId === "podman"
-    ? `Run \`lando doctor\` to check the container runtime, then remove the leftover helper container with \`${providerId} rm -f ${name}\`.`
-    : `Run \`lando doctor\` to check the Lando runtime. Lando can't remove the leftover helper container ${name} for you yet.`;
-
 /** Fixed bound so a hung engine DELETE cannot hold scope close open. */
 const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
 
 const releaseEphemeralContainer = (release: EphemeralRelease) => {
   const { options, name, remove, exit, operation, observed } = release;
   if (!remove) return Effect.void;
-  const cleanupRemediation = leftoverHelperRemediation(options.providerId, name);
+  // Only system Docker and Podman users have the engine CLI on PATH; the managed runtime has no Lando command for this yet.
+  const cleanupRemediation =
+    options.providerId === "docker" || options.providerId === "podman"
+      ? `Run \`lando doctor\` to check the container runtime, then remove the leftover helper container with \`${options.providerId} rm -f ${name}\`.`
+      : `Run \`lando doctor\` to check the Lando runtime. Lando can't remove the leftover helper container ${name} for you yet.`;
   // Finalizers are uninterruptible. The removal stays interruptible so this
   // deadline can stop it; the finalizer stays masked so parent cancellation
   // still waits for that bounded attempt instead of abandoning cleanup.
@@ -819,7 +820,7 @@ const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: strin
             operation: "run.inspect",
             message:
               "Lando couldn't read the helper container's result because the container engine returned invalid data.",
-            remediation: `Run \`lando doctor\` to check the container runtime. If this persists, ${internalRemediation}`,
+            remediation: inspectionRemediation,
           }),
           options.redactor,
         ),
@@ -839,7 +840,7 @@ const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: strin
                 operation: "run.inspect",
                 message:
                   "Lando couldn't read the helper command's exit code from the container engine's result.",
-                remediation: `Run \`lando doctor\` to check the container runtime. If this persists, ${internalRemediation}`,
+                remediation: inspectionRemediation,
               }),
               options.redactor,
             ),

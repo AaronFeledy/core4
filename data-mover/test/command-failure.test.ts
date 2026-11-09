@@ -1,14 +1,17 @@
 import { expect, test } from "bun:test";
 import { RedactionService } from "@lando/redaction/service";
-import { encodeCommandResult, identityRedactor, taggedErrorJson } from "@lando/sdk/command-result";
 import {
+  FailureRoleAnnotation,
   annotateFailureRole,
+  encodeCommandResult,
   failureDefectCause,
   failureOutcomeFromCause,
+  identityRedactor,
   mergeFailure,
+  taggedErrorJson,
 } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { Cause, Effect, Exit, Schema, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Schema, Stream } from "effect";
 import { checkedTransferCommand } from "../src/command-failure.ts";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -32,7 +35,14 @@ test.each([undefined, "peer", "rollback"] as const)(
       }),
     );
     const source = Stream.failCause(role === undefined ? raw : annotateFailureRole(raw, role));
-    const outcome = await failed(checkedTransferCommand(source, "exec", ["PRIVATE"]));
+    const exit = await Effect.runPromiseExit(checkedTransferCommand(source, "exec", ["PRIVATE"]));
+    if (!Exit.isFailure(exit)) throw new Error("Expected transfer failure");
+    expect(
+      exit.cause.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([role]);
+    const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.error).toMatchObject({
       _tag: "DataTransferError",
       reason: "provider",
@@ -110,6 +120,14 @@ test.each([false, true])(
         redactor: identityRedactor,
       }),
     );
+    expect(JSON.parse(encoded)).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "DataTransferError",
+        cause: { _tag: original._tag, remediation: original.remediation },
+        remediation: original.remediation,
+      },
+    });
     for (const value of [secret, late, "transfer-url-canary", "nested-transfer-canary"]) {
       expect(encoded).not.toContain(value);
       expect(JSON.stringify(taggedErrorJson(outcome.error))).not.toContain(value);

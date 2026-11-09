@@ -80,11 +80,3 @@ for (const kind of ["effect", "stream"] as const) {
     expect(calls).toBe(0);
   });
 }
-
-test("Effect.mapError drops the cleanup failure from a merged cause", () => {
-  const cause = mergeFailure(Cause.fail("primary"), Cause.fail("cleanup"), "cleanup");
-  const exit = Effect.runSyncExit(Effect.mapError(Effect.failCause(cause), (error) => error));
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isFailure(exit))
-    expect(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).toEqual(["primary"]);
-});

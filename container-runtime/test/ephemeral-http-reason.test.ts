@@ -160,8 +160,8 @@ for (const mode of ["run", "runStream"] as const) {
         expect(diagnostic).toMatchObject({
           _tag: "ProviderUnavailableError",
           operation: `run.${phase}`,
-          details: { status: 404 },
         });
+        expect(diagnostic.details).toEqual({ status: 404 });
         for (const value of hidden) expect(JSON.stringify(diagnostic)).not.toContain(value);
         if (visible === undefined) expect(diagnostic.message).toMatch(/\(HTTP 404\)\.$/u);
         else expect(diagnostic.message).toContain(visible);

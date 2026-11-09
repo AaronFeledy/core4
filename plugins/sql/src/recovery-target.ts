@@ -217,21 +217,20 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
   );
   const exactTransition = (running: boolean, transition: Effect.Effect<void, unknown>) =>
     transition.pipe(
-      mapFailures((error) =>
-        isProviderError(error)
-          ? error
-          : Option.getOrElse(normalizeCommandFailure(error), () =>
-              recoveryUnavailable(
-                input.serviceName,
-                running
-                  ? "The inspected database runtime could not be resumed after recovery."
-                  : "The inspected database runtime could not be stopped before recovery.",
-                running
-                  ? "Inspect the database runtime before retrying or restoring the reported recovery snapshot."
-                  : "Leave the database stopped, inspect the service container, and retry recovery.",
-              ),
-            ),
-      ),
+      mapFailures((error) => {
+        if (isProviderError(error)) return error;
+        return Option.getOrElse(normalizeCommandFailure(error), () =>
+          recoveryUnavailable(
+            input.serviceName,
+            running
+              ? "The inspected database runtime could not be resumed after recovery."
+              : "The inspected database runtime could not be stopped before recovery.",
+            running
+              ? "Inspect the database runtime before retrying or restoring the reported recovery snapshot."
+              : "Leave the database stopped, inspect the service container, and retry recovery.",
+          ),
+        );
+      }),
       Effect.andThen(verifyRuntimeState(input.deps, input.serviceName, target.runtime, running)),
     );
   return {

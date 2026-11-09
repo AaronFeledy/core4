@@ -1,6 +1,5 @@
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { collectUrlCredentialValues, createStandaloneRedactor } from "@lando/redaction/service";
-import { internalErrorRemediation } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { REDACTED } from "@lando/sdk/secrets";
 import type { EphemeralRunSpec } from "@lando/sdk/services";
@@ -10,7 +9,6 @@ import { apiReasonFromBody } from "./redact.ts";
 
 export const runtimeRemediation =
   "Run `lando doctor` to check the container runtime, then retry the command.";
-export const internalRemediation = internalErrorRemediation;
 
 const actions = {
   "run.create": "create Lando's helper container",

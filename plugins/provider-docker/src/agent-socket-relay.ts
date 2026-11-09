@@ -12,8 +12,7 @@ import {
 } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { AGENT_SESSION_LABEL } from "@lando/container-runtime/labels";
-import { mapFailures } from "@lando/sdk/command-result";
-import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { type AgentSocketBridgeInput, type AgentSocketBridgeResult, ProviderId } from "@lando/sdk/schema";

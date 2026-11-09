@@ -36,7 +36,7 @@ export const extractFirstTarFile = <E, R, E2>(
       content,
       Stream.fromEffect(
         Effect.suspend(() =>
-          remaining === undefined || remaining !== 0
+          remaining !== 0
             ? Effect.fail(extractionError(new RangeError("Truncated tar payload.")))
             : Effect.void,
         ),

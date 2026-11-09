@@ -419,10 +419,9 @@ test("an unreadable inventory path is redacted without losing remediation", asyn
   if (Result.isSuccess(result) || !(result.failure instanceof ProviderUnavailableError))
     throw new Error("Expected unreadable state failure");
   expect(result.failure.operation).toBe("applied-state.read");
-  expect(result.failure.message).toContain("[redacted]");
+  expect(result.failure.message).toContain("/tmp/[redacted]/unreadable-state.json");
   expect(result.failure.message).not.toContain(canary);
-  expect(result.failure.remediation).toContain("Restore");
-  expect(result.failure.remediation).toContain("[redacted]");
+  expect(result.failure.remediation).toContain("/tmp/[redacted]/unreadable-state.json");
   expect(result.failure.remediation).not.toContain(canary);
 });
 

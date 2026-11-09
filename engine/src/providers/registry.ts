@@ -81,8 +81,7 @@ export const makeRuntimeProviderRegistry = (
           ? yield* redaction.value.forProfile("secrets", redactorOptions)
           : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
-      const redactContributionErrors = <A, R>(effect: Effect.Effect<A, ProviderUnavailableError, R>) =>
-        mapFailures(effect, redactFailure);
+      const redactContributionErrors = mapFailures(redactFailure);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
       const httpClient = yield* HttpClient.HttpClient;

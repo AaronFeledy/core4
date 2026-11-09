@@ -84,7 +84,7 @@ Promise results were restricted to `undefined`, `null`, `[]`, `{}`, and `false`,
 | plugins/provider-lando/src/windows-sync-recovery.ts:84 | 1 | preserve | Retained-writer inventory errors retain the provider API cause before any destructive action. |
 | plugins/provider-lando/src/windows-sync-helper.ts:209 | 1 | preserve | Image-inspection failure retains the original tagged provider cause under the image-verification wrapper. |
 
-Result: **16 preserved, 32 kept**. The later provider-tier `mapError` ban in `effect-idioms` requires `mapFailures`/`mapStreamFailures` from `@lando/sdk/command-result` to preserve every reason and annotation; zero-argument payload-safety mappings still replace each typed payload with the same safe diagnostic.
+Result: **16 preserved, 32 kept**; provider-tier `mapFailures`/`mapStreamFailures` from `@lando/sdk/command-result` now preserve every reason and annotation without changing safe payload mappings.
 
 ### Promise decisions
 
@@ -111,7 +111,7 @@ Result: **6 narrowed, 8 kept**. The baseline return counts were undefined 11, nu
 
 Extend the existing `effect-idioms` rule, not the registry count, to reject **zero-argument `.catch` arrow handlers returning null**. Parenthesized expressions, optional chaining and a single block return are covered. A handler that inspects an error and returns null only for ENOENT remains allowed. Tests also retain legitimate undefined/empty-array cleanup handlers. The registry justification and inventory row record why package dependency direction cannot enforce this behavior.
 
-The `effect-idioms` rule now bans `Effect.mapError` and `Stream.mapError` in the provider tier, including zero-argument handlers, in favor of cause-preserving SDK helpers with the same payload policy. The ban does not extend outside that tier or to all promise swallows. Do not add a blanket false/empty-object ban just because those forms were never found.
+The `effect-idioms` ban replaces provider-tier `Effect.mapError`/`Stream.mapError`, including zero-argument handlers, with SDK failure mappers; other tiers and promise swallows, including false/empty-object returns, retain the audit's existing policy.
 
 ## Effect.catch follow-up hotspots
 

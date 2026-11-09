@@ -122,8 +122,8 @@ test.each(members.filter(({ name }) => !["copyFromService", "exportArtifact"].in
           : name === "importArtifact"
             ? "ArtifactTransferError"
             : "VolumeOperationError",
-      details: { status: 503 },
     });
+    expect(taggedErrorJson(error).details).toEqual({ status: 503, body: "[redacted]" });
     expect(JSON.stringify(taggedErrorJson(error))).not.toContain(secret);
   },
 );

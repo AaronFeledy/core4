@@ -2,17 +2,15 @@ import { redactProviderError } from "@lando/redaction/provider-error";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
-import type { Effect, Stream } from "effect";
 import type { ProviderErrorMember } from "./output-policy.ts";
 
 export const withProviderErrorRedaction = (
   runtime: RuntimeProviderShape,
   redactor: Redactor,
 ): RuntimeProviderShape => {
-  const effect = <A, R>(value: Effect.Effect<A, ProviderError, R>) =>
-    value.pipe(mapFailures((error) => redactProviderError(error, redactor)));
-  const stream = <A, R>(value: Stream.Stream<A, ProviderError, R>) =>
-    value.pipe(mapStreamFailures((error) => redactProviderError(error, redactor)));
+  const redactFailure = (error: ProviderError) => redactProviderError(error, redactor);
+  const effect = mapFailures(redactFailure);
+  const stream = mapStreamFailures(redactFailure);
   const {
     appliedPlans,
     cleanupOwnedResources,
