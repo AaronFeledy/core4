@@ -35,7 +35,9 @@ export const normalizeEnvironmentSites = (
     if (Array.isArray(value) && keyValueEntryPath([...path, 0])) {
       const children = new Map<string | number, typeof origins>();
       const values: [string, string][] = [];
-      let environmentFailureRecorded = false;
+      // One canonical environment diagnostic per list; only the invalid entries stop later
+      // load work, so valid siblings still report their own independent failures.
+      let canonical: LandofileValidationError | false | undefined;
       for (const [index, item] of value.entries()) {
         const origin = origins.children.get(index) ?? origins;
         const equal = typeof item === "string" ? item.indexOf("=") : -1;
@@ -46,28 +48,11 @@ export const normalizeEnvironmentSites = (
         }
         if (typeof item !== "string" || equal < 0 || item.slice(0, equal) === "__proto__") {
           if (eligibleBindingPath([...path, index])) {
-            if (environmentFailureRecorded) continue;
-            const decoded = Schema.decodeUnknownResult(ToolingEnvironment)(value, {
-              errors: "all",
-              onExcessProperty: "error",
-            });
-            if (Result.isFailure(decoded)) {
-              const error = new LandofileValidationError({
-                file: origins.source.file,
-                message: "Environment list failed validation.",
-                issues: landofileIssuesFromSchema(
-                  new SchemaIssue.Pointer(path, decoded.failure.issue),
-                  input.value,
-                ).map((issue) => ({
-                  ...issue,
-                  rule: "landofile.validation" as const,
-                  source: valueOriginAt(input.origins, issue.path).source,
-                })),
-                remediation: "Use KEY=value entries or an environment mapping.",
-              });
-              if (input.recorder === undefined) throw error;
-              input.recorder.record(error, origins.source);
-              environmentFailureRecorded = true;
+            canonical ??= canonicalEnvironmentError(input, value, path, origins.source.file);
+            if (canonical !== false) {
+              if (input.recorder === undefined) throw canonical;
+              if (input.recorder.failures.includes(canonical)) input.recorder.block(origin.source);
+              else input.recorder.record(canonical, origin.source);
               continue;
             }
           }
@@ -111,4 +96,29 @@ export const normalizeEnvironmentSites = (
     return entry;
   };
   return visit(input, []);
+};
+
+const canonicalEnvironmentError = (
+  input: PreparedOverlay,
+  value: readonly unknown[],
+  path: ValidationIssuePath,
+  file: string,
+): LandofileValidationError | false => {
+  const decoded = Schema.decodeUnknownResult(ToolingEnvironment)(value, {
+    errors: "all",
+    onExcessProperty: "error",
+  });
+  if (Result.isSuccess(decoded)) return false;
+  return new LandofileValidationError({
+    file,
+    message: "Environment list failed validation.",
+    issues: landofileIssuesFromSchema(new SchemaIssue.Pointer(path, decoded.failure.issue), input.value).map(
+      (issue) => ({
+        ...issue,
+        rule: "landofile.validation" as const,
+        source: valueOriginAt(input.origins, issue.path).source,
+      }),
+    ),
+    remediation: "Use KEY=value entries or an environment mapping.",
+  });
 };

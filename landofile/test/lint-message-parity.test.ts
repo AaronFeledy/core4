@@ -52,6 +52,21 @@ const lintLayers = async (layers: Readonly<Record<string, string>>) => {
   }
 };
 
+test("keeps an independent sibling failure next to an invalid environment entry", async () => {
+  const { result } = await lintLayers({
+    ".lando.yml":
+      'name: lint-parity\ntooling:\n  task:\n    cmd: echo ok\n    env:\n      - BROKEN\n      - "GOOD={{ env.LANDO_TEST_UNSET_VALUE }}"\n',
+  });
+  expect(result.violations).toEqual([
+    expect.objectContaining({ rule: "landofile.validation", path: ["tooling", "task", "env"] }),
+    expect.objectContaining({
+      rule: "landofile.load",
+      reason: "ConfigExpressionError",
+      path: ["tooling", "task", "env", "GOOD"],
+    }),
+  ]);
+});
+
 test("reports a nested deprecation notice defect once in both scopes", async () => {
   const { result } = await lintLayers({
     ".lando.yml": [
