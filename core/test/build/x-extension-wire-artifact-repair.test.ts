@@ -13,6 +13,7 @@ import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-ac
 import { evolveHistoricalAuthoringProjection } from "./x-extension-authoring-projection-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
+import { evolveHistoricalDeprecationNotice } from "./x-extension-deprecation-notice-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
@@ -113,10 +114,13 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalToolingWrapper(
-    evolveHistoricalUploadDirs(
-      evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+  const evolved = evolveHistoricalDeprecationNotice(
+    evolveHistoricalToolingWrapper(
+      evolveHistoricalUploadDirs(
+        evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+      ),
     ),
+    source,
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;

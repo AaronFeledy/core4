@@ -111,7 +111,7 @@ const canonicalEnvironmentError = (
   if (Result.isSuccess(decoded)) return false;
   return new LandofileValidationError({
     file,
-    message: "Environment list failed validation.",
+    message: "Environment list entries require a nonreserved KEY=value.",
     issues: landofileIssuesFromSchema(new SchemaIssue.Pointer(path, decoded.failure.issue), input.value).map(
       (issue) => ({
         ...issue,
