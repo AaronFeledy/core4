@@ -14,7 +14,7 @@ import { TestClock } from "effect/testing";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makeLandoPaths } from "@lando/paths";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { ExecConmonReaper } from "../src/exec-conmon.ts";
 import {
   type FsSeam,
@@ -222,6 +222,38 @@ describe("terminateOwnedRuntimeService", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+  test("stops the runtime even when the shutdown receipt lock cannot be taken", async () => {
+    const actions: string[] = [];
+    const lockFailure = new StateStoreError({
+      reason: "lock",
+      operation: "withLock",
+      path: "/plugin-state",
+      remediation: "test",
+    });
+    const result = await run(
+      withRuntimeShutdownReceipt(
+        {
+          open: () => Effect.fail(lockFailure),
+          withLock: () => Effect.fail(lockFailure),
+        },
+        terminateOwnedRuntimeService(baseSpec, {
+          process: makeProcessSeam({
+            terminate: () =>
+              Effect.sync(() => {
+                actions.push("SIGTERM");
+              }),
+          }),
+          fs: { unlink: () => Effect.void },
+          terminationPolicy: { maxAttempts: 1, delay: Duration.zero, timeout: Duration.seconds(1) },
+          apiClient: () => ({ request: () => Effect.succeed({ status: 200, body: "[]" }) }),
+          execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
+          privateRuntimeDir: () => Effect.succeed(undefined),
+        }),
+      ),
+    );
+    expect(result).toMatchObject({ terminated: true, pid: 123 });
+    expect(actions).toEqual(["SIGTERM"]);
   });
   test("removes only storage containers sequentially before SIGTERM", async () => {
     const actions: string[] = [];
