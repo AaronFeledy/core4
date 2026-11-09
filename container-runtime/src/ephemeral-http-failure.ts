@@ -16,6 +16,7 @@ const actions = {
   "run.wait": "wait for Lando's helper container to finish",
   "run.inspect": "read Lando's helper container's result",
   "run.volume": "create storage for Lando's helper container",
+  "run.mountsFrom": "read the service container's mounts for Lando's helper container",
 } as const;
 
 const reasonLimit = 512;

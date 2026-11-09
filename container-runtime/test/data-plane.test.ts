@@ -4,7 +4,7 @@ import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-res
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
@@ -776,6 +776,48 @@ describe("provider data plane", () => {
     });
   });
 
+  test("forwards ephemeral bind mounts, user, and empty entrypoint", async () => {
+    let createBody: unknown;
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.path.startsWith("/containers/create?name=")) createBody = request.body;
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          image: "docker.io/keinos/sqlite3:3.54.1",
+          command: ["sqlite3", "/app/db.sqlite", ".dump"],
+          binds: [{ source: "/host/app", target: "/app" }],
+          user: "33:33",
+          entrypoint: [],
+          remove: true,
+        }),
+      ),
+    );
+
+    expect(createBody).toMatchObject({
+      User: "33:33",
+      Entrypoint: [],
+      HostConfig: {
+        Mounts: [{ Type: "bind", Source: "/host/app", Target: "/app", ReadOnly: false }],
+      },
+    });
+  });
+
   test("adopts an existing ephemeral volume without treating submitted labels as observed", async () => {
     // Given: the daemon reports that the declared volume already exists.
     const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];
@@ -1460,6 +1502,99 @@ test.each(["http", "typed", "defect", "interrupt"] as const)(
     }
   },
 );
+
+describe("borrowed ephemeral mounts", () => {
+  const runBorrowed = async (subpath?: string | null, readOnly = false) => {
+    const requests: Parameters<NonNullable<DataPlaneApiClient["request"]>>[0][] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "docker",
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+      api: {
+        request: (request) => {
+          requests.push(request);
+          if (request.path === "/containers/source-container/json")
+            return Effect.succeed({
+              status: 200,
+              body: JSON.stringify({
+                HostConfig: {
+                  Mounts:
+                    subpath === null
+                      ? null
+                      : [
+                          {
+                            Type: "volume",
+                            Target: "/app",
+                            VolumeOptions: subpath === undefined ? {} : { Subpath: subpath },
+                          },
+                        ],
+                },
+              }),
+            });
+          return Effect.succeed(
+            request.path.endsWith("/json")
+              ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+              : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+          );
+        },
+        stream: () => Stream.empty,
+      },
+    });
+    const result = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.run({
+          image: "sqlite-helper",
+          command: ["true"],
+          remove: true,
+          mountsFrom: { containerId: "source-container", readOnly },
+          binds: [{ source: "/private/scratch", target: "/sql-scratch" }],
+          user: "100:200",
+          entrypoint: [],
+        }),
+      ),
+    );
+    return { result, requests };
+  };
+
+  test.each([true, false])(
+    "combines realized service mounts with an explicit scratch bind (readOnly=%s)",
+    async (readOnly) => {
+      const { result, requests } = await runBorrowed(undefined, readOnly);
+      expect(Exit.isSuccess(result)).toBe(true);
+      const create = requests.find((request) => request.path.startsWith("/containers/create?"));
+      expect(create?.minimumApiVersion).toBeUndefined();
+      expect(create?.body).toMatchObject({
+        HostConfig: {
+          Binds: [],
+          VolumesFrom: [`source-container:${readOnly ? "ro" : "rw"}`],
+          Mounts: [{ Type: "bind", Source: "/private/scratch", Target: "/sql-scratch", ReadOnly: false }],
+        },
+      });
+      expect(
+        requests
+          .filter((request) => request !== create)
+          .every((request) => request.minimumApiVersion === undefined),
+      ).toBe(true);
+    },
+  );
+
+  test("accepts a source whose inspect represents absent long-syntax mounts as null", async () => {
+    const { result } = await runBorrowed(null);
+    expect(Exit.isSuccess(result)).toBe(true);
+  });
+
+  test("refuses borrowed volume subpaths before create rather than mounting their root", async () => {
+    const { result, requests } = await runBorrowed("tenant");
+    expect(Exit.isFailure(result)).toBe(true);
+    if (!Exit.isFailure(result)) return;
+    const failure = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+    expect(failure).toBeInstanceOf(ProviderCapabilityError);
+    if (!(failure instanceof ProviderCapabilityError)) return;
+    expect(failure.capability).toBe("volume-subpath");
+    expect(requests.some((request) => request.path.endsWith("/start"))).toBe(false);
+    expect(requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(0);
+  });
+});
 
 for (const mode of ["run", "runStream"] as const) {
   test.each([200, 201, 409, 202, 204, 500, 503])(
