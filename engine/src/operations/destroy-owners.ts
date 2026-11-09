@@ -23,7 +23,10 @@ export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners
   const registry = yield* RuntimeProviderRegistry;
   const selected = yield* TeardownProvider;
   const roots = options.roots ?? [root];
-  const plans = (yield* Effect.forEach(roots, (root) => registry.appliedPlansFor(root))).flat();
+  // An explicit provider reads only its own applied state; another provider's failure cannot block it.
+  const plans = (yield* Effect.forEach(roots, (root) =>
+    registry.appliedPlansFor(root, selected === undefined ? undefined : ProviderId.make(selected)),
+  )).flat();
   const ownership =
     registry.resourceOwnership === undefined
       ? []
@@ -44,7 +47,10 @@ export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners
     ...plans
       .filter((plan) => matchesAppPlanIdentity(plan, options.target?.app ?? { kind: "user", id: "" }))
       .map((plan) => plan.provider),
-    ...(options.target === undefined ? [] : [options.target.plan.provider]),
+    // A target without a Landofile is the caller's applied evidence; a desired target proves nothing.
+    ...(options.target === undefined || options.target.landofile !== undefined
+      ? []
+      : [options.target.plan.provider]),
     ...ownership.flat().flatMap((hint) => (hint === undefined ? [] : [hint.providerId])),
     ...journals.flatMap((pending) =>
       pending === null || pending.phase === "completed" || !roots.includes(AbsolutePath.make(pending.appRoot))

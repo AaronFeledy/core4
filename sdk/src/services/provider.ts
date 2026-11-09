@@ -349,10 +349,11 @@ export class RuntimeProviderRegistry extends Context.Service<
     /**
      * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
      * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
-     * or contacts a runtime.
+     * or contacts a runtime. With `providerId`, only that provider's applied state is read.
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
+      providerId?: ProviderId,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */

@@ -41,7 +41,7 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   if (
     intent === "destroy" &&
     (ownership !== undefined ||
-      (yield* registry.appliedPlansFor(root)).some((plan) => plan.provider === providerId))
+      (yield* registry.appliedPlansFor(root, providerId)).some((plan) => plan.provider === providerId))
   )
     yield* prepareTeardownOwners([provider]);
   const observedProvider = {

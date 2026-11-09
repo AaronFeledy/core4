@@ -224,18 +224,18 @@ const run = (
       const registry = yield* RuntimeProviderRegistry;
       if (observe === "teardown") return yield* registry.resolveTeardownEvidence(exactRoot ?? root);
       if (exactRoot !== undefined) {
-        return yield* registry.appliedPlansFor(exactRoot);
+        return yield* registry.appliedPlansFor(exactRoot, selected);
       }
       if (observe) {
         if (registry.observeRuntime === undefined) return yield* Effect.die("missing observer");
         return yield* registry.observeRuntime;
       }
-      const selected = yield* registry.resolveAppliedPlan(root);
-      return selected === undefined
+      const resolved = yield* registry.resolveAppliedPlan(root);
+      return resolved === undefined
         ? undefined
         : {
-            plan: selected,
-            providerId: (yield* registry.select(selected)).id,
+            plan: resolved,
+            providerId: (yield* registry.select(resolved)).id,
           };
     }).pipe(
       Effect.provide(
@@ -249,6 +249,22 @@ const run = (
     ),
   );
 };
+
+test("provider-scoped applied plans never read another provider's state", async () => {
+  const dockerPlan = { ...plan, provider: ProviderId.make("docker") };
+  const modules = [
+    moduleFor(
+      "lando",
+      Effect.die("must not read excluded provider"),
+      Effect.die("must not initialize excluded provider"),
+    ),
+    moduleFor("docker", Effect.succeed([dockerPlan]), Effect.succeed(TestRuntimeProvider)),
+  ];
+  expect(await run(modules, false, root, dockerPlan.provider)).toMatchObject({
+    _tag: "Success",
+    success: [{ id: dockerPlan.id, provider: "docker" }],
+  });
+});
 
 test("provider-scoped resolution disambiguates two applied owners without reading the other provider", async () => {
   const dockerPlan = { ...plan, provider: ProviderId.make("docker") };

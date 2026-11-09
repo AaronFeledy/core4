@@ -450,7 +450,7 @@
     ],
     "RuntimeProviderRegistry": [
       "assertAppliedStateReadable?:(plan:Pick<AppPlan,\"id\" | \"provider\">) => Effect.Effect<void,ProviderUnavailableError | NoProviderInstalledError>",
-      "appliedPlansFor:(root:AbsolutePath) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
+      "appliedPlansFor:(root:AbsolutePath,providerId?:ProviderId) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
       "appliedStateInventory?:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "hasRecordedOwnership?:(providerId:ProviderId) => Effect.Effect<boolean,ProviderUnavailableError|NoProviderInstalledError>",

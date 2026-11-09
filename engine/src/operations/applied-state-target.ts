@@ -184,7 +184,7 @@ export const resolveTeardownResolution = Effect.gen(function* () {
         const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
         const registry = yield* RuntimeProviderRegistry;
         const providerId = yield* TeardownProvider;
-        const plans = (yield* registry.appliedPlansFor(root)).filter(
+        const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
           (plan) =>
             (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
         );

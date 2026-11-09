@@ -284,8 +284,11 @@ export const makeRuntimeProviderRegistry = (
             ),
           ),
         ),
-        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
-          const ids = yield* providerIds;
+        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (
+          root: AbsolutePath,
+          providerId?: ProviderId,
+        ) {
+          const ids = providerId === undefined ? yield* providerIds : [providerId];
           const plans = yield* Effect.forEach(ids, (id) =>
             contributionFor(id).pipe(
               Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),
