@@ -50,9 +50,18 @@ const SUPPORTED_FLAG_KEYS = new Set([
   "required",
   "description",
   "deprecated",
+  "sensitive",
 ]);
 
-const SUPPORTED_ARG_KEYS = new Set(["choices", "default", "required", "order", "description", "deprecated"]);
+const SUPPORTED_ARG_KEYS = new Set([
+  "choices",
+  "default",
+  "required",
+  "order",
+  "description",
+  "deprecated",
+  "sensitive",
+]);
 
 /** A fragment may wrap any mapping in `!override`; the scan reads what it authors. */
 const authored = (value: unknown): unknown => (isLandofileOverride(value) ? value.value : value);

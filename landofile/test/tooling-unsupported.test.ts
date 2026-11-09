@@ -97,6 +97,18 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
   });
 });
 
+test("accepts sensitive flag and arg declarations that the input schema supports", async () => {
+  const outcome = await run({
+    tooling: {
+      login: {
+        flags: { token: { sensitive: true, description: "API token" } },
+        args: { password: { order: 0, sensitive: true } },
+      },
+    },
+  });
+  expect(outcome._tag).toBe("Success");
+});
+
 describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
   test.each([
     ["default", "Write the value directly: vars.V: <value>."],
