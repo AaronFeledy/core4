@@ -3,7 +3,7 @@
     "surface": "schema:ToolingVar",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Issue #2004 intentionally removes the unreleased default and prompt tooling var object forms. Literals and sh remain. The loader rejects removed forms before decode with form-specific NotImplementedError remediation; no deprecated aliases remain."
+    "justification": "Issue #2004 intentionally removes the unreleased default and prompt tooling var object forms. Literals and sh remain. The loader rejects removed forms before decode with form-specific NotImplementedError remediation; no deprecated aliases remain. Tooling round 2 A1 adds optional service and sensitive:true to sh vars. Explicit targets reset task placement, and sensitive captures register before the next var; focused schema, preparation, and host-shell tests cover these additions."
   },
   {
     "surface": "schema:ToolingTaskShape",

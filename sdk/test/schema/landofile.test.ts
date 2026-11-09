@@ -914,4 +914,13 @@ describe("LandofileShape — tooling: supported schema", () => {
     });
     expect(Schema.decodeUnknownResult(ToolingVar)({ prompt: "Tag?" })._tag).toBe("Failure");
   });
+
+  test("computed vars accept a target and sensitivity but no false opt-out", () => {
+    expect(
+      Schema.decodeUnknownSync(ToolingVar)({ sh: "git branch", service: ":host", sensitive: true }),
+    ).toEqual({ sh: "git branch", service: ":host", sensitive: true });
+    expect(Schema.decodeUnknownResult(ToolingVar)({ sh: "git branch", sensitive: false })._tag).toBe(
+      "Failure",
+    );
+  });
 });

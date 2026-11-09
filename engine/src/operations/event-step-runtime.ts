@@ -29,10 +29,8 @@ import type { ExpressionContext } from "@lando/sdk/expressions";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { effectiveToolingForPlan, toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
-import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import type {
   ResolvedToolingCmdStepLeaf,
   ResolvedToolingCommandStepLeaf,
@@ -44,8 +42,8 @@ import { publishEventOutputProgress } from "./event-output-progress.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
-import { makeDynamicToolingVarResolver } from "./tooling-dynamic-vars.ts";
 import { type AdmittedToolingInput, admitToolingTask } from "./tooling-input-admission.ts";
+import { prepareToolingInvocation } from "./tooling-prepare.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 const OUTPUT_TAIL_LENGTH = 4_000;
@@ -220,30 +218,33 @@ const runInvocation = Effect.fnUntraced(function* (
   task: ToolingTaskShape,
   invocationOptions: {
     readonly admitted?: AdmittedToolingInput;
+    readonly compiled?: Effect.Success<ReturnType<typeof compileToolingInvocations>>;
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
     readonly env?: import("@lando/sdk/schema").Environment;
   } = {},
 ) {
   const runtime = yield* toolingRuntime(tool);
-  const compiled = yield* compileToolingInvocations({
-    admitted:
-      invocationOptions.admitted ??
-      (yield* admitToolingTask({
-        name: tool,
-        task,
-        source: { path: toolingSourcePathForPlan(options.plan, tool), task: tool },
-      })),
-    name: tool,
-    lookupKey: tool,
-    task,
-    source: {
-      path: toolingSourcePathForPlan(options.plan, tool),
-      task: tool,
-    },
-    ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
-    ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
-  });
+  const compiled =
+    invocationOptions.compiled ??
+    (yield* compileToolingInvocations({
+      admitted:
+        invocationOptions.admitted ??
+        (yield* admitToolingTask({
+          name: tool,
+          task,
+          source: { path: toolingSourcePathForPlan(options.plan, tool), task: tool },
+        })),
+      name: tool,
+      lookupKey: tool,
+      task,
+      source: {
+        path: toolingSourcePathForPlan(options.plan, tool),
+        task: tool,
+      },
+      ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
+      ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
+    }));
   if (
     options.hostRunner === undefined &&
     compiled.invocations.some((invocation) => invocation.service === ":host")
@@ -347,21 +348,24 @@ const runTask = Effect.fnUntraced(function* (
     task: client.task,
     source: { path: toolingSourcePathForPlan(options.plan, leaf.task), task: leaf.task },
   };
-  const admitted = yield* admitToolingTask(compileOptions);
-  yield* registerPlanRedaction(options.plan);
   const runtime = yield* toolingRuntime(leaf.task);
-  const resolution = resolveToolingTaskShape(client.task, context, client.sites, {
-    name: leaf.task,
-    evaluate: makeDynamicToolingVarResolver({ plan: options.plan, options: compileOptions, admitted }),
+  const resolution = prepareToolingInvocation({
+    plan: options.plan,
+    options: compileOptions,
+    sites: client.sites,
+    context,
   }).pipe(
     Effect.provideService(ToolingEngine, runtime.engine),
     Effect.provideService(RuntimeProviderRegistry, runtime.registry),
   );
-  const resolved = yield* options.hostRunner === undefined
+  const compiled = yield* options.hostRunner === undefined
     ? resolution
     : resolution.pipe(Effect.provideService(ShellRunner, options.hostRunner));
-  const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
-  const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens, admitted }).pipe(
+  const { redactor, redactionTokens } = yield* options.redactorFor({
+    env: [leaf.vars, ...compiled.invocations.map((invocation) => invocation.env)],
+    directTokens: compiled.redactionTokens,
+  });
+  const result = yield* runInvocation(options, leaf.task, client.task, { redactionTokens, compiled }).pipe(
     mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)),
   );
   return { leaf, result, startedAt, redactor };

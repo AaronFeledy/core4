@@ -9,13 +9,9 @@ import { Effect } from "effect";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 
-import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
-import { compileToolingInvocations } from "./tooling-compile.ts";
-import { makeDynamicToolingVarResolver } from "./tooling-dynamic-vars.ts";
-import { admitToolingTask } from "./tooling-input-admission.ts";
+import { prepareToolingInvocation } from "./tooling-prepare.ts";
 
 export interface EventToolingInvocation {
   readonly plan: AppPlan;
@@ -55,13 +51,7 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
       task: name,
     },
   };
-  const admitted = yield* admitToolingTask(options);
-  yield* registerPlanRedaction(plan);
-  const resolved = yield* resolveToolingTaskShape(client.task, {}, client.sites, {
-    name,
-    evaluate: makeDynamicToolingVarResolver({ plan, options, admitted }),
-  });
-  return yield* compileToolingInvocations({ ...options, task: resolved, admitted }).pipe(
+  return yield* prepareToolingInvocation({ plan, options, sites: client.sites }).pipe(
     Effect.flatMap((compiled) =>
       runBracketedInvocations({
         plan,

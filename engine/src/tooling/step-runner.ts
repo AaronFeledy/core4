@@ -66,6 +66,7 @@ export const resolveToolingTaskShape = Effect.fnUntraced(function* <E = never, R
     /** Effective task name, used to locate failures at `tooling.<name>`. */
     readonly name: string;
     readonly evaluate: DynamicToolingVarResolver<E, R>;
+    readonly register?: (name: string, value: unknown) => Effect.Effect<void>;
   },
 ) {
   const issue = dynamicToolingReferenceIssues(task, program)[0];
@@ -110,6 +111,7 @@ export const resolveToolingTaskShape = Effect.fnUntraced(function* <E = never, R
         }),
       );
     vars[name] = yield* dynamic.evaluate({ name, command: variable.sh, task: target });
+    yield* dynamic.register?.(name, vars[name]) ?? Effect.void;
   }
   const resolvedVars: Record<string, unknown> = { ...target.vars };
   for (const name of names) resolvedVars[name] = vars[name];

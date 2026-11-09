@@ -884,7 +884,17 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(
  * admission in the task target, unless caller vars supply the name. Shell
  * command interpolations bind its output as escaped data; results are never cached.
  */
-export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
+export const ToolingVarSh = Schema.Struct({
+  sh: Schema.String,
+  service: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Target for this var command: :host, a service name, or :<declared non-boolean flag>. An explicit target resets task user and dir; invocation overrides still apply.",
+  }),
+  sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
+    description:
+      "Protect captured output from diagnostics and task output. Secret-like names are always sensitive; false is not accepted.",
+  }),
+});
 export type ToolingVarSh = typeof ToolingVarSh.Type;
 
 /**

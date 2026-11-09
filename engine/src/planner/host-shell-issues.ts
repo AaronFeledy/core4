@@ -73,13 +73,15 @@ export const hostToolingCommands = (
     if (task.disabled === true) return [];
     const normalized = normalizeToolingTask(name, task);
     if (Result.isFailure(normalized)) return [];
-    const variables =
-      normalized.success.service?.kind === "host"
-        ? Object.entries(task.vars ?? {}).flatMap(([key, value]) => {
-            const path = ["tooling", name, "vars", key, "sh"];
-            return typeof value === "object" && !isDynamic(sites, path) ? [{ path, command: value.sh }] : [];
-          })
+    const variables = Object.entries(task.vars ?? {}).flatMap(([key, value]) => {
+      const path = ["tooling", name, "vars", key, "sh"];
+      return typeof value === "object" &&
+        (value.service === ":host" ||
+          (value.service === undefined && normalized.success.service?.kind === "host")) &&
+        !isDynamic(sites, path)
+        ? [{ path, command: value.sh }]
         : [];
+    });
     return [
       ...variables,
       ...normalized.success.steps.flatMap((step, index) => {
