@@ -374,11 +374,16 @@ test.each(["take", "interrupt"] as const)(
     const exit: Exit.Exit<unknown, unknown> =
       mode === "take"
         ? await Effect.runPromiseExit(
-            commandOutputStream(source, { failure }).pipe(Stream.take(1), Stream.runDrain),
+            commandOutputStream(source, { failure, authoritativeTokens: ["SYNTHETIC_PRIVATE_CLEANUP"] }).pipe(
+              Stream.take(1),
+              Stream.runDrain,
+            ),
           )
         : await Effect.runPromise(
             Effect.gen(function* () {
-              const fiber = yield* Effect.forkChild(captured(source));
+              const fiber = yield* Effect.forkChild(
+                captured(source, { authoritativeTokens: ["SYNTHETIC_PRIVATE_CLEANUP"] }),
+              );
               yield* Deferred.await(started);
               yield* Fiber.interrupt(fiber);
               return yield* Fiber.await(fiber);
@@ -387,6 +392,9 @@ test.each(["take", "interrupt"] as const)(
     expect(removed).toBe(1);
     if (!Exit.isFailure(exit)) throw new Error("Expected sanitized removal failure");
     const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({
+      cause: { _tag: "ProviderUnavailableError", remediation: "Retry fixture." },
+    });
     expect(JSON.stringify(outcome).includes("SYNTHETIC_PRIVATE")).toBe(false);
     expect(Cause.hasInterrupts(exit.cause)).toBe(mode === "interrupt");
     expect(exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason))).toHaveLength(1);

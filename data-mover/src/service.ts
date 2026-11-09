@@ -64,7 +64,6 @@ import {
   DataMover,
   EventService,
   PathsService,
-  type ProviderError,
   RuntimeProvider,
   RuntimeProviderRegistry,
   StateStore,
@@ -80,6 +79,7 @@ import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
+import { providerFailure } from "./provider-failure.ts";
 import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
 import {
   type SnapshotPersistence,
@@ -179,14 +179,6 @@ const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): Data
 
 const failUnsupported = (from: DataEndpoint, to: DataEndpoint, reason: string) =>
   Effect.fail(unsupported(from, to, reason));
-
-const providerFailure = (operation: string, cause: ProviderError): DataTransferError =>
-  new DataTransferError({
-    message: `Provider ${operation} failed during data transfer.`,
-    operation,
-    cause,
-    remediation: cause.remediation,
-  });
 
 const dataHelperImage = providerImages.images.dataHelper;
 
@@ -873,13 +865,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         return yield* failUnsupported(spec.from, target, "ephemeral mounts are unavailable");
       {
         if (spec.overwrite !== true) {
-          const volumes = yield* provider.listVolumes({ app: target.app, store: target.store }).pipe(
-            Effect.catchIf(
-              (cause) => cause instanceof ProviderUnavailableError,
-              () => Effect.succeed([]),
-            ),
-            mapFailures((cause) => providerFailure("listVolumes", cause)),
-          );
+          const volumes = yield* provider
+            .listVolumes({ app: target.app, store: target.store })
+            .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
           if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
             return yield* Effect.fail(
               new DataTargetExistsError({

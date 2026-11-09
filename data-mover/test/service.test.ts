@@ -508,13 +508,14 @@ describe("BunDataMover.layer", () => {
     expect(Array.from(result)).toEqual(Array.from(payload));
   });
 
-  test("imports to volumes when existence preflight is unavailable", async () => {
+  test("unreachable volume inventory prevents staging and mutation before import", async () => {
     await withTempDir(async (dir) => {
       const seed = join(dir, "seed.txt");
-      const restored = join(dir, "restored.txt");
+      const paths = makeLandoPaths({ userCacheRoot: join(dir, "cache") });
+      const mutations: string[] = [];
       await writeFile(seed, "unlisted-volume-payload");
 
-      await Effect.runPromise(
+      const result = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -522,33 +523,54 @@ describe("BunDataMover.layer", () => {
               from: { _tag: "hostPath", path: absolute(seed) },
               to: { _tag: "volume", app, store: "unlisted" },
             });
-            yield* dataMover.transfer({
-              from: { _tag: "volume", app, store: "unlisted" },
-              to: { _tag: "hostPath", path: absolute(restored) },
-              overwrite: true,
-            });
           }),
         ).pipe(
           Effect.provide(BunDataMover.layer),
           Effect.provide(
-            providerLayer({
-              listVolumes: () =>
-                Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: "test",
-                    operation: "listVolumes",
-                    message: "volume listing unavailable",
-                    remediation:
-                      "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+            providerLayer(
+              {
+                runStream: () => {
+                  mutations.push("runStream");
+                  return Stream.make({ exitCode: 0 });
+                },
+                copyToService: () =>
+                  Effect.sync(() => {
+                    mutations.push("copyToService");
                   }),
-                ),
-            }),
+                copyFromService: () => {
+                  mutations.push("copyFromService");
+                  return Stream.empty;
+                },
+                listVolumes: () =>
+                  Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: "test",
+                      operation: "listVolumes",
+                      message: "volume listing unavailable",
+                      remediation:
+                        "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+                    }),
+                  ),
+              },
+              paths,
+            ),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.result,
         ),
       );
 
-      expect(await readFile(restored, "utf8")).toBe("unlisted-volume-payload");
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DataTransferError",
+          operation: "listVolumes",
+          cause: { _tag: "ProviderUnavailableError", operation: "listVolumes" },
+          remediation: "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+        },
+      });
+      expect(mutations).toEqual([]);
+      await expect(lstat(paths.transferStagingDir)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 

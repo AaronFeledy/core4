@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { mergeFailure } from "@lando/sdk/command-result";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import { FileSyncEngine } from "@lando/core/services";
 import { makeRedactionService } from "@lando/redaction/service";
@@ -144,6 +145,26 @@ describe("file-sync setup step", () => {
 });
 
 describe("setup readiness recorder", () => {
+  test.each([
+    ["interrupt", Cause.interrupt(1), "in-progress"],
+    [
+      "cleanup and interrupt",
+      mergeFailure(Cause.interrupt(1), Cause.fail("cleanup"), "cleanup"),
+      "in-progress",
+    ],
+    ["failure and interrupt", mergeFailure(Cause.fail("provider"), Cause.interrupt(1), "peer"), "failed"],
+    ["defect and interrupt", mergeFailure(Cause.die("provider"), Cause.interrupt(1), "peer"), "failed"],
+  ] as const)("finish records the correct status for %s", async (_name, cause, status) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-setup-finish-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(root, "test");
+      await Effect.runPromise(recorder.start);
+      await Effect.runPromise(recorder.finish(Exit.failCause(cause)));
+      expect(JSON.parse(await readFile(setupReadinessPath(root), "utf8"))).toMatchObject({ status });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("masks registered exact values in persisted failure evidence and remediation", async () => {
     // Given
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-registered-redaction-"));

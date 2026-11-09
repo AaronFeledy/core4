@@ -12,7 +12,8 @@ import {
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
-import { Cause, Effect, Exit, Option, Result, Schema } from "effect";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 
 import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
 
@@ -157,7 +158,16 @@ export const makeSetupReadinessRecorder = (
   return {
     start: Effect.suspend(() => persist("in-progress")),
     finish: (exit) => {
-      if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)) return Effect.void;
+      if (
+        Exit.isFailure(exit) &&
+        Cause.hasInterrupts(exit.cause) &&
+        !exit.cause.reasons.some(
+          (reason) =>
+            (Cause.isFailReason(reason) || Cause.isDieReason(reason)) &&
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined,
+        )
+      )
+        return Effect.void;
       return persist(Exit.isFailure(exit) ? "failed" : completedSetupReadinessStatus(readinessSteps));
     },
     setProvider: (value) => {
