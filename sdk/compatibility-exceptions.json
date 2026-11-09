@@ -1,5 +1,125 @@
 [
   {
+    "surface": "command:app:config:lint",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "#2169 adds a distinct script provenance arm carrying file and front-matter path. Lint findings retain physical script locations; all existing provenance arms remain unchanged."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.appConfig.violations.items.source.anyOf",
+    "justification": "#2169 adds script provenance to config lint findings reused by doctor --app. All previous source arms remain valid and the new script arm preserves file and front-matter paths."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "#2169 intentionally extends lint output with the script provenance arm. Physical script files and front-matter paths become observable without changing existing source arms or persisted state."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "#2169 adds script.front-matter and script.host-shell diagnostics to config lint. Existing rules remain valid; callers can now distinguish script metadata and executable body failures. These findings are observations, not persisted state."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "#2169 extends the shared validation rule registry with two script rules. Existing include diagnostics are unchanged; nested error contracts inherit the additive rule union."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.additionalErrors.items.issues.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.issues.items.rule.anyOf",
+    "justification": "#2169 extends the shared validation rule registry with two script rules. Existing include diagnostics are unchanged; nested error contracts inherit the additive rule union."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.issues.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.appConfig.violations.items.rule.anyOf",
+    "justification": "#2169 makes doctor --app reuse script.front-matter and script.host-shell findings from config lint. Existing findings remain valid and script sources retain physical locations."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.globalConfig.error.issues.items.rule.anyOf",
+    "justification": "#2169 extends ConfigLintRuleId with two script rules. Global config errors inherit the shared issue contract without changing their producers or accepted configuration."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.globalConfig.error.issues.items.source.anyOf",
+    "justification": "#2169 adds the script layer to the shared issue provenance contract. Existing global-config provenance is unchanged; doctor inherits the additive source arm."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "#2169 intentionally adds two script diagnostic rule ids to lint output so malformed scripts no longer report a valid configuration. Existing rule ids remain valid; findings are not persisted."
+  },
+  {
+    "surface": "schema:ConfigLintRuleDescriptor",
+    "changeKind": "enum-widened",
+    "path": "$.stages.items",
+    "justification": "#2169 adds the script stage for metadata and body inspection independent of Landofile resolution. Existing stage values remain valid."
+  },
+  {
+    "surface": "schema:ConfigLintRuleId",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "#2169 adds script.front-matter and script.host-shell to the annotated rule registry. The existing literals and descriptions remain unchanged."
+  },
+  {
+    "surface": "schema:ComposedCompiledLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:ParsedPendingSite",
+    "changeKind": "unsupported-construct",
+    "path": "$.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:SourceCompiledLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
     "surface": "command:meta:plugin:unlink",
     "changeKind": "property-removed",
     "path": "$.restoredPath",

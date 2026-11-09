@@ -223,7 +223,7 @@ const appConfigSection = (
         fields: [{ label: "file", value: result.file }],
       },
     ],
-    notes: renderConfigLintViolations(result.violations),
+    notes: renderConfigLintViolations(result.violations, result.file),
   };
 };
 
@@ -459,7 +459,7 @@ const renderAppConfigSection = (result: ConfigLintResult): string => {
     `app-config-lint: ${result.valid ? (warned ? "warn" : "pass") : "fail"}`,
     `file: ${result.file}`,
   ];
-  lines.push(...renderConfigLintViolations(result.violations));
+  lines.push(...renderConfigLintViolations(result.violations, result.file));
   return lines.join("\n");
 };
 

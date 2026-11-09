@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { canonicalIdFromRelativePath, discoverBunShellScripts } from "../src/bun-sh-discovery.ts";
+import {
+  canonicalIdFromRelativePath,
+  discoverBunShellScripts,
+  inspectBunShellScripts,
+} from "../src/bun-sh-discovery.ts";
 
 const withAppRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-bun-sh-discovery-"));
@@ -62,6 +66,36 @@ describe("canonicalIdFromRelativePath", () => {
 });
 
 describe("discoverBunShellScripts", () => {
+  test("inspection collects invalid scripts while strict and skipInvalid discovery preserve their policies", async () => {
+    await withAppRoot(async (root) => {
+      await writeScript(root, "bad.bun.sh", "echo hi");
+      await writeScript(root, "empty.bun.sh", "");
+      await writeScript(root, "valid.bun.sh", "# ---\n# desc: x\n# ---\necho hi");
+      const inspected = await Effect.runPromise(inspectBunShellScripts({ appRoot: root }));
+      expect(inspected.problems.map(({ error }) => error._tag)).toEqual([
+        "BunShellScriptFrontMatterError",
+        "BunShellScriptEmptyError",
+      ]);
+      expect(inspected.scripts.map(({ id }) => id)).toEqual(["app:valid"]);
+      const strict = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
+      expect(strict._tag).toBe("BunShellScriptFrontMatterError");
+      expect(await Effect.runPromise(discoverBunShellScripts({ appRoot: root, skipInvalid: true }))).toEqual(
+        inspected.scripts,
+      );
+    });
+  });
+
+  test("skipInvalid discovery still fails on duplicate canonical ids", async () => {
+    await withAppRoot(async (root) => {
+      const content = "# ---\n# desc: x\n# ---\necho hi";
+      await writeScript(root, "Build.bun.sh", content);
+      await writeScript(root, "build.bun.sh", content);
+      const inspected = await Effect.runPromise(inspectBunShellScripts({ appRoot: root }));
+      expect(inspected.problems).toHaveLength(1);
+      const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root, skipInvalid: true }));
+      expect(failure.message).toContain("same canonical id");
+    });
+  });
   test("returns an empty list when .lando/scripts is absent", async () => {
     await withAppRoot(async (root) => {
       const scripts = await Effect.runPromise(discoverBunShellScripts({ appRoot: root }));

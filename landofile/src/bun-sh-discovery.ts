@@ -11,8 +11,15 @@ import {
   isErrnoCode,
 } from "@lando/sdk/errors";
 import type { BunShellScriptFrontMatter } from "@lando/sdk/schema";
-import { FRONT_MATTER_REMEDIATION, parseBunShellScriptFrontMatter } from "./bun-sh-frontmatter.ts";
+import {
+  type BunShellFrontMatterProblem,
+  FRONT_MATTER_REMEDIATION,
+  bunShellFrontMatterCoordinates,
+  inspectBunShellScriptFrontMatter,
+} from "./bun-sh-frontmatter.ts";
 import { isBunShellScriptMetadataFailure, normalizeBunShellScript } from "./bun-sh-metadata.ts";
+
+export { bunShellFrontMatterCoordinates } from "./bun-sh-frontmatter.ts";
 
 export const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
 export const SCRIPTS_DIRNAME = join(".lando", "scripts");
@@ -31,6 +38,11 @@ export type BunShellScriptDiscoveryError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | NotImplementedError;
+
+export interface BunShellScriptProblem extends Omit<BunShellFrontMatterProblem, "error"> {
+  readonly error: BunShellScriptDiscoveryError;
+  readonly duplicate?: true;
+}
 
 const sanitizeSegment = (segment: string): string => {
   const lowered = segment.toLowerCase();
@@ -52,11 +64,21 @@ export const canonicalIdFromRelativePath = (relativePath: string): { name: strin
   return { name, id: `app:${name}` };
 };
 
-export const parseScriptFile = Effect.fnUntraced(function* (
+const inspectScriptFile = Effect.fnUntraced(function* (
   scriptPath: string,
   relativePath: string,
-): Effect.fn.Return<DiscoveredBunShellScript, BunShellScriptDiscoveryError> {
-  const content = yield* Effect.tryPromise({
+): Effect.fn.Return<{
+  readonly script?: DiscoveredBunShellScript;
+  readonly problems: readonly BunShellScriptProblem[];
+}> {
+  const problem = (error: BunShellScriptDiscoveryError): BunShellScriptProblem => ({
+    file: scriptPath,
+    path: [],
+    message: error.message,
+    suggestion: error.remediation,
+    error,
+  });
+  const read = yield* Effect.tryPromise({
     try: () => readFile(scriptPath, "utf-8"),
     catch: (cause) =>
       new BunShellScriptFrontMatterError({
@@ -65,29 +87,41 @@ export const parseScriptFile = Effect.fnUntraced(function* (
         remediation: FRONT_MATTER_REMEDIATION,
         cause,
       }),
-  });
+  }).pipe(Effect.result);
+  if (Result.isFailure(read)) return { problems: [problem(read.failure)] };
+  const content = read.success;
 
   if (content.trim() === "") {
-    return yield* Effect.fail(
-      new BunShellScriptEmptyError({
-        message: `.bun.sh script at ${scriptPath} is empty.`,
-        path: scriptPath,
-        remediation: "Add a `# ---` front-matter block and a script body, or delete the file.",
-      }),
-    );
+    return {
+      problems: [
+        problem(
+          new BunShellScriptEmptyError({
+            message: `.bun.sh script at ${scriptPath} is empty.`,
+            path: scriptPath,
+            remediation: "Add a `# ---` front-matter block and a script body, or delete the file.",
+          }),
+        ),
+      ],
+    };
   }
 
-  const frontMatter = yield* parseBunShellScriptFrontMatter(scriptPath, content);
+  const inspected = yield* inspectBunShellScriptFrontMatter(scriptPath, content);
+  const { frontMatter } = inspected;
+  if (frontMatter === undefined || inspected.problems.length > 0) return { problems: inspected.problems };
   const canonical = canonicalIdFromRelativePath(relativePath);
   if (canonical === null) {
-    return yield* Effect.fail(
-      new BunShellScriptFrontMatterError({
-        message: `.bun.sh script at ${scriptPath} has no usable canonical name (relative path "${relativePath}").`,
-        path: scriptPath,
-        remediation:
-          "Rename the file or directory so each path segment matches [a-z0-9_-]+ after lower-casing.",
-      }),
-    );
+    return {
+      problems: [
+        problem(
+          new BunShellScriptFrontMatterError({
+            message: `.bun.sh script at ${scriptPath} has no usable canonical name (relative path "${relativePath}").`,
+            path: scriptPath,
+            remediation:
+              "Rename the file or directory so each path segment matches [a-z0-9_-]+ after lower-casing.",
+          }),
+        ),
+      ],
+    };
   }
 
   const script: DiscoveredBunShellScript = {
@@ -100,8 +134,26 @@ export const parseScriptFile = Effect.fnUntraced(function* (
     frontMatter,
   };
   const normalized = normalizeBunShellScript(script);
-  if (Result.isFailure(normalized)) return yield* Effect.fail(normalized.failure);
-  return script;
+  if (Result.isFailure(normalized))
+    return {
+      problems: (normalized.failure.issues ?? []).map((issue) => ({
+        ...problem(normalized.failure),
+        ...issue,
+        ...bunShellFrontMatterCoordinates(content, issue.path),
+      })),
+    };
+  return { script, problems: [] };
+});
+
+export const parseScriptFile = Effect.fnUntraced(function* (
+  scriptPath: string,
+  relativePath: string,
+): Effect.fn.Return<DiscoveredBunShellScript, BunShellScriptDiscoveryError> {
+  const inspected = yield* inspectScriptFile(scriptPath, relativePath);
+  const first = inspected.problems[0];
+  if (first !== undefined) return yield* Effect.fail(first.error);
+  if (inspected.script !== undefined) return inspected.script;
+  return yield* Effect.die("Script inspection returned neither a script nor problems.");
 });
 
 interface WalkEntry {
@@ -145,9 +197,12 @@ export interface DiscoverBunShellScriptsOptions {
   readonly skipInvalid?: boolean;
 }
 
-export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScripts")(function* (
-  options: DiscoverBunShellScriptsOptions,
-): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, BunShellScriptDiscoveryError> {
+export const inspectBunShellScripts = Effect.fn("Landofile.inspectBunShellScripts")(function* (options: {
+  readonly appRoot: string;
+}): Effect.fn.Return<{
+  readonly scripts: readonly DiscoveredBunShellScript[];
+  readonly problems: readonly BunShellScriptProblem[];
+}> {
   const scriptsDir = join(options.appRoot, SCRIPTS_DIRNAME);
   const entries = yield* Effect.tryPromise({
     try: async () => ((await scriptsDirExists(scriptsDir)) ? walkScriptsDir(scriptsDir) : []),
@@ -158,31 +213,58 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
         remediation: "Ensure the directory is readable by the current user.",
         cause,
       }),
-  });
+  }).pipe(Effect.result);
+  if (Result.isFailure(entries)) {
+    const error = entries.failure;
+    return {
+      scripts: [],
+      problems: [
+        { file: scriptsDir, path: [], message: error.message, suggestion: error.remediation, error },
+      ],
+    };
+  }
 
   const seen = new Map<string, string>();
   const out: DiscoveredBunShellScript[] = [];
-  for (const entry of entries) {
-    const parsed = yield* Effect.result(parseScriptFile(entry.absolutePath, entry.relativePath));
-    if (parsed._tag === "Failure") {
-      if (options.skipInvalid === true && isBunShellScriptMetadataFailure(parsed.failure)) continue;
-      return yield* Effect.fail(parsed.failure);
-    }
-    const script = parsed.success;
+  const problems: BunShellScriptProblem[] = [];
+  for (const entry of entries.success) {
+    const parsed = yield* inspectScriptFile(entry.absolutePath, entry.relativePath);
+    problems.push(...parsed.problems);
+    const script = parsed.script;
+    if (script === undefined) continue;
     const previous = seen.get(script.id);
     if (previous !== undefined) {
-      return yield* Effect.fail(
-        new BunShellScriptFrontMatterError({
-          message: `.bun.sh scripts at ${previous} and ${entry.absolutePath} resolve to the same canonical id ${script.id}.`,
-          path: entry.absolutePath,
-          remediation:
-            "Rename one of the conflicting scripts so each canonical id (app:<segments>) is unique.",
-        }),
-      );
+      const error = new BunShellScriptFrontMatterError({
+        message: `.bun.sh scripts at ${previous} and ${entry.absolutePath} resolve to the same canonical id ${script.id}.`,
+        path: entry.absolutePath,
+        remediation: "Rename one of the conflicting scripts so each canonical id (app:<segments>) is unique.",
+      });
+      problems.push({
+        file: entry.absolutePath,
+        path: [],
+        message: error.message,
+        suggestion: error.remediation,
+        error,
+        duplicate: true,
+      });
     }
     seen.set(script.id, entry.absolutePath);
     out.push(script);
   }
 
-  return out.sort((a, b) => a.id.localeCompare(b.id));
+  return { scripts: out.sort((a, b) => a.id.localeCompare(b.id)), problems };
+});
+
+export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScripts")(function* (
+  options: DiscoverBunShellScriptsOptions,
+): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, BunShellScriptDiscoveryError> {
+  const inspected = yield* inspectBunShellScripts(options);
+  const failure = inspected.problems.find(
+    (problem) =>
+      problem.duplicate === true ||
+      options.skipInvalid !== true ||
+      !isBunShellScriptMetadataFailure(problem.error),
+  );
+  if (failure !== undefined) return yield* Effect.fail(failure.error);
+  return inspected.scripts;
 });

@@ -29,6 +29,7 @@ import {
   mergeLintFindings,
 } from "@lando/landofile/lint";
 import { lintLandofileSnapshot } from "../services/landofile-live.ts";
+import { lintBunShellScripts } from "./app-config-lint-scripts.ts";
 import { lintEnvFiles, snapshotLintFileSystem } from "./config-lint-env-files.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
@@ -53,7 +54,13 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   PluginRegistry
 > {
   const snapshot = yield* lintLandofileSnapshot(options);
-  const { result } = snapshot;
+  const scriptFindings = yield* lintBunShellScripts(snapshot.landofilePath, snapshot.resolved);
+  const violations = mergeLintFindings([...snapshot.result.violations, ...scriptFindings]);
+  const result = {
+    ...snapshot.result,
+    violations,
+    valid: !violations.some((issue) => issue.severity === "error"),
+  };
   if (snapshot.resolved === undefined) return result;
   const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
@@ -156,11 +163,12 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     if (Result.isFailure(planned))
       planningFindings.push(...planningLintFindings(resolution, planned.failure));
   }
-  const violations = mergeLintFindings([...earlier, ...planningFindings]);
+  const finalViolations = mergeLintFindings([...earlier, ...planningFindings]);
   return {
     ...result,
-    file: sourceFile(violations[0]?.source) ?? result.file,
-    valid: !violations.some((issue) => issue.severity === "error"),
-    violations,
+    file:
+      sourceFile(finalViolations.find((issue) => issue.source?.layer !== "script")?.source) ?? result.file,
+    valid: !finalViolations.some((issue) => issue.severity === "error"),
+    violations: finalViolations,
   };
 });

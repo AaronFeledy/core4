@@ -6,7 +6,16 @@ import { Record, Schema } from "effect";
 
 export const ConfigLintRuleDescriptor = Schema.Struct({
   stages: Schema.NonEmptyArray(
-    Schema.Literals(["fragment", "load", "effective", "resolve", "planning", "global-config", "discovery"]),
+    Schema.Literals([
+      "fragment",
+      "load",
+      "effective",
+      "resolve",
+      "planning",
+      "global-config",
+      "discovery",
+      "script",
+    ]),
   ).annotate({ description: "Validation stages that can report this rule." }),
   severities: Schema.NonEmptyArray(Schema.Literals(["error", "warning"])).annotate({
     description: "Severities emitted by this rule's producers.",
@@ -23,6 +32,20 @@ export const ConfigLintRuleDescriptor = Schema.Struct({
 export type ConfigLintRuleDescriptor = typeof ConfigLintRuleDescriptor.Type;
 
 export const CONFIG_LINT_RULES = {
+  "script.front-matter": {
+    stages: ["script"],
+    severities: ["error"],
+    summary:
+      "Script read failures, empty files, missing or invalid front matter, unsupported metadata or service targets, conflicting inputs, and duplicate canonical ids.",
+    examplePaths: [".lando/scripts/deploy.bun.sh", ".lando/scripts/deploy.bun.sh:flags.verbose"],
+  },
+  "script.host-shell": {
+    stages: ["script"],
+    severities: ["error"],
+    summary:
+      "An enabled, unshadowed .bun.sh script uses a form Bun Shell cannot run. The finding carries its physical line and column and the supported replacement.",
+    examplePaths: [".lando/scripts/deploy.bun.sh"],
+  },
   "landofile.validation": {
     stages: ["fragment", "effective", "planning"],
     severities: ["error"],

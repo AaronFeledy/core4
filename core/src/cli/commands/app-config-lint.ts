@@ -12,7 +12,7 @@ export const renderConfigLintResult = (
   if (result.violations.length === 0) {
     return `${result.file}: no config lint findings.`;
   }
-  const findings = renderConfigLintViolations(result.violations);
+  const findings = renderConfigLintViolations(result.violations, result.file);
   const header = `${result.file}: ${findings.length} config lint finding${findings.length === 1 ? "" : "s"}.`;
   return [header, ...findings].join("\n");
 };

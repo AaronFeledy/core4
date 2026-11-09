@@ -163,6 +163,31 @@ tooling:
   run: false
 ```
 
+## Read script findings
+
+Lint also checks every `.lando/scripts/**/*.bun.sh` script in the app, and it does so even when the Landofile itself fails to load, so one pass shows you everything that would stop Lando from reading the app's commands. Two rules cover scripts:
+
+- [`script.front-matter`](../../reference/config-lint-rules.mdx#script-front-matter): a missing or malformed `# ---` block (with the YAML line and column), an unknown or unsupported key at its key path, `wrapper`, an empty file, a file name that cannot become a command, two scripts that produce the same command id, or a `service` other than `:host`.
+- [`script.host-shell`](../../reference/config-lint-rules.mdx#script-host-shell): a body form Bun Shell rejects, such as `${HOME}`, with its line and column. Lint checks the body only for enabled scripts that no Landofile task of the same name shadows.
+
+With a script that has no front matter, one that sets `wrapper: true`, and one whose body uses `${HOME}`, lint prints:
+
+```
+/tmp/lint-scripts-demo/.lando.yml: 3 config lint findings.
+  .lando/scripts/bad.bun.sh: error [script.front-matter] .bun.sh script at /tmp/lint-scripts-demo/.lando/scripts/bad.bun.sh is missing the front-matter block.
+    at /tmp/lint-scripts-demo/.lando/scripts/bad.bun.sh (script layer)
+    fix: Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+  .lando/scripts/wrapped.bun.sh: error [script.front-matter] Expected no excess property
+    at /tmp/lint-scripts-demo/.lando/scripts/wrapped.bun.sh:3:3, authored as wrapper (script layer)
+    fix: Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+  .lando/scripts/greet.bun.sh: error [script.host-shell] Bun Shell does not expand ${HOME}.
+    at /tmp/lint-scripts-demo/.lando/scripts/greet.bun.sh:5:6 (script layer)
+    fix: Write $HOME, or "$HOME" when a letter, digit, or underscore follows it.
+```
+
+The location names the script by its path relative to the app. In JSON, each script finding carries `source: { "layer": "script", "file": <absolute path>, "path": <front-matter key path> }`, with `line` and `column` when lint knows them; `path` is the key inside the front matter, such as `["wrapper"]`, or `[]` for a problem with the whole file. A broken script still makes `lando start` and every app command fail while Lando rebuilds the app's command index, so run lint, fix what it names, and run your command again. See [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts.mdx#write-the-front-matter) for the front-matter keys.
+
+
 ## Run it from doctor
 
 `lando doctor --app` runs the same lint, including final planning after a clean earlier pass, as part of the combined doctor report under the `app-config-lint` check name. Both commands call the same pass, so they never disagree about which events exist or which final-planning findings appear.
@@ -305,6 +330,17 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     <Step name="cleanup-tooling-include">
       <Cleanup />
     </Step>
+  </Scenario>
+  <Scenario id="script-findings-with-location" render>
+    <Step name="lint-scripts">
+      <UseFixture name="config-lint-scripts" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"script\\.front-matter\"[\\s\\S]*\"source\":\\s*\\{\"layer\":\"script\",\"file\":\"[^\"]*bad\\.bun\\.sh\",\"path\":\\[\\]\\}" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\"wrapper\"\\][^}]*\"line\":\\s*3,\\s*\"column\":\\s*3" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"script\\.host-shell\"[\\s\\S]*?\"line\":\\s*5,\\s*\"column\":\\s*6" } }} />
+      <Verify command="lando app:config:lint" expectExit={1} expect={{ stdout: { regex: "\\.lando/scripts/greet\\.bun\\.sh: error \\[script\\.host-shell\\]" } }} />
+    </Step>
+    <Step name="cleanup-scripts"><Cleanup /></Step>
   </Scenario>
   <Scenario id="warning-only-marker" render>
     <Step name="lint-literal-argv">

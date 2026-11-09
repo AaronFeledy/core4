@@ -34,7 +34,7 @@ The next command just works. A fast rebuild prints nothing. In a terminal, one t
 
 Built-in commands such as `lando start` and `lando info` never trigger that rebuild, and neither do `lando` calls made from inside a container through the host proxy.
 
-When the rebuild fails because of broken YAML, invalid config, a broken tooling definition or script front matter, or an include Lando cannot fetch, the command you ran fails with that real error. Fix it and rerun; Lando does not cache the failure. `lando --help` still lists built-in and plugin commands and shows `This app's commands are unavailable:` with the error and its remediation.
+When the rebuild fails because of broken YAML, invalid config, a broken tooling definition or script front matter, or an include Lando cannot fetch, the command you ran fails with that real error. Fix it and rerun; Lando does not cache the failure. `lando --help` still lists built-in and plugin commands and shows `This app's commands are unavailable:` with the error and its remediation. A failing `.bun.sh` script names only itself; to see every broken script at once, with its line and column, run `lando app:config:lint`, which reports `script.front-matter` and `script.host-shell` findings even when the Landofile does not load. See [Read script findings](../landofile/config-lint.mdx#read-script-findings).
 
 ## When your home directory changes
 

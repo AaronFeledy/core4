@@ -19,7 +19,10 @@ export const attributeEffectiveLintIssue = (
   );
 };
 
-export const sourceCoordinates = (source: SourceDocument, path: readonly (string | number)[]) => {
+export const sourceCoordinates = (
+  source: Pick<SourceDocument, "form" | "content">,
+  path: readonly (string | number)[],
+) => {
   if (source.form !== "yaml" || /^template:/m.test(source.content)) return {};
   const parents: { indent: number; path: readonly (string | number)[] }[] = [];
   const indexes = new Map<string, number>();
