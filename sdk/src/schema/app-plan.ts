@@ -34,6 +34,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
@@ -130,6 +131,9 @@ const ServicePlanFields = {
 export const ServicePlan = Schema.Union([
   Schema.Struct({
     ...ServicePlanFields,
+    sqlite: Schema.optionalKey(Schema.Never).annotate({
+      description: "SQLite cannot coexist with database connections or non-SQL credentials.",
+    }),
     connection: Schema.optionalKey(DatabaseConnection).annotate({
       description: "Canonical database connection resolved by the service type.",
     }),
@@ -139,10 +143,21 @@ export const ServicePlan = Schema.Union([
   }),
   Schema.Struct({
     ...ServicePlanFields,
+    sqlite: Schema.optionalKey(Schema.Never).annotate({
+      description: "SQLite cannot coexist with database connections or non-SQL credentials.",
+    }),
     connection: Schema.optionalKey(Schema.Never),
     nonSqlCreds: ServiceCreds.annotate({
       description: "Published non-SQL credentials, mutually exclusive with a database connection.",
     }),
+  }),
+  Schema.Struct({
+    ...ServicePlanFields,
+    sqlite: SqliteTargetConfig.annotate({
+      description: "File-backed SQLite database copied from the service's authored sqlite.path.",
+    }),
+    connection: Schema.optionalKey(Schema.Never),
+    nonSqlCreds: Schema.optionalKey(Schema.Never),
   }),
 ]);
 export type ServicePlan = typeof ServicePlan.Type;

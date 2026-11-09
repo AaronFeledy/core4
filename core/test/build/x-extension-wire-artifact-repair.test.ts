@@ -21,6 +21,7 @@ import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
@@ -114,7 +115,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalDeprecationNotice(
+  const projected = evolveHistoricalDeprecationNotice(
     evolveHistoricalToolingWrapper(
       evolveHistoricalUploadDirs(
         evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
@@ -122,6 +123,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     ),
     source,
   );
+  const evolved = evolveHistoricalSqliteTarget(projected);
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -184,7 +186,9 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services"));
+    const repaired = evolveHistoricalSqliteTarget(
+      evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services")),
+    );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

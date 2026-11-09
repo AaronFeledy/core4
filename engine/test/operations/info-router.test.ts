@@ -143,7 +143,7 @@ test.each([
   ["valkey", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
   ["valkey:8", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
 ] as const)("preserves %s client URIs only for its declared listener", async (type, url, alternateUrls) => {
-  const { connection: _connection, nonSqlCreds: _nonSqlCreds, ...serviceBase } = web;
+  const { connection: _connection, nonSqlCreds: _nonSqlCreds, sqlite: _sqlite, ...serviceBase } = web;
   const service: ServicePlan = {
     ...serviceBase,
     type,
