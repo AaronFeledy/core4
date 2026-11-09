@@ -260,18 +260,32 @@ export const DataTransferProgress = Schema.Struct({
 });
 export type DataTransferProgress = typeof DataTransferProgress.Type;
 
-export const SnapshotMetadata = Schema.Struct({
-  service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
-  volumeInstanceId: Schema.String.annotate({
-    description: "Physical source volume creation identity.",
+export const SnapshotMetadata = Schema.Union([
+  Schema.Struct({
+    service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
+    volumeInstanceId: Schema.String.annotate({
+      description: "Physical source volume creation identity.",
+    }),
+    family: Schema.String.annotate({ description: "Observed database family." }),
+    version: Schema.String.annotate({ description: "Observed database version." }),
+    imageIdentity: Schema.String.annotate({ description: "Observed immutable runtime image identity." }),
+    path: Schema.optionalKey(Schema.Never),
+    recoveryReason: Schema.Literals(["manual", "reset", "restore", "import", "seed"]).annotate({
+      description: "Reason this durable recovery point was created.",
+    }),
   }),
-  family: Schema.String.annotate({ description: "Observed database family." }),
-  version: Schema.String.annotate({ description: "Observed database version." }),
-  imageIdentity: Schema.String.annotate({ description: "Observed immutable runtime image identity." }),
-  recoveryReason: Schema.Literals(["manual", "reset", "restore", "import", "seed"]).annotate({
-    description: "Reason this durable recovery point was created.",
+  Schema.Struct({
+    service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
+    family: Schema.Literal("sqlite").annotate({ description: "Database file format." }),
+    path: Schema.String.annotate({ description: "Canonical relative SQLite database path." }),
+    version: Schema.String.annotate({ description: "SQLite version recorded as provenance." }),
+    recoveryReason: Schema.Literals(["manual", "reset", "restore", "import"]).annotate({
+      description: "Reason the SQLite snapshot was created.",
+    }),
+    volumeInstanceId: Schema.optionalKey(Schema.Never),
+    imageIdentity: Schema.optionalKey(Schema.Never),
   }),
-});
+]);
 export type SnapshotMetadata = typeof SnapshotMetadata.Type;
 
 /**
@@ -311,6 +325,12 @@ export const SnapshotHandle = Schema.Struct({
   store: VolumeRef,
 });
 export type SnapshotHandle = typeof SnapshotHandle.Type;
+
+/**
+ * StateStore version of a persisted snapshot sidecar. Version 2 added the SQLite
+ * metadata arm; version 1 records are server snapshots and decode unchanged.
+ */
+export const SNAPSHOT_INFO_VERSION = 2;
 
 /**
  * Persisted snapshot sidecar record.
