@@ -1,7 +1,7 @@
 # Start a Laravel app
 
-Create a Laravel development stack with PHP, Composer, Node 22, MariaDB or
-PostgreSQL, Redis, and an optional queue worker. The recipe adds Artisan and
+Create a Laravel development stack with PHP, Composer, Node 22, MariaDB,
+PostgreSQL or SQLite, Redis, and an optional queue worker. The recipe adds Artisan and
 npm tooling, but writes a Landofile rather than a Laravel application.
 
 Before you begin, install Lando and complete provider setup. For a new app,
@@ -55,6 +55,17 @@ lando logs --service=worker
 
 `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
+| Option | Values | Default |
+| --- | --- | --- |
+| `database` | `mariadb:11.4`, `postgres:16`, `sqlite` | `mariadb:11.4` |
+
+The appserver and optional worker receive `DB_CONNECTION` for the chosen database.
+MariaDB and PostgreSQL also supply host, port, database, user, and password from the database
+service. These environment variables take precedence over Laravel's `.env`.
+Composer creates and migrates `database/database.sqlite` for SQLite.
+Lando declares that file on `appserver` and omits the
+database service. See [Use SQLite](../../docs/guides/recipes/laravel-workflow.mdx#use-sqlite).
+
 To choose a different stack, use this initialization command instead of the
 default one above. Run it from the parent directory, not inside the app:
 
@@ -100,6 +111,14 @@ lando init --recipe laravel --name=my-laravel-worker --yes --answer=php=8.1 --an
 ```bash
 lando app:config --format=json
 ```
+
+## 6. init
+
+```bash
+lando init --recipe laravel --name=laravel-sqlite --answer=database=sqlite --answer=worker=true --yes
+```
+
+## 7. inspect
 
 ## Cleanup
 

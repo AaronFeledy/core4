@@ -521,6 +521,7 @@ import {
   TomcatServiceConfig,
   VarnishServiceConfig,
 } from "./services/index.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -758,6 +759,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
+  SqliteTargetConfig,
   PhpComposerConfig,
   LogSource,
   LogSourceId,

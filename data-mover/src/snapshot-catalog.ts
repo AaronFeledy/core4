@@ -4,6 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { SnapshotAmbiguousError, SnapshotNotFoundError, StateStoreError, errnoCode } from "@lando/sdk/errors";
 import {
   AbsolutePath,
+  SNAPSHOT_INFO_VERSION,
   type SnapshotFilter,
   type SnapshotHandle,
   SnapshotInfo,
@@ -11,7 +12,7 @@ import {
   snapshotHandle,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry, StateStoreShape } from "@lando/sdk/services";
-import { type Context, DateTime, Effect } from "effect";
+import { type Context, DateTime, Effect, Schema } from "effect";
 import {
   type SnapshotAddress,
   containedSnapshotPath,
@@ -27,8 +28,6 @@ export interface SnapshotPersistence {
   readonly providerRegistry?: Context.Service.Shape<typeof RuntimeProviderRegistry>;
 }
 
-export const SNAPSHOT_SIDECAR_VERSION = 1;
-
 export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
   persistence: SnapshotPersistence,
   handle: SnapshotAddress,
@@ -39,10 +38,11 @@ export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
       root: { path: AbsolutePath.make(paths.store) },
       key: `${handle.id}.json`,
       schema: SnapshotInfo,
-      version: SNAPSHOT_SIDECAR_VERSION,
+      version: SNAPSHOT_INFO_VERSION,
       codec: "json",
       onCorrupt: "fail",
-      onVersionMismatch: (_raw, version) => {
+      onVersionMismatch: (raw, version) => {
+        if (version === 1) return Schema.decodeUnknownSync(SnapshotInfo)(raw);
         throw new StateStoreError({
           reason: "version",
           operation: "read-snapshot",

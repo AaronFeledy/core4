@@ -13,6 +13,7 @@ export * from "./listener-observation.ts";
 export * from "./environment-value.ts";
 export * from "./compiled-landofile.ts";
 export * from "./database-connection.ts";
+export * from "./sqlite.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";

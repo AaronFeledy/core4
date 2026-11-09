@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { redactProviderError } from "@lando/redaction/provider-error";
 import type { Redactor } from "@lando/sdk/secrets";
+import { requireBorrowableMounts } from "./borrowed-mounts.ts";
 import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion-diagnostic.ts";
 import { removeRuntimeContainer } from "./container-removal.ts";
+import type { EngineHttpRequest } from "./engine-api.ts";
 import { tryParseJson } from "./engine-json.ts";
 import {
   type VolumeHolder,
@@ -53,7 +55,7 @@ export {
 } from "./volume-ownership.ts";
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
-export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+export { dataHelperImage, sqliteHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
 import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stream } from "effect";
 
@@ -99,6 +101,7 @@ export interface DataPlaneHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly minimumApiVersion?: NonNullable<EngineHttpRequest["minimumApiVersion"]>;
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
@@ -601,16 +604,24 @@ const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effec
     });
   });
 
-interface WitnessMountSource {
-  readonly containerId: string;
-  readonly readOnly: boolean;
-}
+type WitnessMountSource = NonNullable<EphemeralRunSpec["mountsFrom"]>;
 
-const createEphemeralContainer = (
+const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")(function* (
   options: ProviderDataPlaneOptions,
   spec: EphemeralRunSpec,
   witnessSource?: WitnessMountSource,
-) => {
+) {
+  const source = spec.mountsFrom;
+  // Podman drops VolumeOptions.Subpath when resolving VolumesFrom. Refuse before
+  // create rather than silently exposing a volume root in place of its subpath.
+  if (spec.mountsFrom !== undefined) {
+    const inspected = yield* request(options, "run.mountsFrom", {
+      method: "GET",
+      path: `/containers/${encodeURIComponent(spec.mountsFrom.containerId)}/json`,
+    });
+    yield* ensureEphemeral2xx(options, spec, { operation: "run.mountsFrom", response: inspected });
+    yield* requireBorrowableMounts(options.providerId, inspected.body);
+  }
   const name = ephemeralContainerName(options.providerId);
   const mount = spec.mounts?.[0];
   const binds = (spec.mounts ?? []).flatMap((mount) =>
@@ -618,60 +629,73 @@ const createEphemeralContainer = (
       ? []
       : [`${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`],
   );
-  const mounts = (spec.mounts ?? []).flatMap((mount) =>
-    mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
-      ? [
-          {
-            Type: "volume",
-            Source: volumeName(mount.store),
-            Target: mount.target,
-            ReadOnly: mount.readOnly,
-            ...(mount.subpath === undefined ? {} : { VolumeOptions: { Subpath: mount.subpath } }),
-          },
-        ]
-      : [],
-  );
-  const attachStdin = spec.stdinStream !== undefined;
-  return ensureStaleHelperSweep(options).pipe(
-    Effect.andThen(() =>
-      request(options, "run.create", {
-        method: "POST",
-        path: `/containers/create?name=${encodeURIComponent(name)}`,
-        body: {
-          Image: spec.image,
-          Cmd: spec.command,
-          Labels: ephemeralDataHelperLabels({
-            providerId: options.providerId,
-            ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
-            ...(spec.owner?.plan?.identity === undefined
-              ? {}
-              : { appRoot: spec.owner.plan.identity.appRoot }),
-            ...(mount === undefined ? {} : { store: mount.store }),
-          }),
-          ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
-          ...(witnessSource === undefined
-            ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
-            : {
-                User: "0:0",
-                Entrypoint: [],
-                HostConfig: {
-                  VolumesFrom: [`${witnessSource.containerId}:${witnessSource.readOnly ? "ro" : "rw"}`],
-                  NetworkMode: "none",
-                  ReadonlyRootfs: true,
-                },
-              }),
-          OpenStdin: attachStdin,
-          AttachStdin: attachStdin,
-          StdinOnce: attachStdin,
-          AttachStdout: spec.captureStdout === true,
-          AttachStderr: true,
-        },
-      }),
+  const mounts = [
+    ...(spec.mounts ?? []).flatMap((mount) =>
+      mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
+        ? [
+            {
+              Type: "volume",
+              Source: volumeName(mount.store),
+              Target: mount.target,
+              ReadOnly: mount.readOnly,
+              ...(mount.subpath === undefined ? {} : { VolumeOptions: { Subpath: mount.subpath } }),
+            },
+          ]
+        : [],
     ),
-    Effect.tap((response) => ensureEphemeral2xx(options, spec, { operation: "run.create", response })),
-    Effect.as(name),
-  );
-};
+    ...(spec.binds ?? []).map((bind) => ({
+      Type: "bind",
+      Source: bind.source,
+      Target: bind.target,
+      ReadOnly: bind.readOnly === true,
+    })),
+  ];
+  const attachStdin = spec.stdinStream !== undefined;
+  yield* ensureStaleHelperSweep(options);
+  const response = yield* request(options, "run.create", {
+    method: "POST",
+    path: `/containers/create?name=${encodeURIComponent(name)}`,
+    body: {
+      Image: spec.image,
+      Cmd: spec.command,
+      Labels: ephemeralDataHelperLabels({
+        providerId: options.providerId,
+        ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
+        ...(spec.owner?.plan?.identity === undefined ? {} : { appRoot: spec.owner.plan.identity.appRoot }),
+        ...(mount === undefined ? {} : { store: mount.store }),
+      }),
+      ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
+      ...(witnessSource === undefined
+        ? {
+            ...(spec.user === undefined ? {} : { User: spec.user }),
+            ...(spec.entrypoint === undefined ? {} : { Entrypoint: spec.entrypoint }),
+            HostConfig: {
+              Binds: binds,
+              ...(mounts.length === 0 ? {} : { Mounts: mounts }),
+              ...(source === undefined
+                ? {}
+                : { VolumesFrom: [`${source.containerId}:${source.readOnly ? "ro" : "rw"}`] }),
+            },
+          }
+        : {
+            User: "0:0",
+            Entrypoint: [],
+            HostConfig: {
+              VolumesFrom: [`${witnessSource.containerId}:${witnessSource.readOnly ? "ro" : "rw"}`],
+              NetworkMode: "none",
+              ReadonlyRootfs: true,
+            },
+          }),
+      OpenStdin: attachStdin,
+      AttachStdin: attachStdin,
+      StdinOnce: attachStdin,
+      AttachStdout: spec.captureStdout === true,
+      AttachStderr: true,
+    },
+  });
+  yield* ensureEphemeral2xx(options, spec, { operation: "run.create", response });
+  return name;
+});
 
 const commandOutcome = (
   value: unknown,

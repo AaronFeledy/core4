@@ -10,11 +10,16 @@ const environment = {
 export const source = {
   id: "django",
   title: "Django",
-  description: "Django with PostgreSQL, Redis, and an optional Celery worker.",
+  description: "Django with PostgreSQL or SQLite, Redis, and an optional Celery worker.",
   version: "0.1.0",
   authors: ["Lando Core Team"],
   tags: ["django", "python"],
   options: {
+    database: {
+      type: { kind: "enum", values: ["postgres", "sqlite"] },
+      default: "postgres",
+      prompt: { message: "Database" },
+    },
     celery: {
       type: { kind: "boolean" },
       default: false,
@@ -29,10 +34,9 @@ export const source = {
         framework: "django",
         port: 8000,
         environment,
-        dependsOn: ["database", "cache"],
+        dependsOn: ["cache"],
         routes: defaultRoutes,
       },
-      database: { type: "postgres" },
       cache: { type: "redis" },
     },
     tooling: {
@@ -56,10 +60,36 @@ export const source = {
             command: "celery -A app worker --loglevel=info",
             restart: "unless-stopped",
             environment,
-            dependsOn: ["database", "cache"],
+            dependsOn: ["cache"],
           },
         },
       },
+    },
+    {
+      when: '{{ eq(options.database, "postgres") }}',
+      config: {
+        services: { web: { dependsOn: ["database", "cache"] }, database: { type: "postgres" } },
+      },
+    },
+    {
+      when: '{{ and(options.celery, eq(options.database, "postgres")) }}',
+      config: { services: { worker: { dependsOn: ["database", "cache"] } } },
+    },
+    {
+      when: '{{ eq(options.database, "sqlite") }}',
+      config: {
+        services: {
+          web: {
+            appMount: { target: "/app" },
+            sqlite: { path: "db.sqlite3" },
+            environment: { DATABASE_URL: "sqlite:////app/db.sqlite3" },
+          },
+        },
+      },
+    },
+    {
+      when: '{{ and(options.celery, eq(options.database, "sqlite")) }}',
+      config: { services: { worker: { environment: { DATABASE_URL: "sqlite:////app/db.sqlite3" } } } },
     },
   ],
   postInit: [

@@ -1037,10 +1037,10 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown.",
+    "justification": "Reviewed credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown. SQLite file targets add a third exclusive arm: required sqlite: SqliteTargetConfig with Never anti-fields for connection and nonSqlCreds, while the existing arms gain an optional Never sqlite anti-field. Applied-state advances to version 5; v4 records decode unchanged, and a historical record pairing sqlite with credentials is refused.",
     "persistedState": {
       "store": "applied-state",
-      "version": 4
+      "version": 5
     }
   },
   {
@@ -3351,10 +3351,10 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown.",
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown. Nested service plans gain the exclusive SQLite arm (sqlite: SqliteTargetConfig) without changing any existing required field or credential arm. Applied-state advances to version 5 with an identity migration for v4 records.",
     "persistedState": {
       "store": "applied-state",
-      "version": 4
+      "version": 5
     }
   },
   {
@@ -6050,6 +6050,36 @@
     "justification": "Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
   },
   {
+    "surface": "schema:ServiceCredsDisplay",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: ServiceCredsDisplay becomes a strict union of the existing server username/password/database display and a sqlite engine-plus-path arm. Historical server records remain readable. Mixed sqlite-plus-server fields are rejected. Tests cover both arms and strict excess-property rejection."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: info credentials reuse the ServiceCredsDisplay union so sqlite services publish engine and path instead of empty server creds. Existing mysql/mariadb/postgres/mongodb/mssql info payloads remain valid. Tests cover sqlite info encoding and secret-free server display."
+  },
+  {
+    "surface": "schema:InfoAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed propagation of the SQLite ServiceCredsDisplay arm into the public app-info result. The existing server username, redacted password, database, and optional redacted root-password object is unchanged; SQLite adds engine and path without widening unrelated service or app-result fields. Strict aggregate round-trip tests cover both credential arms and reject mixed credentials, missing SQLite path, and unexpected app fields."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: app info credentials inherit the ServiceCredsDisplay union. Existing server credential objects remain valid; sqlite services add engine and path. Info render and info-creds tests cover both arms."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: global info credentials inherit the same ServiceCredsDisplay union as app info. Historical server credential objects remain valid. Sqlite services publish engine and path rather than empty username fields."
+  },
+  {
     "surface": "schema:EndpointInvariantIssue",
     "changeKind": "enum-widened",
     "path": "$.kind",
@@ -6156,5 +6186,25 @@
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.toolingIncludes.additionalProperties",
     "justification": "Reviewed additive change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "persisted:snapshot-sidecar",
+    "changeKind": "unsupported-construct",
+    "path": "$.metadata.anyOf",
+    "justification": "SnapshotInfo.metadata becomes a union of the unchanged server-database arm and a SQLite file arm (service, family sqlite, canonical relative path, SQLite version as provenance, recovery reason) with Never anti-fields so neither arm accepts the other's identity fields. Every previously accepted sidecar remains valid. The snapshot-sidecar store advances to version 2; version 1 sidecars are server snapshots that decode unchanged under the server arm.",
+    "persistedState": {
+      "store": "snapshot-sidecar",
+      "version": 2
+    }
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.metadata.anyOf",
+    "justification": "SnapshotInfo.metadata becomes a union of the unchanged server-database arm and a SQLite file arm (service, family sqlite, canonical relative path, SQLite version as provenance, recovery reason) with Never anti-fields so neither arm accepts the other's identity fields. Every previously accepted sidecar remains valid. The snapshot-sidecar store advances to version 2; version 1 sidecars are server snapshots that decode unchanged under the server arm.",
+    "persistedState": {
+      "store": "snapshot-sidecar",
+      "version": 2
+    }
   }
 ]

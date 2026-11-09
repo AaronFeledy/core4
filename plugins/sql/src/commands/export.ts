@@ -30,7 +30,12 @@ export const spec = {
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },
   args: {
-    file: { type: "string", description: "Destination dump file.", stdio: "stdout" },
+    file: {
+      type: "string",
+      description:
+        "Destination dump file. SQLite: .sqlite, .sqlite3, .db, or .db3 selects a database copy; optional .gz or .zst compresses it.",
+      stdio: "stdout",
+    },
   },
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
