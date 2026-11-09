@@ -30,6 +30,10 @@ const LIST_KEYS = new Set([
   "services",
   "bindings",
   "contributingPlugins",
+  "attempts",
+  "phases",
+  "engines",
+  "targets",
 ]);
 const IDENTITY_KEYS = [
   "appRoot",

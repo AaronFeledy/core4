@@ -167,6 +167,7 @@ describe("bounded doctor text", () => {
         status: "warn",
         context: {
           files: "one, two, three, four, five",
+          targets: "a-sync, b-sync, c-sync, d-sync",
           error: "one, two, three, four, five",
           evidence: "x".repeat(500),
         },
@@ -175,6 +176,7 @@ describe("bounded doctor text", () => {
     ]);
     const text = renderDoctorReport(value);
     expect(text).toContain("files: one, two, three (+2 more)");
+    expect(text).toContain("targets: a-sync, b-sync, c-sync (+1 more)");
     expect(text).toContain("error: one, two, three, four, five");
     expect(text).not.toContain("x".repeat(500));
     expect(text).toContain(description);
