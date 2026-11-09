@@ -269,6 +269,38 @@ const runDataMover = <A, E>(effect: Effect.Effect<A, E, DataMover | Scope.Scope>
   );
 
 describe("BunDataMover.layer", () => {
+  test("preserves provider remediation and cause when wrapping a provider failure", async () => {
+    const original = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "copyFromService",
+      message: "Provider copy unavailable",
+      remediation: "Start the selected provider and retry the copy.",
+    });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mover = yield* DataMover;
+          yield* mover.read({ _tag: "servicePath", app, service, path: servicePath }).pipe(Stream.runDrain);
+        }),
+      ).pipe(
+        Effect.provide(BunDataMover.layer),
+        Effect.provide(
+          providerLayer({
+            capabilities: dataPlaneCapabilities({ serviceFileCopy: "native" }),
+            copyFromService: () => Stream.fail(original),
+          }),
+        ),
+        Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+      ),
+    );
+    if (exit._tag !== "Failure") throw new Error("Expected transfer failure");
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(DataTransferError);
+    if (!(error instanceof DataTransferError)) throw new Error("Expected data transfer error");
+    expect(error.remediation).toBe(original.remediation);
+    expect(error.cause).toBe(original);
+  });
+
   test("dispatches native service file copies and reports accelerated", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "payload.txt");

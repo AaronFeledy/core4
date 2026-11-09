@@ -119,6 +119,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
                   stderrTail: failure.stderrTail,
                   recoverySnapshotId: recovery.id,
                   remediation: `${failure.remediation ?? "Resolve the command failure."} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
+                  ...(failure.cause === undefined ? {} : { cause: failure.cause }),
                 });
               default:
                 return absurd(failure);

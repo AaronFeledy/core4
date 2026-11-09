@@ -63,6 +63,7 @@ import {
   DataMover,
   EventService,
   PathsService,
+  type ProviderError,
   RuntimeProvider,
   RuntimeProviderRegistry,
   StateStore,
@@ -178,12 +179,12 @@ const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): Data
 const failUnsupported = (from: DataEndpoint, to: DataEndpoint, reason: string) =>
   Effect.fail(unsupported(from, to, reason));
 
-const providerFailure = (operation: string, cause: unknown): DataTransferError =>
+const providerFailure = (operation: string, cause: ProviderError): DataTransferError =>
   new DataTransferError({
     message: `Provider ${operation} failed during data transfer.`,
     operation,
     cause,
-    remediation: "Inspect provider diagnostics and retry after the runtime is healthy.",
+    remediation: cause.remediation,
   });
 
 const dataHelperImage = providerImages.images.dataHelper;

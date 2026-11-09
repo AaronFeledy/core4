@@ -1,5 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
+import {
+  DataTransferError,
+  ProviderUnavailableError,
+  SqlCommandFailedError,
+  SqlRecoveryOperationError,
+} from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { executeDbCommand } from "../src/execute.ts";
 import { FakeRestoreError, FakeStartError, cleanupSqlTestDeps } from "./support/fakes.ts";
@@ -70,6 +75,33 @@ test.each(["transfer", "resume"] as const)(
     expect(fixture.removed).toEqual([]);
   },
 );
+
+test("keeps the provider failure behind a transfer failure as its cause", async () => {
+  const fixture = await makeRetentionTestDeps();
+  const providerFailure = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "runStream",
+    message: "The Lando runtime is not reachable.",
+    remediation: "Run lando setup, then retry.",
+  });
+  const failure = new DataTransferError({
+    message: "Provider runStream failed during data transfer.",
+    operation: "runStream",
+    cause: providerFailure,
+    remediation: providerFailure.remediation,
+  });
+  const deps = { ...fixture.deps, transfer: () => Effect.fail(failure) };
+
+  const exit = await Effect.runPromiseExit(
+    executeDbCommand(deps, { action: "import", file: "dump.sql", yes: true }),
+  );
+
+  if (!Exit.isFailure(exit)) throw new Error("expected transfer failure");
+  const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(DataTransferError);
+  expect(fixture.captured).toHaveLength(1);
+  expect(error).toMatchObject({ cause: providerFailure, recoverySnapshotId: fixture.captured[0] });
+});
 
 test.each(["import", "reset", "restore", "snapshot"] as const)(
   "%s preserves diagnostics and the captured snapshot when post-capture readiness fails",
