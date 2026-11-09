@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveBuiltContainerHelperForTest } from "@lando/container-runtime/testing/exec-supervision";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { layer as plannerLayer } from "@lando/engine/services/planner";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
@@ -73,6 +74,7 @@ test.skipIf(liveSocket === undefined)(
         makeRuntimeProvider({
           platform: "linux",
           podmanApi: makePodmanApiClient(liveSocket?.socketPath ?? ""),
+          resolveContainerHelper: resolveBuiltContainerHelperForTest,
           appliedPlanState: makePluginStateStore(
             makeTestStateStore().service,
             AbsolutePath.make(stateDir),

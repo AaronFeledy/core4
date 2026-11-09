@@ -171,11 +171,11 @@ A running session keeps the catalog it started with; the next session reads the
 current commands on its own, so no refresh command is needed. Rejected calls are
 not automatically replayed. Review the new declaration before retrying.
 
-If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`.
-`unknown-command` means the app has no matching command, so check the name and
-aliases with `lando help`. `missing-cache`, `stale-cache`, and `invalid-cache`
-now appear only in a rare race where the app changed while Lando was reading
-it; run the command again. On the host CLI, every app tooling command and help
+If discovery reports `ToolingCommandUnavailableError`, its `reason` is
+`missing-cache`, `stale-cache`, or `invalid-cache`. Those appear only in a rare
+race where the app changed while Lando was reading it; run the command again.
+A name the app does not define is an ordinary `UnknownCommandError`, with the
+closest commands in `error.suggestions`, best first, when any are spelled nearby. On the host CLI, every app tooling command and help
 rebuilds a missing, stale, or unreadable index before it runs; a rebuild that
 fails makes the command fail with the real error, such as
 `LandofileValidationError`. `lando help --format=json` exposes
@@ -251,6 +251,9 @@ other requests. Closing stdin cancels every active call and releases its
 provider reads, including idle log followers. Either way, a cancelled call gets
 no fabricated result, and a change the command had already applied to the app
 stays applied. Progress notifications you already received remain valid.
+Cancelling an exec or tooling call also stops the command inside the container
+and everything it started, so a port it held is free for your next call; you
+don't need to kill leftover processes yourself.
 
 ## Confirm changes to an app
 

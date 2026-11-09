@@ -43,7 +43,6 @@ export type ToolingRoute =
       readonly _tag: "unknown-tooling";
       readonly commandId: string;
       readonly name: string;
-      readonly remediation: string;
     }
   | (ToolingRouteMetadata & { readonly _tag: "tooling" })
   | (ToolingRouteMetadata & {

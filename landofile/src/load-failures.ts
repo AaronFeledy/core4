@@ -14,6 +14,8 @@ export interface LoadFailureRecorder {
   readonly prerequisites: Set<string>;
   recipeAvailable: boolean;
   readonly record: (error: LandofileLoadFailure, source?: ValidationIssueSource) => void;
+  /** Skips later load work under `source` without recording another failure. */
+  readonly block: (source: ValidationIssueSource) => void;
 }
 
 export const createLoadFailureRecorder = (): LoadFailureRecorder => {
@@ -28,6 +30,9 @@ export const createLoadFailureRecorder = (): LoadFailureRecorder => {
     record: (error, source) => {
       failures.push(error);
       if (source !== undefined) blocked.push(source);
+    },
+    block: (source) => {
+      blocked.push(source);
     },
   };
 };

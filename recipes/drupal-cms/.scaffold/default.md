@@ -43,8 +43,8 @@ lando open --print
 `lando open` launches the current app URL in your browser; `--print` just prints it. The front page and `/user/login` should both render with HTTP 200. On the default Apache stack, check both pages from inside `appserver`, without a browser or the proxy:
 
 ```sh
-lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/
-lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out %{http_code} http://127.0.0.1/user/login
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/
+lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/user/login
 ```
 
 Each prints `200`. Anything else means Drupal didn't render the page, so check `lando logs -s appserver`.

@@ -67,6 +67,7 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | GlobalServiceCollisionError
   | PluginManifestError
   | HealthcheckTargetUnsupportedError
@@ -89,6 +90,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -124,6 +126,7 @@ type ExpectedGlobalInstallError =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | AppResolveError
   | DebuggerHostUnavailableError
   | StateStoreError
@@ -160,6 +163,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -174,6 +178,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError

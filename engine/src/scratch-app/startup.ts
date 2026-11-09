@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, ScratchAppError, ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, RouterConfig } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, type FileSystem, type RouterServiceShape } from "@lando/sdk/services";
@@ -49,7 +50,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
         verifyGlobalConsumerAdmission,
       ).pipe(Effect.provideService(EnvironmentValueResolver, services.environmentResolver)),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ScratchAppError({
             operation: "start",
@@ -67,7 +68,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       ...(services.router === undefined ? {} : { router: services.router }),
       ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
     }).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof AppPlacementError
           ? cause
           : new ScratchAppError({
@@ -97,7 +98,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     activate,
   ).pipe(
     Effect.provide(services.admissionContext),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof AppPlacementError || cause instanceof ScratchAppError
         ? cause
         : new ScratchAppError({
@@ -141,7 +142,7 @@ export const withScratchAcquisition = <A, E, R>(
             ),
           );
       const result = yield* restore(effect).pipe(
-        Effect.mapError((error) => {
+        mapFailures((error) => {
           if (!(error instanceof ScratchAppError) || !(error.cause instanceof ServiceNotReadyError))
             return error;
           return new ScratchAppError({

@@ -66,6 +66,24 @@ export class Greeter extends Context.Service<Greeter, {
 
 Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and TypeScript 7.
 
+## Use `dataName` for persisted defaults
+
+`ServiceTypeInput` and `ServiceFeatureContext` carry both `appName` and optional
+`dataName`. `appName` is the current Landofile name. `dataName` is the name this
+folder's persisted data was first created under. When `dataName` is absent, it
+matches `appName`.
+
+Derive databases, generated passwords, bucket names, and other values that live
+inside named volumes from `dataName` (or fall back to `appName` when it is
+absent). Use `appName` for runtime identity that should follow a rename:
+container-facing labels you surface only in the current process, diagnostics that
+name the running app, and similar non-persisted strings.
+
+`ServiceFeatureContext.serviceStoreName(role)` already names a store from the
+folder's data identity. Do not rebuild that name from the current `appName`, or a
+rename will point a new empty volume at services that still hold data under the
+old name.
+
 ## Supply the service image
 
 If your plugin contributes a service type, its `resolve` method chooses the base,
@@ -178,6 +196,46 @@ contributes:
 ```
 
 That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fallbacks.
+
+## Declare a router's shared services
+
+Declare your router under `contributes.routerServices`. If it needs services in
+the global app, list their contribution ids in `requires.globalServices`. The
+router id and its service ids can differ. For example, this entry declares a
+router named `acme-router` that needs a global service named `acme-gateway`:
+
+```yaml
+contributes:
+  routerServices:
+    - id: acme-router
+      module: ./src/router.ts
+      requires:
+        globalServices:
+          - acme-gateway
+      defaultFor:
+        platform:
+          - linux
+```
+
+Contribute `acme-gateway` under `globalServices` too, or depend on a plugin that
+contributes it. Omit `requires` or use an empty `globalServices` list when the
+router works without the global app. The bundled Traefik router declares
+`requires.globalServices: [traefik]`.
+
+Users select an installed router with `defaultRouterService` in `config.yml`.
+Without that choice, Lando selects one matching `defaultFor.platform` for the
+host family, then a sole installed router. When no router can be chosen, the
+plan records none and `lando app:config:lint` still works, while commands that
+load the router, such as `lando start`, fail with `Router service <id> is not
+installed` and a remediation naming `defaultRouterService`. Planning reads these
+manifest declarations without constructing your router or running its module.
+
+Lando records the selection in the app plan and invalidates cached plans when
+it changes. At start, Lando ensures the selected router's declared services
+alongside any services required by app features. Disabled routing and apps
+without routes add no router requirements; feature requirements still apply.
+Check the planned `router.id` and `requires.globalServices` when testing your
+plugin, including a start with only its declared global services available.
 
 ## Contribute commands
 

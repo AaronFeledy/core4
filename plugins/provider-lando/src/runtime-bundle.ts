@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Schema } from "effect";
 
@@ -95,7 +96,7 @@ const loadOverrideManifest = (
     ),
     Effect.flatMap((data) =>
       Schema.decodeUnknownEffect(OverrideRuntimeBundleManifestSchema)(data).pipe(
-        Effect.mapError((cause) => overrideManifestError(path, "failed schema validation", cause)),
+        mapFailures((cause) => overrideManifestError(path, "failed schema validation", cause)),
       ),
     ),
   );

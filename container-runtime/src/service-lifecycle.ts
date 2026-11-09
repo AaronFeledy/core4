@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { serviceContainerName } from "./plan.ts";
 
@@ -46,7 +47,7 @@ const lifecycleRequest = (
   },
 ): Effect.Effect<boolean, ProviderError> =>
   response.pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ProviderUnavailableError({
           providerId: ctx.providerId,

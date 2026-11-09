@@ -8,6 +8,7 @@ import {
 import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 import { runObservationFromListState } from "@lando/container-runtime/run-observation";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import {
   type HostProxyContainerTarget,
@@ -134,6 +135,16 @@ const DOCKER_CTX_BASE = {
   remediation:
     "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
 } as const;
+
+const unreachableDocker = (error: ProviderUnavailableError) =>
+  new ProviderUnavailableError({
+    providerId: error.providerId,
+    operation: "getStatus",
+    message: error.message,
+    remediation:
+      "Start Docker Desktop or Docker Engine, verify access to the configured Docker socket, then retry the command.",
+    cause: error,
+  });
 
 const DOCKER_CTX: ProviderErrorContext = { ...DOCKER_CTX_BASE, env: {} };
 
@@ -299,7 +310,7 @@ export const introspectProviderCapabilities = (
   dockerHost = "/var/run/docker.sock",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ProviderInternalError
         ? new ProviderCapabilityError({
             providerId: PROVIDER_ID,
@@ -307,7 +318,6 @@ export const introspectProviderCapabilities = (
             message: "Docker API info inspection failed.",
             capability: "docker-info",
             requiredValue: "Docker info response",
-            actualValue: undefined,
             cause,
             remediation:
               "Choose a provider that supports `docker-info`, or remove that requirement from the app.",
@@ -493,6 +503,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
   );
   return Effect.gen(function* () {
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* runtimeCapabilities;
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const planState = makeProviderPlanState({
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
@@ -542,10 +556,19 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             dialect: dockerWaitDialect,
             ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           }),
-        exec: (plan, target, command) => exec(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
+        exec: (plan, target, command) =>
+          exec(plan, target, command, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            ...execHelper,
+          }),
         execStream: (plan, target, command) =>
-          execStream(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
-        inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX }),
+          execStream(plan, target, command, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            ...execHelper,
+          }),
+        inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX, ...execHelper }),
       },
     });
 
@@ -582,12 +605,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: dockerApi.info.pipe(
-        Effect.as({ running: true, message: "ready" }),
-        Effect.catch((error) =>
-          Effect.succeed({
-            running: false,
-            message: error instanceof Error ? error.message : "Docker Engine is not reachable.",
-          }),
+        Effect.as({ state: "running" as const, message: "ready" }),
+        mapFailures((error) =>
+          error instanceof ProviderUnavailableError ? unreachableDocker(error) : error,
         ),
       ),
       getVersions: dockerApi.info.pipe(
@@ -627,6 +647,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: dockerApi,
           ctx: DOCKER_CTX,
+          ...execHelper,
           dialect: dockerLifecycleDialect,
           ensureImage: dockerEnsureImage(dockerApi),
           retryCreateOnMissingImage: true,

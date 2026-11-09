@@ -88,6 +88,37 @@ lando django runserver 0.0.0.0:8000
 
 Bind `0.0.0.0` so Traefik can reach the process. Then open the URL from `lando info`.
 
+## Use SQLite
+
+Create a new SQLite app from the parent directory:
+
+```sh
+lando init --recipe django --name=django-sqlite --answer=database=sqlite --yes
+cd django-sqlite
+lando app:config:lint
+```
+
+Start the app, install Django and `dj-database-url`, and create the project with
+`django-admin startproject config .` as above. SQLite needs no `psycopg` or
+PostgreSQL client, so skip those client checks. Keep the `dj_database_url.config()` settings above:
+`web` and the optional Celery worker receive `sqlite:////app/db.sqlite3`, an
+absolute URL for `/app/db.sqlite3`. The app mount is `/app`;
+`config/settings.py` resolves `BASE_DIR` to that root. Lando declares
+`sqlite.path: db.sqlite3` on `web` and omits the database service.
+
+After `lando django migrate --noinput` creates the file, export, import, and
+snapshot it from the app directory. **Import replaces the database's contents
+with the backup.**
+
+```sh
+lando db:export backup.sql.gz
+lando db:import backup.sql.gz --yes
+lando db:snapshot
+```
+
+See [Manage a SQLite file database](../tooling/sqlite-database.mdx) for file
+backups and restore behavior.
+
 ## See what the recipe writes
 
 | Piece | What you get |

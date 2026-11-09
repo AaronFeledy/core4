@@ -120,6 +120,7 @@ for (const failBuild of [false, true]) {
                 }),
               waitForExit: () => Effect.succeed({ exitCode: 0 }),
             }).pipe(
+              Effect.tap(() => TestRuntimeProvider.apply(applied, { reconcile: true })),
               Effect.tap(() =>
                 Effect.sync(() => {
                   appliedGlobal = {
@@ -130,7 +131,7 @@ for (const failBuild of [false, true]) {
               ),
               Effect.as({ changed: true }),
             )
-          : Effect.succeed({ changed: true }),
+          : TestRuntimeProvider.apply(applied, { reconcile: true }),
     };
     const globalApp: typeof GlobalAppService.Service = {
       id: "global",

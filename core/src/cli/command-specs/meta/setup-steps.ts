@@ -12,7 +12,8 @@ import {
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
-import { Cause, Effect, Exit, Option, Result, Schema } from "effect";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 
 import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
 
@@ -95,8 +96,8 @@ export const makeSetupReadinessRecorder = (
   userDataRoot: string | undefined,
   selectedProviderId: string,
   redaction?: RedactionServiceShape,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): AccumulatingSetupReadinessRecorder => {
-  const sourceEnv = { ...process.env };
   const readinessSteps: SetupReadinessStep[] = [];
   let providerId = selectedProviderId;
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
@@ -157,8 +158,17 @@ export const makeSetupReadinessRecorder = (
   return {
     start: Effect.suspend(() => persist("in-progress")),
     finish: (exit) => {
-      if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)) return Effect.void;
-      return persist(Exit.isFailure(exit) ? "failed" : completedSetupReadinessStatus(readinessSteps));
+      if (Exit.isSuccess(exit)) return persist(completedSetupReadinessStatus(readinessSteps));
+      const cancelled =
+        Cause.hasInterrupts(exit.cause) &&
+        !exit.cause.reasons.some(
+          (reason) =>
+            (Cause.isFailReason(reason) || Cause.isDieReason(reason)) &&
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined,
+        );
+      // A cancelled run stays in progress unless a step already failed; then doctor can name that step.
+      if (cancelled && !readinessSteps.some((step) => step.status === "failed")) return Effect.void;
+      return persist("failed");
     },
     setProvider: (value) => {
       providerId = value;

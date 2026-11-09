@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 // allow: SIZE_OK - the lifecycle bracket owns admission, execution, and failure compensation as one scoped coordinator.
 import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
@@ -125,9 +126,7 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
       continue;
     }
     const status = yield* inspectHostContainer(plan, service).pipe(
-      Effect.mapError((error) =>
-        eventError(error, event, entry.step, redactor, entry.source, entry.sourceIndex),
-      ),
+      mapFailures((error) => eventError(error, event, entry.step, redactor, entry.source, entry.sourceIndex)),
     );
     if (isStoppedStatus(status)) {
       const reason =
@@ -243,7 +242,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
                 silent: leaf.silent,
                 plan,
               }).pipe(
-                Effect.mapError((cause) => {
+                mapFailures((cause) => {
                   if (cause instanceof ToolingCompileError) return cause;
                   const detail = cause instanceof Error ? cause.message : String(cause);
                   const remediation = (cause as { readonly remediation?: unknown } | null)?.remediation;

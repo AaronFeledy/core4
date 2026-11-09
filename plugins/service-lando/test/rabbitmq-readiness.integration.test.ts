@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { compileServiceProbe } from "@lando/container-runtime/service-probe";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { PortablePath, ServiceName, normalizeAppSlug } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rabbitmq3ServiceType, rabbitmqServiceType } from "../src/services/rabbitmq.ts";
 import { composeCatalogConfigPlan } from "./support/catalog-config-app.ts";
@@ -44,7 +44,7 @@ describe("RabbitMQ cookie-safe readiness", () => {
             yield* Effect.promise(() => chmod(wrapper, 0o755));
             const composed = yield* composeCatalogConfigPlan({
               serviceType: input.type,
-              slug: basename(appRoot),
+              slug: normalizeAppSlug(basename(appRoot), appRoot),
               serviceName: "queue",
               appRoot,
               service: { type: input.type.id, port: input.port },

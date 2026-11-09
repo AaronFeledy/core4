@@ -22,7 +22,7 @@ export const source = {
         ],
         build: { artifact: [DRUPAL_CMS_GIT_ARTIFACT] },
       },
-      database: { type: "{{ recipe.database }}", database: "{{ app.name }}" },
+      database: { type: "{{ recipe.database }}" },
     },
     tooling: {
       drush: {
@@ -42,7 +42,7 @@ export const source = {
         service: "appserver",
         description: "Install Drupal CMS 2 using the drupal_cms_starter recipe.",
         arguments: false,
-        cmd: drupalCmsInstallCommand("mysql", "{{ app.name }}"),
+        cmd: drupalCmsInstallCommand("mysql", "{{ services.database.creds.database }}"),
       },
     },
   },
@@ -51,7 +51,11 @@ export const source = {
     {
       when: '{{ eq(options.database, "postgres:16") }}',
       config: {
-        tooling: { "drupal-cms-install": { cmd: drupalCmsInstallCommand("pgsql", "{{ app.name }}") } },
+        tooling: {
+          "drupal-cms-install": {
+            cmd: drupalCmsInstallCommand("pgsql", "{{ services.database.creds.database }}"),
+          },
+        },
       },
     },
   ],

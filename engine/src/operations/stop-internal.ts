@@ -43,6 +43,7 @@ import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { resolveLandofileEventPlan } from "./landofile-events.ts";
+import { idleStopEventPlan, stopIdleApp } from "./stop-idle.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -59,6 +60,7 @@ type StopAppServices =
 const now = () => DateTime.nowUnsafe();
 
 export interface StopAppPreflight {
+  readonly runtimeState: "running" | "idle";
   readonly provider: RuntimeProviderShape;
   readonly appliedFileSync: AppliedFileSyncInspection;
   readonly maybeFileSync: Option.Option<FileSyncEngineShape>;
@@ -69,6 +71,7 @@ export interface StopAppPreflight {
 /** Verify the provider's saved mount state before any app hook or writer shutdown. */
 export const preflightStopApp = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
+  observedState?: StopAppPreflight["runtimeState"],
 ): Effect.fn.Return<StopAppPreflight, SdkStopAppError, RuntimeProviderRegistry | StateStore> {
   const pending = yield* readPendingAcceleratedStart(target.app, target.plan).pipe(
     mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
@@ -76,6 +79,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
   const registry = yield* RuntimeProviderRegistry;
   const plan = target.plan;
   const provider = yield* registry.select(plan);
+  const runtimeState = observedState ?? (yield* provider.getStatus).state;
   if (pending !== null) {
     const bundle = yield* fileSyncBundle(plan).pipe(
       mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
@@ -84,6 +88,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
       mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
     );
     return {
+      runtimeState,
       provider,
       appliedFileSync: {
         status: "accelerated",
@@ -97,7 +102,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
   }
   const ref = target.app;
   const bundle =
-    provider.inspectAppliedFileSync === undefined
+    provider.inspectAppliedFileSync === undefined || runtimeState === "idle"
       ? yield* fileSyncBundle(plan).pipe(
           mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
         )
@@ -111,27 +116,33 @@ export const preflightStopApp = Effect.fnUntraced(function* (
               : ("ordinary" as const),
         }
       : yield* provider.inspectAppliedFileSync(plan);
-  const maybeFileSync =
+  const engineId =
     appliedFileSync.status === "accelerated"
-      ? yield* acquireFileSyncEngine(appliedFileSync.engineId).pipe(
+      ? appliedFileSync.engineId
+      : runtimeState === "idle" && bundle?.kind === "accelerated"
+        ? bundle.id
+        : undefined;
+  const maybeFileSync =
+    engineId !== undefined
+      ? yield* acquireFileSyncEngine(engineId).pipe(
           Effect.map(Option.some),
           Effect.catch(() => Effect.succeed(Option.none())),
         )
       : Option.none();
-  const fileSyncAvailable =
-    appliedFileSync.status === "accelerated" &&
-    Option.isSome(maybeFileSync) &&
-    (yield* maybeFileSync.value.isAvailable);
+  const fileSyncAvailable = Option.isSome(maybeFileSync) && (yield* maybeFileSync.value.isAvailable);
   const sessions =
     fileSyncAvailable && Option.isSome(maybeFileSync)
       ? yield* maybeFileSync.value.listSessions({ app: ref })
       : [];
+  // An idle runtime runs no writer and idle stop flushes and removes nothing, so the
+  // proof that guards writer shutdown does not apply; providers may not observe volumes then.
   if (
-    appliedFileSync.status === "unknown" ||
-    (appliedFileSync.status === "accelerated" &&
-      (Option.isNone(maybeFileSync) ||
-        maybeFileSync.value.id !== appliedFileSync.engineId ||
-        !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions)))
+    runtimeState !== "idle" &&
+    (appliedFileSync.status === "unknown" ||
+      (appliedFileSync.status === "accelerated" &&
+        (Option.isNone(maybeFileSync) ||
+          maybeFileSync.value.id !== appliedFileSync.engineId ||
+          !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))))
   ) {
     return yield* Effect.fail(
       new FileSyncStopError({
@@ -151,7 +162,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
     );
   }
 
-  return { provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions };
+  return { runtimeState, provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions };
 });
 
 const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
@@ -168,9 +179,14 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   const paths = yield* PathsService;
   const plan = target.plan;
   const ref = target.app;
-  const { provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions } =
-    prepared ?? (yield* preflightStopApp(target));
-  const { plan: eventPlan, outcome: landofileEvents } = yield* resolveLandofileEventPlan(target);
+  const preflight = prepared ?? (yield* preflightStopApp(target));
+  const { runtimeState, provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions } = preflight;
+  const resolvedEvents = yield* resolveLandofileEventPlan(target);
+  const landofileEvents = resolvedEvents.outcome;
+  const eventPlan =
+    runtimeState === "idle"
+      ? yield* idleStopEventPlan(resolvedEvents.plan, runInitEvents)
+      : resolvedEvents.plan;
 
   if (runInitEvents) yield* runAppInitEvents(eventPlan);
 
@@ -198,15 +214,17 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     );
   }
 
-  const destroyOutcome = yield* provider
-    .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
-    .pipe(
-      Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
-      Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
-      Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
-    );
+  const destroyOutcome = yield* runtimeState === "idle"
+    ? stopIdleApp(target, preflight)
+    : provider
+        .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
+        .pipe(
+          Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+          Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
+          Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
+        );
   const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
-    destroyOutcome.shutdownObservations;
+    "shutdownObservations" in destroyOutcome ? destroyOutcome.shutdownObservations : undefined;
 
   if (
     appliedFileSync.status === "accelerated" &&
@@ -214,8 +232,8 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     maybeFileSync.value.appLifecycle !== undefined
   ) {
     // An unfinished attempt may not have created any session yet; there is nothing to drain.
-    if (sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
-  } else if (appliedFileSync.status === "accelerated") {
+    if (runtimeState === "running" && sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
+  } else if (runtimeState === "running" && appliedFileSync.status === "accelerated") {
     const terminate = terminateFileSyncSessions(ref, fileSyncAvailable ? sessions : undefined);
     yield* Option.isSome(maybeFileSync)
       ? terminate.pipe(Effect.provideService(FileSyncEngine, maybeFileSync.value))
@@ -248,7 +266,9 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   return {
     result: {
       app: plan.name,
-      servicesStopped: services.map((service) => String(service.name)),
+      runtimeState,
+      ...(runtimeState === "idle" ? { outcome: "stopped" as const } : {}),
+      servicesStopped: runtimeState === "idle" ? [] : services.map((service) => String(service.name)),
       landofileEvents,
       ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
     },

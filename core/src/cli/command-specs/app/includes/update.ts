@@ -9,15 +9,15 @@ import {
   renderIncludesUpdateResult,
 } from "../../../commands/app-includes-update";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { extractSpecParsedArgv } from "../../../spec/command-boundary";
-import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { booleanFlag, specArgsOf, specFlagsOf } from "../../../spec/input-coercion";
 
 const checkFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "check");
 
 const noNetworkFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "no-network");
 
 const sourcesFromInput = (input: unknown): ReadonlyArray<string> => {
-  return extractSpecParsedArgv(input).filter((value) => !value.startsWith("-"));
+  const source = specArgsOf(input).source;
+  return Array.isArray(source) ? source.filter((value): value is string => typeof value === "string") : [];
 };
 
 export const appIncludesUpdateSpec: LandoCommandSpec<
@@ -31,11 +31,12 @@ export const appIncludesUpdateSpec: LandoCommandSpec<
   summary: "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",
   namespace: "app",
   bootstrap: "minimal",
-  strict: false,
+  strict: true,
   args: {
     source: Args.string({
       description: "Include source to refresh (repeatable). Omit to refresh every source.",
       required: false,
+      multiple: true,
     }),
   },
   flags: {

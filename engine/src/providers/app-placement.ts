@@ -28,19 +28,27 @@ export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
 ) {
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(app.root));
   const registry = yield* RuntimeProviderRegistry;
-  const plans = (yield* registry.appliedPlansFor(root)).filter(
+  const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
     (plan) => (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
   );
-  if (plans.length > 1)
+  const current = app.kind === "user" ? plans.filter((plan) => plan.id === app.id) : plans;
+  const superseded = app.kind === "user" ? plans.filter((plan) => plan.id !== app.id) : [];
+  const providers = [...new Set(plans.map((plan) => plan.provider))];
+  if (current.length > 1 || (app.kind !== "user" && providers.length > 1))
     return yield* Effect.fail(
       new AppResolveError({
-        message: `App ${app.id} has multiple applied plans on providers: ${plans.map((plan) => plan.provider).join(", ")}.`,
+        message: `App ${app.id} has multiple applied plans on providers: ${providers.join(", ")}.`,
         reason: "ambiguous",
         detail: "provider-resources",
-        remediation: `From ${root}, remove each unwanted realization explicitly: ${[...new Set(plans.map((plan) => plan.provider))].map((provider) => `\`${destroyCommand(app, provider)}\``).join("; ")}. Then retry.`,
+        remediation: `From ${root}, remove each unwanted realization explicitly: ${providers.map((provider) => `\`${destroyCommand(app, provider)}\``).join("; ")}. Then retry.`,
       }),
     );
-  return { desired, realized: plans[0]?.provider, plan: plans[0] };
+  return {
+    desired,
+    realized: plans.find((plan) => plan.provider !== desired)?.provider ?? providers[0],
+    plan: current[0],
+    superseded,
+  };
 });
 
 export const ensureAppPlacementState = Effect.fn("AppPlacement.ensureState")(function* (

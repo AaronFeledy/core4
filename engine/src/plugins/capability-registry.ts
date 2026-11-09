@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { Effect } from "effect";
 import {
@@ -18,7 +19,7 @@ export const indexContributions = <Key extends CapabilityKey, E>(
   onIndexError: (error: PluginCapabilityIndexError) => E,
 ): Effect.Effect<PluginCapabilityIndex[Key], E> =>
   Effect.fromResult(makePluginCapabilityIndex(modules)).pipe(
-    Effect.mapError(onIndexError),
+    mapFailures(onIndexError),
     Effect.map((index) => index[key]),
   );
 

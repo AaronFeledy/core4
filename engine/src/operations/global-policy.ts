@@ -30,6 +30,7 @@ import {
   assertGlobalResolution,
   projectEffectiveGlobalResolution,
 } from "../global-app/resolution.ts";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
 import {
@@ -303,7 +304,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           Effect.gen(function* () {
             const registry = yield* RuntimeProviderRegistry;
             const provider = yield* registry.select(applied.provider);
-            if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running) return undefined;
+            if (!(yield* runtimeOnline(provider))) return undefined;
             const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
             const active = new Set(
               observations

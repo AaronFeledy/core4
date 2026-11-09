@@ -1,5 +1,10 @@
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationDefaults,
+} from "../runtime/invocation-context";
 import { resolveBuiltInCommand } from "./built-in-command-registry";
 import {
   type HelpTopic,
@@ -26,6 +31,7 @@ import { renderAliasResolutionFailure } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { redactHelpText } from "./help-redaction";
+import { shouldStyleHelp } from "./help-style";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { pluginHelpRows, printPluginTopicHelp, tryPluginCommandHelp } from "./plugin-command-help";
@@ -35,15 +41,16 @@ import { readCliAppCommandCache } from "./tooling-command-cache";
 import { resolveToolingRoute, toolingRouteFailure } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
-const readHelpCache = async () => {
+const readHelpCache = async (context?: CliInvocationContext) => {
+  const operation = Effect.result(readCliAppCommandCache({ includeScriptInventory: true }));
   const exit = await Effect.runPromiseExit(
-    Effect.result(readCliAppCommandCache({ includeScriptInventory: true })),
+    context === undefined ? operation : operation.pipe(Effect.provideService(CliInvocation, context)),
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   const result = exit.value;
   switch (result._tag) {
     case "Failure":
-      await renderAliasResolutionFailure(result.failure);
+      await renderAliasResolutionFailure(result.failure, context);
       return undefined;
     case "Success":
       return {
@@ -65,17 +72,27 @@ const pluginConflictNotice = (diagnostics: readonly { readonly message: string }
   ].join("\n");
 };
 
+const coldHelpStyle = (catalog: PluginCommandCatalog) => ({
+  style: shouldStyleHelp({
+    isTTY: catalog.context?.io.stdoutIsTTY === true,
+    env: catalog.context?.env ?? {},
+    argv: [],
+    rendererMode: activeRendererMode,
+  }),
+});
+
 export const printAllHelp = async (
   catalog: PluginCommandCatalog = createPluginCommandCatalog(),
 ): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
-  const result = await readHelpCache();
+  const result = await readHelpCache(catalog.context);
   if (result === undefined) return;
   const { cache, toolingMetadata } = result;
   const plugins = await catalog.list();
   await emitResultLine(
     await redactHelpText(
       renderColdAllHelp({
+        ...coldHelpStyle(catalog),
         thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
         toolingMetadata,
         pluginRows: pluginHelpRows(pluginRowsForCache(plugins.rows, cache)),
@@ -88,21 +105,30 @@ export const printAllHelp = async (
             : {}),
         ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
       }),
+      catalog.context,
     ),
+    catalog.context,
   );
 };
 
 const printTopicHelp = async (topic: HelpTopic, catalog: PluginCommandCatalog): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
-  const result = await readHelpCache();
+  const result = await readHelpCache(catalog.context);
   if (result === undefined) return;
   const { cache } = result;
   await emitResultLine(
-    renderColdTopicHelp(topic, cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+    renderColdTopicHelp(topic, {
+      ...coldHelpStyle(catalog),
+      ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+    }),
+    catalog.context,
   );
 };
 
-export const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promise<boolean> => {
+export const rejectUnknownHelpFlags = async (
+  argv: ReadonlyArray<string>,
+  context?: CliInvocationContext,
+): Promise<boolean> => {
   const flagError = validateCommandCliFlags({
     commandId: "cli:help",
     argv,
@@ -111,8 +137,9 @@ export const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promi
   });
   if (flagError === undefined) return false;
   await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
-    failureExitCode: () => 2,
+    ...(context === undefined ? {} : { context }),
     preCommand: true,
+    usage: true,
   });
   return true;
 };
@@ -121,32 +148,36 @@ export const printRootHelpPage = async (
   catalog: PluginCommandCatalog = createPluginCommandCatalog(),
 ): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
-  const result = await readHelpCache();
+  const result = await readHelpCache(catalog.context);
   if (result === undefined) return;
   const { cache, toolingMetadata } = result;
   const plugins = await catalog.list();
   await emitResultLine(
     await redactHelpText(
       renderColdRootHelp(undefined, {
+        ...coldHelpStyle(catalog),
         thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
         toolingMetadata,
         ...(plugins.topics === undefined ? {} : { pluginTopics: plugins.topics }),
         ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
       }),
+      catalog.context,
     ),
+    catalog.context,
   );
 };
 
 export const printHelpCatalogPage = async (
   catalog: PluginCommandCatalog = createPluginCommandCatalog(),
 ): Promise<void> => {
-  const result = await readHelpCache();
+  const result = await readHelpCache(catalog.context);
   if (result === undefined) return;
   await printHelpCatalogJson(
     result.cache,
     isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
     result.toolingMetadata,
     await catalog.list(),
+    catalog.context,
   );
 };
 
@@ -157,15 +188,17 @@ export const dispatchHelpTarget = async (
 ): Promise<void> => {
   if (isHelpTopic(token)) return printTopicHelp(token, catalog);
   const helpCommand = resolveBuiltInCommand(token);
-  if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand);
+  if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand, catalog.context);
   const resolutionExit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal),
+    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal).pipe(
+      Effect.provideService(CliInvocation, catalog.context ?? processInvocationDefaults),
+    ),
   );
   if (Exit.isFailure(resolutionExit)) throw resolutionExit.cause;
   const resolution = resolutionExit.value;
   switch (resolution._tag) {
     case "Failure":
-      return renderAliasResolutionFailure(resolution.failure);
+      return renderAliasResolutionFailure(resolution.failure, catalog.context);
     case "Success": {
       const route = resolution.success;
       switch (route._tag) {
@@ -179,8 +212,10 @@ export const dispatchHelpTarget = async (
                 ...(route._tag === "bun-script" ? { source: route._tag } : {}),
               },
               route.aliasPolicy,
+              catalog.context,
             );
           return renderPreCommandFailure({
+            ...(catalog.context === undefined ? {} : { context: catalog.context }),
             commandId: route.commandId,
             error: new ToolingDisabledError({
               message: `Tooling command ${escapeDiagnosticText(route.commandId)} is disabled.`,
@@ -192,13 +227,14 @@ export const dispatchHelpTarget = async (
             resultFormat: activeResultFormat,
           });
         case "built-in":
-          return printCommandHelp(route.entry);
+          return printCommandHelp(route.entry, catalog.context);
         case "plugin":
           await tryPluginCommandHelp(route.token, catalog);
           return;
-        case "cache-miss":
         case "unknown-tooling":
-          if (route._tag === "unknown-tooling" || !token.startsWith("app:")) {
+          break;
+        case "cache-miss":
+          if (!token.startsWith("app:")) {
             if (await tryPluginCommandHelp(token, catalog)) return;
             if (await catalog.topic(token)) {
               if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
@@ -207,20 +243,23 @@ export const dispatchHelpTarget = async (
             }
           }
           return renderPreCommandFailure({
+            ...(catalog.context === undefined ? {} : { context: catalog.context }),
             commandId: route.commandId,
             error: toolingRouteFailure(route),
             rendererMode: activeRendererMode,
             resultFormat: activeResultFormat,
           });
         case "not-tooling":
-          if (helpCommand !== undefined) return printCommandHelp(helpCommand);
+          if (helpCommand !== undefined) return printCommandHelp(helpCommand, catalog.context);
           break;
         case "alias-disabled":
           return renderPreCommandFailure({
+            ...(catalog.context === undefined ? {} : { context: catalog.context }),
             commandId: "cli:unknown-command",
             error: unknownCommandError(token),
             rendererMode: activeRendererMode,
             resultFormat: activeResultFormat,
+            usage: true,
           });
         default:
           route satisfies never;
@@ -237,9 +276,11 @@ export const dispatchHelpTarget = async (
     return;
   }
   await renderPreCommandFailure({
+    ...(catalog.context === undefined ? {} : { context: catalog.context }),
     commandId: "cli:unknown-command",
-    error: unknownCommandError(token, await catalog.unknownCommandRemediation(token)),
+    error: unknownCommandError(token, await catalog.unknownCommandGuidance([token])),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
+    usage: true,
   });
 };

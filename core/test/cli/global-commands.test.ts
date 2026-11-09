@@ -148,6 +148,7 @@ interface HarnessOptions {
   readonly failRemove?: boolean;
   readonly failRemoveServices?: ReadonlyArray<string>;
   readonly missingAppliedState?: boolean;
+  readonly legacyBridge?: boolean;
   readonly incompleteObservationOwnership?: boolean;
   readonly observationProviderId?: ProviderId;
   readonly observationRoot?: AbsolutePath;
@@ -157,6 +158,7 @@ interface HarnessOptions {
   readonly unreadableConsumerState?: boolean;
   readonly beforeApply?: Effect.Effect<void>;
   readonly offline?: boolean;
+  readonly idle?: boolean;
   readonly vanishedServices?: ReadonlyArray<string>;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
@@ -317,7 +319,18 @@ const makeHarness = async (
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
-    getStatus: Effect.sync(() => ({ running: !options.offline })),
+    getStatus: Effect.suspend(() =>
+      options.offline
+        ? Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation: "getStatus",
+              message: "Runtime is unreachable.",
+              remediation: "Restore runtime access.",
+            }),
+          )
+        : Effect.succeed({ state: options.idle ? ("idle" as const) : ("running" as const) }),
+    ),
     appliedPlans: Effect.sync(() =>
       options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan],
     ),
@@ -337,7 +350,19 @@ const makeHarness = async (
                   providerId: options.observationProviderId ?? providerId,
                   service,
                   containerId: `test-${service}`,
-                  status: "running" as const,
+                  ...(options.incompleteObservationOwnership
+                    ? {}
+                    : {
+                        labels: {
+                          "dev.lando.app": plan.id,
+                          "dev.lando.app-root": options.observationRoot ?? plan.root,
+                          "dev.lando.provider": options.observationProviderId ?? providerId,
+                          "dev.lando.service": service,
+                        },
+                      }),
+                  status: options.exitedServices?.includes(service)
+                    ? ("exited" as const)
+                    : ("running" as const),
                   publications: { status: "unknown" as const },
                 }));
         return [...globalServices, ...(options.consumerObservations ?? [])].filter(
@@ -360,6 +385,10 @@ const makeHarness = async (
           ),
         );
         calls.apply.push({ plan, options: applyOptions, environments });
+        yield* TestRuntimeProvider.apply(plan, {
+          ...applyOptions,
+          resolveServiceEnvironment: (service) => Effect.succeed(environments[service.name] ?? {}),
+        });
         return { changed: true };
       }).pipe(
         Effect.flatMap((result) => {
@@ -373,6 +402,14 @@ const makeHarness = async (
                   ...plan,
                   services: { ...appliedPlan?.services, ...plan.services },
                 };
+                if (options.legacyBridge)
+                  appliedPlan = {
+                    ...appliedPlan,
+                    networking: {
+                      ...appliedPlan.networking,
+                      perAppBridge: { name: "lando-global", driver: "bridge", aliases: {} },
+                    },
+                  };
                 return result;
               })
             : Effect.fail(
@@ -1808,6 +1845,23 @@ describe("meta:global command effects", () => {
     }, options);
   });
 
+  test("status reports an idle global provider as stopped without an observation diagnostic", async () => {
+    const options = { idle: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.idle = true;
+      harness.calls.inspect.length = 0;
+      const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
+      expect(result.runtimeState).toBe("idle");
+      expect(result.services.map((service) => [service.service, service.status])).toEqual([
+        ["mail", "stopped"],
+        ["proxy", "stopped"],
+      ]);
+      expect(result.diagnostics).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
+    }, options);
+  });
+
   for (const missingAppliedState of [false, true]) {
     test(`status keeps ownership unknown (missing applied state: ${missingAppliedState})`, async () => {
       const options = { incompleteObservationOwnership: false, missingAppliedState: false };
@@ -3131,7 +3185,63 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("selected start rejects a route collision with a retained sibling before apply", async () => {
+  test.each(["running", "exited"] as const)(
+    "#2144 selected start reconciles a %s sibling left on the old bridge",
+    async (status) => {
+      const options = { legacyBridge: true, exitedServices: [] as string[] };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.legacyBridge = false;
+        if (status === "exited") options.exitedServices = ["proxy"];
+        const result = await Effect.runPromise(
+          globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(
+          status === "running" ? ["mail", "proxy"] : ["mail"],
+        );
+        expect(harness.calls.removed).toEqual(status === "exited" ? ["proxy"] : []);
+        expect(Object.keys(harness.calls.apply.at(-1)?.plan.services ?? {}).sort()).toEqual(
+          status === "running" ? ["mail", "proxy"] : ["mail"],
+        );
+      }, options);
+    },
+  );
+
+  test("a routed sibling joined after initial selection pulls in the router backing service", async () => {
+    const options = {
+      missingAppliedState: false,
+      vanishedServices: [] as string[],
+      serviceNames: ["mail", "proxy", "router"],
+      routerId: "router",
+    };
+    await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        "services:\n  proxy:\n    routes: [proxy.global.test]\n",
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.missingAppliedState = true;
+      options.vanishedServices = ["router"];
+      const before = harness.calls.apply.length;
+      const result = await Effect.runPromise(
+        globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual([
+        "mail",
+        "proxy",
+        "router",
+      ]);
+      expect(
+        harness.calls.apply
+          .slice(before)
+          .flatMap((call) => Object.keys(call.plan.services))
+          .sort(),
+      ).toEqual(["mail", "proxy", "router"]);
+    }, options);
+  });
+
+  test("selected start joins a running sibling whose prior route conflicts", async () => {
     await withHarness(async (harness) => {
       const local = join(harness.dataRoot, "global", ".lando.local.yml");
       await mkdir(join(harness.dataRoot, "global"), { recursive: true });
@@ -3145,31 +3255,26 @@ describe("meta:global command effects", () => {
         local,
         "services:\n  proxy:\n    routes: [new.proxy.test]\n  mail:\n    routes: [taken.global.test]\n",
       );
-      const failure = await Effect.runPromiseExit(
+      const result = await Effect.runPromise(
         globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
       );
-      expect(failureOf(failure)).toMatchObject({
-        _tag: "GlobalAppError",
-        message: expect.stringContaining("conflicts"),
-      });
-      expect(harness.calls.apply).toHaveLength(applied);
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.apply).toHaveLength(applied + 1);
+      expect(Object.keys(harness.calls.apply.at(-1)?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
     });
   });
 
-  test("selected start refuses unknown active unselected ownership without an applied snapshot", async () => {
+  test("selected start adopts proven owned active siblings without an applied snapshot", async () => {
     const options = { missingAppliedState: false };
     await withHarness(async (harness) => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       const applied = harness.calls.apply.length;
       options.missingAppliedState = true;
-      const failure = await Effect.runPromiseExit(
+      const result = await Effect.runPromise(
         globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
       );
-      expect(failureOf(failure)).toMatchObject({
-        _tag: "GlobalAppError",
-        message: expect.stringContaining("ownership"),
-      });
-      expect(harness.calls.apply).toHaveLength(applied);
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.apply).toHaveLength(applied + 2);
     }, options);
   });
 
@@ -3305,15 +3410,26 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("config rejects an unrecognized subcommand instead of silently validating", async () => {
-    await withHarness(async (harness) => {
-      const exit = await Effect.runPromiseExit(
-        globalConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(harness.layer)),
-      );
-
-      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
-      expect(error._tag).toBe("LandofileWriteValidationError");
-      expect(error.message).toContain("bogus");
+  test("event input rejects an undeclared global config verb before global app resolution", async () => {
+    const { metaGlobalConfigSpec } = await import("../../src/cli/command-specs/meta/global/config.ts");
+    const { validateEventCommandInput } = await import("../../src/cli/event-command-input.ts");
+    const error = await Effect.runPromise(
+      Effect.flip(
+        validateEventCommandInput(metaGlobalConfigSpec, {
+          flags: {},
+          args: { subcommand: "valdiate" },
+          raw: [],
+        }),
+      ),
+    );
+    expect(error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "meta:global:config",
+      field: "subcommand",
+      kind: "arg",
+      reason: "option",
+      remediation:
+        'Did you mean "validate"? subcommand takes one of: view, set, unset, edit, validate, describe.',
     });
   });
 

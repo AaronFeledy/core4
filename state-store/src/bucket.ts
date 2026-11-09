@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { StateBucket, StateBucketSpec, StateTransition, StateWrite } from "@lando/sdk/services";
@@ -121,7 +122,7 @@ export const buildStateBucket = <A, I>(
       }).pipe(Effect.flatMap((body) => backend.writeBytes(file, body, "set", writeOptions)));
     }
     return schema.encode(value).pipe(
-      Effect.mapError((cause) => decodeError("set", file, cause)),
+      mapFailures((cause) => decodeError("set", file, cause)),
       Effect.flatMap((encoded) => {
         const body = encodeFrame(codec, spec.version, encoded, value);
         return backend.writeBytes(file, body, "set", writeOptions);

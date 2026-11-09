@@ -1,4 +1,5 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { type LandofileShape, type PluginManifest, type ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
@@ -25,6 +26,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   readonly manifests: readonly PluginManifest[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly appName: string;
+  readonly dataName?: string;
   readonly appSlug: string;
   readonly appRoot: string;
   readonly provider: ProviderId;
@@ -52,7 +54,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       input.pluginRegistry,
       declaredServiceFeatures(resolution, input.gpgForward),
     ).pipe(
-      Effect.mapError((error) => servicePlanError(input.appRoot, name, error)),
+      mapFailures((error) => servicePlanError(input.appRoot, name, error)),
       Effect.result,
     );
     if (Result.isFailure(loaded)) {
@@ -77,6 +79,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       },
       baseKind: resolution.base,
       appName: input.appName,
+      dataName: input.dataName,
       appSlug: input.appSlug,
       appRoot: input.appRoot,
       host: input.host,

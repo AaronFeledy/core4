@@ -11,6 +11,12 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import {
+  fixtureHelperOptionsFor,
+  installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -32,7 +38,10 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const textEncoder = new TextEncoder();
 const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]>) =>
   providerLayer({
+    ...fixtureHelperOptionsFor(options.podmanApi),
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
     ...options,
+    ...supervisedExecFixtureOptions(options.podmanApi),
     appliedPlanState:
       options.appliedPlanState ??
       makePluginStateStore(
@@ -367,6 +376,7 @@ const makeFakeApi = () => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -718,6 +728,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         return Stream.make(attachBytesFrame(1, containers.get(name)?.stdout ?? new Uint8Array()));
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
+        request.onResponseHead?.();
         const name = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/attach?")),
         );
@@ -735,7 +746,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             ) {
               volumes.set(volume, await collectAsyncBytes(request.stdin));
             }
-            return Stream.empty;
+            return Stream.make(attachBytesFrame(1, container?.stdout ?? new Uint8Array()));
           }),
         );
       }
@@ -761,6 +772,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 

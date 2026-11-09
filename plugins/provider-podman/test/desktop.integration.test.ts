@@ -10,6 +10,11 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import {
+  installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { PodmanMachineNotRunningError, resolvePodmanDesktopMachine } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -247,6 +252,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -256,6 +262,7 @@ const buildProvider = (stateDir: string, platform: HostPlatform, fakeApi: Podman
       Effect.provide(
         makeProviderLayer({
           podmanApi: fakeApi,
+          ...supervisedExecFixtureOptions(fakeApi),
           platform,
           env: { HOME: "/Users/desktop-tester" },
           stateDir,
@@ -515,6 +522,7 @@ liveDesktopTest(
         Effect.provide(
           makeProviderLayer({
             podmanApi: makePodmanApiClient(socket),
+            resolveContainerHelper: resolveBuiltContainerHelperForTest,
             platform: process.platform === "darwin" ? "darwin" : "win32",
           }),
         ),

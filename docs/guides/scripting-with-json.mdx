@@ -185,15 +185,14 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
 
   <Scenario id="capture-bun-child-exit" layer="e2e" render>
     <Step name="capture-bun-json">
-      <UseFixture name="bun-child-output" />
-      <Run command="lando --format=json bun print-number.js" />
-      <Verify command="lando --format=json bun print-number.js" expect={{ stdout: { regex: "\"_tag\":\\s*\"stdout\"[\\s\\S]*\"chunk\":\\s*\"2" } }} />
+      <Run command="lando --format=json bun -e 'console.log(2)'" />
+      <Verify command="lando --format=json bun -e 'console.log(2)'" expect={{ stdout: { regex: "\"_tag\":\\s*\"stdout\"[\\s\\S]*\"chunk\":\\s*\"2" } }} />
     </Step>
     <Step name="keep-nonzero-bun-exit">
-      <Run command="lando --format=json bun fail.js" expectExit={3} />
+      <Run command="lando --format=json bun -e 'process.exit(3)'" expectExit={3} />
       <Verify errorTag="LandoCommandError" />
     </Step>
-    <Step name="cleanup-bun-files">
+    <Step name="cleanup-bun-run">
       <Cleanup />
     </Step>
   </Scenario>
@@ -438,6 +437,12 @@ scripts can branch on both. The tagged error exposes a machine `_tag` plus
 a required `message` and nonblank `remediation`, so an agent can react to the failure class without
 scraping prose.
 
+Exit `2` means Lando was called wrong and nothing ran: an unknown command
+(`UnknownCommandError`, with ranked `suggestions`), an unknown or malformed flag
+(`UnknownCliFlagError`, `MalformedCliFlagValueError`), an argument outside its
+declared choices (`CommandInputValidationError`), or an output format the
+command does not support. Fix the invocation rather than retrying it.
+
 If rollback, cleanup, or another step also fails, `error` still describes the
 primary failure and determines the exit code. `error.additionalErrors` contains
 the other failures in cause order, each with its own `_tag`, `message`, required
@@ -479,7 +484,10 @@ indexes, like each `issues[].path`), `error.expression`, and `error.filePath`; `
 and, for a global config that fails validation, `error.issues` and
 `error.remediation` (see below).
 JSON, YAML, terminal result frames, and MCP envelopes preserve the same fields
-with the same secret redaction. `cause`, `stack`, and private redaction metadata
+with the same secret redaction. When the error wraps another Lando failure,
+`error.cause` holds that failure in the same form, with its own `_tag`,
+`message`, `remediation`, and fields, and can carry its own `cause` in turn. A
+cause that isn't a tagged Lando error, `stack`, and private redaction metadata
 are excluded. Fields containing class instances, unsupported values, cycles,
 or nesting beyond 32 levels are omitted whole rather than partly serialized.
 Plain error reports show scalar fields and scalar arrays after their existing

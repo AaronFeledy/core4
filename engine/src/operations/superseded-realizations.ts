@@ -1,0 +1,179 @@
+import { AppResolveError, FileSyncStartError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import { type AppPlan, type ServiceShutdownObservation, planDataId } from "@lando/sdk/schema";
+import {
+  EventService,
+  FileSyncEngine,
+  ManagedFileTransactionGuard,
+  type RuntimeProviderShape,
+  StateStore,
+} from "@lando/sdk/services";
+import { quoteYamlScalar } from "@lando/sdk/yaml";
+import { DateTime, Effect } from "effect";
+import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { readJournal } from "./accelerated-start-journal.ts";
+import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
+import { cleanupAppWorkers } from "./destroy-provider.ts";
+import {
+  acquireFileSyncEngine,
+  requireFileSyncProvider,
+  validateDesiredFileSyncEngine,
+} from "./file-sync-acquire.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
+
+export type RetirementReceipt = {
+  readonly appIds: readonly string[];
+  readonly servicesRemoved: readonly string[];
+  readonly volumesRemoved: boolean;
+  readonly shutdownObservations?: readonly ServiceShutdownObservation[];
+};
+
+export const validateSelectedRename = (
+  target: ResolvedAppTarget,
+  superseded: readonly AppPlan[],
+  selected: boolean,
+) =>
+  selected && superseded.length > 0
+    ? Effect.fail(
+        new AppResolveError({
+          reason: "mismatch",
+          detail: "applied-state",
+          message: `App folder ${target.root} has an earlier name: ${superseded.map((plan) => plan.name).join(", ")}. Selected services cannot reconcile a rename.`,
+          remediation: "Run `lando start` or whole-app `lando rebuild` first.",
+        }),
+      )
+    : Effect.void;
+
+/** Runs under the root mutation lock, before acquiring any desired-plan volume locks. */
+export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupersededRealizations")(
+  function* (
+    target: ResolvedAppTarget,
+    superseded: readonly AppPlan[],
+    execution: {
+      readonly provider: RuntimeProviderShape;
+      readonly selectedServices?: boolean;
+      readonly volumes?: boolean;
+      readonly purgeCaches?: boolean;
+      readonly narration?: "launch" | "teardown";
+    },
+  ) {
+    if (superseded.length === 0) return Effect.succeed<RetirementReceipt | undefined>(undefined);
+    yield* validateSelectedRename(target, superseded, execution.selectedServices === true);
+    // Read the root-keyed record without validating it against the desired name's plan.
+    const { pending, path } = yield* readJournal(target.app);
+    if (pending !== null && pending.phase !== "completed") {
+      const recorded = superseded.find((plan) => plan.id === pending.appId);
+      return yield* Effect.fail(
+        new FileSyncStartError({
+          engineId: pending.engineId,
+          message: `App ${pending.appId} has an unfinished accelerated start in ${pending.appRoot}; rename cannot retire its realization.`,
+          remediation: `${recorded === undefined ? `Restore the original authored name of app id ${pending.appId}` : `Restore name: ${quoteYamlScalar(recorded.name)}`} and its recorded provider and mount settings, then run \`lando start\` in ${pending.appRoot} to finish the recorded app before renaming. Journal: \`${path}\`.`,
+          cause: {
+            appId: pending.appId,
+            appRoot: pending.appRoot,
+            ...(recorded === undefined ? {} : { appName: recorded.name }),
+          },
+        }),
+      );
+    }
+    const { provider } = execution;
+    yield* validateDesiredFileSyncEngine(target.plan);
+    yield* requireFileSyncProvider(yield* fileSyncBundle(target.plan), provider);
+    const stateStore = yield* StateStore;
+    const events = yield* EventService;
+    const prepared = yield* Effect.forEach(
+      superseded,
+      Effect.fnUntraced(function* (old) {
+        const app = { kind: "user" as const, id: old.id, root: old.root };
+        const inspected =
+          provider.inspectAppliedFileSync === undefined
+            ? undefined
+            : yield* provider.inspectAppliedFileSync(old);
+        const prepare = prepareDestroyFileSync({ app, root: old.root, plan: old }, provider);
+        const disposal =
+          inspected?.status === "accelerated"
+            ? yield* prepare.pipe(
+                Effect.provideService(FileSyncEngine, yield* acquireFileSyncEngine(inspected.engineId)),
+              )
+            : yield* prepare;
+        return { old, app, disposal };
+      }),
+    );
+    const guard = yield* ManagedFileTransactionGuard;
+    const context = yield* Effect.context<
+      | Effect.Services<Effect.Success<ReturnType<typeof prepareDestroyFileSync>>["dispose"]>
+      | Effect.Services<ReturnType<typeof cleanupAppWorkers>>
+    >();
+    return Effect.gen(function* () {
+      yield* guard.ensureConsistent(String(target.root));
+      const servicesRemoved = new Set<string>();
+      let volumesRemoved = false;
+      const observations: Array<readonly ServiceShutdownObservation[] | undefined> = [];
+      for (const { old, app, disposal } of prepared) {
+        yield* withPlanVolumeCoordination({
+          plan: old,
+          provider,
+          stateStore,
+          body: () =>
+            Effect.gen(function* () {
+              yield* disposal.quiesceRetained;
+              const quiesced = yield* disposal.dispose;
+              observations.push(quiesced.shutdownObservations);
+              yield* cleanupAppWorkers(app);
+              const outcome = yield* provider.destroy(
+                { app: old.id, plan: old },
+                {
+                  volumes: execution.volumes === true,
+                  purgeCaches: execution.purgeCaches === true,
+                  removeState: true,
+                },
+              );
+              observations.push(outcome.shutdownObservations);
+              switch (outcome.kind) {
+                case "destroyed":
+                  for (const service of Object.values(old.services).reverse())
+                    servicesRemoved.add(service.name);
+                  volumesRemoved ||= execution.volumes === true || execution.purgeCaches === true;
+                  break;
+                case "no-op":
+                  break;
+                default: {
+                  const unreachable: never = outcome;
+                  return unreachable;
+                }
+              }
+              yield* disposal.complete;
+              const carriesData = planDataId(old) === planDataId(target.plan);
+              const retained = carriesData
+                ? []
+                : old.stores
+                    .filter((store) => store.kind === "data" && store.scope !== "global")
+                    .map((store) => store.name);
+              yield* events.publish(
+                MessageWarnEvent.make({
+                  body:
+                    execution.narration === "teardown"
+                      ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && execution.volumes === true ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && execution.purgeCaches === true ? " and removed its cache volumes" : ""}.`
+                      : carriesData
+                        ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
+                        : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
+                  timestamp: DateTime.nowUnsafe(),
+                }),
+              );
+            }).pipe(Effect.provide(context)),
+        });
+      }
+      return withShutdownObservations(
+        { appIds: superseded.map((plan) => plan.id), servicesRemoved: [...servicesRemoved], volumesRemoved },
+        ...observations,
+      ) satisfies RetirementReceipt;
+    }).pipe(Effect.provide(context));
+  },
+);
+
+export const retireSupersededRealizations = Effect.fn("AppOperation.retireSupersededRealizations")(
+  (...args: Parameters<typeof prepareSupersededRealizations>) =>
+    prepareSupersededRealizations(...args).pipe(Effect.flatten),
+);

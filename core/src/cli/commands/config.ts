@@ -5,7 +5,7 @@ import { renderConfigWriteResult } from "./config-write-render";
 
 const formatTable = (value: unknown): string => {
   if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
-    return String(value ?? "");
+    return value === undefined ? "" : String(value);
   }
   const flat: Array<[string, string]> = [];
   const walk = (obj: Record<string, unknown>, prefix: string): void => {
@@ -27,6 +27,9 @@ const formatTable = (value: unknown): string => {
 
 export const renderConfigResult = (result: ConfigResult): string => {
   if (result.subcommand === "describe") return renderConfigKeyDescription(result, "config.yml");
+  if (result.subcommand === "get" || (result.subcommand === "view" && result.key !== undefined))
+    return formatTable(result.value);
+  if ("config" in result || "raw" in result) return formatTable(result.raw ?? result.config);
   const writeResult = renderConfigWriteResult({
     file: result.configPath ?? "",
     subcommand: result.subcommand,

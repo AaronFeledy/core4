@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
 import {
   PostDestroyEvent,
@@ -142,7 +143,7 @@ export const makeScratchReaper = Effect.gen(function* () {
       // Outside the guard: once the entry is removed, a failed post-event must not bring it back.
       yield* events.publish(PostScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
     },
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ScratchAppError
         ? cause
         : new ScratchAppError({

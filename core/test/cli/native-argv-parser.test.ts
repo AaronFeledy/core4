@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { infoOptionsFromInput } from "../../src/cli/command-specs/app/info.ts";
 import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/command-specs/app/logs.ts";
 import { rebuildOptionsFromInput } from "../../src/cli/command-specs/app/rebuild.ts";
@@ -23,7 +24,6 @@ import {
   scratchListFormatFromInput,
   scratchStartOptionsFromInput,
 } from "../../src/cli/commands/scratch.ts";
-import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import type { ResultFormat } from "../../src/cli/format-flags.ts";
 import { compiledCommandInputFromArgv, normalizeCompiledCommandArgv } from "../../src/cli/run.ts";
 
@@ -347,7 +347,81 @@ describe("native argv parser seam", () => {
     expect(normalizeCompiledCommandArgv(["scratch", "--detach"])).toEqual(["scratch", "--detach"]);
     expect(normalizeCompiledCommandArgv(["recipes"])).toEqual(["recipes"]);
     expect(normalizeCompiledCommandArgv(["share"])).toEqual(["share"]);
-    expect(normalizeCompiledCommandArgv(["apps", "scratch", "list"])).toEqual(["apps", "scratch", "list"]);
+    expect(normalizeCompiledCommandArgv(["apps", "scratch", "list"])).toEqual(["apps:scratch:list"]);
+  });
+
+  test.each([
+    ...["start", "stop", "destroy", "list", "info", "logs", "gc", "run"].map((verb) => [
+      ["apps", "scratch", verb, "argument"],
+      [`apps:scratch:${verb}`, "argument"],
+    ]),
+    ...["global", "meta global"].flatMap((head) =>
+      ["enable", "disable", "reconcile"].map((verb) => [
+        [...head.split(" "), verb, "proxy"],
+        [head === "global" ? `global:${verb}` : `meta:global:${verb}`, "proxy"],
+      ]),
+    ),
+    [
+      ["meta", "recipes", "validate", "./"],
+      ["meta:recipes:validate", "./"],
+    ],
+    [
+      ["app", "includes", "update", "source"],
+      ["app:includes:update", "source"],
+    ],
+    [["app", "includes", "verify"], ["app:includes:verify"]],
+    [
+      ["app", "config", "unknown", "set"],
+      ["app:config", "unknown", "set"],
+    ],
+    [
+      ["app", "config", "--", "describe"],
+      ["app:config", "--", "describe"],
+    ],
+    [
+      ["global", "config", "unknown"],
+      ["global:config", "unknown"],
+    ],
+    [
+      ["meta", "global", "config", "unknown"],
+      ["meta:global:config", "unknown"],
+    ],
+    [
+      ["app", "config", "set", "describe", "value"],
+      ["app:config:set", "describe", "value"],
+    ],
+  ])("normalizes registered compatibility paths and preserves the remainder: %j", (argv, expected) => {
+    expect(normalizeCompiledCommandArgv(argv)).toEqual(expected);
+  });
+
+  test.each(
+    [
+      ["global", "install"],
+      ["global", "uninstall"],
+      ["meta", "global", "install"],
+      ["meta", "global", "uninstall"],
+      ["app", "start"],
+      ["apps", "list"],
+      ["meta", "version"],
+      ["app", "includes", "unknown", "verify"],
+      ["scratch", "unknown", "list"],
+      ["recipes", "--format", "list"],
+      ["share", "-x", "stop"],
+      ["apps", "scratch", "--", "list"],
+      ["global", "--format=json", "enable"],
+      ["meta", "global", "-x", "enable"],
+      ["meta", "recipes", "--", "list"],
+      ["app", "agent", "skills", "--", "install"],
+      ["agent", "skills", "--format=json", "update"],
+      ["app:config", "set", "key", "value", "--format=table"],
+      ["global:config", "set", "key", "value"],
+      ["meta:global:config", "set", "key", "value"],
+      ["apps:scratch", "list"],
+      ["app:includes", "verify"],
+      ["agent:skills", "unknown", "install"],
+    ].map((argv) => [argv] as const),
+  )("leaves unsupported or flag-separated command phrases unchanged: %j", (argv) => {
+    expect(normalizeCompiledCommandArgv(argv)).toEqual(argv);
   });
 
   test("setup, shellenv, and uninstall helpers consume native argv input", () => {

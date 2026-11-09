@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { DateTime, Effect, Stream } from "effect";
+import { Cause, DateTime, Effect, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -13,6 +13,7 @@ import {
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { exec } from "../src/podman/exec-transport.ts";
 import {
   EXEC_UMASK_COMPENSATION,
   EXEC_UMASK_PROBE_COMMAND,
@@ -34,7 +35,6 @@ import {
   shellProbeOutcome,
   wrapExecCommand,
 } from "../src/podman/exec-umask.ts";
-import { exec } from "../src/podman/exec.ts";
 
 const ctx = { providerId: "docker", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const providerId = ProviderId.make("docker");
@@ -386,10 +386,13 @@ describe("exec umask compensation", () => {
         return Stream.never;
       },
     };
-    const pending = runExec(api, { command: ["id"], signal: controller.signal });
+    const pending = Effect.runPromiseExit(
+      exec(plan, target, { command: ["id"], signal: controller.signal }, { api, ctx }),
+    );
     await started;
     controller.abort();
-    await pending;
+    const exit = await pending;
+    expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND]]);
   });
   test("does not reuse shell availability or warnings after container recreation", async () => {

@@ -1,4 +1,5 @@
 import { DateTime, Effect, Exit, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { InfoAppError } from "@lando/sdk/app";
 import type {
@@ -87,7 +88,6 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
     ...(flags.print === undefined ? {} : { print: flags.print }),
     ...(flags.qr === true ? { qr: true } : {}),
     json: isEnvelopeResultFormat(flags.format),
-    ttyPresent: process.stdout.isTTY === true,
   };
 };
 
@@ -174,19 +174,23 @@ export const openForPlan = Effect.fnUntraced(function* (
     return { app: plan.name, targets, launch: "printed" as const };
 
   const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
+  const invocation = yield* CliInvocation;
+  const env = options.env ?? invocation.env;
   if (!canOpenHost({ platform, env })) {
     return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
   }
 
   const explicitSelection = options.service !== undefined || options.route !== undefined;
-  if (options.json === true && !(explicitSelection && options.ttyPresent === true)) {
+  if (
+    options.json === true &&
+    !(explicitSelection && (options.ttyPresent ?? invocation.io.stdoutIsTTY) === true)
+  ) {
     return { app: plan.name, targets, launch: "printed" as const };
   }
 
   const events = yield* EventService;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: env });
   const ref = openAppRef(plan);
   for (const target of targets) {
     const summary = redactor.redactString(target.url);

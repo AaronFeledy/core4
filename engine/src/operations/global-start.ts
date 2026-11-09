@@ -2,13 +2,16 @@ import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/g
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
-import { recordGlobalRouterStartupPlan } from "@lando/engine/global-app/router-admission";
+import {
+  recordGlobalRouterStartupPlan,
+  routerBackingServices,
+} from "@lando/engine/global-app/router-admission";
 import { captureGlobalStartupAdmission } from "@lando/engine/global-app/startup-admission";
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 
-import { retainGlobalPlanSiblings } from "@lando/engine/operations/global-retained-plan";
+import { reconcileGlobalSiblings } from "@lando/engine/operations/global-retained-plan";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
@@ -63,7 +66,7 @@ export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
-  | Effect.Error<ReturnType<typeof retainGlobalPlanSiblings>>
+  | Effect.Error<ReturnType<typeof reconcileGlobalSiblings>>
   | ServiceNotReadyError
   | GlobalAppError
   | LoadGlobalPlanError
@@ -103,25 +106,22 @@ export const globalStart = Effect.fn("GlobalStart.start")(
     const loaded = yield* installAndLoadGlobalPlan(selection);
 
     const router = yield* RouterService;
-    let services = yield* selectGlobalServices({
+    const initiallySelected = yield* selectGlobalServices({
       commandId: "meta:global:start",
       services: loaded.plan.services,
       requested: options.services,
       expandDependencies: true,
     });
     const available = Object.values(loaded.plan.services);
-    if (
-      (options.services?.length ?? 0) > 0 &&
-      routerEnabled(loaded.plan) &&
-      available.some((service) => service.name === router.id) &&
-      loaded.plan.routes.some((route) => services.some((service) => service.name === route.service))
-    ) {
-      const selected = includeAvailableDependencies(
-        [...services.map((service) => service.name), router.id],
-        available,
-      );
-      services = available.filter((service) => selected.has(service.name));
-    }
+    const backing = routerBackingServices(loaded.plan, router.id).filter((id) =>
+      available.some((service) => service.name === id),
+    );
+    const close = (ids: ReadonlySet<string>): Set<string> => {
+      const selected = includeAvailableDependencies(ids, available);
+      return routerEnabled(loaded.plan) && loaded.plan.routes.some((route) => selected.has(route.service))
+        ? includeAvailableDependencies([...selected, ...backing], available)
+        : selected;
+    };
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
     const selectedProvider = yield* registry.select(loaded.plan.provider);
@@ -155,13 +155,16 @@ export const globalStart = Effect.fn("GlobalStart.start")(
       Effect.gen(function* () {
         yield* verifyAdmission;
         const retained = options.services?.length
-          ? yield* retainGlobalPlanSiblings(
-              loaded.plan,
-              selectedProvider,
-              services.map((service) => String(service.name)),
-            )
+          ? yield* reconcileGlobalSiblings(loaded.plan, selectedProvider, {
+              selectedIds: initiallySelected.map((service) => String(service.name)),
+              close,
+            })
           : undefined;
         const provider = retained?.provider ?? (yield* prepareProvider(selectedProvider));
+        const selected = new Set(
+          retained?.selectedIds ?? initiallySelected.map((service) => String(service.name)),
+        );
+        const services = available.filter((service) => selected.has(service.name));
         const builds = yield* BuildOrchestrator;
         const applied = yield* applyGlobalServiceGroups(
           loaded.plan,
@@ -172,7 +175,13 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             ...(options.preparedOverlays === undefined ? {} : { preparedOverlays: options.preparedOverlays }),
             ...(retained === undefined
               ? {}
-              : { recordedPlan: retained.recordedPlan, recordedDisabledIds: retained.disabledIds }),
+              : {
+                  recordedPlan: retained.recordedPlan,
+                  recordedDisabledIds: retained.disabledIds,
+                  bindings: retained.bindings,
+                  removals: retained.removals,
+                  exclusive: retained.joinedIds,
+                }),
             options: {
               reconcile: false,
               ...(options.signal === undefined ? {} : { signal: options.signal }),

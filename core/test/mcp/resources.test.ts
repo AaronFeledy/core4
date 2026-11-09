@@ -6,8 +6,14 @@ import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
-import { PrivilegeService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import {
+  AppPlanner,
+  LandofileService,
+  PrivilegeService,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { Context, Effect, Fiber, Layer, Schema } from "effect";
 import { serviceLayer } from "../../src/mcp-command-executor";
 import { resources } from "../../src/mcp-resources";
@@ -27,8 +33,9 @@ const withResourceSession = async <A, E>(
     Effect.sync(() => {
       mutations++;
     }).pipe(Effect.andThen(Effect.die(new Error("A resource attempted to mutate the host or provider."))));
+  const baseProvider = makeTestRuntimeProvider();
   const provider = RuntimeProvider.of({
-    ...TestRuntimeProvider,
+    ...baseProvider,
     apply: rejectMutation,
     start: rejectMutation,
     stop: rejectMutation,
@@ -77,6 +84,14 @@ const withResourceSession = async <A, E>(
         Effect.scoped(
           Effect.gen(function* () {
             const runtime = yield* Layer.build(runtimeLayer);
+            if (withApp) {
+              yield* Effect.gen(function* () {
+                const planner = yield* AppPlanner;
+                const landofile = yield* (yield* LandofileService).discover;
+                const plan = yield* planner.plan(landofile, provider.capabilities);
+                yield* baseProvider.apply(plan, { reconcile: true });
+              }).pipe(Effect.provide(Layer.succeedContext(runtime)));
+            }
             const retained = Context.add(
               runtime,
               RuntimeLayerFactory,

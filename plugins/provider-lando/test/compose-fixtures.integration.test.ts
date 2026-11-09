@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 
-import { homeStoreName } from "@lando/engine/planner/home";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
@@ -15,6 +15,7 @@ import {
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
+import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
 import {
   type AppPlan,
   ServiceName,
@@ -285,7 +286,8 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
         initializerContainers.delete(initializerName);
       }
     }
-    await Effect.runPromise(bringUp(plan, { api }));
+    const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+    await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
 
     const containerName = landoServiceContainerName(plan.slug, fixture.service);
     const response = await Effect.runPromise(
@@ -307,7 +309,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
           {
             command: ["stat", "-c", "%a", target],
           },
-          { api },
+          { api, ...helperOptions },
         ),
       );
       expect(result).toMatchObject({ exitCode: 0, stdout: `${mode}\n` });

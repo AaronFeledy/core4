@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { RecipeManifestValidationError, RecipeSourceError } from "@lando/sdk/errors";
 import { compileRecipeSource } from "@lando/sdk/recipes";
 import { parseValidationIssuePath, validationIssue } from "@lando/sdk/schema";
@@ -41,7 +42,7 @@ export const parseResolvedRecipe = async (
         configLayers: resolution.configLayers,
       }),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new RecipeManifestValidationError({
             source: resolution.source.id,

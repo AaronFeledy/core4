@@ -17,7 +17,6 @@ import (
 const maxSafeInteger = 9007199254740991
 
 var unsignedDecimal = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
-var cleanupDirectory = regexp.MustCompile(`^/tmp/lando-log-file-helper-[0-9a-f]{32}$`)
 
 type logCommand struct {
 	op       string
@@ -196,15 +195,4 @@ func runLogFile(input io.Reader, output io.Writer) (err error) {
 			return readErr
 		}
 	}
-}
-
-func cleanupLogFile(path string, output io.Writer) error {
-	response := logFailure("EPROTO", "invalid helper cleanup path")
-	if cleanupDirectory.MatchString(path) {
-		response = logResponse{OK: true}
-		if err := os.RemoveAll(path); err != nil {
-			response = logError(err)
-		}
-	}
-	return json.NewEncoder(output).Encode(response)
 }

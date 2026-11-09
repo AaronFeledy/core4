@@ -21,12 +21,15 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
 import { REDACTED, type Redactor, isSecretFieldName } from "@lando/sdk/secrets";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { bunShellDialectIssues, bunShellScriptIssue, describeBunShellIssue } from "./bun-shell-dialect.ts";
-import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
+import {
+  type CapturedHostExecutionContext,
+  captureScopedHostExecutionContext,
+} from "./host-execution-context.ts";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
 import { quoteShellPath } from "./shell-quote.ts";
@@ -185,7 +188,10 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* <Options extends 
           ...(options.env === undefined ? {} : { env: { ...options.env } }),
           ...(options.argv === undefined ? {} : { argv: [...options.argv] }),
         };
-  const context = captureHostExecutionContext({ ...snapshot, env: { ...snapshot?.env, BUN_BE_BUN: "1" } });
+  const context = yield* captureScopedHostExecutionContext({
+    ...snapshot,
+    env: { ...snapshot?.env, BUN_BE_BUN: "1" },
+  });
   const redactor = yield* redactorForOptions(context);
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "Some") {
@@ -246,7 +252,7 @@ export const makeShellRunnerService = (
             const redaction = yield* ShellRedactionTokens;
             const result = yield* streamBunCommand(command, snapshot, { sink, context, redaction }).pipe(
               Effect.provideService(ProcessRunner, runner),
-              Effect.mapError((cause) => shellError(command, snapshot, cause)),
+              mapFailures((cause) => shellError(command, snapshot, cause)),
             );
             return yield* result.exitCode === 0
               ? Effect.succeed(result)
@@ -280,7 +286,7 @@ export const makeShellRunnerService = (
               redaction,
             }).pipe(
               Effect.provideService(ProcessRunner, runner),
-              Effect.mapError((cause) => shellError(command, snapshot, cause)),
+              mapFailures((cause) => shellError(command, snapshot, cause)),
               Effect.flatMap((result) =>
                 result.exitCode === 0
                   ? Effect.succeed(result)

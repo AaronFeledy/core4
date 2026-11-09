@@ -9,6 +9,7 @@ import {
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../commands/doctor-report";
+import { countDoctorChecks } from "../../commands/doctor-report-counts";
 import type { RenderContext } from "../../renderer-boundary";
 
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
@@ -92,9 +93,10 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
   },
   run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
   render: (result, input, ctx) => renderDoctorReportForInput(result, input, ctx),
-  // A `self` check means doctor could not complete a section, which must not
-  // look like a clean run to a script or agent reading the exit code.
+  // Findings retain the completed report; self failures also fail command completion.
   completion: (result) =>
-    result.self === undefined ? { ok: true, exitCode: 0 } : { ok: false, exitCode: 1 },
+    result.self === undefined
+      ? { ok: true, exitCode: countDoctorChecks(result).failed > 0 ? 1 : 0 }
+      : { ok: false, exitCode: 1 },
   suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
 };

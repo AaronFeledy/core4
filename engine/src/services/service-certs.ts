@@ -8,6 +8,7 @@
  * for readability here so the feature stays a pure mount/env application.
  */
 import { resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { type Context, Effect, Result, Schema } from "effect";
 
@@ -156,10 +157,10 @@ const resolveAuthoredPath = (
           cause,
         );
       return fileSystem.stat(containedPath).pipe(
-        Effect.mapError(unreadable),
+        mapFailures(unreadable),
         Effect.flatMap((stat) =>
           stat.isFile
-            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), Effect.mapError(unreadable))
+            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), mapFailures(unreadable))
             : Effect.fail(validationError(input, `path ${authoredPath} must be a regular file.`)),
         ),
       );
@@ -190,7 +191,7 @@ const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
     );
   }
   const ca = yield* resolveAuthority.pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       validationError(
         input,
         `${cause.message} ${"remediation" in cause ? cause.remediation : CA_REMEDIATION}`,
@@ -200,7 +201,7 @@ const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
   const issued = yield* ca
     .issueCert({ cn, sans })
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         validationError(
           input,
           `could not be issued: ${cause.message.replace(/\.$/u, "")}. ${CA_REMEDIATION}`,

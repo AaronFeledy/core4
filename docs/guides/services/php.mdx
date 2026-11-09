@@ -59,6 +59,14 @@ Custom images, `build.context`, and authored `command:` or `entrypoint:` values 
 configuration, including module setup. After upgrading Lando, run `lando start`
 to apply the updated default build key to existing apps.
 
+When Lando generates the web server configuration, PHP runs only for lowercase
+`.php` names. A request for `.PHP`, `.Php`, or any other case variant gets
+Lando's 403 page instead. App mounts on macOS and Windows can be
+case-insensitive, so without that rule `settings.PHP` could download the source
+of `settings.php`. Hidden paths, meaning any path segment that starts with `.`
+such as `/.git/config`, `/.env`, or `/.htaccess`, get the same 403 page;
+`/.well-known/` stays served.
+
 Pair FPM with nginx by naming the PHP service on `backend:`. The nginx service
 generates a FastCGI upstream pointing at that service on port `9000`:
 
@@ -86,6 +94,29 @@ services:
       <Cleanup />
     </Step>
   </Scenario>
+
+## Get HTTPS URLs behind the proxy
+
+Lando's proxy ends HTTPS and forwards each request over plain HTTP to the web server in front of PHP: Apache in a `via: apache` service, or the nginx service that passes requests to FPM over FastCGI. The forwarded request carries an `X-Forwarded-Proto` header naming the scheme the browser used. The Apache and nginx configuration Lando generates turns `X-Forwarded-Proto: https` into `$_SERVER['HTTPS'] = 'on'`, so WordPress, Laravel, Symfony, Drupal, and other PHP apps build `https://` links and asset URLs without a `wp-config.php` snippet or a trusted-proxy setting. A request that arrived over plain HTTP leaves `HTTPS` unset.
+
+To check it, save `https-check.php` in your webroot:
+
+```php
+<?php
+echo 'HTTPS=' . ($_SERVER['HTTPS'] ?? '') . "\n";
+```
+
+From your app directory on the host, request it through the HTTPS URL `lando info` prints, including any fallback port. Replace `<app-url>` with that URL:
+
+```sh
+curl -fsS <app-url>/https-check.php
+```
+
+The response is `HTTPS=on`. Delete `https-check.php` when you're done. If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Redirects the web server sends keep the browser's URL too: a request for a directory without its trailing slash, such as `/wp-admin`, redirects to the same scheme, host, and port with the slash added. Apache's own `%{HTTPS}` variable stays `off`, because the proxy ended TLS, not Apache. In `.htaccess` rewrite conditions, test `%{ENV:HTTPS}` or `%{HTTP:X-Forwarded-Proto}` instead.
+
+All of this lives in the server configuration Lando generates. On a `via: apache` service, a custom image, `build.context`, or an authored `command:` or `entrypoint:` takes over that configuration, so map `X-Forwarded-Proto` yourself there. With FPM, the mapping belongs to the nginx service: it still applies to a custom FPM image, and stops only if the nginx service sets its own `command:` or `entrypoint:`.
 
 ## Keep PHP out of upload directories
 

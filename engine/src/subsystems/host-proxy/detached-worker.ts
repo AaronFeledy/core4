@@ -1,5 +1,6 @@
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Schema } from "effect";
 
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
@@ -199,7 +200,7 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                 };
               }),
             ),
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               cause instanceof HostProxyTransportUnavailableError
                 ? cause
                 : new HostProxyTransportUnavailableError({

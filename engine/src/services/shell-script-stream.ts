@@ -1,10 +1,14 @@
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { ProcessRunner, type ShellCommandOptions, type ShellScriptOptions } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
-import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
+import {
+  type CapturedHostExecutionContext,
+  captureScopedHostExecutionContext,
+} from "./host-execution-context.ts";
 import * as BunProcessRunner from "./process-runner.ts";
 import type { ProcessRedactionCarrier } from "./process-runner.ts";
 import { runnerEnvRedaction } from "./runner-redaction.ts";
@@ -32,7 +36,7 @@ export const streamArgvCommand = Effect.fnUntraced(function* (
     ...(options.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
-  const context = captureHostExecutionContext(input);
+  const context = yield* captureScopedHostExecutionContext(input);
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
   if (processRunner._tag === "None")
     return yield* Effect.fail(
@@ -83,7 +87,7 @@ export const streamArgvCommand = Effect.fnUntraced(function* (
         context,
       ).pipe(
         Effect.provideService(ProcessRunner, processRunner.value),
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ToolingExecError({
               tool: execution.tool,

@@ -25,7 +25,14 @@ const runUninstall = (
 ) =>
   uninstall(options).pipe(
     Effect.provide(PrivateFileAccessService.layer),
-    Effect.provide(Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers }))),
+    Effect.provide(
+      Layer.succeed(
+        HostMaintenanceRegistry,
+        HostMaintenanceRegistry.of({
+          maintainers: maintainers.map((maintainer) => ({ ...maintainer, pluginId: "@lando/test" })),
+        }),
+      ),
+    ),
   );
 
 const ownedStep = (id: string, overrides: Partial<HostUninstallStep> = {}): HostUninstallStep => ({
@@ -302,7 +309,7 @@ describe("host uninstall contributions", () => {
       const planned = await Effect.runPromise(
         Effect.result(
           planHostUninstallContributions(
-            { maintainers: [maintainer] },
+            { maintainers: [{ ...maintainer, pluginId: "@lando/test" }] },
             { platform: "linux", userDataRoot: roots.userDataRoot, mode: "purge" },
           ),
         ),

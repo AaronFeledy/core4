@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import { SnapshotOwnershipError } from "@lando/sdk/errors";
@@ -32,7 +33,7 @@ export const requireSnapshotSeedTarget = Effect.fn("DataMover.requireSnapshotSee
   }
   const initialization = yield* sharedVolumeInitialization(stateStore, identity).pipe(
     Effect.flatMap((state) => state.read),
-    Effect.mapError(reject),
+    mapFailures(reject),
   );
   if (initialization?.state._tag !== "in-progress") return yield* Effect.fail(reject());
 });

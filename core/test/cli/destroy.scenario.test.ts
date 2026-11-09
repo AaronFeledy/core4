@@ -53,6 +53,7 @@ import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -274,7 +275,7 @@ const makeDestroyLayer = (
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -358,6 +359,7 @@ const makeDestroyLayer = (
     }),
   );
   const baseCommandLayer = Layer.mergeAll(
+    layerTransactionGuard,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     stateStore.layer,

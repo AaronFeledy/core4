@@ -1,4 +1,5 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { isErrnoCode } from "@lando/sdk/errors";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
@@ -95,7 +96,7 @@ const recordBucket = <A, I>(
       version: 1,
       onCorrupt: "discard",
     })
-    .pipe(Effect.mapError((cause) => acquisitionError("cache", input.key, cause)));
+    .pipe(mapFailures((cause) => acquisitionError("cache", input.key, cause)));
 export const metadata = Effect.fn("SourceGc.metadata")(function* (root: string, state: StateStoreShape) {
   const files = yield* io(root, () => names(root));
   const records: StoredRecord[] = [];
@@ -123,7 +124,7 @@ export const metadata = Effect.fn("SourceGc.metadata")(function* (root: string, 
     const read = <A, I>(schema: Schema.Codec<A, I>) =>
       recordBucket({ state, key: name }, schema).pipe(
         Effect.flatMap((bucket) => bucket.get),
-        Effect.mapError((cause) => acquisitionError("cache", name, cause)),
+        mapFailures((cause) => acquisitionError("cache", name, cause)),
         Effect.flatMap((value) =>
           value === null
             ? Effect.fail(acquisitionError("cache", name, "Missing or unsupported source record."))

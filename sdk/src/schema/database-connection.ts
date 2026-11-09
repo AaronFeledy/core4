@@ -33,15 +33,24 @@ export const DatabaseConnection = Schema.Struct({
 });
 export type DatabaseConnection = typeof DatabaseConnection.Type;
 
-export const ServiceCredsDisplay = Schema.Struct({
-  user: Schema.String.annotate({ description: "Displayed username." }),
-  password: Schema.String.annotate({ description: "Redacted password display, never resolved for info." }),
-  database: Schema.String.annotate({ description: "Displayed database name." }),
-  rootPassword: Schema.optionalKey(Schema.String).annotate({
-    description: "Optional redacted administrative password display.",
+export const ServiceCredsDisplay = Schema.Union([
+  Schema.Struct({
+    user: Schema.String.annotate({ description: "Displayed username." }),
+    password: Schema.String.annotate({ description: "Redacted password display, never resolved for info." }),
+    database: Schema.String.annotate({ description: "Displayed database name." }),
+    rootPassword: Schema.optionalKey(Schema.String).annotate({
+      description: "Optional redacted administrative password display.",
+    }),
   }),
-}).annotate({
+  Schema.Struct({
+    engine: Schema.Literal("sqlite").annotate({ description: "File-backed database engine." }),
+    path: Schema.String.annotate({
+      description: "App-mount-relative path to the SQLite database file.",
+    }),
+  }),
+]).annotate({
   identifier: "ServiceCredsDisplay",
-  description: "String-only info view, separate from deferred execution credentials.",
+  description:
+    "String-only info view: server credentials, or a SQLite engine and path. Separate from deferred execution credentials.",
 });
 export type ServiceCredsDisplay = typeof ServiceCredsDisplay.Type;

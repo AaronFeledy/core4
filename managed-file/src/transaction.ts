@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { commandFailureCause, mapFailures } from "@lando/sdk/command-result";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import { applyCommittedEntry } from "./transaction-create-link.ts";
@@ -86,7 +87,9 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
 
   const prepare = Effect.fn("ManagedFileTransactions.prepare")(function* (input: TransactionRequest) {
     const request = yield* Schema.decodeUnknownEffect(TransactionRequest)(input).pipe(
-      Effect.mapError(() => transactionError("path", "prepare")),
+      // Authored getters can defect with file bytes; sanitize them without dropping sibling reasons.
+      Effect.catchCause((cause) => Effect.failCause(commandFailureCause(cause))),
+      mapFailures(() => transactionError("path", "prepare")),
     );
     const root = yield* transactionIO("prepare", () => canonicalRoot(request.appRoot));
     const store = yield* openJournal(root, options.journalRoot(), {

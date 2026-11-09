@@ -60,6 +60,9 @@ const findAliveOrphanPids = Effect.fnUntraced(function* (
   const orphanPids: number[] = [];
   for (const pid of matchingPids) {
     if (pid === recordedOwnedPid) continue;
+    const descendant = yield* deps.serviceRunner.isDescendant?.(pid, recordedOwnedPid ?? 0) ??
+      Effect.succeed(undefined);
+    if (descendant !== false) continue;
     const alive = yield* safeBoolean(deps.serviceRunner.isAlive(pid));
     if (alive) orphanPids.push(pid);
   }

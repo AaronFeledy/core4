@@ -1,0 +1,9 @@
+name: sqlite-on-mysql
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+  database:
+    type: "mysql:8.0"
+    sqlite:
+      path: data/site.sqlite

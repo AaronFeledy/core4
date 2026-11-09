@@ -1,4 +1,5 @@
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
@@ -6,6 +7,7 @@ import { RedactionService } from "@lando/redaction/service";
  */
 import { Effect, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { AppPlacementError } from "@lando/sdk/errors";
 import {
@@ -97,7 +99,11 @@ export const setupSpec: LandoCommandSpec<
     const flag = inputProviderFlag(input);
     const captured = yield* Effect.serviceOption(GlobalConfigSources);
     const env = readProviderEnvVar(
-      captured._tag === "None" ? process.env : captured.value.sources.env ? captured.value.env : {},
+      captured._tag === "None"
+        ? (yield* CliInvocation).env
+        : captured.value.sources.env
+          ? captured.value.env
+          : {},
     );
     const configRaw = globalConfig.defaultProviderId;
     const config = configRaw ?? undefined;
@@ -117,6 +123,7 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       resolution.providerId,
       redaction._tag === "Some" ? redaction.value : undefined,
+      (yield* CliInvocation).env,
     );
     yield* recorder.start;
     yield* Effect.addFinalizer(recorder.finish);
@@ -142,7 +149,7 @@ export const setupSpec: LandoCommandSpec<
       if (globalApp._tag === "Some") {
         const { root } = yield* globalApp.value.paths;
         yield* ensureAppPlacement({ kind: "global", id: "global", root }, selectedProvider).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof AppPlacementError
               ? new AppPlacementError({
                   app: error.app,

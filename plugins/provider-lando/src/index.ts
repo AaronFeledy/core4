@@ -1,6 +1,9 @@
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
+import { withContainerHelper } from "./convenience-helper.ts";
+import { providerStatus } from "./provider-status.ts";
 
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -148,11 +151,7 @@ import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import {
-  buildManagedRuntimeServiceSpec,
-  managedRuntimePodmanArgv0,
-  terminateOwnedRuntimeService,
-} from "./managed-runtime-service.ts";
+import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
   validateManagedSocketPathLength,
@@ -176,6 +175,8 @@ import {
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import { teardownManagedRuntime } from "./runtime-shutdown-teardown.ts";
+import type { RuntimeShutdownStore } from "./runtime-shutdown.ts";
 import {
   type RuntimeServiceStatus,
   probeRuntimeServiceStatus,
@@ -401,11 +402,13 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
   makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env }));
 
 export const bringUp = (plan: AppPlan, options: Omit<BringUpOptions, "ctx" | "startFailureRemediation">) =>
-  runtimeBringUp(plan, {
-    ...options,
-    ctx: providerContextForEnv({ ...process.env }),
-    startFailureRemediation: landoStartFailureRemediation,
-  });
+  Effect.flatMap(withContainerHelper(options), (resolved) =>
+    runtimeBringUp(plan, {
+      ...resolved,
+      ctx: providerContextForEnv({ ...process.env }),
+      startFailureRemediation: landoStartFailureRemediation,
+    }),
+  );
 
 export const bringDown = (
   plan: AppPlan,
@@ -428,14 +431,33 @@ export const exec = (
   target: Parameters<typeof runtimeExec>[1],
   command: Parameters<typeof runtimeExec>[2],
   options: Omit<ExecOptions, "ctx">,
-) => runtimeExec(plan, target, command, { ...options, ctx: providerContextForEnv({ ...process.env }) });
+) =>
+  Effect.flatMap(
+    command.tty === true || command.raw === true || options.raw === true
+      ? Effect.succeed(options)
+      : withContainerHelper(options),
+    (resolved) =>
+      runtimeExec(plan, target, command, { ...resolved, ctx: providerContextForEnv({ ...process.env }) }),
+  );
 
 export const execStream = (
   plan: AppPlan,
   target: Parameters<typeof runtimeExecStream>[1],
   command: Parameters<typeof runtimeExecStream>[2],
   options: Omit<ExecOptions, "ctx">,
-) => runtimeExecStream(plan, target, command, { ...options, ctx: providerContextForEnv({ ...process.env }) });
+) =>
+  Stream.unwrap(
+    Effect.map(
+      command.tty === true || command.raw === true || options.raw === true
+        ? Effect.succeed(options)
+        : withContainerHelper(options),
+      (resolved) =>
+        runtimeExecStream(plan, target, command, {
+          ...resolved,
+          ctx: providerContextForEnv({ ...process.env }),
+        }),
+    ),
+  );
 
 export const inspect = (
   plan: AppPlan,
@@ -562,6 +584,7 @@ export interface ProviderLayerOptions {
   /** Lando user-data root; file-mode bind copies live beneath it. */
   readonly userDataRoot?: string;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
+  readonly runtimeShutdownStore?: RuntimeShutdownStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
 
@@ -719,6 +742,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
           withLaunchLock: progress === undefined ? withLaunchLock : (body) => body,
+          ...(options.runtimeShutdownStore === undefined
+            ? {}
+            : { admit: options.runtimeShutdownStore.admit }),
           ...(options.runtimeGenerationStore === undefined
             ? {}
             : { generationStore: options.runtimeGenerationStore }),
@@ -864,6 +890,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         };
       }),
     );
+    const execHelper = {
+      resolveContainerHelper: options.resolveContainerHelper,
+      helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+    };
     const planState = makeProviderPlanState({
       ctx: LANDO_CTX,
       ...(podmanApi === undefined
@@ -914,7 +944,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       const prior = yield* inspectAppliedPlan(state, target.app);
       if (prior.status === "unreadable")
         return yield* Effect.fail(
-          unreadableAppliedStateError({ providerId, path: prior.path, layout: "per-app" }),
+          unreadableAppliedStateError({ providerId, path: prior.path, layout: "per-app", appId: target.app }),
         );
       if (requireReceipt && prior.status === "missing") {
         return yield* Effect.fail(
@@ -1104,16 +1134,28 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             ? windowsStdinOptions === undefined
               ? Effect.fail(missingWindowsStdinRunner(target))
               : windowsStdinExec(plan, target, command, windowsStdinOptions)
-            : runtimeExec(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
+            : runtimeExec(plan, target, command, {
+                ...apiOptions,
+                ctx: LANDO_CTX,
+                ...execHelper,
+              }),
         execStream: (plan, target, command) =>
           shouldUseWindowsStdinCli(command)
             ? windowsStdinOptions === undefined
               ? Stream.fail(missingWindowsStdinRunner(target))
               : windowsStdinExecStream(plan, target, command, windowsStdinOptions)
-            : runtimeExecStream(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
+            : runtimeExecStream(plan, target, command, {
+                ...apiOptions,
+                ctx: LANDO_CTX,
+                ...execHelper,
+              }),
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
-          const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
+          const runtime = yield* runtimeInspect(physical, target, {
+            ...apiOptions,
+            ctx: LANDO_CTX,
+            ...execHelper,
+          });
           if (physical === plan) return runtime;
           const logicalRuntime = {
             ...runtime,
@@ -1350,7 +1392,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               policy: "missing",
             }).pipe(
               Effect.asVoid,
-              Effect.mapError((cause) =>
+              mapFailures((cause) =>
                 cause instanceof ProviderUnavailableError
                   ? cause
                   : new ProviderUnavailableError({
@@ -1669,9 +1711,22 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         }),
         getStatus: rejectIntelMacHost(platform, arch).pipe(
           Effect.andThen(
-            podmanApi === undefined
-              ? Effect.fail(makeUnavailable("getStatus"))
-              : podmanApi.info.pipe(Effect.as({ running: true, message: "runtime socket reachable" })),
+            providerStatus({
+              api: podmanApi,
+              platform: family,
+              machine: machineRunner,
+              ...(options.runtimeShutdownStore === undefined
+                ? {}
+                : { receipt: options.runtimeShutdownStore.read }),
+              managedPaths:
+                canEnsure && runtimeBinDir !== undefined
+                  ? {
+                      runtimeBinDir,
+                      providerSocketPath: ensureSocketPath,
+                      providerPidPath: options.providerPidPath,
+                    }
+                  : undefined,
+            }),
           ),
         ),
         getVersions: Effect.sync(() => ({
@@ -1736,6 +1791,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     }),
                   }),
               ctx: LANDO_CTX,
+              ...execHelper,
               startFailureRemediation: makeLandoStartFailureRemediation(platform),
               platform,
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),
@@ -1858,10 +1914,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     { app: plan.id, service: service.name },
                     { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
                   ).pipe(
+                    // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
                     Effect.map((snapshot) => ({
                       ...snapshot,
                       appRoot: plan.root,
-                      labels: scratchLabelsForPlan(plan),
+                      labels: snapshot.labels ?? scratchLabelsForPlan(plan),
                     })),
                   ),
                 ),
@@ -1941,8 +1998,7 @@ export const plugin = definePlugin({
   hostMaintainers: [
     {
       id: "lando-runtime-service",
-      teardown: ({ paths, platform }) =>
-        terminateOwnedRuntimeService(buildManagedRuntimeServiceSpec({ ...paths, platform })),
+      teardown: teardownManagedRuntime,
     },
   ],
   runtimeProviders: new Map([

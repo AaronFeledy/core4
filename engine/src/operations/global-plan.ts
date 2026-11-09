@@ -1,6 +1,7 @@
+import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { Effect } from "effect";
 
-import { type AppPlacementError, GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
+import type { AppPlacementError, GlobalAppError, LandofileParseError } from "@lando/sdk/errors";
 import type { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -71,29 +72,6 @@ export const globalLandofileOverrides = Effect.gen(function* () {
   } satisfies LandofileFinalizeOverrides;
 });
 
-export const withProcessCwd = <A, E, R>(
-  cwd: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | GlobalAppError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(cwd);
-        return original;
-      },
-      catch: (cause) =>
-        new GlobalAppError({
-          message: `Unable to enter the global app directory at ${cwd}.`,
-          operation: "loadPlan",
-          cause,
-          remediation: `Ensure the global app directory at ${cwd} exists and is accessible, then retry.`,
-        }),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
-
 export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function* (
   options: { readonly resolution?: GlobalResolution; readonly services?: ReadonlyArray<string> } = {},
 ) {
@@ -151,7 +129,10 @@ export const loadGlobalPlan = Effect.fnUntraced(function* (
   if (!loaded.materialized) return loaded;
   const { paths, landofile } = loaded;
   const planner = yield* AppPlanner;
-  const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, provider.capabilities));
+  const plan = yield* withDiscoveryCwd(
+    paths.root,
+    planner.plan(landofile, provider.capabilities, { kind: "global" }),
+  );
 
   return { materialized: true, paths, landofile, plan };
 });

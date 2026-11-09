@@ -1,6 +1,7 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -246,7 +247,7 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
   cause?: unknown,
   refreshContext?: () => Effect.Effect<Record<string, string>, never>,
 ): Effect.fn.Return<DoctorSubsystemCheck, never> {
-  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
   const serviceId = baseContext.subsystemId ?? "unknown";
 
   if (fix && spec.recovery === "automatic" && runSetup !== undefined) {

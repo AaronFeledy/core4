@@ -11,6 +11,7 @@ import { McpToolInputError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { appsListStatusFromInput, listSpec } from "../../src/cli/command-specs/apps/list.ts";
 import {
   appsFromContainerList,
@@ -26,7 +27,6 @@ import {
   renderAppsListResult,
 } from "../../src/cli/commands/list.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
-import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { applyJqToRedactedJsonLine } from "../../src/cli/jq/eval.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 
@@ -62,6 +62,7 @@ const cases = [
   { name: "a service is running", containers: ["running", "exited"], providers: ["lando"], status: "active" },
   { name: "the runtime is unreachable", containers: [], providers: [], status: "unknown" },
   { name: "only another provider responds", containers: [], providers: ["docker"], status: "unknown" },
+  { name: "its managed provider is idle", containers: [], providers: [], status: "stopped", idle: true },
 ] as const;
 
 for (const fixture of cases) {
@@ -98,6 +99,7 @@ for (const fixture of cases) {
                 apps: appsFromContainerList(containers),
                 confirmedProviderIds: fixture.providers,
                 ownedAppIds: containers.length > 0 ? [appId] : [],
+                idleProviderIds: "idle" in fixture ? ["lando"] : [],
               }),
             }),
           ),

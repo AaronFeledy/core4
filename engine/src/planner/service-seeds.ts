@@ -1,4 +1,5 @@
 import { compiledValueError } from "@lando/landofile/compiled-sites";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type {
   CompilationContext,
@@ -49,6 +50,7 @@ export interface ServiceSeedInput {
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly appRoot: string;
   readonly appName: string;
+  readonly dataName?: string;
   readonly appDefaults: UserAppDefaults;
   readonly registeredServiceTypeIds: ReadonlyArray<string>;
   readonly metadata: ServiceTypeInput["metadata"];
@@ -102,7 +104,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
   const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
   const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
-    Effect.mapError((error) => {
+    mapFailures((error) => {
       if (error instanceof ServiceTypeCollisionError) return serviceTypeCollision(appRoot, name, error);
       // A registered type that fails to load is a plugin problem, not an unknown type.
       const baseId = serviceTypeId.split(":")[0];
@@ -133,6 +135,7 @@ const resolveSeed = Effect.fnUntraced(function* (
       service: pinnedService,
       appRoot,
       appName,
+      ...(input.dataName === undefined ? {} : { dataName: input.dataName }),
       primary: name === "web",
       metadata: input.metadata,
       ...(input.host === undefined ? {} : { host: input.host }),
@@ -142,7 +145,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     })
     .pipe(
       Effect.flatMap((raw) => normalizeConnectionClients(serviceType, name, { raw })),
-      Effect.mapError((error) => servicePlanError(appRoot, name, error)),
+      mapFailures((error) => servicePlanError(appRoot, name, error)),
     );
   return {
     name,
@@ -163,7 +166,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
-  const appSlug = normalizeAppSlug(landofile.name ?? "app", appRoot);
+  const appSlug = normalizeAppSlug(input.dataName ?? landofile.name ?? "app", appRoot);
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const attributed = error.issues.map((issue) =>
@@ -227,7 +230,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     const service = yield* Schema.decodeUnknownEffect(Schema.toType(ServiceConfigSchema))(
       materialized.document,
     ).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         compiledValueError(cause, {
           filePath: input.landofilePath,
           pendingSites,

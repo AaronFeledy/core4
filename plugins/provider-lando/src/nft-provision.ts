@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Schema } from "effect";
 
@@ -365,7 +366,7 @@ export const ensureManagedNft = Effect.fn("ProviderLando.ensureManagedNft")(
       );
     }
   },
-  Effect.mapError((cause) =>
+  mapFailures((cause) =>
     cause instanceof ProviderUnavailableError
       ? cause
       : provisionError("Failed to provision nft for netavark.", cause),

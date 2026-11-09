@@ -102,6 +102,16 @@ const main = async (args: readonly string[]): Promise<void> => {
   });
   const evaluation = evaluateWorkflowPerformanceReport(report);
   process.stdout.write(`${JSON.stringify({ report: options.report, ...evaluation })}\n`);
+  if (process.env.GITHUB_ACTIONS === "true") {
+    for (const failure of evaluation.failures)
+      process.stdout.write(
+        `::error title=workflow-performance ${failure.lane}::${failure.sample} failed at ${failure.step} with exit code ${String(failure.exitCode)}\n`,
+      );
+    if (evaluation.exitCode !== 0 && evaluation.failures.length === 0)
+      process.stdout.write(
+        `::error title=workflow-performance::${evaluation.reason} (report status ${report.status ?? "completed"})\n`,
+      );
+  }
   process.exitCode = evaluation.exitCode;
 };
 

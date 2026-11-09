@@ -35,6 +35,10 @@ services:
 
 Lando derives an HTTPS hostname from the nginx service's HTTP endpoint, such as `web.<app>.lndo.site`. Use the URL reported by `lando info`, including any fallback port. You only need a `proxy:` block to customize hostnames.
 
+Redirects nginx sends on its own, such as adding the trailing slash to a directory URL, are relative. The browser stays on the HTTPS URL and port it used.
+
+Hidden paths, meaning any path segment that starts with `.` such as `/.git/config` or `/.env`, get Lando's 403 page, so your repository's dotfiles stay private even though the app root is the default webroot. `/.well-known/` stays served.
+
 ## Pair nginx with PHP
 
 nginx is commonly paired with a `php-fpm` service: nginx serves static
@@ -50,6 +54,8 @@ services:
     type: "php:8.3"
     via: fpm
 ```
+
+The generated FastCGI configuration passes `HTTPS=on` to PHP when the browser reached the proxy over HTTPS, so PHP apps build `https://` URLs; see [Get HTTPS URLs behind the proxy](./php.mdx#get-https-urls-behind-the-proxy). It runs PHP only for lowercase `.php` names and answers `.PHP` and other case variants with Lando's 403 page, so a case-insensitive app mount on macOS or Windows can't serve PHP source.
 
 ## Stop PHP in upload directories
 

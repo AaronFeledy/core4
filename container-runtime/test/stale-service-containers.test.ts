@@ -11,14 +11,14 @@ import {
 } from "@lando/sdk/schema";
 import type { EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { DATA_HELPER_ROLE, ROLE_LABEL } from "../src/labels.ts";
-import { commonContainerLabels, serviceContainerName } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import {
   type LabeledServiceContainer,
   listLabeledServiceContainers,
   selectStaleServiceContainers,
 } from "../src/podman/stale-service-containers.ts";
+import { commonContainerLabels, serviceContainerName } from "./support/service-creation.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("docker");
 const ctx = { providerId: "docker", remediation: "retry", env: {} } as const;

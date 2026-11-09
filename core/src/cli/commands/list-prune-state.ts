@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Option, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
@@ -87,7 +88,7 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   const directory = join(paths.roots.userDataRoot, namespace);
   const names = yield* fs.readDir(directory).pipe(
     Effect.catchTag("FileNotFoundError", () => Effect.succeed([])),
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new StateStoreError({
           reason: "io",

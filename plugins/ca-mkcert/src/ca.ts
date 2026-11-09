@@ -14,6 +14,7 @@
  */
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { type Context, Effect, Schema } from "effect";
 
@@ -86,7 +87,7 @@ export const makeMkcertCertificateAuthority = (
   const runMkcert = Effect.fn("Mkcert.run")(
     (args: ReadonlyArray<string>, env?: Readonly<Record<string, string>>) =>
       options.processRunner.run({ cmd: binary, args, ...(env === undefined ? {} : { env }) }),
-    Effect.mapError((cause) => caError(`Failed to run mkcert: ${cause.message}`, cause)),
+    mapFailures((cause) => caError(`Failed to run mkcert: ${cause.message}`, cause)),
   );
 
   const caRoot: Effect.Effect<string, CaError> = Effect.gen(function* () {
@@ -123,7 +124,7 @@ export const makeMkcertCertificateAuthority = (
         arch,
         force,
       }),
-    ).pipe(Effect.provideService(Downloader, options.downloader), Effect.mapError(provisionError));
+    ).pipe(Effect.provideService(Downloader, options.downloader), mapFailures(provisionError));
 
   const trustInstallError = (result: ProcessResult): CaError =>
     caError(
@@ -146,7 +147,7 @@ export const makeMkcertCertificateAuthority = (
     spec: CertificateSpec,
   ): Effect.fn.Return<CertificateResult, CaError> {
     yield* Schema.decodeUnknownEffect(CertificateSpec)(spec).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new CaError({
             message: `Certificate request names are invalid: ${cause.message}`,

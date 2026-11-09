@@ -2,6 +2,7 @@ import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SNAPSHOT_STORE_LABEL, VOLUME_SNAPSHOT_LABEL } from "@lando/container-runtime/labels";
 import type { LandoPaths } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DataTransferError, errnoCode } from "@lando/sdk/errors";
 import type { SnapshotInfo, VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import type { DataMoverError, RuntimeProviderShape } from "@lando/sdk/services";
@@ -60,7 +61,7 @@ export const legacySnapshotReferences = Effect.fn("DataMover.legacySnapshotRefer
     const failure = (cause: unknown) => legacyCatalogFailure(file, cause);
     const text = yield* Effect.tryPromise({ try: () => readFile(file, "utf8"), catch: failure });
     const raw = yield* Effect.try({ try: (): unknown => JSON.parse(text), catch: failure });
-    const catalog = yield* Schema.decodeUnknownEffect(legacyCatalog)(raw).pipe(Effect.mapError(failure));
+    const catalog = yield* Schema.decodeUnknownEffect(legacyCatalog)(raw).pipe(mapFailures(failure));
     for (const info of catalog.data) if (info.native !== undefined) refs.push(info.native);
   }
   return refs;
@@ -101,7 +102,7 @@ export const orphanedSnapshotMethods = (options: {
     return !refs.some((ref) => ref.provider === artifact.ref.provider && ref.id === artifact.ref.id);
   });
   const listArtifacts = (options.provider.listVolumeSnapshots?.() ?? Effect.succeed([])).pipe(
-    Effect.mapError(failure),
+    mapFailures(failure),
   );
   const references = Effect.gen(function* () {
     const infos = yield* options.index;
@@ -134,7 +135,7 @@ export const orphanedSnapshotMethods = (options: {
         );
       }
       yield* Effect.scoped(options.provider.removeVolumeSnapshot(artifact.ref, { startRuntime: false })).pipe(
-        Effect.mapError(failure),
+        mapFailures(failure),
       );
     }),
   };

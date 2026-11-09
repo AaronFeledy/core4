@@ -18,7 +18,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "c50fa9b247ad9e117cfd51bc4e0459514362225bf9d0a18d739bb48ce9102013"
+      "digest": "985ff8aabfc071da6696b4c136d1f05759ce14eb624b0ac45e915e5e16a834be"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -256,6 +256,10 @@
     {
       "fixture": "docs/guides/defaults-and-aliases/fixtures/tooling-defaults",
       "digest": "1f56920584d949d4ccbc2d7b392e327d44bb72581ed56fac16f98be05d40c64b"
+    },
+    {
+      "fixture": "docs/guides/doctor-walkthrough/fixtures/unstarted-app",
+      "digest": "56039f296791a3f63e48c3bedd601e0537e5607a01b7d90c8652867f5bbcf63c"
     },
     {
       "fixture": "docs/guides/dotnet/fixtures/dotnet-demo",
@@ -1141,6 +1145,14 @@
       "digest": "af52f8b657a1349fc157b50d79d9629754cc761c1263b32016d8eb5a9b03109f"
     },
     {
+      "fixture": "docs/guides/sqlite-database/fixtures/sqlite-database-demo",
+      "digest": "2683d707e077c08e6b988ec1848259e68e5c623d3fbbbb8d88ec9b6d31cacac3"
+    },
+    {
+      "fixture": "docs/guides/sqlite-database/fixtures/sqlite-on-mysql",
+      "digest": "ab6d5bfc1fb0a0667501de4741556eaa1e0cd26118102a930c9ad4b774e1edb6"
+    },
+    {
       "fixture": "docs/guides/ssh-host-agent/fixtures/host-agent-1password",
       "digest": "5a9190f732b23967b7db07b8b8764a0b4d4b1b03ebf10c9cc17dbf25080a016b"
     },
@@ -1499,6 +1511,15 @@
         "digest": "bc62146b254691eb416dadb3b16157a8253d6f3640d4bcb9deaf37c43f1199ad"
       },
       "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
+    },
+    "docs/guides/magento/fixtures/mageos": {
+      "before": {
+        "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
+      },
+      "after": {
+        "digest": "9e9c712e5ed587b8ec284c19961749bf2d51b03103f9242710d6ca2559f62358"
+      },
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The encoded document drops bcmath from that one install command; nothing else changed."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

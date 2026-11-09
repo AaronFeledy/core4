@@ -11,10 +11,20 @@ import { LandofileFormConflictError } from "@lando/core/errors";
 import type { GitTransport } from "@lando/source-acquisition";
 import { appIncludesUpdateSpec } from "../../src/cli/command-specs/app/includes/update.ts";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
+import { invocationParityError } from "../../src/cli/compiled-invocation-parity.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+
+test("includes update accepts multiple sources with a trailing check flag", () => {
+  const argv = ["a", "b", "--check"];
+  expect(invocationParityError(appIncludesUpdateSpec.id, argv)).toBeUndefined();
+  const input = compiledCommandInputFromArgv(appIncludesUpdateSpec.id, argv);
+  expect(input.args.source).toEqual(["a", "b"]);
+  expect(input.flags.check).toBe(true);
+});
 
 interface RunResult {
   readonly exitCode: number;
@@ -64,10 +74,9 @@ test("app:includes:update consumes its structured declared source argument", asy
       const exit = await Effect.runPromiseExit(
         appIncludesUpdateSpec
           .run({
-            args: { source: "declared-source" },
+            args: { source: ["declared-source"] },
             flags: { "no-network": true },
             argv: [],
-            parsedArgv: ["declared-source"],
           })
           .pipe(Effect.provide(testStateStoreLayer)),
       );

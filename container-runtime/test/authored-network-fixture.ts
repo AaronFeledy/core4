@@ -2,7 +2,7 @@ import { AppPlan, landoNetworkingPlan, landoServiceContainerName } from "@lando/
 import { Effect, Schema } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
-import { commonContainerLabels } from "../src/plan.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
 
 export const networkPlan = Schema.decodeUnknownSync(AppPlan)({
   valueModel: 1,

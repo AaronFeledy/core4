@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Layer } from "effect";
 
 import { AppPlacementError, DebuggerHostUnavailableError, GlobalAppError } from "@lando/sdk/errors";
@@ -27,7 +28,7 @@ export const layer = Layer.effect(
     return GlobalAppService.of({
       ...globalApp,
       providerId: observedProviderId.pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new GlobalAppError({
               message: "Unable to resolve the global runtime provider.",
@@ -42,7 +43,7 @@ export const layer = Layer.effect(
       ensureProviderReady: createProvider.pipe(
         Effect.flatMap(prepareProvider),
         Effect.asVoid,
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           cause instanceof AppPlacementError
             ? cause
             : new GlobalAppError({
@@ -58,7 +59,7 @@ export const layer = Layer.effect(
       occupiedPublishPorts: (ports) =>
         createProvider.pipe(
           Effect.flatMap((provider) => provider.occupiedPublishPorts?.(ports) ?? Effect.succeed([])),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof AppPlacementError
               ? cause
               : new GlobalAppError({
@@ -106,7 +107,7 @@ export const layer = Layer.effect(
               ),
             ),
           ),
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new GlobalAppError({
                 message: "Unable to inspect Lando-owned global service ports.",
@@ -120,20 +121,18 @@ export const layer = Layer.effect(
         ),
       restartRunningService: (serviceId) =>
         observedProvider.pipe(
-          Effect.flatMap((provider) =>
-            provider
-              .list({ app: AppId.make("global") })
-              .pipe(
-                Effect.flatMap((services) =>
-                  services.some((service) => service.service === serviceId && service.status === "running")
-                    ? provider
-                        .restart({ app: AppId.make("global"), service: serviceId })
-                        .pipe(Effect.as(true))
-                    : Effect.succeed(false),
-                ),
-              ),
+          Effect.flatMap(
+            Effect.fnUntraced(function* (provider) {
+              if ((yield* provider.getStatus).state === "idle") return false;
+              const services = yield* provider.list({ app: AppId.make("global") });
+              return services.some((service) => service.service === serviceId && service.status === "running")
+                ? yield* provider
+                    .restart({ app: AppId.make("global"), service: serviceId })
+                    .pipe(Effect.as(true))
+                : false;
+            }),
           ),
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new GlobalAppError({
                 message: "Unable to reload the running global service.",
@@ -149,7 +148,7 @@ export const layer = Layer.effect(
         ensureGlobalServicesRunning({ services }).pipe(
           Effect.provide(context),
           Effect.map((result) => result.servicesStarted),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof AppPlacementError || cause instanceof DebuggerHostUnavailableError
               ? cause
               : new GlobalAppError({

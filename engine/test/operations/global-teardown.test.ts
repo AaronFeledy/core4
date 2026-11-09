@@ -20,6 +20,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
+  StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -27,6 +28,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("global");
@@ -113,6 +115,7 @@ const harnessAt = (
       }),
   };
   const layer = Layer.mergeAll(
+    Layer.succeed(StateStore, makeTestStateStore().service),
     LandoEventService.layer,
     Layer.succeed(RouterService, makeTestRouterService()),
     BunFileSystem.layer,

@@ -2,6 +2,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 
@@ -505,7 +506,7 @@ export const readUpdateManifestState = (
   openUpdateManifestStateBucket(path).pipe(
     Effect.flatMap((bucket) => bucket.get),
     Effect.map((state) => normalizeUpdateManifestState(state)),
-    Effect.mapError((cause) => mapFreshnessStoreError(path, cause)),
+    mapFailures((cause) => mapFreshnessStoreError(path, cause)),
   );
 
 /** Merge a verified channel floor without ever lowering `latest`; preserves other channels. */
@@ -517,7 +518,7 @@ export const recordUpdateManifestSuccess = Effect.fn("Update.recordUpdateManifes
   yield* openUpdateManifestStateBucket(path).pipe(
     Effect.flatMap((bucket) => bucket.update((current) => mergeChannel(current, channel, latest))),
     Effect.asVoid,
-    Effect.mapError((cause) => mapFreshnessStoreError(path, cause)),
+    mapFailures((cause) => mapFreshnessStoreError(path, cause)),
   );
 });
 

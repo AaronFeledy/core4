@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { SecretRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { planningError } from "./errors.ts";
@@ -124,6 +125,6 @@ export const projectPlan = Effect.fn("ActionsPlanning.projectPlan")(function* (
     catch: () => planningError("projection-limit"),
   });
   return yield* Schema.decodeUnknownEffect(WorkflowPlanResult)(projected, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(() => planningError("projection-invalid")),
+    mapFailures(() => planningError("projection-invalid")),
   );
 });

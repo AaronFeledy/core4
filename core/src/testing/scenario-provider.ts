@@ -1,12 +1,17 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
-import { resolveDesiredAppTarget } from "@lando/engine/landofile/app-resolution";
-import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import {
+  RouterService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  UrlScanner,
+} from "@lando/sdk/services";
+import { makeTestRouterService, makeTestRuntimeProvider, makeTestUrlScanner } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
-import { makeLandoRuntime, withRuntimeProviderRegistryOverride } from "../runtime/layer.ts";
 
 const canonicalPath = (path: string): Effect.Effect<string> =>
   Effect.tryPromise(() => realpath(path)).pipe(
@@ -25,36 +30,54 @@ const planMatchesRoot = (appRoot: string, root: string): boolean => {
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
 };
 
-/** Each scenario owns its applied plans, independently of later Landofile edits. */
+const appliedPlanStateRoot = AbsolutePath.make("/lando-scenario-provider-state");
+
+/**
+ * A scenario's own runtime provider and registry. The provider keeps its own in-memory data
+ * plane, and applied plans go through the same applied-state store real providers persist to,
+ * so later commands read the encoded, hook-free record rather than the object that was applied.
+ */
 export const makeScenarioProvider = () => {
-  const plans = new Map<AbsolutePath, AppPlan>();
-  const exactPlan = (root: string) => plans.get(AbsolutePath.make(root));
+  const testProvider = makeTestRuntimeProvider();
+  const stateStore = makeTestStateStore().service;
+  const appliedState: PluginStateStore = {
+    open: (spec) => stateStore.open({ ...spec, root: { path: appliedPlanStateRoot } }),
+    withLock: (key, body) => stateStore.withLock(key, body),
+  };
+  const store = makeAppliedPlanStore({ providerId: "lando", layout: "record" });
+  const appliedPlans = store.listAppliedPlans(appliedState).pipe(
+    Effect.map((inventory) => inventory.plans),
+    Effect.orDie,
+  );
   const resolvePlan = (root: string) =>
-    canonicalPath(root).pipe(
+    Effect.all([canonicalPath(root), appliedPlans]).pipe(
       Effect.map(
-        (canonical) =>
-          [...plans.entries()]
-            .filter(([appRoot]) => planMatchesRoot(appRoot, canonical))
-            .sort(([left], [right]) => right.length - left.length)[0]?.[1],
+        ([canonical, plans]) =>
+          plans
+            .filter((plan) => planMatchesRoot(planAppRoot(plan), canonical))
+            .sort((left, right) => planAppRoot(right).length - planAppRoot(left).length)[0],
       ),
     );
-  const resolveExactPlan = (root: string) => canonicalPath(root).pipe(Effect.map(exactPlan));
-  const indexPlan = (plan: AppPlan) => plans.set(AbsolutePath.make(planAppRoot(plan)), plan);
-  const unindexPlan = (plan: AppPlan) => plans.delete(AbsolutePath.make(planAppRoot(plan)));
+  const resolveExactPlan = (root: string) =>
+    Effect.all([canonicalPath(root), appliedPlans]).pipe(
+      Effect.map(([canonical, plans]) => plans.find((plan) => planAppRoot(plan) === canonical)),
+    );
   const provider: RuntimeProviderShape = {
-    ...TestRuntimeProvider,
-    capabilities: { ...TestRuntimeProvider.capabilities, artifactBuild: true },
-    appliedPlans: Effect.sync(() => [...plans.values()]),
+    ...testProvider,
+    capabilities: { ...testProvider.capabilities, artifactBuild: true },
+    appliedPlans,
     apply: (plan, options) =>
-      TestRuntimeProvider.apply(plan, options).pipe(Effect.tap(() => Effect.sync(() => indexPlan(plan)))),
+      testProvider
+        .apply(plan, options)
+        .pipe(Effect.tap(() => store.persistAppliedPlan(appliedState, options.recordedPlan ?? plan))),
     destroy: (target, options) =>
-      TestRuntimeProvider.destroy(target, options).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            if (options.removeState !== false && target.plan !== undefined) unindexPlan(target.plan);
-          }),
+      testProvider
+        .destroy(target, options)
+        .pipe(
+          Effect.tap(() =>
+            options.removeState === false ? Effect.void : store.removeAppliedPlan(appliedState, target.app),
+          ),
         ),
-      ),
   };
   const registry = RuntimeProviderRegistry.of({
     appliedPlansFor: (root) =>
@@ -74,47 +97,12 @@ export const makeScenarioProvider = () => {
         id: typeof target === "string" ? target : (target?.provider ?? provider.id),
       }),
   });
-  const registryLayer = Layer.succeed(RuntimeProviderRegistry, registry);
-  // The planner captures its registry at layer construction, before host overrides are merged.
-  const plannerDependencies = Layer.unwrap(
-    Effect.promise(() =>
-      withRuntimeProviderRegistryOverride(registryLayer, async () => {
-        await import("../runtime/bundled-plugins.ts");
-        return makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "bundled-only" } });
-      }),
-    ),
+  // Routes go to an in-memory stand-in for the default Traefik router: the scenario has no
+  // containers for a real proxy to reach, and no host ports or certificate authority to touch.
+  // Nothing listens on the scenario's routed URLs, so the post-start scan has no host to probe.
+  const hostServices = Layer.mergeAll(
+    Layer.succeed(RouterService, RouterService.of({ ...makeTestRouterService(), id: "traefik" })),
+    Layer.succeed(UrlScanner, UrlScanner.of(makeTestUrlScanner())),
   );
-  const layer = Layer.merge(
-    registryLayer,
-    AppPlannerLayer.layer.pipe(Layer.provide(Layer.merge(plannerDependencies, registryLayer)), Layer.orDie),
-  );
-  return {
-    layer,
-    provider,
-    forget: async (root: string) => {
-      const plan = await Effect.runPromise(resolveExactPlan(root));
-      if (plan === undefined) return false;
-      unindexPlan(plan);
-      return true;
-    },
-    remember: async (cwd: string) => {
-      await import("../runtime/bundled-plugins.ts");
-      const previousCwd = process.cwd();
-      try {
-        process.chdir(cwd);
-        const target = await withRuntimeProviderRegistryOverride(layer, () =>
-          Effect.runPromise(
-            resolveDesiredAppTarget.pipe(
-              Effect.provide(
-                makeLandoRuntime({ bootstrap: "app", cwd, plugins: { policy: "bundled-only" } }),
-              ),
-            ),
-          ),
-        );
-        indexPlan(target.plan);
-      } finally {
-        process.chdir(previousCwd);
-      }
-    },
-  };
+  return { layer: Layer.succeed(RuntimeProviderRegistry, registry), hostServices, provider, appliedPlans };
 };

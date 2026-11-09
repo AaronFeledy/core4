@@ -1,4 +1,5 @@
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Stream, absurd, flow } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
@@ -14,6 +15,7 @@ import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
+import { requireAppliedSqliteTargets } from "./applied-sqlite.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
 import {
   exportCompression,
@@ -37,6 +39,7 @@ import { countCommand, dumpCompleteness } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
+import { resumeSqlRuntime } from "./runtime-observation.ts";
 import type { DbCommandStep } from "./schemas.ts";
 import { precheckSeedEligibility } from "./seed-eligibility.ts";
 import { resolveSeedSource } from "./seed-source.ts";
@@ -44,6 +47,7 @@ import { executeSeed } from "./seed.ts";
 import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
+import { executeSqliteCommand } from "./sqlite-execute.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { sqlPlanIdentity } from "./views.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -57,12 +61,14 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   input: DbCommandInput,
 ) {
   yield* validateExportCompression(input);
+  yield* requireAppliedSqliteTargets(rawDeps, input.service);
   const dumpStdio = yield* resolveDumpStdio(input);
   const rawSession = yield* rawDeps.environmentResolver.openSession();
   const redaction = yield* RedactionService;
   const resolved = resolveSqlTarget(rawDeps.plan, input.service);
   if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
   const target = resolved.success;
+  if (target.kind === "file") return yield* executeSqliteCommand(rawDeps, input, target);
   const owner = sqlPlanIdentity(rawDeps.plan);
   const service = rawDeps.plan.services[target.name];
   if (service === undefined) {
@@ -71,7 +77,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         message: `No SQL service named ${target.name}.`,
         service: target.name,
         available: [],
-        remediation: "Add a mysql, mariadb, postgres, mongodb, or mssql service.",
+        remediation: "Add a mysql, mariadb, postgres, mongodb, mssql, or sqlite service.",
       }),
     );
   }
@@ -110,9 +116,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       env,
     });
     const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
-      deps
-        .resume(serviceName, identity)
-        .pipe(Effect.andThen(waitForDatabase), Effect.provideService(SqlEnvironmentSession, session));
+      resumeSqlRuntime({ deps, service: serviceName, identity, readiness: waitForDatabase }).pipe(
+        Effect.provideService(SqlEnvironmentSession, session),
+      );
     if (
       input.action === "seed" &&
       [input.file, input.snapshotId, input.fromApp, input.fromPath].filter((source) => source !== undefined)
@@ -210,9 +216,15 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     }
     if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
       const scope = yield* resolveSnapshotSource({
-        app: deps.plan.id,
+        plan: deps.plan,
+        appliedPlans: deps.appliedPlans,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
+        ...(deps.plan.identity?.repoGroupKey === undefined
+          ? {}
+          : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+        ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
+        ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
         service: target.name,
         hostCwd: input.hostCwd ?? process.cwd(),
         canonicalizePath: deps.canonicalizeSourcePath,
@@ -224,7 +236,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
     if (action === "prune") {
       const filter = yield* resolveSnapshotSource({
-        app: deps.plan.id,
+        plan: deps.plan,
+        appliedPlans: deps.appliedPlans,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -358,7 +371,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       }
       case "snapshots": {
         const filter = yield* resolveSnapshotSource({
-          app: deps.plan.id,
+          plan: deps.plan,
+          appliedPlans: deps.appliedPlans,
           ...(store === undefined ? {} : { store: store.store }),
           ownerKey: owner.ownerKey,
           ...(deps.plan.identity?.repoGroupKey === undefined
@@ -432,7 +446,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     }
 
     yield* progress.complete.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         completionReceipt === undefined
           ? cause
           : new SqlRecoveryOperationError({

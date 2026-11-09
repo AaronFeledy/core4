@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureHelperOptionsFor } from "@lando/container-runtime/testing/exec-supervision";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeRuntimeProvider as factory } from "@lando/provider-docker";
@@ -13,4 +14,8 @@ const state = () =>
     ownerOnlyFileAccess,
   );
 export const makeRuntimeProvider = (options: NonNullable<Parameters<typeof factory>[0]> = {}) =>
-  factory({ ...options, appliedPlanState: options.appliedPlanState ?? state() });
+  factory({
+    ...fixtureHelperOptionsFor(options.dockerApi),
+    ...options,
+    appliedPlanState: options.appliedPlanState ?? state(),
+  });

@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import {
   APPS_LIST_STATUSES,
   AppsListResultSchema,
@@ -9,7 +10,6 @@ import {
   listServicesWithPrune,
   renderAppsListResult,
 } from "../../commands/list";
-import { MalformedCliFlagValueError } from "../../flag-value-validation";
 import { Flags } from "../../spec/metadata";
 
 import type { LandoCommandSpec } from "../../spec/command-base";

@@ -1,5 +1,5 @@
 import { types } from "node:util";
-import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
+import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { type ProjectedFailure, taggedErrorJson } from "@lando/sdk/command-result";
 import { type FailureRole, ValidationIssue } from "@lando/sdk/schema";
@@ -91,7 +91,7 @@ export const buildBugReport = (input: {
     current = ownCause(current);
   }
   const ctx = input.context;
-  const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
+  const cacheDir = ctx.cacheRoot ?? resolveLandoRoots({ env: input.sourceEnv ?? process.env }).userCacheRoot;
   const diagnostics = [error, ...causes];
   const app = error.app;
   const appId =
@@ -187,10 +187,13 @@ export const formatBugReport = (
     readonly rendererMode: RendererMode;
     readonly redactor?: Redactor;
     readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+    readonly usage?: boolean;
   },
 ): string => {
   const envelope = buildBugReport(input);
-  return input.rendererMode === "json" ? renderJsonBugReport(envelope) : renderPlainBugReport(envelope);
+  return input.rendererMode === "json"
+    ? renderJsonBugReport(envelope)
+    : renderPlainBugReport(envelope, { usage: input.usage === true });
 };
 
 export const redactedErrorDetails = redactDetails;

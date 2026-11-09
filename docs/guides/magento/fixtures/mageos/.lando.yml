@@ -8,7 +8,7 @@ services:
     build:
       artifact:
         - "apt-get update && apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev && rm -rf /var/lib/apt/lists/*"
-        - "docker-php-ext-install -j\"$(nproc)\" bcmath ftp soap sockets xsl"
+        - "docker-php-ext-install -j\"$(nproc)\" ftp soap sockets xsl"
     mounts:
       - source: ./php.ini
         target: /usr/local/etc/php/conf.d/zz-magento.ini

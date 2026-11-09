@@ -227,6 +227,7 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
   <Scenario id="run-with-flag-alias-and-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
+      <Run command="lando start" />
     </Step>
     <Step name="greet-help">
       <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
@@ -256,6 +257,7 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
   <Scenario id="reject-omitted-leading-positional" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-tag-without-label">
       <Run command="lando tag --format=json" expectExit={1} />
@@ -272,6 +274,7 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
   <Scenario id="select-service-from-flag" render>
     <Step name="scaffold">
       <UseFixture name="flags-demo" />
+      <Run command="lando start" />
     </Step>
     <Step name="run-deploy-in-worker">
       <Verify command="lando deploy -s worker --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"deploy\"[\\s\\S]*\"service\":\\s*\"worker\"" } }} />

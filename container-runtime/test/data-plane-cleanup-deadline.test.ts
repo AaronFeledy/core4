@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
-import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import { makeRedactionService } from "@lando/redaction/service";
+import { FailureRoleAnnotation, failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Context, Deferred, Effect, Exit, Fiber, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -17,7 +19,11 @@ const modes = ["buffered", "streamed"] as const;
 type Outcome = (typeof outcomes)[number];
 type Mode = (typeof modes)[number];
 
-const cases = modes.flatMap((mode) => outcomes.map((outcome) => [mode, outcome] as const));
+const cases = modes.flatMap((mode) =>
+  outcomes.flatMap((outcome) =>
+    ["passthrough", "canonical"].map((redaction) => [mode, outcome, redaction] as const),
+  ),
+);
 
 const recordedPlane = (
   requests: Array<{ method: string; path: string }>,
@@ -27,37 +33,32 @@ const recordedPlane = (
     readonly deleting: Deferred.Deferred<void>;
     readonly teardown: Promise<void>;
   },
+  redactor: Redactor,
 ) => {
-  const api: DataPlaneApiClient = {
-    request: (request) => {
-      requests.push({ method: request.method, path: request.path });
-      if (request.method === "DELETE") {
-        return Deferred.succeed(gates.deleting, undefined).pipe(
-          Effect.andThen(Effect.promise(() => gates.teardown)),
-          Effect.as({ status: 204, body: "" }),
-        );
-      }
-      if (request.path.endsWith("/start") && outcome === "failed-body") {
-        return Effect.succeed({ status: 500, body: "start failed" });
-      }
-      if (request.path.endsWith("/wait") && outcome === "interrupted") {
-        return Deferred.succeed(gates.waiting, undefined).pipe(Effect.andThen(Effect.never));
-      }
-      if (request.path.endsWith("/json")) {
-        return Effect.succeed({
-          status: 200,
-          body: JSON.stringify({ State: { ExitCode: outcome === "nonzero" ? 9 : 0 } }),
-        });
-      }
-      return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
-    },
-    stream: () => Stream.empty,
-  };
+  const engine = new FakeEngine({ exitCode: outcome === "nonzero" ? 9 : 0 });
+  for (const operation of [
+    "container.create",
+    "container.start",
+    "container.wait",
+    "container.inspect",
+    "container.delete",
+  ] as const) {
+    engine.observers.set(operation, ({ method, path }) => requests.push({ method, path }));
+  }
+  engine.inject(
+    "container.delete",
+    Deferred.succeed(gates.deleting, undefined).pipe(
+      Effect.andThen(Effect.promise(() => gates.teardown)),
+      Effect.as({ status: 204, body: "" }),
+    ),
+  );
+  if (outcome === "failed-body") engine.fail("container.start", { status: 500, body: "start failed" });
+  if (outcome === "interrupted") engine.hang("container.wait", gates.waiting);
   return makeProviderDataPlane({
     providerId: "test",
-    api,
+    api: engine.api,
     capabilities: { volumeSnapshot: "none" },
-    redactor: passthroughRedactor,
+    redactor,
   });
 };
 
@@ -78,8 +79,14 @@ const cleanupErrors = (cause: Cause.Cause<unknown>): ReadonlyArray<unknown> =>
   });
 
 test.each(cases)(
-  "%s %s bounds a DELETE that never finishes",
-  async (mode: Mode, outcome: Outcome) => {
+  "%s %s bounds a DELETE that never finishes with %s redaction",
+  async (mode: Mode, outcome: Outcome, redactionMode: string) => {
+    const canonical = redactionMode === "canonical";
+    const redaction = makeRedactionService();
+    const redactor = canonical
+      ? await Effect.runPromise(redaction.forProfile("secrets"))
+      : passthroughRedactor;
+    await Effect.runPromise(redaction.registerValues(["lando", "test", "truncated"]));
     const requests: Array<{ method: string; path: string }> = [];
     const teardown = Promise.withResolvers<void>();
     const settled = Promise.withResolvers<{
@@ -90,7 +97,12 @@ test.each(cases)(
       Effect.gen(function* () {
         const waiting = yield* Deferred.make<void>();
         const deleting = yield* Deferred.make<void>();
-        const provider = recordedPlane(requests, outcome, { waiting, deleting, teardown: teardown.promise });
+        const provider = recordedPlane(
+          requests,
+          outcome,
+          { waiting, deleting, teardown: teardown.promise },
+          redactor,
+        );
         const work =
           mode === "buffered"
             ? provider.run(spec).pipe(Effect.asVoid)
@@ -136,6 +148,13 @@ test.each(cases)(
       expect(Exit.isFailure(result.exit)).toBe(true);
       if (!Exit.isFailure(result.exit)) return;
       const projected = failureOutcomeFromCause(result.exit.cause);
+      if (canonical) {
+        for (const error of [projected.error, ...projected.additionalErrors.map(({ error }) => error)]) {
+          const diagnostic = taggedErrorJson(error);
+          for (const token of ["lando", "test", "truncated"])
+            expect(JSON.stringify(diagnostic)).not.toContain(token);
+        }
+      }
       expect(cleanupErrors(result.exit.cause)).toEqual([
         expect.objectContaining({
           _tag: "ProviderUnavailableError",
@@ -150,10 +169,9 @@ test.each(cases)(
           return;
         case "failed-body":
           expect(projected.error).toMatchObject({
-            _tag: "VolumeOperationError",
-            operation,
-            message:
-              mode === "buffered" ? "Provider ephemeral run failed." : "Provider ephemeral stream failed.",
+            _tag: "ProviderUnavailableError",
+            operation: "run.start",
+            details: { status: 500 },
           });
           expect(projected.additionalErrors).toEqual([
             {
@@ -167,7 +185,7 @@ test.each(cases)(
           return;
         case "nonzero":
           expect(projected.error).toMatchObject({
-            _tag: "VolumeOperationError",
+            _tag: "ProviderInternalError",
             operation,
             details: { exitCode: 9 },
           });
@@ -290,17 +308,19 @@ test.each(failedCreateCases)(
         expect.objectContaining({
           _tag: "ProviderUnavailableError",
           operation: "run.create.remove",
-          message: "Provider ephemeral container cleanup timed out.",
+          message: expect.stringContaining("timed out removing its helper container"),
         }),
       ]);
-      expect(projected.error).toMatchObject({
-        _tag: "VolumeOperationError",
-        operation: "run.create",
-        message:
-          create === "transport"
-            ? "Provider API request failed."
-            : "Provider data-plane API returned HTTP 500.",
-      });
+      expect(projected.error).toMatchObject(
+        create === "transport"
+          ? { _tag: "ProviderUnavailableError", operation: "transport", message: "socket down" }
+          : {
+              _tag: "ProviderUnavailableError",
+              operation: "run.create",
+              message: "The container engine couldn't create Lando's helper container (HTTP 500).",
+              details: { status: 500 },
+            },
+      );
       expect(projected.additionalErrors).toEqual([
         {
           role: "cleanup",

@@ -1,6 +1,12 @@
 import { Effect, Schema } from "effect";
 
-import { PortNumber, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import {
+  PortNumber,
+  PortablePath,
+  type ServiceConfig,
+  landoServiceContainerName,
+  normalizeAppSlug,
+} from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -73,6 +79,20 @@ const ARTIFACTS = {
 
 export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 
+/**
+ * RabbitMQ keeps its database under its node name. Naming the node after the container name the
+ * folder's data identity would give it keeps that name stable: it equals the container hostname
+ * until the app is renamed, and afterwards a loopback host alias keeps the original name resolvable.
+ */
+const applyDataNodeName = (ctx: ServiceFeatureContext): void => {
+  const host = (name: string) =>
+    landoServiceContainerName(normalizeAppSlug(name, ctx.appRoot), ctx.serviceName);
+  const appName = ctx.appName ?? "app";
+  const node = host(ctx.dataName ?? appName);
+  ctx.addEnv("RABBITMQ_NODENAME", `rabbit@${node}`);
+  if (node !== host(appName)) ctx.addHostAlias({ hostname: node, ip: "127.0.0.1" });
+};
+
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, RABBITMQ_LISTENER);
@@ -83,6 +103,9 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
   ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addEnv("RABBITMQ_NODE_PORT", String(port));
+  const authoredNode = service.environment?.RABBITMQ_NODENAME;
+  if (authoredNode === undefined) applyDataNodeName(ctx);
+  else ctx.addEnv("RABBITMQ_NODENAME", authoredNode);
   ctx.addStorage({
     store: ctx.serviceStoreName("rabbitmq-data"),
     target: DATA_TARGET,

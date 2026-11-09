@@ -9,10 +9,11 @@ import { requestContainerBuild } from "../../src/image-build-http.ts";
 import { serviceContainerName } from "../../src/plan.ts";
 import { makePodmanApiClient } from "../../src/podman/api-client.ts";
 import { bringDown } from "../../src/podman/bring-down.ts";
-import { bringUp } from "../../src/podman/bring-up.ts";
 import { exec } from "../../src/podman/exec.ts";
 import { postServiceLifecycle } from "../../src/service-lifecycle.ts";
 import { volumeCreationLabels } from "../../src/volume-creation.ts";
+import { containerHelperTestOptions } from "./exec-supervision.ts";
+import { bringUp } from "./service-creation.ts";
 import {
   decodeStorageContainer,
   storageLifecycleCommand,
@@ -57,6 +58,7 @@ export const runStorageLifecycle = async (
   const options = {
     api,
     ctx,
+    ...(await Effect.runPromise(containerHelperTestOptions(client))),
     dialect: input.provider === "docker" ? dockerLifecycleDialect : libpodLifecycleDialect,
   };
   const target = { app: plan.id, service: serviceName };

@@ -28,6 +28,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
+import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
@@ -97,10 +98,26 @@ const buildConfigService = (
   });
 };
 
+// The report must not depend on the host's inotify budget; filesystem-watch diagnoses have their own tests.
+const healthyFilesystemWatch = Layer.succeed(
+  FilesystemWatchIO,
+  FilesystemWatchIO.of({
+    observe: Effect.succeed({
+      limits: { max_user_watches: "65536", max_user_instances: "128", max_queued_events: "16384" },
+      allocation: { stage: "complete" },
+      cleanup: "complete",
+      eventDelivery: "confirmed",
+    }),
+  }),
+);
+
 const buildLayers = (
   provider: typeof TestRuntimeProvider,
-): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService> =>
+): Layer.Layer<
+  ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService | FilesystemWatchIO
+> =>
   Layer.mergeAll(
+    healthyFilesystemWatch,
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(
@@ -322,7 +339,7 @@ describe("meta:doctor combined report", () => {
   test("renderDoctorReport surfaces provider section, every subsystem, and global-app section", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    const text = renderDoctorReport(report);
+    const text = renderDoctorReport(report, undefined, { all: true });
 
     expect(text).toContain("selected-provider: pass");
     for (const name of ["network-trust", "subsystems"]) {
@@ -440,7 +457,7 @@ describe("meta:doctor combined report", () => {
       command: "meta:doctor",
       resultSchema: metaDoctorSpec.resultSchema,
       io: textIo,
-      render: renderDoctorReport,
+      render: (value, ctx) => renderDoctorReport(value, ctx, { all: true }),
       formatError: ({ error }) => String(error),
     });
     expect(textIo.stdoutLines().join("")).toContain("buildSecrets: true");
@@ -838,7 +855,7 @@ describe("meta:doctor combined report", () => {
     );
 
     expect(report.deprecations?.entries).toEqual([]);
-    expect(renderDoctorReport(report)).toContain(
+    expect(renderDoctorReport(report, undefined, { all: true })).toContain(
       "No deprecations were used or triggered at runtime for the app.",
     );
   });

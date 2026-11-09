@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ListenerObservation } from "@lando/sdk/schema";
 import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
@@ -30,6 +31,7 @@ import {
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
@@ -89,7 +91,7 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
-import { exec, execStream } from "./exec.ts";
+import { type ExecOptions, exec, execStream } from "./exec.ts";
 import { logs } from "./logs.ts";
 import {
   listLabeledServiceContainers,
@@ -163,6 +165,8 @@ export interface BringUpOptions {
   readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  readonly resolveContainerHelper?: ExecOptions["resolveContainerHelper"];
+  readonly helperTarget?: ExecOptions["helperTarget"];
   readonly dialect?: LifecycleDialect;
   readonly ensureImage?: (input: {
     readonly service: ServicePlan;
@@ -686,7 +690,7 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
 
 const removeContainer = (deps: BringUpDeps, service: ServicePlan, name: string) =>
   removeRuntimeContainer(deps.api, name, { ...deps.options.ctx, operation: "bringUp.remove" }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       podmanFailure(deps, {
         service,
         operation: "bringUp.remove",
@@ -704,7 +708,7 @@ const publish = (
   deps.options.eventService === undefined
     ? Effect.void
     : deps.options.eventService.publish(event).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ProviderInternalError({
               providerId: deps.options.ctx.providerId,
@@ -1054,7 +1058,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
-  const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
+  const prepared = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
+  const plan = yield* prepareContainerHelperMounts(prepared, options);
   const deps: BringUpDeps = {
     api,
     options,
@@ -1159,7 +1164,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
                         raw: true,
                         ...(options.signal === undefined ? {} : { signal: options.signal }),
                       },
-                      { api, ctx: options.ctx },
+                      {
+                        api,
+                        ctx: options.ctx,
+                        resolveContainerHelper: options.resolveContainerHelper,
+                        helperTarget: options.helperTarget,
+                      },
                     ),
               ),
             ),

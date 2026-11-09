@@ -22,6 +22,7 @@
 import { X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import tls from "node:tls";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { HttpTrustError } from "@lando/sdk/errors";
@@ -213,7 +214,7 @@ export const resolveTrust = Effect.fnUntraced(function* (
       }),
   });
   const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new HttpTrustError({
           message: cause.message,

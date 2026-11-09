@@ -97,6 +97,27 @@ describe("dump files", () => {
   });
 
   describe("prepareImportDump", () => {
+    test.each(["none", "gzip", "zstd"] as const)(
+      "preserves raw SQLite bytes from %s stdin",
+      async (compression) => {
+        const bytes = new TextEncoder().encode("SQLite format 3\0payload");
+        const input =
+          compression === "gzip"
+            ? Bun.gzipSync(bytes)
+            : compression === "zstd"
+              ? Bun.zstdCompressSync(bytes)
+              : bytes;
+        const exit = await prepare({
+          file: "-",
+          appRoot: root,
+          completeness: undefined,
+          stdin: Stream.make(input),
+        });
+        if (!Exit.isSuccess(exit)) throw new Error(Cause.pretty(exit.cause));
+        expect(exit.value.bytes).toBe(new TextDecoder().decode(bytes));
+        expect(exit.value.digest).toBe(sha256(bytes));
+      },
+    );
     test.each([
       ["mysql", PG_DUMP.split("CREATE")[0]],
       ["mariadb", PG_DUMP.split("CREATE")[0]],

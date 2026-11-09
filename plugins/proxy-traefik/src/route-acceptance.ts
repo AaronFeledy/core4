@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppId, AppRouteOwner, RoutePlan } from "@lando/sdk/schema";
@@ -70,7 +71,7 @@ export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptanc
     readLiveRouteSnapshot(dependencies, routes).pipe(
       Effect.map((snapshot) => snapshot !== undefined && acceptsAllRoutes(snapshot, owner, routes)),
     ),
-  ).pipe(Effect.mapError(() => acceptanceError(owner.id, "probe-failed")));
+  ).pipe(mapFailures(() => acceptanceError(owner.id, "probe-failed")));
   if (result.outcome !== "green")
     return yield* Effect.fail(
       acceptanceError(owner.id, `not-converged; routes=${routes.length}; attempts=${result.attempts}`),

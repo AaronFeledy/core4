@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError, GlobalDistConflictError } from "@lando/sdk/errors";
 import type { AbsolutePath, MountInput, ServiceConfig } from "@lando/sdk/schema";
@@ -136,7 +137,7 @@ export const readManagedGlobalDist = Effect.fn("GlobalAppService.readManagedDist
   path: AbsolutePath,
 ) {
   const content = yield* fileSystem.readText(path).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new GlobalAppError({
           operation: "regenerateDist",

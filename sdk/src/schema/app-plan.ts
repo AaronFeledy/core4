@@ -22,6 +22,7 @@ import {
   RouteRef,
   ScanPlan,
 } from "./networking.ts";
+import { normalizeAppSlug } from "./physical-names.ts";
 import {
   AbsoluteContainerPath,
   AbsolutePath,
@@ -33,6 +34,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
@@ -129,6 +131,9 @@ const ServicePlanFields = {
 export const ServicePlan = Schema.Union([
   Schema.Struct({
     ...ServicePlanFields,
+    sqlite: Schema.optionalKey(Schema.Never).annotate({
+      description: "SQLite cannot coexist with database connections or non-SQL credentials.",
+    }),
     connection: Schema.optionalKey(DatabaseConnection).annotate({
       description: "Canonical database connection resolved by the service type.",
     }),
@@ -138,10 +143,21 @@ export const ServicePlan = Schema.Union([
   }),
   Schema.Struct({
     ...ServicePlanFields,
+    sqlite: Schema.optionalKey(Schema.Never).annotate({
+      description: "SQLite cannot coexist with database connections or non-SQL credentials.",
+    }),
     connection: Schema.optionalKey(Schema.Never),
     nonSqlCreds: ServiceCreds.annotate({
       description: "Published non-SQL credentials, mutually exclusive with a database connection.",
     }),
+  }),
+  Schema.Struct({
+    ...ServicePlanFields,
+    sqlite: SqliteTargetConfig.annotate({
+      description: "File-backed SQLite database copied from the service's authored sqlite.path.",
+    }),
+    connection: Schema.optionalKey(Schema.Never),
+    nonSqlCreds: Schema.optionalKey(Schema.Never),
   }),
 ]);
 export type ServicePlan = typeof ServicePlan.Type;
@@ -385,8 +401,21 @@ export const AppIdentity = Schema.Struct({
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({
     description: "Stable identity shared by worktrees from one Git common directory.",
   }),
+  dataName: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The app name this folder's persisted data was first created under. Volume names, volume ownership, and generated defaults stored in data (database names, passwords) follow it, so a renamed app keeps its data.",
+  }),
 });
 export type AppIdentity = typeof AppIdentity.Type;
+
+/**
+ * The app id that owns a plan's persisted data. Plans recorded without a data name use their own
+ * id, which is what their volumes were labeled with.
+ */
+export const planDataId = (plan: Pick<AppPlan, "id" | "root" | "identity">): AppId =>
+  plan.identity?.dataName === undefined
+    ? plan.id
+    : AppId.make(normalizeAppSlug(plan.identity.dataName, plan.identity.appRoot));
 
 export const AppPlan = Schema.Struct({
   valueModel: Schema.optionalKey(Schema.Literal(1)).annotate({
@@ -448,10 +477,13 @@ export const AppPlan = Schema.Struct({
   router: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
+      id: Schema.optionalKey(Schema.String).annotate({
+        description: "Selected router contribution id for enabled routes; absent in legacy applied plans.",
+      }),
     }),
   ).annotate({
     description:
-      "Resolved router enablement; optional only because persisted cached plans predate this field.",
+      "Resolved router enablement and selected contribution identity; optional for legacy applied plans.",
   }),
   /**
    * Global-app services this app depends on at start, aggregated by the planner

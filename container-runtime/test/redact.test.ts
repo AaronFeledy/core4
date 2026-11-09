@@ -108,21 +108,22 @@ describe("redactDetails", () => {
     });
   });
 
-  test("preserves null, undefined, and primitive values", () => {
+  test("normalizes undefined to null and preserves JSON primitive values", () => {
     expect(redactDetails(null, patternRedactor)).toBe(null);
-    expect(redactDetails(undefined, patternRedactor)).toBe(undefined);
+    expect(redactDetails(undefined, patternRedactor)).toBe(null);
     expect(redactDetails(42, patternRedactor)).toBe(42);
     expect(redactDetails(true, patternRedactor)).toBe(true);
     expect(redactDetails("no secret here", patternRedactor)).toBe("no secret here");
   });
 
-  test("redacts Error messages while preserving the error name", () => {
+  test("redacts Error messages while preserving an own error name", () => {
     const error = new Error("connection refused; POSTGRES_PASSWORD=hunter2 in url");
+    error.name = "TransportError";
     const out = redactDetails(error, patternRedactor);
     if (typeof out !== "object" || out === null || !("name" in out) || !("message" in out)) {
       throw new Error("Expected redacted error details");
     }
-    expect(out.name).toBe("Error");
+    expect(out.name).toBe("TransportError");
     expect(out.message).toContain("[redacted]");
     expect(out.message).not.toContain("hunter2");
   });

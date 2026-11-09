@@ -59,6 +59,7 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
@@ -346,6 +347,7 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
+    layerTransactionGuard,
     emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -458,6 +460,28 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test("Landofile-backed handle destroy preserves orphan evidence", async () => {
+    await withTempRoot(async (root) => {
+      const desired = planAt(root);
+      const harness = makeLayer({
+        desiredPlan: desired,
+        orphans: [orphanGroup({ root, services: ["web"], volumes: ["data"] })],
+      });
+      const result = await Effect.runPromise(
+        destroyAppForTarget(
+          { volumes: true, yes: true },
+          {
+            ...targetFor(desired),
+            landofile: literalTestLandofile({ name: desired.name, services: {} }),
+          },
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesDestroyed).toEqual(["web"]);
+      expect(harness.removedVolumes.map((volume) => volume.store)).toEqual(["data"]);
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
   test("destroy with an explicit provider resolves ambiguous applied state and retains volumes", async () => {
     await withTempRoot(async (root) => {
       const applied = planAt(root);
@@ -797,6 +821,7 @@ describe("applied-state teardown", () => {
       expect(result).toEqual({
         app: appliedPlan.name,
         outcome: "stopped",
+        runtimeState: "running",
         servicesStopped: [],
         // This layer has no redactor, so the loader detail stays out of the reason.
         landofileEvents: { status: "skipped", reason: `the Landofile in ${root} could not be loaded` },

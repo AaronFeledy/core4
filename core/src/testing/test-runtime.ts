@@ -2,13 +2,14 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
-import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
 import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
@@ -67,7 +68,7 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  * Re-export of Effect's deterministic test clock utilities for callers using this test runtime.
  */
 export { TestClock } from "effect/testing";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
@@ -358,7 +359,7 @@ const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Cod
   }
 
   return Schema.decodeUnknownEffect(schema)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (decodeError) =>
         new CacheError({
           message: `Cached value for ${key} failed schema decode.`,
@@ -390,7 +391,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const files = new Map(Object.entries(options.files ?? {}));
   const directories = new Set<string>();
   const config = options.config ?? defaultGlobalConfig;
-  const runtimeProvider = options.with?.RuntimeProvider ?? TestRuntimeProvider;
+  const runtimeProvider = options.with?.RuntimeProvider ?? makeTestRuntimeProvider();
   const providerId = providerIdFrom(runtimeProvider);
   let pluginTrustState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
   const secrets = new Map<string, string>();

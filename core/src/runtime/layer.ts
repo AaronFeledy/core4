@@ -1,6 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
-import { writeStdioLine } from "@lando/renderer/io";
 import { type Context, Effect, Layer, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
@@ -36,6 +33,7 @@ import type {
   RuntimeProviderRegistry,
   ScratchAppService,
   SecretStore,
+  ServiceReadiness,
   ShellRunner,
   StateStore,
   Telemetry,
@@ -88,6 +86,12 @@ import {
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
 import type { MinimalBootstrapServices } from "./generated/layers/minimal";
 import "./engine-composition";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+  processInvocationDefaults,
+} from "./invocation-context";
 
 export { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
 
@@ -107,8 +111,9 @@ export interface LandoGenerationRuntime {
 
 export const makeLandoGenerationRuntime = (
   options: LandoRuntimeOptions,
+  invocation: CliInvocationContext = processInvocationContext(),
 ): Result.Result<LandoGenerationRuntime, LandoRuntimeBootstrapError> =>
-  Result.map(prepareRuntime({ ...options, bootstrap: "app" }, undefined), (prepared) => ({
+  Result.map(prepareRuntime({ ...options, bootstrap: "app" }, undefined, invocation), (prepared) => ({
     host: makeGenerationHostBootstrapLayer(prepared.inputs, interactionServiceFor(prepared.options)),
     generation: ({ cwd, host }) =>
       makeGenerationAppBootstrapLayer({
@@ -119,18 +124,6 @@ export const makeLandoGenerationRuntime = (
       }),
     pluginPolicy: prepared.pluginPolicy,
   }));
-
-type RuntimeProviderRegistryLayer = Layer.Layer<RuntimeProviderRegistry, never, never>;
-
-const runtimeProviderRegistryOverrideStorage = new AsyncLocalStorage<RuntimeProviderRegistryLayer>();
-
-export const getRuntimeProviderRegistryOverride = (): RuntimeProviderRegistryLayer | undefined =>
-  runtimeProviderRegistryOverrideStorage.getStore();
-
-export const withRuntimeProviderRegistryOverride = <A>(
-  layer: RuntimeProviderRegistryLayer,
-  thunk: () => Promise<A>,
-): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
 type NoneRuntimeServices = RuntimeLayerFactory | GlobalConfigSources;
 type MinimalRuntimeServices =
@@ -177,6 +170,7 @@ type ProviderRuntimeServices =
   | CertificateAuthorityResolver
   | FileSyncResolver
   | DataMover
+  | ServiceReadiness
   | AppPlanSanitizer
   | ContainerHelperAssets
   | GlobalAppService;
@@ -201,6 +195,7 @@ export type AppRuntimeServices =
   | RuntimeCwd
   | EventCommandExecutor;
 type RuntimeLayer =
+  | Layer.Layer<never, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<never>
   | Layer.Layer<never, LandoRuntimeBootstrapError>
   | Layer.Layer<NoneRuntimeServices>
@@ -234,6 +229,7 @@ export interface PreparedRuntime {
 export const prepareRuntime = (
   options: unknown,
   snapshot: GlobalConfigSnapshot["Service"] | undefined,
+  invocation: CliInvocationContext,
 ): Result.Result<PreparedRuntime, LandoRuntimeBootstrapError> => {
   const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
 
@@ -253,14 +249,12 @@ export const prepareRuntime = (
       }),
     );
   }
-  const capturedCwd = decoded.success.cwd ?? process.cwd();
+  const capturedCwd = decoded.success.cwd ?? invocation.cwd;
   const lifecycle = makeBootstrapLifecycleTracker();
-  const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
-  const hostLayersResult = collectEmbeddingPluginLayers(
-    runtimeProviderRegistryOverride === undefined
-      ? pluginPolicy.layers
-      : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
-  );
+  const hostLayersResult = collectEmbeddingPluginLayers([
+    ...pluginPolicy.layers,
+    ...(invocation.serviceLayers ?? []),
+  ]);
 
   if (Result.isFailure(hostLayersResult)) {
     return Result.fail(hostLayersResult.failure);
@@ -279,19 +273,24 @@ export const prepareRuntime = (
       loggerMode: logging.loggerMode,
       logLevel: logging.logLevel,
       structured: logging.structured,
-      writeDiagnosticLine: (line) => writeStdioLine("stderr", line),
-      stderrIsTTY: process.stderr.isTTY === true,
+      writeDiagnosticLine: (line) => {
+        invocation.io.writeStderr(`${line}\n`);
+      },
+      stderrIsTTY: invocation.io.isTTY === true,
       rendererMode: normalizeLibraryRendererMode(
         decoded.success.renderer ?? decoded.success.config?.renderer,
       ),
       telemetryEnabled: decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
       pluginDiscovery: pluginPolicy.discovery,
       pluginLayers: hostLayersResult.success,
+      ...(invocation.providerRegistry === undefined
+        ? {}
+        : { runtimeProviderRegistry: invocation.providerRegistry }),
       pluginManifests: pluginPolicy.manifests,
       externalImports: pluginPolicy.externalImports,
       cwd: capturedCwd,
       configInputs: {
-        env: { ...process.env },
+        env: { ...invocation.env },
         host: decoded.success.config,
         sources: {
           user: decoded.success.configSources?.user ?? true,
@@ -350,7 +349,20 @@ export function makeLandoRuntime(
 export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapshot["Service"]): RuntimeLayer {
-  const prepared = prepareRuntime(options, snapshot);
+  const host = processInvocationContext();
+  return Layer.unwrap(
+    Effect.map(CliInvocation, (invocation) =>
+      buildLandoRuntime(options, snapshot, invocation === processInvocationDefaults ? host : invocation),
+    ),
+  );
+}
+
+function buildLandoRuntime(
+  options: unknown,
+  snapshot: GlobalConfigSnapshot["Service"] | undefined,
+  invocation: CliInvocationContext,
+): RuntimeLayer {
+  const prepared = prepareRuntime(options, snapshot, invocation);
   if (Result.isFailure(prepared)) return Layer.effectDiscard(Effect.fail(prepared.failure));
   const { options: decoded, bootstrap, capturedCwd, lifecycle, embeddingLayers, inputs } = prepared.success;
   const baseLayer = makeGeneratedBootstrapLayer(bootstrap, inputs) as RuntimeLayer;

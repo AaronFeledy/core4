@@ -7,7 +7,7 @@ import { DateTime, Effect } from "effect";
 import type { EngineHttpResponse, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { makeRuntimeProvider, persistAppliedPlan } from "@lando/provider-lando";
+import { persistAppliedPlan, makeRuntimeProvider as rawRuntimeProvider } from "@lando/provider-lando";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
@@ -18,6 +18,7 @@ import {
   type ServicePlan,
   landoServiceContainerName,
 } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -85,7 +86,7 @@ describe("managed Windows published lifecycle", () => {
       sanitizeAppliedPlan: (plan: AppPlan) => plan,
     };
     const windows = await Effect.runPromise(
-      makeRuntimeProvider({
+      rawRuntimeProvider({
         ...options,
         platform: "win32",
         providerSocketPath: "\\\\.\\pipe\\podman-lando",

@@ -1,3 +1,4 @@
+import { lstat } from "node:fs/promises";
 import type { ManagedFileTransactionPendingReport } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
@@ -45,10 +46,23 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
     return { root, store };
   });
 
+  // A root that does not exist yet (the global app before its first write) holds no transaction.
+  const rootExists = (appRoot: string) =>
+    transactionIO("inspect", () =>
+      lstat(appRoot).then(
+        () => true,
+        (cause: unknown) => {
+          if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false;
+          throw cause;
+        },
+      ),
+    );
+
   /** Read-only dry run. Acquires no lock and creates, mutates, or removes nothing. */
   const pending = Effect.fn("ManagedFileTransactionGuard.pending")(function* (
     appRoot: string,
   ): Effect.fn.Return<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError> {
+    if (!(yield* rootExists(appRoot))) return null;
     const { store } = yield* locate(appRoot, false);
     const journal = yield* store.read;
     if (journal === null) return null;

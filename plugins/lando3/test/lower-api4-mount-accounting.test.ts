@@ -105,8 +105,8 @@ test("concatenates storage and persistent-storage while parsing bind modes", () 
   );
   // Then
   expect(result.patch.storage).toEqual([
-    { store: "app-web-data", target: "/data" },
-    { store: "app-web-other", target: "/other" },
+    { store: "lando-app--web--storage--data-bd47413b", target: "/data" },
+    { store: "lando-app--web--storage--other-bf2faee2", target: "/other" },
   ]);
   expect(result.patch.mounts).toEqual([
     { source: "./host", target: "/bound" },

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
@@ -10,6 +11,7 @@ import {
   ServiceName,
   landoOwnedNetworkNames,
   planAppIdentity,
+  planDataId,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { SCRATCH_ID_LABEL, scratchLabelsForPlan } from "./labels.ts";
@@ -122,10 +124,10 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
               });
             },
           })
-          .pipe(Effect.mapError((cause) => ownershipFailure(providerId, cause)));
+          .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
   const load = Effect.fn("ResourceOwnership.load")(function* (root: AbsolutePath) {
     const bucket = yield* open(root);
-    const value = yield* bucket.get.pipe(Effect.mapError((cause) => ownershipFailure(providerId, cause)));
+    const value = yield* bucket.get.pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
     return yield* Effect.try({
       try: () => (value === null ? undefined : validate(value, root, providerId)),
       catch: (cause) => ownershipFailure(providerId, cause),
@@ -187,6 +189,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
           identify({
             ...identity,
             kind: "volume",
+            appId: planDataId(attempt),
             nativeName: store.name,
             volumeClass: volumeClassForStore(store),
             volumeScope: store.scope,
@@ -262,7 +265,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         ];
       })
       .pipe(
-        Effect.mapError((cause) => ownershipFailure(providerId, cause)),
+        mapFailures((cause) => ownershipFailure(providerId, cause)),
         Effect.catchDefect((defect) =>
           Schema.is(ProviderUnavailableError)(defect) ? Effect.fail(defect) : Effect.die(defect),
         ),
@@ -283,7 +286,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
           { ...current, resources, appIds: [...new Set(resources.map((item) => item.appId))] },
         ];
       })
-      .pipe(Effect.mapError((cause) => ownershipFailure(providerId, cause)));
+      .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
   });
   return {
     load,

@@ -1,6 +1,7 @@
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect } from "effect";
@@ -27,6 +28,18 @@ const serviceFor = (shape: LandofileShape): Context.Service.Shape<typeof Landofi
 });
 
 describe("user app resolution seam", () => {
+  test.each(["global", "Global", "global!", "--GLOBAL--"])(
+    "refuses the reserved normalized app slug for %s",
+    async (name) => {
+      await expect(
+        Effect.runPromise(makeResolution().loadUserLandofile(serviceFor({ name }))),
+      ).rejects.toMatchObject({
+        _tag: "AppIdReservedError",
+        reserved: "global",
+      });
+    },
+  );
+
   test("materializes recipe expressions when loading a non-layer file", async () => {
     // Given
     const resolution = makeResolution();
@@ -78,7 +91,7 @@ describe("user app resolution seam", () => {
     expect(result.document.name).toBe("myapp");
   });
 
-  test("loadUserLandofileAt serializes concurrent root resolution and restores cwd", async () => {
+  test("loadUserLandofileAt scopes concurrent discovery without changing process cwd", async () => {
     // Given
     const firstResolution = makeResolution();
     const secondResolution = makeResolution();
@@ -89,7 +102,6 @@ describe("user app resolution seam", () => {
     const firstInDiscover = Promise.withResolvers<void>();
     const secondStarted = Promise.withResolvers<void>();
     const secondMayObserve = Promise.withResolvers<void>();
-    process.chdir(left);
 
     try {
       let secondObserved = "";
@@ -101,11 +113,13 @@ describe("user app resolution seam", () => {
         }),
       } satisfies Context.Service.Shape<typeof LandofileService>;
       const secondService = {
-        discover: Effect.promise(async () => {
-          await secondMayObserve.promise;
-          secondObserved = process.cwd();
-          return compiled({ name: "second" });
-        }),
+        discover: Effect.flatMap(discoveryCwd(), (cwd) =>
+          Effect.promise(async () => {
+            await secondMayObserve.promise;
+            secondObserved = cwd;
+            return compiled({ name: "second" });
+          }),
+        ),
       } satisfies Context.Service.Shape<typeof LandofileService>;
 
       // When
@@ -126,11 +140,10 @@ describe("user app resolution seam", () => {
       // Then
       expect(secondResult.document.name).toBe("second");
       expect(secondObserved).toBe(right);
-      expect(process.cwd()).toBe(left);
+      expect(process.cwd()).toBe(previous);
     } finally {
       firstCanRestore.resolve();
       secondMayObserve.resolve();
-      process.chdir(previous);
       await rm(left, { recursive: true, force: true });
       await rm(right, { recursive: true, force: true });
     }

@@ -274,6 +274,7 @@ export type StartAppError =
 export type StopAppOptions = {};
 
 export type StopAppError =
+  | ProxyError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | AppPlannerError
@@ -543,7 +544,10 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
-    LandofileNotFoundError | LandofileValidationError | NotImplementedError
+    | LandofileNotFoundError
+    | LandofileValidationError
+    | NotImplementedError
+    | import("../errors/app.ts").AppDataIdentityError
   >;
 }
 

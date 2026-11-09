@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { DataTransferError, StateStoreError } from "@lando/sdk/errors";
 import { ProviderId, type SnapshotHandle } from "@lando/sdk/schema";
@@ -35,18 +36,16 @@ export const removeCatalogSnapshot = Effect.fn("DataMover.removeCatalogSnapshot"
             });
           const recording = yield* (
             persistence.providerRegistry?.select(ProviderId.make(recordingId)) ?? selectedProvider
-          ).pipe(Effect.mapError(failure));
+          ).pipe(mapFailures(failure));
           if (recording.id !== recordingId)
             return yield* Effect.fail(failure("The recording provider is unavailable."));
-          yield* Effect.scoped(recording.removeVolumeSnapshot(info.native)).pipe(Effect.mapError(failure));
+          yield* Effect.scoped(recording.removeVolumeSnapshot(info.native)).pipe(mapFailures(failure));
         }
         yield* removeSnapshotArchive(archive);
         const bucket = yield* openSnapshot(persistence, handle);
-        yield* bucket.remove.pipe(Effect.mapError((cause) => stateFailure("remove-sidecar", cause)));
+        yield* bucket.remove.pipe(mapFailures((cause) => stateFailure("remove-sidecar", cause)));
         yield* removeEmptySnapshotDirectories(persistence, info);
       }),
     )
-    .pipe(
-      Effect.mapError((cause) => (cause instanceof StateStoreError ? stateFailure("lock", cause) : cause)),
-    );
+    .pipe(mapFailures((cause) => (cause instanceof StateStoreError ? stateFailure("lock", cause) : cause)));
 });
