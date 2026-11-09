@@ -141,8 +141,11 @@ report `recoverySnapshotId` with recovery guidance. Command failures keep their
 tag and diagnostics. A manual snapshot also remains available when restarting
 the database fails; that failure reports the captured snapshot instead of losing
 its handle. Failures outside command execution may use a different error tag.
-Fix the reported problem before retrying. Restore the snapshot only if recovery
-is needed. A failed capture never invents a snapshot ID.
+When the runtime provider can't capture or restore a snapshot,
+`DataTransferError` keeps the provider's failure under `error.cause`, with its
+own `_tag` and `remediation`, and `error.remediation` starts with that
+remediation. Fix the reported problem before retrying. Restore the snapshot
+only if recovery is needed. A failed capture never invents a snapshot ID.
 
 Import and seed stop with the same diagnostics if their emptiness query fails.
 `--yes` skips confirmation, not a failed database check.
