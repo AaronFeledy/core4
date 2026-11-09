@@ -154,8 +154,10 @@ If you've deleted or moved app folders before tearing them down, inspect their
 leftovers with `lando apps:gc`. `lando apps:gc --prune` asks once before cleaning
 up all reported roots. The prompt lists observed containers and volumes for each
 root, marks which categories are kept or deleted, and includes the completed
-start-journal sweep. An idle runtime's live holdings and snapshot inventory are
-not available in this preview. Lando revalidates roots and ownership before
+start-journal sweep. Before the prompt, Lando starts any idle runtime that holds
+reported resources, so the prompt lists its containers and volumes; reporting
+without `--prune` never starts a runtime. Snapshots are not inventoried in this
+preview. Lando revalidates roots and ownership before
 deleting anything; changed evidence is retained for another review.
 If the report says Lando cannot remove a provider's file-sync copies of a deleted
 app yet, run `lando apps:gc --prune` without `--volumes`. It removes everything

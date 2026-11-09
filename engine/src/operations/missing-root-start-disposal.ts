@@ -16,7 +16,7 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
         engineId: record.engineId,
         sessionRef: record.appId,
         message,
-        remediation: `Restore access to the recorded provider ${record.providerId} and file-sync engine ${record.engineId}, then retry lando apps:gc --prune --volumes. Keep journal attempt ${record.attemptId} until its file-sync copies are removed.`,
+        remediation: `Restore access to the recorded provider ${record.providerId} and file-sync engine ${record.engineId}, then retry the same lando apps:gc --prune command. Keep journal attempt ${record.attemptId} until its file-sync copies are removed.`,
       });
     const recordedApp: AppRef = { kind: "user", id: AppId.make(record.appId), root: app.root };
     const selected = yield* TeardownProvider;
