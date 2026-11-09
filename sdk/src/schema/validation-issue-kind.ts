@@ -1,5 +1,5 @@
 import { SchemaAST, SchemaIssue } from "effect";
-import { authoringExpectation } from "./authoring-issue-metadata.ts";
+import { authoringExpectation, throughSemanticSite } from "./authoring-issue-metadata.ts";
 import type { ValidationIssue } from "./validation-issue.ts";
 
 const jsonKind = (value: unknown): string => {
@@ -68,6 +68,8 @@ export const schemaIssueKind = (
   issue: SchemaIssue.Issue,
   evidence?: { readonly input: unknown },
 ): ValidationIssue["kind"] => {
+  const transparent = throughSemanticSite(issue);
+  if (transparent !== issue) return schemaIssueKind(transparent, evidence);
   const actual = SchemaIssue.hasInput(issue) ? { input: issue.input } : evidence;
   switch (issue._tag) {
     case "InvalidType":
