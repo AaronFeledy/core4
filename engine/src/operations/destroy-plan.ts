@@ -6,14 +6,12 @@ import {
   type AbsolutePath,
   AppId,
   type AppRef,
-  ProviderId,
   type ResourceOwnership,
   type SnapshotInfo,
 } from "@lando/sdk/schema";
 import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { TeardownProvider } from "../providers/app-placement.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
@@ -117,24 +115,6 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
   );
   const unfinished = pending.filter(({ pending }) => pending !== null && pending.phase !== "completed");
   const registry = yield* RuntimeProviderRegistry;
-  const selected = yield* TeardownProvider;
-  const owners = new Set([
-    ...(applied === undefined ? [] : [applied.plan.provider]),
-    ...groups.map((group) => group.providerId),
-    ...inventory.map((hint) => hint.providerId),
-    ...unfinished.flatMap(({ app, pending }) =>
-      pending === null ||
-      pending.appRoot !== app.root ||
-      (selected !== undefined && selected !== pending.providerId)
-        ? []
-        : [pending.providerId],
-    ),
-    ...snapshots.flatMap((snapshot) => (snapshot.native === undefined ? [] : [snapshot.native.provider])),
-  ]);
-  for (const owner of owners) {
-    const provider = yield* registry.select(ProviderId.make(owner));
-    if ((yield* provider.getStatus).state === "idle") yield* provider.ensureReady ?? Effect.void;
-  }
   let retained: ResolvedAppTarget | undefined;
   const first = unfinished[0];
   const missingStart =

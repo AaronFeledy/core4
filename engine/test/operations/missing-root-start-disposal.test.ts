@@ -127,7 +127,9 @@ test("snapshot-only destroy prepares its idle owner before removing native snaps
   const harness = makeHarness({
     resolveAppliedPlan: () => Effect.succeed(undefined),
     providerOverrides: {
-      getStatus: Effect.succeed({ state: "idle" }),
+      getStatus: Effect.sync(() => ({
+        state: preparations === 0 ? ("idle" as const) : ("running" as const),
+      })),
       ensureReady: Effect.sync(() => {
         preparations++;
       }),

@@ -13,10 +13,15 @@ import { stopAppForTarget } from "../../src/operations/stop.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
+import { stoppedProviderFixtures, stoppedProviderInspection } from "./stopped-provider-support.ts";
 
-test.each(["user", "global"] as const)(
-  "%s idle stop cleans host workers after route withdrawal fails and retains the failure",
-  async (kind) => {
+test.each(
+  stoppedProviderFixtures.flatMap((fixture) =>
+    (["user", "global"] as const).map((kind) => ({ fixture, kind })),
+  ),
+)(
+  "$kind $fixture stop cleans host workers after route withdrawal fails and retains the failure",
+  async ({ kind, fixture }) => {
     const base = await realpath(await mkdtemp(join(tmpdir(), "lando-idle-stop-cleanup-")));
     try {
       const paths = makeLandoPaths({ userDataRoot: base, env: {}, platform: "linux" });
@@ -55,6 +60,7 @@ test.each(["user", "global"] as const)(
                   await globalTeardownHarness(base, {
                     plan: applied,
                     status: Effect.succeed({ state: "idle" }),
+                    inspectAppliedFileSync: stoppedProviderInspection(fixture, () => false),
                   })
                 ).layer,
               ),
@@ -67,7 +73,9 @@ test.each(["user", "global"] as const)(
                 makeHarness({
                   plannedApp: applied,
                   appliedPlans: [applied],
+                  providerCanInspectFileSync: false,
                   providerOverrides: {
+                    inspectAppliedFileSync: stoppedProviderInspection(fixture, () => false),
                     getStatus: Effect.succeed({ state: "idle" }),
                     ensureReady: Effect.die("idle stop must not start the runtime"),
                     list: () => Effect.die("idle stop must not list the runtime"),

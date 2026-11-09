@@ -102,7 +102,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
   }
   const ref = target.app;
   const bundle =
-    provider.inspectAppliedFileSync === undefined
+    provider.inspectAppliedFileSync === undefined || runtimeState === "idle"
       ? yield* fileSyncBundle(plan).pipe(
           mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
         )
@@ -116,17 +116,20 @@ export const preflightStopApp = Effect.fnUntraced(function* (
               : ("ordinary" as const),
         }
       : yield* provider.inspectAppliedFileSync(plan);
-  const maybeFileSync =
+  const engineId =
     appliedFileSync.status === "accelerated"
-      ? yield* acquireFileSyncEngine(appliedFileSync.engineId).pipe(
+      ? appliedFileSync.engineId
+      : runtimeState === "idle" && bundle?.kind === "accelerated"
+        ? bundle.id
+        : undefined;
+  const maybeFileSync =
+    engineId !== undefined
+      ? yield* acquireFileSyncEngine(engineId).pipe(
           Effect.map(Option.some),
           Effect.catch(() => Effect.succeed(Option.none())),
         )
       : Option.none();
-  const fileSyncAvailable =
-    appliedFileSync.status === "accelerated" &&
-    Option.isSome(maybeFileSync) &&
-    (yield* maybeFileSync.value.isAvailable);
+  const fileSyncAvailable = Option.isSome(maybeFileSync) && (yield* maybeFileSync.value.isAvailable);
   const sessions =
     fileSyncAvailable && Option.isSome(maybeFileSync)
       ? yield* maybeFileSync.value.listSessions({ app: ref })

@@ -81,6 +81,8 @@ export const globalTeardownHarness = async (
     readonly destroyOutcome?: DestroyOutcome;
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly status?: RuntimeProviderShape["getStatus"];
+    readonly inspectAppliedFileSync?: RuntimeProviderShape["inspectAppliedFileSync"];
+    readonly ensureReady?: RuntimeProviderShape["ensureReady"] | null;
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError>;
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly stopFailure?: boolean;
@@ -104,15 +106,35 @@ export const globalTeardownHarness = async (
   const eventRoots: string[] = [];
   const selectedRoots: string[] = [];
   const routeRoots: string[] = [];
+  let prepared = false;
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
     appliedPlans: input.appliedPlans ?? Effect.succeed(input.plan === undefined ? [] : [input.plan]),
     isAvailable: input.availability ?? Effect.succeed(true),
-    getStatus: input.status ?? Effect.succeed({ state: "running" as const }),
-    ensureReady: Effect.sync(() => {
-      calls.push("ensureReady");
-    }),
+    getStatus: Effect.suspend((): RuntimeProviderShape["getStatus"] =>
+      prepared
+        ? Effect.succeed({ state: "running" as const })
+        : (input.status ?? Effect.succeed({ state: "running" as const })),
+    ),
+    ...(input.inspectAppliedFileSync === undefined
+      ? {}
+      : { inspectAppliedFileSync: input.inspectAppliedFileSync }),
+    ...(input.ensureReady === null
+      ? {}
+      : {
+          ensureReady:
+            input.ensureReady ??
+            Effect.sync(() => {
+              calls.push("ensureReady");
+            }).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  prepared = true;
+                }),
+              ),
+            ),
+        }),
     list: () =>
       Effect.sync(() => {
         calls.push("list");
