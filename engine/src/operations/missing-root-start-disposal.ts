@@ -33,6 +33,20 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
     const provider = yield* registry.select(ProviderId.make(record.providerId));
     if (provider.id !== record.providerId)
       return yield* Effect.fail(failure("The recorded provider does not match."));
+    if (
+      options.volumes &&
+      record.targets.length > 0 &&
+      provider.capabilities.fileSyncTargets === "prepared-volume"
+    )
+      return yield* Effect.fail(
+        new FileSyncStopError({
+          engineId: record.engineId,
+          sessionRef: record.appId,
+          message: `Lando cannot remove this provider's file-sync copies of a deleted app yet (${record.providerId}). The copies are kept.`,
+          remediation:
+            "Rerun without --volumes to remove everything else and keep the file-sync copies and their ownership journal.",
+        }),
+      );
     const engine = yield* acquireFileSyncEngine(record.engineId).pipe(
       mapFailures((cause) => acceleratedStartStopError(recordedApp, cause)),
     );

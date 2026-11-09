@@ -47,14 +47,18 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
         ],
       }),
     );
-  const command = `lando apps:gc --prune --volumes${inventory.success.candidates.some((root) => root.cacheVolumes.length > 0) ? " --purge-caches" : ""}`;
+  const copiesRemovable = inventory.success.candidates.every((root) => root.fileSyncCopiesRemovable);
+  const command = `lando apps:gc --prune${copiesRemovable ? " --volumes" : ""}${inventory.success.candidates.some((root) => root.cacheVolumes.length > 0) ? " --purge-caches" : ""}`;
   return [
     ...scanChecks,
     ...inventory.success.candidates.map((record): DoctorSubsystemCheck => {
       const runtimeGuidance = record.runtimeObserved
         ? ""
         : " Its runtime was not observed, so containers and volumes may be missing from this list.";
-      const description = `The app folder no longer exists. If you moved the app, move it back to that path and keep using it. Otherwise, this command cleans up all missing app roots and deletes their data volumes, including file-sync copies of app files; drop --volumes to keep data and those copies.${runtimeGuidance}`;
+      const cleanup = copiesRemovable
+        ? "Otherwise, this command cleans up all missing app roots and deletes their data volumes, including file-sync copies of app files; drop --volumes to keep data and those copies."
+        : `${record.fileSyncCopiesRemovable ? "Another missing app root has file-sync copies Lando cannot remove yet." : "Lando cannot remove this provider's file-sync copies of a deleted app yet. The copies are kept."} Run lando apps:gc --prune without --volumes to remove everything else while keeping data volumes, file-sync copies and their ownership journals; caches are kept unless --purge-caches is set.`;
+      const description = `The app folder no longer exists. If you moved the app, move it back to that path and keep using it. ${cleanup}${runtimeGuidance}`;
       return warnCheck({
         name: "missing-app-root",
         recovery: "manual",

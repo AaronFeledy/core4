@@ -134,7 +134,10 @@ git worktree remove ../shop-feature
 ```
 
 Deleted the folder first? `lando doctor` reports `missing-app-root`. Inspect every
-missing app root, then clean them up with one confirmation. **`--volumes` deletes
+missing app root, then clean them up with one confirmation. If Lando reports that
+it cannot remove a provider's file-sync copies yet, use `lando apps:gc --prune`
+without `--volumes`; the copies, their ownership journals, and data volumes stay.
+Otherwise, **`--volumes` deletes
 their databases and retained file-sync copies of app files**; drop it to keep
 that data:
 

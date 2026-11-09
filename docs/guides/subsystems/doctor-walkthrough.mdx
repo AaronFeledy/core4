@@ -78,7 +78,7 @@ inspection is available. Certificate selection errors still appear as findings.
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | filesystem-watch | Read the stage and errno. Windows can also report a missing file event after the watcher opens. On Linux or WSL, close unnecessary watchers first when allocation fails. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |
 | accelerated-start | An accelerated file-sync start didn't finish and its app folder still exists. In that folder, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
-| missing-app-root | Move the folder back to keep using the app, or run `lando apps:gc --prune --volumes` to clean up all missing app roots. Add `--purge-caches` when doctor lists caches. Drop `--volumes` to keep data, including file-sync copies of app files. |
+| missing-app-root | Move the folder back to keep using the app, or run the `lando apps:gc --prune` command doctor gives you. It adds `--volumes` only when Lando can remove the recorded file-sync copies. Without `--volumes`, data and file-sync copies are kept. Add `--purge-caches` when doctor lists caches. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
@@ -164,10 +164,18 @@ Inspect all missing roots from any host directory:
 lando apps:gc
 ```
 
-Report mode never starts a runtime. An unobserved provider is listed explicitly;
-its containers and volumes may be missing from the report.
+Report mode never starts a runtime. An unobserved provider with recorded state is listed explicitly;
+its containers and volumes may be missing from the report. Failures to read state
+are reported even when Lando cannot establish what that provider holds.
 
-**`--volumes` deletes data volumes and file-sync copies of app files, which may
+If the report says Lando cannot remove a provider's file-sync copies of a deleted
+app yet, run `lando apps:gc --prune` without `--volumes`. Lando cleans up everything
+else selected by your flags and keeps data volumes, file-sync copies, and their
+ownership journals. Those copies keep appearing in doctor. Requesting `--volumes`
+for that root fails before deletion and tells you to rerun without it. This includes
+prepared file-sync targets on the bundled Windows provider.
+
+For roots whose copies can be removed, **`--volumes` deletes data volumes and file-sync copies of app files, which may
 hold the only surviving copy.** Drop that flag to keep them. When you're ready
 to discard the reported apps, run:
 

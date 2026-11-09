@@ -28,6 +28,7 @@ const report: AppsGcReport = {
     providers: [ProviderId.make("lando")],
     appliedState: true,
     runtimeObserved: false,
+    fileSyncCopiesRemovable: true,
     services: ["app-web"],
     dataVolumes: ["app-database"],
     cacheVolumes: ["app-cache"],
@@ -232,17 +233,51 @@ test("GC text reports unreadable journal paths, tagged errors and remediation", 
   );
 });
 
-test("GC text names unobserved providers that hold no candidate instead of hiding them", () => {
-  const output = renderAppsGcReport({
+test.each([false, true])(
+  "GC text lists unobserved providers only with recorded state: %s",
+  (recordedState) => {
+    const output = renderAppsGcReport({
+      ...report,
+      scans: [
+        {
+          providerId: ProviderId.make("docker"),
+          runtimeObserved: false,
+          recordedState,
+          complete: false,
+          message: "Runtime not observed; containers and volumes are not listed.",
+        },
+      ],
+    });
+    expect(output.includes("docker")).toBe(recordedState);
+  },
+);
+
+test("GC confirmation and report explain why prepared file-sync copies are kept", () => {
+  const prepared = {
     ...report,
+    candidates: report.candidates.map((root) => ({ ...root, fileSyncCopiesRemovable: false })),
+  };
+  expect(appsGcConfirmation(prepared, { volumes: true })).toContain("Keep file-sync copies: app-code-copy");
+  expect(appsGcConfirmation(prepared, { volumes: true })).toContain("cannot remove");
+  expect(renderAppsGcReport(prepared)).toContain("cannot remove");
+});
+
+test("GC text preserves ownership errors when recorded state could not be established", () => {
+  const failed = {
+    ...report,
+    candidates: [],
     scans: [
       {
         providerId: ProviderId.make("docker"),
         runtimeObserved: false,
+        recordedState: false,
         complete: false,
-        message: "Runtime not observed; containers and volumes are not listed.",
+        errorTag: "ProviderUnavailableError",
+        message: "Ownership directory is unreadable.",
+        remediation: "Restore ownership directory access.",
       },
     ],
-  });
-  expect(output).toContain("docker");
+  };
+  expect(renderAppsGcReport(failed)).toContain("Ownership directory is unreadable.");
+  expect(appsGcConfirmation(failed, {})).toContain("Ownership directory is unreadable.");
 });

@@ -10,14 +10,22 @@ import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion"
 import { Flags } from "../../spec/metadata";
 
 export const appsGcConfirmation = (report: AppsGcReport, options: DestroyAppOptions): string => {
+  const keptCopies = report.candidates.some((root) => !root.fileSyncCopiesRemovable);
   const deleted = [
     "containers",
-    ...(options.volumes ? ["data volumes and file-sync copies of app files"] : []),
+    ...(options.volumes
+      ? [
+          keptCopies
+            ? "data volumes and supported file-sync copies of app files (unsupported roots fail before deletion)"
+            : "data volumes and file-sync copies of app files",
+        ]
+      : []),
     ...(options.purgeCaches ? ["cache volumes"] : []),
     ...(options.purgeSnapshots ? ["snapshots"] : []),
   ];
   const kept = [
     ...(options.volumes ? [] : ["data volumes and file-sync copies of app files"]),
+    ...(options.volumes && keptCopies ? ["unsupported file-sync copies"] : []),
     ...(options.purgeCaches ? [] : ["cache volumes"]),
     ...(options.purgeSnapshots ? [] : ["snapshots"]),
   ];
@@ -27,7 +35,7 @@ export const appsGcConfirmation = (report: AppsGcReport, options: DestroyAppOpti
       `${root.root} (${root.providers.join(", ")})`,
       `  Delete containers: ${root.services.join(", ") || "none observed"}`,
       `  ${options.volumes ? "Delete" : "Keep"} data volumes: ${root.dataVolumes.join(", ") || "none observed"}`,
-      `  ${options.volumes ? "Delete" : "Keep"} file-sync copies: ${targets.join(", ") || "none recorded"}`,
+      `  ${options.volumes && root.fileSyncCopiesRemovable ? "Delete" : "Keep"} file-sync copies: ${targets.join(", ") || "none recorded"}${root.fileSyncCopiesRemovable ? "" : "; Lando cannot remove this provider's file-sync copies of a deleted app yet. Rerun without --volumes to remove everything else."}`,
       `  ${options.purgeCaches ? "Delete" : "Keep"} cache volumes: ${root.cacheVolumes.join(", ") || "none observed"}`,
       `  Recorded applied state: ${root.appliedState ? "yes" : "no"}; unfinished journals: ${root.journals.length}`,
       ...(root.runtimeObserved ? [] : ["  Runtime not observed; live holdings are unknown."]),
@@ -38,7 +46,9 @@ export const appsGcConfirmation = (report: AppsGcReport, options: DestroyAppOpti
     ...candidates,
     ...(candidates.length === 0 ? ["(none)"] : []),
     `Snapshots are not inventoried here; ${options.purgeSnapshots ? "delete candidate roots' snapshots" : "keep snapshots"}.`,
-    ...report.scans.filter((scan) => !scan.complete).map((scan) => `${scan.providerId}: ${scan.message}`),
+    ...report.scans
+      .filter((scan) => !scan.complete && (scan.recordedState || scan.errorTag !== undefined))
+      .map((scan) => `${scan.providerId}: ${scan.message}`),
     "Remove completed accelerated-start journal documents (revalidated during the sweep).",
     "Revalidate each root and its ownership before deletion; changed evidence is retained.",
   ].join("\n");

@@ -359,6 +359,9 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly appliedStateInventory?: (
       providerId: ProviderId,
     ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly hasRecordedOwnership?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
     readonly assertAppliedStateReadable?: (
       plan: Pick<AppPlan, "id" | "provider">,
     ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;

@@ -51,6 +51,7 @@ const fixture = async (phase: "preparing" | "apply-intent" = "apply-intent") => 
     const fs = yield* FileSystem;
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(acceleratedPlan);
+    const { fileSyncTargets: _targets, ...capabilities } = provider.capabilities;
     const store = yield* StateStore;
     return yield* destroyAppAtRoot(app.root, { volumes: true, yes: true }).pipe(
       Effect.provideService(FileSystem, {
@@ -62,6 +63,7 @@ const fixture = async (phase: "preparing" | "apply-intent" = "apply-intent") => 
         select: () =>
           Effect.succeed({
             ...provider,
+            capabilities,
             id: "lando",
             listVolumes: () =>
               Effect.suspend(() => {
@@ -284,7 +286,14 @@ test("missing-root destroy preserves copies when session inventory fails", async
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const fs = yield* FileSystem;
+      const registry = yield* RuntimeProviderRegistry;
+      const provider = yield* registry.select(acceleratedPlan);
+      const { fileSyncTargets: _targets, ...capabilities } = provider.capabilities;
       return yield* destroyAppAtRoot(app.root, { volumes: true, yes: true }).pipe(
+        Effect.provideService(RuntimeProviderRegistry, {
+          ...registry,
+          select: () => Effect.succeed({ ...provider, capabilities }),
+        }),
         Effect.provideService(FileSystem, { ...fs, exists: () => Effect.succeed(false) }),
         Effect.result,
       );

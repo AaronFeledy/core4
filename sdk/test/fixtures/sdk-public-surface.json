@@ -453,6 +453,7 @@
       "appliedPlansFor:(root:AbsolutePath) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
       "appliedStateInventory?:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
+      "hasRecordedOwnership?:(providerId:ProviderId) => Effect.Effect<boolean,ProviderUnavailableError|NoProviderInstalledError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
       "observeRuntime?:Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>,AppResolveError|ProviderError|NoProviderInstalledError>",
       "resolveAppliedPlan:(root:AbsolutePath,app?:Pick<AppRef,\"kind\"|\"id\">) => Effect.Effect<AppPlan|undefined,AppResolveError|ProviderError|NoProviderInstalledError>",

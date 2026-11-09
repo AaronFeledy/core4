@@ -210,72 +210,83 @@ test.each([false, true])(
   },
 );
 
-test("missing-root findings include folded journal ownership facts and share the cache-aware command", async () => {
-  const store = makeTestStateStore();
-  const key = `${sha256Hex(JSON.stringify(JSON.stringify(["user", root])))}.json`;
-  const bucket = await Effect.runPromise(
-    store.service.open({
-      root: "userData",
-      namespace: "accelerated-starts",
-      key,
-      schema: Schema.Unknown,
-      version: 2,
-    }),
-  );
-  await Effect.runPromise(
-    bucket.set({
-      attemptId: "attempt-1",
-      appId: app,
-      appRoot: root,
-      providerId,
-      engineId: "mutagen",
-      mountPlanDigest: "mounts",
-      phase: "apply-intent",
-      sessions: [{ name: "web/app-mount", specDigest: "session" }],
-      targets: [
-        { service: "web", mountKey: "app-mount", volumeName: "app-sync", helperSpecDigest: "helper" },
-      ],
-    }),
-  );
-  const corruptKey = `${"b".repeat(64)}.json`;
-  const corrupt = await Effect.runPromise(
-    store.service.open({
-      root: "userData",
-      namespace: "accelerated-starts",
-      key: corruptKey,
-      schema: Schema.Unknown,
-      version: 2,
-    }),
-  );
-  await Effect.runPromise(corrupt.set({ broken: true }));
-  const checks = await Effect.runPromise(
-    Effect.gen(function* () {
-      const fs = yield* FileSystem;
-      return yield* missingAppRootsDoctor((value) => value).pipe(
-        Effect.provideService(FileSystem, {
-          ...fs,
-          exists: () => Effect.succeed(false),
-          readDir: () => Effect.succeed([corruptKey, key]),
-        }),
-        Effect.provideService(
-          RuntimeProviderRegistry,
-          registry([snapshot(), snapshot(AbsolutePath.make("/apps/second"), true)]),
-        ),
-        Effect.provide(store.layer),
-      );
-    }).pipe(Effect.provide(BunFileSystem.layer)),
-  );
-  expect(checks).toHaveLength(2);
-  expect(checks[0]?.context).toMatchObject({
-    attempts: "attempt-1",
-    phases: "apply-intent",
-    engines: "mutagen",
-    sessions: "web/app-mount",
-    targets: "app-sync",
-  });
-  expect(checks.map((check) => check.solutions[0]?.command)).toEqual([
-    "lando apps:gc --prune --volumes --purge-caches",
-    "lando apps:gc --prune --volumes --purge-caches",
-  ]);
-  expect(await Effect.runPromise(corrupt.get)).toEqual({ broken: true });
-});
+test.each([false, true])(
+  "missing-root journal remediation respects prepared targets: %s",
+  async (prepared) => {
+    const store = makeTestStateStore();
+    const key = `${sha256Hex(JSON.stringify(JSON.stringify(["user", root])))}.json`;
+    const bucket = await Effect.runPromise(
+      store.service.open({
+        root: "userData",
+        namespace: "accelerated-starts",
+        key,
+        schema: Schema.Unknown,
+        version: 2,
+      }),
+    );
+    await Effect.runPromise(
+      bucket.set({
+        attemptId: "attempt-1",
+        appId: app,
+        appRoot: root,
+        providerId,
+        engineId: "mutagen",
+        mountPlanDigest: "mounts",
+        phase: "apply-intent",
+        sessions: [{ name: "web/app-mount", specDigest: "session" }],
+        targets: [
+          { service: "web", mountKey: "app-mount", volumeName: "app-sync", helperSpecDigest: "helper" },
+        ],
+      }),
+    );
+    const corruptKey = `${"b".repeat(64)}.json`;
+    const corrupt = await Effect.runPromise(
+      store.service.open({
+        root: "userData",
+        namespace: "accelerated-starts",
+        key: corruptKey,
+        schema: Schema.Unknown,
+        version: 2,
+      }),
+    );
+    await Effect.runPromise(corrupt.set({ broken: true }));
+    const checks = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem;
+        return yield* missingAppRootsDoctor((value) => value).pipe(
+          Effect.provideService(FileSystem, {
+            ...fs,
+            exists: () => Effect.succeed(false),
+            readDir: () => Effect.succeed([corruptKey, key]),
+          }),
+          Effect.provideService(RuntimeProviderRegistry, {
+            ...registry([snapshot(), snapshot(AbsolutePath.make("/apps/second"), true)]),
+            select: () =>
+              Effect.succeed({
+                ...TestRuntimeProvider,
+                capabilities: {
+                  ...TestRuntimeProvider.capabilities,
+                  ...(prepared ? { fileSyncTargets: "prepared-volume" as const } : {}),
+                },
+              }),
+          }),
+          Effect.provide(store.layer),
+        );
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+    expect(checks).toHaveLength(2);
+    expect(checks[0]?.context).toMatchObject({
+      attempts: "attempt-1",
+      phases: "apply-intent",
+      engines: "mutagen",
+      sessions: "web/app-mount",
+      targets: "app-sync",
+    });
+    expect(checks.map((check) => check.solutions[0]?.command)).toEqual([
+      `lando apps:gc --prune${prepared ? "" : " --volumes"} --purge-caches`,
+      `lando apps:gc --prune${prepared ? "" : " --volumes"} --purge-caches`,
+    ]);
+    if (prepared) expect(checks[0]?.solutions[0]?.description).toContain("cannot remove");
+    expect(await Effect.runPromise(corrupt.get)).toEqual({ broken: true });
+  },
+);

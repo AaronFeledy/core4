@@ -8,6 +8,7 @@ export const MissingAppRoot = Schema.Struct({
   providers: Schema.Array(ProviderId),
   appliedState: Schema.Boolean,
   runtimeObserved: Schema.Boolean,
+  fileSyncCopiesRemovable: Schema.Boolean,
   services: Schema.Array(Schema.String),
   dataVolumes: Schema.Array(Schema.String),
   cacheVolumes: Schema.Array(Schema.String),
@@ -18,6 +19,7 @@ export type MissingAppRoot = typeof MissingAppRoot.Type;
 export const MissingRootScan = Schema.Struct({
   providerId: ProviderId,
   runtimeObserved: Schema.Boolean,
+  recordedState: Schema.Boolean,
   message: Schema.String,
   complete: Schema.Boolean,
   errorTag: Schema.optionalKey(Schema.String),
