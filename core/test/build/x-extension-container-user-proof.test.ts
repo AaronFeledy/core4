@@ -32,6 +32,7 @@ import {
   evolveHistoricalToolingShorthand,
   evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 
 const landofileWithUser = (user: JsonValue) => ({
@@ -181,9 +182,12 @@ test.each([
     ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(jsonEquals(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected)), current)).toBe(
-    true,
-  );
+  expect(
+    jsonEquals(
+      evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+      current,
+    ),
+  ).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;

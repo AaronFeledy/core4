@@ -25,7 +25,7 @@ tooling:
         required: true
         choices: [dev, prod]
         description: Environment to greet
-    cmd: echo "hello {{ default(flags.loud, false) ? upper(flags.name) : flags.name }} from {{ args.target }} via {{ task.canonicalId }}"
+    cmd: 'echo "hello {{ default(flags.loud, false) ? upper(flags.name) : flags.name }} from {{ args.target }} via {{ task.canonicalId }}"'
   deploy:
     description: Run against a chosen service
     flags:

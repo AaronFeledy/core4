@@ -27,6 +27,7 @@ import {
   evolveHistoricalToolingShorthand,
   evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import {
@@ -114,13 +115,15 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalDeprecationNotice(
-    evolveHistoricalToolingWrapper(
-      evolveHistoricalUploadDirs(
-        evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+  const evolved = evolveHistoricalToolingVars(
+    evolveHistoricalDeprecationNotice(
+      evolveHistoricalToolingWrapper(
+        evolveHistoricalUploadDirs(
+          evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+        ),
       ),
+      source,
     ),
-    source,
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;
