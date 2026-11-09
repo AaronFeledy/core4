@@ -181,7 +181,7 @@ lando destroy --root <path> --volumes
 
 When the managed runtime is positively identified as idle, `lando stop` finishes the app's host-side cleanup without starting it. Its `:host` event steps still run; steps that would run in a service container are skipped with a notice. `lando destroy` starts the idle runtime holding the app's resources so it can remove them, including when you use `--root`. Normal data-retention rules still apply.
 
-On macOS and Windows, an absent API and a managed machine inspected as stopped establish idle. On Linux and WSL, an absent API remains unavailable, including after `poweroff` or a reboot: process observations cannot prove that no workloads survive. `lando list` reports `unknown` and stop fails closed. Inspect the runtime service log named by `lando doctor`; `lando start` can restore runtime access. Observation and stop never launch it.
+On macOS and Windows, an absent API and a managed machine inspected as stopped establish idle. On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `poweroff` or when it comes from an earlier boot, provided the API is absent and no managed processes match. Each runtime launch invalidates that evidence first. Without valid receipt evidence, `lando list` reports `unknown` and stop fails closed; process observations alone cannot prove workloads stopped. Observation and stop never launch the runtime.
 
 To stop everything Lando is running:
 

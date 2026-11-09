@@ -45,7 +45,7 @@ against the app's selected provider; rebuild also runs service readiness gates.
 
 On macOS and Windows, an absent API endpoint and a managed machine inspected as stopped establish idle. Doctor reports `idle (starts on demand)` and passes `selected-provider` and `runtime-service` without asking you to run setup. It skips container exec probes, container event history, router and SSH sidecar readiness, host-proxy reachability, and app listeners on that idle provider. Host SSH and GPG agent checks, host-proxy directory privacy, and saved-state checks still run. Neither doctor nor `--fix` starts an idle runtime.
 
-On Linux and WSL, an absent API remains unavailable, including after `lando poweroff` or a reboot. Workloads can survive the API service, and a process scan cannot prove they stopped. Doctor reports unknown runtime state with remediation to inspect the service log; `lando list` keeps app state `unknown`. HTTP, protocol, permission, and timeout failures also remain failures rather than becoming idle.
+On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `lando poweroff`, or when the receipt comes from an earlier boot, provided the API is absent and no managed processes match. Each launch invalidates the receipt before starting the service. Doctor passes `selected-provider` for idle, and `lando list` reports apps as `stopped`. Without valid receipt evidence, runtime state remains unknown; process observations alone cannot prove workloads stopped. HTTP, protocol, permission, and timeout failures remain failures rather than becoming idle.
 
 JSON reports keep these entries in the report's `skipped` array, separate from
 `subsystems.checks`. The library `doctorReport()` skips the subsystem section
