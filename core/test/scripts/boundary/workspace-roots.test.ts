@@ -128,7 +128,7 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
-  test("routes runtime boundary rules through the core-and-plugin source tier", () => {
+  test("routes runtime boundary rules through the shared tier with the provider mapping extension", () => {
     // Given: residual rules whose behavior applies across every shipped runtime source tier
     for (const id of CORE_AND_PLUGIN_RULE_IDS) {
       // When: reading each rule's declared scope from the live registry
@@ -136,7 +136,11 @@ describe("workspace source-root drift gate", () => {
 
       // Then: every scope consumes the shared core-and-plugin roots exactly
       expect(rule).toBeDefined();
-      expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS);
+      expect(rule?.scope.roots).toEqual(
+        id === "effect-idioms"
+          ? [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src"]
+          : CORE_AND_PLUGIN_SOURCE_ROOTS,
+      );
     }
   });
 

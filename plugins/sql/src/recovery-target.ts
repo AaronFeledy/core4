@@ -1,4 +1,5 @@
 import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Option } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
@@ -215,7 +216,7 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
   );
   const exactTransition = (running: boolean, transition: Effect.Effect<void, unknown>) =>
     transition.pipe(
-      Effect.mapError((error) =>
+      mapFailures((error) =>
         Option.getOrElse(normalizeCommandFailure(error), () =>
           recoveryUnavailable(
             input.serviceName,

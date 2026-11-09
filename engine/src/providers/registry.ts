@@ -3,7 +3,7 @@ import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { GlobalConfigSources } from "../services/config.ts";
 
-import { mapFailureCause } from "@lando/sdk/command-result";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
@@ -82,13 +82,13 @@ export const makeRuntimeProviderRegistry = (
           : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
       const redactContributionErrors = <A, R>(effect: Effect.Effect<A, ProviderUnavailableError, R>) =>
-        Effect.catchCause(effect, (cause) => Effect.failCause(mapFailureCause(cause, redactFailure)));
+        mapFailures(effect, redactFailure);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
       const httpClient = yield* HttpClient.HttpClient;
 
       const providerManifests = pluginRegistry.list.pipe(
-        Effect.mapError((cause) => redactFailure(toProviderUnavailable(cause))),
+        mapFailures((cause) => redactFailure(toProviderUnavailable(cause))),
       );
       const providerIds = providerManifests.pipe(
         Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
@@ -137,7 +137,7 @@ export const makeRuntimeProviderRegistry = (
         const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
           paths.pluginStateDir(module.name),
         ).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new ProviderUnavailableError({
                 providerId: providerIdText,
@@ -147,7 +147,7 @@ export const makeRuntimeProviderRegistry = (
                 cause,
               }),
           ),
-          Effect.mapError(redactFailure),
+          mapFailures(redactFailure),
         );
         const publishRender =
           eventService._tag === "Some" && redaction._tag === "Some"
@@ -250,7 +250,7 @@ export const makeRuntimeProviderRegistry = (
             );
           return yield* contribution
             .appliedStateInventory(context)
-            .pipe(Effect.provideService(PathsService, paths), Effect.mapError(redactFailure));
+            .pipe(Effect.provideService(PathsService, paths), mapFailures(redactFailure));
         }),
         assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
           function* (plan) {

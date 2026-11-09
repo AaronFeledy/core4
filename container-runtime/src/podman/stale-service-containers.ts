@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AppId,
@@ -123,7 +124,7 @@ export const removeStaleServiceContainers = Effect.fn("RuntimeProvider.removeSta
           containerId: stale.containerId,
         },
         { api, ctx },
-      ).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
+      ).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
       changed = changed || result.changed;
       shutdownObservations.push(...result.shutdownObservations);
     }

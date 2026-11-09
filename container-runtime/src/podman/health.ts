@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Duration, Effect, Ref, Schema } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -100,7 +101,7 @@ export const waitForServiceHealth = Effect.fn("RuntimeProvider.waitForServiceHea
     },
     attempt,
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       unavailableFromProbe(ctx, {
         service,
         attempts: 0,

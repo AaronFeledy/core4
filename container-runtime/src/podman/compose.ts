@@ -1,4 +1,5 @@
 import { join as pathJoin } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   APP_LABEL,
   PROVIDER_LABEL,
@@ -413,7 +414,7 @@ export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
     return { path: outputPath, content };
   },
   (effect, _plan, options) =>
-    Effect.mapError(effect, (cause) => {
+    mapFailures(effect, (cause) => {
       if (cause instanceof ProviderInternalError) {
         return cause;
       }

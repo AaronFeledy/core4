@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect } from "effect";
 
@@ -58,7 +59,7 @@ export const resolveSnapshotSource = (
         fromApp === input.plan.id || input.appliedPlans === undefined
           ? []
           : yield* input.appliedPlans.pipe(
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new SqlRecoveryUnavailableError({
                     message: `Cannot resolve snapshot source ${fromApp}.`,

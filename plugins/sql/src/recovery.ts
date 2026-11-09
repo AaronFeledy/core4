@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Exit, Option, absurd } from "effect";
 
 import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
@@ -92,7 +93,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
         if (input.resumeAfterSnapshot && context.running) yield* context.resume;
         return yield* input.body(context, recovery.id);
       }).pipe(
-        Effect.mapError((cause) => {
+        mapFailures((cause) => {
           const normalized = normalizeCommandFailure(cause);
           if (Option.isSome(normalized)) {
             const failure = normalized.value;

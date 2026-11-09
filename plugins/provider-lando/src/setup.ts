@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { chmod, lstat, readFile, rename } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
 import { RecordedMachineOwnership, SetupMachineOwnership } from "./setup-machine-ownership.ts";
 
@@ -547,7 +548,7 @@ export const makeSystemPodmanMachineRunner = (
       "activateApiSocket",
       platform,
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ProviderUnavailableError({
             providerId: PROVIDER_ID,
@@ -624,7 +625,7 @@ export const makeSystemPodmanMachineRunner = (
       for (const port of claims.keys()) if (candidates.has(port)) occupied.add(port);
       return ports.filter((port) => occupied.has(port));
     }).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ProviderUnavailableError({
             providerId: PROVIDER_ID,
@@ -990,7 +991,7 @@ const resolveSetupPodmanCommandRunner = (
   const runner = makeSystemPodmanCommandRunner(podmanBin);
   return Effect.succeed({
     version: runner.version.pipe(
-      Effect.mapError((cause) => bundledPodmanLaunchError(platform, podmanBin, cause)),
+      mapFailures((cause) => bundledPodmanLaunchError(platform, podmanBin, cause)),
     ),
   });
 };
@@ -1307,7 +1308,7 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
 
   const withInstallationLock = <A, E>(body: Effect.Effect<A, E>) =>
     (options.endpointOwnership === "external" ? body : (options.withRuntimeLock?.(body) ?? body)).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof StateStoreError
           ? new ProviderUnavailableError({
               providerId: "lando",
@@ -1383,7 +1384,7 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
         ? api === undefined
           ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
           : api.info.pipe(
-              Effect.mapError((cause) => new PodmanSocketUnreachableError(cause)),
+              mapFailures((cause) => new PodmanSocketUnreachableError(cause)),
               Effect.map((value) => infoPodmanVersion(value) ?? "unknown"),
             )
         : (options.podmanCommand !== undefined
@@ -1518,7 +1519,7 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
         api === undefined
           ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
           : api.info.pipe(
-              Effect.mapError((cause) => new PodmanSocketUnreachableError(cause)),
+              mapFailures((cause) => new PodmanSocketUnreachableError(cause)),
               Effect.tap((value) => {
                 const apiVersion = infoPodmanVersion(value);
                 return apiVersion === undefined

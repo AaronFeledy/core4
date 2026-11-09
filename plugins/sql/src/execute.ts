@@ -1,4 +1,5 @@
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Stream, absurd, flow } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
@@ -440,7 +441,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     }
 
     yield* progress.complete.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         completionReceipt === undefined
           ? cause
           : new SqlRecoveryOperationError({

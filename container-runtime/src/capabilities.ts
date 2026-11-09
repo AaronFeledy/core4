@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect";
+import { mapFailures } from "@lando/sdk/command-result";
+import { Schema } from "effect";
 
 import { ProviderCapabilityError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
@@ -15,7 +16,7 @@ export type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"]
 
 export const decodeProviderCapabilitiesFor = (providerId: string) => (input: unknown) =>
   Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ProviderCapabilityError({
           providerId,

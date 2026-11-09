@@ -8,6 +8,7 @@ import {
 import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 import { runObservationFromListState } from "@lando/container-runtime/run-observation";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import {
   type HostProxyContainerTarget,
@@ -299,7 +300,7 @@ export const introspectProviderCapabilities = (
   dockerHost = "/var/run/docker.sock",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ProviderInternalError
         ? new ProviderCapabilityError({
             providerId: PROVIDER_ID,

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect } from "effect";
 
 import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -236,11 +237,11 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   // Whole-app stop shares stale-name selection with bring-up: list once, remove owned
   // plan-service containers whose native name is not the current planned name.
   const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
-    Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+    mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );
   const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
   const stale = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
-    Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+    mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );
   changed = changed || stale.changed;
   shutdownObservations.push(...stale.shutdownObservations);
@@ -250,7 +251,7 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
       ...options,
       api,
       ctx: stopCtx,
-    }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
+    }).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
     changed = changed || result.changed;
     // The removed old-named container already reported this service; its absent planned name adds nothing.
     shutdownObservations.push(
@@ -266,18 +267,18 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     if (authored !== undefined && Object.keys(authored.members).some((member) => !(member in plan.services)))
       continue;
     const removed = yield* removeNetwork(deps, plan, name).pipe(
-      Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+      mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
     );
     networkRemoved = networkRemoved || removed;
   }
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan).pipe(
-      Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+      mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
     );
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
       const pruned = yield* pruneAppScopedVolumes(deps, plan).pipe(
-        Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+        mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
       );
       volumesRemoved = volumesRemoved || pruned;
     }

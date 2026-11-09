@@ -3,6 +3,16 @@ import ts from "@typescript/typescript6";
 import type { BoundaryRule } from "../types.ts";
 import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
+const providerSourcePrefixes = [
+  "container-runtime/src/",
+  "plugins/provider-docker/src/",
+  "plugins/provider-lando/src/",
+  "plugins/provider-podman/src/",
+  "engine/src/providers/",
+  "data-mover/src/",
+  "plugins/sql/src/",
+] as const;
+
 const unwrap = (expression: ts.Expression): ts.Expression => {
   if (
     ts.isParenthesizedExpression(expression) ||
@@ -83,7 +93,7 @@ const exported = (node: ts.Node): boolean => {
 export const effectIdiomsRule = {
   id: "effect-idioms",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src"],
     extensions: [".ts"],
     excludeDirNames: ["dist", "node_modules"],
     excludeTestFiles: true,
@@ -130,6 +140,23 @@ export const effectIdiomsRule = {
         }
       };
       const visit = (node: ts.Node): void => {
+        if (
+          providerSourcePrefixes.some((prefix) => file.relativePath.startsWith(prefix)) &&
+          (ts.isPropertyAccessExpression(node) ||
+            (ts.isIdentifier(node) && !ts.isImportSpecifier(node.parent)))
+        ) {
+          const path = importedPath(node, checker);
+          if (path === "effect/Effect/mapError" || path === "effect/Stream/mapError") {
+            report(
+              node,
+              "Use mapFailures/mapStreamFailures from @lando/sdk/command-result: Effect 4 mapError keeps only the first failure and drops cleanup reasons, defects, and interrupts.",
+            );
+          }
+        }
+        if (file.relativePath.startsWith("container-runtime/src/")) {
+          ts.forEachChild(node, visit);
+          return;
+        }
         if (
           ts.isCallExpression(node) &&
           ts.isPropertyAccessExpression(node.expression) &&

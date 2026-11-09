@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type ObservedServiceRemoval, ServiceShutdownObservation } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
@@ -79,7 +80,7 @@ export const stopAndRemoveContainer = Effect.fn("ContainerShutdown.stopAndRemove
   const removed = yield* removeRuntimeContainer(options.api, identity.containerId, {
     ...options.ctx,
     operation: "bringDown.remove",
-  }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
+  }).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
   return {
     changed: response.status === 204 || removed,
     kind: removed ? "removed" : "absent",

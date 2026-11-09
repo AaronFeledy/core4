@@ -1,5 +1,6 @@
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
+import { mapFailures } from "@lando/sdk/command-result";
 
 /**
  * `@lando/provider-podman` — opt-in RuntimeProvider for a user-installed
@@ -688,7 +689,7 @@ const assembleRuntimeProvider = (
         }),
       ),
     ),
-    Effect.mapError((cause) => {
+    mapFailures((cause) => {
       if (cause instanceof PodmanServerVersionUnsupportedError) return cause;
       if (cause instanceof ProviderUnavailableError) {
         if ((family === "darwin" || family === "win32") && isLikelyMachineNotRunning(cause)) {

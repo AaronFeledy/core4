@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 import { withContainerHelper } from "./convenience-helper.ts";
@@ -1388,7 +1389,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               policy: "missing",
             }).pipe(
               Effect.asVoid,
-              Effect.mapError((cause) =>
+              mapFailures((cause) =>
                 cause instanceof ProviderUnavailableError
                   ? cause
                   : new ProviderUnavailableError({

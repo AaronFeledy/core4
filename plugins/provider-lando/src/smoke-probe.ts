@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, type Scope } from "effect";
 
@@ -100,7 +101,7 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
       }),
     ),
   ).pipe(
-    Effect.mapError(mapProbeError("run")),
+    mapFailures(mapProbeError("run")),
     Effect.flatMap((result) => requireGreen("run", result)),
   );
 
@@ -136,7 +137,7 @@ export const runBuildSmokeProbe = (deps: SmokeProbeDeps, baseImage: string) => {
     { id: "provider-lando-smoke-build", policy: deps.retryPolicy ?? defaultSmokeRetryPolicy },
     attempt,
   ).pipe(
-    Effect.mapError(mapProbeError("build")),
+    mapFailures(mapProbeError("build")),
     Effect.flatMap((result) => requireGreen("build", result)),
   );
 };
@@ -192,7 +193,7 @@ export const runHealthSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
           ),
           Effect.map((response) => parseSmokeHealth(response.body)),
         ),
-      ).pipe(Effect.mapError(mapProbeError("health")));
+      ).pipe(mapFailures(mapProbeError("health")));
       if (result.outcome === "green") return;
       return yield* Effect.fail(failureFromResult("health", result, { lastHealth }));
     }),

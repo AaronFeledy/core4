@@ -1,24 +1,18 @@
 import { redactProviderError } from "@lando/redaction/provider-error";
-import { mapFailureCause } from "@lando/sdk/command-result";
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
-import { type Cause, Effect, Stream } from "effect";
+import type { Effect, Stream } from "effect";
 import type { ProviderErrorMember } from "./output-policy.ts";
 
 export const withProviderErrorRedaction = (
   runtime: RuntimeProviderShape,
   redactor: Redactor,
 ): RuntimeProviderShape => {
-  const redactFailures = <E>(redact: (error: E) => E) =>
-    Effect.catchCause((cause: Cause.Cause<E>) => Effect.failCause(mapFailureCause(cause, redact)));
   const effect = <A, R>(value: Effect.Effect<A, ProviderError, R>) =>
-    value.pipe(redactFailures((error) => redactProviderError(error, redactor)));
+    value.pipe(mapFailures((error) => redactProviderError(error, redactor)));
   const stream = <A, R>(value: Stream.Stream<A, ProviderError, R>) =>
-    value.pipe(
-      Stream.catchCause((cause) =>
-        Stream.failCause(mapFailureCause(cause, (error) => redactProviderError(error, redactor))),
-      ),
-    );
+    value.pipe(mapStreamFailures((error) => redactProviderError(error, redactor)));
   const {
     appliedPlans,
     cleanupOwnedResources,
@@ -40,7 +34,7 @@ export const withProviderErrorRedaction = (
     adoptVolume,
   } = runtime;
   const adapters = {
-    isAvailable: runtime.isAvailable.pipe(redactFailures((error) => redactProviderError(error, redactor))),
+    isAvailable: runtime.isAvailable.pipe(mapFailures((error) => redactProviderError(error, redactor))),
     ...(appliedPlans === undefined ? {} : { appliedPlans: effect(appliedPlans) }),
     ...(cleanupOwnedResources === undefined
       ? {}

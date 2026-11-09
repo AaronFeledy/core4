@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Exit } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
@@ -124,7 +125,7 @@ export const observeDatabaseVersion = (input: {
         yield* input.deps
           .suspend(input.service, input.runtime)
           .pipe(
-            Effect.mapError(() =>
+            mapFailures(() =>
               recoveryUnavailable(
                 input.service,
                 "The inspected database runtime could not be safely resumed and returned to stopped.",
@@ -144,7 +145,7 @@ export const observeDatabaseVersion = (input: {
       yield* input.deps
         .suspend(input.service, input.runtime)
         .pipe(
-          Effect.mapError(() =>
+          mapFailures(() =>
             recoveryUnavailable(
               input.service,
               "The temporarily resumed database runtime could not be returned to stopped.",

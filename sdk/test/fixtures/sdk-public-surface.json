@@ -552,6 +552,8 @@
       "internalErrorRemediation",
       "listSelectableResultKeys",
       "mapFailureCause",
+      "mapFailures",
+      "mapStreamFailures",
       "mergeFailure",
       "normalizeDefect",
       "primaryFailureReason",

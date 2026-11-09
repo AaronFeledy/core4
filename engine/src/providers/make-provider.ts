@@ -2,6 +2,7 @@ import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   HealthcheckError,
   ProviderCapabilityError,
@@ -124,7 +125,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
                           : { runners: services.hostProbeRunners }),
                         ...(options.signal === undefined ? {} : { signal: options.signal }),
                       }).pipe(
-                        Effect.mapError((error) =>
+                        mapFailures((error) =>
                           error instanceof HealthcheckError
                             ? new ServiceExecError({
                                 providerId: runtime.id,
@@ -146,7 +147,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
           errorRedactor,
         ),
       ),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         redactProviderError(
           cause instanceof ProviderCapabilityError
             ? new ProviderUnavailableError({

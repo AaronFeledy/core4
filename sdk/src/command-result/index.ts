@@ -12,6 +12,8 @@ export {
   failureDefectCause,
   failureOutcomeFromCause,
   mapFailureCause,
+  mapFailures,
+  mapStreamFailures,
   mergeFailure,
   primaryFailureReason,
   type ProjectedFailure,

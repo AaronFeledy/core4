@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Duration, Effect } from "effect";
 
@@ -89,7 +90,7 @@ const terminateAndWait = (
               return !managed;
             }),
           ).pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               reaperError(`Failed to probe managed Lando runtime service PID ${pid}.`, { pid }, cause),
             ),
           ),

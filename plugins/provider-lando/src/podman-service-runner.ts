@@ -1,6 +1,7 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { managedPodmanChildEnv } from "@lando/container-runtime/podman/managed-invocation";
 import { prepareManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
@@ -204,7 +205,7 @@ export const makeSystemPodmanServiceRunner = (
         runRoot === undefined
           ? undefined
           : yield* prepare(dirname(runRoot), { privateRuntimeDir: spec.env?.XDG_RUNTIME_DIR }).pipe(
-              Effect.mapError((cause) => new RuntimeLaunchError(cause.message, cause)),
+              mapFailures((cause) => new RuntimeLaunchError(cause.message, cause)),
             );
       return yield* Effect.try({
         try: () => {

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ListenerObservation } from "@lando/sdk/schema";
 import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
@@ -689,7 +690,7 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
 
 const removeContainer = (deps: BringUpDeps, service: ServicePlan, name: string) =>
   removeRuntimeContainer(deps.api, name, { ...deps.options.ctx, operation: "bringUp.remove" }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       podmanFailure(deps, {
         service,
         operation: "bringUp.remove",
@@ -707,7 +708,7 @@ const publish = (
   deps.options.eventService === undefined
     ? Effect.void
     : deps.options.eventService.publish(event).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ProviderInternalError({
               providerId: deps.options.ctx.providerId,

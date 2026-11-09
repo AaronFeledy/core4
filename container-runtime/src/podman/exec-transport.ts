@@ -1,3 +1,4 @@
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { Clock, DateTime, Duration, Effect, Option, Ref, type Scope, Stream } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
@@ -275,7 +276,7 @@ const waitForExecCompletion = Effect.fnUntraced(function* (
       Effect.tap((outcome) => Ref.set(last, outcome)),
     ),
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       execFailure(session, {
         message: "Podman exec completion probe failed.",
         details: { execId, cause },
@@ -310,7 +311,7 @@ const waitForExecCompletion = Effect.fnUntraced(function* (
       return now - last >= 500;
     }),
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       execFailure(session, {
         message: "Podman exec output drain probe failed.",
         details: { execId, cause },
@@ -555,7 +556,7 @@ export const execStream = (
               });
             }),
           ),
-          Stream.mapError((error) => execStartFailure(session, target, error)),
+          mapStreamFailures((error) => execStartFailure(session, target, error)),
           command.tty === true
             ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
             : options.validateAttach !== undefined

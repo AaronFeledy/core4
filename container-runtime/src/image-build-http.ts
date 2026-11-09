@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Option, Predicate } from "effect";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -141,7 +142,7 @@ export const requestContainerBuild = (
         stdin: input.stdin,
       })
       .pipe(
-        Effect.mapError((cause) => mapRequestError(input.options, redactor, cause)),
+        mapFailures((cause) => mapRequestError(input.options, redactor, cause)),
         Effect.flatMap(
           (response): Effect.Effect<string | undefined, ProviderUnavailableError | ArtifactBuildError> => {
             if (response.status < 200 || response.status >= 300) {
@@ -174,7 +175,7 @@ export const requestContainerBuild = (
         ),
         Effect.flatMap((digest) =>
           input.request({ method: "GET", path: `/images/${encodeURIComponent(input.tag)}/json` }).pipe(
-            Effect.mapError((cause) => mapRequestError(input.options, redactor, cause)),
+            mapFailures((cause) => mapRequestError(input.options, redactor, cause)),
             Effect.flatMap((response) =>
               response.status >= 200 && response.status < 300
                 ? Effect.succeed(digest)

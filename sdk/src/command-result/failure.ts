@@ -1,4 +1,5 @@
-import { Cause, Context } from "effect";
+import { Cause, Context, Effect, Stream } from "effect";
+import { dual } from "effect/Function";
 import type { FailureRole } from "../schema/failure-role.ts";
 import { normalizeDefect } from "./diagnostic.ts";
 
@@ -35,6 +36,42 @@ export const mapFailureCause = <E, E2>(
       }
     }),
   );
+
+/** Map every typed failure with its role and annotations, leaving Die and Interrupt reasons untouched. */
+export const mapFailures: {
+  <E, E2>(
+    f: (error: E, role: FailureRole | undefined) => E2,
+  ): <A, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E2, R>;
+  <A, E, R, E2>(
+    self: Effect.Effect<A, E, R>,
+    f: (error: E, role: FailureRole | undefined) => E2,
+  ): Effect.Effect<A, E2, R>;
+} = dual(
+  2,
+  <A, E, R, E2>(
+    self: Effect.Effect<A, E, R>,
+    f: (error: E, role: FailureRole | undefined) => E2,
+  ): Effect.Effect<A, E2, R> =>
+    Effect.catchCause(self, (cause) => Effect.failCause(mapFailureCause(cause, f))),
+);
+
+/** Map every typed stream failure with its role and annotations, leaving Die and Interrupt reasons untouched. */
+export const mapStreamFailures: {
+  <E, E2>(
+    f: (error: E, role: FailureRole | undefined) => E2,
+  ): <A, R>(self: Stream.Stream<A, E, R>) => Stream.Stream<A, E2, R>;
+  <A, E, R, E2>(
+    self: Stream.Stream<A, E, R>,
+    f: (error: E, role: FailureRole | undefined) => E2,
+  ): Stream.Stream<A, E2, R>;
+} = dual(
+  2,
+  <A, E, R, E2>(
+    self: Stream.Stream<A, E, R>,
+    f: (error: E, role: FailureRole | undefined) => E2,
+  ): Stream.Stream<A, E2, R> =>
+    Stream.catchCause(self, (cause) => Stream.failCause(mapFailureCause(cause, f))),
+);
 
 /** The reason the projection reports as primary, or `undefined` when the Cause has no Fail or Die. */
 export const primaryFailureReason = <E>(cause: Cause.Cause<E>): Cause.Reason<E> | undefined =>

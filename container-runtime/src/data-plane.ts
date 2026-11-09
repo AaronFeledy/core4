@@ -55,7 +55,8 @@ import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stre
 import {
   annotateFailureRole,
   failureDefectCause,
-  mapFailureCause,
+  mapFailures,
+  mapStreamFailures,
   mergeFailure,
 } from "@lando/sdk/command-result";
 
@@ -435,14 +436,10 @@ const legacyVolumeInfoFromEngineVolume = (
 };
 
 const redactFailures = (redactor: Redactor) =>
-  Effect.catchCause((cause: Cause.Cause<ProviderError>) =>
-    Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, redactor))),
-  );
+  mapFailures((error: ProviderError) => redactProviderError(error, redactor));
 
 const redactStreamFailures = (redactor: Redactor) =>
-  Stream.catchCause((cause: Cause.Cause<ProviderError>) =>
-    Stream.failCause(mapFailureCause(cause, (error) => redactProviderError(error, redactor))),
-  );
+  mapStreamFailures((error: ProviderError) => redactProviderError(error, redactor));
 
 const request = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.request === undefined
@@ -1282,7 +1279,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             ),
           ),
         ),
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
         ),
         Effect.scoped,
@@ -1406,7 +1403,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 ),
               ),
         ),
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           volumeError(options, "restoreVolume", "Provider volume restore failed.", undefined, cause, store),
         ),
       );
@@ -1447,7 +1444,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             ),
           );
         }),
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           volumeError(options, "listVolumes", "Provider volume list failed.", undefined, cause, filter.store),
         ),
       )) satisfies RuntimeProviderShape["listVolumes"],
@@ -1562,7 +1559,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                       headers: { "Content-Type": "application/x-tar" },
                       stdin,
                     }).pipe(
-                      Effect.mapError((cause) =>
+                      mapFailures((cause) =>
                         copyError(
                           options,
                           "copyToService",
@@ -1617,7 +1614,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                   ),
                 ),
               ),
-              Effect.mapError((cause) =>
+              mapFailures((cause) =>
                 copyError(
                   options,
                   "copyFromService",
@@ -1636,7 +1633,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         method: "GET",
         path: `/images/${encodeURIComponent(ref.ref)}/get`,
       }).pipe(
-        Stream.mapError((cause) =>
+        mapStreamFailures((cause) =>
           artifactError(
             options,
             "exportArtifact",
@@ -1657,7 +1654,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
               headers: { "Content-Type": "application/x-tar" },
               stdin,
             }).pipe(
-              Effect.mapError((cause) =>
+              mapFailures((cause) =>
                 artifactError(
                   options,
                   "importArtifact",
