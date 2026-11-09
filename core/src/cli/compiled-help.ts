@@ -81,6 +81,7 @@ const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): T
   ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
   ...(entry.source === undefined ? {} : { source: entry.source }),
   ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
 });
 
 export const toolingHelpEntryForToken = (
@@ -117,6 +118,7 @@ export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonl
         primary: name.primary,
         extras: name.extras,
         summary: entry.summary,
+        ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
       };
     })
     .toSorted(
@@ -131,6 +133,7 @@ const toCatalogRow = (row: ThisAppHelpRow, source: "built-in" | "tooling"): Help
   canonicalId: row.canonicalId,
   summary: row.summary,
   source,
+  ...(row.loadError === undefined ? {} : { loadError: row.loadError }),
 });
 
 const byTypeable = (left: HelpCatalogRow, right: HelpCatalogRow): number =>
@@ -187,7 +190,11 @@ export const buildHelpCatalog = (
             implementation: entry.plugin.spec === undefined ? "discovered" : "validated",
             ...(entry.plugin.loadError === undefined ? {} : { loadError: entry.plugin.loadError }),
           };
-        return { ...row, source: entry.source === "tooling" ? "tooling" : "built-in" };
+        return {
+          ...row,
+          source: entry.source === "tooling" ? "tooling" : "built-in",
+          ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+        };
       })
       .toSorted(byTypeable),
   };
@@ -281,6 +288,7 @@ export const printToolingHelp = (
         source: "tooling",
         ...(entry.input === undefined ? {} : { input: entry.input }),
         ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+        ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
       },
       activeResultFormat,
       context,

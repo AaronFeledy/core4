@@ -223,8 +223,8 @@ const runDynamicToolingFailure = (
 export const renderAliasResolutionFailure = async (
   error: unknown,
   context?: CliInvocationContext,
+  commandId = "cli:alias-resolution",
 ): Promise<void> => {
-  const commandId = "cli:alias-resolution";
   setActiveCommandId(commandId);
   await renderPreCommandFailure({
     ...(context === undefined ? {} : { context }),

@@ -1,7 +1,11 @@
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Result } from "effect";
 
-import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
+import type {
+  BunShellScriptInspection,
+  BunShellScriptProblem,
+  DiscoveredBunShellScript,
+} from "@lando/landofile/bun-sh-discovery";
 import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
@@ -84,4 +88,49 @@ export const compileAppCommands = (
     merged.push(entry);
   }
   return merged.sort((a, b) => compareOrdinal(a.id, b.id));
+};
+
+export const scriptLoadError = (
+  problem: BunShellScriptProblem,
+  redact: (text: string) => string,
+): NonNullable<CommandIndexEntry["loadError"]> => {
+  const bound = (text: string): string => {
+    const redacted = redact(text);
+    let result = "";
+    for (const character of redacted) {
+      if (Buffer.byteLength(result + character) > 1024) break;
+      result += character;
+    }
+    return result;
+  };
+  return {
+    _tag: problem.error._tag,
+    message: bound(problem.error.message),
+    remediation: bound(`Run lando app:config:lint to see every finding. ${problem.error.remediation}`),
+  };
+};
+
+export const compileInspectedAppCommands = (options: {
+  readonly landofile: LandofileShape;
+  readonly inspection: BunShellScriptInspection;
+  readonly effectiveTooling?: EffectiveTooling | undefined;
+  readonly redact: (text: string) => string;
+}): readonly CommandIndexEntry[] => {
+  const entries = [
+    ...compileAppCommands(options.landofile, options.inspection.scripts, options.effectiveTooling),
+  ];
+  const seen = new Set(entries.map((entry) => entry.id));
+  for (const problem of options.inspection.problems) {
+    if (problem.io) throw problem.error;
+    if (problem.id === undefined || seen.has(problem.id)) continue;
+    seen.add(problem.id);
+    entries.push({
+      id: problem.id,
+      summary: "Unavailable script",
+      hidden: false,
+      source: "bun-script",
+      loadError: scriptLoadError(problem, options.redact),
+    });
+  }
+  return entries.sort((a, b) => compareOrdinal(a.id, b.id));
 };

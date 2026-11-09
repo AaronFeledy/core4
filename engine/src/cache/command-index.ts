@@ -12,7 +12,7 @@ import {
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 8n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 9n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -29,6 +29,7 @@ export interface CommandIndexEntry {
   readonly input?: ToolingInputDeclaration;
   readonly wrapper?: true;
   readonly runs?: ToolingRunSummary;
+  readonly loadError?: { readonly _tag: string; readonly message: string; readonly remediation?: string };
 }
 
 interface CommandAliasPolicy {

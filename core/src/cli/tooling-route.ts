@@ -15,6 +15,7 @@ interface ToolingRouteMetadata {
   readonly input?: NonNullable<CommandIndexEntry["input"]>;
   readonly wrapper?: true;
   readonly runs?: NonNullable<CommandIndexEntry["runs"]>;
+  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
   readonly aliasPolicy?: NonNullable<AppCommandIndexPayload["aliasPolicy"]>;
 }
 
@@ -70,6 +71,7 @@ export const normalizedToolingRoute = (
   ...(entry.input === undefined ? {} : { input: entry.input }),
   ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
   ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
   ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
 });
 

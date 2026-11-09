@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileBunShellScriptCommands } from "@lando/engine/cache/command-compiler";
+import { compileInspectedAppCommands } from "@lando/engine/cache/command-compiler";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
 import type { McpCommandEntry, McpToolInput } from "@lando/mcp/registry";
@@ -50,7 +50,11 @@ const withScript = async (run: (root: string, path: string) => Promise<void>) =>
 const project = async (root: string) =>
   mcpRegistryWithToolingEntries(
     { commandEntries: [] },
-    compileBunShellScriptCommands(await Effect.runPromise(discoverBunShellScripts({ appRoot: root }))),
+    compileInspectedAppCommands({
+      landofile: {},
+      inspection: await Effect.runPromise(inspectBunShellScripts({ appRoot: root })),
+      redact: createRedactor("secrets").redactString,
+    }),
   );
 
 const retainedDispatch = (root: string, entry: McpCommandEntry, input: McpToolInput) =>
@@ -122,6 +126,14 @@ test("omits disabled scripts from the opt-in MCP projection", async () => {
     const registry = await project(root);
     // Then
     expect(registry.toolingEntries).toEqual([]);
+  });
+});
+
+test("omits broken scripts without losing healthy MCP tools (#2210)", async () => {
+  await withScript(async (root) => {
+    await writeFile(join(root, ".lando/scripts/broken.bun.sh"), "echo broken\n");
+    const registry = await project(root);
+    expect(registry.toolingEntries?.map((entry) => entry.spec.id)).toEqual(["app:inspect"]);
   });
 });
 

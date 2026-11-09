@@ -174,7 +174,7 @@ describe("discoverBunShellScripts", () => {
     });
   });
 
-  test("preserves an explicit service value in the front-matter", async () => {
+  test("reports a service-targeted script as unavailable during discovery", async () => {
     await withAppRoot(async (root) => {
       await writeScript(
         root,
@@ -189,9 +189,13 @@ describe("discoverBunShellScripts", () => {
           "",
         ].join("\n"),
       );
-      const scripts = await Effect.runPromise(discoverBunShellScripts({ appRoot: root }));
-      expect(scripts).toHaveLength(1);
-      expect(scripts[0]?.service).toBe("appserver");
+      const inspection = await Effect.runPromise(inspectBunShellScripts({ appRoot: root }));
+      expect(inspection.scripts).toHaveLength(0);
+      expect(inspection.problems[0]).toMatchObject({
+        id: "app:compose",
+        path: ["service"],
+        error: { _tag: "NotImplementedError" },
+      });
     });
   });
 

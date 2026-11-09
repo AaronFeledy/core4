@@ -142,6 +142,17 @@ const isEntry = (value: unknown): value is CommandIndexEntry =>
   (!Object.hasOwn(value, "source") || value.source === "bun-script") &&
   (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
   (!Object.hasOwn(value, "runs") || isRuns(value.runs)) &&
+  (!Object.hasOwn(value, "loadError") ||
+    (value.source === "bun-script" &&
+      !Object.hasOwn(value, "input") &&
+      !Object.hasOwn(value, "wrapper") &&
+      isCacheMapping(value.loadError) &&
+      isString(value.loadError._tag) &&
+      isString(value.loadError.message) &&
+      Buffer.byteLength(value.loadError.message) <= 1024 &&
+      (!Object.hasOwn(value.loadError, "remediation") ||
+        (isString(value.loadError.remediation) &&
+          Buffer.byteLength(value.loadError.remediation) <= 1024)))) &&
   (!Object.hasOwn(value, "input") || isInput(value.input));
 
 const isAliasPolicy = (value: unknown): boolean => {
@@ -163,7 +174,11 @@ const isReferencedFile = (value: unknown): boolean =>
   isString(own(value, "sha256"));
 
 const isScript = (value: unknown): boolean =>
-  isCacheMapping(value) && isString(own(value, "relativePath")) && isString(own(value, "sha256"));
+  isCacheMapping(value) &&
+  isString(own(value, "relativePath")) &&
+  (Object.hasOwn(value, "invalid")
+    ? isString(value.invalid) && !Object.hasOwn(value, "sha256")
+    : isString(own(value, "sha256")));
 
 const isVersionConstraint = (value: unknown): boolean => {
   if (!isCacheMapping(value) || !isString(own(value, "range")) || !isString(own(value, "source")))

@@ -11,6 +11,8 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 
 ### 12.1 Cache catalog
 
+The app command index retains healthy script metadata and unavailable script rows with bounded `loadError`; unavailable rows carry no executable input declaration. Entries and script fingerprints come from one inspection snapshot. Valid script fingerprints cover paths and normalized metadata only; invalid and ambiguous script paths use `{ relativePath, invalid: sha256(content) }`. I/O failures are never persisted as unavailable scripts. Landofile tasks take precedence when ids overlap.
+
 The persisted app-plan key includes private implementation coordinates `{ name, source, realpath, identity }` for every selected non-bundled plugin with a path (§9.7), the resolved planning data name, and app kind (`user`, `scratch`, or `global`). The contribution graph captures plugin coordinates when it imports packages, including entryless packages, and carries them to planning outside the SDK registry contract. Planning MUST NOT walk plugin trees again. An unchanged implementation retains cache hits; editing any included source file or repointing the same name and version to another realpath invalidates the key. If the post-import identity differs from the pre-import observation, that invocation MUST skip persistent plan-cache writes. Help, version, and fresh cached-tooling paths MUST NOT perform the identity walk. Plugin coordinates are key inputs and do not change payload semantics; the private app-plan schema revision is 50.
 
 `<userCacheRoot>` holds only regenerable caches, diagnostics, and operation-scoped temporary files (§7.5). Clearing it between operations MAY cost rebuild time or network access and MUST NOT lose ownership records, live-resource state, security floors such as the update-manifest replay floor (§17.6.1), or user data. Rows under `<userDataRoot>` are durable records listed here for their catalog identity.
@@ -49,6 +51,8 @@ Plugin command metadata has no persisted cache; it is projected from the plugin 
 The embedded container helper (§17.3) uses `<userCacheRoot>/tool-downloads/container-helper/linux-<arch>/<sha256>/lando-container-helper`; resolving it requires no download. The architecture directory is the stable read-only bind source (§5.3), so it and the digest directory MUST be mode `0755` on POSIX, as must the executable. Cache reuse MUST repair older restrictive modes on those directories so non-root container users can traverse them. This permission rule covers public helper artifacts only and does not relax private cache roots, credentials, logs, or staging directories. Desired, global, scratch, and provider-applied plans retain logical mounts, not this host delivery path or the selected helper digest (§5.5).
 
 ### 12.2 Cache encoding
+
+The private app command-index ABI is 9. ABI 8 and earlier are rejected and regenerated, with no migration or compatibility reader. Decoder invariants MUST reject `loadError` entries that also carry input declarations or wrapper routing metadata, non-script `loadError` entries, and message/remediation strings longer than 1 KiB of UTF-8. The stored diagnostics MUST be redacted before bounding. A fingerprint carries exactly one of a valid metadata `sha256` or an invalid content `invalid` digest.
 
 Router and tooling hot-path caches MUST use binary encoding. `Bun.serialize` is permitted for private cache shapes; public contract caches such as `AppPlan` use Effect Schema binary encoding. A cache MUST NOT mix encodings.
 
@@ -142,6 +146,8 @@ This durable provider-private identity record lets stop, destroy, and a convergi
 `ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the realized global provider, or the host provider when no applied global plan exists (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
 
 ### 12.5 Hot-path read budgets
+
+Known-route script freshness reads each cached path once. Inventory freshness finds newly added paths and newly ambiguous canonical ids; it MUST use one inspection pass, not re-read each script to derive its fingerprint. Changes to invalid content and repairs invalidate deterministically, while body-only changes to valid scripts remain fresh. Performance changes MUST be measured over both normal and inventory reads using substantial script bodies; timing thresholds do not belong in new correctness tests.
 
 Warm router reads of core, app-command, and CWD-map indexes MUST complete in under 30 ms. Warm tooling reads of `app-plan` and compiled `ToolingProgram` MUST independently complete in under 30 ms. No provider contact, include resolution, expression parsing, or graph construction occurs on these paths. The perf-budget suite enforces both (§13.1), alongside the user-visible budgets in §2.1.
 

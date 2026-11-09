@@ -27,6 +27,7 @@
     "./cache/app-plan": "./src/cache/app-plan.ts",
     "./cache/atomic": "./src/cache/atomic.ts",
     "./cache/command-compiler": "./src/cache/command-compiler.ts",
+    "./cache/command-script-freshness": "./src/cache/command-script-freshness.ts",
     "./cache/command-index": "./src/cache/command-index.ts",
     "./cache/command-index-writer": "./src/cache/command-index-writer.ts",
     "./cache/paths": "./src/cache/paths.ts",
