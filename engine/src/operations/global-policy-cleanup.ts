@@ -83,7 +83,9 @@ export const cleanupDisabledGlobalResources = Effect.fn("GlobalPolicy.cleanupDis
     const resolved = teardown.success;
     const online = yield* Effect.result(
       Effect.gen(function* () {
-        return (yield* resolved.provider.isAvailable) && (yield* resolved.provider.getStatus).running;
+        return (
+          (yield* resolved.provider.isAvailable) && (yield* resolved.provider.getStatus).state === "running"
+        );
       }),
     );
     if (online._tag === "Failure" || !online.success) {

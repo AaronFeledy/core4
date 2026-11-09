@@ -191,7 +191,7 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
     }
     const observations = yield* Effect.result(
       Effect.gen(function* () {
-        if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
+        if (!(yield* provider.isAvailable))
           return yield* Effect.fail(
             new GlobalAppError({
               operation: "consumerImpact",
@@ -199,6 +199,7 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
               remediation: "Restore runtime access or explicitly acknowledge disruption.",
             }),
           );
+        if ((yield* provider.getStatus).state === "idle") return [];
         return yield* provider.list({ includeUnplanned: true, includeScratch: true });
       }),
     );

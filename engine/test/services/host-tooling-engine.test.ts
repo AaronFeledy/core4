@@ -127,7 +127,7 @@ const stubProvider: RuntimeProviderShape = {
   capabilities: stubCapabilities,
   isAvailable: Effect.succeed(false),
   setup: () => Effect.void,
-  getStatus: Effect.succeed({ running: false }),
+  getStatus: Effect.succeed({ state: "idle" }),
   getVersions: Effect.succeed({ provider: "0.0.0" }),
   buildArtifact: () => Effect.die("stub"),
   pullArtifact: () => Effect.die("stub"),

@@ -68,7 +68,7 @@ test("destroy --volumes after rename reaches old and new names through root owne
       data.set(plan.id, "new-data");
     },
     providerOverrides: {
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       cleanupOwnedResources: (_root, options) =>
         Effect.sync(() => {
           let removed = 0;

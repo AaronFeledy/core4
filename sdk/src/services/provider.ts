@@ -1,4 +1,4 @@
-import { Context, type Effect, type Redacted, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
 import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 
 import type {
@@ -118,10 +118,12 @@ export interface ProviderSetupOptions {
 
 export type ProviderSetupInspectOptions = Omit<ProviderSetupOptions, "privilege">;
 
-export interface ProviderStatus {
-  readonly running: boolean;
-  readonly message?: string;
-}
+/** Idle proves no workloads are running, but does not describe stored resources. */
+export const ProviderStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("running"), message: Schema.optionalKey(Schema.String) }),
+  Schema.Struct({ state: Schema.Literal("idle"), message: Schema.optionalKey(Schema.String) }),
+]);
+export type ProviderStatus = typeof ProviderStatus.Type;
 
 export interface ProviderVersions {
   readonly provider: string;

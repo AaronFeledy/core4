@@ -3,6 +3,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 import { withContainerHelper } from "./convenience-helper.ts";
+import { providerStatus } from "./provider-status.ts";
 
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -1708,9 +1709,19 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         }),
         getStatus: rejectIntelMacHost(platform, arch).pipe(
           Effect.andThen(
-            podmanApi === undefined
-              ? Effect.fail(makeUnavailable("getStatus"))
-              : podmanApi.info.pipe(Effect.as({ running: true, message: "runtime socket reachable" })),
+            providerStatus({
+              api: podmanApi,
+              platform: family,
+              machine: machineRunner,
+              managedPaths:
+                canEnsure && runtimeBinDir !== undefined
+                  ? {
+                      runtimeBinDir,
+                      providerSocketPath: ensureSocketPath,
+                      providerPidPath: options.providerPidPath,
+                    }
+                  : undefined,
+            }),
           ),
         ),
         getVersions: Effect.sync(() => ({

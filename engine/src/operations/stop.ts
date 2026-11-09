@@ -39,6 +39,7 @@ import {
   tearDownOwnedResources,
 } from "./owned-resource-teardown.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
+import { stopIdleApp } from "./stop-idle.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
 import { type RetirementReceipt, retireSupersededRealizations } from "./superseded-realizations.ts";
 
@@ -109,26 +110,32 @@ const stopAppWithResolvedPlan = (
           plan: placement.plan,
           root: placement.plan.root,
         };
-      if (placement.superseded.length > 0) {
+      const owningProvider = yield* registry.select(validatedTarget.plan);
+      yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
+      const { pending } = yield* readDiscardableStart(validatedTarget.app);
+      const runtimeState = (yield* owningProvider.getStatus).state;
+      if (runtimeState === "running" && placement.superseded.length > 0) {
         // Preserve cross-provider ambiguity and validate inventories before retirement.
         yield* registry.resolveTeardownEvidence(validatedTarget.root, {
           ...validatedTarget.app,
           id: placement.plan?.id ?? placement.superseded[0]?.id ?? validatedTarget.app.id,
         });
-        yield* preflightStopApp(validatedTarget);
+        yield* preflightStopApp(validatedTarget, runtimeState);
         retired = yield* retireSupersededRealizations(validatedTarget, placement.superseded, {
           provider: yield* registry.select(placement.plan ?? placement.superseded[0] ?? validatedTarget.plan),
           narration: "teardown",
         });
       }
-      yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
-      const { pending } = yield* readDiscardableStart(validatedTarget.app);
       const cleanup =
         execution.cleanupOwnership !== false
-          ? yield* prepareOwnedResourceCleanup(validatedTarget.root, {
-              volumes: false,
-              purgeCaches: false,
-            })
+          ? yield* prepareOwnedResourceCleanup(
+              validatedTarget.root,
+              {
+                volumes: false,
+                purgeCaches: false,
+              },
+              "stop",
+            )
           : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 });
       if (
         (pending === null || pending.phase === "completed") &&
@@ -162,6 +169,8 @@ const stopAppWithResolvedPlan = (
             };
           case "owned":
           case "absent": {
+            if (runtimeState === "idle")
+              yield* stopIdleApp(validatedTarget, yield* preflightStopApp(validatedTarget, runtimeState));
             const removed = yield* cleanup;
             return {
               result: withRetirement(
@@ -178,21 +187,28 @@ const stopAppWithResolvedPlan = (
         }
       }
       const provider = yield* registry.select(validatedTarget.plan);
-      const stopped = yield* withPlanVolumeCoordination({
-        plan: validatedTarget.plan,
-        provider,
-        stateStore,
-        body: Effect.fnUntraced(function* () {
-          yield* verifyActiveVolumeCoordination(provider);
-          const preflight = yield* preflightStopApp(validatedTarget);
-          return yield* stopAppWithPlanUnlocked(
+      const stopped = yield* runtimeState === "idle"
+        ? stopAppWithPlanUnlocked(
             options ?? {},
             validatedTarget,
             execution.runInitEvents !== false,
-            preflight,
-          );
-        }, Effect.provide(context)),
-      });
+            yield* preflightStopApp(validatedTarget, runtimeState),
+          )
+        : withPlanVolumeCoordination({
+            plan: validatedTarget.plan,
+            provider,
+            stateStore,
+            body: Effect.fnUntraced(function* () {
+              yield* verifyActiveVolumeCoordination(provider);
+              const preflight = yield* preflightStopApp(validatedTarget, runtimeState);
+              return yield* stopAppWithPlanUnlocked(
+                options ?? {},
+                validatedTarget,
+                execution.runInitEvents !== false,
+                preflight,
+              );
+            }, Effect.provide(context)),
+          });
       const removed = yield* cleanup;
       return {
         ...stopped,
@@ -313,7 +329,11 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
               requireAppliedEvidence: false,
             })).result;
           }
-          return yield* tearDownOwnedResources(resolution.root, { volumes: false, purgeCaches: false }).pipe(
+          return yield* tearDownOwnedResources(
+            resolution.root,
+            { volumes: false, purgeCaches: false },
+            "stop",
+          ).pipe(
             Effect.map(
               (removed): StopAppResult => ({
                 app: resolution.ownership[0]?.appIds[0] ?? resolution.root,

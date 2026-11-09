@@ -63,7 +63,7 @@ const remainingDataVolumesForRoot = Effect.fnUntraced(function* (root: AbsoluteP
   if (providerIds.length === 0) names.add("unobserved:providers");
   for (const providerId of providerIds) {
     const provider = yield* registry.select(providerId);
-    if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running) {
+    if (!(yield* provider.isAvailable) || (yield* provider.getStatus).state !== "running") {
       names.add(`unobserved:${providerId}`);
       continue;
     }

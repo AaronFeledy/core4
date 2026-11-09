@@ -36,14 +36,15 @@ const fixture = async (provider: string) => {
   const store = makeStateStore({
     privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
   });
-  const run = (failRemoval = false) =>
+  const run = (failRemoval = false, idle: boolean | "unknown" = false) =>
     Effect.runPromise(
       listServicesWithPrune({
         userDataRoot: root,
         userCacheRoot: root,
         discoverContainersEvidence: async () => ({
           apps: [],
-          confirmedProviderIds: [provider],
+          confirmedProviderIds: idle ? [] : [provider],
+          idleProviderIds: idle === true ? [provider] : [],
           ownedAppIds: [],
         }),
       }).pipe(
@@ -93,6 +94,17 @@ const fixture = async (provider: string) => {
     });
   return { root, paths, legacyDir, legacyPath, legacy, plan, store, run };
 };
+
+test.each([
+  { name: "idle", idle: true, status: "stopped" },
+  { name: "unknown", idle: "unknown", status: "unknown" },
+] as const)("$name never authorizes pruning retained inventory", async ({ idle, status }) => {
+  const f = await fixture("lando");
+  const result = await f.run(false, idle);
+  expect(result.apps).toMatchObject([{ appId: "alpha", status, stale: true }]);
+  expect(result.pruned).toEqual([]);
+  expect(await Bun.file(f.legacyPath).json()).toEqual(f.legacy);
+});
 
 test.each(["lando", "docker"])(
   "removes legacy-only arbitrary filenames when %s confirms empty",

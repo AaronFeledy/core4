@@ -27,6 +27,7 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -79,7 +80,7 @@ export const globalTeardownHarness = async (
     readonly volumes?: ReadonlyArray<VolumeInfo>;
     readonly destroyOutcome?: DestroyOutcome;
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
-    readonly status?: Effect.Effect<{ readonly running: boolean }, ProviderUnavailableError>;
+    readonly status?: RuntimeProviderShape["getStatus"];
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError>;
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly stopFailure?: boolean;
@@ -108,7 +109,7 @@ export const globalTeardownHarness = async (
     id: "lando",
     appliedPlans: input.appliedPlans ?? Effect.succeed(input.plan === undefined ? [] : [input.plan]),
     isAvailable: input.availability ?? Effect.succeed(true),
-    getStatus: input.status ?? Effect.succeed({ running: true }),
+    getStatus: input.status ?? Effect.succeed({ state: "running" as const }),
     ensureReady: Effect.sync(() => {
       calls.push("ensureReady");
     }),

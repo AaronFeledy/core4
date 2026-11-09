@@ -121,6 +121,16 @@ const PODMAN_CTX_BASE = {
     "Run `lando doctor --provider=podman` to inspect the Podman socket, then retry the failing command.",
 } as const;
 
+const unreachablePodman = (error: ProviderUnavailableError) =>
+  new ProviderUnavailableError({
+    providerId: error.providerId,
+    operation: "getStatus",
+    message: error.message,
+    remediation:
+      "Start the Podman API service, verify access to the configured Podman socket, then retry the command.",
+    cause: error,
+  });
+
 const podmanContextForEnv = (env: ProviderErrorContext["env"]): ProviderErrorContext => ({
   ...PODMAN_CTX_BASE,
   env,
@@ -803,7 +813,12 @@ const assembleRuntimeProvider = (
         Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
       ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
-      getStatus: Effect.succeed({ running: true, message: "ready" }),
+      getStatus: podmanApi.ping.pipe(
+        Effect.as({ state: "running" as const, message: "ready" }),
+        Effect.mapError((error) =>
+          error instanceof ProviderUnavailableError ? unreachablePodman(error) : error,
+        ),
+      ),
       getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
       getContainerDiedEvents: getContainerDiedEvents(podmanApi),
       buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>

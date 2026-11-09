@@ -55,8 +55,8 @@ describe("provider-docker isAvailable", () => {
     const availability = await Effect.runPromise(provider.isAvailable.pipe(Effect.flip));
     expect(availability.message).toContain("1.43-1.44");
     expect(availability.message).toContain("1.50-1.55");
-    const status = await Effect.runPromise(provider.getStatus);
-    expect(status.running).toBe(false);
+    const status = await Effect.runPromise(provider.getStatus.pipe(Effect.flip));
+    expect(status._tag).toBe("ProviderUnavailableError");
     expect(status.message).toContain("1.43-1.44");
     expect(status.message).toContain("1.50-1.55");
   });

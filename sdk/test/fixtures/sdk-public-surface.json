@@ -2087,6 +2087,7 @@
       "PluginTrustStore",
       "PrivilegeService",
       "ProcessRunner",
+      "ProviderStatus",
       "RecipeDecomposer",
       "RecipeManifestService",
       "RemoteSource",

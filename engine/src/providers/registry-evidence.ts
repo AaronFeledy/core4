@@ -41,11 +41,14 @@ export const makeAppliedStateProvider = Effect.fnUntraced(function* (
       Effect.flatMap((provider) =>
         provider.isAvailable.pipe(
           Effect.flatMap((available) =>
-            available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+            available ? Effect.as(provider.getStatus, true) : Effect.succeed(false),
           ),
         ),
       ),
-      Effect.catch(() => Effect.succeed(false)),
+    ),
+    runtimeOnline: runtime.pipe(
+      Effect.flatMap((provider) => provider.getStatus),
+      Effect.map((status) => status.state === "running"),
     ),
     list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
     listVolumes: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),

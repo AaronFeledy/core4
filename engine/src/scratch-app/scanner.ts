@@ -72,7 +72,7 @@ export class ScratchResourceScanner extends Context.Service<
                   Effect.flatMap((selected) =>
                     Effect.gen(function* () {
                       if (!(yield* selected.isAvailable)) return undefined;
-                      return (yield* selected.getStatus).running ? selected : undefined;
+                      return (yield* selected.getStatus).state === "running" ? selected : undefined;
                     }),
                   ),
                   Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(undefined)),

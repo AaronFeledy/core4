@@ -44,7 +44,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
   materialized: Schema.Boolean,
   revision: Schema.optionalKey(Schema.Number),
   policyState: Schema.Literals(["available", "unavailable"]),
-  runtimeState: Schema.Literals(["available", "unavailable"]),
+  runtimeState: Schema.Literals(["available", "unavailable", "idle"]),
   services: Schema.Array(GlobalStatusServiceSchema),
   pending: Schema.Array(GlobalReconciliationPending),
   diagnostics: Schema.Array(Schema.String),
@@ -112,11 +112,14 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
       : yield* Effect.result(
           provider.isAvailable.pipe(
             Effect.flatMap((available) =>
-              available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+              available
+                ? Effect.map(provider.getStatus, (status) => status.state)
+                : Effect.succeed(undefined),
             ),
           ),
         );
-  const online = availability?._tag === "Success" && availability.success;
+  const online = availability?._tag === "Success" && availability.success === "running";
+  const idle = availability?._tag === "Success" && availability.success === "idle";
   const observed =
     provider === undefined || !online
       ? undefined
@@ -146,7 +149,7 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     diagnostics.push(
       "Some global runtime observations have incomplete ownership metadata; their resource state is unknown.",
     );
-  if (observed?._tag !== "Success")
+  if (!idle && observed?._tag !== "Success")
     diagnostics.push(
       diagnostic(
         "The global runtime could not be observed; resource state is unknown.",
@@ -199,7 +202,7 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
       collected?.state ??
       (runtime !== undefined
         ? serviceStateOf(runtime)
-        : observed?._tag === "Success" && !ownershipUnknown
+        : (idle || observed?._tag === "Success") && !ownershipUnknown
           ? "stopped"
           : "unknown");
     const work = pending.filter((entry) => entry.services.length === 0 || entry.services.includes(name));
@@ -260,7 +263,11 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     materialized,
     ...(resolution._tag === "Success" ? { revision: resolution.success.policy.revision } : {}),
     policyState: resolution._tag === "Success" ? ("available" as const) : ("unavailable" as const),
-    runtimeState: observed?._tag === "Success" ? ("available" as const) : ("unavailable" as const),
+    runtimeState: idle
+      ? ("idle" as const)
+      : observed?._tag === "Success"
+        ? ("available" as const)
+        : ("unavailable" as const),
     services,
     pending: allPending,
     diagnostics,

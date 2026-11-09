@@ -29,7 +29,9 @@ export const snapshotGc = Effect.fn("Operations.snapshotGc")(function* (
     const running = yield* Effect.result(
       provider.isAvailable.pipe(
         Effect.flatMap((available) =>
-          available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+          available
+            ? Effect.map(provider.getStatus, (status) => status.state === "running")
+            : Effect.succeed(false),
         ),
       ),
     );

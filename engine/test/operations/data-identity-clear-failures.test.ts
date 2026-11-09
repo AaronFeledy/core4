@@ -25,7 +25,7 @@ test.each(["scoped", "observe", "select", "available", "status", "volumes", "lis
       onDestroy: () => {
         destroyed = true;
       },
-      providerOverrides: { getStatus: Effect.succeed({ running: true }) },
+      providerOverrides: { getStatus: Effect.succeed({ state: "running" as const }) },
     });
     const failure = new ProviderUnavailableError({
       providerId: "docker",
@@ -55,7 +55,9 @@ test.each(["scoped", "observe", "select", "available", "status", "volumes", "lis
                       id: docker,
                       isAvailable: failureAt === "available" ? Effect.fail(failure) : Effect.succeed(true),
                       getStatus:
-                        failureAt === "status" ? Effect.fail(failure) : Effect.succeed({ running: true }),
+                        failureAt === "status"
+                          ? Effect.fail(failure)
+                          : Effect.succeed({ state: "running" as const }),
                       listVolumes: () =>
                         failureAt === "volumes" ? Effect.fail(failure) : Effect.succeed([]),
                     }),

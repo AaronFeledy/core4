@@ -303,7 +303,8 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           Effect.gen(function* () {
             const registry = yield* RuntimeProviderRegistry;
             const provider = yield* registry.select(applied.provider);
-            if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running) return undefined;
+            if (!(yield* provider.isAvailable) || (yield* provider.getStatus).state !== "running")
+              return undefined;
             const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
             const active = new Set(
               observations

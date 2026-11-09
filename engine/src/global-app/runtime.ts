@@ -121,18 +121,16 @@ export const layer = Layer.effect(
         ),
       restartRunningService: (serviceId) =>
         observedProvider.pipe(
-          Effect.flatMap((provider) =>
-            provider
-              .list({ app: AppId.make("global") })
-              .pipe(
-                Effect.flatMap((services) =>
-                  services.some((service) => service.service === serviceId && service.status === "running")
-                    ? provider
-                        .restart({ app: AppId.make("global"), service: serviceId })
-                        .pipe(Effect.as(true))
-                    : Effect.succeed(false),
-                ),
-              ),
+          Effect.flatMap(
+            Effect.fnUntraced(function* (provider) {
+              if ((yield* provider.getStatus).state === "idle") return false;
+              const services = yield* provider.list({ app: AppId.make("global") });
+              return services.some((service) => service.service === serviceId && service.status === "running")
+                ? yield* provider
+                    .restart({ app: AppId.make("global"), service: serviceId })
+                    .pipe(Effect.as(true))
+                : false;
+            }),
           ),
           mapFailures(
             (cause) =>
