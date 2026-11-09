@@ -1,4 +1,5 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Context, Effect, Layer, Predicate, Result, Schema, Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -133,7 +134,7 @@ export class FileSyncResolver extends Context.Service<FileSyncResolver, FileSync
         });
         const provided = layer.pipe(Layer.provide(engineDeps));
         const built = yield* Layer.buildWithScope(provided, scope).pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof FileSyncStartError
               ? cause
               : new FileSyncStartError({
@@ -249,7 +250,7 @@ const loadContributionLayer = (
     const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
       deps.paths.pluginStateDir(pluginName),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new FileSyncStartError({
             engineId: candidate.id,

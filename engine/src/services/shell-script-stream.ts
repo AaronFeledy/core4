@@ -1,4 +1,5 @@
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { ProcessRunner, type ShellCommandOptions, type ShellScriptOptions } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
@@ -86,7 +87,7 @@ export const streamArgvCommand = Effect.fnUntraced(function* (
         context,
       ).pipe(
         Effect.provideService(ProcessRunner, processRunner.value),
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ToolingExecError({
               tool: execution.tool,

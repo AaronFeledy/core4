@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Result, Schema } from "effect";
 
@@ -74,7 +75,7 @@ export const publishWorkerRecord = (
   privateFileAccess: PrivateFileAccess,
 ) =>
   writeDetachedWorkerRecord(claim, { schema: HostProxyWorkerRecord, privateFileAccess }, record).pipe(
-    Effect.mapError(() => stateError("Failed to write host-proxy worker state.", claim.path)),
+    mapFailures(() => stateError("Failed to write host-proxy worker state.", claim.path)),
   );
 
 export const writeWorkerRecord = (
@@ -89,9 +90,7 @@ export const writeWorkerRecord = (
     (claim) => publishWorkerRecord(claim, record, privateFileAccess),
     privateFileAccess,
   ).pipe(
-    Effect.mapError(() =>
-      stateError("Failed to write host-proxy worker state.", workerStatePath(app, paths)),
-    ),
+    mapFailures(() => stateError("Failed to write host-proxy worker state.", workerStatePath(app, paths))),
   );
 
 export const withWorkerRecordLock = <A, E>(

@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Exit, Fiber, Layer, Option, Queue, Scope, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Queue, Scope, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
 
+import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
 import { HttpTrustError } from "@lando/sdk/errors";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader, EventService, type LandoEvent, OnlineAcquisition } from "@lando/sdk/services";
@@ -32,6 +33,7 @@ type Step =
   | { readonly kind: "body-error"; readonly cause: unknown }
   | { readonly kind: "status-error"; readonly status: number }
   | { readonly kind: "release-defect"; readonly cause: unknown }
+  | { readonly kind: "annotated-error"; readonly compound: boolean }
   | { readonly kind: "die" };
 
 interface Call {
@@ -98,6 +100,13 @@ const scriptedClient = (steps: ReadonlyArray<Step>, dir?: string) => {
               reason: new HttpClientError.TransportError({ request, cause: step.cause }),
             }),
           );
+        case "annotated-error": {
+          const error = new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({ request, cause: bunError("ECONNRESET") }),
+          });
+          const cause = mergeFailure(Cause.empty, Cause.fail(error), "cleanup");
+          return yield* Effect.failCause(step.compound ? Cause.combine(cause, Cause.interrupt()) : cause);
+        }
         case "die":
           return yield* Effect.die("transport bug");
       }
@@ -178,6 +187,28 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
 };
 
 describe("Downloader transient retry", () => {
+  test.each([true, false])(
+    "preserves mapped failure roles and never retries a mixed interruption (compound: %p)",
+    async (compound) => {
+      await withTempDir(async (dir) => {
+        const transport = scriptedClient([{ kind: "annotated-error", compound }]);
+        const { exit } = await runDownload(fileRequest(dir), transport, undefined, compound);
+
+        expect(transport.calls).toHaveLength(1);
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          expect(exit.cause.reasons).toHaveLength(compound ? 2 : 1);
+          expect(Cause.hasInterrupts(exit.cause)).toBe(compound);
+          const failure = exit.cause.reasons.find(Cause.isFailReason);
+          expect(failure?.error).toMatchObject({ _tag: "DownloadFetchError", reason: "connection-reset" });
+          if (failure !== undefined)
+            expect(Context.getOrUndefined(Cause.reasonAnnotations(failure), FailureRoleAnnotation)).toBe(
+              "cleanup",
+            );
+        }
+      });
+    },
+  );
   test("retries an opted-in connection reset after a 1 s backoff and pairs one pre/post event", async () => {
     await withTempDir(async (dir) => {
       // Given: the first GET resets before a response arrives.

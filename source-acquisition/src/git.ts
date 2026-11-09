@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -55,7 +56,7 @@ export const makeGitTransport = (
             },
           })
           .pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               acquisitionError(
                 "fetch-failed",
                 input.url,

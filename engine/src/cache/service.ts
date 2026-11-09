@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
@@ -26,7 +27,7 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A
   }
 
   return Schema.decodeUnknownEffect(schema)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (decodeError) =>
         new CacheError({
           message: `Cached value for ${key} failed schema decode.`,

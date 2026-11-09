@@ -21,7 +21,7 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
 import { REDACTED, type Redactor, isSecretFieldName } from "@lando/sdk/secrets";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
@@ -252,7 +252,7 @@ export const makeShellRunnerService = (
             const redaction = yield* ShellRedactionTokens;
             const result = yield* streamBunCommand(command, snapshot, { sink, context, redaction }).pipe(
               Effect.provideService(ProcessRunner, runner),
-              Effect.mapError((cause) => shellError(command, snapshot, cause)),
+              mapFailures((cause) => shellError(command, snapshot, cause)),
             );
             return yield* result.exitCode === 0
               ? Effect.succeed(result)
@@ -286,7 +286,7 @@ export const makeShellRunnerService = (
               redaction,
             }).pipe(
               Effect.provideService(ProcessRunner, runner),
-              Effect.mapError((cause) => shellError(command, snapshot, cause)),
+              mapFailures((cause) => shellError(command, snapshot, cause)),
               Effect.flatMap((result) =>
                 result.exitCode === 0
                   ? Effect.succeed(result)

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Layer } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
@@ -28,7 +29,7 @@ export const layer = Layer.effect(
   CertificateAuthority,
   Effect.gen(function* () {
     const resolver = yield* CertificateAuthorityResolver;
-    const resolve = yield* Effect.cached(resolver.resolve.pipe(Effect.mapError(resolutionError)));
+    const resolve = yield* Effect.cached(resolver.resolve.pipe(mapFailures(resolutionError)));
     return CertificateAuthority.of({
       id: "deferred",
       setup: (options) => Effect.flatMap(resolve, (authority) => authority.setup(options)),

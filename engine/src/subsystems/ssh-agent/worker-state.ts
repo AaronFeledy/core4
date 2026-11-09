@@ -2,6 +2,7 @@ import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RootOverrides } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AgentSocketKind, AppRef } from "@lando/sdk/schema";
@@ -48,10 +49,7 @@ const recordPath = (app: Pick<AppRef, "id" | "root">, options: AgentRelayWorkerS
 export const readAgentRelayWorkerRecord = (
   app: Pick<AppRef, "id" | "root">,
   options: AgentRelayWorkerStateOptions,
-) =>
-  readDetachedWorkerRecord(recordPath(app, options), AgentRelayWorkerRecord).pipe(
-    Effect.mapError(stateError),
-  );
+) => readDetachedWorkerRecord(recordPath(app, options), AgentRelayWorkerRecord).pipe(mapFailures(stateError));
 /** Publishes the record under a claim the caller already holds. */
 export const publishAgentRelayWorkerRecord = (
   claim: WorkerClaim,
@@ -67,7 +65,7 @@ export const publishAgentRelayWorkerRecord = (
     },
     record,
   ).pipe(
-    Effect.mapError(stateError),
+    mapFailures(stateError),
     Effect.andThen(
       Effect.tryPromise({
         try: () => ensureAgentRelayRunRoot(dirname(claim.path)),
@@ -93,7 +91,7 @@ export const withAgentRelayWorkerLock = <A, E>(
       privateFileAccess: options.privateFileAccess,
     },
     body,
-  ).pipe(Effect.mapError(stateError));
+  ).pipe(mapFailures(stateError));
 
 export const agentRelayWorkerProcessAlive = (pid: number): boolean => {
   try {
@@ -114,7 +112,7 @@ export const replaceAgentRelayWorkerClaim = Effect.fnUntraced(function* (
   const record = yield* readDetachedWorkerRecord(
     recordPath(app, options),
     TerminableAgentRelayWorkerRecord,
-  ).pipe(Effect.mapError(stateError));
+  ).pipe(mapFailures(stateError));
   const paths = sshAgentSessionPaths(app, options.paths, options.kind);
   const remove = Effect.tryPromise({
     try: async () => {
@@ -124,7 +122,7 @@ export const replaceAgentRelayWorkerClaim = Effect.fnUntraced(function* (
     catch: stateError,
   });
   if (record === undefined)
-    return yield* changeWorkerClaim(claim, "reap-stale", remove).pipe(Effect.mapError(stateError));
+    return yield* changeWorkerClaim(claim, "reap-stale", remove).pipe(mapFailures(stateError));
   const alive = options.isAlive ?? agentRelayWorkerProcessAlive;
   return yield* terminateWorker({
     claim,
@@ -167,14 +165,14 @@ export const replaceAgentRelayWorkerClaim = Effect.fnUntraced(function* (
           classify: { success: (value) => (value === false ? "green" : "red"), failure: () => "red" },
         },
         Effect.try({ try: () => alive(record.pid), catch: stateError }),
-      ).pipe(Effect.mapError(stateError));
+      ).pipe(mapFailures(stateError));
       if (exited.outcome !== "green")
         return yield* Effect.fail(
           stateError("Worker did not exit after termination; its state was retained."),
         );
     }),
     remove,
-  }).pipe(Effect.mapError(stateError));
+  }).pipe(mapFailures(stateError));
 });
 
 export const replaceExistingAgentRelayWorker = (
@@ -196,7 +194,7 @@ export const disposeAgentRelayWorker = Effect.fnUntraced(function* (
       try: () => rm(dirname(claim.path), { recursive: true, force: true }),
       catch: stateError,
     }),
-  ).pipe(Effect.mapError(stateError));
+  ).pipe(mapFailures(stateError));
 });
 
 export const terminateOwnedAgentRelayWorker = (

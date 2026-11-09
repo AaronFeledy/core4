@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   CurrentExecutableAppPlan,
@@ -12,7 +13,7 @@ import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
 export const encodeServicePlan = (appRoot: string, name: string, plan: ServicePlan) =>
   Schema.encodeEffect(ServicePlan)(plan).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new LandofileValidationError({
           message: `Planned service ${name} is invalid: ${cause.message}`,

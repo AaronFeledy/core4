@@ -4,6 +4,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -457,7 +458,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       services: plannedServiceDrafts.map((entry) => entry.draft),
     },
     preparedApp,
-  ).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
+  ).pipe(mapFailures((error) => appFeatureError(appRoot, error)));
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {
     if (providerSatisfiesCapability(providerCapabilities, capability)) continue;

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
@@ -180,7 +181,7 @@ export const globalTeardownHarness = async (
     RouterService,
     Effect.gen(function* () {
       const capturedRoot = (yield* (yield* GlobalAppService).paths.pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ProxyError({
               proxyId: router.id,

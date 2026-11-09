@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Result, Schema } from "effect";
 
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
@@ -127,12 +128,12 @@ const reconciliationBucket = Effect.fn("GlobalApp.reconciliationBucket")(functio
       onCorrupt: "fail",
       default: emptyState(),
     })
-    .pipe(Effect.mapError(receiptError));
+    .pipe(mapFailures(receiptError));
 });
 
 export const readGlobalReconciliation = Effect.fn("GlobalApp.readReconciliation")(function* () {
   const bucket = yield* reconciliationBucket();
-  return (yield* bucket.get.pipe(Effect.mapError(receiptError))) ?? emptyState();
+  return (yield* bucket.get.pipe(mapFailures(receiptError))) ?? emptyState();
 });
 
 /**
@@ -168,7 +169,7 @@ const updateReconciliation = Effect.fn("GlobalApp.updateReconciliation")(functio
  */
 const whenRecorded = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   reconciliationBucket().pipe(
-    Effect.flatMap((bucket) => bucket.exists.pipe(Effect.mapError(receiptError))),
+    Effect.flatMap((bucket) => bucket.exists.pipe(mapFailures(receiptError))),
     Effect.flatMap((exists) => (exists ? Effect.asVoid(effect) : Effect.void)),
   );
 

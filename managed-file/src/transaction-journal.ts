@@ -1,5 +1,6 @@
 import { basename, dirname, join, sep } from "node:path";
 import { managedFileLedgerPath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { StateWrite } from "@lando/sdk/services";
@@ -137,7 +138,7 @@ export const openJournal = Effect.fnUntraced(function* (
         return Schema.decodeUnknownSync(Journal)(payload);
       },
     })
-    .pipe(Effect.mapError(() => transactionError("journal", "inspect")));
+    .pipe(mapFailures(() => transactionError("journal", "inspect")));
   const inspectFile = Effect.gen(function* () {
     const stats = yield* transactionIO("inspect", () => statMaybe(bucket.path));
     if (stats === null) return;
@@ -150,11 +151,11 @@ export const openJournal = Effect.fnUntraced(function* (
       return yield* Effect.fail(transactionError("journal", "inspect"));
     }
     yield* transactionIO("inspect", () => privateFileAccess.verify(bucket.path)).pipe(
-      Effect.mapError(() => transactionError("journal", "inspect")),
+      mapFailures(() => transactionError("journal", "inspect")),
     );
   });
   const read = inspectFile.pipe(
-    Effect.andThen(bucket.get.pipe(Effect.mapError(() => transactionError("journal", "inspect")))),
+    Effect.andThen(bucket.get.pipe(mapFailures(() => transactionError("journal", "inspect")))),
     Effect.filterOrFail(
       (journal) => journal === null || journal.root === root,
       () => transactionError("journal", "inspect"),
@@ -168,7 +169,7 @@ export const openJournal = Effect.fnUntraced(function* (
         privateFileAccess,
       }).pipe(
         Effect.map((file) => ({ file, lock: new HeldTransactionLock(dir) })),
-        Effect.mapError(() => transactionError("lock", phase)),
+        mapFailures(() => transactionError("lock", phase)),
       ),
       ({ file, lock }) =>
         Effect.sync(() => HeldTransactionLock.release(lock)).pipe(Effect.andThen(file.release)),
@@ -203,7 +204,7 @@ export const openJournal = Effect.fnUntraced(function* (
         }
       })
       .pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof ManagedFileTransactionError
             ? error
             : transactionError("journal", error.operation === "get" ? "inspect" : phase),

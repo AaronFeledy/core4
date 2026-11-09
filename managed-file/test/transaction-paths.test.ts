@@ -2,8 +2,31 @@ import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmod, link, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { fixture, scoped } from "./transaction-fixture.ts";
+
+test("rejects request getter defects without exposing transaction contents", async () => {
+  const { appRoot, transactions } = await fixture();
+  const secret = "PRIVATE-TRANSACTION-CONTENT";
+  const request = {
+    appRoot,
+    get operations(): [] {
+      throw new Error(secret);
+    },
+  };
+
+  const exit = await Effect.runPromiseExit(Effect.scoped(transactions.prepare(request)));
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasDies(exit.cause)).toBe(false);
+    expect(Cause.pretty(exit.cause)).not.toContain(secret);
+    expect(exit.cause.reasons).toMatchObject([
+      { _tag: "Fail", error: { _tag: "ManagedFileTransactionError", reason: "path", phase: "prepare" } },
+    ]);
+  }
+  expect(await readdir(appRoot)).toEqual([]);
+});
 
 test("validates target and artifact collisions before producing artifacts", async () => {
   // Given an existing target and a second target named after its backup

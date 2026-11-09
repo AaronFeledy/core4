@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStartError, type StateStoreError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore, type StateWrite } from "@lando/sdk/services";
@@ -25,7 +26,7 @@ const journalError = (message: string, cause?: unknown, journalPath = "accelerat
   });
 const journalRoot = (root: string) =>
   canonicalAppRoot(root).pipe(
-    Effect.mapError((cause) => journalError("The app root cannot be verified.", cause)),
+    mapFailures((cause) => journalError("The app root cannot be verified.", cause)),
   );
 
 export const openJournal = (app: AppRef) =>
@@ -37,13 +38,13 @@ export const openJournal = (app: AppRef) =>
         ),
       ),
     ),
-    Effect.mapError((cause) => journalError("The accelerated-start journal cannot be opened.", cause)),
+    mapFailures((cause) => journalError("The accelerated-start journal cannot be opened.", cause)),
   );
 
 export const readJournal = Effect.fnUntraced(function* (app: AppRef) {
   const bucket = yield* openJournal(app);
   const pending = yield* bucket.get.pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       journalError("The accelerated-start journal cannot be verified.", cause, bucket.path),
     ),
   );
@@ -125,7 +126,7 @@ export const beginOrResumeAcceleratedStart = Effect.fnUntraced(function* (plan: 
         ? Effect.succeed({ _tag: "Keep", result: current })
         : Effect.fail(identityError(current, bucket.path));
     })
-    .pipe(Effect.mapError(storeError("Unable to persist accelerated-start intent.")));
+    .pipe(mapFailures(storeError("Unable to persist accelerated-start intent.")));
   const advance = (step: PendingStartStep) =>
     bucket
       .mutate((current): Effect.Effect<StateWrite<PendingStart, void>, FileSyncStartError> => {
@@ -151,7 +152,7 @@ export const beginOrResumeAcceleratedStart = Effect.fnUntraced(function* (plan: 
             );
         }
       })
-      .pipe(Effect.mapError(storeError("Unable to advance accelerated-start intent.")));
+      .pipe(mapFailures(storeError("Unable to advance accelerated-start intent.")));
   return {
     attemptId: record.attemptId,
     ...(record === planned ? {} : { resumedFrom: record.phase }),

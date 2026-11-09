@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Layer, Option } from "effect";
 
@@ -106,7 +107,7 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
         "plugin-trust",
         readState.pipe(Effect.flatMap((state) => writeState(change(state)))),
       ).pipe(
-        Effect.mapError((cause: ConfigError | StateStoreError) =>
+        mapFailures((cause: ConfigError | StateStoreError) =>
           cause instanceof ConfigError
             ? cause
             : configError(path, "Failed to lock the plugin trust store for writing.", cause),

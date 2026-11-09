@@ -1,5 +1,6 @@
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { SshAgentTransportError, causeMessage } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -188,7 +189,7 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
             };
             return { session, persist: publishAgentRelayWorkerRecord(claim, options, ready) };
           }).pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               cause instanceof SshAgentTransportError
                 ? cause
                 : new SshAgentTransportError({
@@ -200,5 +201,5 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
           ),
       });
     }),
-  ).pipe(Effect.mapError(workerError));
+  ).pipe(mapFailures(workerError));
 });

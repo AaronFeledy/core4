@@ -1,4 +1,5 @@
 import { rename, stat } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Layer, Option } from "effect";
 
@@ -43,7 +44,7 @@ const makeDiskBucketBackend = (privateFileAccess: PrivateFileAccess): StateBucke
     writeFileAtomicScoped(file, body, {
       ...options,
       privateFileAccess: privateFileAccess.enforce,
-    }).pipe(Effect.mapError((cause) => ioError(operation, file, cause))),
+    }).pipe(mapFailures((cause) => ioError(operation, file, cause))),
   remove: (file) =>
     Effect.tryPromise({
       try: () => Bun.file(file).delete(),

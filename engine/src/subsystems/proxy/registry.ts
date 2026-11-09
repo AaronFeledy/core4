@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -153,7 +154,7 @@ const registrationsFromModules = Effect.fnUntraced(function* (
       );
     }
     return Schema.decodeUnknownEffect(AbsolutePath)(dependencies.paths.pluginStateDir(module.name)).pipe(
-      Effect.mapError(descriptorError),
+      mapFailures(descriptorError),
       Effect.map((pluginStateRoot) => {
         const publishRender =
           dependencies.eventService !== undefined && dependencies.redaction !== undefined

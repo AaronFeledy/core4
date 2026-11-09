@@ -1,4 +1,5 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Cause, Effect, Result, Schema } from "effect";
 
 import { GlobalAppError, GlobalServiceCapabilityError, GlobalServiceCollisionError } from "@lando/sdk/errors";
@@ -205,7 +206,7 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
     }
 
     const decoded = yield* (exported as Effect.Effect<unknown, unknown>).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         loaderError(
           `Global service ${entry.contribution.id} module ${moduleSpecifier} failed.`,
           `Fix plugin ${entry.plugin}'s global service module or uninstall the plugin.`,
@@ -214,7 +215,7 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
       ),
       Effect.flatMap((value) =>
         Schema.decodeUnknownEffect(ServiceConfig)(value).pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             loaderError(
               `Global service ${entry.contribution.id} module ${moduleSpecifier} did not return a valid ServiceConfig.`,
               `Update plugin ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,

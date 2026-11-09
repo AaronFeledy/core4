@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Clock, DateTime, Effect, Exit, Layer, Scope } from "effect";
 
 import type { EventError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -156,7 +157,7 @@ export const superviseBootstrapLayer = <A, E, R>(
             publicationFailed = true;
           }),
         ),
-        Effect.mapError((cause) => bootstrapError("Failed to publish bootstrap lifecycle events.", cause)),
+        mapFailures((cause) => bootstrapError("Failed to publish bootstrap lifecycle events.", cause)),
       );
       return Layer.succeedContext(runtimeExit.value);
     }),
