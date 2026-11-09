@@ -1,5 +1,6 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ProviderStatus } from "@lando/sdk/services";
+import { type RuntimeShutdownReceipt, shutdownReceiptProvesIdle } from "./runtime-shutdown.ts";
 
 export const MANAGED_RUNTIME_BUNDLE_MARKER = ".runtime-installed-version";
 
@@ -95,7 +96,13 @@ export const managedProcessPids = (
 
 export type ManagedRuntimeEvidence =
   | { readonly state: "answering" }
-  | { readonly state: "silent"; readonly bundleInstalled: boolean; readonly livePids: ReadonlyArray<number> }
+  | {
+      readonly state: "silent";
+      readonly bundleInstalled: boolean;
+      readonly livePids: ReadonlyArray<number>;
+      readonly receipt?: RuntimeShutdownReceipt | null | undefined;
+      readonly bootId?: string | undefined;
+    }
   | { readonly state: "unreadable" };
 
 export const classifyManagedRuntime = (
@@ -127,6 +134,8 @@ export const classifyManagedRuntime = (
           message: "The managed runtime bundle is not installed.",
           remediation: "Run `lando setup` to install the managed runtime.",
         });
+      if (shutdownReceiptProvesIdle(evidence.receipt, evidence.bootId))
+        return { state: "idle", message: "idle (starts on demand)" };
       return new ProviderUnavailableError({
         providerId: "lando",
         operation: "getStatus",

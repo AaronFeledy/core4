@@ -11,6 +11,7 @@ import {
   descendsFrom,
   managedProcessPids,
 } from "../src/podman/managed-status.ts";
+import { parseRuntimeShutdownReceipt } from "../src/podman/runtime-shutdown.ts";
 
 const identity: ManagedProcessIdentity = {
   socketPath: "/runtime/run/podman.sock",
@@ -27,6 +28,69 @@ const process = (fields: Partial<ManagedProcess>): ManagedProcess => ({
   parentPid: 1,
   argv: [],
   ...fields,
+});
+
+test.each([
+  { state: "stopped", boot: "current", idle: true },
+  { state: "admitted", boot: "current", idle: false },
+  { state: "stopped", boot: "previous", idle: true },
+  { state: "admitted", boot: "previous", idle: true },
+] as const)("$state receipt from $boot boot supplies idle=$idle", ({ state, boot, idle }) => {
+  const receipt = parseRuntimeShutdownReceipt(
+    JSON.stringify({
+      version: 1,
+      data: { generation: "admission", bootId: boot, state },
+    }),
+  );
+  const result = classifyManagedRuntime({
+    state: "silent",
+    bundleInstalled: true,
+    livePids: [],
+    receipt,
+    bootId: "current",
+  });
+  expect(result).toMatchObject(idle ? { state: "idle" } : { _tag: "ProviderUnavailableError" });
+});
+
+test.each([
+  "{",
+  "{}",
+  '{"version":2,"data":{"generation":"g","bootId":"old","state":"stopped"}}',
+  '{"version":1,"data":{"bootId":"old","state":"stopped"}}',
+])("invalid receipt supplies no idle evidence: %s", (raw) => {
+  const receipt = parseRuntimeShutdownReceipt(raw);
+  expect(receipt).toBeUndefined();
+  expect(
+    classifyManagedRuntime({
+      state: "silent",
+      bundleInstalled: true,
+      livePids: [],
+      receipt,
+      bootId: "current",
+    }),
+  ).toMatchObject({ _tag: "ProviderUnavailableError" });
+});
+
+test.each([
+  {
+    name: "unreadable boot",
+    bundleInstalled: true,
+    livePids: [],
+    bootId: undefined,
+    message: "Runtime state is unknown",
+  },
+  { name: "live process", bundleInstalled: true, livePids: [42], bootId: "boot", message: "alive" },
+  { name: "missing bundle", bundleInstalled: false, livePids: [], bootId: "boot", message: "not installed" },
+])("stopped receipt cannot hide $name", ({ bundleInstalled, livePids, bootId, message }) => {
+  const result = classifyManagedRuntime({
+    state: "silent",
+    bundleInstalled,
+    livePids,
+    bootId,
+    receipt: { generation: "g", state: "stopped", bootId: "boot" },
+  });
+  expect(result).toBeInstanceOf(ProviderUnavailableError);
+  expect(result.message).toContain(message);
 });
 
 test.each([

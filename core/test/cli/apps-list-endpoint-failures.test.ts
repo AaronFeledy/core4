@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readLinuxBootId } from "@lando/container-runtime/podman/managed-status-io";
+import { RUNTIME_SHUTDOWN_KEY } from "@lando/container-runtime/podman/runtime-shutdown";
 import { makeLandoPaths } from "@lando/paths";
 import { Effect } from "effect";
 import { discoverRunningAppsEvidenceFromSockets } from "../../src/cli/commands/list-discovery.ts";
@@ -62,3 +64,42 @@ test("an installed Linux runtime with an absent endpoint is unknown, never stopp
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["stopped", "admitted", "previous-boot", "corrupt"] as const)(
+  "Linux list discovery uses %s receipt evidence",
+  async (state) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-list-receipt-"));
+    try {
+      const paths = makeLandoPaths({ userDataRoot: root });
+      await mkdir(paths.runtimeBinDir, { recursive: true });
+      const pluginRoot = paths.pluginStateDir("@lando/provider-lando");
+      await mkdir(pluginRoot, { recursive: true });
+      await writeFile(join(paths.runtimeBinDir, ".runtime-installed-version"), "0.1.7");
+      await writeFile(join(paths.runtimeBinDir, "podman"), "", { mode: 0o755 });
+      const bootId = await Effect.runPromise(readLinuxBootId());
+      await writeFile(
+        join(pluginRoot, RUNTIME_SHUTDOWN_KEY),
+        state === "corrupt"
+          ? "{"
+          : JSON.stringify({
+              version: 1,
+              data: {
+                generation: "g",
+                bootId: state === "previous-boot" ? `${bootId}-previous` : bootId,
+                state: state === "stopped" ? "stopped" : "admitted",
+              },
+            }),
+      );
+      const evidence = await discoverRunningAppsEvidenceFromSockets(root, [paths.providerSocketPath], {
+        platform: "linux",
+      });
+      expect(evidence).toMatchObject({
+        confirmedProviderIds: [],
+        idleProviderIds: state === "stopped" || state === "previous-boot" ? ["lando"] : [],
+        ownedAppIds: [],
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

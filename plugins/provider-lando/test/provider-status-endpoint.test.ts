@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { readLinuxBootId } from "@lando/container-runtime/podman/managed-status-io";
 import { makeLandoPaths } from "@lando/paths";
 import { Effect } from "effect";
 import { providerStatus } from "../src/provider-status.ts";
@@ -104,3 +105,47 @@ test("an installed Linux runtime with a definitively absent API fails closed", a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["stopped", "admitted", "previous-boot", "unreadable"] as const)(
+  "Linux provider status reads %s receipt evidence",
+  async (state) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-status-receipt-"));
+    try {
+      const paths = makeLandoPaths({ userDataRoot: root });
+      await mkdir(paths.runtimeBinDir, { recursive: true });
+      await writeFile(join(paths.runtimeBinDir, ".runtime-installed-version"), "0.1.7");
+      await writeFile(join(paths.runtimeBinDir, "podman"), "", { mode: 0o755 });
+      const bootId = await Effect.runPromise(readLinuxBootId());
+      const receipt =
+        state === "unreadable"
+          ? Effect.fail(new Error("unreadable"))
+          : Effect.succeed({
+              generation: "g",
+              bootId: state === "previous-boot" ? `${bootId}-previous` : bootId,
+              state: state === "stopped" ? ("stopped" as const) : ("admitted" as const),
+            });
+      const result = await Effect.runPromise(
+        Effect.result(
+          providerStatus({
+            api: makePodmanApiClient(paths.providerSocketPath, {
+              providerId: "lando",
+              remediation: "Inspect API.",
+              env: {},
+            }),
+            platform: "linux",
+            managedPaths: paths,
+            machine: undefined,
+            receipt,
+          }),
+        ),
+      );
+      expect(result).toMatchObject(
+        state === "stopped" || state === "previous-boot"
+          ? { _tag: "Success", success: { state: "idle" } }
+          : { _tag: "Failure", failure: { _tag: "ProviderUnavailableError" } },
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

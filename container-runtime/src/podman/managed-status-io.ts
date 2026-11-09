@@ -12,6 +12,19 @@ import {
   managedProcessPids,
   parseManagedMachineState,
 } from "./managed-status.ts";
+import type { RuntimeShutdownReceipt } from "./runtime-shutdown.ts";
+
+export const readLinuxBootId = (): Effect.Effect<string, unknown> =>
+  Effect.tryPromise({
+    try: () => readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.map((value) => value.trim()),
+    Effect.filterOrFail(
+      (value) => value.length > 0,
+      () => new TypeError("Linux boot id is empty."),
+    ),
+  );
 
 const isAbsent = (error: unknown): boolean =>
   error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ESRCH");
@@ -86,6 +99,7 @@ export const inspectManagedMachine = Effect.fn("ManagedRuntime.inspectMachine")(
 
 export const inspectSilentManagedRuntime = (
   paths: ManagedStatusPaths,
+  receipt: Effect.Effect<RuntimeShutdownReceipt | null | undefined, unknown> = Effect.succeed(undefined),
 ): Effect.Effect<ProviderStatus, ProviderUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
@@ -111,7 +125,7 @@ export const inspectSilentManagedRuntime = (
       } catch (error) {
         if (!isAbsent(error)) throw error;
       }
-      return classifyManagedRuntime({ state: "silent", bundleInstalled, livePids });
+      return { state: "silent" as const, bundleInstalled, livePids };
     },
     catch: (cause) =>
       new ProviderUnavailableError({
@@ -123,6 +137,12 @@ export const inspectSilentManagedRuntime = (
           "Restore read access to your processes in /proc and the managed runtime files, then rerun `lando doctor`.",
       }),
   }).pipe(
+    Effect.flatMap((evidence) =>
+      Effect.all({
+        receipt: receipt.pipe(Effect.catch(() => Effect.succeed(undefined))),
+        bootId: readLinuxBootId().pipe(Effect.catch(() => Effect.succeed(undefined))),
+      }).pipe(Effect.map((proof) => classifyManagedRuntime({ ...evidence, ...proof }))),
+    ),
     Effect.flatMap((status) =>
       status instanceof ProviderUnavailableError ? Effect.fail(status) : Effect.succeed(status),
     ),

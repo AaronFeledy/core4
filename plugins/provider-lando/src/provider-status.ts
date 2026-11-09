@@ -3,6 +3,7 @@ import {
   type ManagedStatusPaths,
   inspectSilentManagedRuntime,
 } from "@lando/container-runtime/podman/managed-status-io";
+import type { RuntimeShutdownReceipt } from "@lando/container-runtime/podman/runtime-shutdown";
 import { ContainerTransportError } from "@lando/container-runtime/transport";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ProviderError, ProviderStatus } from "@lando/sdk/services";
@@ -14,6 +15,7 @@ export const providerStatus = (options: {
   readonly managedPaths: ManagedStatusPaths | undefined;
   readonly platform: string;
   readonly machine: Pick<PodmanMachineRunner, "inspect"> | undefined;
+  readonly receipt?: Effect.Effect<RuntimeShutdownReceipt | null, unknown>;
 }): Effect.Effect<ProviderStatus, ProviderError> => {
   const unavailable = new ProviderUnavailableError({
     providerId: "lando",
@@ -38,7 +40,8 @@ export const providerStatus = (options: {
       )
         return Effect.fail(error);
       if (options.managedPaths === undefined) return Effect.fail(error);
-      if (options.platform === "linux") return inspectSilentManagedRuntime(options.managedPaths);
+      if (options.platform === "linux")
+        return inspectSilentManagedRuntime(options.managedPaths, options.receipt);
       if (options.machine === undefined) return Effect.fail(error);
       return options.machine.inspect.pipe(
         Effect.flatMap((state) => {

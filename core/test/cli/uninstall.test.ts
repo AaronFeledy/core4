@@ -1486,7 +1486,10 @@ describe("meta:uninstall", () => {
           ...sandboxUninstallIo(root),
         }).pipe(
           Effect.provide(
-            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+            Layer.succeed(
+              HostMaintenanceRegistry,
+              HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+            ),
           ),
         ),
       );
@@ -1536,7 +1539,10 @@ describe("meta:uninstall", () => {
           },
         }).pipe(
           Effect.provide(
-            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+            Layer.succeed(
+              HostMaintenanceRegistry,
+              HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+            ),
           ),
         ),
       );
@@ -1580,7 +1586,10 @@ describe("meta:uninstall", () => {
           ...sandboxUninstallIo(root),
         }).pipe(
           Effect.provide(
-            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+            Layer.succeed(
+              HostMaintenanceRegistry,
+              HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+            ),
           ),
         ),
       );

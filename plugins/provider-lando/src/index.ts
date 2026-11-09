@@ -151,11 +151,7 @@ import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import {
-  buildManagedRuntimeServiceSpec,
-  managedRuntimePodmanArgv0,
-  terminateOwnedRuntimeService,
-} from "./managed-runtime-service.ts";
+import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
   validateManagedSocketPathLength,
@@ -179,6 +175,8 @@ import {
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import { teardownManagedRuntime } from "./runtime-shutdown-teardown.ts";
+import type { RuntimeShutdownStore } from "./runtime-shutdown.ts";
 import {
   type RuntimeServiceStatus,
   probeRuntimeServiceStatus,
@@ -586,6 +584,7 @@ export interface ProviderLayerOptions {
   /** Lando user-data root; file-mode bind copies live beneath it. */
   readonly userDataRoot?: string;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
+  readonly runtimeShutdownStore?: RuntimeShutdownStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
 
@@ -743,6 +742,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
           withLaunchLock: progress === undefined ? withLaunchLock : (body) => body,
+          ...(options.runtimeShutdownStore === undefined
+            ? {}
+            : { admit: options.runtimeShutdownStore.admit }),
           ...(options.runtimeGenerationStore === undefined
             ? {}
             : { generationStore: options.runtimeGenerationStore }),
@@ -1713,6 +1715,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               api: podmanApi,
               platform: family,
               machine: machineRunner,
+              ...(options.runtimeShutdownStore === undefined
+                ? {}
+                : { receipt: options.runtimeShutdownStore.read }),
               managedPaths:
                 canEnsure && runtimeBinDir !== undefined
                   ? {
@@ -1993,8 +1998,7 @@ export const plugin = definePlugin({
   hostMaintainers: [
     {
       id: "lando-runtime-service",
-      teardown: ({ paths, platform }) =>
-        terminateOwnedRuntimeService(buildManagedRuntimeServiceSpec({ ...paths, platform })),
+      teardown: teardownManagedRuntime,
     },
   ],
   runtimeProviders: new Map([

@@ -1,5 +1,14 @@
+import { readFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
-import { inspectManagedMachine } from "@lando/container-runtime/podman/managed-status-io";
+import { join } from "node:path";
+import {
+  inspectManagedMachine,
+  inspectSilentManagedRuntime,
+} from "@lando/container-runtime/podman/managed-status-io";
+import {
+  RUNTIME_SHUTDOWN_KEY,
+  parseRuntimeShutdownReceipt,
+} from "@lando/container-runtime/podman/runtime-shutdown";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import type { LandoPaths } from "@lando/paths";
 import type { ProcessRunner } from "@lando/sdk/services";
@@ -49,7 +58,7 @@ export const requestJsonOnSocket = (socketPath: string, path: string): Promise<u
   });
 
 export const observeIdleManagedProvider = async (
-  paths: Pick<LandoPaths, "runtimeBinDir" | "providerSocketPath">,
+  paths: Pick<LandoPaths, "runtimeBinDir" | "providerSocketPath" | "providerPidPath" | "pluginStateDir">,
   options: {
     readonly platform?: NodeJS.Platform;
     readonly env?: Readonly<Record<string, string | undefined>>;
@@ -57,13 +66,25 @@ export const observeIdleManagedProvider = async (
   },
 ): Promise<ReadonlyArray<string>> => {
   const platform = options.platform ?? process.platform;
-  // Linux has no authoritative workload-absence proof when its API is absent.
-  if (platform !== "darwin" && platform !== "win32") return [];
+  if (platform !== "linux" && platform !== "darwin" && platform !== "win32") return [];
   const socket = platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
   try {
     await requestJsonOnSocket(socket, "/info");
   } catch (error) {
-    if (isAbsentEndpoint(error) && options.processRunner !== undefined) {
+    if (isAbsentEndpoint(error) && platform === "linux") {
+      const receipt = Effect.tryPromise({
+        try: () =>
+          readFile(join(paths.pluginStateDir("@lando/provider-lando"), RUNTIME_SHUTDOWN_KEY), "utf8"),
+        catch: (cause) => cause,
+      }).pipe(Effect.map(parseRuntimeShutdownReceipt));
+      const observed = await Effect.runPromise(Effect.result(inspectSilentManagedRuntime(paths, receipt)));
+      return observed._tag === "Success" && observed.success.state === "idle" ? ["lando"] : [];
+    }
+    if (
+      isAbsentEndpoint(error) &&
+      (platform === "darwin" || platform === "win32") &&
+      options.processRunner !== undefined
+    ) {
       const observed = await Effect.runPromise(
         Effect.result(
           inspectManagedMachine({

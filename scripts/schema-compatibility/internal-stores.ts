@@ -3,6 +3,10 @@ import { GLOBAL_POLICY_VERSION, GlobalPolicy } from "@lando/engine/global-app/en
 import { INCLUDE_LOCKFILE_VERSION, LockEntriesSchema } from "@lando/landofile/include-lockfile";
 import { Schema } from "effect";
 import {
+  RUNTIME_SHUTDOWN_VERSION,
+  RuntimeShutdownReceipt,
+} from "../../container-runtime/src/podman/runtime-shutdown.ts";
+import {
   RESOURCE_OWNERSHIP_VERSION,
   ResourceOwnershipInventory,
 } from "../../container-runtime/src/resource-ownership.ts";
@@ -40,6 +44,7 @@ import {
   drainTransitions,
   receiptTransitions as sessionReceiptTransitions,
 } from "../../plugins/file-sync-mutagen/src/session-ledger.ts";
+import { shutdownTransitions } from "../../plugins/provider-lando/src/runtime-shutdown.ts";
 import {
   PUBLISHED_CONTAINER_RECEIPT_VERSION,
   PublishedContainerReceiptSchema,
@@ -112,6 +117,13 @@ interface InternalPersistedStore {
 // Traefik acquisition state is a plain file that re-derives on decode failure,
 // not a versioned StateStore bucket, so it does not belong in this registry.
 export const INTERNAL_PERSISTED_STORES = [
+  {
+    id: "runtime-shutdown",
+    schema: RuntimeShutdownReceipt,
+    version: RUNTIME_SHUTDOWN_VERSION,
+    source: { file: "plugins/provider-lando/src/runtime-shutdown.ts", schema: "RuntimeShutdownReceipt" },
+    lifecycle: shutdownTransitions,
+  },
   {
     id: "app-data-identity",
     schema: AppDataIdentityRecord,
