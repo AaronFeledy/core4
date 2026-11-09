@@ -13,6 +13,7 @@ import {
 import { GlobalContributionStateSchema, readGlobalResolution } from "../global-app/resolution.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { observeRuntime } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { type ObservedService, collectObservedConnections, observeService } from "./connection-collector.ts";
@@ -110,11 +111,13 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     provider === undefined
       ? undefined
       : yield* Effect.result(
-          provider.isAvailable.pipe(
-            Effect.flatMap((available) =>
-              available
-                ? Effect.map(provider.getStatus, (status) => status.state)
-                : Effect.succeed(undefined),
+          observeRuntime(provider).pipe(
+            Effect.flatMap((observation) =>
+              observation.kind === "unavailable"
+                ? observation.error === undefined
+                  ? Effect.succeed(undefined)
+                  : Effect.fail(observation.error)
+                : Effect.succeed(observation.kind),
             ),
           ),
         );

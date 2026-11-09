@@ -2,6 +2,7 @@ import { APP_LABEL } from "@lando/container-runtime/labels";
 import { SnapshotGcReport, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import { DataMover, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 
 export { SnapshotGcReport as SnapshotGcReportResultSchema };
 
@@ -26,15 +27,7 @@ export const snapshotGc = Effect.fn("Operations.snapshotGc")(function* (
     }
     const provider = selected.success;
     if (provider.capabilities.volumeSnapshot !== "native") continue;
-    const running = yield* Effect.result(
-      provider.isAvailable.pipe(
-        Effect.flatMap((available) =>
-          available
-            ? Effect.map(provider.getStatus, (status) => status.state === "running")
-            : Effect.succeed(false),
-        ),
-      ),
-    );
+    const running = yield* Effect.result(runtimeOnline(provider));
     if (running._tag === "Failure" || !running.success) {
       providers.push({
         provider: provider.id,

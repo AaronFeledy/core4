@@ -4,6 +4,7 @@ import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/ser
 import { Effect, Schema } from "effect";
 
 import { routerEnabled } from "../config/router-config.ts";
+import { observeRuntime, workloadsProvablyStopped } from "../providers/runtime-observation.ts";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 
 export const GlobalConsumerSchema = Schema.Struct({
@@ -191,15 +192,17 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
     }
     const observations = yield* Effect.result(
       Effect.gen(function* () {
-        if (!(yield* provider.isAvailable))
+        const observation = yield* observeRuntime(provider);
+        if (observation.kind === "unavailable")
           return yield* Effect.fail(
-            new GlobalAppError({
-              operation: "consumerImpact",
-              message: `Runtime ${providerId} is unreachable; running consumers cannot be verified.`,
-              remediation: "Restore runtime access or explicitly acknowledge disruption.",
-            }),
+            observation.error ??
+              new GlobalAppError({
+                operation: "consumerImpact",
+                message: `Runtime ${providerId} is unreachable; running consumers cannot be verified.`,
+                remediation: "Restore runtime access or explicitly acknowledge disruption.",
+              }),
           );
-        if ((yield* provider.getStatus).state === "idle") return [];
+        if (workloadsProvablyStopped(observation)) return [];
         return yield* provider.list({ includeUnplanned: true, includeScratch: true });
       }),
     );

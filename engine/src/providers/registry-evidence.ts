@@ -3,6 +3,7 @@ import { PathsService } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import type { AppliedStateProvider } from "./applied-state-resolution.ts";
 import type { makeProviderFactory } from "./make-provider.ts";
+import { observeRuntime } from "./runtime-observation.ts";
 
 type ProviderFactory = ReturnType<typeof makeProviderFactory>;
 
@@ -39,9 +40,13 @@ export const makeAppliedStateProvider = Effect.fnUntraced(function* (
       .pipe(Effect.provideService(PathsService, services.paths)),
     isAvailable: runtime.pipe(
       Effect.flatMap((provider) =>
-        provider.isAvailable.pipe(
-          Effect.flatMap((available) =>
-            available ? Effect.as(provider.getStatus, true) : Effect.succeed(false),
+        observeRuntime(provider).pipe(
+          Effect.flatMap((observation) =>
+            observation.kind === "unavailable"
+              ? observation.error === undefined
+                ? Effect.succeed(false)
+                : Effect.fail(observation.error)
+              : Effect.succeed(true),
           ),
         ),
       ),

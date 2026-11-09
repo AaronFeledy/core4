@@ -5,6 +5,7 @@ import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { clearAppDataIdentity } from "../planner/data-identity.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 
 export type DataIdentityClearEvidence = {
   readonly root: AbsolutePath;
@@ -63,7 +64,7 @@ const remainingDataVolumesForRoot = Effect.fnUntraced(function* (root: AbsoluteP
   if (providerIds.length === 0) names.add("unobserved:providers");
   for (const providerId of providerIds) {
     const provider = yield* registry.select(providerId);
-    if (!(yield* provider.isAvailable) || (yield* provider.getStatus).state !== "running") {
+    if (!(yield* runtimeOnline(provider))) {
       names.add(`unobserved:${providerId}`);
       continue;
     }
