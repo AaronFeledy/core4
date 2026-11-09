@@ -47,6 +47,8 @@ On macOS and Windows, an absent API endpoint and a managed machine inspected as 
 
 On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `lando poweroff`, or when the receipt comes from an earlier boot, provided the API is absent and no managed processes match. Each launch invalidates the receipt before starting the service. Doctor passes `selected-provider` for idle, and `lando list` reports apps as `stopped`. Without valid receipt evidence, runtime state remains unknown; process observations alone cannot prove workloads stopped. HTTP, protocol, permission, and timeout failures remain failures rather than becoming idle.
 
+To remove an app while runtime state is unknown, use `lando destroy`. It starts or repairs the managed runtime holding that app's resources, then checks the live inventory before cleanup. This also works after a crash, `wsl --terminate`, or the first poweroff after an upgrade without shutdown evidence. `lando destroy --root` and `lando apps:gc --prune` prepare owning runtimes the same way; if preparation fails, cleanup reports that failure. Doctor, other observation commands, and `lando stop` never launch the runtime.
+
 JSON reports keep these entries in the report's `skipped` array, separate from
 `subsystems.checks`. The library `doctorReport()` skips the subsystem section
 when neither runtime subsystem services nor a host DNS resolver were supplied.
@@ -176,7 +178,7 @@ lando apps:gc --prune --volumes
 Lando asks once, listing the roots and what it deletes or keeps. Add
 `--purge-caches` to delete cache volumes, or `--purge` to delete data and
 catalogued snapshots too. Scripts must pass `--yes` to confirm. Pruning starts
-an idle runtime that holds the reported resources, the same way `lando destroy`
+the managed runtime that holds the reported resources when it is idle or its status is unknown, the same way `lando destroy`
 does. Each root is checked again under its app lock; a folder that reappears or
 changed evidence is retained. Roots discovered after confirmation are reported
 without being pruned. Data you keep by leaving off `--volumes` is listed in the

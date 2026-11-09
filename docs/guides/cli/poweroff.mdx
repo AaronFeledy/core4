@@ -57,6 +57,8 @@ The next `lando start` brings back the global services that app uses,
 including Traefik and the SSH agent sidecar.
 After poweroff, `lando list` reports apps as `stopped` when the API confirms no running containers or the managed runtime is idle. For that idle state, `lando stop` finishes host-side cleanup without launching the runtime, and `lando destroy` launches it to remove the app's resources.
 
+If runtime state is `unknown` after a crash, `wsl --terminate`, or the first poweroff after an upgrade, `lando destroy` launches or repairs the managed runtime holding the app's resources before checking and removing them. You don't need to start the app first. `lando destroy --root` and `lando apps:gc --prune` do the same for deleted app folders. If runtime preparation fails, cleanup reports that failure and leaves the resources for retry.
+
 On Linux and WSL, Lando records a shutdown receipt after confirming that containers are quiescent, the runtime service has exited, and its private pause process has been torn down. With an absent API, that receipt establishes idle after shutdown or a reboot; each runtime launch invalidates it first. Without valid receipt evidence, status remains `unknown`, because process observations alone cannot prove workloads stopped. On macOS and Windows, read-only inspection of a stopped managed machine establishes idle. Neither status observation nor stop launches the runtime.
 Lando stops the managed runtime service only after all targeted apps stop.
 Before it does, Lando removes containers that image builds left behind, so
