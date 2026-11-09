@@ -73,6 +73,18 @@ Provider apply retains container creation, resource ownership, service-start/dep
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
+Every Lando-created service container (user, global, scratch, and Compose-typed services, including selected rebuilds) MUST receive a creation-time read-only bind of the host's container-helper directory at `/run/lando/helper`. The mount participates in create-config identity (§5.3.2), so ordinary `lando start` recreates older containers missing it. Its source is the stable architecture directory, above content-addressed helper versions, and its target MUST remain stable across helper upgrades: publishing a new digest makes it visible to running containers without recreation. The resolved executable MUST be mode `0755` and accessible to non-root container users. Host-specific delivery paths MUST NOT become portable authored intent. Ephemeral data-plane helper containers are exempt.
+
+Ordinary non-TTY `exec` and `execStream` MUST use exactly one engine exec on the warm path: the mounted helper's `exec-run --nonce <128-bit-random-hex> [--umask M] -- <argv>`, with stdin, stdout, and stderr attached and `Tty: false`. The helper MUST start the child in its own process group, become a child subreaper, and inherit stdout/stderr descriptors directly without proxying payload bytes. Exec stdin carries a bounded framed control protocol: `DATA(bytes)` forwards child stdin, `EOF` closes child stdin, and `SIGNAL(INT|TERM)` requests cancellation. Omitted stdin MUST send `EOF` immediately; logical `EOF` MUST leave the control channel open. Normal completion MUST use the child's real exit code, stop consuming control, and leave intentionally backgrounded descendants running without waiting for them. Launch failure MUST emit `lando: <prog>: command not found` and exit 127 for ENOENT, or `lando: <prog>: cannot execute` and exit 126 for EACCES/ENOEXEC.
+
+On `SIGNAL`, the helper MUST forward the requested signal to the owned descendant tree, including descendants escaping with `setsid`, allow a bounded grace, escalate to SIGKILL, reap/join the tree, and exit `128 + signal`. Raw control-channel EOF before cancellation or normal child completion means host death or disconnect and MUST trigger the same termination and join. Providers MUST NOT interpret a daemon-namespace exec PID as a container-namespace signal target or signal unrelated processes. The host MUST send the signal frame and await the exec's own completion within one cleanup budget of at most six seconds, including helper grace and escalation. If writing fails or the budget expires, it MUST close the connection to trigger raw EOF and finally inspect the exec; an exec still observed running MUST produce a tagged cleanup failure with its cleanup role (§8.11.1). Cancellation remains Effect interruption and MUST NOT become a successful cancellation receipt. Existing provider failures retain their tags and remediation (§5.7).
+
+If a SIGNAL write cannot complete within 250 ms, or the attach otherwise fails to join, the host MUST run at most one same-user control exec, `helper exec-signal --nonce <hex> INT|TERM`, within that same cleanup budget. It MUST match the exact helper path, `exec-run` role, and nonce in container-namespace `/proc` cmdline, require the same uid unless root, and signal only that pinned supervisor process, which performs its normal graceful forwarding, escalation, and join. No writable filesystem is required. A distinct not-found status is successful only after inspecting the payload exec as exited; a successful signal also requires bounded confirmation of payload completion.
+
+The warm supervised path MUST use the same engine request set and count as plain exec (create, start, and completion inspection); it MUST NOT install helpers per invocation, create sessions, renew leases, or launch watch/control execs. The nonce-addressed control exec is reserved for the failed cancellation path above. Mount availability MUST be checked from existing container inspection or create-config evidence without another warm-path round trip. A missing mount MUST fail closed before payload launch with `ServiceExecError` and remediation to run `lando start`; unsupervised fallback is forbidden.
+
+TTY commands use the native terminal transport. `CommandSpec.raw: true` identifies internal operations that bypass both umask wrapping and process supervision, including readiness/healthcheck and umask probes, listener observation, and SSH/GPG agent preparation. Callers MUST NOT set it for user payloads or infer it from argv. These exemptions do not remove scoped transport cleanup. The managed Windows stdin path has the known supervision limitation in §5.8.1.
+
 `ApplyOptions.onVolumeCreated` is an optional effectful callback receiving the same verified `VolumeCreationFact` reported in `ApplyResult.createdVolumes`. Providers MUST await it for each volume immediately after verified creation and before starting any service container. A callback failure MUST fail apply before service startup. Existing or adopted volumes MUST NOT trigger the callback; ownership labels alone are not creation evidence. Receipts already persisted survive a later apply failure, and the volumes they describe are retained with them.
 
 #### 5.3.1 Teardown resolution and orphaned resources
@@ -227,7 +239,7 @@ A provider MUST declare `fileSyncTargets: prepared-volume` only when its actual 
 
 ### 5.5 The `AppPlan`
 
-The frozen, schema-validated plan is the sole source of truth across the core/provider boundary.
+The frozen, schema-validated plan is the sole source of truth for portable intent across the core/provider boundary. The mandatory helper bind (§5.3) is a runtime-owned creation mount: providers add it to their physical lowering, including emitted Compose, without mutating the logical plan or persisting the host helper path in desired or applied plans. Its stable source and target participate in physical create-config identity; helper content digests do not. Observations MAY project logical create-config identity only after verifying the corresponding physical identity (§5.3.2).
 
 | `ServicePlan` field | Meaning |
 |---|---|
@@ -239,7 +251,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `connection` | Optional `DatabaseConnection` resolved once by a database service type: `family`, typed `creds` (`user`, `database` literal; `password`, `rootPassword` as `EnvironmentValue`), and the planned `port` (§6.12.4). Clients, info, SQL operations, and `services.<name>.*` expression scopes read this, never the environment map. |
 | `serviceTypeId` | Optional nonempty canonical registry ID of the effective service-type declaration, including its composed inheritance chain. Fresh plans stamp every resolved service independently of tooling winners; `type` retains its normalized-family meaning. Missing historical declaration identity is not inferred from that normalized type. |
 | `nonSqlCreds` | Optional typed `ServiceCreds` published by a non-SQL service type, such as password-protected Redis, for credential expression scopes. Mutually exclusive with `connection`; it survives plan serialization and never duplicates database connection credentials. |
-| `mounts` | Every container mount (binds including the `role: app` app source, named stores, tmpfs), unique targets ordered shallow to deep (§6.4). |
+| `mounts` | Logical service mounts (binds including the `role: app` app source, named stores, tmpfs), unique targets ordered shallow to deep (§6.4); the runtime-owned helper bind is added during physical lowering. |
 | `endpoints`, `routes` | Service listeners and references to app routes. |
 | `dependsOn` | Planned service dependencies. |
 | `healthcheck`, `readiness`, `readinessSource`, `certs`, `hostAliases` | Independent native health and lifecycle readiness, readiness provenance, certificate, and supported host-reachability intent. |
@@ -308,7 +320,7 @@ The runtime provider registry MUST enforce redaction on failures from every Effe
 
 ### 5.8 Bundled providers
 
-All bundled providers implement the complete `RuntimeProvider` contract.
+Bundled providers MUST implement the complete `RuntimeProvider` contract; the known managed Windows exec limitation below remains tracked in #1888.
 
 #### 5.8.1 Default: Lando-managed runtime (`@lando/provider-lando`)
 
@@ -340,6 +352,8 @@ Podman-backed providers require Podman 6 or newer. Supported managed hosts are A
 Intel macOS is unsupported by the managed provider. Setup, bundle resolution, runtime readiness, and status MUST fail closed with remediation naming `lando setup --provider=docker` or `LANDO_PROVIDER=docker`; the provider remains discoverable so dependent capability selection does not silently skip it.
 
 On Windows, the Lando-owned machine exposes HTTP over the named pipe `\\.\pipe\podman-lando`. The provider MUST use named-pipe transport, MUST NOT invoke Unix-socket tooling, and MUST NOT probe the Linux managed-service socket.
+
+Known limitation (#2149, related to #1888): managed Windows non-TTY exec with streamed stdin still uses `podman.exe` over the machine connection. Its routing MUST remain unchanged until native Windows tests establish stdin/EOF, exit status, and cancellation behavior. It does not yet supervise or join the container process tree on cancellation and therefore does not satisfy §5.3's owned-tree cancellation contract.
 
 Podman’s published machine-OS update command spelling is unresolved; this specification does not normatively require one spelling.
 

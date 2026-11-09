@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-import { CONTAINER_HELPER_FILE } from "@lando/container-runtime/container-helper";
 import { makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperArtifact, type ContainerHelperTarget } from "@lando/sdk/schema";
 import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
+import { CONTAINER_HELPER_FILE } from "../container-helper.ts";
 
 import { containerHelperNotices } from "./notices.ts";
 import {
@@ -44,10 +44,36 @@ const artifact = (
   path: AbsolutePath.make(path),
 });
 
-const fromFile = async (target: ContainerHelperTarget, path: string): Promise<ContainerHelperArtifact> => {
+const verifiedFiles = new Map<
+  string,
+  { readonly identity: string; readonly artifact: ContainerHelperArtifact }
+>();
+
+const fromFileIfPresent = async (
+  target: ContainerHelperTarget,
+  path: string,
+): Promise<ContainerHelperArtifact | undefined> => {
+  const info = await stat(path, { bigint: true }).catch((cause: unknown) => {
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined;
+    throw cause;
+  });
+  if (info === undefined) return undefined;
+  await chmod(dirname(path), 0o755);
+  if ((Number(info.mode) & 0o777) !== 0o755) await chmod(path, 0o755);
+  const identity = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+  const cached = verifiedFiles.get(path);
+  if (cached?.identity === identity) return { ...cached.artifact, target };
   const bytes = await readIfPresent(path);
-  if (bytes === undefined) throw new HelperResolveFailure(`Container helper not found: ${path}`);
-  return artifact(target, path, bytes);
+  if (bytes === undefined) return undefined;
+  const value = artifact(target, path, bytes);
+  verifiedFiles.set(path, { identity, artifact: value });
+  return value;
+};
+
+const fromFile = async (target: ContainerHelperTarget, path: string): Promise<ContainerHelperArtifact> => {
+  const value = await fromFileIfPresent(target, path);
+  if (value === undefined) throw new HelperResolveFailure(`Container helper not found: ${path}`);
+  return value;
 };
 
 const fromSourceBuild = async (target: ContainerHelperTarget): Promise<ContainerHelperArtifact> => {
@@ -79,12 +105,17 @@ export const extractEmbeddedContainerHelper = async (input: {
   if (matches.length !== 1 || match === undefined)
     throw new HelperResolveFailure("Expected exactly one embedded container helper for this architecture.");
   const path = join(input.cacheRoot, `linux-${input.target.arch}`, match.digest, CONTAINER_HELPER_FILE);
-  const cached = await readIfPresent(path);
-  if (cached !== undefined && sha256Hex(cached) === match.digest) return artifact(input.target, path, cached);
+  const cached = await fromFileIfPresent(input.target, path);
+  if (cached?.digest === match.digest) {
+    await chmod(dirname(dirname(path)), 0o755);
+    return cached;
+  }
   const bytes = gunzipSync(new Uint8Array(await match.file.arrayBuffer()));
   if (sha256Hex(bytes) !== match.digest)
     throw new HelperResolveFailure("Embedded container helper failed its checksum.");
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o755 });
+  await chmod(dirname(path), 0o755);
+  await chmod(dirname(dirname(path)), 0o755);
   const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
   try {
     await writeFile(staging, bytes, { flag: "wx", mode: 0o755 });

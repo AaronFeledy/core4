@@ -17,8 +17,8 @@ import {
 } from "@lando/sdk/schema";
 
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 interface CreateRequest {
   readonly url: string;

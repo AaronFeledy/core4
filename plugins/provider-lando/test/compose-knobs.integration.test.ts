@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -79,7 +80,8 @@ describe("provider-lando Compose runtime knobs (live)", () => {
       if (liveRequest === undefined) throw new Error("live Podman client exposes no request transport");
 
       try {
-        await Effect.runPromise(bringUp(plan, { api }));
+        const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+        await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
 
         const response = await Effect.runPromise(
           liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),

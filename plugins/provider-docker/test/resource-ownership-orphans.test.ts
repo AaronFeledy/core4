@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { makeRuntimeProvider } from "@lando/provider-docker";
 import { landoNetworkingPlan } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
 
 const NetworkBody = Schema.Struct({

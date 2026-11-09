@@ -7,9 +7,9 @@ import { gzipSync } from "node:zlib";
 import { CONTAINER_HELPER_ARCHES } from "@lando/container-runtime/container-helper";
 import { Effect } from "effect";
 
-import { resolveContainerHelper } from "../core/src/container-helper/assets.ts";
-import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
-import { CONTAINER_HELPER_SOURCE_ROOT } from "../core/src/container-helper/source.ts";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
+import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
+import { CONTAINER_HELPER_SOURCE_ROOT } from "@lando/container-runtime/container-helper/source";
 
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { compiledBinaryBundleConfig } from "./compiled-binary-bundle.ts";

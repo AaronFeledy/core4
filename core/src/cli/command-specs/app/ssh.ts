@@ -12,7 +12,7 @@ import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../../service-login-shell";
-import type { LandoCommandSpec } from "../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { execInputUsesCliHostIo } from "./exec";
@@ -60,7 +60,9 @@ export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplemen
     const service = stringFlag(flags, "service");
     const user = stringFlag(flags, "user");
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
+    const signal = extractSpecAbortSignal(input);
     const base = {
+      ...(signal === undefined ? {} : { signal }),
       command: serviceLoginShellCommand(parsedArgv),
       ...(booleanFlag(flags, "no-history") ? { env: withSessionNoHistoryEnv({}) } : {}),
       ...(service === undefined ? {} : { service }),

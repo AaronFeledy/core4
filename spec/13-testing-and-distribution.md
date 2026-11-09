@@ -102,6 +102,8 @@ The compiled MCP completion journey MUST cover real container stdout/stderr, spl
 
 **Listener matrix:** a second strict Linux nightly job MUST start one reviewed image per bundled service family, on its default and on a moved `port:`, through the compiled CLI, and read the container's TCP LISTEN table with the same parser as §6.7 diagnosis. Each case MUST prove the planned port listens on a non-loopback address, that every other observed listener is a declared secondary or an enumerated infrastructure allowance, and that nothing remains on the default after a move; language-runtime cases run a server that binds the projected port variable. An unreadable observation fails strict runs, and the job asserts complete execution through a completion token.
 
+**Workflow performance history:** a nightly and manually dispatchable advisory job on each Linux managed-runtime readiness cell MUST time cold first start, warm stop/start, unchanged rebuild, database import and snapshot restore, and the Drupal and Rails journeys through the compiled CLI. Each sample uses fresh isolated Lando roots and owned app identities. Image pulls and the global services the app needs MUST be prepared before timing, so a measured first start excludes registry downloads and one-time global artifact builds, and the report MUST record that reset condition. A failed command fails its sample rather than becoming a fast measurement, failures are excluded from statistics, and the job exits nonzero after writing its report. Timing changes stay advisory. The job authenticates to Docker Hub when repository credentials exist and otherwise pulls anonymously; credentials MUST NOT be required to run it. Reports are retained for 90 days with a last-30-run trend.
+
 ### 13.2 Schema and documentation gates
 
 The schema snapshot is the complete generated set: public SDK JSON Schemas and index, command-result Schemas and index, and decoded bundled-plugin manifest fixtures. Generated schema and command trees are derived build outputs, not Git sources of truth; committed fixtures receive pure drift checks, while gitignored outputs receive deterministic regeneration and consumer validation.
@@ -114,7 +116,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.3 Type gates
 
-`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
+`bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project and the repository scripts project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
 
 ### 13.4 Quality gates
 

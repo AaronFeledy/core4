@@ -26,6 +26,7 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider, type ServiceType } from "@lando/sdk/services";
 
+import { apacheServiceType } from "../../src/services/apache.ts";
 import { landoErrorPageBytes } from "../../src/services/http-errors.ts";
 import { nginxServiceType } from "../../src/services/nginx.ts";
 import { php83ServiceType } from "../../src/services/php.ts";
@@ -46,6 +47,8 @@ export type ErrorPageServer =
   | "nginx-fpm"
   | "nginx-fpm-upload-dirs"
   | "apache"
+  | "apache-static"
+  | "apache-port"
   | "apache-upload-dirs";
 
 const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
@@ -55,6 +58,8 @@ const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   nginx: 31091,
   "nginx-fpm-upload-dirs": 31092,
   "apache-upload-dirs": 31093,
+  "apache-static": 31094,
+  "apache-port": 31095,
 };
 
 interface ServiceSpec {
@@ -69,6 +74,14 @@ interface ServiceSpec {
 const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<ServiceSpec> => {
   const ports = [`127.0.0.1:${hostPort}:80`];
   switch (server) {
+    case "apache-static":
+      return [
+        {
+          name: "web",
+          serviceType: apacheServiceType,
+          config: { type: "apache", webroot: "/app/dist", ports },
+        },
+      ];
     case "static":
       return [
         {
@@ -117,11 +130,18 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
         },
       ];
     case "apache":
+    case "apache-port":
       return [
         {
           name: "appserver",
           serviceType: php83ServiceType,
-          config: { type: "php:8.3", via: "apache", xdebug: false, allowOverride: true, ports },
+          config: {
+            type: "php:8.3",
+            via: "apache",
+            xdebug: false,
+            allowOverride: true,
+            ...(server === "apache-port" ? { port: 8080, ports: [`127.0.0.1:${hostPort}:8080`] } : { ports }),
+          },
         },
       ];
     case "apache-upload-dirs":

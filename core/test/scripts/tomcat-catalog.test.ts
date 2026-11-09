@@ -24,6 +24,16 @@ describe("offline Tomcat catalog", () => {
     expect(generated.match(/\{\{HTTP_PORT\}\}/gu)).toHaveLength(3);
   });
 
+  test("trusts the router's forwarded scheme and port inside every engine", async () => {
+    // Given / When
+    const generated = await buildTomcatCatalog(root);
+    // Then: generated strings are JSON-escaped, so quotes and newlines appear escaped.
+    const valve = JSON.stringify(
+      '<Engine name="Catalina" defaultHost="localhost">\n      <Valve className="org.apache.catalina.valves.RemoteIpValve" protocolHeader="X-Forwarded-Proto" portHeader="X-Forwarded-Port" />',
+    ).slice(1, -1);
+    expect(generated.split(valve)).toHaveLength(TOMCAT_MAJORS.length + 1);
+  });
+
   test("refuses to generate from a baseline whose bytes no longer match the pin", async () => {
     // Given
     const temporary = await mkdtemp(resolve(tmpdir(), "tomcat-codegen-"));

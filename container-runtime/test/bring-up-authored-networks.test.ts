@@ -5,8 +5,8 @@ import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.t
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
+import { APPLY_REMEDIATION, bringUp } from "./support/service-creation.ts";
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
 test("omits listener advice on network-connect failure", async () => {

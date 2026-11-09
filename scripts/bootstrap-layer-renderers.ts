@@ -152,7 +152,7 @@ export const renderProvider = (): string =>
     'import * as FileSyncResolverLayer from "@lando/engine/plugins/file-sync-resolver";',
     'import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";',
     'import { makeRuntimeProviderRegistryWithPrivateFileAccess } from "@lando/engine/providers/registry";',
-    'import * as ContainerHelperAssetsLayer from "../../../container-helper/assets.ts";',
+    'import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";',
     'import * as BunFileSystem from "@lando/engine/services/file-system";',
     'import * as AppPlannerLayer from "@lando/engine/services/planner";',
     'import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";',

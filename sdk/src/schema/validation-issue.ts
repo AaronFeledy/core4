@@ -1,17 +1,18 @@
-import { Schema, type SchemaAST, SchemaIssue } from "effect";
-import { isPlainRecord } from "../landofile/record.ts";
-import {
-  PLAIN_TEXT_SLOT_REJECTION,
-  authoringExpectation,
-  authoringSource,
-  directiveValue,
-  isExpressionSlot,
-} from "./authoring-issue-metadata.ts";
+import { Schema, SchemaIssue } from "effect";
+import { authoringSource, directiveValue, isSemanticSite } from "./authoring-issue-metadata.ts";
 import { ConfigLintRuleId } from "./config-lint-rules.ts";
-import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { validationExpectation } from "./validation-expectation.ts";
 import { schemaIssueKind } from "./validation-issue-kind.ts";
+import {
+  authoringNonCandidate,
+  directiveIssue,
+  directivePayloadIssues,
+  expectationIssue,
+  propertyKeyPath,
+  propertyNames,
+  valueAt,
+} from "./validation-issue-projection.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
 
@@ -127,16 +128,6 @@ export interface SchemaValidationIssueOptions {
   readonly input?: unknown;
 }
 
-const valueAt = (root: unknown, path: ReadonlyArray<PropertyKey>): unknown => {
-  let current = root;
-  for (const key of path) {
-    if (Array.isArray(current) && typeof key === "number") current = current[key];
-    else if (isPlainRecord(current) && typeof key === "string") current = current[key];
-    else return undefined;
-  }
-  return current;
-};
-
 /** Diagnostic leaf retaining the issue category and Standard Schema property-key path. */
 export const SchemaIssueLeaf = Schema.Struct({
   _tag: Schema.Literals(["Unexpected", "Missing", "Type"]),
@@ -146,52 +137,6 @@ export const SchemaIssueLeaf = Schema.Struct({
   kind: ValidationIssue.fields.kind,
 });
 export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
-
-const expectationIssue = (ast: SchemaAST.AST, issue: SchemaIssue.Issue): SchemaIssue.Issue => {
-  const source = authoringExpectation(ast);
-  const options = { reportInput: SchemaIssue.hasInput(issue) };
-  return source._tag === "Union"
-    ? new SchemaIssue.AnyOf(source, [], issue.input, options)
-    : new SchemaIssue.InvalidType(source, issue.input, options);
-};
-
-const directiveIssue = (issue: SchemaIssue.Issue): boolean =>
-  (issue._tag === "Composite" || issue._tag === "Encoding") && isMergeDirectiveMemberAst(issue.ast);
-
-const authoringNonCandidate = (issue: SchemaIssue.Issue): boolean => {
-  switch (issue._tag) {
-    case "InvalidValue":
-      return issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true;
-    case "InvalidType":
-      return isExpressionSlot(issue.ast);
-    case "Encoding":
-      return (
-        (isExpressionSlot(issue.ast) && issue.issue._tag === "InvalidType") ||
-        authoringNonCandidate(issue.issue)
-      );
-    case "AnyOf": {
-      const source = authoringSource(issue.ast);
-      return (
-        !(source?._tag === "Union" && source.types.every((member) => member._tag === "Literal")) &&
-        (issue.issues.length > 0 || source !== undefined) &&
-        issue.issues.every(authoringNonCandidate)
-      );
-    }
-    default:
-      return false;
-  }
-};
-
-const directivePayloadIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] => {
-  if (issue._tag === "Encoding") return directivePayloadIssues(issue.issue);
-  if (issue._tag !== "Composite" || !isMergeDirectiveMemberAst(issue.ast)) return [issue];
-  return issue.issues.map((child) => {
-    if (child._tag !== "Pointer" || child.path[0] !== "value" || child.issue._tag === "MissingKey") {
-      return child;
-    }
-    return child.path.length === 1 ? child.issue : new SchemaIssue.Pointer(child.path.slice(1), child.issue);
-  });
-};
 
 // Competing union members, or a property plus a matching pattern key, that report
 // the same issue at the same path describe one defect.
@@ -219,11 +164,11 @@ export const schemaIssueLeaves = (
       : undefined,
   );
   const classification = kind === undefined ? {} : { kind };
-  const unionLeaves = (children: readonly SchemaIssue.Issue[]) =>
+  const unionLeaves = (children: readonly SchemaIssue.Issue[], candidateKind = kind) =>
     distinctLeaves(selectByKeyPresence(children, valueAt(options?.input, path)).flatMap(walk)).map((leaf) => {
       if (leaf.path.length !== path.length) return leaf;
       const { kind: _kind, ...rest } = leaf;
-      return { ...rest, ...classification };
+      return { ...rest, ...(candidateKind === undefined ? {} : { kind: candidateKind }) };
     });
   switch (issue._tag) {
     case "Pointer":
@@ -245,7 +190,20 @@ export const schemaIssueLeaves = (
         const candidates = diagnosticUnionCandidates(issue.ast, children);
         const message = unionValueMessage(issue.ast, candidates);
         if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
-        return candidates.length === 0 ? walk(expectationIssue(issue.ast, issue)) : unionLeaves(candidates);
+        const attempted = new SchemaIssue.AnyOf(issue.ast, candidates, issue.input, {
+          reportInput: SchemaIssue.hasInput(issue),
+        });
+        return candidates.length === 0
+          ? walk(expectationIssue(issue.ast, issue))
+          : unionLeaves(
+              candidates,
+              schemaIssueKind(
+                attempted,
+                options !== undefined && Object.hasOwn(options, "input")
+                  ? { input: valueAt(options.input, path) }
+                  : undefined,
+              ),
+            );
       }
       const message = unionValueMessage(issue.ast, issue.issues);
       if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
@@ -256,6 +214,7 @@ export const schemaIssueLeaves = (
       if (authoringSource(issue.ast) !== undefined) return walk(expectationIssue(issue.ast, issue));
       break;
     case "Filter":
+      if (isSemanticSite(issue.filter)) return walk(issue.issue);
       if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
         return walk(issue.issue).map((leaf) => ({ ...leaf, kind: "value" }));
       }
@@ -308,24 +267,4 @@ export const validationIssuesFromCause = (
   if (Schema.isSchemaError(cause)) return validationIssuesFromSchemaIssue(cause.issue, options);
   const message = cause instanceof Error ? cause.message : (options?.fallback ?? "Invalid value.");
   return [{ path: [], message }];
-};
-
-const propertyKeyPath = (path: ReadonlyArray<unknown>): ValidationIssuePath =>
-  path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
-
-const propertyNames = (ast: SchemaAST.AST, seen: Set<SchemaAST.AST> = new Set()): readonly string[] => {
-  if (seen.has(ast)) return [];
-  seen.add(ast);
-  switch (ast._tag) {
-    case "Objects":
-      return ast.propertySignatures.flatMap((signature) =>
-        typeof signature.name === "string" ? [signature.name] : [],
-      );
-    case "Union":
-      return ast.types.flatMap((type) => propertyNames(type, seen));
-    case "Suspend":
-      return propertyNames(ast.thunk(), seen);
-    default:
-      return [];
-  }
 };

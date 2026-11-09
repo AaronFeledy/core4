@@ -38,7 +38,7 @@ Local rehearsal MUST support any pipeline prefix without publishing credentials.
 
 The full single-target pipeline through supply-chain artifacts MUST complete in under 10 minutes on the §17.8 reference Linux runner. A full release MUST complete within the §17.9 limits.
 
-The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn` surface remains in the release that removes it or if a notice is overdue, and MUST warn when an unscheduled notice is older than 12 months (§18.7).
+The deprecation gate runs immediately after codegen. For Lando-owned surfaces, it MUST fail if a `removeIn` surface remains in the release that removes it, if a notice is overdue, or if an unscheduled notice is older than 12 months (§18.7). The shared schema enforces structure and `removeIn` strictly later than `since` for every author.
 
 ### 17.2 Codegen catalog
 

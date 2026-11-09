@@ -5,6 +5,14 @@ import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  fixtureHelperMount,
+  fixtureHelperOptions,
+  fixtureHelperOptionsFor,
+  installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
@@ -51,9 +59,21 @@ const testPluginState = () =>
     ownerOnlyFileAccess,
   );
 const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]> = {}) =>
-  providerLayer({ ...options, appliedPlanState: options.appliedPlanState ?? testPluginState() });
+  providerLayer({
+    ...fixtureHelperOptionsFor(options.dockerApi),
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
+    ...options,
+    ...supervisedExecFixtureOptions(options.dockerApi),
+    appliedPlanState: options.appliedPlanState ?? testPluginState(),
+  });
 const makeRuntimeProvider = (options: Parameters<typeof runtimeProviderFactory>[0]) =>
-  runtimeProviderFactory({ ...options, appliedPlanState: options?.appliedPlanState ?? testPluginState() });
+  runtimeProviderFactory({
+    ...fixtureHelperOptionsFor(options?.dockerApi),
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
+    ...options,
+    ...supervisedExecFixtureOptions(options?.dockerApi),
+    appliedPlanState: options?.appliedPlanState ?? testPluginState(),
+  });
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -524,6 +544,7 @@ const makeFakeApi = () => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -796,6 +817,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -1004,6 +1026,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls, running, existing, volumes, volumeLabels, containerIds, retentionHooks };
 };
 
@@ -1294,7 +1317,11 @@ describe("provider-docker RuntimeProvider contract", () => {
       Cmd: ["sh", "-c", "npm start"],
       Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
-        Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-cace0001:/cache:ro"],
+        Binds: [
+          "My-App-web-app-mount:/app",
+          "My-App-web-mount-cace0001:/cache:ro",
+          `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+        ],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
       NetworkingConfig: {
@@ -1570,7 +1597,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: { info: Effect.succeed({}) } }),
+          providerLayer({ platform: "linux", env: {}, dockerApi: { info: Effect.succeed({}) } }),
         ),
       ),
     );
@@ -1646,7 +1673,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     try {
       // When
       const result = await Effect.runPromise(
-        emitCompose(plan, { userDataRoot }).pipe(
+        emitCompose(plan, { userDataRoot, ...fixtureHelperOptions }).pipe(
           Effect.provideService(FileSystem, {
             ...fileSystem,
             mkdir: (target) =>

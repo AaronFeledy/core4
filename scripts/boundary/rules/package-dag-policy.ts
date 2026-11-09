@@ -60,10 +60,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/container-runtime": {
-    dependencies: ["@lando/sdk", "@lando/redaction"],
+    dependencies: ["@lando/sdk", "@lando/redaction", "@lando/paths"],
     devDependencies: [],
     // Historical applied-state bytes exercise the real disk store at their owning package.
-    testTargets: ["@lando/sdk", "@lando/redaction", "@lando/state-store"],
+    testTargets: ["@lando/sdk", "@lando/redaction", "@lando/paths", "@lando/state-store"],
   },
   "@lando/redaction": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/http-client": { dependencies: ["@lando/redaction", "@lando/sdk"], devDependencies: [] },

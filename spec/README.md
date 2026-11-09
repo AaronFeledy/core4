@@ -83,12 +83,14 @@ If you are looking for a public surface or policy:
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
 | `RuntimeProvider` service and capability schema | 05 | §5.3 + §5.4 |
+| Stable creation-time helper mount, single non-TTY exec with framed stdin, cancellation/disconnect join budget, normal background descendants, missing-mount refusal, `CommandSpec.raw`, and managed Windows limitation | 05 + 08 + 20 | §5.3 + §5.8.1 + §8.4.1 + §22.5 |
 | Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
+| Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
@@ -146,6 +148,7 @@ If you are looking for a public surface or policy:
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| `strict: false` command tails and unknown-flag rejection for exec/ssh/run | 08 | §8.3 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |

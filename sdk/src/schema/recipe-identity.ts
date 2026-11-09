@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AUTHORING_SUBSET_SAFE } from "./authoring-semantics.ts";
 import {
   KEBAB_CASE_ID_PATTERN,
   SEMVER_PATTERN,
@@ -89,15 +90,18 @@ export const RecipeServiceMap = Schema.Record(
 )
   .pipe(
     Schema.check(
-      Schema.makeFilter((value) => {
-        const targets = new Set<string>();
-        for (const current of Object.values(value)) {
-          if (targets.has(current))
-            return `Service map is not injective: two generated names map to "${current}".`;
-          targets.add(current);
-        }
-        return true;
-      }),
+      Schema.makeFilter(
+        (value) => {
+          const targets = new Set<string>();
+          for (const current of Object.values(value)) {
+            if (targets.has(current))
+              return `Service map is not injective: two generated names map to "${current}".`;
+            targets.add(current);
+          }
+          return true;
+        },
+        { [AUTHORING_SUBSET_SAFE]: true },
+      ),
     ),
   )
   .annotate(
