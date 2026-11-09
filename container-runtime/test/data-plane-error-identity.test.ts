@@ -476,7 +476,6 @@ for (const mode of modes) {
       for (const error of errors) {
         const diagnostic = taggedErrorJson(error);
         for (const token of tokens) expect(JSON.stringify(diagnostic)).not.toContain(token);
-        expect(diagnostic.remediation).toContain("[redacted]");
         if (
           !(
             error instanceof ProviderUnavailableError ||

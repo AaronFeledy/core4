@@ -20,6 +20,19 @@ const actions = {
   "run.volume": "create storage for Lando's helper container",
 } as const;
 
+const reasonLimit = 512;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+/** The reason arrives redacted, so clipping it at a code point cannot expose new secret text. */
+const boundedReason = (reason: string | undefined): string | undefined => {
+  const trimmed = reason?.trim();
+  if (trimmed === undefined || trimmed.length === 0 || trimmed === REDACTED) return undefined;
+  const buffer = new Uint8Array(reasonLimit);
+  const { read, written } = encoder.encodeInto(trimmed, buffer);
+  return read === trimmed.length ? trimmed : `${decoder.decode(buffer.subarray(0, written))}...`;
+};
+
 export const ensureEphemeral2xx = (
   options: ProviderDataPlaneOptions,
   spec: EphemeralRunSpec,
@@ -40,37 +53,19 @@ export const ensureEphemeral2xx = (
       options.redactorFor === undefined
         ? createStandaloneRedactor("secrets", { ...tokens, sourceEnv: {} })
         : yield* options.redactorFor(tokens);
-    const reason = apiReasonFromBody(response, redactor)?.trim();
-    const buffer = new Uint8Array(512);
-    const encoded = new TextEncoder().encodeInto(reason ?? "", buffer);
-    const clipped = new TextDecoder().decode(buffer.subarray(0, encoded.written));
-    const redactedReason =
-      reason === undefined || reason === REDACTED || reason.length === 0
-        ? undefined
-        : redactor.redactString(clipped);
-    const safeReason =
-      redactedReason !== undefined && new TextEncoder().encode(redactedReason).byteLength > 512
-        ? undefined
-        : redactedReason;
-    const status = `HTTP ${response.status}`;
-    const base = redactProviderError(
-      new ProviderUnavailableError({
-        providerId: options.providerId,
-        operation,
-        message: `The container engine couldn't ${actions[operation]} (${status}).`,
-        remediation: runtimeRemediation,
-        details: { status: response.status },
-      }),
-      options.redactor,
-    );
+    const reason = boundedReason(apiReasonFromBody(response, redactor));
+    const status = reason === undefined ? `HTTP ${response.status}` : `HTTP ${response.status}: ${reason}`;
     return yield* Effect.fail(
-      new ProviderUnavailableError({
-        ...base,
-        message:
-          safeReason === undefined || safeReason === REDACTED
-            ? base.message
-            : `${base.message.slice(0, -2)}: ${safeReason}).`,
-      }),
+      redactProviderError(
+        new ProviderUnavailableError({
+          providerId: options.providerId,
+          operation,
+          message: `The container engine couldn't ${actions[operation]} (${status}).`,
+          remediation: runtimeRemediation,
+          details: { status: response.status },
+        }),
+        options.redactor,
+      ),
     );
   });
 };

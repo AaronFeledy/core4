@@ -675,9 +675,9 @@ const ephemeralCompletionFailure = (
     new ProviderInternalError({
       providerId: options.providerId,
       operation,
-      message: "The helper command already finished, but Lando couldn't remove its helper container.",
+      message: `Lando's helper command exited with status ${outcome.exitCode}, and Lando couldn't remove its helper container.`,
       remediation:
-        "Do not repeat the completed command. Run `lando doctor` to check the container runtime, then remove the leftover helper container using the cleanup error's removal command.",
+        "Check the helper's error output in `stderrTail` for why it failed. The cleanup failure reported with this error names the leftover helper container.",
       details:
         stderrTail === undefined
           ? { exitCode: outcome.exitCode }
@@ -708,13 +708,19 @@ interface EphemeralRelease {
   readonly observed?: { readonly exitCode?: number; readonly stderr: string };
 }
 
+// Only system Docker and Podman users have the engine CLI on PATH; the managed runtime has no Lando command for this yet.
+const leftoverHelperRemediation = (providerId: string, name: string): string =>
+  providerId === "docker" || providerId === "podman"
+    ? `Run \`lando doctor\` to check the container runtime, then remove the leftover helper container with \`${providerId} rm -f ${name}\`.`
+    : `Run \`lando doctor\` to check the Lando runtime. Lando can't remove the leftover helper container ${name} for you yet.`;
+
 /** Fixed bound so a hung engine DELETE cannot hold scope close open. */
 const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
 
 const releaseEphemeralContainer = (release: EphemeralRelease) => {
   const { options, name, remove, exit, operation, observed } = release;
   if (!remove) return Effect.void;
-  const cleanupRemediation = `Do not repeat work that already finished. Run \`lando doctor\` to check the container runtime, then remove only this helper container with \`${options.providerId === "docker" ? "docker" : "podman"} rm -f ${name}\` against the same container engine.`;
+  const cleanupRemediation = leftoverHelperRemediation(options.providerId, name);
   // Finalizers are uninterruptible. The removal stays interruptible so this
   // deadline can stop it; the finalizer stays masked so parent cancellation
   // still waits for that bounded attempt instead of abandoning cleanup.
@@ -745,7 +751,7 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
           new ProviderUnavailableError({
             providerId: options.providerId,
             operation: `${operation}.remove`,
-            message: "Lando timed out while removing its helper container after the helper command ended.",
+            message: `Lando timed out removing its helper container ${name}.`,
             remediation: cleanupRemediation,
           }),
         ),

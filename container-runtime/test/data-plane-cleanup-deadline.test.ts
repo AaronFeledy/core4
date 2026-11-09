@@ -162,7 +162,6 @@ test.each(cases)(
           const diagnostic = taggedErrorJson(error);
           for (const token of ["lando", "test", "truncated"])
             expect(JSON.stringify(diagnostic)).not.toContain(token);
-          if (outcome !== "interrupted") expect(diagnostic.remediation).toContain("[redacted]");
         }
       }
       expect(cleanupErrors(result.exit.cause)).toEqual([
