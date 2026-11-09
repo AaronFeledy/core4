@@ -1,16 +1,16 @@
 #!/usr/bin/env bun
-import { readdir } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
 import { collectManifests } from "./boundary/graph.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const UNIT_INVOCATION = "ci.yml: unit-tests-linux-x64-shard";
 const normalize = (path: string): string => path.replaceAll("\\", "/").replace(/^\.\//u, "");
 const TEST_FILE = /(?:\.(?:test|spec)|_(?:test|spec))\.[cm]?[jt]sx?$/u;
 const GO_TEST_FILE = /_test\.go$/u;
 const INTEGRATION_FILE = /\.integration[._](?:test|spec)\.[cm]?[jt]sx?$/u;
 const isTestFile = (path: string): boolean => TEST_FILE.test(path) || GO_TEST_FILE.test(path);
-const ignoredDirectories = new Set([".git", "node_modules", "dist", ".astro", "provider-diagnostics"]);
 
 export const FAKE_CLIENT_PROVIDER_TESTS: readonly string[] = [
   "plugins/provider-lando/test/contract.integration.test.ts",
@@ -18,9 +18,10 @@ export const FAKE_CLIENT_PROVIDER_TESTS: readonly string[] = [
   "plugins/provider-podman/test/contract.integration.test.ts",
 ];
 
-// These files have no live-provider prerequisite. A .integration suffix alone
-// must not keep local fixtures and cross-process state tests out of PR coverage.
+// These files run without a live provider; cases with additional prerequisites skip.
+// A .integration suffix alone must not keep local tests out of PR coverage.
 export const LOCAL_INTEGRATION_TESTS: readonly string[] = [
+  "container-runtime/test/fake-engine-parity.integration.test.ts",
   "core/test/cli/host-terminal.integration.test.ts",
   "core/test/lifecycle/subscribers.integration.test.ts",
   "plugins/provider-docker/test/applied-state.integration.test.ts",
@@ -59,6 +60,12 @@ export const MANUAL_TESTS: Readonly<Record<string, string>> = {
     "Requires an answering Podman socket; current provider jobs select only its contract and capability files.",
   "plugins/proxy-traefik/test/router-bind-network.integration.test.ts":
     "Requires isolated host networking and LANDO_TEST_ROUTER_BIND_NETWORK=1; no current CI invocation selects this file.",
+  "plugins/sql/test/sqlite-borrowed-mounts.integration.test.ts":
+    "Requires LANDO_TEST_DOCKER_SOCKET; no current CI invocation selects this file.",
+  "plugins/sql/test/sqlite-integrity.integration.test.ts":
+    "Requires LANDO_TEST_DOCKER_SOCKET; no current CI invocation selects this file.",
+  "plugins/sql/test/sqlite.integration.test.ts":
+    "Requires LANDO_TEST_DOCKER_SOCKET; no current CI invocation selects this file.",
 };
 
 export type TestOwner =
@@ -101,6 +108,12 @@ export const testOwnership = (input: string): TestOwnership | undefined => {
       : undefined;
   }
   if (path in MANUAL_TESTS) return ownership("manual", `bun test ./${path}`, MANUAL_TESTS[path] ?? "");
+  if (path === "core/test/build/source-store-acceptance.integration.test.ts")
+    return ownership(
+      "nightly",
+      "nightly.yml: source-store-acceptance-<platform>",
+      "Compiled-CLI acceptance; requires git and skips without it.",
+    );
   if (NIGHTLY_TIER_TESTS.includes(path))
     return ownership(
       "nightly",
@@ -126,14 +139,14 @@ export const testOwnership = (input: string): TestOwnership | undefined => {
   if (FAKE_CLIENT_PROVIDER_TESTS.includes(path))
     return ownership(
       "unit",
-      "ci.yml: unit-tests-linux-x64-shard",
-      "Mixed suite: fake clients run in shards; live/native cases can skip and also have provider job invocations.",
+      UNIT_INVOCATION,
+      "Mixed suite: fake clients run in shards; provider jobs also select live/native cases, which may skip.",
     );
   if (LOCAL_INTEGRATION_TESTS.includes(path))
     return ownership(
       "unit",
-      "ci.yml: unit-tests-linux-x64-shard",
-      "Local fixtures or subprocesses; no live provider required. Platform skips remain possible.",
+      UNIT_INVOCATION,
+      "No live provider required; live or platform-specific cases skip without their prerequisites.",
     );
   if (INTEGRATION_FILE.test(path)) {
     if (
@@ -143,7 +156,7 @@ export const testOwnership = (input: string): TestOwnership | undefined => {
       return ownership(
         "providers",
         "ci.yml: provider-integration-linux-x64",
-        "File selected by provider job; live, native and opt-in cases may still skip. Selection is not an acceptance receipt.",
+        "Provider job selects this file; live, native and opt-in cases may skip. Selection does not prove acceptance.",
       );
     if (/^plugins\/service-lando\/test\/[^/]+\.integration\.test\.ts$/u.test(path))
       return ownership(
@@ -162,8 +175,8 @@ export const testOwnership = (input: string): TestOwnership | undefined => {
   if (path.startsWith("scripts/") || path.includes("/test/"))
     return ownership(
       "unit",
-      "ci.yml: unit-tests-linux-x64-shard",
-      "Local suite; a selected file may contain conditional live, compiled or platform cases. Inspect skips before claiming acceptance.",
+      UNIT_INVOCATION,
+      "Local suite; live, compiled or platform cases may skip. Inspect skips before claiming acceptance.",
     );
   return;
 };
@@ -175,32 +188,36 @@ export const collectTestInventory = async (root = ROOT): Promise<readonly TestIn
   const entries: TestInventoryEntry[] = [];
   const failures: string[] = [];
   const symlinks: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(resolve(root, directory), { withFileTypes: true })) {
-      const path = directory ? `${directory}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        if (!ignoredDirectories.has(entry.name)) await walk(path);
-      } else if (entry.isSymbolicLink() && isTestFile(entry.name)) {
-        symlinks.push(path);
-      } else if (entry.isFile() && isTestFile(entry.name)) {
-        const discovered =
-          workspaceRoots.some((workspace) => path.startsWith(`${workspace}/test/`)) ||
-          path.startsWith("scripts/") ||
-          path.startsWith("test/scenarios/generated/guides/") ||
-          (GO_TEST_FILE.test(path) && path.startsWith("core/container-helper/"));
-        const owner = discovered ? testOwnership(path) : undefined;
-        if (owner) entries.push({ path, ...owner });
-        else failures.push(path);
-      }
+  const command = ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"];
+  const child = Bun.spawn(command, { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  if (code !== 0) throw new Error(`${command.join(" ")} failed (exit ${code}):\n${stderr}`);
+  const candidates = [...new Set(stdout.split("\0").filter(isTestFile).map(normalize))].sort();
+  for (const path of candidates) {
+    const entry = await lstat(resolve(root, path)).catch((error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (entry?.isSymbolicLink()) symlinks.push(path);
+    else if (entry?.isFile()) {
+      const discovered =
+        workspaceRoots.some((workspace) => path.startsWith(`${workspace}/test/`)) ||
+        path.startsWith("scripts/") ||
+        path.startsWith("test/scenarios/generated/guides/") ||
+        (GO_TEST_FILE.test(path) && path.startsWith("core/container-helper/"));
+      const owner = discovered ? testOwnership(path) : undefined;
+      if (owner) entries.push({ path, ...owner });
+      else failures.push(path);
     }
-  };
-  await walk("");
+  }
   if (symlinks.length)
-    throw new Error(
-      `Test-file symlinks are not supported; use regular test files:\n${symlinks.sort().join("\n")}`,
-    );
-  if (failures.length) throw new Error(`Tests without an execution owner:\n${failures.sort().join("\n")}`);
-  return entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    throw new Error(`Test-file symlinks are not supported; use regular test files:\n${symlinks.join("\n")}`);
+  if (failures.length) throw new Error(`Tests without an execution owner:\n${failures.join("\n")}`);
+  return entries;
 };
 
 export const staleTestOwners = (paths: readonly string[]): readonly string[] => {
@@ -211,6 +228,7 @@ export const staleTestOwners = (paths: readonly string[]): readonly string[] => 
     ...NIGHTLY_TIER_TESTS,
     ...Object.keys(MANUAL_TESTS),
     "core/test/container-helper/helper.integration.test.ts",
+    "core/test/build/source-store-acceptance.integration.test.ts",
     "core/test/cli/init.canonical-recipes.test.ts",
   ]
     .filter((path) => !found.has(path))

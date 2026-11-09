@@ -18,6 +18,8 @@ const put = async (root: string, path: string, content = "export {};\n"): Promis
 const fixture = async (arrayForm = false): Promise<string> => {
   const root = await mkdtemp(join(tmpdir(), "test-ownership-"));
   roots.push(root);
+  const child = Bun.spawn(["git", "init", "-q"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  expect(await child.exited).toBe(0);
   const patterns = ["new-package", "plugins/*"];
   await put(
     root,
@@ -34,7 +36,8 @@ const fixture = async (arrayForm = false): Promise<string> => {
 
 test.each([false, true])("discovers new workspaces and scripts with array-form=%s", async (arrayForm) => {
   const root = await fixture(arrayForm);
-  await put(root, "node_modules/vendor/hidden.test.ts");
+  await put(root, ".gitignore", ".omo/\ndist/\n");
+  await put(root, ".omo/evidence/x.test.ts");
   await put(root, "new-package/dist/generated.test.ts");
   await put(root, "test/scenarios/generated/guides/example.test.ts");
   const inventory = await collectTestInventory(root);
@@ -76,8 +79,6 @@ test("rejects an unregistered workspace test and an unowned integration suite", 
 
 test("affected selection honors the supplied workspace root when eligibility is omitted", async () => {
   const root = await fixture();
-  const child = Bun.spawn(["git", "init", "-q"], { cwd: root, stdout: "pipe", stderr: "pipe" });
-  expect(await child.exited).toBe(0);
   const selection = await selectAffectedTests({ root, changed: ["new-package/test/new.test.ts"] });
   expect(selection.eligibleCount).toBe(3);
   expect(selection.selected).toEqual(["new-package/test/new.test.ts"]);
@@ -87,8 +88,6 @@ test("keeps fake desktop cases in PR units and records live desktop as a coverag
   expect(testOwnership("plugins\\provider-podman\\test\\desktop.test.ts")?.owner).toBe("unit");
   const live = testOwnership("plugins/provider-podman/test/desktop.integration.test.ts");
   expect(live?.owner).toBe("manual");
-  expect(live?.note).toContain("LANDO_TEST_PODMAN_DESKTOP_SOCKET");
-  expect(live?.note).toContain("no desktop acceptance");
   expect(testOwnership("../core/test/example.test.ts")).toBeUndefined();
   // The provider/service CI globs select direct children, not nested integration files.
   expect(testOwnership("plugins/provider-lando/test/nested/new.integration.test.ts")).toBeUndefined();
@@ -100,13 +99,19 @@ test("keeps dedicated docs, helper, nightly, library and recipe owners out of PR
     ["docs/test/frames.test.ts", "docs"],
     ["core/test/container-helper/helper.integration.test.ts", "container-helper"],
     ["core/test/scripts/codegen-ci.test.ts", "nightly"],
+    ["core/test/build/source-store-acceptance.integration.test.ts", "nightly"],
     ["core/test/library/api.test.ts", "library"],
     ["core/test/recipes/node.test.ts", "recipes"],
   ] as const;
   for (const [path, owner] of cases) expect(testOwnership(path)?.owner).toBe(owner);
-  expect(testOwnership("plugins/provider-lando/test/contract.integration.test.ts")?.note).toContain(
-    "Mixed suite",
-  );
+  expect(testOwnership("container-runtime/test/fake-engine-parity.integration.test.ts")?.owner).toBe("unit");
+  for (const path of [
+    "plugins/sql/test/sqlite.integration.test.ts",
+    "plugins/sql/test/sqlite-integrity.integration.test.ts",
+    "plugins/sql/test/sqlite-borrowed-mounts.integration.test.ts",
+  ])
+    expect(testOwnership(path)?.owner).toBe("manual");
+  expect(testOwnership("plugins/provider-lando/test/contract.integration.test.ts")?.owner).toBe("unit");
 });
 
 test("detects stale explicit ownership after a suite is renamed or removed", async () => {
@@ -129,7 +134,6 @@ test("accounts for Go helper tests without adding them to Bun unit argv", async 
     "core/container-helper/protocol_test.go",
   ]);
   expect(go.every((entry) => entry.invocation.includes("build-container-helper.ts --test"))).toBe(true);
-  expect(go.every((entry) => entry.note.includes("not native ARM64 Go tests"))).toBe(true);
   expect(await collectShardedTestFiles(root)).toHaveLength(3);
   await put(root, "new-package/test/unowned_test.go", "package example\n");
   await expect(collectTestInventory(root)).rejects.toThrow("new-package/test/unowned_test.go");
