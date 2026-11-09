@@ -384,6 +384,8 @@ Infrastructure failures outside the planner error channel remain command failure
 
 When fragment and effective findings are identical except for `scopes`, lint emits one finding with both scopes. Composition may relocate effective paths, so the same authored defect can remain separate findings when their effective locations differ; distinct defects or physical sources also remain separate.
 
+Known unsupported tooling keys use the located refusal diagnostics in §8.5.1 instead of duplicate unknown-key and root load findings. Invalid values within `includes[i]` and `toolingIncludes.<namespace>` MUST become located validation findings at the invalid value's authored path, never schema defects. Lint skips invalid include entries and continues with available entries through the same acquisition preparation used by runtime loading.
+
 #### 7.8.1 Canonical Landofile serializer
 
 `@lando/sdk/landofile`, re-exported by `@lando/core/landofile`, owns `emitLandofileYaml`, `emitLandofileYamlEither`, and `parseLandofile`. The emitter accepts native YAML authoring values: ordinary encoded field values with branded merge directives. Transport wire envelopes MUST be decoded to that representation before emission. It preserves expression text, emits block YAML preserving native merge directives, and raises `LandofileEmitError` for unsupported keys or values. The parser returns authoring data with branded native merge directives, or `LandofileParseError`.
