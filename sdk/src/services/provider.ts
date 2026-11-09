@@ -118,10 +118,12 @@ export interface ProviderSetupOptions {
 
 export type ProviderSetupInspectOptions = Omit<ProviderSetupOptions, "privilege">;
 
-export interface ProviderStatus {
-  readonly running: boolean;
-  readonly message?: string;
-}
+/** Idle proves no workloads are running, but does not describe stored resources. */
+export const ProviderStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("running"), message: Schema.optionalKey(Schema.String) }),
+  Schema.Struct({ state: Schema.Literal("idle"), message: Schema.optionalKey(Schema.String) }),
+]);
+export type ProviderStatus = typeof ProviderStatus.Type;
 
 export interface ProviderVersions {
   readonly provider: string;
@@ -365,16 +367,20 @@ export class RuntimeProviderRegistry extends Context.Service<
     /**
      * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
      * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
-     * or contacts a runtime.
+     * or contacts a runtime. With `providerId`, only that provider's applied state is read.
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
+      providerId?: ProviderId,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
     readonly appliedStateInventory?: (
       providerId: ProviderId,
     ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly hasRecordedOwnership?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
     readonly assertAppliedStateReadable?: (
       plan: Pick<AppPlan, "id" | "provider">,
     ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;

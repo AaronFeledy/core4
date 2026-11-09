@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:VolumeLocator",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Adds explicit native presence to volume observations for interrupted missing-root disposal recovery. Every previous locator remains accepted with presence omitted; omission does not prove absence. The new absent arm forbids a live identity, while the present arm preserves optional provenance. This is a derived provider observation, not persisted lifecycle state. Schema and provider tests cover absent, present without provenance, transport failures, and contradictory identity."
+  },
+  {
     "surface": "schema:ToolingVar",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
@@ -6206,5 +6212,11 @@
       "store": "snapshot-sidecar",
       "version": 2
     }
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "enum-widened",
+    "path": "$.runtimeState",
+    "justification": "Adds `idle`: an installed managed runtime that is not running and starts on demand now reports its services as stopped instead of `unavailable`, so scripts can tell \"nothing is running\" from \"the runtime cannot be observed\". `available` and `unavailable` keep their meaning. This is a derived observation in a command result, not persisted state."
   }
 ]

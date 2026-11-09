@@ -12,12 +12,19 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-import { EventService, PathsService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  EventService,
+  PathsService,
+  RouterService,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
 import type { AppliedTeardownEvidence } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { executeGlobalTeardown } from "../../src/operations/global-teardown.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test.each(["applied", "orphans", "owned", "absent"] as const)(
   "global executor brackets %s evidence and completes routes before post",
@@ -108,6 +115,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
         return kind satisfies never;
     }
     const layer = Layer.mergeAll(
+      Layer.succeed(StateStore, makeTestStateStore().service),
       PrivateFileAccessService.layer,
       Layer.succeed(
         PathsService,

@@ -1,4 +1,5 @@
 {
+  "hostMaintenanceTeardownSignature": "teardown?: (input: { readonly paths: HostRuntimePaths; readonly platform: HostPlatform; readonly stateStore: PluginStateStore; }) => Effect.Effect<HostTeardownResult, never>",
   "routerContributionFields": [
     "capabilities",
     "defaultFor",
@@ -449,9 +450,10 @@
     ],
     "RuntimeProviderRegistry": [
       "assertAppliedStateReadable?:(plan:Pick<AppPlan,\"id\" | \"provider\">) => Effect.Effect<void,ProviderUnavailableError | NoProviderInstalledError>",
-      "appliedPlansFor:(root:AbsolutePath) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
+      "appliedPlansFor:(root:AbsolutePath,providerId?:ProviderId) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
       "appliedStateInventory?:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
+      "hasRecordedOwnership?:(providerId:ProviderId) => Effect.Effect<boolean,ProviderUnavailableError|NoProviderInstalledError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
       "observeRuntime?:Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>,AppResolveError|ProviderError|NoProviderInstalledError>",
       "resolveAppliedPlan:(root:AbsolutePath,app?:Pick<AppRef,\"kind\"|\"id\">) => Effect.Effect<AppPlan|undefined,AppResolveError|ProviderError|NoProviderInstalledError>",
@@ -2098,6 +2100,7 @@
       "PluginTrustStore",
       "PrivilegeService",
       "ProcessRunner",
+      "ProviderStatus",
       "RecipeDecomposer",
       "RecipeManifestService",
       "RemoteSource",

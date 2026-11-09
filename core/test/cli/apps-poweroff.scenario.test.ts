@@ -160,7 +160,10 @@ describe("apps:poweroff command", () => {
     };
     const services = Layer.mergeAll(
       fakeConfigService(userDataRoot),
-      Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+      Layer.succeed(
+        HostMaintenanceRegistry,
+        HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+      ),
     );
 
     // When: poweroff uses its default runtime teardown seam.

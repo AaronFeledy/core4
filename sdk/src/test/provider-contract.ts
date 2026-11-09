@@ -16,6 +16,7 @@ import {
   ProviderId,
 } from "../schema/index.ts";
 import type { LogChunk, RuntimeProviderShape } from "../services/index.ts";
+import { ProviderStatus } from "../services/provider.ts";
 import {
   CONTRACT_LONG_LINE,
   CONTRACT_SPLIT_LINE,
@@ -289,7 +290,12 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(typeof available === "boolean", "isAvailable resolves to a boolean", available);
 
   const status = yield* provider.getStatus.pipe(mapFailures(mapProviderFailure("getStatus resolves")));
-  yield* requireContract(typeof status.running === "boolean", "getStatus returns a running boolean", status);
+  yield* requireContract(Schema.is(ProviderStatus)(status), "getStatus returns running or idle", status);
+  yield* requireContract(
+    status.state !== "idle" || provider.ensureReady !== undefined,
+    "idle providers can ensureReady",
+    status,
+  );
   yield* requireContract(
     status.message === undefined || typeof status.message === "string",
     "getStatus message is a string when present",

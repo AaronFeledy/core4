@@ -266,6 +266,10 @@
       "digest": "1f56920584d949d4ccbc2d7b392e327d44bb72581ed56fac16f98be05d40c64b"
     },
     {
+      "fixture": "docs/guides/doctor-walkthrough/fixtures/unstarted-app",
+      "digest": "56039f296791a3f63e48c3bedd601e0537e5607a01b7d90c8652867f5bbcf63c"
+    },
+    {
       "fixture": "docs/guides/dotnet/fixtures/dotnet-demo",
       "digest": "9c29214f8e2f3d5a130753620d8822c95ec029b238f0a63b2526276857464bb6"
     },

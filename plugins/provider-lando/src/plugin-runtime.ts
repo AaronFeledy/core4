@@ -10,6 +10,7 @@ import type { Downloader, StateBucket } from "@lando/sdk/services";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import type { ArtifactDownload, ArtifactDownloadResult } from "./runtime-bundle.ts";
+import { type RuntimeShutdownStore, makeRuntimeShutdownStore } from "./runtime-shutdown.ts";
 
 const providerStateError = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({
@@ -70,6 +71,7 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
   {
     readonly runtimeLock: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
     readonly runtimeGenerationStore: RuntimeGenerationStore;
+    readonly runtimeShutdownStore: RuntimeShutdownStore;
   },
   ProviderUnavailableError
 > {
@@ -90,6 +92,7 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
   }
 
   return {
+    runtimeShutdownStore: yield* makeRuntimeShutdownStore(ctx.stateStore),
     runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
     runtimeGenerationStore: {
       get: generationBucketValue.get,

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { AppPlanSanitizer, ContainerHelperAssets, EventService, PathsService } from "@lando/sdk/services";
@@ -7,6 +10,7 @@ import { dataHelperImage } from "../src/data-plane.ts";
 import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
+  hasResourceOwnershipRecords,
   makeProviderPlanState,
   noPlanErrorFactory,
   notImplementedError,
@@ -33,6 +37,23 @@ const plan = Schema.decodeSync(AppPlan)({
   metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
 });
 const ctx = { providerId: "lando", remediation: "Retry.", env: {} };
+
+test.each(["missing", "lock-only", "record"] as const)(
+  "recorded ownership detects %s state",
+  async (state) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-recorded-ownership-"));
+    try {
+      if (state !== "missing") {
+        const directory = join(root, "resource-ownership");
+        await mkdir(directory);
+        await Bun.write(join(directory, state === "record" ? "owner.json" : "owner.json.lock"), "{}");
+      }
+      expect(await Effect.runPromise(hasResourceOwnershipRecords("test", root))).toBe(state === "record");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 const stateOptions = {
   ctx,
   providerId: ProviderId.make("lando"),
