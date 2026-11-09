@@ -21,20 +21,14 @@ test.each([
     'Landofile environment entry "FOO" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.',
   ],
 ] as const)("merges env transformation diagnostics for #2194: %s", async (value, message) => {
-  const cwd = await mkdtemp(join(tmpdir(), "lando-lint-env-"));
-  try {
-    for (const [prefix, path] of [
-      ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
-      ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
-    ] as const) {
-      await writeFile(join(cwd, ".lando.yml"), `name: lint-parity\n${prefix}\n  ${value}\n`);
-      const result = await Effect.runPromise(lintLandofile({ cwd }));
-      expect(result.violations).toEqual([
-        expect.objectContaining({ path, message, scopes: ["fragment", "effective"] }),
-      ]);
-    }
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
+  for (const [prefix, path] of [
+    ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
+    ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
+  ] as const) {
+    const { result } = await lintLayers({ ".lando.yml": `name: lint-parity\n${prefix}\n  ${value}\n` });
+    expect(result.violations).toEqual([
+      expect.objectContaining({ path, message, scopes: ["fragment", "effective"] }),
+    ]);
   }
 });
 

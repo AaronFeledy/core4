@@ -132,7 +132,7 @@ const deriveTree = (ast: AST.AST, options: DeriveAuthoringOptions, semantic: boo
       const authored = derive(Arr.lastNonEmpty(node.encoding).to, allowExpression);
       if (!semantic) return authored;
       // check() copies the AST, keeping the site's ownership separate from the memoized authored node.
-      const owned = Schema.make<Schema.Codec<unknown>>(
+      return Schema.make<Schema.Codec<unknown>>(
         AST.isSuspend(authored) ? new AST.Union([authored]) : authored,
       ).check(
         site(node, {
@@ -141,7 +141,6 @@ const deriveTree = (ast: AST.AST, options: DeriveAuthoringOptions, semantic: boo
           description: AST.resolveDescription(authored),
         }),
       ).ast;
-      return owned;
     }
     const kind = leafKind(node);
     if (kind) {

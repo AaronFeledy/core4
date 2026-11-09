@@ -11,26 +11,37 @@ import {
 const decoder = (ast: AST.AST) => Schema.decodeUnknownResult(Schema.make<Schema.Codec<unknown>>(ast));
 
 const precisionCheck = (source: AST.Objects, complete: (ast: AST.AST) => AST.AST) => {
-  const picks = new WeakMap<AST.Filter<unknown>, ReturnType<typeof decoder>>();
+  const picks = new WeakMap<
+    AST.Filter<unknown>,
+    {
+      readonly ast: AST.Objects;
+      readonly completeness: ReturnType<typeof decoder>;
+      readonly decode: ReturnType<typeof decoder>;
+    }
+  >();
   const subset = decoder(new AST.Objects([], source.indexSignatures));
   return (check: AST.Filter<unknown>, value: object, options: AST.ParseOptions) => {
     const reads = authoringReads(check);
     let input: unknown;
     let decode: ReturnType<typeof decoder>;
     if (reads !== undefined) {
-      const properties = source.propertySignatures.filter((property) =>
-        reads.includes(String(property.name)),
-      );
+      let pick = picks.get(check);
+      if (pick === undefined) {
+        const ast = new AST.Objects(
+          source.propertySignatures.filter((property) => reads.includes(String(property.name))),
+          [],
+        );
+        pick = { ast, completeness: decoder(complete(ast)), decode: decoder(ast) };
+        picks.set(check, pick);
+      }
       input = Object.fromEntries(
-        properties
+        pick.ast.propertySignatures
           .filter((property) => Object.hasOwn(value, property.name))
           .map((property) => [property.name, Reflect.get(value, property.name)]),
       );
       if (containsAuthoringExpression(input)) return undefined;
-      const pick = new AST.Objects(properties, []);
-      if (Result.isFailure(decoder(complete(pick))(input, options))) return undefined;
-      decode = picks.get(check) ?? decoder(pick);
-      picks.set(check, decode);
+      if (Result.isFailure(pick.completeness(input, options))) return undefined;
+      decode = pick.decode;
     } else if (authoringSubsetSafe(check) && source.indexSignatures.length > 0) {
       input = Object.fromEntries(
         Object.entries(value).filter(([key, entry]) => {
@@ -96,11 +107,8 @@ export const authoringSemanticSite = (
       };
       for (const check of source.checks ?? []) if (visit(check)) break;
       const [first, ...rest] = issues;
-      return first === undefined
-        ? undefined
-        : rest.length === 0
-          ? first
-          : new SchemaIssue.Composite(source, [first, ...rest], value, options);
+      if (first === undefined || rest.length === 0) return first;
+      return new SchemaIssue.Composite(source, [first, ...rest], value, options);
     },
     annotations,
     true,

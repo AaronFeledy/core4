@@ -718,37 +718,47 @@ describe("Landofile authoring schemas", () => {
         DeprecationNoticeAuthoring: {
           required: ["since", "note"],
           properties: {
-            docsUrl: { anyOf: [{ format: "uri", pattern: "^[Hh][Tt][Tt][Pp][Ss]?://" }, {}] },
-            since: { anyOf: [{ pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$" }, {}] },
+            docsUrl: {
+              anyOf: [
+                { format: "uri", pattern: "^[Hh][Tt][Tt][Pp][Ss]?://" },
+                { $ref: "#/$defs/AuthoringExpressionEncoded" },
+              ],
+            },
+            since: {
+              anyOf: [
+                { pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$" },
+                { $ref: "#/$defs/AuthoringExpressionEncoded" },
+              ],
+            },
           },
         },
       },
     });
     expect(shape).toHaveProperty(
-      ["$defs", "DeprecationNoticeAuthoring", "properties", "severity", "anyOf", 0, "anyOf"],
-      [{ type: "string", enum: ["info"] }, { $ref: "#/$defs/AuthoringExpressionEncoded" }],
+      ["$defs", "DeprecationNoticeAuthoring", "properties", "severity", "anyOf"],
+      ["info", "warn", "error"].map((severity) => ({
+        anyOf: [{ type: "string", enum: [severity] }, { $ref: "#/$defs/AuthoringExpressionEncoded" }],
+      })),
     );
     expect(fragment).toHaveProperty(["$defs", "DeprecationNoticeAuthoringFragment", "properties", "note"]);
     expect(fragment).not.toHaveProperty(["$defs", "DeprecationNoticeAuthoringFragment", "required"]);
-    for (const [document, taskDefinition, noticeDefinition] of [
-      [shape, "ToolingTaskInputAuthoring", "DeprecationNoticeAuthoring"],
-      [fragment, "ToolingTaskInputAuthoringFragment", "DeprecationNoticeAuthoringFragment"],
+    for (const [document, taskDefinition, noticeDefinition, noticePath] of [
+      [shape, "ToolingTaskInputAuthoring", "DeprecationNoticeAuthoring", ["anyOf"]],
+      [
+        fragment,
+        "ToolingTaskInputAuthoringFragment",
+        "DeprecationNoticeAuthoringFragment",
+        ["anyOf", 2, "anyOf"],
+      ],
     ] as const) {
-      const definitions = document.$defs;
-      if (typeof definitions !== "object" || definitions === null) {
-        throw new TypeError("Expected JSON Schema definitions");
-      }
-      expect(JSON.stringify(Reflect.get(definitions, taskDefinition))).toContain(
-        `"$ref":"#/$defs/${noticeDefinition}"`,
+      expect(document).toHaveProperty(
+        ["$defs", taskDefinition, "anyOf", 0, "anyOf", 0, "properties", "deprecated", ...noticePath],
+        [{ $ref: `#/$defs/${noticeDefinition}` }, { type: "string", pattern: expect.any(String) }],
       );
     }
     expect(shape).toHaveProperty(["properties", "tooling", "anyOf", 0, "additionalProperties"], {
       $ref: "#/$defs/ToolingTaskInputAuthoring",
     });
-    expect(shape).toHaveProperty(
-      ["$defs", "ToolingTaskInputAuthoring", "anyOf", 0, "anyOf", 0, "properties", "deprecated", "anyOf"],
-      [{ $ref: "#/$defs/DeprecationNoticeAuthoring" }, { type: "string", pattern: expect.any(String) }],
-    );
     expect(decoded._tag).toBe("Success");
   });
 });

@@ -58,7 +58,6 @@ describe("DeprecationNotice", () => {
 
   test.each(["4.2.0", "4.1.0"])("rejects removeIn %s when it is not later than since", (removeIn) => {
     const result = decode({ since: "4.2.0", removeIn, note: "Use something else." });
-    expect(Result.isFailure(result)).toBe(true);
     if (Result.isSuccess(result)) throw new TypeError("Expected an invalid removal schedule");
     expect(result.failure.message).toContain("removeIn must be a later release than since.");
   });

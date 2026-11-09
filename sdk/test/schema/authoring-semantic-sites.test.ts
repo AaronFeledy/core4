@@ -63,6 +63,11 @@ test.each([false, true])(
       n: { _tag: "AuthoringExpression", source: "{{ env.N }}", expectedType: "number" },
     });
     expect(result._tag).toBe(declared ? "Failure" : "Success");
+    if (Result.isFailure(result)) {
+      expect(validationIssuesFromSchemaIssue(result.failure.issue)).toEqual([
+        expect.objectContaining({ path: ["b"], message: "Expected b greater than a" }),
+      ]);
+    }
   },
 );
 

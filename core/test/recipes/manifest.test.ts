@@ -336,9 +336,9 @@ version: 0.0.1
     const exit = await runParse("test://beta-deprecated", yaml);
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
-    if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.message.includes("removeIn"))).toBe(true);
-    }
+    expect(error).toMatchObject({
+      issues: [{ path: ["deprecated"], message: "removeIn must be a later release than since." }],
+    });
   });
 
   test("per-prompt `deprecated:` validates the canonical notice contract", async () => {
@@ -354,11 +354,11 @@ version: 0.0.1
     const exit = await runParse("test://beta-prompt-deprecated", yaml);
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
-    if (error instanceof RecipeManifestValidationError) {
-      expect(
-        error.issues.some((issue) => issue.path[0] === "prompts" && issue.path.at(-1) === "deprecated"),
-      ).toBe(true);
-    }
+    expect(error).toMatchObject({
+      issues: [
+        { path: ["prompts", 0, "deprecated"], message: "removeIn must be a later release than since." },
+      ],
+    });
   });
 
   test("prompt type `editor` with a default and validate decodes successfully", async () => {
