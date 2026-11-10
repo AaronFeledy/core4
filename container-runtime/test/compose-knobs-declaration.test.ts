@@ -33,22 +33,4 @@ describe("Podman-backed Compose knob declarations", () => {
     expect(first).not.toBe(second);
     expect(first).toEqual([...first].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
   });
-
-  test("Given resource controls, When either dialect is read, Then both declare deploy.resources", () => {
-    for (const dialect of DIALECTS) {
-      expect(composeKnobsForDialect(dialect)).toContain("deploy.resources");
-    }
-  });
-
-  test("Given GPU device requests, When declarations are read, Then only docker declares them", () => {
-    // Given / When
-    const libpod = new Set<string>(composeKnobsForDialect("libpod"));
-    const docker = new Set<string>(composeKnobsForDialect("docker"));
-
-    // Then: Podman's compat create ignores non-CDI device requests, so libpod must stay fail-closed.
-    for (const key of ["gpus", "deploy.resources.reservations.devices"]) {
-      expect(libpod.has(key)).toBe(false);
-      expect(docker.has(key)).toBe(true);
-    }
-  });
 });

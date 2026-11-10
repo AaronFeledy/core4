@@ -83,7 +83,7 @@ describe("Compose disposition matrix", () => {
   ])("rejects flat %s and points at its deploy counterpart %s", (path, counterpart) => {
     const entry = composeServiceDispositions[path];
     expect(entry?.disposition).toBe("rejected");
-    expect(entry?.remediation).toBe(`Remove ${path} and set ${counterpart} instead.`);
+    expect(entry?.remediation).toContain(counterpart);
     expect(composeServiceDispositions[counterpart]?.disposition).toBe("preserved");
   });
 

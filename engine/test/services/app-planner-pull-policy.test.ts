@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
-import { CapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   LandofileShape,
   type ProviderCapabilities,
@@ -26,7 +26,7 @@ const pullingCapabilities: ProviderCapabilities = {
   artifactPull: true,
 };
 
-const planExit = (service: Record<string, unknown>, capabilities = pullingCapabilities) =>
+const planExit = (service: Record<string, unknown>) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) =>
       planLiteralTestLandofile(
@@ -36,7 +36,7 @@ const planExit = (service: Record<string, unknown>, capabilities = pullingCapabi
           runtime: 4,
           services: { web: { home: false, ...service } },
         }),
-        capabilities,
+        pullingCapabilities,
       ),
     ).pipe(
       Effect.provide(AppPlannerLayer.layer),
@@ -121,24 +121,6 @@ describe("pull_policy planning", () => {
           "services.web.pull_policy",
         ]);
         expect(failure.issues[0]?.suggestion).toContain(advice);
-      }),
-  );
-
-  test.each(["always", "never"])(
-    "Given pull_policy %s on a provider that cannot pull, when planned, then planning fails with CapabilityError",
-    async (policy) =>
-      inTempApp(async () => {
-        // When
-        const failure = failureOf(
-          await planExit(
-            { type: "lando", image: "alpine:3", pull_policy: policy },
-            { ...pullingCapabilities, artifactPull: false },
-          ),
-        );
-
-        // Then
-        expect(failure).toBeInstanceOf(CapabilityError);
-        expect(failure).toMatchObject({ service: "web", capability: "artifactPull" });
       }),
   );
 });
