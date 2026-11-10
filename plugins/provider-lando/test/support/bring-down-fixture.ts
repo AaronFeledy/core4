@@ -52,16 +52,14 @@ export const servicePlan = (name: "node" | "database"): ServicePlan => ({
             realization: "passthrough",
           },
         ]
-      : name === "database"
-        ? [
-            {
-              type: "volume",
-              store: "bringdownapp_database_data",
-              target: PortablePath.make("/var/lib/postgresql/data"),
-              readOnly: false,
-            },
-          ]
-        : [],
+      : [
+          {
+            type: "volume",
+            store: "bringdownapp_database_data",
+            target: PortablePath.make("/var/lib/postgresql/data"),
+            readOnly: false,
+          },
+        ],
   endpoints:
     name === "node"
       ? [

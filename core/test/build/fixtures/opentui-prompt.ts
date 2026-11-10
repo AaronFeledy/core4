@@ -62,9 +62,8 @@ export const runPrompt = async (
     const stdout = consumeOutput(proc.stdout);
     const stderr = consumeOutput(proc.stderr);
     let exited = false;
-    const completion = proc.exited.then((code) => {
+    const completion = proc.exited.then(() => {
       exited = true;
-      return code;
     });
     for (let attempt = 0; attempt < 500; attempt += 1) {
       if (exited || output.includes("╭") || output.includes("(value or index):")) break;
@@ -95,9 +94,8 @@ export const runPrompt = async (
       },
     });
     let exited = false;
-    const completion = proc.exited.then((code) => {
+    const completion = proc.exited.then(() => {
       exited = true;
-      return code;
     });
     try {
       for (let attempt = 0; attempt < 500; attempt += 1) {

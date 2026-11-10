@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  type TestOwnershipCode,
-  type TestOwnershipIssue,
   checkTestOwnership,
   collectTestInventory,
   formatOwnershipIssue,
@@ -11,22 +9,30 @@ import {
 import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 import { createTestSelectionFixture } from "./support/test-selection-fixture.ts";
 
-const sample = (issues: readonly TestOwnershipIssue[], code: TestOwnershipCode) => {
-  const issue = issues.find((entry) => entry.code === code);
-  if (issue === undefined) throw new Error(`Missing ${code}: ${JSON.stringify(issues)}`);
-  console.log(formatOwnershipIssue(issue));
-  return issue;
-};
-
-test("derives multiple owners and prerequisites from declarations without reading workflows during unit collection", async () => {
+test.each([
+  { workspaces: ["pkg", "packages/*"], run: "bun run test:selection live" },
+  { workspaces: { packages: ["pkg", "packages/*"] }, run: "FIXTURE=1 bun run test:selection live" },
+])("discovers workspace tests and derives owners without workflows: %j", async ({ workspaces, run }) => {
   await using fixture = await createTestSelectionFixture();
-  expect((await checkTestOwnership(fixture.options)).issues).toEqual([]);
+  await fixture.put("package.json", JSON.stringify({ workspaces }));
+  await fixture.put("packages/nested/package.json", JSON.stringify({ name: "@fixture/nested" }));
+  await fixture.put("packages/nested/test/unit.test.ts");
+  await fixture.workflow(run);
+  const options = {
+    ...fixture.options,
+    selections: [{ ...fixture.selections[0], paths: ["pkg/test/"] }],
+  };
+  expect((await checkTestOwnership(options)).issues).toEqual([]);
   await rm(join(fixture.root, ".github"), { recursive: true });
-  expect(await collectTestInventory(fixture.options)).toEqual([
+  expect(await collectTestInventory(options)).toEqual([
+    { path: "packages/nested/test/unit.test.ts", owners: ["unit"] },
     { path: "pkg/test/live.integration.test.ts", owners: ["live"], needs: "Fixture socket" },
-    { path: "pkg/test/unit.test.ts", owners: ["unit"] },
+    { path: "pkg/test/unit.test.ts", owners: ["live", "unit"], needs: "Fixture socket" },
   ]);
-  expect(await collectShardedTestFiles(fixture.root)).toEqual(["pkg/test/unit.test.ts"]);
+  expect(await collectShardedTestFiles(fixture.root)).toEqual([
+    "packages/nested/test/unit.test.ts",
+    "pkg/test/unit.test.ts",
+  ]);
 });
 
 test.each([
@@ -38,20 +44,21 @@ test.each([
   await using fixture = await createTestSelectionFixture();
   await fixture.workflow(run);
   const { issues } = await checkTestOwnership(fixture.options);
-  expect(issues.map((issue) => issue.code)).toEqual(["UNBOUND_SELECTION"]);
-  expect(sample(issues, "UNBOUND_SELECTION").paths).toEqual(["live", "ci.yml", "live"]);
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["UNBOUND_SELECTION", ["live", "ci.yml", "live"]],
+  ]);
 });
 
 test("checks each positive selector separately even when a sibling selector still matches", async () => {
   await using fixture = await createTestSelectionFixture();
   const selection = fixture.selections[0];
-  if (selection === undefined) throw new Error("Missing fixture selection");
   const { issues } = await checkTestOwnership({
     ...fixture.options,
     selections: [{ ...selection, paths: [...selection.paths, "pkg/test/missing*.test.ts"] }],
   });
-  expect(issues.map((issue) => issue.code)).toEqual(["STALE_SELECTOR"]);
-  expect(sample(issues, "STALE_SELECTOR").paths).toEqual(["live", "pkg/test/missing*.test.ts"]);
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["STALE_SELECTOR", ["live", "pkg/test/missing*.test.ts"]],
+  ]);
 });
 
 test("does not let a selection with no job bindings hide a test from units", async () => {
@@ -67,16 +74,15 @@ test("does not let a selection with no job bindings hide a test from units", asy
   expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([["UNBOUND_SELECTION", ["dedicated"]]]);
 });
 
-test("reports an unowned integration with actionable filename, selection, and manual remedies", async () => {
+test("reports an unowned integration with the files to edit for ownership", async () => {
   await using fixture = await createTestSelectionFixture();
   await fixture.put("pkg/test/unowned.integration.test.ts");
   const { issues } = await checkTestOwnership(fixture.options);
-  expect(issues.map((issue) => issue.code)).toEqual(["UNOWNED"]);
-  const issue = sample(issues, "UNOWNED");
-  expect(issue.paths).toEqual(["pkg/test/unowned.integration.test.ts"]);
-  expect(issue.remediation).toContain("scripts/test-selections.ts");
-  expect(issue.remediation).toContain("*.test.ts");
-  expect(issue.remediation).toContain("MANUAL_TESTS");
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["UNOWNED", ["pkg/test/unowned.integration.test.ts"]],
+  ]);
+  expect(issues[0]?.remediation).toContain("scripts/test-selections.ts");
+  expect(issues[0]?.remediation).toContain("scripts/test-ownership.ts");
 });
 
 test.each([
@@ -87,8 +93,7 @@ test.each([
   await using fixture = await createTestSelectionFixture();
   await fixture.workflow(`bun run test:selection live\n${command}`);
   const { issues } = await checkTestOwnership(fixture.options);
-  expect(issues.map((issue) => issue.code)).toEqual(["RAW_BUN_TEST"]);
-  expect(sample(issues, "RAW_BUN_TEST").paths).toEqual(["ci.yml", "live"]);
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([["RAW_BUN_TEST", ["ci.yml", "live"]]]);
 });
 
 test.each(["--test-name-pattern", "--test-name-pattern=live case", "-t", "-t=live case"])(
@@ -150,9 +155,8 @@ test.each(["--test-name-pattern", "--test-name-pattern=live case", "-t", "-t=liv
       },
       { id: "matrix:advisory", command: ["bun", "test", path], advisory: true },
     ];
-    expect(
-      (await checkTestOwnership({ ...fixture.options, planChecks })).issues.map((issue) => issue.code),
-    ).toEqual(["UNOWNED"]);
+    const { issues } = await checkTestOwnership({ ...fixture.options, planChecks });
+    expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([["UNOWNED", [path]]]);
     const result = await checkTestOwnership({
       ...fixture.options,
       planChecks: [...planChecks, { id: "matrix:whole-file", command: ["bun", "test", `./${path}`] }],
@@ -214,10 +218,11 @@ test("reports unknown test locations and stale or selected manual gaps together"
       "pkg/test/missing.integration.test.ts": "Missing fixture socket",
     },
   });
-  expect(issues.map((issue) => issue.code)).toEqual(["MANUAL_SELECTED", "MANUAL_STALE", "UNKNOWN_LOCATION"]);
-  expect(sample(issues, "MANUAL_SELECTED").paths).toEqual(["pkg/test/live.integration.test.ts"]);
-  expect(sample(issues, "MANUAL_STALE").paths).toEqual(["pkg/test/missing.integration.test.ts"]);
-  expect(sample(issues, "UNKNOWN_LOCATION").paths).toEqual(["forgotten/test/lost.test.ts"]);
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["MANUAL_SELECTED", ["pkg/test/live.integration.test.ts"]],
+    ["MANUAL_STALE", ["pkg/test/missing.integration.test.ts"]],
+    ["UNKNOWN_LOCATION", ["forgotten/test/lost.test.ts"]],
+  ]);
   expect(await collectShardedTestFiles(fixture.root)).toEqual(["pkg/test/unit.test.ts"]);
 });
 
@@ -241,7 +246,9 @@ test("checks the exact unit shard matrix and the Go builder without treating Go 
     ],
   });
   expect(entries.find((entry) => entry.path.endsWith(".go"))?.owners).toEqual(["container-helper-go"]);
-  expect(issues.map((issue) => issue.paths)).toEqual([["unit", "ci.yml", "unit-tests-linux-x64-shard"]]);
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["UNBOUND_SELECTION", ["unit", "ci.yml", "unit-tests-linux-x64-shard"]],
+  ]);
 });
 
 test("the real repository has no unowned tests or unexecuted declarations", async () => {

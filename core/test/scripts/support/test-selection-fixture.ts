@@ -16,14 +16,14 @@ export const createTestSelectionFixture = async () => {
   await put("pkg/package.json", JSON.stringify({ name: "@fixture/pkg" }));
   await put("pkg/test/unit.test.ts");
   await put("pkg/test/live.integration.test.ts");
-  const selections: readonly TestSelection[] = [
+  const selections = [
     {
       id: "live",
       paths: ["pkg/test/live.integration.test.ts"],
       jobs: [{ workflow: "ci.yml", job: "live" }],
       needs: "Fixture socket",
     },
-  ];
+  ] as const satisfies readonly TestSelection[];
   const workflow = async (
     run = "bun run test:selection live",
     shards: readonly number[] = [1, 2, 3],

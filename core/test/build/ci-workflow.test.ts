@@ -766,7 +766,7 @@ describe("ci workflow", () => {
     );
     expect(helper).toContain("        run: bun run test:selection container-helper");
     expect(helper.indexOf("Download container helper")).toBeLessThan(
-      helper.indexOf("bun run test:selection "),
+      helper.indexOf("bun run test:selection container-helper"),
     );
     expect(helper).not.toContain("setup-go");
     expect(helper).not.toContain("lando.ts setup");
@@ -1187,10 +1187,9 @@ describe("ci workflow", () => {
       providerIntegration.indexOf("Run provider contract tests"),
     );
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-sdk");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-lando");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-docker");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-podman");
+    for (const provider of ["sdk", "lando", "docker", "podman"]) {
+      expect(providerIntegration).toContain(`          bun run test:selection provider-contract-${provider}`);
+    }
 
     expect(providerIntegration).toContain("      - name: Provision rootless runtime prerequisites");
     expect(providerIntegration).toContain("          sudo apt-get install -y uidmap fuse-overlayfs");
@@ -1277,9 +1276,9 @@ describe("ci workflow", () => {
       "          bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log",
     );
     expect(providerIntegration).not.toContain("LANDO_MVP_BINARY_PATH");
-    expect(providerIntegration).toContain("          bun run test:selection providers-lando");
-    expect(providerIntegration).toContain("          bun run test:selection providers-docker");
-    expect(providerIntegration).toContain("          bun run test:selection services-lando");
+    for (const selection of ["providers-lando", "providers-docker", "services-lando"]) {
+      expect(providerIntegration).toContain(`          bun run test:selection ${selection}`);
+    }
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
     expect(providerIntegration).toContain("          for attempt in 1 2 3; do");
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:24");
@@ -1438,10 +1437,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("    runs-on: ubuntu-24.04-arm");
     expect(providerIntegration).toContain("    timeout-minutes: 25");
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-sdk");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-lando");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-docker");
-    expect(providerIntegration).toContain("          bun run test:selection provider-contract-podman");
+    for (const provider of ["sdk", "lando", "docker", "podman"]) {
+      expect(providerIntegration).toContain(`          bun run test:selection provider-contract-${provider}`);
+    }
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");

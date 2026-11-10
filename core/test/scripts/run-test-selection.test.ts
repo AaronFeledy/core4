@@ -5,7 +5,27 @@ import { collectTestFiles, resolveTestSelection } from "../../../scripts/test-se
 import { type TestSelection, selectionMatches } from "../../../scripts/test-selections.ts";
 import { createTestSelectionFixture } from "./support/test-selection-fixture.ts";
 
-test("resolves sorted exact paths and propagates a failing Bun result without running suffix matches", async () => {
+const runCapturedSelection = async (root: string, selection: TestSelection) => {
+  const runner = new URL("../../../scripts/run-test-selection.ts", import.meta.url).href;
+  await using child = Bun.spawn(
+    [
+      process.execPath,
+      "--no-orphans",
+      "--eval",
+      `import { runTestSelection } from ${JSON.stringify(runner)};
+       process.exitCode = await runTestSelection(${JSON.stringify(selection.id)}, ${JSON.stringify({ root, selections: [selection] })});`,
+    ],
+    { cwd: root, stdout: "pipe", stderr: "pipe" },
+  );
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { code, output: Bun.stripANSI(`${stdout}\n${stderr}`) };
+};
+
+test("resolves exact paths and propagates a failing Bun result without running suffix matches", async () => {
   await using fixture = await createTestSelectionFixture();
   const receipt = join(fixture.root, "receipt.txt");
   const source = (label: string, fail: boolean) => `import { test, expect } from "bun:test";
@@ -26,21 +46,41 @@ test("resolves sorted exact paths and propagates a failing Bun result without ru
   expect(resolveTestSelection(selection, await collectTestFiles(fixture.root))).toEqual([
     "pkg/test/selected.test.ts",
   ]);
-  expect(await runTestSelection("exact", { root: fixture.root, selections: [selection] })).toBe(1);
+  const { code, output } = await runCapturedSelection(fixture.root, selection);
+  expect(code, output).toBe(1);
+  expect(output).toContain("(fail) selected");
+  expect(output).toMatch(/^\s*0 pass\s*$/mu);
+  expect(output).toMatch(/^\s*1 fail\s*$/mu);
   expect(await Bun.file(receipt).text()).toBe("selected\n");
 });
 
 test("rejects unknown, empty, and Go selections before spawning Bun", async () => {
   await using fixture = await createTestSelectionFixture();
-  const options = { root: fixture.root, selections: fixture.selections };
-  await expect(runTestSelection("bogus", options)).rejects.toMatchObject({ reason: "unknown", id: "bogus" });
-  for (const selection of [
+  const selections = [
+    ...fixture.selections,
     { id: "empty", paths: ["missing.test.ts"], jobs: [] },
     { id: "go", paths: ["core/container-helper/**/*_test.go"], runner: "go", jobs: [] },
-  ] satisfies readonly TestSelection[]) {
-    await expect(
-      runTestSelection(selection.id, { ...options, selections: [selection] }),
-    ).rejects.toBeInstanceOf(TestSelectionError);
+  ] satisfies readonly TestSelection[];
+  for (const expected of [
+    {
+      id: "bogus",
+      reason: "unknown",
+      message: 'Unknown test selection "bogus"; see scripts/test-selections.ts.',
+    },
+    {
+      id: "empty",
+      reason: "empty",
+      message: 'Test selection "empty" resolved to zero files; check scripts/test-selections.ts.',
+    },
+    {
+      id: "go",
+      reason: "runner",
+      message: 'Test selection "go" uses the Go container builder, not the Bun runner.',
+    },
+  ]) {
+    const result = runTestSelection(expected.id, { root: fixture.root, selections });
+    await expect(result).rejects.toBeInstanceOf(TestSelectionError);
+    await expect(result).rejects.toMatchObject(expected);
   }
 });
 
@@ -59,7 +99,10 @@ test("executes filtered selections while forwarding their name filter to Bun", a
     args: ["--test-name-pattern", "kept case"],
     jobs: [],
   };
-  expect(await runTestSelection("filtered", { root: fixture.root, selections: [selection] })).toBe(0);
+  const { code, output } = await runCapturedSelection(fixture.root, selection);
+  expect(code, output).toBe(0);
+  expect(output).toMatch(/^\s*1 pass\s*$/mu);
+  expect(output).toMatch(/^\s*1 filtered out\s*$/mu);
   expect(await Bun.file(receipt).text()).toBe("kept");
 });
 

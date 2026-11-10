@@ -76,10 +76,7 @@ const frame = (stream: "stdout" | "stderr", text: string): Uint8Array => {
   const payload = textEncoder.encode(text);
   const output = new Uint8Array(8 + payload.length);
   output[0] = stream === "stdout" ? 1 : 2;
-  output[4] = (payload.length >>> 24) & 0xff;
-  output[5] = (payload.length >>> 16) & 0xff;
-  output[6] = (payload.length >>> 8) & 0xff;
-  output[7] = payload.length & 0xff;
+  new DataView(output.buffer).setUint32(4, payload.length, false);
   output.set(payload, 8);
   return output;
 };
