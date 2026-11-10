@@ -48,6 +48,12 @@ const podmanInfoRootless = (info: unknown): boolean | undefined => {
 
 export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER_ID);
 
+// The managed service stays in the cgroup that launched it, which is rarely delegated, so Podman
+// starts containers without their own cgroup and resource limits would not apply (#2257).
+const managedRuntimeComposeKnobs = composeKnobsForDialect("libpod").filter(
+  (key) => key !== "deploy.resources",
+);
+
 /**
  * Service-level Compose fields that stay undeclared so the planner's
  * fail-closed capability gate rejects them before provider execution:
@@ -89,7 +95,7 @@ export const providerLandoCapabilitiesForPlatform = (
     tlsCertificates: "lando",
     rootless,
     composeSpec: "native",
-    composeKnobs: { supported: composeKnobsForDialect("libpod") },
+    composeKnobs: { supported: managedRuntimeComposeKnobs },
     composeServiceFields: { supported: ["labels", "configs"] },
     authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },

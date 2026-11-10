@@ -113,8 +113,9 @@ every accepted, preserved, and rejected key. A rejected key fails
 replacement when Lando has one: `mem_limit`, for example, points you to
 `deploy.resources.limits.memory`.
 
-Some preserved keys also need the provider to support them. GPU requests are
-the main case: they work on the `docker` provider only. When the selected
+Some preserved keys also need the provider to support them. Resource limits
+under `deploy.resources` work on the `docker` and `podman` providers, and GPU
+requests work on `docker` only. When the selected
 provider can't apply a key, planning fails with `CapabilityError`, and the
 remediation names each installed provider that can, with the
 `lando setup --provider=<id>` command that switches to it. See

@@ -41,7 +41,7 @@ A service-level `networks:` key works too, with one difference from Compose: it 
 
 ## Limit memory, CPU, and processes
 
-Set resource limits under `deploy.resources`, the Compose spelling. The `lando`, `podman`, and `docker` providers all apply them. Save this as `.lando.yml`:
+Set resource limits under `deploy.resources`, the Compose spelling. The `docker` and `podman` providers apply them. The default `lando` provider doesn't apply them yet, so on it planning fails with `CapabilityError`, and the remediation names the providers that can and the `lando setup --provider=<id>` command that switches to one. Save this as `.lando.yml`:
 
 ```yaml
 name: limits-demo
