@@ -16,10 +16,9 @@ bun run test:unit                     # whole-suite count
 bun --no-orphans test <path>          # per-file reproduction
 ```
 
-The current `test:unit` command uses the same collected unit file set as CI
-shards. It includes reviewed local integration suites and excludes dedicated
-library, recipe, docs, generated-guide and nightly suites. Use the [CI
-runbook](./ci.md) for those suites and for focused checks.
+The current `test:unit` command uses the same unit file set as CI shards:
+every `*.test.ts` outside the dedicated library, recipe, docs and nightly
+suites. Use the [CI runbook](./ci.md) for those suites and for focused checks.
 
 The 2026-09-20 measurement below used an older collector that excluded only
 `**/*.integration.test.ts`, also ran generated guide scenarios, and took roughly

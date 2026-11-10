@@ -104,9 +104,17 @@ bun run check:runtime-bundle-manifest
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` collects the unit file set from the ownership inventory in `scripts/test-ownership.ts` and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` with every file passed as an exact path. The inventory reads tracked files and untracked files that Git does not ignore, so local artifacts under ignored directories such as `.local/` never enter it. Workspace test roots come from the root package manifest, and tests beside `scripts/` are included. Dedicated library, recipe, docs, guide, helper and nightly suites stay outside unit shards. Go helper tests run in the `container-helper` job through `build-container-helper.ts --test`. Shard balance comes from the committed timings file.
+`scripts/test-shards.ts` runs the unit file set with `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`, passing every file as an exact path. The unit set is every `*.test.ts` file in a workspace `test/` tree or beside `scripts/` that Git tracks or would track, minus the files a dedicated selection keeps for itself: library, recipes, docs and the nightly tier. Ignored local files, such as anything under `.local/`, never enter it. Shard balance comes from the committed timings file.
 
-Prerequisite-free suites use `*.test.ts` and join PR unit shards by default. A `*.integration.test.ts` file requires a live or native prerequisite: an engine socket, a real PTY, a native OS, a compiled binary, or an opt-in environment variable. Split mixed suites so their prerequisite-free cases run in units; share fixtures rather than duplicate cases. Each provider's fake-client contract lives in `contract.test.ts`, while its live cases stay in `contract.integration.test.ts`. Native provider jobs select both halves. The real-PTY host-terminal case runs in those jobs, and live engine parity runs in the Linux x64 providers suite. Podman Desktop fake-client cases live in `plugins/provider-podman/test/desktop.test.ts`. The real desktop contract stays in `desktop.integration.test.ts`, needs native macOS or Windows plus `LANDO_TEST_PODMAN_DESKTOP_SOCKET`, and has no CI invocation.
+Name a suite for what it needs. A `*.test.ts` file runs without a live engine and joins the unit shards automatically. A `*.integration.test.ts` file needs an engine socket, a native non-Linux host, a compiled binary or an opt-in variable, so it runs only in a job that provides one. Split a mixed suite and share its fixtures: each provider's fake-client contract lives in `contract.test.ts` and its live cases in `contract.integration.test.ts`. Podman Desktop fake-client cases live in `plugins/provider-podman/test/desktop.test.ts`, and the native desktop contract in `desktop.integration.test.ts`.
+
+Every other test a workflow runs is a named selection in `scripts/test-selections.ts`. A workflow step runs it by ID, and the same command works locally:
+
+```bash
+bun run test:selection providers-core-live
+```
+
+The runner resolves the selection to exact files and starts Bun once. To run a new integration suite in CI, add it to a selection, emit `bun run test:selection <id>` from the workflow generator, and run `bun run codegen`.
 
 Inspect ownership without starting tests:
 
@@ -116,11 +124,18 @@ bun run check:test-ownership
 bun run scripts/test-shards.ts --list
 ```
 
-`bun run test:inventory` prints each test path with its owner, invocation and prerequisites. `manual` entries are known CI gaps. `bun run check:test-ownership` runs in static CI and `gate:pr`. It fails on a test without an owner, a stale explicit entry, a test outside a discovered location, or a test-file symlink.
+`bun run test:inventory` prints every test file with the selections that run it and their prerequisites. `bun run check:test-ownership` runs in static CI and `gate:pr`. It parses the committed workflows and reports each problem with a code and the file to edit:
 
-To fix an unowned path, register its workspace in the root manifest if needed, then give it an owner in `scripts/test-ownership.ts` that matches a real invocation. A suite that only runs by hand goes in `MANUAL_TESTS` with its prerequisites. Update or remove an explicit entry when its suite is renamed or deleted.
+| Code | Meaning |
+| --- | --- |
+| `UNOWNED` | No selection runs an integration suite, and `MANUAL_TESTS` does not list it |
+| `UNBOUND_SELECTION` | A selection's declared job does not run `bun run test:selection <id>`, or the unit shard matrix is incomplete |
+| `STALE_SELECTOR` | A selection path or glob matches no test file |
+| `RAW_BUN_TEST` | A workflow step runs `bun test` directly |
+| `UNKNOWN_LOCATION` | A test file sits outside workspace `test/` trees and `scripts/` |
+| `MANUAL_SELECTED`, `MANUAL_STALE` | A `MANUAL_TESTS` entry is also selected, or no longer exists |
 
-A selected file can still skip cases when a live socket, native OS, compiled binary, architecture or opt-in variable is missing. Read the skip counts before claiming live or native coverage.
+`MANUAL_TESTS` in `scripts/test-ownership.ts` lists the suites no CI job runs, with their prerequisites. A selected file can still skip cases when a prerequisite is missing, so read the skip counts before claiming live coverage.
 
 Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
@@ -426,10 +441,9 @@ LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
 LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
 "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
 export LANDO_TEST_PODMAN_SOCKET="$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
-bun test core/test/live
-bun test plugins/provider-lando/test --filter=integration
-bun test plugins/provider-docker/test --filter=integration
-bun test plugins/service-lando/test --filter=integration
+bun run test:selection providers-core-live
+bun run test:selection providers-lando
+bun run test:selection services-lando
 ```
 
 Setup needs `/run/user/$(id -u)` (owned by you, mode 0700) or an `XDG_RUNTIME_DIR` with the same properties as the base for the runtime's private directory; it does not use that base directly.
@@ -600,7 +614,7 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
-LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provider-e2e
 ```
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting.
@@ -624,9 +638,9 @@ Every cell regenerates derived sources before acceptance so plugin tests can imp
 Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 
 ```bash
-bun test plugins/provider-lando/test/contract.integration.test.ts
-bun test plugins/provider-docker/test/contract.integration.test.ts
-bun test plugins/provider-podman/test/contract.integration.test.ts
+bun run test:selection provider-contract-lando
+bun run test:selection provider-contract-docker
+bun run test:selection provider-contract-podman
 ```
 
 Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check.
