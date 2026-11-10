@@ -534,22 +534,24 @@ ${landoManagedPodmanRuntimeDirCommands}
 // the step exits with the last failing selection's status.
 const laneRun = (id: TestSelectionId, log: string): string =>
   `              ${testSelectionCommand(id)} 2>&1 | tee /tmp/lando-provider-test-logs/${log}.log || status=$?`;
-const providerLaneRuns = (
-  [
-    ["providers-engine-parity", "engine-parity"],
-    ["providers-core-live", "core-live"],
-    ["providers-lando", "provider-lando-integration"],
-    ["providers-docker", "provider-docker-integration"],
-    ["providers-readiness", "start-readiness"],
-    ["providers-ephemeral-data", "ephemeral-data-helpers"],
-    ["providers-host-reachability", "host-reachability"],
-    ["providers-listener-observation", "listener-observation"],
-    ["providers-sqlite-integrity", "sqlite-integrity"],
-    ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
-  ] as const satisfies readonly (readonly [TestSelectionId, string])[]
-)
-  .map(([id, log]) => laneRun(id, log))
-  .join("\n");
+const laneRuns = (runs: readonly (readonly [TestSelectionId, string])[]): string =>
+  runs.map(([id, log]) => laneRun(id, log)).join("\n");
+// `core/test/live` alone takes about 20 minutes, so the suites that drive the engine
+// directly get their own lane to keep each lane under its timeout cap.
+const providerLaneRuns = laneRuns([
+  ["providers-engine-parity", "engine-parity"],
+  ["providers-core-live", "core-live"],
+]);
+const engineLaneRuns = laneRuns([
+  ["providers-lando", "provider-lando-integration"],
+  ["providers-docker", "provider-docker-integration"],
+  ["providers-readiness", "start-readiness"],
+  ["providers-ephemeral-data", "ephemeral-data-helpers"],
+  ["providers-host-reachability", "host-reachability"],
+  ["providers-listener-observation", "listener-observation"],
+  ["providers-sqlite-integrity", "sqlite-integrity"],
+  ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
+]);
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
@@ -563,6 +565,9 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
 ${providerLaneRuns}
+              ;;
+            engine)
+${engineLaneRuns}
               ;;
             services)
 ${laneRun("services-lando", "service-lando-integration")}
@@ -726,7 +731,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
       fail-fast: false
       matrix:
         runs-on: [${linuxX64RunnerList}]
-        suite: [providers, services]
+        suite: [providers, engine, services]
 `
     : "";
   const runsOn = isLinuxX64 ? "${{ matrix.runs-on }}" : platform.runsOn;

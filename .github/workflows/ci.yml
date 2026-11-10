@@ -2111,7 +2111,7 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [ubuntu-26.04]
-        suite: [providers, services]
+        suite: [providers, engine, services]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
@@ -2316,6 +2316,8 @@ jobs:
             providers)
               bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
               bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              ;;
+            engine)
               bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?
               bun run test:selection providers-docker 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log || status=$?
               bun run test:selection providers-readiness 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log || status=$?

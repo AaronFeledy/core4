@@ -32,8 +32,8 @@ export const runTestSelection = async (
   const files = resolveTestSelection(selection, await collectTestFiles(root));
   if (files.length === 0) throw new TestSelectionError("empty", id);
   console.error(`[test:selection] ${id}: ${files.length} files`);
-  // Trees go to Bun as `./dir` so it keeps its own file order, as the workflow steps
-  // this replaces did; files and globs are passed as the exact files they resolve to.
+  // Trees go to Bun as `./dir` so Bun keeps its own file order, which some live suites
+  // still depend on (#2231); files and globs pass as the exact files they resolve to.
   const targets = selection.paths.flatMap((selector) =>
     selector.endsWith("/")
       ? [`./${selector.slice(0, -1)}`]

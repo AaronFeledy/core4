@@ -1173,7 +1173,7 @@ describe("ci workflow", () => {
       "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
     );
     expect(providerIntegration).toContain("        runs-on: [ubuntu-26.04]");
-    expect(providerIntegration).toContain("        suite: [providers, services]");
+    expect(providerIntegration).toContain("        suite: [providers, engine, services]");
     expect(providerIntegration).toContain("      fail-fast: false");
     expect(providerIntegration).toContain("          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
@@ -1381,6 +1381,11 @@ describe("ci workflow", () => {
         const providerCommands = [
           "run test:selection providers-engine-parity",
           "run test:selection providers-core-live",
+        ];
+        expect(providers.commands).toEqual(providerCommands);
+        const engine = await runSuite("engine");
+        expect(engine.status).toBe(0);
+        expect(engine.commands).toEqual([
           "run test:selection providers-lando",
           "run test:selection providers-docker",
           "run test:selection providers-readiness",
@@ -1389,8 +1394,7 @@ describe("ci workflow", () => {
           "run test:selection providers-listener-observation",
           "run test:selection providers-sqlite-integrity",
           "run test:selection providers-sqlite-borrowed-mounts",
-        ];
-        expect(providers.commands).toEqual(providerCommands);
+        ]);
         const services = await runSuite("services");
         expect(services.status).toBe(0);
         expect(services.commands).toEqual(["run test:selection services-lando"]);
