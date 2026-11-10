@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { layerMerge } from "./layer-merge.ts";
 
 import { ComposeScalarMap, ComposeScalarMapField } from "./compose-knob-maps.ts";
-import { ComposeByteSizeField } from "./compose-knob-scalars.ts";
+import { ComposeByteSizeField, integerTextCheck } from "./compose-knob-scalars.ts";
 
 const ExtensionFields = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown);
 const ScalarOption = Schema.Union([Schema.String, Schema.Number, Schema.Null]);
@@ -14,9 +14,30 @@ export const ComposeLogging = Schema.Struct({
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeLogging = typeof ComposeLogging.Type;
 
+// ============================================================================
+// Device counts - "all" or an integer number of devices
+// ============================================================================
+
+const DEVICE_COUNT_PATTERN = /^(?:[Aa][Ll][Ll]|[+-]?[0-9]+)$/;
+const DeviceCount = Schema.Union([
+  Schema.Int,
+  Schema.String.check(
+    Schema.makeFilter(
+      (text: string) =>
+        text.toLowerCase() === "all" ||
+        (DEVICE_COUNT_PATTERN.test(text) && Number.isSafeInteger(Number(text))),
+      {
+        expected: 'a device count of "all" or an integer',
+        // The safe-integer bound has no JSON Schema form; the pattern alone is the looser editor rule.
+        toJsonSchema: () => [{ pattern: DEVICE_COUNT_PATTERN.source }, true],
+      },
+    ),
+  ),
+]);
+
 export const ComposeGpuRequest = Schema.Struct({
   capabilities: Schema.optionalKey(Schema.Array(Schema.String)),
-  count: Schema.optionalKey(Schema.Union([Schema.String, Schema.Int])),
+  count: Schema.optionalKey(DeviceCount),
   device_ids: Schema.optionalKey(Schema.Array(Schema.String)),
   driver: Schema.optionalKey(Schema.String),
   options: Schema.optionalKey(ComposeScalarMapField),
@@ -32,12 +53,36 @@ export const ComposeGpusField = Schema.Union([
 });
 export type ComposeGpus = typeof ComposeGpusField.Type;
 
-const ResourceCpu = Schema.Union([Schema.Number, Schema.String]);
-const ResourcePids = Schema.Union([Schema.Int, Schema.String]);
+// ============================================================================
+// Resource limits - values a container engine can represent
+// ============================================================================
+
+// Engines take whole nanoCPUs as a safe integer, which caps the CPU count.
+const MAX_CPUS = Math.floor(Number.MAX_SAFE_INTEGER / 1e9);
+const CPUS_EXPECTED = `a non-negative CPU count no larger than ${MAX_CPUS}, such as 0.5 or 2`;
+const DECIMAL_TEXT_PATTERN = /^\+?(?:[0-9]+\.?[0-9]*|\.[0-9]+)$/;
+
+const ResourceCpu = Schema.Union([
+  Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: MAX_CPUS }, { expected: CPUS_EXPECTED })),
+  Schema.String.check(
+    Schema.makeFilter((text: string) => DECIMAL_TEXT_PATTERN.test(text) && Number(text) <= MAX_CPUS, {
+      expected: CPUS_EXPECTED,
+      // The upper bound has no JSON Schema form on text; the pattern alone is the looser editor rule.
+      toJsonSchema: () => [{ pattern: DECIMAL_TEXT_PATTERN.source }, true],
+    }),
+  ),
+]);
+const ResourcePids = Schema.Union([
+  Schema.Int,
+  Schema.String.check(integerTextCheck("an integer process limit such as 100")),
+]);
+const ResourceMemory = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0, { expected: "a non-negative byte size; 0 means no limit" }),
+);
 
 export const ComposeResourceLimits = Schema.Struct({
   cpus: Schema.optionalKey(ResourceCpu),
-  memory: Schema.optionalKey(Schema.Int),
+  memory: Schema.optionalKey(ResourceMemory),
   pids: Schema.optionalKey(ResourcePids),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeResourceLimits = typeof ComposeResourceLimits.Type;
@@ -50,7 +95,7 @@ const ComposeResourceLimitsInput = Schema.Struct({
 
 export const ComposeDeploymentDevice = Schema.Struct({
   capabilities: Schema.Array(Schema.String),
-  count: Schema.optionalKey(Schema.Union([Schema.String, Schema.Int])),
+  count: Schema.optionalKey(DeviceCount),
   device_ids: Schema.optionalKey(Schema.Array(Schema.String)),
   driver: Schema.optionalKey(Schema.String),
   options: Schema.optionalKey(ComposeScalarMap),
@@ -59,7 +104,7 @@ export type ComposeDeploymentDevice = typeof ComposeDeploymentDevice.Type;
 
 const ComposeDeploymentDeviceInput = Schema.Struct({
   capabilities: Schema.Array(Schema.String),
-  count: Schema.optionalKey(Schema.Union([Schema.String, Schema.Int])),
+  count: Schema.optionalKey(DeviceCount),
   device_ids: Schema.optionalKey(Schema.Array(Schema.String)),
   driver: Schema.optionalKey(Schema.String),
   options: Schema.optionalKey(ComposeScalarMapField),
@@ -68,7 +113,7 @@ const ComposeDeploymentDeviceInput = Schema.Struct({
 // Compose applies reservations.cpus and reservations.generic_resources only under Swarm, so the
 // Landofile rejects them and they are not part of the schema.
 export const ComposeResourceReservations = Schema.Struct({
-  memory: Schema.optionalKey(Schema.Int),
+  memory: Schema.optionalKey(ResourceMemory),
   devices: Schema.optionalKey(layerMerge(Schema.Array(ComposeDeploymentDevice), { kind: "replace" })),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeResourceReservations = typeof ComposeResourceReservations.Type;

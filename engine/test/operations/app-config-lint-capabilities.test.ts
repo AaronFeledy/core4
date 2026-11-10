@@ -7,6 +7,7 @@ import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
+import { loadUserLandofileFile } from "../../src/landofile/app-resolution.ts";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { assertAuthoredNetworksSupported } from "../../src/planner/compose-capabilities.ts";
 import * as Plugins from "../../src/plugins/registry.ts";
@@ -280,8 +281,10 @@ test.each(["always", "never"])(
 
 test.each([
   ["limits.cpus", "cpus: 1e308"],
+  ["limits.cpus", 'cpus: "half"'],
   ["limits.pids", 'pids: "9007199254740993"'],
-])("lint and planning reject an unrepresentable deploy.resources.%s", async (field, line) => {
+  ["limits.memory", "memory: -1"],
+])("lint and planning reject an unrepresentable deploy.resources.%s (%s)", async (field, line) => {
   // Given a resource value past the container engine's integer range.
   const root = await mkdtemp(join(tmpdir(), "lando-resource-range-lint-"));
   try {
@@ -289,19 +292,20 @@ test.each([
       join(root, ".lando.yml"),
       `name: rangefix\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    deploy:\n      resources:\n        limits:\n          ${line}\n`,
     );
-    const capabilities = TestRuntimeProvider.capabilities;
 
     // When
-    const result = await lint(root, capabilities);
-    const planned = await planWith(root, capabilities, () => capabilities);
+    const result = await lint(root, TestRuntimeProvider.capabilities);
+    const loaded = await Effect.runPromise(
+      loadUserLandofileFile(join(root, ".lando.yml")).pipe(Effect.result, Effect.provide(Plugins.layer)),
+    );
 
     // Then
     const path = `services.web.deploy.resources.${field}`;
     expect(result.valid).toBe(false);
     expect(result.violations.find((issue) => issue.path.join(".") === path)?.severity).toBe("error");
-    if (!Result.isFailure(planned) || planned.failure._tag !== "LandofileValidationError")
-      throw new Error("Expected a validation failure");
-    expect(planned.failure.issues.map((issue) => issue.path.join("."))).toContain(path);
+    if (!Result.isFailure(loaded) || loaded.failure._tag !== "LandofileValidationError")
+      throw new Error("Expected the Landofile planning loads to fail validation");
+    expect(loaded.failure.issues.map((issue) => issue.path.join("."))).toContain(path);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

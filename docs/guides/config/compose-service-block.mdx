@@ -73,6 +73,8 @@ On a cgroup v2 host the file holds `536870912`, which is 512 MiB. `cpu.max` and 
 
 Lando reads these settings only from `deploy.resources`. The flat Compose keys `mem_limit`, `cpus`, `pids_limit`, and `mem_reservation` are rejected; move each value to `deploy.resources.limits.memory`, `limits.cpus`, `limits.pids`, or `reservations.memory`. `deploy.resources.reservations.cpus` and `reservations.generic_resources` are rejected too, because Compose applies them only to Swarm services. Use `limits.cpus` to cap CPU instead.
 
+`lando app:config:lint` checks these values before anything starts. `limits.cpus` takes a number or a decimal string such as `"0.5"`, from `0` up to `9007199`. `limits.memory` and `reservations.memory` take a byte size such as `512m` or a whole number of bytes. `limits.pids` takes a whole number. Anything else fails lint and `lando start` at the value's own path, such as `services.worker.deploy.resources.limits.cpus`, so you can fix the Landofile before Lando creates a network or a container.
+
 ## Give a service a GPU
 
 GPU requests work on the `docker` provider, which hands them to Docker Engine the way Docker Compose does. Docker needs the GPU vendor's container runtime, such as the NVIDIA Container Toolkit, before a container can see the device.
@@ -162,6 +164,31 @@ the Lando feature stack entirely.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup-remediation">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="resource-limits-lint" render>
+    <Step name="lint-resource-limits">
+      <UseFixture name="compose-resource-limits" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="plan-resource-limits">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: compose-resource-limits" } }} />
+    </Step>
+    <Step name="reject-flat-memory-key">
+      <UseFixture name="compose-resource-mem-limit" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"worker\",\\s*\"mem_limit\"\\s*\\][\\s\\S]*\"suggestion\":\\s*\"[^\"]*deploy\\.resources\\.limits\\.memory" } }} />
+    </Step>
+    <Step name="reject-invalid-cpus">
+      <UseFixture name="compose-resource-invalid-cpus" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"worker\",\\s*\"deploy\",\\s*\"resources\",\\s*\"limits\",\\s*\"cpus\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-resource-limits">
       <Cleanup />
     </Step>
   </Scenario>

@@ -15,12 +15,12 @@ import {
   groupEntries,
   knobBoolean,
   logConfig,
-  nonNegativeInteger,
   positiveInteger,
   reservedDeviceRequests,
   resourceControls,
   scalarTextMap,
   ulimitEntries,
+  wholeSeconds,
 } from "./compose-knobs-values.ts";
 
 /**
@@ -163,7 +163,7 @@ const PODMAN_COMPOSE_KNOB_REGISTRY = {
   ),
   stop_signal: topLevelKnob(["libpod", "docker"], "StopSignal", ({ stop_signal }) => stop_signal),
   stop_grace_period: topLevelKnob(["libpod", "docker"], "StopTimeout", ({ stop_grace_period }, fail) =>
-    nonNegativeInteger("stop_grace_period", stop_grace_period, fail),
+    wholeSeconds("stop_grace_period", stop_grace_period, fail),
   ),
   security_opt: hostConfigKnob(["libpod", "docker"], "SecurityOpt", ({ security_opt }) => security_opt),
   group_add: hostConfigKnob(["libpod", "docker"], "GroupAdd", ({ group_add }) => groupEntries(group_add)),
@@ -186,8 +186,6 @@ type PodmanKnobKey = keyof typeof PODMAN_COMPOSE_KNOB_REGISTRY;
 const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.literals.filter(
   (key): key is PodmanKnobKey => Object.hasOwn(PODMAN_COMPOSE_KNOB_REGISTRY, key),
 );
-
-export { resourceControlIssue } from "./compose-knobs-values.ts";
 
 /** Capabilities come from the realizers, never a provider-maintained allowlist. */
 export const composeKnobsForDialect = (dialect: EngineDialect): ReadonlyArray<ComposeServiceKnobKey> =>

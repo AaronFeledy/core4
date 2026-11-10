@@ -231,6 +231,18 @@ describe("Podman Compose knob bring-up realization", () => {
     expect(field(hostConfig(create), "StopTimeout")).toBeUndefined();
   });
 
+  test("Given a sub-second stop_grace_period, when creating a container, then StopTimeout is an explicit 0", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const plan = planWithCompose({ stop_grace_period: 0.4 });
+
+    // When
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+
+    // Then
+    expect(field(findCreateRequest(fake.calls)?.body, "StopTimeout")).toBe(0);
+  });
+
   test("Given a platform knob, when creating a container, then query parameters preserve platform and name", async () => {
     // Given
     const fake = makeFakeApi();

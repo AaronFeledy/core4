@@ -96,15 +96,21 @@ export const positiveInteger = (
     : fail(`Compose runtime knob \`${knob}\` requires a positive integer.`, { knob, value });
 };
 
-export const nonNegativeInteger = (
+/**
+ * Whole seconds the way docker/compose `ToSeconds` truncates a duration. The value is checked
+ * before truncation so a negative fraction cannot become -0, and zero is an explicit timeout.
+ */
+export const wholeSeconds = (
   knob: string,
   value: number | undefined,
   fail: InvalidKnob,
 ): number | undefined => {
   if (value === undefined) return undefined;
-  return safeInteger(value) !== undefined && value >= 0
-    ? value
-    : fail(`Compose runtime knob \`${knob}\` requires a non-negative integer.`, { knob, value });
+  const seconds = Number.isFinite(value) && value >= 0 ? Math.trunc(value) + 0 : Number.NaN;
+  return (
+    safeInteger(seconds) ??
+    fail(`Compose runtime knob \`${knob}\` requires a non-negative duration.`, { knob, value })
+  );
 };
 
 // Podman refuses these drivers over a remote connection, which is the only way
@@ -203,28 +209,6 @@ export const resourceControls = (
     MemoryReservation: memoryBytes("reservations.memory", resources.reservations?.memory, fail),
   }).filter((entry): entry is [string, number] => entry[1] !== undefined);
   return controls.length === 0 ? undefined : Object.fromEntries(controls);
-};
-
-class ResourceControlIssue {
-  constructor(
-    readonly message: string,
-    readonly field: string | undefined,
-  ) {}
-}
-
-/** The first resource value no engine dialect can realize, so planning rejects it before provider action. */
-export const resourceControlIssue = (
-  resources: ResourcesKnob | undefined,
-): { readonly message: string; readonly field: string | undefined } | undefined => {
-  try {
-    resourceControls(resources, (message, details) => {
-      throw new ResourceControlIssue(message, typeof details.field === "string" ? details.field : undefined);
-    });
-    return undefined;
-  } catch (issue) {
-    if (issue instanceof ResourceControlIssue) return issue;
-    throw issue;
-  }
 };
 
 interface DeviceRequestKnob {

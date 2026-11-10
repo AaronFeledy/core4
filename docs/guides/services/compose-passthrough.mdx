@@ -104,7 +104,23 @@ services:
 
 An image Lando builds, from a `build:` section or from build steps on top of an image, exists only in your provider, so Lando never pulls it, whatever the policy. If it disappears, for example after you prune images, the next start fails, names the service and the image, and tells you to run `lando rebuild -s <service>` to build it again.
 
-`build` needs a Compose `build:` section, and `always` and `never` cannot be combined with one, because the build replaces the image. `build` reruns the build even when its inputs are unchanged, but the build still reuses cached layers and pulls the Dockerfile's `FROM` image only as the builder normally would. The timed Compose policies `daily`, `weekly`, `every_<interval>`, and `refresh` fail planning; use `always`, or run `lando rebuild` when you want a fresh image.
+`build` needs a Compose `build:` section, and `always` and `never` cannot be combined with one, because the build replaces the image. `build` reruns the build even when its inputs are unchanged, but the build still reuses cached layers and pulls the Dockerfile's `FROM` image only as the builder normally would. The timed Compose policies `daily`, `weekly`, `every_<interval>`, and `refresh` fail planning; use `always`, or run `lando rebuild` when you want a fresh image. `lando app:config:lint` reports both mistakes at `pull_policy`, and its suggestion names the fix.
+
+  <Scenario id="pull-policy-lint" render>
+    <Step name="reject-timed-policy">
+      <UseFixture name="compose-pull-policy-daily" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"api\",\\s*\"pull_policy\"\\s*\\][\\s\\S]*\"suggestion\":\\s*\"Set pull_policy: always" } }} />
+    </Step>
+    <Step name="reject-always-with-build">
+      <UseFixture name="compose-pull-policy-always-build" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"api\",\\s*\"pull_policy\"\\s*\\][\\s\\S]*\"suggestion\":\\s*\"Set pull_policy: build" } }} />
+    </Step>
+    <Step name="cleanup-pull-policy">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## See which Compose keys work
 
