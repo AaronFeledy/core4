@@ -14,7 +14,7 @@ Each disposition describes what happens during planning:
 
 - **normalized** resolves the input into a provider-neutral plan field.
 - **preserved** accepts the input and carries it in the Compose plan extension. The matrix row detail determines whether provider capability checks apply. Service-level `x-*` extensions are inert and are not capability-gated.
-- **rejected** fails closed with a tagged error and remediation rather than silently dropping intent.
+- **rejected** fails closed with a tagged error and remediation rather than silently dropping intent. A rejected key rejects everything nested under it.
 
 Treat normalized and preserved entries as accepted only for the shapes the matrix documents. Use the matrix remediation for rejected input.
 

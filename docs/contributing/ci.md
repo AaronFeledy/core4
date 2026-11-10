@@ -286,12 +286,11 @@ The rolling Compose PR stays red until someone classifies the new schema keys. F
    bun run check:compose-coverage
    ```
 
-2. Classify every listed path in `sdk/src/landofile/compose-dispositions.ts`. A rejected parent still needs each nested path listed.
+2. Classify each listed path in `sdk/src/landofile/compose-dispositions.ts`. Rejecting a key covers everything nested under it, so list only the key itself. The check fails on an entry listed under a rejected key. Nested paths under a normalized or preserved key still need their own entries.
 
-3. Rebuild the SDK and rerun the check. Repeat steps 2 and 3 until it passes.
+3. Rerun the check. It reads the SDK source, so your edit counts without a rebuild. Repeat steps 2 and 3 until it passes.
 
    ```bash
-   bun run --filter='@lando/sdk' build
    bun run check:compose-coverage
    ```
 
@@ -301,13 +300,20 @@ The rolling Compose PR stays red until someone classifies the new schema keys. F
    bun run codegen:compose-key-matrix
    ```
 
-5. Run the focused tests. All three files must run and pass.
+5. Build the SDK, then typecheck. The build comes first because the other packages typecheck against the built SDK.
+
+   ```bash
+   bun run --filter='@lando/sdk' build
+   bun run typecheck
+   ```
+
+6. Run the focused tests. All three files must run and pass.
 
    ```bash
    bun test core/test/scripts/check-compose-coverage.test.ts landofile/test/compose-rejections.test.ts landofile/test/lint-snapshot.test.ts
    ```
 
-6. Commit and push to `automation/compose-go-bump`. Later automation runs merge into the branch and never force-push, so your commits stay.
+7. Commit and push to `automation/compose-go-bump`. Later automation runs merge into the branch and never force-push, so your commits stay.
 
 ## Library API and recipe test layers
 
