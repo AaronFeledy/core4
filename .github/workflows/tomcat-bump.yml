@@ -65,10 +65,30 @@ jobs:
           fi
           git push origin "HEAD:$BRANCH"
           PR_NUMBER="$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')"
+          REPORT_START='<!-- maintenance-report:start -->'
+          REPORT_END='<!-- maintenance-report:end -->'
+          REPORT="$(cat "$BODY_FILE")"
+          printf -v REPORT_SECTION '%s\n%s\n%s' "$REPORT_START" "$REPORT" "$REPORT_END"
+          PR_BODY_FILE="$RUNNER_TEMP/maintenance-pr-body.md"
           if [ -z "$PR_NUMBER" ]; then
-            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
+            printf '%s\n' "$REPORT_SECTION" > "$PR_BODY_FILE"
+            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$PR_BODY_FILE"
           else
-            gh pr edit "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
+            # The PR body is untrusted data: keep it in variables and files only.
+            # A marker counts only at the start of a line, so prose that quotes one is left alone.
+            # The owned section ends at the first end marker and starts at the nearest start marker
+            # above it, so nothing outside one well-formed pair is ever removed.
+            NL=$'\n'
+            CURRENT_BODY="$NL$(gh pr view "$PR_NUMBER" --json body --jq '.body')"
+            BEFORE_END="${CURRENT_BODY%%"$NL$REPORT_END"*}"
+            BEFORE_START="${BEFORE_END%"$NL$REPORT_START"*}"
+            if [ "$BEFORE_END" != "$CURRENT_BODY" ] && [ "$BEFORE_START" != "$BEFORE_END" ]; then
+              MERGED_BODY="$BEFORE_START$NL$REPORT_SECTION${CURRENT_BODY#*"$NL$REPORT_END"}"
+              printf '%s\n' "${MERGED_BODY#"$NL"}" > "$PR_BODY_FILE"
+            else
+              printf '%s\n' "$REPORT_SECTION" > "$PR_BODY_FILE"
+            fi
+            gh pr edit "$BRANCH" --title "$TITLE" --body-file "$PR_BODY_FILE"
           fi
           gh workflow run ci.yml --ref "$BRANCH"
   report-failure:
@@ -86,7 +106,7 @@ jobs:
           set -euo pipefail
           TITLE='tomcat-bump automation failure'
           BODY="Workflow run failed: $RUN_URL"
-          ISSUE_NUMBER="$(gh issue list --state open --limit 100 --json number,title --jq '[.[] | select(.title == "tomcat-bump automation failure")] | .[0].number // ""')"
+          ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "tomcat-bump automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "tomcat-bump automation failure")] | .[0].number // ""')"
           if [ -n "$ISSUE_NUMBER" ]; then
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"
           else

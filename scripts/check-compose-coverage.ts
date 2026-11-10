@@ -42,12 +42,13 @@ export const checkComposeCoverage = async (
   const servicePaths = collectComposeServiceKeyPaths(schema);
   const topLevelPaths = collectComposeTopLevelKeyPaths(schema);
   const checksum = await verifyComposeVendorChecksum({ pinPath, schemaPath });
-  const service = compareComposeCoverage(servicePaths, Object.keys(serviceDispositions));
-  const topLevel = compareComposeCoverage(topLevelPaths, Object.keys(topLevelDispositions));
+  const service = compareComposeCoverage(servicePaths, serviceDispositions);
+  const topLevel = compareComposeCoverage(topLevelPaths, topLevelDispositions);
   const ok =
     checksum.ok &&
     service.missingFromMatrix.length === 0 &&
     service.missingFromSchema.length === 0 &&
+    service.shadowedByRejectedAncestor.length === 0 &&
     topLevel.missingFromMatrix.length === 0 &&
     topLevel.missingFromSchema.length === 0;
 
@@ -72,6 +73,10 @@ export const formatComposeCoverageFailure = (result: ComposeCoverageResult): str
       : `Vendored schema checksum mismatch: expected ${result.checksum.expectedSha256}, received ${result.checksum.actualSha256}.\n`,
     formatPaths("Unclassified service key paths", result.service.missingFromMatrix),
     formatPaths("Service matrix entries missing from schema", result.service.missingFromSchema),
+    formatPaths(
+      "Service matrix entries shadowed by a rejected ancestor",
+      result.service.shadowedByRejectedAncestor,
+    ),
     formatPaths("Unclassified top-level key paths", result.topLevel.missingFromMatrix),
     formatPaths("Top-level matrix entries missing from schema", result.topLevel.missingFromSchema),
   ].join("");

@@ -256,13 +256,17 @@ Normal codegen is offline: it checks local hashes and template invariants and de
 
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and exact-title failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+
+When a run fails, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open.
+
+The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. A marker counts only when it starts a line, so a sentence can quote one. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. The section ends at the first end marker and starts at the nearest start marker above it. If no start marker comes before the first end marker, the next run replaces the whole body with the marked report.
 
 Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
 
 Owned-path detection includes staged and untracked outputs. Commits include only owned paths, even when a hook stages an unrelated file.
 
-Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose does not run `check:compose-coverage` before proposing or classify new keys automatically. PR CI and human review own classification.
+Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose also runs `check:compose-coverage`, only to report: the report leads with any key paths that still need a disposition, and a failing gate never blocks the proposal. Classification stays with a person.
 
 To add another internal consumer, keep discovery, updating, checks, and reporting in its generator's local hooks; declare only paths it owns. Reuse the envelope rather than adding pipeline modes or a public configuration surface. Keep each real generator in `scripts/codegen-catalog.ts`; the shared renderer is not a generator entry. Regenerate YAML through the consumer generator, never by hand.
 
@@ -273,6 +277,47 @@ bun test core/test/build/maintenance-workflow.test.ts core/test/build/maintenanc
 ```
 
 The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maintenance-workflow-harness.ts` exports isolated real-Git/local-bare-remote fixtures with fake GitHub and domain I/O, plus extracted generated scripts for driver or PTY checks. It changes no global Git configuration or process cwd. Native shell cases skip Windows; YAML checks remain portable.
+
+### Finish a Compose bump
+
+The rolling Compose PR stays red until someone classifies the new schema keys. From the repository root:
+
+1. Check out the rolling branch and list the unclassified paths. The check fails and prints each one.
+
+   ```bash
+   git fetch origin automation/compose-go-bump
+   git checkout automation/compose-go-bump
+   bun run check:compose-coverage
+   ```
+
+2. Classify each listed path in `sdk/src/landofile/compose-dispositions.ts`. Rejecting a key covers everything nested under it, so list only the key itself. The check fails on an entry listed under a rejected key. Nested paths under a normalized or preserved key still need their own entries.
+
+3. Rerun the check. It reads the SDK source, so you don't need to rebuild first. Repeat steps 2 and 3 until it passes.
+
+   ```bash
+   bun run check:compose-coverage
+   ```
+
+4. Regenerate the reference page.
+
+   ```bash
+   bun run codegen:compose-key-matrix
+   ```
+
+5. Build the SDK, then typecheck. The other packages typecheck against the built SDK.
+
+   ```bash
+   bun run --filter='@lando/sdk' build
+   bun run typecheck
+   ```
+
+6. Run the focused tests. All three files must run and pass.
+
+   ```bash
+   bun test core/test/scripts/check-compose-coverage.test.ts landofile/test/compose-rejections.test.ts landofile/test/lint-snapshot.test.ts
+   ```
+
+7. Commit and push to `automation/compose-go-bump`. Later automation runs merge into the branch and never force-push, so your commits stay.
 
 ## Library API and recipe test layers
 

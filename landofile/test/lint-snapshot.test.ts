@@ -201,6 +201,66 @@ describe("retained lint snapshot", () => {
     ]);
   });
 
+  test.each([
+    {
+      key: "service umask",
+      body: '    umask: "0027"\n',
+      path: ["services", "web", "umask"],
+    },
+    {
+      key: "network attachment use_service_name_alias",
+      body: "    networks:\n      shared:\n        aliases: [api]\n        use_service_name_alias: false\n",
+      path: ["services", "web", "networks", "shared", "use_service_name_alias"],
+    },
+    {
+      key: "top-level jobs",
+      body: "jobs:\n  cleanup:\n    image: alpine:3.20\n    container_name: cleanup\n",
+      path: ["jobs"],
+    },
+  ])("reports a rejected $key as a Compose rejection, not a validation error", async ({ body, path }) => {
+    // Given
+    await write(
+      ".lando.yml",
+      `name: snapshot\nnetworks:\n  shared:\n    external: true\nservices:\n  web:\n    type: compose\n    image: alpine:3.20\n${body}`,
+    );
+
+    // When
+    const snapshot = await lint();
+
+    // Then
+    expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.result.violations.map((violation) => [violation.rule, violation.path])).toEqual([
+      ["landofile.compose-rejection", path],
+    ]);
+  });
+
+  test("reports rejected keys inside a Compose file pulled in by top-level include", async () => {
+    // Given
+    await write(".lando.yml", "name: snapshot\ninclude:\n  - compose.yaml\n");
+    await write(
+      "compose.yaml",
+      'services:\n  web:\n    image: alpine:3.20\n    umask: "0027"\njobs:\n  cleanup:\n    image: alpine:3.20\n',
+    );
+
+    // When
+    const snapshot = await lint();
+
+    // Then
+    const compose = join(root, "compose.yaml");
+    expect(snapshot.result.violations).toEqual([
+      expect.objectContaining({
+        rule: "landofile.compose-rejection",
+        path: ["services", "web", "umask"],
+        source: expect.objectContaining({ file: compose }),
+      }),
+      expect.objectContaining({
+        rule: "landofile.compose-rejection",
+        path: ["jobs"],
+        source: expect.objectContaining({ file: compose }),
+      }),
+    ]);
+  });
+
   test("reports a rejected key inside a decodable list entry at its field", async () => {
     await write(
       ".lando.yml",
