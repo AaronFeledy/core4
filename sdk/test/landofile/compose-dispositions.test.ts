@@ -97,7 +97,7 @@ describe("composeDispositionFor", () => {
   const normalized = { disposition: "normalized", rationale: "n", planTarget: ["x"] } as const;
   const matrix: Readonly<Record<string, ComposeDispositionEntry>> = {
     hook: rejected,
-    "hook.command": rejected,
+    "hook.command": preserved,
     kept: preserved,
     mounts: normalized,
     "mounts.image": rejected,
@@ -107,7 +107,7 @@ describe("composeDispositionFor", () => {
 
   test("returns the exact entry for a matrix key", () => {
     expect(composeDispositionFor(matrix, "kept")).toBe(preserved);
-    expect(composeDispositionFor(matrix, "hook.command")).toBe(rejected);
+    expect(composeDispositionFor(matrix, "hook.command")).toBe(preserved);
   });
 
   test("resolves a nested path to its nearest rejected ancestor", () => {
@@ -117,6 +117,7 @@ describe("composeDispositionFor", () => {
 
   test("leaves an unlisted path under an accepted key unresolved", () => {
     expect(composeDispositionFor(matrix, "kept.child")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "hook.command.child")).toBeUndefined();
     expect(composeDispositionFor(matrix, "mounts.source")).toBeUndefined();
     expect(composeDispositionFor(matrix, "mounts.source.image")).toBeUndefined();
   });
