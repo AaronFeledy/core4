@@ -19,7 +19,6 @@ test("buildPodmanServiceArgs stays byte-identical to the managed runtime service
     runRoot: paths.runtimeRunDir,
     configDir: paths.runtimeConfigDir,
     socketPath: paths.providerSocketPath,
-    useSystemdRunShim: false,
   });
 
   expect(podmanBin).toBe(`${paths.runtimeBinDir}/podman`);

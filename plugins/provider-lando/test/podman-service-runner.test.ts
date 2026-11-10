@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -20,7 +20,6 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: false,
       privateRuntimeDir: "/private/selected-runtime",
     });
 
@@ -58,7 +57,6 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: true,
       privateRuntimeDir: undefined,
     });
 
@@ -75,7 +73,6 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: false,
       privateRuntimeDir: undefined,
     });
     const canonical = [spec.command, ...spec.args];
@@ -122,7 +119,6 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: false,
       privateRuntimeDir: undefined,
     });
 
@@ -152,7 +148,6 @@ describe("PodmanServiceRunner", () => {
         runRoot,
         configDir: "/data/runtime/config",
         socketPath: join(dir, "podman.sock"),
-        useSystemdRunShim: false,
         privateRuntimeDir: "/private/test-runtime",
       });
 
@@ -222,6 +217,78 @@ describe("PodmanServiceRunner", () => {
       expect(content).toContain("fresh");
       expect(content).not.toContain("old failure");
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a delegated launch wraps the exact service argv and keeps the launched PID through the exec chain", async () => {
+    // Given: a stand-in launcher that, like `systemd-run --scope`, records its environment and
+    // execs the command after `--` in the same process.
+    const dir = await mkdtemp(join(tmpdir(), "lando-podman-scope-launch-"));
+    const launcher = join(dir, "systemd-run");
+    const launcherEnv = join(dir, "launcher.env");
+    await writeFile(
+      launcher,
+      `#!/bin/sh\nenv > '${launcherEnv}'\nwhile [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n`,
+    );
+    await chmod(launcher, 0o755);
+    const runRoot = join(dir, "run");
+    const ready = join(dir, "ready.fifo");
+    await Bun.$`mkfifo ${ready}`;
+    const spec = {
+      command: "/bin/sh",
+      args: ["-c", 'echo ready > "$1"; while :; do sleep 1; done', "sh", ready, "--runroot", runRoot],
+      env: { XDG_RUNTIME_DIR: "/private/scope-runtime", DISABLE_HC_SYSTEMD: "true" },
+      socketPath: join(dir, "podman.sock"),
+    };
+    let launchedArgv: ReadonlyArray<string> = [];
+    const runner = makeSystemPodmanServiceRunner(
+      (argv, options) => {
+        launchedArgv = argv;
+        return Bun.spawn([...argv], options);
+      },
+      (_runtimeDir, resolved) => Effect.succeed(resolved.privateRuntimeDir ?? "/wrong"),
+      () => Effect.succeed(255),
+    );
+    const previousBus = process.env.DBUS_SESSION_BUS_ADDRESS;
+    process.env.DBUS_SESSION_BUS_ADDRESS = "unix:path=/run/user/4242/bus";
+    try {
+      // When: the launcher hands over to the service, which then reports ready.
+      const pid = await Effect.runPromise(
+        runner.launch(spec, { systemdRun: launcher, userRuntimeDir: "/run/user/4242" }),
+      );
+      expect((await readFile(ready, "utf8")).trim()).toBe("ready");
+
+      // Then: the launcher is the outer argv, `env` restores the private dir, then the exact argv.
+      expect(launchedArgv).toEqual([
+        launcher,
+        "--user",
+        "--scope",
+        "--quiet",
+        "--collect",
+        "-p",
+        "Delegate=yes",
+        "--expand-environment=no",
+        "--description=Lando managed Podman runtime",
+        "--",
+        "/usr/bin/env",
+        "XDG_RUNTIME_DIR=/private/scope-runtime",
+        spec.command,
+        ...spec.args,
+      ]);
+      expect(await Effect.runPromise(runner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false))).toBe(true);
+      const environ = (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0");
+      expect(environ).toContain("XDG_RUNTIME_DIR=/private/scope-runtime");
+      const outer = await readFile(launcherEnv, "utf8");
+      expect(outer).toContain("XDG_RUNTIME_DIR=/run/user/4242");
+      expect(outer).not.toContain("DBUS_SESSION_BUS_ADDRESS");
+
+      // And the exit observer still belongs to the launched PID.
+      await Effect.runPromise(runner.terminate(pid));
+      expect(await Effect.runPromise(runner.waitForExit?.(pid) ?? Effect.die("exit observer missing"))).not.toBe(0);
+    } finally {
+      if (previousBus === undefined) Reflect.deleteProperty(process.env, "DBUS_SESSION_BUS_ADDRESS");
+      else process.env.DBUS_SESSION_BUS_ADDRESS = previousBus;
       await rm(dir, { recursive: true, force: true });
     }
   });

@@ -14,9 +14,17 @@ import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.t
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
+import {
+  type ContainerCgroups,
+  type DelegatedScopeHost,
+  delegatedLaunchEligibility,
+  observeServicePlacement,
+  processCgroupPath,
+} from "./delegated-scope.ts";
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
+  countRunningContainers,
   linuxRuntimeHasOwnedService,
   linuxRuntimeIsHealthy,
   reapLegacyStaleRuntime,
@@ -24,8 +32,10 @@ import {
   verifyReplacedServiceTransition,
 } from "./linux-runtime-health.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
+import { readRuntimePid } from "./linux-runtime-reaper.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import {
+  type PodmanServiceScope,
   type PodmanServiceSpec,
   type RuntimeLaunchError,
   buildPodmanServiceArgs,
@@ -38,7 +48,11 @@ import {
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
-import { writeLaunchState } from "./runtime-launch-state.ts";
+import {
+  recordServicePlacement,
+  recordedContainerCgroups,
+  writeLaunchState,
+} from "./runtime-launch-state.ts";
 import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
@@ -64,6 +78,15 @@ export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "private
   readonly recordLaunch?: (
     pid: number,
     spec: PodmanServiceSpec,
+  ) => Effect.Effect<void, ProviderUnavailableError>;
+  /**
+   * Host view for the delegated systemd user scope (Linux). Production always passes it; when it
+   * is omitted the service launches undelegated and its placement is not observed.
+   */
+  readonly delegatedScope?: DelegatedScopeHost;
+  readonly recordPlacement?: (
+    pid: number,
+    containerCgroups: ContainerCgroups,
   ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly setupProgress?: {
     readonly helpers: (
@@ -133,6 +156,7 @@ const mapLaunchLockError = (
 
 const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
   deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+  scope: PodmanServiceScope | undefined,
 ): Effect.fn.Return<number, ProviderUnavailableError> {
   const spec = buildPodmanServiceArgs({
     podmanBin: deps.podmanBin,
@@ -144,7 +168,7 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
   });
 
   yield* deps.admit ?? Effect.void;
-  const pid = yield* deps.serviceRunner.launch(spec).pipe(
+  const pid = yield* deps.serviceRunner.launch(spec, scope).pipe(
     Effect.catch((launchError: RuntimeLaunchError) => {
       const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
       const rootlessError = classifyRootlessFailure(probes.probe(), launchError.stderr);
@@ -216,6 +240,50 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
     ),
   );
 
+/**
+ * Records where the ready service runs. A launch that selected the delegated scope but did not end
+ * up in a user-owned cgroup with memory, pids and cpu is stopped and fails: containers would
+ * silently run without limits.
+ */
+const verifyServicePlacement = Effect.fnUntraced(function* (
+  deps: EnsureRuntimeDeps,
+  host: DelegatedScopeHost,
+  pid: number,
+  scope: PodmanServiceScope | undefined,
+): Effect.fn.Return<void, ProviderUnavailableError> {
+  const placement = observeServicePlacement(pid, host);
+  if (scope !== undefined && placement !== "delegated") {
+    yield* deps.serviceRunner.terminate(pid);
+    return yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message:
+          "The Lando runtime service did not start in a delegated systemd user scope, so containers would not get their own cgroups.",
+        remediation:
+          "Run `lando doctor` to inspect the runtime placement and your systemd user manager, then rerun the command.",
+        details: { pid, cgroup: processCgroupPath(pid, host) ?? "unknown", systemdRun: scope.systemdRun },
+      }),
+    );
+  }
+  yield* deps.recordPlacement?.(pid, placement) ?? recordServicePlacement(deps.pidPath, pid, placement);
+});
+
+/**
+ * A healthy service launched without delegation is replaced by a delegated one when the host now
+ * allows it, but only while it runs no containers: stopping it keeps the private runtime dir,
+ * pause process and namespaces, and no workload is interrupted.
+ */
+const needsDelegatedRelaunch = Effect.fnUntraced(function* (
+  deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+  scope: PodmanServiceScope | undefined,
+): Effect.fn.Return<boolean> {
+  if (scope === undefined) return false;
+  const pid = yield* readRuntimePid(deps.pidPath);
+  if (pid === undefined || (yield* recordedContainerCgroups(deps.pidPath, pid)) === "delegated") return false;
+  return (yield* countRunningContainers(deps.podmanApi)) === 0;
+});
+
 const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(function* (
   deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
 ): Effect.fn.Return<void, ProviderUnavailableError> {
@@ -247,9 +315,17 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       }
     }
   });
+  const eligibility =
+    deps.delegatedScope === undefined
+      ? undefined
+      : delegatedLaunchEligibility(deps.platform, deps.delegatedScope);
+  const scope: PodmanServiceScope | undefined =
+    eligibility?.eligible === true
+      ? { systemdRun: eligibility.systemdRun, userRuntimeDir: eligibility.userRuntimeDir }
+      : undefined;
   const repair = Effect.gen(function* () {
     yield* deps.setupProgress?.helpers(helpers) ?? helpers;
-    if (yield* linuxRuntimeIsHealthy(deps)) {
+    if ((yield* linuxRuntimeIsHealthy(deps)) && !(yield* needsDelegatedRelaunch(deps, scope))) {
       const adopted =
         deps.generationStore === undefined
           ? true
@@ -300,7 +376,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       });
     }
     let launchedPid: number | undefined;
-    const launch = launchRuntime(deps).pipe(
+    const launch = launchRuntime(deps, scope).pipe(
       Effect.tap((pid) =>
         Effect.sync(() => {
           launchedPid = pid;
@@ -344,10 +420,17 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
               ),
             ),
           );
-    const readiness =
+    const reachable =
       earlyExit === undefined
         ? verifyRuntimeReachable(deps)
         : Effect.raceFirst(verifyRuntimeReachable(deps), earlyExit);
+    // Ready means the launcher has exec'd into Podman, so the observed cgroup is the service's own.
+    const readiness =
+      launchedPid === undefined || deps.delegatedScope === undefined
+        ? reachable
+        : reachable.pipe(
+            Effect.andThen(verifyServicePlacement(deps, deps.delegatedScope, launchedPid, scope)),
+          );
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
   const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(

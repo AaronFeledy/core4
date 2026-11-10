@@ -1,15 +1,13 @@
-import { chmod, lstat, mkdir, readFile, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile } from "node:fs/promises";
 
 import { Effect } from "effect";
 
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
-import { hasUsableUserSystemdSession } from "./user-systemd-session.ts";
 
 export interface WriteManagedRuntimeContainersConfOptions {
   readonly runtimeBinDir: string;
   readonly runtimeConfigDir: string;
-  readonly useSystemdRunShim?: boolean;
   readonly nativeInit?: boolean;
 }
 
@@ -38,7 +36,10 @@ const MANAGED_SIGNATURE_POLICY = `{
 `;
 
 // Netavark starts aardvark-dns via `systemd-run --scope --user` when systemd is
-// booted. That requires a user session bus this managed runtime must not need.
+// booted. Podman and its descendants run with the private XDG_RUNTIME_DIR, which
+// has no user-manager socket, so this exec-only shim always stands in for it. The
+// service's own delegated scope is created by the launcher with the host
+// systemd-run, never through this shim.
 const MANAGED_SYSTEMD_RUN_SHIM = `#!/bin/sh
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -127,20 +128,11 @@ export const writeManagedRuntimeContainersConf = (
         MANAGED_CONFIG_MODE,
       );
       await mkdir(options.runtimeBinDir, { recursive: true });
-      const shimPath = systemdRunShimPath(options.runtimeBinDir);
-      const useShim = options.useSystemdRunShim ?? !hasUsableUserSystemdSession();
-      if (useShim) {
-        await ensureContentAndMode(shimPath, MANAGED_SYSTEMD_RUN_SHIM, MANAGED_SHIM_MODE);
-        return;
-      }
-      try {
-        await unlink(shimPath);
-      } catch (cause) {
-        if (isErrnoCode(cause, "ENOENT")) {
-          return;
-        }
-        throw cause;
-      }
+      await ensureContentAndMode(
+        systemdRunShimPath(options.runtimeBinDir),
+        MANAGED_SYSTEMD_RUN_SHIM,
+        MANAGED_SHIM_MODE,
+      );
     },
     catch: (cause) =>
       new ProviderUnavailableError({
