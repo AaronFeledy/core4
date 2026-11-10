@@ -20,14 +20,19 @@ import {
   type NoCertificateAuthorityError,
 } from "@lando/sdk/errors";
 import {
+  type AppId,
+  type AppIdentity,
+  type AppRef,
   CertificateName,
   type ServiceConfig,
+  appIdentityKey,
   certificateNameForHostname,
   validationIssue,
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
+import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { serviceCertificatePaths } from "../lifecycle/service-certificate-paths.ts";
 
 export const CERTS_FEATURE_ID = "lando.certs" as const;
@@ -60,6 +65,25 @@ interface ResolveCertsFeatureInput {
   readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
 }
 
+/**
+ * Where an app's generated leaves live. The owner is the one the route and teardown paths derive
+ * from the finished plan; scratch is keyed by id because the scratch marker is attached after
+ * planning and cwd forks share the user app's root.
+ */
+export const certificateLeafLocation = (app: {
+  readonly certsDir: string;
+  readonly kind: AppRef["kind"] | undefined;
+  readonly id: AppId;
+  readonly root: string;
+  readonly identity: AppIdentity | undefined;
+}): ResolveCertsFeatureInput["leafLocation"] => ({
+  certsDir: app.certsDir,
+  ownerKey:
+    app.kind === "scratch"
+      ? routeOwnerFromScratch(app.id).ownerKey
+      : (app.identity?.ownerKey ?? appIdentityKey("owner", app.root)),
+});
+
 const validationError = (
   input: ResolveCertsFeatureInput,
   failure: { readonly message: string; readonly remediation: string; readonly cause?: unknown },
@@ -68,7 +92,7 @@ const validationError = (
     message: `services.${input.serviceName}.certs ${failure.message}`,
     remediation: failure.remediation,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [validationIssue(["services", input.serviceName, "certs"], failure.message)],
+    issues: [validationIssue(["services", input.serviceName, "certs"], failure.message, failure.remediation)],
     cause: failure.cause,
   });
 

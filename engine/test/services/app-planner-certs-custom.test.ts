@@ -36,8 +36,14 @@ const expectCertsRejection = async (input: {
   if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
   const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
   expect(failure).toBeInstanceOf(LandofileValidationError);
+  if (!(failure instanceof LandofileValidationError)) throw new Error("expected a validation error");
   expect(String(failure)).toContain("services.web.certs");
   expect(String(failure)).toContain(input.message);
+  // Lint renders issues, not the error's remediation, so the fix has to ride on the issue.
+  expect(failure.remediation.length).toBeGreaterThan(0);
+  expect(failure.issues).toEqual([
+    expect.objectContaining({ path: ["services", "web", "certs"], suggestion: failure.remediation }),
+  ]);
 };
 
 test("mounts validated custom certificate material without contacting the certificate authority", async () => {

@@ -254,7 +254,7 @@
       "valid": false,
       "violations": [
         {
-          "message": "path /certs/cert.crt must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.",
+          "message": "path /certs/cert.crt must stay inside the app root.",
           "path": ["services", "web3", "certs"],
           "rule": "landofile.validation"
         }
@@ -671,7 +671,7 @@
       "valid": false,
       "violations": [
         {
-          "message": "path /certs/cert.crt must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.",
+          "message": "path /certs/cert.crt must stay inside the app root.",
           "path": ["services", "web4", "certs"],
           "rule": "landofile.validation"
         }

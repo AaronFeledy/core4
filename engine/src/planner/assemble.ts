@@ -17,7 +17,6 @@ import {
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
-  appIdentityKey,
   landoNetworkingPlan,
   normalizeAppSlug,
 } from "@lando/sdk/schema";
@@ -40,7 +39,6 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
-import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import {
   type CertificateAuthorityCandidateDefinition,
   manifestCertificateAuthorityCandidates,
@@ -52,7 +50,7 @@ import { applyPreparedAppFeatures } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import type { ApplicationConfig } from "../services/feature-preparation.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
-import { resolveCertsFeature } from "../services/service-certs.ts";
+import { certificateLeafLocation, resolveCertsFeature } from "../services/service-certs.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
@@ -224,15 +222,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     policyOwner.platform,
     () => manifestCertificateAuthorityCandidates(manifests),
   );
-  // Same owner the route and teardown paths derive from the finished plan; scratch is keyed by id
-  // because the scratch marker is attached after planning and cwd forks share the user app's root.
-  const leafLocation = {
+  const leafLocation = certificateLeafLocation({
     certsDir: (pathsService ?? makeLandoPaths()).certsDir,
-    ownerKey:
-      input.kind === "scratch"
-        ? routeOwnerFromScratch(appId).ownerKey
-        : (input.identity?.ownerKey ?? appIdentityKey("owner", appRoot)),
-  };
+    kind: input.kind,
+    id: appId,
+    root: appRoot,
+    identity: input.identity,
+  });
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
 
