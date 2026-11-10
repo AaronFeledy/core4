@@ -319,8 +319,8 @@ real-provider layer.
 
 ## Register a new fixture
 
-A new directory under `docs/guides/<guide-id>/fixtures/<name>/` is also
-checked by four tests outside the guide tooling. `lint:guides`, `dev:guides`,
+A new directory under `docs/guides/<guide-id>/fixtures/<name>/` is checked
+by four tests outside the guide tooling. `lint:guides`, `dev:guides`,
 `check:guide-coverage`, and `check:public-transcripts` don't run them, so
 finish these steps from the repository root before you push:
 

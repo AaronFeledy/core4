@@ -288,7 +288,7 @@ The rolling Compose PR stays red until someone classifies the new schema keys. F
 
 2. Classify each listed path in `sdk/src/landofile/compose-dispositions.ts`. Rejecting a key covers everything nested under it, so list only the key itself. The check fails on an entry listed under a rejected key. Nested paths under a normalized or preserved key still need their own entries.
 
-3. Rerun the check. It reads the SDK source, so your edit counts without a rebuild. Repeat steps 2 and 3 until it passes.
+3. Rerun the check. It reads the SDK source, so you don't need to rebuild first. Repeat steps 2 and 3 until it passes.
 
    ```bash
    bun run check:compose-coverage
@@ -300,7 +300,7 @@ The rolling Compose PR stays red until someone classifies the new schema keys. F
    bun run codegen:compose-key-matrix
    ```
 
-5. Build the SDK, then typecheck. The build comes first because the other packages typecheck against the built SDK.
+5. Build the SDK, then typecheck. The other packages typecheck against the built SDK.
 
    ```bash
    bun run --filter='@lando/sdk' build
