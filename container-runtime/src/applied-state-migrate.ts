@@ -11,8 +11,8 @@ import { Option, Predicate, Schema } from "effect";
 import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
 
-/** Durable applied-plan frame version with canonical mounts, init intent, names, and exclusive SQLite targets. */
-export const APPLIED_STATE_VERSION = 5;
+/** Durable applied-plan frame version with canonical mounts, init intent, names, exclusive SQLite targets, and pull policy. */
+export const APPLIED_STATE_VERSION = 6;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -250,7 +250,7 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
   return { ...rest, services: nextServices };
 };
 
-const isMigratableVersion = (version: number): boolean => version >= 1 && version <= 4;
+const isMigratableVersion = (version: number): boolean => version >= 1 && version <= 5;
 
 /**
  * State-store `onVersionMismatch` migrator for a single applied `AppPlan`.
@@ -259,10 +259,12 @@ const isMigratableVersion = (version: number): boolean => version >= 1 && versio
  */
 export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
   if (!isMigratableVersion(fromVersion)) return null;
-  // v4 records predate the exclusive SQLite branch and already decode unchanged.
+  // v4 records predate the exclusive SQLite branch and v5 records predate the optional service
+  // pullPolicy; both already decode unchanged. No v5 record holds a Compose pull_policy knob,
+  // because no provider ever declared it.
   const initialized =
     fromVersion >= 3 ? raw : migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
-  const transformed = fromVersion === 4 ? initialized : migrateAppliedNames(initialized);
+  const transformed = fromVersion >= 4 ? initialized : migrateAppliedNames(initialized);
   if (transformed === null) return null;
   return Option.getOrNull(Schema.decodeUnknownOption(AppPlan)(transformed));
 };

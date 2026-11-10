@@ -23,7 +23,6 @@ export const ComposeServiceKnobKey = Schema.Literals([
   "group_add",
   "read_only",
   "platform",
-  "pull_policy",
   "logging",
   "gpus",
   "deploy.resources",

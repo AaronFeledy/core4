@@ -1768,6 +1768,7 @@
       "ServiceName",
       "ServiceNetworkAttachment",
       "ServicePlan",
+      "ServicePullPolicy",
       "ServiceRunObservation",
       "ServiceScopedLandofile",
       "ServiceShutdownObservation",

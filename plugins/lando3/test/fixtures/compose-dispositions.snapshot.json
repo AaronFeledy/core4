@@ -122,7 +122,7 @@
   "platform": "preserved",
   "privileged": "preserved",
   "profiles": "preserved",
-  "pull_policy": "preserved",
+  "pull_policy": "normalized",
   "read_only": "preserved",
   "restart": "preserved",
   "secrets": "preserved",

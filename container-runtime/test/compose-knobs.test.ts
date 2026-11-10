@@ -87,7 +87,6 @@ describe("podman Compose runtime knob realization", () => {
   test("Given only knobs libpod does not realize, when realized for libpod, then nothing is emitted and nothing fails", () => {
     expect(
       realize({
-        pull_policy: "always",
         gpus: "all",
         deploy: { resources: { reservations: { devices: [{ capabilities: ["gpu"] }] } } },
         labels: { "dev.lando.app": "myapp" },

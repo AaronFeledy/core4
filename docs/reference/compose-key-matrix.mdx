@@ -24,7 +24,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 2 | 11 |
-| Service keys | 57 | 75 | 112 | 244 |
+| Service keys | 58 | 74 | 112 | 244 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -125,7 +125,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `privileged` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `profiles` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `provider` | rejected | — | Remove provider. |
-| `pull_policy` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `pull_policy` | normalized | — | Normalizes into `ServicePlan.pullPolicy` |
 | `pull_refresh_after` | rejected | — | Remove pull_refresh_after. |
 | `read_only` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `restart` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |

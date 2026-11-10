@@ -24,6 +24,10 @@ const REGISTRY_AUTH_REMEDIATION =
 const REGISTRY_PULL_REMEDIATION =
   "Check the image reference, the container engine's registry policy, registry availability, and network access, then retry the pull.";
 
+/** Advice when a pull policy forbids contacting the registry and the image is not local. */
+export const neverPullRemediation = (reference: string): string =>
+  `Build or load ${reference} into the container engine, or remove pull_policy: never so Lando can pull it.`;
+
 const REGISTRY_AUTH_FAILURE_SIGNATURES = [
   "unauthorized",
   "authentication required",
@@ -269,10 +273,13 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
     }
     if (options.policy === "never") {
       return yield* Effect.fail(
-        pullFailure({
-          ctx: options.ctx,
-          reference,
-          message: `Container image ${reference} is not present locally.`,
+        new ProviderUnavailableError({
+          ...pullFailureFields({
+            ctx: options.ctx,
+            reference,
+            message: `Container image ${reference} is not present locally.`,
+          }),
+          remediation: neverPullRemediation(reference),
         }),
       );
     }

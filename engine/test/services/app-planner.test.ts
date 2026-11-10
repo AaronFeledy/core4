@@ -5415,7 +5415,7 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
 const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter(
-  (key) => key !== "image" && key !== "tmpfs" && key !== "init",
+  (key) => key !== "image" && key !== "tmpfs" && key !== "init" && key !== "pull_policy",
 );
 
 const allKnobCapabilities: ProviderCapabilities = {
@@ -5440,7 +5440,6 @@ const allKnobCapabilities: ProviderCapabilities = {
       "group_add",
       "read_only",
       "platform",
-      "pull_policy",
       "logging",
       "gpus",
       "deploy.resources",
@@ -5482,6 +5481,7 @@ describe("Compose runtime knobs", () => {
       // Then
       expect(Object.keys(compose ?? {}).sort()).toEqual([...allKnobExtensionKeys].sort());
       expect(first.services[ServiceName.make("web")]?.init).toBe(true);
+      expect(first.services[ServiceName.make("web")]?.pullPolicy).toBe("always");
       for (const key of allKnobExtensionKeys) {
         expect(JSON.stringify(compose?.[key])).toBe(JSON.stringify(allKnobServiceConfig[key]));
       }

@@ -133,9 +133,6 @@ const deviceRequestKnob = (
 });
 
 /**
- * `pull_policy` is absent: no engine create API carries a per-service pull
- * policy, so the planner's fail-closed capability gate rejects it.
- *
  * GPU device requests are Docker-only. Podman's compat create honors
  * `HostConfig.DeviceRequests` only for `Driver: "cdi"` plus `DeviceIDs` and
  * ignores count, capabilities, and options, so libpod does not declare them.

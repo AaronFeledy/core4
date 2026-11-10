@@ -202,6 +202,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(failure.operation).toBe("pullArtifact");
     expect(failure.message).toContain(reference);
+    expect(failure.remediation).toContain("remove pull_policy: never");
     expect(requests).toEqual([
       {
         method: "GET",

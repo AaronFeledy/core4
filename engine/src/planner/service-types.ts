@@ -231,6 +231,7 @@ export type PlannedServiceDraft = {
   readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];
+  readonly pullPolicy: ServicePlan["pullPolicy"];
   readonly authored: ResolvedService["authored"];
   readonly homeIntent: ServiceHomeIntent;
   readonly draft: AppFeatureServiceDraft;

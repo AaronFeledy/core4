@@ -19,6 +19,8 @@ The bundled SSH sidecar installs `openssh-client` and `socat` when the global ap
 
 `lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
 
+A service with `pull_policy: always` pulls on every start and rebuild and fails offline instead of falling back. Use `pull_policy: never` for an image you load or build locally and never want pulled. See [Control when the image is pulled](../services/compose-passthrough.mdx#control-when-the-image-is-pulled).
+
 Stopping an app on an idle managed runtime needs no runtime launch: `lando stop` completes its host-side cleanup. `lando destroy` launches an installed idle runtime when it holds resources that must be removed, so you can destroy after `poweroff` or a reboot without starting the app first. The installed runtime and cached prerequisites must still be usable. Observation commands such as `lando logs` and `lando info` never launch the runtime; an unobservable provider stays an explicit failure rather than evidence that its resources are absent.
 
 On Linux with the default `lando` provider, the init process that Lando runs in front of each service command ships inside the runtime payload. A runtime installed before that helper was part of the payload fetches the pinned helper once, during `lando setup` or the first `lando start` of a service that uses init, and reuses the verified copy offline from then on. Services with `init: false` never need it.

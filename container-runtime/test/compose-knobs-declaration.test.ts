@@ -51,9 +51,4 @@ describe("Podman-backed Compose knob declarations", () => {
       expect(docker.has(key)).toBe(true);
     }
   });
-
-  test("Given pull_policy, When declarations are read, Then neither dialect declares it", () => {
-    expect(composeKnobsForDialect("libpod")).not.toContain("pull_policy");
-    expect(composeKnobsForDialect("docker")).not.toContain("pull_policy");
-  });
 });

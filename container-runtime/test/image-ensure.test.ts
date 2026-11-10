@@ -331,4 +331,41 @@ describe("ensureImage", () => {
     expect(pinned.requests[1]?.path).toContain("platform=linux%2Farm64");
     expect(buildOnly.requests[1]?.path).toBe("/images/create?fromImage=nginx&tag=1.27");
   });
+
+  test.each([
+    ["a missing image", { inspectStatus: 404 }, false, undefined],
+    ["a forced retry after a missing-image create", {}, true, undefined],
+    [
+      "a registry image for the wrong platform",
+      {
+        inspectBody: inspectBody({ os: "linux", architecture: "amd64", repoDigests: ["nginx@sha256:test"] }),
+      },
+      false,
+      "linux/arm64",
+    ],
+  ] as const)("pull_policy never fails without pulling for %s", async (_label, api, force, platform) => {
+    // Given
+    const fake = makeApi(api);
+    const neverService = {
+      ...service(platform === undefined ? undefined : { platform }),
+      pullPolicy: "never" as const,
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+          service: neverService,
+          ref: "nginx:1.27",
+          force,
+        }),
+      ),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.message).toContain("pull_policy: never");
+    expect(error.remediation).toContain("remove pull_policy: never");
+    expect(fake.requests.filter((request) => request.method === "POST")).toEqual([]);
+  });
 });
