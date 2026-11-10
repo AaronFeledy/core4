@@ -50,6 +50,13 @@ const affectsProviders = (path: string): boolean =>
   path.startsWith("container-runtime/") ||
   path.startsWith("engine/src/providers/") ||
   path.startsWith("engine/test/providers/") ||
+  /^engine\/src\/operations\/service-readiness(?:-[^/]+)?\.ts$/u.test(path) ||
+  path === "engine/src/lifecycle/startup-completion.ts" ||
+  path.startsWith("engine/src/subsystems/healthcheck/") ||
+  path === "engine/src/testing/live-provider-socket.ts" ||
+  path === "sdk/src/services/service-readiness.ts" ||
+  path === "sdk/src/errors/provider.ts" ||
+  path === "sdk/src/schema/service-probe.ts" ||
   path.startsWith("sdk/src/services/provider") ||
   path.startsWith("sdk/test/contract/provider") ||
   path === ".github/workflows/ci.yml" ||

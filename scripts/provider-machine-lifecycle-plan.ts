@@ -3,13 +3,13 @@ import type { ProviderAcceptanceCellPlan, ProviderAcceptanceCheckPlan } from "./
 export const COMPOSE_KNOBS_TRANSPORT_CHECK = {
   id: "compose-knobs-transport",
   label: "Compose knob request serialization through platform IPC transport",
-  command: ["bun", "test", "plugins/provider-lando/test/compose-knobs-transport.test.ts"],
+  command: ["bun", "test", "./plugins/provider-lando/test/compose-knobs-transport.test.ts"],
 } as const satisfies ProviderAcceptanceCheckPlan;
 
 const bunTest = (testNamePattern: string): readonly string[] => [
   "bun",
   "test",
-  "plugins/provider-lando/test/machine-lifecycle-live.integration.test.ts",
+  "./plugins/provider-lando/test/machine-lifecycle-live.integration.test.ts",
   "--test-name-pattern",
   testNamePattern,
 ];

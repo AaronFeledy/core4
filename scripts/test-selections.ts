@@ -59,19 +59,25 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "compiled-opentui",
-    paths: ["core/test/build/opentui-compiled-acceptance.test.ts"],
+    paths: ["core/test/build/opentui-compiled-acceptance.integration.test.ts"],
     jobs: builds,
     needs: "Native release binary and real PTY",
   },
   {
     id: "compiled-host-execution",
-    paths: ["core/test/build/host-execution-compiled.test.ts"],
+    paths: [
+      "core/test/build/host-execution-compiled.integration.test.ts",
+      "core/test/build/host-execution-directory.test.ts",
+    ],
     jobs: builds,
     needs: "LANDO_TEST_COMPILED_CLI",
   },
   {
     id: "compiled-renderer-output",
-    paths: ["core/test/build/renderer-output-compiled.test.ts", "engine/test/runtime/libc.test.ts"],
+    paths: [
+      "core/test/build/renderer-output-compiled.integration.test.ts",
+      "engine/test/runtime/libc.test.ts",
+    ],
     jobs: builds,
     needs: "LANDO_TEST_COMPILED_CLI and native terminal",
   },
@@ -304,3 +310,6 @@ export const selectorMatches = (selector: string, path: string): boolean =>
 export const selectionMatches = (selection: TestSelection, path: string): boolean =>
   selection.paths.some((selector) => selectorMatches(selector, path)) &&
   !(selection.ignore ?? []).some((selector) => selectorMatches(selector, path));
+
+export const hasNameFilter = (args: readonly string[]): boolean =>
+  args.some((arg) => /^(?:--test-name-pattern|-t)(?:=|$)/u.test(arg));

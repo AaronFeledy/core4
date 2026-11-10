@@ -44,6 +44,25 @@ test("rejects unknown, empty, and Go selections before spawning Bun", async () =
   }
 });
 
+test("executes filtered selections while forwarding their name filter to Bun", async () => {
+  await using fixture = await createTestSelectionFixture();
+  const receipt = join(fixture.root, "filtered.txt");
+  await fixture.put(
+    "pkg/test/filtered.test.ts",
+    `import { test } from "bun:test";
+    test("kept case", async () => { await Bun.write(${JSON.stringify(receipt)}, "kept"); });
+    test("omitted case", () => { throw new Error("Name filter was not forwarded"); });`,
+  );
+  const selection: TestSelection = {
+    id: "filtered",
+    paths: ["pkg/test/filtered.test.ts"],
+    args: ["--test-name-pattern", "kept case"],
+    jobs: [],
+  };
+  expect(await runTestSelection("filtered", { root: fixture.root, selections: [selection] })).toBe(0);
+  expect(await Bun.file(receipt).text()).toBe("kept");
+});
+
 test("matches file, tree, and glob selectors without substring expansion", () => {
   expect(selectionMatches({ id: "tree", paths: ["pkg/test/"], jobs: [] }, "pkg/test/nested/a.test.ts")).toBe(
     true,

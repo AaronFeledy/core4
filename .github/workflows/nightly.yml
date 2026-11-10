@@ -491,7 +491,7 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
-          docker_pull_image "$(bun -e 'import { sqliteHelperImage } from "@lando/container-runtime/data-plane"; process.stdout.write(sqliteHelperImage.ref)')"
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e guide scenarios
         run: |
@@ -727,7 +727,7 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
-          docker_pull_image "$(bun -e 'import { sqliteHelperImage } from "@lando/container-runtime/data-plane"; process.stdout.write(sqliteHelperImage.ref)')"
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Build test-only pinned MinIO BYO image
         run: bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"
@@ -960,7 +960,7 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
-          docker_pull_image "$(bun -e 'import { sqliteHelperImage } from "@lando/container-runtime/data-plane"; process.stdout.write(sqliteHelperImage.ref)')"
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Build test-only pinned MinIO BYO image
         run: bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"

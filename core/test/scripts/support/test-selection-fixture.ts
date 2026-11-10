@@ -24,15 +24,19 @@ export const createTestSelectionFixture = async () => {
       needs: "Fixture socket",
     },
   ];
-  const workflow = async (run = "bun run test:selection live", shards: readonly number[] = [1, 2, 3]) =>
+  const workflow = async (
+    run = "bun run test:selection live",
+    shards: readonly number[] = [1, 2, 3],
+    options: { readonly if?: boolean | string; readonly unitRun?: string } = {},
+  ) =>
     put(
       ".github/workflows/ci.yml",
       Bun.YAML.stringify({
         jobs: {
-          live: { steps: [{ run }] },
+          live: { steps: [{ run, ...(options.if === undefined ? {} : { if: options.if }) }] },
           "unit-tests-linux-x64-shard": {
             strategy: { matrix: { shard: shards } },
-            steps: [{ run: "bun run test:unit:shard ${{ matrix.shard }}/3" }],
+            steps: [{ run: options.unitRun ?? "bun run test:unit:shard ${{ matrix.shard }}/3" }],
           },
         },
       }),

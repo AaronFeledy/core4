@@ -11,7 +11,7 @@ import {
   normalizeTestPath,
   resolveTestSelection,
 } from "./test-selection-files.ts";
-import { TEST_SELECTIONS, type TestSelection, selectionMatches } from "./test-selections.ts";
+import { TEST_SELECTIONS, type TestSelection, hasNameFilter, selectionMatches } from "./test-selections.ts";
 
 export const MANUAL_TESTS: Readonly<Record<string, string>> = {
   "core/test/cli/shell-tty.integration.test.ts": "LANDO_TEST_SHELL_TTY=1 and a real terminal",
@@ -72,7 +72,12 @@ export const isUnitTest = (
     !path.split("/").some((part) => part === ".." || part === "") &&
     isBunTest(path) &&
     !isIntegrationTest(path) &&
-    !selections.some((selection) => selection.unit === "exclude" && selectionMatches(selection, path))
+    !selections.some(
+      (selection) =>
+        selection.unit === "exclude" &&
+        !hasNameFilter(selection.args ?? []) &&
+        selectionMatches(selection, path),
+    )
   );
 };
 
@@ -98,13 +103,15 @@ const inventorySnapshot = async (options: TestInventoryOptions) => {
   }));
   const entries = files.map((path): TestInventoryEntry => {
     const selected = resolved.filter((entry) => entry.files.has(path)).map((entry) => entry.selection);
-    const owners = selected.map((selection) => selection.id);
+    const owners = selected
+      .filter((selection) => !hasNameFilter(selection.args ?? []))
+      .map((selection) => selection.id);
     for (const check of checks) {
       if (
         !check.advisory &&
         check.command[0] === "bun" &&
         check.command[1] === "test" &&
-        !check.command.some((arg) => /^--test-name-pattern(?:=|$)/u.test(arg)) &&
+        !hasNameFilter(check.command) &&
         check.command.slice(2).some((arg) => !arg.startsWith("-") && normalizeTestPath(arg) === path)
       )
         owners.push(check.id);

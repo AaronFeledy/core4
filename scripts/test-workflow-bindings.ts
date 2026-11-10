@@ -22,7 +22,9 @@ const parseJobs = (source: string): ReadonlyMap<string, WorkflowJob> => {
         {
           runs: Array.isArray(steps)
             ? steps.flatMap((step: unknown) => {
-                const run = record(step)?.run;
+                const entry = record(step);
+                if (entry?.if === false || entry?.if === "false") return [];
+                const run = entry?.run;
                 return typeof run === "string" ? [run] : [];
               })
             : [],
@@ -93,7 +95,9 @@ export const checkWorkflowBindings = async (
   const unit = workflows.get("ci.yml")?.get("unit-tests-linux-x64-shard");
   const expected = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1);
   if (
-    !unit?.runs.some((run) => invokes(run, ["bun", "run", "test:unit:shard"])) ||
+    !unit?.runs.some((run) =>
+      invokes(run, ["bun", "run", "test:unit:shard", `\${{ matrix.shard }}/${UNIT_SHARD_COUNT}`]),
+    ) ||
     JSON.stringify(unit.shards) !== JSON.stringify(expected)
   )
     issues.push({

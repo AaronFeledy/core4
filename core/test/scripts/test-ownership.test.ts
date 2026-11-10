@@ -91,24 +91,76 @@ test.each([
   expect(sample(issues, "RAW_BUN_TEST").paths).toEqual(["ci.yml", "live"]);
 });
 
-test("pattern-only and advisory matrix checks cannot own a whole file", async () => {
-  await using fixture = await createTestSelectionFixture();
-  const path = "pkg/test/matrix.integration.test.ts";
-  await fixture.put(path);
-  const planChecks = [
-    { id: "matrix:pattern", command: ["bun", "test", path, "--test-name-pattern", "live case"] },
-    { id: "matrix:advisory", command: ["bun", "test", path], advisory: true },
-  ];
-  expect(
-    (await checkTestOwnership({ ...fixture.options, planChecks })).issues.map((issue) => issue.code),
-  ).toEqual(["UNOWNED"]);
-  const result = await checkTestOwnership({
-    ...fixture.options,
-    planChecks: [...planChecks, { id: "matrix:whole-file", command: ["bun", "test", path] }],
-  });
-  expect(result.issues).toEqual([]);
-  expect(result.entries.find((entry) => entry.path === path)?.owners).toEqual(["matrix:whole-file"]);
-});
+test.each(["--test-name-pattern", "--test-name-pattern=live case", "-t", "-t=live case"])(
+  "filtered catalog selections cannot own or exclude whole files: %s",
+  async (flag) => {
+    await using fixture = await createTestSelectionFixture();
+    const result = await checkTestOwnership({
+      ...fixture.options,
+      selections: fixture.selections.map((selection) => ({
+        ...selection,
+        paths: [...selection.paths, "pkg/test/unit.test.ts"],
+        args: [flag, ...(flag.includes("=") ? [] : ["live case"])],
+        unit: "exclude",
+      })),
+    });
+    expect(result.issues.map((issue) => [issue.code, issue.paths])).toEqual([
+      ["UNOWNED", ["pkg/test/live.integration.test.ts"]],
+    ]);
+    expect(result.entries.find((entry) => entry.path === "pkg/test/unit.test.ts")?.owners).toEqual(["unit"]);
+  },
+);
+
+test.each([false, "false"])(
+  "a literally disabled workflow step cannot bind a selection: %s",
+  async (disabled) => {
+    await using fixture = await createTestSelectionFixture();
+    await fixture.workflow("bun run test:selection live", [1, 2, 3], { if: disabled });
+    const { issues } = await checkTestOwnership(fixture.options);
+    expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+      ["UNBOUND_SELECTION", ["live", "ci.yml", "live"]],
+    ]);
+  },
+);
+
+test.each(["", "1/3", "${{ matrix.shard }}", "${{ matrix.shard }}/4"])(
+  "unit binding requires the declared shard argument: %s",
+  async (argument) => {
+    await using fixture = await createTestSelectionFixture();
+    await fixture.workflow("bun run test:selection live", [1, 2, 3], {
+      unitRun: `bun run test:unit:shard ${argument}`,
+    });
+    const { issues } = await checkTestOwnership(fixture.options);
+    expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+      ["UNBOUND_SELECTION", ["unit", "ci.yml", "unit-tests-linux-x64-shard"]],
+    ]);
+  },
+);
+
+test.each(["--test-name-pattern", "--test-name-pattern=live case", "-t", "-t=live case"])(
+  "pattern-only and advisory matrix checks cannot own a whole file: %s",
+  async (flag) => {
+    await using fixture = await createTestSelectionFixture();
+    const path = "pkg/test/matrix.integration.test.ts";
+    await fixture.put(path);
+    const planChecks = [
+      {
+        id: "matrix:pattern",
+        command: ["bun", "test", `./${path}`, flag, ...(flag.includes("=") ? [] : ["live case"])],
+      },
+      { id: "matrix:advisory", command: ["bun", "test", path], advisory: true },
+    ];
+    expect(
+      (await checkTestOwnership({ ...fixture.options, planChecks })).issues.map((issue) => issue.code),
+    ).toEqual(["UNOWNED"]);
+    const result = await checkTestOwnership({
+      ...fixture.options,
+      planChecks: [...planChecks, { id: "matrix:whole-file", command: ["bun", "test", `./${path}`] }],
+    });
+    expect(result.issues).toEqual([]);
+    expect(result.entries.find((entry) => entry.path === path)?.owners).toEqual(["matrix:whole-file"]);
+  },
+);
 
 test("unit exclusions follow matched selections after ignores without excluding adjacent files", async () => {
   await using fixture = await createTestSelectionFixture();

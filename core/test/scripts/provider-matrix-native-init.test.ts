@@ -13,7 +13,7 @@ test.each([["lando-podman6-linux"], ["podman-podman6-linux"]] as const)(
       runCommand: async (command) => {
         recorded.push(command);
         return {
-          exitCode: command.includes("plugins/provider-lando/test/native-init.integration.test.ts") ? 1 : 0,
+          exitCode: command.includes("./plugins/provider-lando/test/native-init.integration.test.ts") ? 1 : 0,
           stdout: "",
           stderr: "",
         };
@@ -23,7 +23,7 @@ test.each([["lando-podman6-linux"], ["podman-podman6-linux"]] as const)(
     expect(recorded).toContainEqual([
       "bun",
       "test",
-      "plugins/provider-lando/test/native-init.integration.test.ts",
+      "./plugins/provider-lando/test/native-init.integration.test.ts",
     ]);
     expect(report.checks.find((check) => check.id === "native-init")?.outcome).toBe("failed");
     expect(report.outcome).toBe("failed");
