@@ -176,6 +176,24 @@ for (const domain of ["tomcat", "compose"] as const) {
       });
     }
 
+    test("comments on the oldest exact-title issue when duplicates exist", async () => {
+      // Given: the title search returns duplicates oldest-first.
+      await using fixture = await createMaintenanceFixture({ domain });
+      const title = `${domain === "tomcat" ? "tomcat-bump" : "compose-vendor-bump"} automation failure`;
+      const issues = [
+        { number: 1437, title },
+        { number: 1592, title },
+      ];
+      // When
+      const result = await fixture.failure(render(), issues);
+      // Then
+      expect(result.exitCode, result.stderr).toBe(0);
+      const commands = await fixture.commands();
+      expect(commands).toContain("gh issue comment 1437 --body");
+      expect(commands).not.toContain("gh issue comment 1592");
+      expect(commands).not.toContain("gh issue create");
+    });
+
     test("scopes failure reporting to the workflow's fork repository", async () => {
       // Given
       const repository = "fork-owner/core4";
@@ -185,7 +203,10 @@ for (const domain of ["tomcat", "compose"] as const) {
       // Then
       expect(result.exitCode, result.stderr).toBe(0);
       const commands = await fixture.commands();
-      expect(commands).toContain("gh issue list --state open --limit 100 --json number,title --jq");
+      const title = `${domain === "tomcat" ? "tomcat-bump" : "compose-vendor-bump"} automation failure`;
+      expect(commands).toContain(
+        `gh issue list --state open --search in:title "${title}" sort:created-asc --limit 100 --json number,title --jq`,
+      );
       expect(commands).toContain(`repo=${repository}`);
       expect(commands).toContain(`https://example.invalid/${repository}/actions/runs/42`);
       expect(commands).not.toContain("fixture/repository");
