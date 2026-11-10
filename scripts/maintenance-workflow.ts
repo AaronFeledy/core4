@@ -12,6 +12,9 @@ type MaintenanceWorkflow = {
   };
 };
 
+// The automation owns only the PR body text between these markers.
+const REPORT_START = "<!-- maintenance-report:start -->";
+const REPORT_END = "<!-- maintenance-report:end -->";
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
 const indentScript = (script: string): string =>
   script
@@ -85,10 +88,24 @@ ${indentScript(policy.proposal.checkAndReport)}
           fi
           git push origin "HEAD:$BRANCH"
           PR_NUMBER="$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')"
+          REPORT_START=${shellQuote(REPORT_START)}
+          REPORT_END=${shellQuote(REPORT_END)}
+          REPORT="$(cat "$BODY_FILE")"
+          printf -v REPORT_SECTION '%s\\n%s\\n%s' "$REPORT_START" "$REPORT" "$REPORT_END"
+          PR_BODY_FILE="$RUNNER_TEMP/maintenance-pr-body.md"
           if [ -z "$PR_NUMBER" ]; then
-            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
+            printf '%s\\n' "$REPORT_SECTION" > "$PR_BODY_FILE"
+            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$PR_BODY_FILE"
           else
-            gh pr edit "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
+            # The PR body is untrusted data: keep it in variables and files only.
+            CURRENT_BODY="$(gh pr view "$PR_NUMBER" --json body --jq '.body')"
+            case "$CURRENT_BODY" in
+              *"$REPORT_START"*"$REPORT_END"*)
+                AFTER_START="\${CURRENT_BODY#*"$REPORT_START"}"
+                printf '%s%s%s\\n' "\${CURRENT_BODY%%"$REPORT_START"*}" "$REPORT_SECTION" "\${AFTER_START#*"$REPORT_END"}" > "$PR_BODY_FILE" ;;
+              *) printf '%s\\n' "$REPORT_SECTION" > "$PR_BODY_FILE" ;;
+            esac
+            gh pr edit "$BRANCH" --title "$TITLE" --body-file "$PR_BODY_FILE"
           fi
           gh workflow run ci.yml --ref "$BRANCH"
   report-failure:
