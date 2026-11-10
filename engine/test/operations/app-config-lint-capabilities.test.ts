@@ -209,20 +209,30 @@ test.each([
     { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: ["gpus" as const] } },
     [],
     "Remove gpus from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
+    undefined,
   ],
   [
     "offers only removal when no installed provider declares the knob",
     withoutKnobs,
     [],
     "Remove gpus from service web.",
+    undefined,
   ],
   [
     "names the selected provider's extension namespaces",
     withoutKnobs,
     ["compose"],
     "Remove gpus from service web, or move the intent under providers.compose.",
+    undefined,
   ],
-])("lint and planning remediation %s", async (_name, docker, providerExtensions, remediation) => {
+  [
+    "leads with the selected provider's step for a withheld knob",
+    { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: ["gpus" as const] } },
+    [],
+    "Enable the host feature. Otherwise, remove gpus from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
+    [{ key: "gpus" as const, remediation: "Enable the host feature." }],
+  ],
+])("lint and planning remediation %s", async (_name, docker, providerExtensions, remediation, withheld) => {
   // Given a selected provider without the knob, and an installed docker provider.
   const root = await mkdtemp(join(tmpdir(), "lando-knob-remediation-"));
   try {
@@ -230,7 +240,11 @@ test.each([
       join(root, ".lando.yml"),
       "name: knobfix\nprovider: lando\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    gpus: all\n",
     );
-    const selected = { ...withoutKnobs, providerExtensions };
+    const selected = {
+      ...withoutKnobs,
+      providerExtensions,
+      composeKnobs: { supported: [], ...(withheld === undefined ? {} : { withheld }) },
+    };
     const capabilities: DeclaredCapabilities = (id) => (id === "docker" ? docker : selected);
 
     // When
