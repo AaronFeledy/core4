@@ -6,6 +6,12 @@ import { createMaintenanceFixture, workflowScripts } from "./support/maintenance
 
 const REPORT_START = "<!-- maintenance-report:start -->";
 const REPORT_END = "<!-- maintenance-report:end -->";
+const DOMAIN_REPORT = "candidate report\n";
+const UNCLASSIFIED_PATH = "  - services.*.fixture_unclassified\n";
+
+// The first marked report in a published body.
+const markedReport = (body: string): string =>
+  body.slice(body.indexOf(REPORT_START) + REPORT_START.length + 1, body.indexOf(REPORT_END));
 
 for (const domain of ["tomcat", "compose"] as const) {
   const render = domain === "tomcat" ? renderTomcatBumpWorkflow : renderComposeVendorBumpWorkflow;
@@ -92,6 +98,12 @@ for (const domain of ["tomcat", "compose"] as const) {
       });
     }
 
+    // Compose leads its report with a classification section; the domain report stays last.
+    const expectDomainReport = (report: string) =>
+      domain === "tomcat"
+        ? expect(report).toBe(DOMAIN_REPORT)
+        : expect(report.endsWith(`\n${DOMAIN_REPORT}`)).toBe(true);
+
     test("creates a new PR whose body is only the marked report", async () => {
       // Given
       await using fixture = await createMaintenanceFixture({ domain });
@@ -99,7 +111,10 @@ for (const domain of ["tomcat", "compose"] as const) {
       const result = await fixture.proposal(render());
       // Then
       expect(result.exitCode, result.stderr).toBe(0);
-      expect(await fixture.prBody()).toBe(`${REPORT_START}\ncandidate report\n${REPORT_END}\n`);
+      const body = await fixture.prBody();
+      const report = markedReport(body);
+      expectDomainReport(report);
+      expect(body).toBe(`${REPORT_START}\n${report}${REPORT_END}\n`);
     });
 
     for (const [name, existingPrBody, expected] of [
@@ -142,7 +157,10 @@ for (const domain of ["tomcat", "compose"] as const) {
         // Then
         expect(result.exitCode, result.stderr).toBe(0);
         expect(await fixture.commands()).toContain("gh pr view 71 --json body --jq .body");
-        expect(await fixture.prBody()).toBe(expected);
+        const body = await fixture.prBody();
+        const report = markedReport(body);
+        expectDomainReport(report);
+        expect(body).toBe(expected.replace(DOMAIN_REPORT, () => report));
       });
     }
 
@@ -229,6 +247,55 @@ for (const domain of ["tomcat", "compose"] as const) {
       expect(await fixture.git("ls-remote", "--heads", "origin", fixture.branch)).toBe("");
       expect(await fixture.commands()).not.toContain("gh pr");
     });
+
+    if (domain === "compose") {
+      test("publishes and dispatches CI with unclassified key paths and the how-to link when the coverage gate fails", async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, coverage: "unclassified" });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        const commands = await fixture.commands();
+        expect(commands).toContain("bun run check:compose-coverage");
+        expect(commands).toContain(`gh pr create --base main --head ${fixture.branch}`);
+        expect(commands).toContain(`gh workflow run ci.yml --ref ${fixture.branch}`);
+        const body = await fixture.prBody();
+        expect(body).toContain(UNCLASSIFIED_PATH);
+        expect(body).toContain(
+          `${fixture.serverUrl}/${fixture.repository}/blob/${fixture.branch}/docs/contributing/ci.md#finish-a-compose-bump`,
+        );
+      });
+
+      test("omits the unclassified listing and how-to link when the coverage gate passes", async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, existingPr: true, coverage: "pass" });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(await fixture.commands()).toContain(`gh pr edit ${fixture.branch}`);
+        const body = await fixture.prBody();
+        expect(body).not.toContain(UNCLASSIFIED_PATH);
+        expect(body).not.toContain("#finish-a-compose-bump");
+        expect(body).toContain(DOMAIN_REPORT);
+      });
+
+      test("places the classification section before the schema diff report", async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, coverage: "unclassified" });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        const body = await fixture.prBody();
+        const listing = body.indexOf(UNCLASSIFIED_PATH);
+        const howTo = body.indexOf("#finish-a-compose-bump");
+        expect(listing).toBeGreaterThan(body.indexOf(REPORT_START));
+        expect(howTo).toBeGreaterThan(listing);
+        expect(body.indexOf(DOMAIN_REPORT)).toBeGreaterThan(howTo);
+      });
+    }
 
     for (const exactMatch of [true, false]) {
       test(`reports failure outside a checkout by ${exactMatch ? "commenting on the exact-title issue" : "creating an issue despite a similar title"}`, async () => {

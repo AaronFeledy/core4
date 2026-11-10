@@ -25,6 +25,7 @@ export type MaintenanceScenario = {
   readonly domain: "tomcat" | "compose";
   readonly mode?: "current" | "changed" | "checks-fail" | "update-fail" | "report-fail" | "dispatch-fail";
   readonly pending?: "bump" | "manual-only";
+  readonly coverage?: "pass" | "unclassified";
   readonly existingPr?: boolean;
   readonly existingPrBody?: string;
   readonly ghFailure?: {
@@ -44,6 +45,8 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
   const runnerTemp = join(root, "runner-temp");
   const log = join(root, "commands");
   const prBody = join(root, "pr-body");
+  const serverUrl = "https://example.invalid";
+  const repository = scenario.repository ?? "fixture/repository";
   const branch = `automation/${scenario.domain === "tomcat" ? "tomcat" : "compose-go"}-bump`;
   const owned =
     scenario.domain === "tomcat" ? "plugins/service-lando/tomcat/pins.json" : "vendor/compose/pin.json";
@@ -63,6 +66,9 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     GIT_COMMITTER_EMAIL: "fixture@example.invalid",
     PATH: `${bin}:${process.env.PATH}`,
     RUNNER_TEMP: runnerTemp,
+    GITHUB_SERVER_URL: serverUrl,
+    GITHUB_REPOSITORY: repository,
+    COVERAGE: scenario.coverage ?? "pass",
     LOG: log,
     MODE: scenario.mode ?? "changed",
     EXISTING_PR: scenario.existingPr ? "71" : "",
@@ -166,6 +172,12 @@ case "$1 $2" in
       git add unrelated.txt
       printf 'untracked\\n' > untracked.txt
     fi ;;
+  'run check:compose-coverage')
+    if [ "$COVERAGE" = unclassified ]; then
+      printf 'Compose coverage check failed.\\nUnclassified service key paths:\\n  - services.*.fixture_unclassified\\n' >&2
+      exit 1
+    fi
+    printf 'Compose coverage check passed (1 service paths, 1 top-level paths).\\n' ;;
   'run test:selection') if [ "$MODE" = checks-fail ]; then exit 23; fi ;;
   'run scripts/report-'*)
     if [ "$MODE" = report-fail ]; then exit 24; fi
@@ -182,6 +194,8 @@ esac`,
       remote,
       branch,
       owned,
+      serverUrl,
+      repository,
       manualCommit,
       git,
       runnerTemp,
@@ -195,8 +209,8 @@ esac`,
           Object.entries(scripts.failureEnv).map(([key, value]) => [
             key,
             value
-              .replaceAll("${{ github.repository }}", scenario.repository ?? "fixture/repository")
-              .replaceAll("${{ github.server_url }}", "https://example.invalid")
+              .replaceAll("${{ github.repository }}", repository)
+              .replaceAll("${{ github.server_url }}", serverUrl)
               .replaceAll("${{ github.run_id }}", "42")
               .replaceAll("${{ github.token }}", "fixture-token"),
           ]),
