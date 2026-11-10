@@ -144,6 +144,8 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 - Supported Linux fallback after default setup fails: `lando setup --provider=docker` (working system Docker) or `LANDO_PROVIDER=docker`. Not "advanced users who prefer Docker."
 - Lando starts the proxy. Do not tell users to launch Traefik.
 - Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
+- Before telling readers to install a PHP extension that a CMS requires, check whether the stock PHP image already ships or builds it (`PHP_COMMON_EXTENSIONS`, `PHP_EXTENSIONS_TO_BUILD`). Teach a `build.artifact` install, or link `docs/guides/services/php-customization.mdx`, only for extensions the image lacks.
+- Single-command CLI tooling tasks in guides (`drush`, `wp`, `typo3`) set `wrapper: true` so `--help` and `--version` reach the tool instead of Lando. Mirror the key in the fixture.
 - Recipe READMEs (`recipes/<id>/README.mdx`) are executable-guide-valid and feed scaffold README generation. Drupal's e2e smoke is richer than drupal-cms. Do not flatten it.
 
 ## Transcripts

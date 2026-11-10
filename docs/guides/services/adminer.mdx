@@ -1,0 +1,167 @@
+---
+id: adminer
+provider: test
+timeout: 90000
+tags: [docs, adminer, compose, service, database, postgres, mariadb]
+---
+
+# Browse your database in Adminer
+
+`lando psql` is fine until you want to click through tables, edit a row, or eyeball a schema. The phpMyAdmin service only talks to MySQL and MariaDB. Adminer is a one-file database UI that also speaks PostgreSQL, and its official image runs as a Compose service next to your database.
+
+Run every command on this page from the app directory on your host.
+
+## Add Adminer next to Postgres
+
+Save this as `.lando.yml` in an empty directory:
+
+```yaml
+name: adminer-demo
+services:
+  db:
+    type: postgres
+    creds:
+      user: lando
+      database: adminer-demo
+      password: local-development-only
+  adminer:
+    type: compose
+    image: adminer:5
+    appMount: false
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    dependsOn:
+      db:
+        condition: service_healthy
+```
+
+- `creds:` sets a password you can type into a login form. Without it, Lando generates the Postgres password and redacts it from `lando info` and command output, so Adminer has nothing you can paste. Keep this password for local development only.
+- `adminer:5` is the official image on the Adminer 5 major. It serves the UI on port `8080`.
+- `appMount: false` keeps your source out of the Adminer container. It only needs the network.
+- `ADMINER_DEFAULT_SERVER` prefills the login form's Server field with `db`, the database service's name on the app network.
+- The `ui` endpoint tells Lando that port `8080` speaks HTTP, so the proxy gives `adminer` its own `*.lndo.site` URL. Without an endpoint, the service has no route.
+- `dependsOn` with `condition: service_healthy` holds Adminer until the Postgres healthcheck passes.
+
+Start the app and give Postgres something to show:
+
+```sh
+lando start
+lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"
+```
+
+`lando start` returns after Postgres accepts connections, so `lando psql` works right away.
+
+## Log in
+
+Run `lando info` and open the `adminer` URL, `https://adminer.adminer-demo.lndo.site`. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Fill in the login form:
+
+| Field | Value |
+| --- | --- |
+| System | PostgreSQL |
+| Server | `db` (already filled in) |
+| Username | `lando` |
+| Password | `local-development-only` |
+| Database | `adminer-demo` |
+
+After login, the `public` schema lists the `notes` table. Open it and select its data to see the row you inserted. That proves Adminer reached Postgres over the app network with your credentials. It doesn't prove anything about your app's own connection settings.
+
+The Server field is only a default. Type another service name, such as a second database service, to connect to that one instead.
+
+If the URL doesn't load, check `lando logs -s adminer` for the PHP server's startup line, and see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx) when the hostname doesn't resolve.
+
+## Fix "password authentication failed"
+
+Postgres stores the password when it first creates the database volume. If you started `db` before adding `creds:`, or changed `creds.password` later, the volume still holds the old password and Adminer's login fails with `password authentication failed for user "lando"`.
+
+Keep the data and set the stored password to match the Landofile:
+
+```sh
+lando psql -c "ALTER USER lando WITH PASSWORD 'local-development-only';"
+```
+
+`lando psql` connects over the container's local socket, which the Postgres image trusts, so this works even while the passwords disagree. Log in to Adminer again.
+
+## Use MariaDB or MySQL instead
+
+Point the same Adminer service at a `mariadb` or `mysql` service. Their default username and password are both `lando`, so no `creds:` block is needed:
+
+```yaml
+name: adminer-mariadb
+services:
+  db:
+    type: mariadb
+  adminer:
+    type: compose
+    image: adminer:5
+    appMount: false
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    dependsOn:
+      db:
+        condition: service_healthy
+```
+
+Start it, then log in with System `MySQL / MariaDB`, Server `db`, username `lando`, password `lando`, and database `adminer-mariadb`. For MySQL and MariaDB alone, the typed [phpMyAdmin service](./phpmyadmin.mdx) finds your databases and gets its URL without an endpoint.
+
+## Check the plan
+
+These scenarios check the planned config for both Landofiles. `lando app:config` proves what Lando will create, not that Adminer can log in; the login steps above are that check.
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"adminer:5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ADMINER_DEFAULT_SERVER\":\\s*\"db\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"protocol\":\\s*\"http\",\\s*\"port\":\\s*8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mariadb" render>
+    <Step name="scaffold-mariadb">
+      <UseFixture name="adminer-mariadb" />
+    </Step>
+    <Step name="inspect-mariadb">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"adminer:5\"" } }} />
+    </Step>
+    <Step name="cleanup-mariadb">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Remove it
+
+Delete the `adminer` service from `.lando.yml` and run `lando rebuild -y`. Adminer stores nothing of its own, so your database volume is untouched.
+
+## Next
+
+- [Add PostgreSQL](./postgres.mdx) for ports, versions, and connection URLs
+- [Add a Compose service](./compose-passthrough.mdx) for the keys `type: compose` accepts
+- [Choose a catalog service's endpoints](../proxy/route-shorthand.mdx#choose-a-catalog-services-endpoints) to name your own hostname
+- [Import and export app databases](../tooling/db-import-export.mdx) to load real data first
