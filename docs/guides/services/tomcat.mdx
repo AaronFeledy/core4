@@ -54,9 +54,9 @@ services:
 
 An absolute container path works too. On catalog images, Lando writes a ROOT context (`conf/Catalina/localhost/ROOT.xml`) during the image build to serve the webroot at `/`. A custom `command:` such as `catalina.sh jpda run` still serves the same webroot. Tomcat's upstream deployment defaults stay in place; Lando does not disable other webapps or WAR deployment.
 
-With a custom `image:` or `build.context`, you own Tomcat's configuration. Lando writes neither `server.xml` nor a ROOT context. Set your image's listener to match `port:`; that value still selects Lando's endpoint and healthcheck. `webroot` only sets `LANDO_WEBROOT`. An explicitly authored image matching the selected catalog's exact digest-pinned reference still uses Lando's configuration. A floating upstream tag is a custom image, not the catalog pin.
+With a custom `image:` or `build.context`, you own Tomcat's configuration. Lando writes neither `server.xml` nor a ROOT context. Set your image's listener to match `port:`; that value still selects Lando's endpoint and healthcheck. With the app mount enabled, `webroot` only sets `LANDO_WEBROOT`. An explicitly authored image matching the selected catalog's exact digest-pinned reference still uses Lando's configuration. A floating upstream tag is a custom image, not the catalog pin.
 
-`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount: /site` moves the mount. Set `appMount: false` when the service should not mount app code, and set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning.
+`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount: /site` moves the mount. Set `appMount: false` when the service should not mount app code. On a catalog image, also set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning. On a custom `image:` or `build.context`, leave `webroot` out: nothing would use it, so planning rejects it as unused.
 
 ## Change the HTTP port
 
