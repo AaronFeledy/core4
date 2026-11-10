@@ -333,20 +333,12 @@ finish these steps from the repository root before you push:
    UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts
    ```
 
-2. If the fixture is deliberately invalid, keep
-   `# lando-lint: expect-invalid <reason>` on line 1 of its `.lando.yml`, and
-   register it where it applies:
-
-   - It can't compose: add its directory and the tag of the error it fails
-     with to `acquisitionExclusions` in
-     `landofile/test/provenance-invariant.test.ts`. Step 1 records the same
-     tag in the golden file.
-   - Its `.lando.yml` isn't valid authoring input: add its path below
-     `docs/guides/` and a short reason to `INVALID_INPUT_FIXTURES` in
-     `sdk/test/schema/landofile-parity.test.ts`.
-
-   A fixture can need both. A rejected Compose key, for example, fails
-   authoring validation and composition.
+2. If the fixture is deliberately invalid authoring input, put
+   `# lando-lint: expect-invalid <reason>` on line 1 of its `.lando.yml`.
+   `lint:guides` fails a marked fixture that decodes and an unmarked one that
+   doesn't. Nothing else needs registering: the provenance test accepts a
+   fixture that can't compose when it fails with the error tag step 1
+   recorded, and the schema parity test reads the marker.
 
 3. Run the four tests in one command. Require exit status 0 and a positive
    test count.
