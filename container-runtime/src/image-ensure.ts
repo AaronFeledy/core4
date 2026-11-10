@@ -152,10 +152,8 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
     return yield* Effect.fail(unparseablePlatformError(options.ctx, platform));
   }
   const pullAllowed = options.pullPolicy !== "never";
-  if (options.force === true) {
-    if (!pullAllowed) return yield* Effect.fail(missingLocalImage(options.ctx, reference));
-    return yield* pull(api, reference, options);
-  }
+  // A forced retry under `never` cannot pull, so it re-checks the local image like any other ensure.
+  if (options.force === true && pullAllowed) return yield* pull(api, reference, options);
 
   const inspectResponse = yield* request(api, options.ctx, inspectRequest(options.dialect, reference));
   if (inspectResponse.status === 404) {

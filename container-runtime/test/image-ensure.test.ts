@@ -334,7 +334,7 @@ describe("ensureImage", () => {
 
   test.each([
     ["a missing image", { inspectStatus: 404 }, false, undefined],
-    ["a forced retry after a missing-image create", {}, true, undefined],
+    ["a forced retry after a missing-image create", { inspectStatus: 404 }, true, undefined],
     [
       "a registry image for the wrong platform",
       {
@@ -367,5 +367,22 @@ describe("ensureImage", () => {
     expect(error.message).toContain("pull_policy: never");
     expect(error.remediation).toContain("remove pull_policy: never");
     expect(fake.requests.filter((request) => request.method === "POST")).toEqual([]);
+  });
+
+  test("pull_policy never accepts a local image on a forced retry without pulling", async () => {
+    // Given
+    const fake = makeApi({});
+
+    // When
+    await Effect.runPromise(
+      makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+        service: { ...service(), pullPolicy: "never" as const },
+        ref: "nginx:1.27",
+        force: true,
+      }),
+    );
+
+    // Then
+    expect(fake.requests.map((request) => request.method)).toEqual(["GET"]);
   });
 });
