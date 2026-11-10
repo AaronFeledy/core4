@@ -152,11 +152,11 @@ export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): 
  */
 export const declaredProviderLandoCapabilities = (
   platform: HostPlatform,
-  arch?: string,
-  host?: DelegatedScopeHost,
+  arch: string | undefined,
+  host: DelegatedScopeHost,
 ): ProviderCapabilities => {
   const capabilities = mvpProviderCapabilities(platform, arch);
-  return hostPlatformFamily(platform) === "linux" && host !== undefined
+  return hostPlatformFamily(platform) === "linux"
     ? withResourceControl(capabilities, linuxResourceControl(platform, host))
     : capabilities;
 };

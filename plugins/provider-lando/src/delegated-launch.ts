@@ -4,12 +4,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 
-import {
-  type ContainerCgroups,
-  type DelegatedScopeHost,
-  observeServicePlacement,
-  processCgroupPath,
-} from "./delegated-scope.ts";
+import { type DelegatedScopeHost, observeServicePlacement, processCgroupPath } from "./delegated-scope.ts";
 import { countRunningContainers } from "./linux-runtime-health.ts";
 import { readRuntimePid } from "./linux-runtime-reaper.ts";
 import type { PodmanServiceRunner, PodmanServiceScope } from "./podman-service-runner.ts";
@@ -18,10 +13,6 @@ import { recordServicePlacement, recordedContainerCgroups } from "./runtime-laun
 interface PlacementDeps {
   readonly pidPath: string;
   readonly serviceRunner: Pick<PodmanServiceRunner, "terminate">;
-  readonly recordPlacement?: (
-    pid: number,
-    containerCgroups: ContainerCgroups,
-  ) => Effect.Effect<void, ProviderUnavailableError>;
 }
 
 /** A just-launched service and the scope its launch selected, if any. */
@@ -55,7 +46,7 @@ export const verifyServicePlacement = Effect.fnUntraced(function* (
       }),
     );
   }
-  yield* deps.recordPlacement?.(pid, placement) ?? recordServicePlacement(deps.pidPath, pid, placement);
+  yield* recordServicePlacement(deps.pidPath, pid, placement);
 });
 
 /**

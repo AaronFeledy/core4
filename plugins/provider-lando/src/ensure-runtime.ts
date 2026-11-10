@@ -15,11 +15,7 @@ import type { ArtifactDownload } from "./runtime-bundle.ts";
 
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
 import { needsDelegatedRelaunch, verifyServicePlacement } from "./delegated-launch.ts";
-import {
-  type ContainerCgroups,
-  type DelegatedScopeHost,
-  delegatedLaunchEligibility,
-} from "./delegated-scope.ts";
+import { type DelegatedScopeHost, delegatedLaunchEligibility } from "./delegated-scope.ts";
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
@@ -77,10 +73,6 @@ export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "private
    * is omitted the service launches undelegated and its placement is not observed.
    */
   readonly delegatedScope?: DelegatedScopeHost;
-  readonly recordPlacement?: (
-    pid: number,
-    containerCgroups: ContainerCgroups,
-  ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly setupProgress?: {
     readonly helpers: (
       body: Effect.Effect<void, ProviderUnavailableError>,

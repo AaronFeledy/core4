@@ -116,14 +116,14 @@ export const observeServicePlacement = (pid: number, host: DelegatedScopeHost): 
 const restart = "then start the app again.";
 
 /** What the user can do so the next launch gives containers their own cgroups. */
-export const delegatedScopeRemediation = (reason: DelegatedScopeIneligibility, user?: string): string => {
+export const delegatedScopeRemediation = (reason: DelegatedScopeIneligibility): string => {
   switch (reason) {
     case "unsupported-platform":
       return "The lando provider applies deploy.resources only on Linux for now.";
     case "missing-launcher":
       return `Lando starts its runtime with the host's systemd-run and /usr/bin/env so containers get their own cgroups; install systemd and coreutils, ${restart}`;
     case "no-user-manager":
-      return `Lando starts its runtime in a systemd user scope so containers get their own cgroups, and no systemd user manager runs for your user. Enable one with \`loginctl enable-linger ${user ?? "$USER"}\` (or log in through a systemd session), ${restart}`;
+      return `Lando starts its runtime in a systemd user scope so containers get their own cgroups, and no systemd user manager runs for your user. Enable one with \`loginctl enable-linger $USER\` (or log in through a systemd session), ${restart}`;
     case "cgroup-v1":
       return `This host uses cgroup v1, where containers cannot get their own cgroups without root; boot with the unified cgroup v2 hierarchy (\`systemd.unified_cgroup_hierarchy=1\`), ${restart}`;
     case "missing-controllers":

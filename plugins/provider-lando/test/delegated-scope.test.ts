@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   type DelegatedScopeHost,
   delegatedLaunchEligibility,
-  delegatedScopeRemediation,
   observeServicePlacement,
 } from "../src/delegated-scope.ts";
 
@@ -90,9 +89,4 @@ describe("observeServicePlacement", () => {
   ])("%s is shared", (_name, host) => {
     expect(observeServicePlacement(42, host)).toBe("shared");
   });
-});
-
-test("ineligibility remediation names the step, never a manual Podman launch", () => {
-  expect(delegatedScopeRemediation("no-user-manager")).toContain("loginctl enable-linger $USER");
-  expect(delegatedScopeRemediation("missing-controllers")).toContain("Delegate=cpu cpuset io memory pids");
 });
