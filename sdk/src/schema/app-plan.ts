@@ -75,6 +75,14 @@ export const ServiceHomePlan = Schema.Union([
 ]).annotate({ identifier: "ServiceHomePlan", description: "Resolved service home persistence status." });
 export type ServiceHomePlan = typeof ServiceHomePlan.Type;
 
+export const ServicePullPolicy = Schema.Literals(["always", "never", "build"]).annotate({
+  identifier: "ServicePullPolicy",
+  title: "Service Pull Policy",
+  description:
+    "Image acquisition intent: always pulls on every start and rebuild, never uses only the local image, build runs the Compose build every time.",
+});
+export type ServicePullPolicy = typeof ServicePullPolicy.Type;
+
 const ServicePlanFields = {
   name: ServiceName,
   type: Schema.String,
@@ -85,6 +93,10 @@ const ServicePlanFields = {
   provider: ProviderId,
   primary: Schema.Boolean,
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
+  pullPolicy: Schema.optionalKey(ServicePullPolicy).annotate({
+    description:
+      "When the engine acquires the service image; absence pulls only a missing image on start and refreshes it on rebuild.",
+  }),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
   init: Schema.optionalKey(Schema.Boolean).annotate({

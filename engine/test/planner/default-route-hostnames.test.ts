@@ -24,6 +24,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
   name: "appserver",
   hostnames: [],
   authoredArtifact: undefined,
+  pullPolicy: undefined,
   authored: { byStore: new Map() },
   authoredStorage: undefined,
   homeIntent: { serviceType: "lando", home: false as const },

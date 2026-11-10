@@ -28,7 +28,6 @@ const PUBLISHED_COMPOSE_SERVICE_KNOB_KEY_ORDER = [
   "group_add",
   "read_only",
   "platform",
-  "pull_policy",
   "logging",
   "gpus",
   "deploy.resources",

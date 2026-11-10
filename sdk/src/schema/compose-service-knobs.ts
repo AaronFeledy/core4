@@ -42,6 +42,12 @@ export const ComposeInitServiceField = Schema.optionalKey(
   ),
 ).annotate({ description: "Whether to use native container init; false explicitly opts out." });
 
+/** Compose service `pull_policy:`; image acquisition intent normalized into the service plan, not a runtime knob. */
+export const ComposePullPolicyServiceField = Schema.optionalKey(ComposePullPolicyField).annotate({
+  description:
+    "Compose policy controlling when the service image is pulled: missing or if_not_present (default), always, never, or build; timed refresh policies are rejected at plan time.",
+});
+
 export const ComposeServiceKnobFields = {
   restart: Schema.optionalKey(ComposeRestartField).annotate({
     description: "Container restart policy: no, always, on-failure, or unless-stopped.",
@@ -162,9 +168,6 @@ export const ComposeServiceKnobFields = {
   }),
   platform: Schema.optionalKey(Schema.String).annotate({
     description: "Target runtime platform in operating-system and architecture form.",
-  }),
-  pull_policy: Schema.optionalKey(ComposePullPolicyField).annotate({
-    description: "Upstream Compose policy controlling when the service image is pulled.",
   }),
   logging: Schema.optionalKey(ComposeLogging).annotate({
     description: "Container logging driver and driver-specific scalar options.",

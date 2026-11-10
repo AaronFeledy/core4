@@ -212,7 +212,7 @@ describe("Compose field lowering", () => {
     });
   });
 
-  test.each(["pull_policy", "gpus", "deploy"])("warns when fragile capability %s is preserved", (key) => {
+  test.each(["gpus", "deploy"])("warns when fragile capability %s is preserved", (key) => {
     // Given
     const input = { [key]: "requested" };
     // When

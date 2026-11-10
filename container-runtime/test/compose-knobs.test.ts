@@ -77,7 +77,6 @@ describe("podman Compose runtime knob realization", () => {
   test("Given only unrealizable knobs, when realized, then nothing is emitted and nothing fails", () => {
     expect(
       realize({
-        pull_policy: "always",
         gpus: "all",
         deploy: { resources: { limits: { cpus: "0.5" } } },
         labels: { "dev.lando.app": "myapp" },

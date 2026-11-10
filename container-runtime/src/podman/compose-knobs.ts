@@ -103,13 +103,9 @@ const queryKnob = (
 });
 
 /**
- * Three preserved knobs are deliberately absent, and stay absent so the
+ * Two preserved knobs are deliberately absent, and stay absent so the
  * planner's fail-closed capability gate rejects them before this code runs:
  *
- * - `pull_policy` — Podman's compat `POST /containers/create` has no
- *   pull-policy field (pulls go through `/images/create`), and
- *   `ArtifactPullSpec.policy` carries only a per-command policy. Realizing
- *   per-service pull policy would need a provider-neutral plan field that does not exist.
  * - `gpus` — Podman's compat handler honors `HostConfig.DeviceRequests` only
  *   for `Driver: "cdi"` plus `DeviceIDs`; `count`, `capabilities`, and
  *   `options` are parsed and ignored, so the mapping cannot be total.

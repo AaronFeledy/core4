@@ -32,7 +32,6 @@ describe("Podman-backed Compose knob declarations", () => {
     const published = new Set<string>(composeKnobsForDialect("libpod"));
 
     // Then: the fail-closed planner gate depends on these staying undeclared.
-    expect(published.has("pull_policy")).toBe(false);
     expect(published.has("gpus")).toBe(false);
     expect(published.has("deploy")).toBe(false);
   });

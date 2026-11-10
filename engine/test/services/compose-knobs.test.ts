@@ -101,12 +101,12 @@ describe("Compose runtime knobs", () => {
   test("Given shuffled unsupported knobs, when support is checked repeatedly, then the first failure is stable", () => {
     // Given
     const alphaForward = servicePlan("alpha", {
-      pull_policy: "always",
+      platform: "linux/amd64",
       cap_drop: ["NET_ADMIN"],
     });
     const alphaReverse = servicePlan("alpha", {
       cap_drop: ["NET_ADMIN"],
-      pull_policy: "always",
+      platform: "linux/amd64",
     });
     const middle = servicePlan("middle", { devices: [{ source: "/dev/fuse" }] });
     const zeta = servicePlan("zeta", { gpus: "all", restart: "always" });

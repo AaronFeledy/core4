@@ -13,4 +13,4 @@ export const COMPOSE_KEY_RENAMES: Readonly<Record<string, string>> = {
   depends_on: "dependsOn",
 };
 
-export const CAPABILITY_FRAGILE_KEYS: ReadonlySet<string> = new Set(["pull_policy", "gpus", "deploy"]);
+export const CAPABILITY_FRAGILE_KEYS: ReadonlySet<string> = new Set(["gpus", "deploy"]);

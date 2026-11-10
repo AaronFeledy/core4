@@ -66,6 +66,7 @@ export type DraftOptionalPassThroughKey = (typeof DRAFT_OPTIONAL_PASS_THROUGH_KE
  */
 type DraftExternalOptionalServicePlanKey =
   | "home"
+  | "pullPolicy"
   | "scanner"
   | "logSources"
   | "connection"
