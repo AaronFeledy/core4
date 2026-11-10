@@ -27,6 +27,7 @@ import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
+import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
@@ -187,7 +188,9 @@ test.each([
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(
     jsonEquals(
-      evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+      evolveHistoricalSwarmReservations(
+        evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+      ),
       current,
     ),
   ).toBe(true);

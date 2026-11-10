@@ -6218,5 +6218,17 @@
     "changeKind": "enum-widened",
     "path": "$.runtimeState",
     "justification": "Adds `idle`: an installed managed runtime that is not running and starts on demand now reports its services as stopped instead of `unavailable`, so scripts can tell \"nothing is running\" from \"the runtime cannot be observed\". `available` and `unavailable` keep their meaning. This is a derived observation in a command result, not persisted state."
+  },
+  {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "enum-widened",
+    "path": "$.composeKnobs.supported.items",
+    "justification": "Adds deploy.resources.reservations.devices so a provider declares GPU and device requests separately from the deploy.resources memory, CPU, and process controls. Every previously accepted key keeps its meaning, and a provider that omits the new key fails planning closed for device requests."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.deploy.anyOf",
+    "justification": "deploy.resources.reservations drops cpus and generic_resources. Compose applies both only to Swarm services, and the Landofile now rejects them at their roots with remediation before schema decode, so no accepted Landofile reaches the narrowed shape. Planned and applied state carries deploy only inside the untyped ServicePlan.extensions.compose record, and the provider edge decodes it without excess-property errors, so no persisted record changes meaning."
   }
 ]
