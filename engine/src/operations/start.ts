@@ -12,6 +12,7 @@ import { claimAppDataIdentity, claimDataIdentityBeforeRetirement } from "./data-
 import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
+import { requireSelectableRouter } from "./global-consumer-admission.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import {
@@ -51,6 +52,8 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         // preflight, or any mutation.
         const reconciled = yield* reconcileAppDataIdentity(target);
         yield* validateDesiredFileSyncEngine(reconciled.plan);
+        // A routed start without a selectable router refuses before overlays, hooks, or builds.
+        yield* requireSelectableRouter(reconciled.plan);
         const providerRegistry = yield* RuntimeProviderRegistry;
         const preparedOverlays =
           (reconciled === target ? execution.preparedOverlays : undefined) ??

@@ -19,6 +19,7 @@
  */
 import { Effect, Option } from "effect";
 
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { RouterService, SshService } from "@lando/sdk/services";
 
 import {
@@ -74,8 +75,12 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   const resolver = yield* Effect.serviceOption(HostDnsResolver);
   const idleProvider = yield* idleGlobalProvider;
 
+  // Router selection is host-side metadata, so an unselectable router is reported even when idle.
+  const routerUnavailable = proxy !== undefined && unavailableRouterReason(proxy) !== undefined;
   const proxyChecks =
-    proxy === undefined || idleProvider !== undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
+    proxy === undefined || (idleProvider !== undefined && !routerUnavailable)
+      ? []
+      : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
   const certsCheck =
     certs._tag === "selected"
@@ -144,7 +149,7 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
       ...(idleProvider === undefined
         ? []
         : [
-            "router",
+            ...(routerUnavailable ? [] : ["router"]),
             ...(sshChecks.some((check) => check.context.sidecarSkipped === "true") ? ["ssh-sidecar"] : []),
           ].map((section) => ({
             section,

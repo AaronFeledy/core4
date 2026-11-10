@@ -1,9 +1,9 @@
-import { MessageWarnEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, ServiceShutdownObservation } from "@lando/sdk/schema";
-import { EventService, PathsService, RouterService, type RuntimeProviderShape } from "@lando/sdk/services";
+import { PathsService, RouterService, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { TaskTreeController } from "@lando/sdk/task-progress";
-import { DateTime, Effect, Option } from "effect";
+import { Effect, Option } from "effect";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { settleRoutesTask, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
@@ -75,20 +75,11 @@ export const cleanupDestroyHostState = Effect.fn("AppOperation.cleanupDestroyHos
   const target = teardown.target;
   if (target === undefined) return;
   yield* cleanupDestroyWorkers(teardown, tree);
-  const proxy = yield* Effect.serviceOption(RouterService);
-  if (Option.isSome(proxy)) {
-    yield* tree.startTask("routes");
-    yield* proxy.value
-      .removeRoutes(routeOwnerFromPlan(target.plan))
-      .pipe(Effect.tapError(() => tree.failTask("routes")));
-    yield* tree.completeTask("routes");
-  } else {
-    const events = yield* EventService;
-    yield* events.publish(
-      MessageWarnEvent.make({
-        body: `Proxy service is unavailable; destroying ${target.plan.name} without route cleanup.`,
-        timestamp: DateTime.nowUnsafe(),
-      }),
-    );
-  }
+  // The progress tree declares a routes step only when a router service is in context.
+  const declared = Option.isSome(yield* Effect.serviceOption(RouterService));
+  if (declared) yield* tree.startTask("routes");
+  const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromPlan(target.plan)).pipe(
+    Effect.tapError(() => (declared ? tree.failTask("routes") : Effect.void)),
+  );
+  if (declared) yield* settleRoutesTask(tree, withdrawal);
 });

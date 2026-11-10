@@ -1,7 +1,7 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 import { Effect, Ref } from "effect";
 
-import type { ProxyError, RouterWatcherError } from "@lando/sdk/errors";
+import type { ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
 import type { RouterService } from "@lando/sdk/services";
 
 import {
@@ -13,6 +13,8 @@ import {
 import { globalCreateProviderId } from "@lando/engine/global-app/placement";
 import { hasDebuggerConsumer } from "@lando/engine/subsystems/debugger-host";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
+import { requireSelectableGlobalRouter } from "./global-consumer-admission";
+import { installAndLoadGlobalPlan } from "./global-install";
 import { loadGlobalPlan } from "./global-plan";
 
 import {
@@ -31,7 +33,12 @@ export interface GlobalRestartOptions {
 export type GlobalRestartResult = GlobalStartResult;
 export const GlobalRestartResultSchema = GlobalStartResultSchema;
 
-export type GlobalRestartError = GlobalStartError | GlobalStopError | ProxyError | RouterWatcherError;
+export type GlobalRestartError =
+  | GlobalStartError
+  | GlobalStopError
+  | ProxyError
+  | ProxySetupError
+  | RouterWatcherError;
 export type GlobalRestartServices =
   | GlobalMutationServices
   | GlobalStartServices
@@ -50,10 +57,18 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(
       current.materialized && hasDebuggerConsumer(current.plan)
         ? yield* prepareDebuggerOverlay(current.plan)
         : undefined;
+    // Install the plan start will apply before stopping, so a restart whose routes need an
+    // unselectable router refuses while every global service is still running.
+    const loaded = yield* installAndLoadGlobalPlan();
+    yield* requireSelectableGlobalRouter(
+      loaded.plan,
+      new Set(Object.values(loaded.plan.services).map((service) => String(service.name))),
+    );
     yield* globalStop();
     const appliedPlan = yield* Ref.make<GlobalRouterStartupPlan | undefined>(undefined);
     const revalidateRouter = Effect.flatMap(Ref.get(appliedPlan), revalidateAppliedGlobalRouterStartup);
     const result = yield* globalStart({
+      loaded,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(preparedOverlays === undefined ? {} : { preparedOverlays }),
     }).pipe(

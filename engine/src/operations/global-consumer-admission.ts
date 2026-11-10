@@ -1,4 +1,9 @@
-import { AppPlacementError, GlobalAutoStartError, ServiceNotReadyError } from "@lando/sdk/errors";
+import {
+  AppPlacementError,
+  GlobalAutoStartError,
+  ProxySetupError,
+  ServiceNotReadyError,
+} from "@lando/sdk/errors";
 import type { AppPlan, RouterConfig } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -25,6 +30,7 @@ import { withGlobalResolutionCapabilities } from "../global-app/resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import { ensureGlobalServicesRunning } from "./ensure-global-services.ts";
 import type { EnsureGlobalServicesServices } from "./ensure-global-services.ts";
 import { withGlobalConsumerAdmissionCheck, withGlobalConsumerReservation } from "./global-consumer-lease.ts";
@@ -58,6 +64,32 @@ export const captureGlobalConsumerAdmission = Effect.gen(function* () {
 export const requiresGlobalConsumerAdmission = (plan: AppPlan): boolean =>
   (plan.requires?.globalServices.length ?? 0) > 0 || (routerEnabled(plan) && plan.routes.length > 0);
 
+/**
+ * Fails with the router selection reason when the plan publishes routes and no router is
+ * selectable, so a routed activation can refuse before it changes anything.
+ */
+export const requireSelectableRouter = Effect.fn("GlobalConsumerAdmission.requireSelectableRouter")(
+  function* (plan: AppPlan): Effect.fn.Return<void, ProxySetupError, RouterService> {
+    if (!routerEnabled(plan) || plan.routes.length === 0) return;
+    const unavailable = unavailableRouterReason(yield* RouterService);
+    if (unavailable === undefined) return;
+    return yield* Effect.fail(
+      new ProxySetupError({
+        message: unavailable.message,
+        proxyId: unavailable.proxyId,
+        remediation: unavailable.remediation,
+      }),
+    );
+  },
+);
+
+/**
+ * Global activations publish the routes of the services they start once apply finishes; refuse
+ * before any destroy, build, or apply when those routes need a router and none is selectable.
+ */
+export const requireSelectableGlobalRouter = (plan: AppPlan, services: ReadonlySet<string>) =>
+  requireSelectableRouter({ ...plan, routes: plan.routes.filter((route) => services.has(route.service)) });
+
 export interface GlobalConsumerAdmission {
   readonly plan: AppPlan;
   readonly signal?: AbortSignal;
@@ -75,6 +107,8 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
   const routed = routerEnabled(plan) && plan.routes.length > 0;
   const required = new Set(plan.requires?.globalServices ?? []);
   if (!routed && required.size === 0) return yield* interruptOnAbort(body, signal);
+  // Report why no router is selectable before comparing or requiring its identity.
+  yield* requireSelectableRouter(plan);
   if (routed && plan.router?.id !== undefined) {
     const router = yield* RouterService;
     if (router.id !== plan.router.id)

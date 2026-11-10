@@ -233,7 +233,7 @@ test.each([false, true])(
         expect(f.entries.size).toBe(keepOnFailure ? 1 : 0);
         expect(await readFile(join(f.sourceRoot, "keep.txt"), "utf8")).toBe("source survives");
       },
-      Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      { registration: Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)) },
     );
   },
 );
