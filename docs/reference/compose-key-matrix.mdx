@@ -15,6 +15,8 @@ nested paths below.
 - `preserved`: Lando accepts the key and carries it in the Compose plan extension. Read the row for provider capability requirements; acceptance does not guarantee every provider can use it.
 - `rejected`: Lando stops with a tagged error. The Detail column gives the remediation.
 
+A rejected key rejects everything nested under it, so its nested keys are not listed.
+
 See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Compose compatibility](../guides/config/compose-compatibility.mdx) for usage guidance.
 
 ## Coverage summary
@@ -22,7 +24,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 2 | 11 |
-| Service keys | 57 | 82 | 392 | 531 |
+| Service keys | 57 | 82 | 110 | 249 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -54,10 +56,10 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 
 | Key | Disposition | Nested paths | Detail |
 | --- | --- | --- | --- |
-| [`annotations`](#annotations) | rejected | 1 | Translate annotations with a Compose-to-Lando config translator. |
+| `annotations` | rejected | — | Translate annotations with a Compose-to-Lando config translator. |
 | `attach` | rejected | — | Translate attach with a Compose-to-Lando config translator. |
-| [`blkio_config`](#blkio_config) | rejected | 16 | Translate blkio_config with a Compose-to-Lando config translator. |
-| [`build`](#build) | normalized | 41 | Normalizes into `ServicePlan.artifact` |
+| `blkio_config` | rejected | — | Translate blkio_config with a Compose-to-Lando config translator. |
+| [`build`](#build) | normalized | 27 | Normalizes into `ServicePlan.artifact` |
 | `cap_add` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `cap_drop` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `cgroup` | rejected | — | Translate cgroup with a Compose-to-Lando config translator. |
@@ -74,10 +76,10 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `cpu_shares` | rejected | — | Translate cpu_shares with a Compose-to-Lando config translator. |
 | `cpus` | rejected | — | Translate cpus with a Compose-to-Lando config translator. |
 | `cpuset` | rejected | — | Translate cpuset with a Compose-to-Lando config translator. |
-| [`credential_spec`](#credential_spec) | rejected | 4 | Translate credential_spec with a Compose-to-Lando config translator. |
+| `credential_spec` | rejected | — | Translate credential_spec with a Compose-to-Lando config translator. |
 | [`depends_on`](#depends_on) | normalized | 5 | Normalizes into `ServicePlan.dependsOn` |
-| [`deploy`](#deploy) | preserved | 60 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| [`develop`](#develop) | rejected | 17 | Translate develop with a Compose-to-Lando config translator. |
+| [`deploy`](#deploy) | preserved | 34 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `develop` | rejected | — | Translate develop with a Compose-to-Lando config translator. |
 | `device_cgroup_rules` | rejected | — | Translate device_cgroup_rules with a Compose-to-Lando config translator. |
 | [`devices`](#devices) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `dns` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
@@ -88,7 +90,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | [`env_file`](#env_file) | normalized | 3 | Normalizes into `ServicePlan.environment` |
 | [`environment`](#environment) | normalized | 1 | Normalizes into `ServicePlan.environment` |
 | `expose` | normalized | — | Normalizes into `ServicePlan.endpoints` |
-| [`extends`](#extends) | rejected | 2 | Replace extends with Lando type: inheritance. |
+| `extends` | rejected | — | Replace extends with Lando type: inheritance. |
 | `external_links` | rejected | — | Translate external_links with a Compose-to-Lando config translator. |
 | [`extra_hosts`](#extra_hosts) | preserved | 1 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | [`gpus`](#gpus) | preserved | 7 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
@@ -108,21 +110,21 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `mem_reservation` | rejected | — | Translate mem_reservation with a Compose-to-Lando config translator. |
 | `mem_swappiness` | rejected | — | Translate mem_swappiness with a Compose-to-Lando config translator. |
 | `memswap_limit` | rejected | — | Translate memswap_limit with a Compose-to-Lando config translator. |
-| [`models`](#models) | rejected | 4 | Translate models with a Compose-to-Lando config translator. |
+| `models` | rejected | — | Translate models with a Compose-to-Lando config translator. |
 | `network_mode` | rejected | — | Translate network_mode to Lando networks: configuration. |
-| [`networks`](#networks) | normalized | 13 | Normalizes into `ServicePlan.networking` |
+| [`networks`](#networks) | normalized | 12 | Normalizes into `ServicePlan.networking` |
 | `oom_kill_disable` | rejected | — | Translate oom_kill_disable with a Compose-to-Lando config translator. |
 | `oom_score_adj` | rejected | — | Translate oom_score_adj with a Compose-to-Lando config translator. |
 | `pid` | rejected | — | Translate pid with a Compose-to-Lando config translator. |
 | `pids_limit` | rejected | — | Translate pids_limit with a Compose-to-Lando config translator. |
 | `platform` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | [`ports`](#ports) | normalized | 8 | Normalizes into `ServicePlan.endpoints` |
-| [`post_start`](#post_start) | rejected | 7 | Translate post_start with a Compose-to-Lando config translator. |
-| [`pre_start`](#pre_start) | rejected | 176 | Translate pre_start with a Compose-to-Lando config translator. |
-| [`pre_stop`](#pre_stop) | rejected | 7 | Translate pre_stop with a Compose-to-Lando config translator. |
+| `post_start` | rejected | — | Translate post_start with a Compose-to-Lando config translator. |
+| `pre_start` | rejected | — | Translate pre_start with a Compose-to-Lando config translator. |
+| `pre_stop` | rejected | — | Translate pre_stop with a Compose-to-Lando config translator. |
 | `privileged` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `profiles` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| [`provider`](#provider) | rejected | 4 | Translate provider with a Compose-to-Lando config translator. |
+| `provider` | rejected | — | Translate provider with a Compose-to-Lando config translator. |
 | `pull_policy` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `pull_refresh_after` | rejected | — | Translate pull_refresh_after with a Compose-to-Lando config translator. |
 | `read_only` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
@@ -145,39 +147,10 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `user` | normalized | — | Normalizes into `ServicePlan.user` |
 | `userns_mode` | rejected | — | Translate userns_mode with a Compose-to-Lando config translator. |
 | `uts` | rejected | — | Translate uts with a Compose-to-Lando config translator. |
-| [`volumes`](#volumes) | normalized | 25 | Normalizes into `ServicePlan.mounts` |
+| [`volumes`](#volumes) | normalized | 22 | Normalizes into `ServicePlan.mounts` |
 | `volumes_from` | rejected | — | Translate volumes_from with a Compose-to-Lando config translator. |
 | `working_dir` | normalized | — | Normalizes into `ServicePlan.workingDirectory` |
 | `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose; inert and not capability-gated. |
-
-### `annotations`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `annotations` | rejected | Translate annotations with a Compose-to-Lando config translator. |
-| `annotations.*` | rejected | Translate annotations.* with a Compose-to-Lando config translator. |
-
-### `blkio_config`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `blkio_config` | rejected | Translate blkio_config with a Compose-to-Lando config translator. |
-| `blkio_config.device_read_bps` | rejected | Translate blkio_config.device_read_bps with a Compose-to-Lando config translator. |
-| `blkio_config.device_read_bps.path` | rejected | Translate blkio_config.device_read_bps.path with a Compose-to-Lando config translator. |
-| `blkio_config.device_read_bps.rate` | rejected | Translate blkio_config.device_read_bps.rate with a Compose-to-Lando config translator. |
-| `blkio_config.device_read_iops` | rejected | Translate blkio_config.device_read_iops with a Compose-to-Lando config translator. |
-| `blkio_config.device_read_iops.path` | rejected | Translate blkio_config.device_read_iops.path with a Compose-to-Lando config translator. |
-| `blkio_config.device_read_iops.rate` | rejected | Translate blkio_config.device_read_iops.rate with a Compose-to-Lando config translator. |
-| `blkio_config.device_write_bps` | rejected | Translate blkio_config.device_write_bps with a Compose-to-Lando config translator. |
-| `blkio_config.device_write_bps.path` | rejected | Translate blkio_config.device_write_bps.path with a Compose-to-Lando config translator. |
-| `blkio_config.device_write_bps.rate` | rejected | Translate blkio_config.device_write_bps.rate with a Compose-to-Lando config translator. |
-| `blkio_config.device_write_iops` | rejected | Translate blkio_config.device_write_iops with a Compose-to-Lando config translator. |
-| `blkio_config.device_write_iops.path` | rejected | Translate blkio_config.device_write_iops.path with a Compose-to-Lando config translator. |
-| `blkio_config.device_write_iops.rate` | rejected | Translate blkio_config.device_write_iops.rate with a Compose-to-Lando config translator. |
-| `blkio_config.weight` | rejected | Translate blkio_config.weight with a Compose-to-Lando config translator. |
-| `blkio_config.weight_device` | rejected | Translate blkio_config.weight_device with a Compose-to-Lando config translator. |
-| `blkio_config.weight_device.path` | rejected | Translate blkio_config.weight_device.path with a Compose-to-Lando config translator. |
-| `blkio_config.weight_device.weight` | rejected | Translate blkio_config.weight_device.weight with a Compose-to-Lando config translator. |
 
 ### `build`
 
@@ -185,7 +158,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | --- | --- | --- |
 | `build` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.additional_contexts` | rejected | Translate build.additional_contexts with a Compose-to-Lando config translator. |
-| `build.additional_contexts.*` | rejected | Translate build.additional_contexts.* with a Compose-to-Lando config translator. |
 | `build.args` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.args.*` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.cache_from` | rejected | Translate build.cache_from with a Compose-to-Lando config translator. |
@@ -195,10 +167,8 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `build.dockerfile_inline` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.entitlements` | rejected | Translate build.entitlements with a Compose-to-Lando config translator. |
 | `build.extra_hosts` | rejected | Translate build.extra_hosts with a Compose-to-Lando config translator. |
-| `build.extra_hosts.*` | rejected | Translate build.extra_hosts.* with a Compose-to-Lando config translator. |
 | `build.isolation` | rejected | Translate build.isolation with a Compose-to-Lando config translator. |
 | `build.labels` | rejected | Translate build.labels with a Compose-to-Lando config translator. |
-| `build.labels.*` | rejected | Translate build.labels.* with a Compose-to-Lando config translator. |
 | `build.network` | rejected | Translate build.network with a Compose-to-Lando config translator. |
 | `build.no_cache` | rejected | Translate build.no_cache with a Compose-to-Lando config translator. |
 | `build.no_cache_filter` | rejected | Translate build.no_cache_filter with a Compose-to-Lando config translator. |
@@ -208,22 +178,11 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `build.pull` | rejected | Translate build.pull with a Compose-to-Lando config translator. |
 | `build.sbom` | rejected | Translate build.sbom with a Compose-to-Lando config translator. |
 | `build.secrets` | rejected | Translate build.secrets with a Compose-to-Lando config translator. |
-| `build.secrets.gid` | rejected | Translate build.secrets.gid with a Compose-to-Lando config translator. |
-| `build.secrets.mode` | rejected | Translate build.secrets.mode with a Compose-to-Lando config translator. |
-| `build.secrets.source` | rejected | Translate build.secrets.source with a Compose-to-Lando config translator. |
-| `build.secrets.target` | rejected | Translate build.secrets.target with a Compose-to-Lando config translator. |
-| `build.secrets.uid` | rejected | Translate build.secrets.uid with a Compose-to-Lando config translator. |
-| `build.secrets.x-*` | rejected | Translate build.secrets.x-* with a Compose-to-Lando config translator. |
 | `build.shm_size` | rejected | Translate build.shm_size with a Compose-to-Lando config translator. |
 | `build.ssh` | rejected | Translate build.ssh with a Compose-to-Lando config translator. |
-| `build.ssh.*` | rejected | Translate build.ssh.* with a Compose-to-Lando config translator. |
 | `build.tags` | rejected | Translate build.tags with a Compose-to-Lando config translator. |
 | `build.target` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.ulimits` | rejected | Translate build.ulimits with a Compose-to-Lando config translator. |
-| `build.ulimits.*` | rejected | Translate build.ulimits.* with a Compose-to-Lando config translator. |
-| `build.ulimits.*.hard` | rejected | Translate build.ulimits.*.hard with a Compose-to-Lando config translator. |
-| `build.ulimits.*.soft` | rejected | Translate build.ulimits.*.soft with a Compose-to-Lando config translator. |
-| `build.ulimits.*.x-*` | rejected | Translate build.ulimits.*.x-* with a Compose-to-Lando config translator. |
 | `build.x-*` | rejected | Translate build.x-* with a Compose-to-Lando config translator. |
 
 ### `configs`
@@ -237,16 +196,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `configs.target` | normalized | Normalizes into `ServicePlan.mounts` |
 | `configs.uid` | rejected | Remove configs.uid and set the grant's mode (for example "0444") so the service user can read the file. |
 | `configs.x-*` | normalized | Normalizes into `ServicePlan.mounts` |
-
-### `credential_spec`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `credential_spec` | rejected | Translate credential_spec with a Compose-to-Lando config translator. |
-| `credential_spec.config` | rejected | Translate credential_spec.config with a Compose-to-Lando config translator. |
-| `credential_spec.file` | rejected | Translate credential_spec.file with a Compose-to-Lando config translator. |
-| `credential_spec.registry` | rejected | Translate credential_spec.registry with a Compose-to-Lando config translator. |
-| `credential_spec.x-*` | rejected | Translate credential_spec.x-* with a Compose-to-Lando config translator. |
 
 ### `depends_on`
 
@@ -266,15 +215,8 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `deploy` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.endpoint_mode` | rejected | Move deploy.endpoint_mode to a provider extension. |
 | `deploy.labels` | rejected | Move deploy.labels to a provider extension. |
-| `deploy.labels.*` | rejected | Move deploy.labels.* to a provider extension. |
 | `deploy.mode` | rejected | Move deploy.mode to a provider extension. |
 | `deploy.placement` | rejected | Move deploy.placement to a provider extension. |
-| `deploy.placement.constraints` | rejected | Move deploy.placement.constraints to a provider extension. |
-| `deploy.placement.max_replicas_per_node` | rejected | Move deploy.placement.max_replicas_per_node to a provider extension. |
-| `deploy.placement.preferences` | rejected | Move deploy.placement.preferences to a provider extension. |
-| `deploy.placement.preferences.spread` | rejected | Move deploy.placement.preferences.spread to a provider extension. |
-| `deploy.placement.preferences.x-*` | rejected | Move deploy.placement.preferences.x-* to a provider extension. |
-| `deploy.placement.x-*` | rejected | Move deploy.placement.x-* to a provider extension. |
 | `deploy.replicas` | rejected | Move deploy.replicas to a provider extension. |
 | `deploy.resources` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.limits` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
@@ -302,51 +244,9 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `deploy.resources.reservations.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.restart_policy` | rejected | Move deploy.restart_policy to a provider extension. |
-| `deploy.restart_policy.condition` | rejected | Move deploy.restart_policy.condition to a provider extension. |
-| `deploy.restart_policy.delay` | rejected | Move deploy.restart_policy.delay to a provider extension. |
-| `deploy.restart_policy.max_attempts` | rejected | Move deploy.restart_policy.max_attempts to a provider extension. |
-| `deploy.restart_policy.window` | rejected | Move deploy.restart_policy.window to a provider extension. |
-| `deploy.restart_policy.x-*` | rejected | Move deploy.restart_policy.x-* to a provider extension. |
 | `deploy.rollback_config` | rejected | Move deploy.rollback_config to a provider extension. |
-| `deploy.rollback_config.delay` | rejected | Move deploy.rollback_config.delay to a provider extension. |
-| `deploy.rollback_config.failure_action` | rejected | Move deploy.rollback_config.failure_action to a provider extension. |
-| `deploy.rollback_config.max_failure_ratio` | rejected | Move deploy.rollback_config.max_failure_ratio to a provider extension. |
-| `deploy.rollback_config.monitor` | rejected | Move deploy.rollback_config.monitor to a provider extension. |
-| `deploy.rollback_config.order` | rejected | Move deploy.rollback_config.order to a provider extension. |
-| `deploy.rollback_config.parallelism` | rejected | Move deploy.rollback_config.parallelism to a provider extension. |
-| `deploy.rollback_config.x-*` | rejected | Move deploy.rollback_config.x-* to a provider extension. |
 | `deploy.update_config` | rejected | Move deploy.update_config to a provider extension. |
-| `deploy.update_config.delay` | rejected | Move deploy.update_config.delay to a provider extension. |
-| `deploy.update_config.failure_action` | rejected | Move deploy.update_config.failure_action to a provider extension. |
-| `deploy.update_config.max_failure_ratio` | rejected | Move deploy.update_config.max_failure_ratio to a provider extension. |
-| `deploy.update_config.monitor` | rejected | Move deploy.update_config.monitor to a provider extension. |
-| `deploy.update_config.order` | rejected | Move deploy.update_config.order to a provider extension. |
-| `deploy.update_config.parallelism` | rejected | Move deploy.update_config.parallelism to a provider extension. |
-| `deploy.update_config.x-*` | rejected | Move deploy.update_config.x-* to a provider extension. |
 | `deploy.x-*` | rejected | Move deploy.x-* to a provider extension. |
-
-### `develop`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `develop` | rejected | Translate develop with a Compose-to-Lando config translator. |
-| `develop.watch` | rejected | Translate develop.watch with a Compose-to-Lando config translator. |
-| `develop.watch.action` | rejected | Translate develop.watch.action with a Compose-to-Lando config translator. |
-| `develop.watch.exec` | rejected | Translate develop.watch.exec with a Compose-to-Lando config translator. |
-| `develop.watch.exec.command` | rejected | Translate develop.watch.exec.command with a Compose-to-Lando config translator. |
-| `develop.watch.exec.environment` | rejected | Translate develop.watch.exec.environment with a Compose-to-Lando config translator. |
-| `develop.watch.exec.environment.*` | rejected | Translate develop.watch.exec.environment.* with a Compose-to-Lando config translator. |
-| `develop.watch.exec.privileged` | rejected | Translate develop.watch.exec.privileged with a Compose-to-Lando config translator. |
-| `develop.watch.exec.user` | rejected | Translate develop.watch.exec.user with a Compose-to-Lando config translator. |
-| `develop.watch.exec.working_dir` | rejected | Translate develop.watch.exec.working_dir with a Compose-to-Lando config translator. |
-| `develop.watch.exec.x-*` | rejected | Translate develop.watch.exec.x-* with a Compose-to-Lando config translator. |
-| `develop.watch.ignore` | rejected | Translate develop.watch.ignore with a Compose-to-Lando config translator. |
-| `develop.watch.include` | rejected | Translate develop.watch.include with a Compose-to-Lando config translator. |
-| `develop.watch.initial_sync` | rejected | Translate develop.watch.initial_sync with a Compose-to-Lando config translator. |
-| `develop.watch.path` | rejected | Translate develop.watch.path with a Compose-to-Lando config translator. |
-| `develop.watch.target` | rejected | Translate develop.watch.target with a Compose-to-Lando config translator. |
-| `develop.watch.x-*` | rejected | Translate develop.watch.x-* with a Compose-to-Lando config translator. |
-| `develop.x-*` | rejected | Translate develop.x-* with a Compose-to-Lando config translator. |
 
 ### `devices`
 
@@ -373,14 +273,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | --- | --- | --- |
 | `environment` | normalized | Normalizes into `ServicePlan.environment` |
 | `environment.*` | normalized | Normalizes into `ServicePlan.environment` |
-
-### `extends`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `extends` | rejected | Replace extends with Lando type: inheritance. |
-| `extends.file` | rejected | Replace extends.file with Lando type: inheritance. |
-| `extends.service` | rejected | Replace extends.service with Lando type: inheritance. |
 
 ### `extra_hosts`
 
@@ -433,16 +325,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `logging.options.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `logging.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 
-### `models`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `models` | rejected | Translate models with a Compose-to-Lando config translator. |
-| `models.*` | rejected | Translate models.* with a Compose-to-Lando config translator. |
-| `models.*.endpoint_var` | rejected | Translate models.*.endpoint_var with a Compose-to-Lando config translator. |
-| `models.*.model_var` | rejected | Translate models.*.model_var with a Compose-to-Lando config translator. |
-| `models.*.x-*` | rejected | Translate models.*.x-* with a Compose-to-Lando config translator. |
-
 ### `networks`
 
 | Key path | Disposition | Detail |
@@ -451,7 +333,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `networks.*` | normalized | Normalizes into `ServicePlan.networking` |
 | `networks.*.aliases` | normalized | Normalizes into `ServicePlan.networking` |
 | `networks.*.driver_opts` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.driver_opts and reach the service by its name or an alias. |
-| `networks.*.driver_opts.*` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.driver_opts.* and reach the service by its name or an alias. |
 | `networks.*.gw_priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.gw_priority and reach the service by its name or an alias. |
 | `networks.*.interface_name` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.interface_name and reach the service by its name or an alias. |
 | `networks.*.ipv4_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.ipv4_address and reach the service by its name or an alias. |
@@ -475,224 +356,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `ports.published` | normalized | Normalizes into `ServicePlan.endpoints` |
 | `ports.target` | normalized | Normalizes into `ServicePlan.endpoints` |
 | `ports.x-*` | rejected | Translate ports.x-* with a Compose-to-Lando config translator. |
-
-### `post_start`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `post_start` | rejected | Translate post_start with a Compose-to-Lando config translator. |
-| `post_start.command` | rejected | Translate post_start.command with a Compose-to-Lando config translator. |
-| `post_start.environment` | rejected | Translate post_start.environment with a Compose-to-Lando config translator. |
-| `post_start.environment.*` | rejected | Translate post_start.environment.* with a Compose-to-Lando config translator. |
-| `post_start.privileged` | rejected | Translate post_start.privileged with a Compose-to-Lando config translator. |
-| `post_start.user` | rejected | Translate post_start.user with a Compose-to-Lando config translator. |
-| `post_start.working_dir` | rejected | Translate post_start.working_dir with a Compose-to-Lando config translator. |
-| `post_start.x-*` | rejected | Translate post_start.x-* with a Compose-to-Lando config translator. |
-
-### `pre_start`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `pre_start` | rejected | Translate pre_start with a Compose-to-Lando config translator. |
-| `pre_start.annotations` | rejected | Translate pre_start.annotations with a Compose-to-Lando config translator. |
-| `pre_start.annotations.*` | rejected | Translate pre_start.annotations.* with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config` | rejected | Translate pre_start.blkio_config with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_read_bps` | rejected | Translate pre_start.blkio_config.device_read_bps with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_read_bps.path` | rejected | Translate pre_start.blkio_config.device_read_bps.path with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_read_bps.rate` | rejected | Translate pre_start.blkio_config.device_read_bps.rate with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_read_iops` | rejected | Translate pre_start.blkio_config.device_read_iops with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_read_iops.path` | rejected | Translate pre_start.blkio_config.device_read_iops.path with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_read_iops.rate` | rejected | Translate pre_start.blkio_config.device_read_iops.rate with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_write_bps` | rejected | Translate pre_start.blkio_config.device_write_bps with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_write_bps.path` | rejected | Translate pre_start.blkio_config.device_write_bps.path with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_write_bps.rate` | rejected | Translate pre_start.blkio_config.device_write_bps.rate with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_write_iops` | rejected | Translate pre_start.blkio_config.device_write_iops with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_write_iops.path` | rejected | Translate pre_start.blkio_config.device_write_iops.path with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.device_write_iops.rate` | rejected | Translate pre_start.blkio_config.device_write_iops.rate with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.weight` | rejected | Translate pre_start.blkio_config.weight with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.weight_device` | rejected | Translate pre_start.blkio_config.weight_device with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.weight_device.path` | rejected | Translate pre_start.blkio_config.weight_device.path with a Compose-to-Lando config translator. |
-| `pre_start.blkio_config.weight_device.weight` | rejected | Translate pre_start.blkio_config.weight_device.weight with a Compose-to-Lando config translator. |
-| `pre_start.cap_add` | rejected | Translate pre_start.cap_add with a Compose-to-Lando config translator. |
-| `pre_start.cap_drop` | rejected | Translate pre_start.cap_drop with a Compose-to-Lando config translator. |
-| `pre_start.cgroup` | rejected | Translate pre_start.cgroup with a Compose-to-Lando config translator. |
-| `pre_start.cgroup_parent` | rejected | Translate pre_start.cgroup_parent with a Compose-to-Lando config translator. |
-| `pre_start.command` | rejected | Translate pre_start.command with a Compose-to-Lando config translator. |
-| `pre_start.configs` | rejected | Translate pre_start.configs with a Compose-to-Lando config translator. |
-| `pre_start.configs.gid` | rejected | Translate pre_start.configs.gid with a Compose-to-Lando config translator. |
-| `pre_start.configs.mode` | rejected | Translate pre_start.configs.mode with a Compose-to-Lando config translator. |
-| `pre_start.configs.source` | rejected | Translate pre_start.configs.source with a Compose-to-Lando config translator. |
-| `pre_start.configs.target` | rejected | Translate pre_start.configs.target with a Compose-to-Lando config translator. |
-| `pre_start.configs.uid` | rejected | Translate pre_start.configs.uid with a Compose-to-Lando config translator. |
-| `pre_start.configs.x-*` | rejected | Translate pre_start.configs.x-* with a Compose-to-Lando config translator. |
-| `pre_start.cpu_count` | rejected | Translate pre_start.cpu_count with a Compose-to-Lando config translator. |
-| `pre_start.cpu_percent` | rejected | Translate pre_start.cpu_percent with a Compose-to-Lando config translator. |
-| `pre_start.cpu_period` | rejected | Translate pre_start.cpu_period with a Compose-to-Lando config translator. |
-| `pre_start.cpu_quota` | rejected | Translate pre_start.cpu_quota with a Compose-to-Lando config translator. |
-| `pre_start.cpu_rt_period` | rejected | Translate pre_start.cpu_rt_period with a Compose-to-Lando config translator. |
-| `pre_start.cpu_rt_runtime` | rejected | Translate pre_start.cpu_rt_runtime with a Compose-to-Lando config translator. |
-| `pre_start.cpu_shares` | rejected | Translate pre_start.cpu_shares with a Compose-to-Lando config translator. |
-| `pre_start.cpus` | rejected | Translate pre_start.cpus with a Compose-to-Lando config translator. |
-| `pre_start.cpuset` | rejected | Translate pre_start.cpuset with a Compose-to-Lando config translator. |
-| `pre_start.credential_spec` | rejected | Translate pre_start.credential_spec with a Compose-to-Lando config translator. |
-| `pre_start.credential_spec.config` | rejected | Translate pre_start.credential_spec.config with a Compose-to-Lando config translator. |
-| `pre_start.credential_spec.file` | rejected | Translate pre_start.credential_spec.file with a Compose-to-Lando config translator. |
-| `pre_start.credential_spec.registry` | rejected | Translate pre_start.credential_spec.registry with a Compose-to-Lando config translator. |
-| `pre_start.credential_spec.x-*` | rejected | Translate pre_start.credential_spec.x-* with a Compose-to-Lando config translator. |
-| `pre_start.device_cgroup_rules` | rejected | Translate pre_start.device_cgroup_rules with a Compose-to-Lando config translator. |
-| `pre_start.devices` | rejected | Translate pre_start.devices with a Compose-to-Lando config translator. |
-| `pre_start.devices.permissions` | rejected | Translate pre_start.devices.permissions with a Compose-to-Lando config translator. |
-| `pre_start.devices.source` | rejected | Translate pre_start.devices.source with a Compose-to-Lando config translator. |
-| `pre_start.devices.target` | rejected | Translate pre_start.devices.target with a Compose-to-Lando config translator. |
-| `pre_start.devices.x-*` | rejected | Translate pre_start.devices.x-* with a Compose-to-Lando config translator. |
-| `pre_start.dns` | rejected | Translate pre_start.dns with a Compose-to-Lando config translator. |
-| `pre_start.dns_opt` | rejected | Translate pre_start.dns_opt with a Compose-to-Lando config translator. |
-| `pre_start.dns_search` | rejected | Translate pre_start.dns_search with a Compose-to-Lando config translator. |
-| `pre_start.domainname` | rejected | Translate pre_start.domainname with a Compose-to-Lando config translator. |
-| `pre_start.entrypoint` | rejected | Translate pre_start.entrypoint with a Compose-to-Lando config translator. |
-| `pre_start.env_file` | rejected | Translate pre_start.env_file with a Compose-to-Lando config translator. |
-| `pre_start.env_file.format` | rejected | Translate pre_start.env_file.format with a Compose-to-Lando config translator. |
-| `pre_start.env_file.path` | rejected | Translate pre_start.env_file.path with a Compose-to-Lando config translator. |
-| `pre_start.env_file.required` | rejected | Translate pre_start.env_file.required with a Compose-to-Lando config translator. |
-| `pre_start.environment` | rejected | Translate pre_start.environment with a Compose-to-Lando config translator. |
-| `pre_start.environment.*` | rejected | Translate pre_start.environment.* with a Compose-to-Lando config translator. |
-| `pre_start.extra_hosts` | rejected | Translate pre_start.extra_hosts with a Compose-to-Lando config translator. |
-| `pre_start.extra_hosts.*` | rejected | Translate pre_start.extra_hosts.* with a Compose-to-Lando config translator. |
-| `pre_start.gpus` | rejected | Translate pre_start.gpus with a Compose-to-Lando config translator. |
-| `pre_start.gpus.capabilities` | rejected | Translate pre_start.gpus.capabilities with a Compose-to-Lando config translator. |
-| `pre_start.gpus.count` | rejected | Translate pre_start.gpus.count with a Compose-to-Lando config translator. |
-| `pre_start.gpus.device_ids` | rejected | Translate pre_start.gpus.device_ids with a Compose-to-Lando config translator. |
-| `pre_start.gpus.driver` | rejected | Translate pre_start.gpus.driver with a Compose-to-Lando config translator. |
-| `pre_start.gpus.options` | rejected | Translate pre_start.gpus.options with a Compose-to-Lando config translator. |
-| `pre_start.gpus.options.*` | rejected | Translate pre_start.gpus.options.* with a Compose-to-Lando config translator. |
-| `pre_start.gpus.x-*` | rejected | Translate pre_start.gpus.x-* with a Compose-to-Lando config translator. |
-| `pre_start.group_add` | rejected | Translate pre_start.group_add with a Compose-to-Lando config translator. |
-| `pre_start.hostname` | rejected | Translate pre_start.hostname with a Compose-to-Lando config translator. |
-| `pre_start.image` | rejected | Translate pre_start.image with a Compose-to-Lando config translator. |
-| `pre_start.init` | rejected | Translate pre_start.init with a Compose-to-Lando config translator. |
-| `pre_start.ipc` | rejected | Translate pre_start.ipc with a Compose-to-Lando config translator. |
-| `pre_start.isolation` | rejected | Translate pre_start.isolation with a Compose-to-Lando config translator. |
-| `pre_start.label_file` | rejected | Translate pre_start.label_file with a Compose-to-Lando config translator. |
-| `pre_start.labels` | rejected | Translate pre_start.labels with a Compose-to-Lando config translator. |
-| `pre_start.labels.*` | rejected | Translate pre_start.labels.* with a Compose-to-Lando config translator. |
-| `pre_start.logging` | rejected | Translate pre_start.logging with a Compose-to-Lando config translator. |
-| `pre_start.logging.driver` | rejected | Translate pre_start.logging.driver with a Compose-to-Lando config translator. |
-| `pre_start.logging.options` | rejected | Translate pre_start.logging.options with a Compose-to-Lando config translator. |
-| `pre_start.logging.options.*` | rejected | Translate pre_start.logging.options.* with a Compose-to-Lando config translator. |
-| `pre_start.logging.x-*` | rejected | Translate pre_start.logging.x-* with a Compose-to-Lando config translator. |
-| `pre_start.mac_address` | rejected | Translate pre_start.mac_address with a Compose-to-Lando config translator. |
-| `pre_start.mem_limit` | rejected | Translate pre_start.mem_limit with a Compose-to-Lando config translator. |
-| `pre_start.mem_reservation` | rejected | Translate pre_start.mem_reservation with a Compose-to-Lando config translator. |
-| `pre_start.mem_swappiness` | rejected | Translate pre_start.mem_swappiness with a Compose-to-Lando config translator. |
-| `pre_start.memswap_limit` | rejected | Translate pre_start.memswap_limit with a Compose-to-Lando config translator. |
-| `pre_start.models` | rejected | Translate pre_start.models with a Compose-to-Lando config translator. |
-| `pre_start.models.*` | rejected | Translate pre_start.models.* with a Compose-to-Lando config translator. |
-| `pre_start.models.*.endpoint_var` | rejected | Translate pre_start.models.*.endpoint_var with a Compose-to-Lando config translator. |
-| `pre_start.models.*.model_var` | rejected | Translate pre_start.models.*.model_var with a Compose-to-Lando config translator. |
-| `pre_start.models.*.x-*` | rejected | Translate pre_start.models.*.x-* with a Compose-to-Lando config translator. |
-| `pre_start.network_mode` | rejected | Translate pre_start.network_mode with a Compose-to-Lando config translator. |
-| `pre_start.networks` | rejected | Translate pre_start.networks with a Compose-to-Lando config translator. |
-| `pre_start.networks.*` | rejected | Translate pre_start.networks.* with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.aliases` | rejected | Translate pre_start.networks.*.aliases with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.driver_opts` | rejected | Translate pre_start.networks.*.driver_opts with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.driver_opts.*` | rejected | Translate pre_start.networks.*.driver_opts.* with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.gw_priority` | rejected | Translate pre_start.networks.*.gw_priority with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.interface_name` | rejected | Translate pre_start.networks.*.interface_name with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.ipv4_address` | rejected | Translate pre_start.networks.*.ipv4_address with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.ipv6_address` | rejected | Translate pre_start.networks.*.ipv6_address with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.link_local_ips` | rejected | Translate pre_start.networks.*.link_local_ips with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.mac_address` | rejected | Translate pre_start.networks.*.mac_address with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.priority` | rejected | Translate pre_start.networks.*.priority with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.use_service_name_alias` | rejected | Translate pre_start.networks.*.use_service_name_alias with a Compose-to-Lando config translator. |
-| `pre_start.networks.*.x-*` | rejected | Translate pre_start.networks.*.x-* with a Compose-to-Lando config translator. |
-| `pre_start.oom_kill_disable` | rejected | Translate pre_start.oom_kill_disable with a Compose-to-Lando config translator. |
-| `pre_start.oom_score_adj` | rejected | Translate pre_start.oom_score_adj with a Compose-to-Lando config translator. |
-| `pre_start.per_replica` | rejected | Translate pre_start.per_replica with a Compose-to-Lando config translator. |
-| `pre_start.pid` | rejected | Translate pre_start.pid with a Compose-to-Lando config translator. |
-| `pre_start.pids_limit` | rejected | Translate pre_start.pids_limit with a Compose-to-Lando config translator. |
-| `pre_start.platform` | rejected | Translate pre_start.platform with a Compose-to-Lando config translator. |
-| `pre_start.privileged` | rejected | Translate pre_start.privileged with a Compose-to-Lando config translator. |
-| `pre_start.pull_policy` | rejected | Translate pre_start.pull_policy with a Compose-to-Lando config translator. |
-| `pre_start.pull_refresh_after` | rejected | Translate pre_start.pull_refresh_after with a Compose-to-Lando config translator. |
-| `pre_start.read_only` | rejected | Translate pre_start.read_only with a Compose-to-Lando config translator. |
-| `pre_start.runtime` | rejected | Translate pre_start.runtime with a Compose-to-Lando config translator. |
-| `pre_start.secrets` | rejected | Translate pre_start.secrets with a Compose-to-Lando config translator. |
-| `pre_start.secrets.gid` | rejected | Translate pre_start.secrets.gid with a Compose-to-Lando config translator. |
-| `pre_start.secrets.mode` | rejected | Translate pre_start.secrets.mode with a Compose-to-Lando config translator. |
-| `pre_start.secrets.source` | rejected | Translate pre_start.secrets.source with a Compose-to-Lando config translator. |
-| `pre_start.secrets.target` | rejected | Translate pre_start.secrets.target with a Compose-to-Lando config translator. |
-| `pre_start.secrets.uid` | rejected | Translate pre_start.secrets.uid with a Compose-to-Lando config translator. |
-| `pre_start.secrets.x-*` | rejected | Translate pre_start.secrets.x-* with a Compose-to-Lando config translator. |
-| `pre_start.security_opt` | rejected | Translate pre_start.security_opt with a Compose-to-Lando config translator. |
-| `pre_start.shm_size` | rejected | Translate pre_start.shm_size with a Compose-to-Lando config translator. |
-| `pre_start.stop_grace_period` | rejected | Translate pre_start.stop_grace_period with a Compose-to-Lando config translator. |
-| `pre_start.stop_signal` | rejected | Translate pre_start.stop_signal with a Compose-to-Lando config translator. |
-| `pre_start.storage_opt` | rejected | Translate pre_start.storage_opt with a Compose-to-Lando config translator. |
-| `pre_start.sysctls` | rejected | Translate pre_start.sysctls with a Compose-to-Lando config translator. |
-| `pre_start.sysctls.*` | rejected | Translate pre_start.sysctls.* with a Compose-to-Lando config translator. |
-| `pre_start.tmpfs` | rejected | Translate pre_start.tmpfs with a Compose-to-Lando config translator. |
-| `pre_start.ulimits` | rejected | Translate pre_start.ulimits with a Compose-to-Lando config translator. |
-| `pre_start.ulimits.*` | rejected | Translate pre_start.ulimits.* with a Compose-to-Lando config translator. |
-| `pre_start.ulimits.*.hard` | rejected | Translate pre_start.ulimits.*.hard with a Compose-to-Lando config translator. |
-| `pre_start.ulimits.*.soft` | rejected | Translate pre_start.ulimits.*.soft with a Compose-to-Lando config translator. |
-| `pre_start.ulimits.*.x-*` | rejected | Translate pre_start.ulimits.*.x-* with a Compose-to-Lando config translator. |
-| `pre_start.umask` | rejected | Translate pre_start.umask with a Compose-to-Lando config translator. |
-| `pre_start.use_api_socket` | rejected | Translate pre_start.use_api_socket with a Compose-to-Lando config translator. |
-| `pre_start.user` | rejected | Translate pre_start.user with a Compose-to-Lando config translator. |
-| `pre_start.userns_mode` | rejected | Translate pre_start.userns_mode with a Compose-to-Lando config translator. |
-| `pre_start.uts` | rejected | Translate pre_start.uts with a Compose-to-Lando config translator. |
-| `pre_start.volumes` | rejected | Translate pre_start.volumes with a Compose-to-Lando config translator. |
-| `pre_start.volumes_from` | rejected | Translate pre_start.volumes_from with a Compose-to-Lando config translator. |
-| `pre_start.volumes.bind` | rejected | Translate pre_start.volumes.bind with a Compose-to-Lando config translator. |
-| `pre_start.volumes.bind.create_host_path` | rejected | Translate pre_start.volumes.bind.create_host_path with a Compose-to-Lando config translator. |
-| `pre_start.volumes.bind.propagation` | rejected | Translate pre_start.volumes.bind.propagation with a Compose-to-Lando config translator. |
-| `pre_start.volumes.bind.recursive` | rejected | Translate pre_start.volumes.bind.recursive with a Compose-to-Lando config translator. |
-| `pre_start.volumes.bind.selinux` | rejected | Translate pre_start.volumes.bind.selinux with a Compose-to-Lando config translator. |
-| `pre_start.volumes.bind.x-*` | rejected | Translate pre_start.volumes.bind.x-* with a Compose-to-Lando config translator. |
-| `pre_start.volumes.consistency` | rejected | Translate pre_start.volumes.consistency with a Compose-to-Lando config translator. |
-| `pre_start.volumes.image` | rejected | Translate pre_start.volumes.image with a Compose-to-Lando config translator. |
-| `pre_start.volumes.image.subpath` | rejected | Translate pre_start.volumes.image.subpath with a Compose-to-Lando config translator. |
-| `pre_start.volumes.image.x-*` | rejected | Translate pre_start.volumes.image.x-* with a Compose-to-Lando config translator. |
-| `pre_start.volumes.read_only` | rejected | Translate pre_start.volumes.read_only with a Compose-to-Lando config translator. |
-| `pre_start.volumes.source` | rejected | Translate pre_start.volumes.source with a Compose-to-Lando config translator. |
-| `pre_start.volumes.target` | rejected | Translate pre_start.volumes.target with a Compose-to-Lando config translator. |
-| `pre_start.volumes.tmpfs` | rejected | Translate pre_start.volumes.tmpfs with a Compose-to-Lando config translator. |
-| `pre_start.volumes.tmpfs.mode` | rejected | Translate pre_start.volumes.tmpfs.mode with a Compose-to-Lando config translator. |
-| `pre_start.volumes.tmpfs.size` | rejected | Translate pre_start.volumes.tmpfs.size with a Compose-to-Lando config translator. |
-| `pre_start.volumes.tmpfs.x-*` | rejected | Translate pre_start.volumes.tmpfs.x-* with a Compose-to-Lando config translator. |
-| `pre_start.volumes.type` | rejected | Translate pre_start.volumes.type with a Compose-to-Lando config translator. |
-| `pre_start.volumes.volume` | rejected | Translate pre_start.volumes.volume with a Compose-to-Lando config translator. |
-| `pre_start.volumes.volume.labels` | rejected | Translate pre_start.volumes.volume.labels with a Compose-to-Lando config translator. |
-| `pre_start.volumes.volume.labels.*` | rejected | Translate pre_start.volumes.volume.labels.* with a Compose-to-Lando config translator. |
-| `pre_start.volumes.volume.nocopy` | rejected | Translate pre_start.volumes.volume.nocopy with a Compose-to-Lando config translator. |
-| `pre_start.volumes.volume.subpath` | rejected | Translate pre_start.volumes.volume.subpath with a Compose-to-Lando config translator. |
-| `pre_start.volumes.volume.x-*` | rejected | Translate pre_start.volumes.volume.x-* with a Compose-to-Lando config translator. |
-| `pre_start.volumes.x-*` | rejected | Translate pre_start.volumes.x-* with a Compose-to-Lando config translator. |
-| `pre_start.working_dir` | rejected | Translate pre_start.working_dir with a Compose-to-Lando config translator. |
-| `pre_start.x-*` | rejected | Translate pre_start.x-* with a Compose-to-Lando config translator. |
-
-### `pre_stop`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `pre_stop` | rejected | Translate pre_stop with a Compose-to-Lando config translator. |
-| `pre_stop.command` | rejected | Translate pre_stop.command with a Compose-to-Lando config translator. |
-| `pre_stop.environment` | rejected | Translate pre_stop.environment with a Compose-to-Lando config translator. |
-| `pre_stop.environment.*` | rejected | Translate pre_stop.environment.* with a Compose-to-Lando config translator. |
-| `pre_stop.privileged` | rejected | Translate pre_stop.privileged with a Compose-to-Lando config translator. |
-| `pre_stop.user` | rejected | Translate pre_stop.user with a Compose-to-Lando config translator. |
-| `pre_stop.working_dir` | rejected | Translate pre_stop.working_dir with a Compose-to-Lando config translator. |
-| `pre_stop.x-*` | rejected | Translate pre_stop.x-* with a Compose-to-Lando config translator. |
-
-### `provider`
-
-| Key path | Disposition | Detail |
-| --- | --- | --- |
-| `provider` | rejected | Translate provider with a Compose-to-Lando config translator. |
-| `provider.options` | rejected | Translate provider.options with a Compose-to-Lando config translator. |
-| `provider.options.*` | rejected | Translate provider.options.* with a Compose-to-Lando config translator. |
-| `provider.type` | rejected | Translate provider.type with a Compose-to-Lando config translator. |
-| `provider.x-*` | rejected | Translate provider.x-* with a Compose-to-Lando config translator. |
 
 ### `secrets`
 
@@ -736,8 +399,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `volumes.bind.x-*` | rejected | Translate volumes.bind.x-* with a Compose-to-Lando config translator. |
 | `volumes.consistency` | rejected | Translate volumes.consistency with a Compose-to-Lando config translator. |
 | `volumes.image` | rejected | Translate volumes.image with a Compose-to-Lando config translator. |
-| `volumes.image.subpath` | rejected | Translate volumes.image.subpath with a Compose-to-Lando config translator. |
-| `volumes.image.x-*` | rejected | Translate volumes.image.x-* with a Compose-to-Lando config translator. |
 | `volumes.read_only` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.source` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.target` | normalized | Normalizes into `ServicePlan.mounts` |
@@ -748,7 +409,6 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `volumes.type` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.volume` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.volume.labels` | rejected | Translate volumes.volume.labels with a Compose-to-Lando config translator. |
-| `volumes.volume.labels.*` | rejected | Translate volumes.volume.labels.* with a Compose-to-Lando config translator. |
 | `volumes.volume.nocopy` | rejected | Translate volumes.volume.nocopy with a Compose-to-Lando config translator. |
 | `volumes.volume.subpath` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.volume.x-*` | rejected | Translate volumes.volume.x-* with a Compose-to-Lando config translator. |

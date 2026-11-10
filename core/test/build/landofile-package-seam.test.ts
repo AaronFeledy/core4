@@ -172,6 +172,7 @@ describe("Landofile package seam", () => {
         "assertLayerMergeCompleteness",
         "compareKeyPaths",
         "compiledLandofileSource",
+        "composeDispositionFor",
         "composeServiceDispositions",
         "composeTagDispositions",
         "composeTopLevelDispositions",

@@ -62,6 +62,7 @@ export {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   ComposeDispositionMatrixError,
+  composeDispositionFor,
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,

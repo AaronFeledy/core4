@@ -1074,6 +1074,7 @@
       "LandofileReset",
       "assertLayerMergeCompleteness",
       "compareKeyPaths",
+      "composeDispositionFor",
       "composeServiceDispositions",
       "composeTagDispositions",
       "composeTopLevelDispositions",
