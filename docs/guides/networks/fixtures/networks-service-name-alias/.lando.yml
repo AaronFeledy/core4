@@ -1,0 +1,11 @@
+# lando-lint: expect-invalid use_service_name_alias is rejected so the guide can show the naming remediation
+name: networks-service-name-alias
+networks:
+  backend: {}
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    networks:
+      backend:
+        use_service_name_alias: true
