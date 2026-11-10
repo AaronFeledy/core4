@@ -106,7 +106,10 @@ Launch the client session with `lando mcp --tooling` from that same directory.
 When the session starts, Lando reads your app's commands, rebuilding the index
 if the Landofile, an include, or a script changed since the last run, so the
 tool catalog matches the current Landofile. That rebuild plans the app without
-starting services or the provider.
+starting services or the provider. Each tooling tool's `description` ends with the
+sentence `lando <task> --help` prints about what the task runs, such as
+``Runs `composer` in appserver.`` or `Runs .lando/scripts/tag.bun.sh on the host.`,
+so an agent can tell a database reset from a lint run before calling it.
 
 A `.bun.sh` script can accept sparse named arguments. For example, save this as
 `.lando/scripts/tag.bun.sh` before starting the session:

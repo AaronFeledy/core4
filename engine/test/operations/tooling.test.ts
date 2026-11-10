@@ -30,7 +30,12 @@ import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
-const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseConnection) => {
+const fixture = (
+  task: ToolingTaskShape,
+  failureCode = 0,
+  database?: DatabaseConnection,
+  output: { readonly stdout?: string; readonly stderr?: string } = {},
+) => {
   const calls: {
     readonly service: string;
     readonly command: readonly string[];
@@ -95,7 +100,11 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
         ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
         ...(spec.env === undefined ? {} : { env: spec.env }),
       });
-      return Stream.make({ exitCode: failureCode });
+      return Stream.make(
+        { kind: "stdout" as const, chunk: new TextEncoder().encode(output.stdout ?? "") },
+        { kind: "stderr" as const, chunk: new TextEncoder().encode(output.stderr ?? "") },
+        { exitCode: failureCode },
+      );
     },
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
@@ -141,7 +150,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
               ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
               ...(options?.env === undefined ? {} : { env: options.env }),
             });
-            return { exitCode: failureCode, stdout: "", stderr: "" };
+            return { exitCode: failureCode, stdout: output.stdout ?? "", stderr: output.stderr ?? "" };
           }),
         runScript: () => Effect.die("unused script"),
         run: () => Effect.die("unused run"),
@@ -165,6 +174,171 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
       ),
   };
 };
+
+test("host dynamic vars run before commands without forwarding env or argv", async () => {
+  const f = fixture(
+    {
+      service: ":host",
+      cmd: 'echo "{{ vars.V }}"',
+      vars: { V: { sh: "printf computed" } },
+      env: { RESULT: "{{ vars.V }}" },
+    },
+    0,
+    undefined,
+    { stdout: "computed\r\n" },
+  );
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["tail"] } });
+  expect(result._tag).toBe("Success");
+  expect(f.calls.map((call) => call.command)).toEqual([["printf computed"], ['echo "computed"', "tail"]]);
+  expect(f.calls[0]?.env).not.toHaveProperty("RESULT");
+  expect(f.calls[1]?.env).toHaveProperty("RESULT", "computed");
+  expect(f.selections).toEqual([]);
+});
+
+test("container dynamic vars use task placement and share a lazy provider", async () => {
+  const f = fixture(
+    {
+      service: ":target",
+      flags: { target: { default: "worker" } },
+      user: "www",
+      dir: PortablePath.make("/app/src"),
+      cmd: "echo {{ vars.A }} {{ vars.B }}",
+      vars: { A: { sh: "first" }, B: { sh: "second" } },
+      env: { TASK_ENV: "body" },
+    },
+    0,
+    undefined,
+    { stdout: "value\n" },
+  );
+  const result = await f.run({ user: "override" });
+  expect(result._tag).toBe("Success");
+  expect(f.calls.slice(0, 2)).toMatchObject([
+    {
+      service: "worker",
+      user: "override",
+      cwd: "/app/src",
+      command: ["sh", "-c", 'first "$@"', "lando-tooling"],
+    },
+    {
+      service: "worker",
+      user: "override",
+      cwd: "/app/src",
+      command: ["sh", "-c", 'second "$@"', "lando-tooling"],
+    },
+  ]);
+  expect(f.calls[0]?.env).not.toHaveProperty("TASK_ENV");
+  expect(f.calls[1]?.env).not.toHaveProperty("TASK_ENV");
+  expect(f.calls[2]?.command[2]).toContain("echo 'value' 'value'");
+  expect(f.selections).toHaveLength(2);
+});
+
+test("dynamic var nonzero exit fails before the body", async () => {
+  const f = fixture({ service: ":host", cmd: "body-marker", vars: { X: { sh: "exit 3" } } }, 3);
+  const result = await f.run();
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ToolingExecError", variable: "X", exitCode: 3 },
+  });
+  expect(f.calls.map((call) => call.command)).toEqual([["exit 3"]]);
+});
+
+test("dynamic var stdout exceeding 64 KiB fails before the body", async () => {
+  const f = fixture({ service: ":host", cmd: "body-marker", vars: { X: { sh: "large" } } }, 0, undefined, {
+    stdout: "x".repeat(65537),
+  });
+  const result = await f.run();
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ToolingExecError", variable: "X", message: expect.stringContaining("64 KiB") },
+  });
+  expect(f.calls).toHaveLength(1);
+});
+
+test("dynamic var diagnostics redact plan secrets before retaining a bounded stderr tail", async () => {
+  const secret = "opaque-dynamic-failure";
+  const f = fixture(
+    { service: ":host", cmd: "body-marker", vars: { X: { sh: "fail" } } },
+    3,
+    {
+      family: "postgres",
+      port: PortNumber.make(5432),
+      creds: { user: "lando", password: secret, database: "appdb" },
+    },
+    { stderr: `${"x\n".repeat(6000)}${secret} failure-tail` },
+  );
+  const result = await f.run();
+  if (result._tag === "Failure") {
+    expect(result.failure.message).not.toContain(secret);
+    expect(result.failure.message).toContain("[redacted]");
+    expect(result.failure.message.length).toBeLessThan(8 * 1024 + 256);
+  }
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ToolingExecError", variable: "X", message: expect.stringContaining("failure-tail") },
+  });
+});
+
+test("disabled tasks never run dynamic vars", async () => {
+  const f = fixture({ disabled: true, service: ":host", cmd: "body-marker", vars: { X: { sh: "never" } } });
+  const result = await f.run();
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingDisabledError" } });
+  expect(f.calls).toEqual([]);
+});
+
+test("input argv cannot carry fails before any dynamic var runs", async () => {
+  const f = fixture({
+    service: ":host",
+    cmd: "body-marker",
+    args: { first: { order: 0 }, second: { order: 1 } },
+    vars: { X: { sh: "never" } },
+  });
+  const result = await f.run({ input: { _tag: "NamedMaps", flags: {}, args: { second: "b" } } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError" } });
+  expect(f.calls).toEqual([]);
+});
+
+test("a host dynamic var Bun Shell rejects keeps ToolingCompileError at its var path", async () => {
+  const f = fixture({ service: ":host", cmd: "body-marker", vars: { X: { sh: "echo $?" } } });
+  const result = await f.run();
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ToolingCompileError",
+      message: expect.stringMatching(/^tooling\.custom\.vars\.X\.sh: /),
+    },
+  });
+  expect(f.calls).toEqual([]);
+});
+
+test("dynamic var diagnostics never expose a secret pattern clipped from the tail", async () => {
+  const f = fixture({ service: ":host", cmd: "body-marker", vars: { X: { sh: "fail" } } }, 3, undefined, {
+    stderr: `TOKEN=${"a".repeat(9000)}SUFFIX-SECRET\n`,
+  });
+  const result = await f.run();
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingExecError", variable: "X" } });
+  if (result._tag === "Failure") expect(result.failure.message).not.toContain("SUFFIX-SECRET");
+});
+
+test("container dynamic vars honor the app's agent env opt-out", async () => {
+  const task: ToolingTaskShape = { cmd: "body-marker", vars: { X: { sh: "compute" } } };
+  const f = fixture(task, 0, undefined, { stdout: "value" });
+  f.setLandofile(
+    await Effect.runPromise(
+      compileTestLandofile({ name: "tooling-test", agentEnv: false, tooling: { custom: task } }),
+    ),
+  );
+  const previous = process.env.CLAUDECODE;
+  process.env.CLAUDECODE = "1";
+  try {
+    const result = await f.run();
+    expect(result._tag).toBe("Success");
+  } finally {
+    if (previous === undefined) Reflect.deleteProperty(process.env, "CLAUDECODE");
+    else process.env.CLAUDECODE = previous;
+  }
+  expect(f.calls[0]?.command).toEqual(["sh", "-c", 'compute "$@"', "lando-tooling"]);
+  expect(f.calls[0]?.env ?? {}).not.toHaveProperty("CLAUDECODE");
+});
 
 test("rejects a freshly disabled task even when the plan carries an enabled task", async () => {
   // Given an enabled cached plan and a freshly loaded disabled declaration

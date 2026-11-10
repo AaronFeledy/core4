@@ -32,6 +32,7 @@ export class ToolingDisabledError extends Schema.TaggedError<ToolingDisabledErro
 export class ToolingExecError extends Schema.TaggedError<ToolingExecError>()("ToolingExecError", {
   message: Schema.String,
   tool: Schema.String,
+  variable: Schema.optional(Schema.String),
   exitCode: Schema.optional(Schema.Number),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),

@@ -47,7 +47,10 @@ const dynamicToolingOptions = {
   resultSchema: ToolingResult,
   redactionTokens: runToolingRedactionTokens,
   completion: (result: RunToolingResult) => commandCompletionFromExitCode(result.exitCode),
-  failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
+  failureExitCode: (error: unknown) => {
+    if (!(error instanceof ToolingExecError)) return undefined;
+    return error.variable === undefined ? error.exitCode : 1;
+  },
 } as const;
 
 /** Retire event rendering before a keyboard-attached PTY so the tree does not fight the session. */
@@ -220,8 +223,8 @@ const runDynamicToolingFailure = (
 export const renderAliasResolutionFailure = async (
   error: unknown,
   context?: CliInvocationContext,
+  commandId = "cli:alias-resolution",
 ): Promise<void> => {
-  const commandId = "cli:alias-resolution";
   setActiveCommandId(commandId);
   await renderPreCommandFailure({
     ...(context === undefined ? {} : { context }),

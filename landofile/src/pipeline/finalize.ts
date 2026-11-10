@@ -180,20 +180,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
         documents: context.rootDocuments,
       });
   yield* Effect.forEach(recorder.effectiveChecks, (check) => check);
-  const unsupported = scanToolingForUnsupported(assembled);
-  const unsupportedPath =
-    unsupported === undefined
-      ? []
-      : unsupported.event === undefined
-        ? [
-            "tooling",
-            unsupported.task,
-            ...unsupported.key
-              .replace(/\[(\d+)\]/g, ".$1")
-              .split(".")
-              .map((part) => (/^\d+$/.test(part) ? Number(part) : part)),
-          ]
-        : ["events", unsupported.event];
+  const unsupportedPath = scanToolingForUnsupported(assembled)[0]?.path ?? [];
   yield* rejectUnsupportedToolingFeatures(
     valueOriginAt(effectiveOrigins, unsupportedPath).source.file,
     assembled,

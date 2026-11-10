@@ -6,6 +6,7 @@ import {
   type LandofileLoadOutsideRootError,
   type LandofileParseError,
   LandofileValidationError,
+  NotImplementedError,
 } from "@lando/sdk/errors";
 import {
   containsReservedBinding,
@@ -35,6 +36,7 @@ import {
 } from "./load-expression-shape.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
+import { deferredToolingScopeError } from "./tooling-deferred-scopes.ts";
 import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 
 export type { ResolveLandofileLoadExpressionsOptions } from "./load-expression-shape.ts";
@@ -47,6 +49,7 @@ export interface ResolvedLandofileLoadExpressions {
 }
 
 export type ResolveLandofileLoadExpressionError =
+  | NotImplementedError
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError
   | LandofileLoadOutsideRootError
@@ -124,7 +127,10 @@ export const resolveLandofileLoadExpressions = (
         } catch (cause) {
           if (options.recorder === undefined) throw cause;
           const source = { file: options.source.sourcePath, layer: options.source.layer, path };
-          options.recorder.record(normalizeLoadExpressionFailure(cause, options.source, path), source);
+          const failure = normalizeLoadExpressionFailure(cause, options.source, path);
+          if (failure instanceof NotImplementedError)
+            options.recorder.effectiveChecks.push(Effect.fail(failure));
+          else options.recorder.record(failure, source);
           return value;
         }
       };
@@ -177,6 +183,8 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
+          const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
+          if (deferred !== undefined) throw deferred;
           const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
           if (secret !== undefined && !eligibleBindingPath(path))
             throw unsupportedSecretReferenceError(

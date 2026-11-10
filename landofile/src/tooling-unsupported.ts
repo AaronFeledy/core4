@@ -1,6 +1,8 @@
 import { Effect, Predicate } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
+import { isLandofileOverride } from "@lando/sdk/landofile";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 
 export const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported.";
 
@@ -48,147 +50,155 @@ const SUPPORTED_FLAG_KEYS = new Set([
   "required",
   "description",
   "deprecated",
+  "sensitive",
 ]);
 
-const SUPPORTED_ARG_KEYS = new Set(["choices", "default", "required", "order", "description", "deprecated"]);
+const SUPPORTED_ARG_KEYS = new Set([
+  "choices",
+  "default",
+  "required",
+  "order",
+  "description",
+  "deprecated",
+  "sensitive",
+]);
+
+/** A fragment may wrap any mapping in `!override`; the scan reads what it authors. */
+const authored = (value: unknown): unknown => (isLandofileOverride(value) ? value.value : value);
 
 interface ToolingUnsupportedFinding {
-  readonly task: string;
-  readonly key: string;
+  readonly path: readonly (string | number)[];
   readonly description: string;
-  readonly event?: string;
+  readonly remediation?: string;
 }
 
-const scanEventsForUnsupported = (
+const scanEventsForUnsupported = function* (
   parsed: Readonly<Record<string, unknown>>,
-): ToolingUnsupportedFinding | undefined => {
-  const events = parsed.events;
-  if (!Predicate.isObject(events)) return undefined;
+): Generator<ToolingUnsupportedFinding> {
+  const events = authored(parsed.events);
+  if (!Predicate.isObject(events)) return;
 
-  for (const [event, steps] of Object.entries(events as Record<string, unknown>)) {
+  for (const [event, authoredSteps] of Object.entries(events as Record<string, unknown>)) {
+    const steps = authored(authoredSteps);
     if (!Array.isArray(steps)) continue;
-    for (const step of steps) {
+    for (const [index, authoredStep] of steps.entries()) {
+      const step = authored(authoredStep);
       if (!Predicate.isObject(step)) continue;
       const structuredStep = step as Record<string, unknown>;
       if (Object.hasOwn(structuredStep, "platforms")) {
-        return {
-          task: event,
-          key: `events.${event}[].platforms`,
+        yield {
+          path: ["events", event, index, "platforms"],
           description: 'Event step field "platforms"',
-          event,
         };
       }
     }
   }
-  return undefined;
 };
 
-const scanToolingInputMetadataForUnsupported = (
+const scanToolingInputMetadataForUnsupported = function* (
   taskName: string,
   task: Readonly<Record<string, unknown>>,
   section: "flags" | "args",
-): ToolingUnsupportedFinding | undefined => {
-  const metadata = task[section];
+): Generator<ToolingUnsupportedFinding> {
+  const metadata = authored(task[section]);
   if (metadata === undefined || !Predicate.isObject(metadata)) {
-    return undefined;
+    return;
   }
 
   const allowedKeys = section === "flags" ? SUPPORTED_FLAG_KEYS : SUPPORTED_ARG_KEYS;
 
-  for (const [name, value] of Object.entries(metadata as Record<string, unknown>)) {
+  for (const [name, entry] of Object.entries(metadata as Record<string, unknown>)) {
+    const value = authored(entry);
     if (!Predicate.isObject(value)) continue;
 
-    const keys = Object.keys(value as Record<string, unknown>);
-    const unsupportedKey = keys.find((key) => !allowedKeys.has(key));
-    if (unsupportedKey !== undefined) {
-      return {
-        task: taskName,
-        key: `${section}.${name}.${unsupportedKey}`,
+    for (const unsupportedKey of Object.keys(value)) {
+      if (allowedKeys.has(unsupportedKey)) continue;
+      yield {
+        path: ["tooling", taskName, section, name, unsupportedKey],
         description: `Tooling ${section} field "${unsupportedKey}"`,
       };
     }
   }
-
-  return undefined;
 };
 
-const scanCmdsStepForUnsupported = (
+const scanCmdsStepForUnsupported = function* (
   taskName: string,
   stepIndex: number,
   stepObj: Readonly<Record<string, unknown>>,
-): ToolingUnsupportedFinding | undefined => {
+): Generator<ToolingUnsupportedFinding> {
+  let rejected = false;
   for (const stepKey of Object.keys(stepObj)) {
     if (UNSUPPORTED_STEP_OBJECT_KEYS.has(stepKey) || !SUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
-      return {
-        task: taskName,
-        key: `cmds[${stepIndex}].${stepKey}`,
+      rejected = true;
+      yield {
+        path: ["tooling", taskName, "cmds", stepIndex, stepKey],
         description: `Step-object cmds entry "${stepKey}"`,
       };
     }
   }
 
-  if (!Object.hasOwn(stepObj, "cmd")) {
-    return {
-      task: taskName,
-      key: `cmds[${stepIndex}]`,
+  if (!rejected && !Object.hasOwn(stepObj, "cmd")) {
+    yield {
+      path: ["tooling", taskName, "cmds", stepIndex],
       description: `Step-object cmds entry at index ${stepIndex} without "cmd"`,
     };
   }
-
-  return undefined;
 };
 
-export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFinding | undefined => {
-  if (!Predicate.isObjectOrArray(parsed)) return undefined;
+const scanUnsupported = function* (parsed: unknown): Generator<ToolingUnsupportedFinding> {
+  if (!Predicate.isObjectOrArray(parsed)) return;
   const parsedRecord = parsed as Record<string, unknown>;
-  const eventFinding = scanEventsForUnsupported(parsedRecord);
-  if (eventFinding !== undefined) return eventFinding;
-  const tooling = parsedRecord.tooling;
-  if (!Predicate.isObject(tooling)) return undefined;
+  yield* scanEventsForUnsupported(parsedRecord);
+  const tooling = authored(parsedRecord.tooling);
+  if (!Predicate.isObject(tooling)) return;
   const toolingMap = tooling as Record<string, unknown>;
 
-  for (const [taskName, taskValue] of Object.entries(toolingMap)) {
+  for (const [taskName, authoredTask] of Object.entries(toolingMap)) {
+    const taskValue = authored(authoredTask);
     if (!Predicate.isObject(taskValue)) continue;
     const task = taskValue as Record<string, unknown>;
 
     for (const key of UNSUPPORTED_TOOLING_TASK_KEYS) {
       if (Object.hasOwn(task, key)) {
-        return {
-          task: taskName,
-          key,
+        yield {
+          path: ["tooling", taskName, key],
           description: `Tooling task field "${key}"`,
         };
       }
     }
 
-    const unsupportedInputMetadata =
-      scanToolingInputMetadataForUnsupported(taskName, task, "flags") ??
-      scanToolingInputMetadataForUnsupported(taskName, task, "args");
-    if (unsupportedInputMetadata !== undefined) return unsupportedInputMetadata;
+    yield* scanToolingInputMetadataForUnsupported(taskName, task, "flags");
+    yield* scanToolingInputMetadataForUnsupported(taskName, task, "args");
 
-    const cmds = task.cmds;
+    const cmds = authored(task.cmds);
     if (Array.isArray(cmds)) {
       for (let stepIndex = 0; stepIndex < cmds.length; stepIndex++) {
-        const step = cmds[stepIndex];
+        const step = authored(cmds[stepIndex]);
         if (Predicate.isObject(step)) {
-          const stepFinding = scanCmdsStepForUnsupported(
-            taskName,
-            stepIndex,
-            step as Record<string, unknown>,
-          );
-          if (stepFinding !== undefined) return stepFinding;
+          yield* scanCmdsStepForUnsupported(taskName, stepIndex, step as Record<string, unknown>);
         }
       }
     }
 
-    const vars = task.vars;
+    const vars = authored(task.vars);
     if (Predicate.isObject(vars)) {
-      for (const [varName, varValue] of Object.entries(vars as Record<string, unknown>)) {
+      for (const [varName, authoredVar] of Object.entries(vars as Record<string, unknown>)) {
+        const varValue = authored(authoredVar);
         if (Predicate.isObject(varValue)) {
+          for (const form of ["default", "prompt"] as const) {
+            if (Object.hasOwn(varValue, form))
+              yield {
+                path: ["tooling", taskName, "vars", varName, form],
+                description: `Tooling var form "${form}:" in tooling var "${varName}"`,
+                remediation:
+                  form === "default"
+                    ? `Write the value directly: vars.${varName}: <value>.`
+                    : `Declare a flag or arg, or compute the value with vars.${varName}.sh.`,
+              };
+          }
           if (Object.hasOwn(varValue, "raw")) {
-            return {
-              task: taskName,
-              key: `vars.${varName}.raw`,
+            yield {
+              path: ["tooling", taskName, "vars", varName, "raw"],
               description: `Unsafe "raw:" interpolation in tooling var "${varName}"`,
             };
           }
@@ -196,24 +206,24 @@ export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFi
       }
     }
   }
-
-  return undefined;
 };
+
+export const scanToolingForUnsupported = (parsed: unknown) => Array.from(scanUnsupported(parsed));
+
+export const unsupportedToolingMessage = (finding: ReturnType<typeof scanToolingForUnsupported>[number]) =>
+  `${finding.description} at ${formatValidationIssuePath(finding.path)} is not supported.`;
 
 export const rejectUnsupportedToolingFeatures = (
   filePath: string,
   parsed: unknown,
 ): Effect.Effect<unknown, NotImplementedError> => {
-  const finding = scanToolingForUnsupported(parsed);
+  const finding = scanToolingForUnsupported(parsed)[0];
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({
-      message:
-        finding.event === undefined
-          ? `${finding.description} in tooling task "${finding.task}" is not supported at ${filePath}.`
-          : `${finding.description} in event "${finding.event}" is not supported at ${filePath}.`,
+      message: `${unsupportedToolingMessage(finding)} Source: ${filePath}.`,
       commandId: "landofile.parse",
-      remediation: UNSUPPORTED_REMEDIATION,
+      remediation: finding.remediation ?? UNSUPPORTED_REMEDIATION,
     }),
   );
 };

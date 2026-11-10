@@ -1319,11 +1319,12 @@ describe("Landofile events on applied-state teardown", () => {
             teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
           ),
         );
+        // Interpolated data binds as quoted shell words; the escaped caller var stays literal.
         expect(executed).toEqual([
-          `echo pre-${operation}`,
-          "echo {{ event._tag }}",
-          "echo deferred-b",
-          "echo deferred-a",
+          `echo 'pre-${operation}'`,
+          "echo '{{ event._tag }}'",
+          "echo deferred-'b'",
+          "echo deferred-'a'",
         ]);
         expect(harness.destroyCalls).toEqual([appliedPlan]);
         expect(appliedPlan.events).toBeUndefined();
