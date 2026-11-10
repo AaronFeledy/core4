@@ -187,6 +187,8 @@ const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.lit
 );
 
 /** Capabilities come from the realizers, never a provider-maintained allowlist. */
+export { resourceControlIssue } from "./compose-knobs-values.ts";
+
 export const composeKnobsForDialect = (dialect: EngineDialect): ReadonlyArray<ComposeServiceKnobKey> =>
   PODMAN_KNOB_KEYS.filter((key) => PODMAN_COMPOSE_KNOB_REGISTRY[key].dialects.includes(dialect));
 

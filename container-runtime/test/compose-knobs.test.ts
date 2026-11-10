@@ -255,6 +255,9 @@ describe("Compose deploy.resources and GPU realization", () => {
   test.each([
     ["limits.cpus", { limits: { cpus: "half" } }],
     ["limits.cpus", { limits: { cpus: -1 } }],
+    ["limits.cpus", { limits: { cpus: 1e308 } }],
+    ["limits.cpus", { limits: { cpus: "10000000" } }],
+    ["limits.pids", { limits: { pids: "9007199254740993" } }],
     ["limits.memory", { limits: { memory: -1 } }],
     ["limits.pids", { limits: { pids: "many" } }],
     ["reservations.memory", { reservations: { memory: -1 } }],

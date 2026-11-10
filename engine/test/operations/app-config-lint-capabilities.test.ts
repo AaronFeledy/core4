@@ -277,3 +277,32 @@ test.each(["always", "never"])(
     }
   },
 );
+
+test.each([
+  ["limits.cpus", "cpus: 1e308"],
+  ["limits.pids", 'pids: "9007199254740993"'],
+])("lint and planning reject an unrepresentable deploy.resources.%s", async (field, line) => {
+  // Given a resource value past the container engine's integer range.
+  const root = await mkdtemp(join(tmpdir(), "lando-resource-range-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: rangefix\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    deploy:\n      resources:\n        limits:\n          ${line}\n`,
+    );
+    const capabilities = TestRuntimeProvider.capabilities;
+
+    // When
+    const result = await lint(root, capabilities);
+    const planned = await planWith(root, capabilities, () => capabilities);
+
+    // Then
+    const path = `services.web.deploy.resources.${field}`;
+    expect(result.valid).toBe(false);
+    expect(result.violations.find((issue) => issue.path.join(".") === path)?.severity).toBe("error");
+    if (!Result.isFailure(planned) || planned.failure._tag !== "LandofileValidationError")
+      throw new Error("Expected a validation failure");
+    expect(planned.failure.issues.map((issue) => issue.path.join("."))).toContain(path);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

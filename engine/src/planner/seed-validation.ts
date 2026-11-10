@@ -9,6 +9,7 @@ import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
 import { validateAuthoredMounts } from "./authored-mounts.ts";
 import { validateAuthoredAppMount } from "./authored.ts";
+import { validateDeployResources } from "./deploy-resources.ts";
 import { validateServicePullPolicy } from "./pull-policy.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
@@ -68,6 +69,8 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   if (mount !== undefined) errors.push(mount);
   const pullPolicy = validateServicePullPolicy(seed.service, seed.name, landofilePath);
   if (pullPolicy !== undefined) errors.push(pullPolicy);
+  const resources = validateDeployResources(seed.service, seed.name, landofilePath);
+  if (resources !== undefined) errors.push(resources);
   const mounts = validateAuthoredMounts(
     context,
     seed.resolution.normalizedConfig,

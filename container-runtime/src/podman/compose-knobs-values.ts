@@ -158,14 +158,22 @@ const memoryBytes = (field: string, value: number | undefined, fail: InvalidKnob
 const nanoCpus = (value: number | string | undefined, fail: InvalidKnob): number | undefined => {
   if (value === undefined) return undefined;
   const cpus = typeof value === "number" ? value : DECIMAL_TEXT.test(value) ? Number(value) : Number.NaN;
+  const details = { knob: RESOURCES_KNOB, field: "limits.cpus", value };
   if (!Number.isFinite(cpus) || cpus < 0) {
-    return fail(`Compose runtime knob \`${RESOURCES_KNOB}.limits.cpus\` requires a non-negative number.`, {
-      knob: RESOURCES_KNOB,
-      field: "limits.cpus",
-      value,
-    });
+    return fail(
+      `Compose runtime knob \`${RESOURCES_KNOB}.limits.cpus\` requires a non-negative number.`,
+      details,
+    );
   }
-  return cpus === 0 ? undefined : Math.round(cpus * 1e9);
+  // The engine takes whole nanoCPUs; a value past the safe-integer range serializes as null.
+  const nano = Math.round(cpus * 1e9);
+  if (safeInteger(nano) === undefined) {
+    return fail(
+      `Compose runtime knob \`${RESOURCES_KNOB}.limits.cpus\` exceeds the largest CPU limit a container engine accepts (${Math.floor(Number.MAX_SAFE_INTEGER / 1e9)}).`,
+      details,
+    );
+  }
+  return nano === 0 ? undefined : nano;
 };
 
 // Compose sets a process limit only when it is above zero; 0 and -1 both mean no limit.
@@ -195,6 +203,28 @@ export const resourceControls = (
     MemoryReservation: memoryBytes("reservations.memory", resources.reservations?.memory, fail),
   }).filter((entry): entry is [string, number] => entry[1] !== undefined);
   return controls.length === 0 ? undefined : Object.fromEntries(controls);
+};
+
+class ResourceControlIssue {
+  constructor(
+    readonly message: string,
+    readonly field: string | undefined,
+  ) {}
+}
+
+/** The first resource value no engine dialect can realize, so planning rejects it before provider action. */
+export const resourceControlIssue = (
+  resources: ResourcesKnob | undefined,
+): { readonly message: string; readonly field: string | undefined } | undefined => {
+  try {
+    resourceControls(resources, (message, details) => {
+      throw new ResourceControlIssue(message, typeof details.field === "string" ? details.field : undefined);
+    });
+    return undefined;
+  } catch (issue) {
+    if (issue instanceof ResourceControlIssue) return issue;
+    throw issue;
+  }
 };
 
 interface DeviceRequestKnob {
