@@ -98,11 +98,14 @@ ${indentScript(policy.proposal.checkAndReport)}
             gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$PR_BODY_FILE"
           else
             # The PR body is untrusted data: keep it in variables and files only.
-            CURRENT_BODY="$(gh pr view "$PR_NUMBER" --json body --jq '.body')"
+            # A marker counts only at the start of a line, so prose that quotes one is left alone.
+            NL=$'\\n'
+            CURRENT_BODY="$NL$(gh pr view "$PR_NUMBER" --json body --jq '.body')"
             case "$CURRENT_BODY" in
-              *"$REPORT_START"*"$REPORT_END"*)
-                AFTER_START="\${CURRENT_BODY#*"$REPORT_START"}"
-                printf '%s%s%s\\n' "\${CURRENT_BODY%%"$REPORT_START"*}" "$REPORT_SECTION" "\${AFTER_START#*"$REPORT_END"}" > "$PR_BODY_FILE" ;;
+              *"$NL$REPORT_START"*"$NL$REPORT_END"*)
+                AFTER_START="\${CURRENT_BODY#*"$NL$REPORT_START"}"
+                MERGED_BODY="\${CURRENT_BODY%%"$NL$REPORT_START"*}$NL$REPORT_SECTION\${AFTER_START#*"$NL$REPORT_END"}"
+                printf '%s\\n' "\${MERGED_BODY#"$NL"}" > "$PR_BODY_FILE" ;;
               *) printf '%s\\n' "$REPORT_SECTION" > "$PR_BODY_FILE" ;;
             esac
             gh pr edit "$BRANCH" --title "$TITLE" --body-file "$PR_BODY_FILE"

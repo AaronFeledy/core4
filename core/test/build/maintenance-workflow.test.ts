@@ -9,9 +9,12 @@ const REPORT_END = "<!-- maintenance-report:end -->";
 const DOMAIN_REPORT = "candidate report\n";
 const UNCLASSIFIED_PATH = "  - services.*.fixture_unclassified\n";
 
-// The first marked report in a published body.
-const markedReport = (body: string): string =>
-  body.slice(body.indexOf(REPORT_START) + REPORT_START.length + 1, body.indexOf(REPORT_END));
+// The first marked report in a published body. A marker counts only at the start of a line.
+const markedReport = (body: string): string => {
+  const padded = `\n${body}`;
+  const start = padded.indexOf(`\n${REPORT_START}\n`) + REPORT_START.length + 2;
+  return padded.slice(start, padded.indexOf(`\n${REPORT_END}`, start) + 1);
+};
 
 for (const domain of ["tomcat", "compose"] as const) {
   const render = domain === "tomcat" ? renderTomcatBumpWorkflow : renderComposeVendorBumpWorkflow;
@@ -137,6 +140,11 @@ for (const domain of ["tomcat", "compose"] as const) {
         "keeps shell and printf metacharacters in hand-written text as data",
         `$(touch pwned) \`id\` %s %d \\n * ? [a] 'q' "d"\n${REPORT_START}\nstale report\n${REPORT_END}\n$HOME \${BRANCH}; exit 9`,
         `$(touch pwned) \`id\` %s %d \\n * ? [a] 'q' "d"\n${REPORT_START}\ncandidate report\n${REPORT_END}\n$HOME \${BRANCH}; exit 9\n`,
+      ],
+      [
+        "ignores markers quoted inside a line of hand-written text",
+        `Owns \`${REPORT_START}\` to \`${REPORT_END}\`.\n${REPORT_START}\nstale report\n${REPORT_END}\nFooter`,
+        `Owns \`${REPORT_START}\` to \`${REPORT_END}\`.\n${REPORT_START}\ncandidate report\n${REPORT_END}\nFooter\n`,
       ],
       [
         "replaces a body whose end marker precedes its start marker",
