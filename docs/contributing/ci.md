@@ -256,7 +256,11 @@ Normal codegen is offline: it checks local hashes and template invariants and de
 
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and exact-title failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+
+When a run fails, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open.
+
+The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. If the body has no markers, or a marker was deleted or broken, the next run replaces the whole body with the marked report.
 
 Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
 
