@@ -35,6 +35,7 @@ export {
 } from "./provider-start-retention.ts";
 export * from "./service-contract.ts";
 export * from "./file-sync-contract.ts";
+export * from "./certificate-authority-contract.ts";
 export * from "./network-service-fixtures.ts";
 export * from "./router-service-contract.ts";
 export * from "./managed-file-contract.ts";
@@ -48,6 +49,7 @@ export * from "./config-translator-route-filter.ts";
 export * from "./doctor-tooling-plugin-source.ts";
 export * from "./http-client-contract.ts";
 export * from "./ca-pem-fixture.ts";
+export * from "./certificate-fixtures.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./renderer-panel-contract.ts";
 export * from "./renderer-contract.ts";

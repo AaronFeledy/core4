@@ -1,5 +1,6 @@
 export * from "./app-features.ts";
 export * from "./cache.ts";
+export * from "./certificate-authority.ts";
 export * from "./cli.ts";
 export * from "./config-translator.ts";
 export * from "./config.ts";

@@ -128,7 +128,8 @@ export const ServiceInfo = Schema.Struct({
   certs: Schema.optionalKey(
     Schema.Struct({ state: Schema.Literals(["none", "generated", "custom"]) }),
   ).annotate({
-    description: "Planned certificate source, when the plan records it.",
+    description:
+      "Planned certificate source; generated means Lando issues and maintains the certificate when applying the service.",
   }),
   health: Schema.optionalKey(ServiceInfoHealth).annotate({
     description: "Safe configured native health policy and provider-reported health state.",

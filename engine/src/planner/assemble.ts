@@ -4,6 +4,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
+import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
@@ -16,6 +17,7 @@ import {
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
+  appIdentityKey,
   landoNetworkingPlan,
   normalizeAppSlug,
 } from "@lando/sdk/schema";
@@ -38,7 +40,12 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
-import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
+import {
+  type CertificateAuthorityCandidateDefinition,
+  manifestCertificateAuthorityCandidates,
+  selectContributedCertificateAuthority,
+} from "../plugins/certificate-authority-resolver.ts";
 import { PluginContributionGraph, loadedPluginImplementations } from "../plugins/contribution-graph.ts";
 import { FileSyncPolicy, fileSyncOrdinaryReason } from "../plugins/file-sync-policy.ts";
 import { applyPreparedAppFeatures } from "../services/app-feature.ts";
@@ -113,17 +120,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
   const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
   const pluginRegistry = yield* PluginRegistry;
-  const plugins = loadedPluginImplementations(
-    Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph)),
-  );
+  const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
+  const plugins = loadedPluginImplementations(contributionGraph);
   const policyOwner = yield* FileSyncPolicy;
   const cacheService = Option.getOrUndefined(yield* Effect.serviceOption(CacheService));
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  const certificateAuthorityResolver = Option.getOrUndefined(
-    yield* Effect.serviceOption(CertificateAuthorityResolver),
-  );
   const {
     landofile,
     appSlug,
@@ -216,6 +219,20 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
         );
+  const certificateAuthority = selectContributedCertificateAuthority<CertificateAuthorityCandidateDefinition>(
+    contributionGraph,
+    policyOwner.platform,
+    () => manifestCertificateAuthorityCandidates(manifests),
+  );
+  // Same owner the route and teardown paths derive from the finished plan; scratch is keyed by id
+  // because the scratch marker is attached after planning and cwd forks share the user app's root.
+  const leafLocation = {
+    certsDir: (pathsService ?? makeLandoPaths()).certsDir,
+    ownerKey:
+      input.kind === "scratch"
+        ? routeOwnerFromScratch(appId).ownerKey
+        : (input.identity?.ownerKey ?? appIdentityKey("owner", appRoot)),
+  };
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
 
@@ -276,21 +293,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             hostnames: pinnedService.hostnames ?? [],
             routes: routes ?? [],
             defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
-            resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
-            ...(input.mode === "validate"
-              ? {
-                  validation: {
-                    authorities: manifests.flatMap((manifest) =>
-                      (manifest.contributes?.certificateAuthorities ?? []).map((authority) => ({
-                        ...authority,
-                        pluginName: String(manifest.name),
-                        source: "manifest",
-                      })),
-                    ),
-                    platform: policyOwner.platform,
-                  },
-                }
-              : {}),
+            certificateAuthority,
+            leafLocation,
             fileSystem,
           })
         : undefined;
