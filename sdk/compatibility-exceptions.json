@@ -2727,7 +2727,7 @@
     "surface": "schema:ServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.deploy.anyOf",
-    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+    "justification": "Vendored Compose alternate forms were added additively (US-482). deploy.resources values narrow to what the realizer already required at container create: limits.cpus is a non-negative number or decimal text no larger than 9007199, limits.memory and reservations.memory are non-negative, limits.pids is a safe integer or integer text, and a reserved device count is an integer or \"all\" text. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
   },
   {
     "surface": "schema:ServiceConfig",
@@ -2739,7 +2739,7 @@
     "surface": "schema:ServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.gpus.anyOf",
-    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+    "justification": "Vendored Compose alternate forms were added additively (US-482). gpus request count narrows to an integer or \"all\" (case-insensitive) text, which the realizer already required at container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
   },
   {
     "surface": "schema:ServiceConfig",
@@ -2763,7 +2763,7 @@
     "surface": "schema:ServiceConfig",
     "changeKind": "unsupported-keyword",
     "path": "$.ulimits.patternProperties",
-    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form (US-482). ulimits soft and hard bounds narrow to safe integers or integer text, which the realizer already required at container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
   },
   {
     "surface": "schema:ServiceConfig",
@@ -6229,6 +6229,66 @@
     "surface": "schema:ServiceConfigInput",
     "changeKind": "unsupported-construct",
     "path": "$.deploy.anyOf",
-    "justification": "deploy.resources.reservations drops cpus and generic_resources. Compose applies both only to Swarm services, and the Landofile now rejects them at their roots with remediation before schema decode, so no accepted Landofile reaches the narrowed shape. Planned and applied state carries deploy only inside the untyped ServicePlan.extensions.compose record, and the provider edge decodes it without excess-property errors, so no persisted record changes meaning."
+    "justification": "deploy.resources.reservations drops cpus and generic_resources. Compose applies both only to Swarm services, and the Landofile now rejects them at their roots with remediation before schema decode, so no accepted Landofile reaches the narrowed shape. Planned and applied state carries deploy only inside the untyped ServicePlan.extensions.compose record, and the provider edge decodes it without excess-property errors, so no persisted record changes meaning. deploy.resources values narrow to what the realizer already required at container create: limits.cpus is a non-negative number or decimal text no larger than 9007199, limits.memory and reservations.memory are non-negative, limits.pids is a safe integer or integer text, and a reserved device count is an integer or \"all\" text. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.privileged.anyOf",
+    "justification": "privileged narrows string values to the YAML 1.1 boolean spellings (true, false, yes, no, on, off, 1, 0, case-insensitive) the realizer accepts; any other string failed container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.read_only.anyOf",
+    "justification": "read_only narrows string values to the YAML 1.1 boolean spellings (true, false, yes, no, on, off, 1, 0, case-insensitive) the realizer accepts; any other string failed container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.shm_size.anyOf",
+    "justification": "shm_size requires a byte size greater than zero, which the realizer already required at container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.stop_grace_period.anyOf",
+    "justification": "stop_grace_period requires a finite, non-negative number of seconds within the safe-integer range; negative and non-finite values failed container create, and fractional values are now truncated to whole seconds instead of failing. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.gpus.anyOf",
+    "justification": "gpus request count narrows to an integer or \"all\" (case-insensitive) text, which the realizer already required at container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.privileged.anyOf",
+    "justification": "privileged narrows string values to the YAML 1.1 boolean spellings (true, false, yes, no, on, off, 1, 0, case-insensitive) the realizer accepts; any other string failed container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.read_only.anyOf",
+    "justification": "read_only narrows string values to the YAML 1.1 boolean spellings (true, false, yes, no, on, off, 1, 0, case-insensitive) the realizer accepts; any other string failed container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.shm_size.anyOf",
+    "justification": "shm_size requires a byte size greater than zero, which the realizer already required at container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.stop_grace_period.anyOf",
+    "justification": "stop_grace_period requires a finite, non-negative number of seconds within the safe-integer range; negative and non-finite values failed container create, and fractional values are now truncated to whole seconds instead of failing. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.ulimits.patternProperties",
+    "justification": "ulimits soft and hard bounds narrow to safe integers or integer text, which the realizer already required at container create. No persisted typed schema reaches it: planned and applied state carries Compose knobs only in the untyped ServicePlan.extensions.compose record, and the provider edge re-decodes that record with these field schemas, which still accept every value the container create path realized before (#2258)."
   }
 ]
