@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe("pre-command failure surface", () => {
   test("Compose rejection bug reports preserve structured context outside the machine envelope", () => {
-    const remediation = "Move deploy.replicas to a provider extension.";
+    const remediation = "Remove deploy.replicas.";
     const report = buildBugReport({
       error: new ComposeKeyRejectedError({
         message: "Compose key deploy.replicas is rejected.",

@@ -51,69 +51,228 @@ const preservedEntry = (path: string): ComposeDispositionEntry =>
         ? PRESERVED_EXACT_PATH_ENTRY
         : PRESERVED_ENTRY;
 
-const rejectedEntry = (path: string): ComposeDispositionEntry => {
-  if (path === "networks.*.use_service_name_alias") {
-    return {
-      disposition: "rejected",
+// Advice for rejected matrix paths. Every remediation names a step a user can take today.
+interface RejectedAdvice {
+  readonly rationale: string;
+  readonly remediation: (path: string) => string;
+}
+
+const removePath = (path: string): string => `Remove ${path}.`;
+
+const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>, advice: RejectedAdvice]> = [
+  [
+    ["networks.*.use_service_name_alias"],
+    {
       rationale: "Lando decides which names a service gets on each network.",
-      remediation: `Remove ${path}. Lando registers the service name on the app network only; add a name on another network with aliases.`,
-    };
-  }
-  if (path.startsWith("networks.*.")) {
-    return {
-      disposition: "rejected",
-      rationale: "Lando owns network address and interface settings.",
-      remediation: `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
-    };
-  }
-  if (path === "extends") {
-    return {
-      disposition: "rejected",
-      rationale: "Compose service inheritance is replaced by Lando composition primitives.",
-      remediation: `Replace ${path} with Lando type: inheritance.`,
-    };
-  }
-  if (path === "container_name") {
-    return {
-      disposition: "rejected",
+      remediation: (path) =>
+        `Remove ${path}. Lando registers the service name on the app network only; add a name on another network with aliases.`,
+    },
+  ],
+  [
+    ["container_name"],
+    {
       rationale: "Lando owns container naming for multi-app isolation.",
-      remediation: `Remove ${path} and use the Lando service key as the container identity.`,
-    };
-  }
-  if (path === "hostname" || path === "domainname") {
-    return {
-      disposition: "rejected",
+      remediation: (path) => `Remove ${path} and use the Lando service key as the container identity.`,
+    },
+  ],
+  [
+    ["hostname", "domainname"],
+    {
       rationale:
         "Lando sets each container's hostname to its container name, which resolves only to that container.",
-      remediation: `Remove ${path}. Lando sets each container's hostname to its container name, lando-<app>--<service>. Reach the service by its service key or a hostnames: alias.`,
-    };
-  }
-  if (path === "network_mode" || path === "links") {
-    return {
-      disposition: "rejected",
+      remediation: (path) =>
+        `Remove ${path}. Lando sets each container's hostname to its container name, lando-<app>--<service>. Reach the service by its service key or a hostnames: alias.`,
+    },
+  ],
+  [
+    ["network_mode", "links"],
+    {
       rationale: "Legacy Compose network shortcuts bypass Lando network planning.",
-      remediation: `Translate ${path} to Lando networks: configuration.`,
-    };
-  }
-  if (path === "configs.uid" || path === "configs.gid") {
-    return {
-      disposition: "rejected",
+      remediation: (path) => `Translate ${path} to Lando networks: configuration.`,
+    },
+  ],
+  [
+    ["configs.uid", "configs.gid"],
+    {
       rationale: "Config grants mount a read-only copy of a host file; Lando cannot change its owner.",
-      remediation: `Remove ${path} and set the grant's mode (for example "0444") so the service user can read the file.`,
-    };
-  }
-  if (path.startsWith("deploy.") && !path.startsWith("deploy.resources")) {
+      remediation: (path) =>
+        `Remove ${path} and set the grant's mode (for example "0444") so the service user can read the file.`,
+    },
+  ],
+  [
+    ["post_start"],
+    {
+      rationale: "Lando runs lifecycle commands from events, not Compose hooks.",
+      remediation: () =>
+        "Remove post_start. Run the command from a post-start event instead: list it under events: post-start with cmd: and service:.",
+    },
+  ],
+  [
+    ["pre_stop"],
+    {
+      rationale: "Lando runs lifecycle commands from events, not Compose hooks.",
+      remediation: () =>
+        "Remove pre_stop. Run the command from a pre-stop event instead: list it under events: pre-stop with cmd: and service:.",
+    },
+  ],
+  [
+    ["pre_start"],
+    {
+      rationale: "Lando does not run Compose init containers.",
+      remediation: () =>
+        "Remove pre_start. Run the setup as its own service that exits when it finishes, and make this service wait for it with depends_on and condition: service_completed_successfully.",
+    },
+  ],
+  [
+    [
+      "cpu_count",
+      "cpu_percent",
+      "cpu_period",
+      "cpu_quota",
+      "cpu_rt_period",
+      "cpu_rt_runtime",
+      "cpu_shares",
+      "cpus",
+      "cpuset",
+      "mem_limit",
+      "mem_reservation",
+      "mem_swappiness",
+      "memswap_limit",
+      "pids_limit",
+      "oom_kill_disable",
+      "oom_score_adj",
+      "blkio_config",
+    ],
+    {
+      rationale: "Lando does not apply Compose memory, CPU, process, or block I/O limits.",
+      remediation: removePath,
+    },
+  ],
+  [
+    ["tty", "stdin_open"],
+    {
+      rationale: "Lando attaches a terminal when you run a command, not to the service process.",
+      remediation: (path) =>
+        `Remove ${path}. Open a shell with lando ssh, or run one interactive command with lando exec --interactive.`,
+    },
+  ],
+  [
+    ["attach"],
+    {
+      rationale: "Lando does not attach to service output on start.",
+      remediation: () => "Remove attach. Read service output with lando logs.",
+    },
+  ],
+  [
+    ["scale"],
+    {
+      rationale: "Lando runs one container per service.",
+      remediation: () => "Remove scale. To run a second copy, declare another service.",
+    },
+  ],
+  [
+    ["develop"],
+    {
+      rationale: "Lando does not use Compose watch rules.",
+      remediation: () =>
+        "Remove develop. Lando shares your project with a service through its app mount (appMount), so no watch rule is needed.",
+    },
+  ],
+  [
+    ["label_file"],
+    {
+      rationale: "Lando reads labels from the Landofile, not from a file.",
+      remediation: () => "Remove label_file and list the labels under labels:.",
+    },
+  ],
+  [
+    ["env_file.format", "env_file.path", "env_file.required"],
+    {
+      rationale: "Lando accepts env_file as a path or a list of paths.",
+      remediation: (path) =>
+        `${path} belongs to the long-form env_file entry. Write the entry as a plain path instead.`,
+    },
+  ],
+  [
+    ["external_links"],
+    {
+      rationale: "Lando connects services through networks, not links.",
+      remediation: () =>
+        "Remove external_links. To reach a container outside this app, join its network: declare it under top-level networks: with external: true and list it on the service.",
+    },
+  ],
+  [
+    ["volumes_from"],
+    {
+      rationale: "Lando does not copy mounts from another service.",
+      remediation: () => "Remove volumes_from and declare the same volumes: on each service that needs them.",
+    },
+  ],
+  [
+    ["extends"],
+    {
+      rationale: "Lando does not resolve Compose extends.",
+      remediation: () =>
+        "Remove extends. Share settings between services with a YAML anchor and merge key (<<: *name).",
+    },
+  ],
+  [
+    ["jobs"],
+    {
+      rationale: "Lando does not run Compose jobs.",
+      remediation: () =>
+        "Remove jobs. Run on-demand commands as tooling: tasks. For setup that must finish before a service starts, use a service that exits when done and have the other service wait with depends_on and condition: service_completed_successfully.",
+    },
+  ],
+];
+
+const rejectedAdviceByPath: ReadonlyMap<string, RejectedAdvice> = new Map(
+  exactRejectedAdvice.flatMap(([paths, advice]) => paths.map((path) => [path, advice] as const)),
+);
+
+// Checked in order after exact paths; the first matching prefix wins.
+const prefixRejectedAdvice: ReadonlyArray<readonly [prefix: string, advice: RejectedAdvice]> = [
+  [
+    "networks.*.",
+    {
+      rationale: "Lando owns network address and interface settings.",
+      remediation: (path) =>
+        `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
+    },
+  ],
+  [
+    "deploy.",
+    {
+      rationale: "Lando runs one container per service and has no Swarm deployment settings.",
+      remediation: removePath,
+    },
+  ],
+];
+
+const fallbackRejectedAdvice: RejectedAdvice = {
+  rationale: "Lando has no equivalent for this Compose key.",
+  remediation: removePath,
+};
+
+const rejectedAdviceFor = (path: string): RejectedAdvice => {
+  const exact = rejectedAdviceByPath.get(path);
+  if (exact !== undefined) return exact;
+  const prefixed = prefixRejectedAdvice.find(([prefix]) => path.startsWith(prefix));
+  if (prefixed !== undefined) return prefixed[1];
+  const separator = path.indexOf(".");
+  if (separator > 0) {
+    // A rejected option nested under an accepted key (build, depends_on, healthcheck, ports, volumes).
     return {
-      disposition: "rejected",
-      rationale: "Swarm orchestration is outside the per-service Compose vocabulary.",
-      remediation: `Move ${path} to a provider extension.`,
+      rationale: `Lando does not support this ${path.slice(0, separator)} option.`,
+      remediation: removePath,
     };
   }
-  return {
-    disposition: "rejected",
-    rationale: "This upstream Compose key has no documented Lando plan or preservation contract.",
-    remediation: `Translate ${path} with a Compose-to-Lando config translator.`,
-  };
+  return fallbackRejectedAdvice;
+};
+
+const rejectedEntry = (path: string): ComposeDispositionEntry => {
+  const advice = rejectedAdviceFor(path);
+  return { disposition: "rejected", rationale: advice.rationale, remediation: advice.remediation(path) };
 };
 
 type NormalizedServicePath = readonly [path: string, planTarget?: ReadonlyArray<string>];
