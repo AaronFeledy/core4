@@ -65,34 +65,17 @@ const ComposeDeploymentDeviceInput = Schema.Struct({
   options: Schema.optionalKey(ComposeScalarMapField),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 
-export const ComposeDiscreteResourceSpec = Schema.Struct({
-  kind: Schema.optionalKey(Schema.String),
-  value: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
-}).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
-export type ComposeDiscreteResourceSpec = typeof ComposeDiscreteResourceSpec.Type;
-
-export const ComposeGenericResource = Schema.Struct({
-  discrete_resource_spec: Schema.optionalKey(ComposeDiscreteResourceSpec),
-}).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
-export type ComposeGenericResource = typeof ComposeGenericResource.Type;
-
+// Compose applies reservations.cpus and reservations.generic_resources only under Swarm, so the
+// Landofile rejects them and they are not part of the schema.
 export const ComposeResourceReservations = Schema.Struct({
-  cpus: Schema.optionalKey(ResourceCpu),
   memory: Schema.optionalKey(Schema.Int),
   devices: Schema.optionalKey(layerMerge(Schema.Array(ComposeDeploymentDevice), { kind: "replace" })),
-  generic_resources: Schema.optionalKey(
-    layerMerge(Schema.Array(ComposeGenericResource), { kind: "replace" }),
-  ),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeResourceReservations = typeof ComposeResourceReservations.Type;
 
 const ComposeResourceReservationsInput = Schema.Struct({
-  cpus: Schema.optionalKey(ResourceCpu),
   memory: Schema.optionalKey(ComposeByteSizeField),
   devices: Schema.optionalKey(layerMerge(Schema.Array(ComposeDeploymentDeviceInput), { kind: "replace" })),
-  generic_resources: Schema.optionalKey(
-    layerMerge(Schema.Array(ComposeGenericResource), { kind: "replace" }),
-  ),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 
 export const ComposeDeployResources = Schema.Struct({

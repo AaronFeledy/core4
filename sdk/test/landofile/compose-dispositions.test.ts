@@ -75,6 +75,29 @@ describe("Compose disposition matrix", () => {
     expect(composeServiceDispositions["volumes.read_only"]?.planTarget).toEqual(["mounts"]);
   });
 
+  test.each([
+    ["mem_limit", "deploy.resources.limits.memory"],
+    ["cpus", "deploy.resources.limits.cpus"],
+    ["pids_limit", "deploy.resources.limits.pids"],
+    ["mem_reservation", "deploy.resources.reservations.memory"],
+  ])("rejects flat %s and points at its deploy counterpart %s", (path, counterpart) => {
+    const entry = composeServiceDispositions[path];
+    expect(entry?.disposition).toBe("rejected");
+    expect(entry?.remediation).toBe(`Remove ${path} and set ${counterpart} instead.`);
+    expect(composeServiceDispositions[counterpart]?.disposition).toBe("preserved");
+  });
+
+  test.each([
+    ["deploy.resources.reservations.cpus", "deploy.resources.limits.cpus"],
+    ["deploy.resources.reservations.generic_resources", "deploy.resources.reservations.devices"],
+  ])("rejects Swarm-only %s at its root and names %s", (path, alternative) => {
+    const entry = composeServiceDispositions[path];
+    expect(entry?.disposition).toBe("rejected");
+    expect(entry?.remediation).toContain(alternative);
+    expect(Object.keys(composeServiceDispositions).filter((key) => key.startsWith(`${path}.`))).toEqual([]);
+    expect(composeDispositionFor(composeServiceDispositions, `${path}.discrete_resource_spec`)).toBe(entry);
+  });
+
   test("normalizes Compose layer override tags through native layer merging", () => {
     expect(Object.keys(composeTagDispositions).sort()).toEqual(["!override", "!reset"]);
 

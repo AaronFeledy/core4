@@ -82,6 +82,7 @@ const COMPOSE_SERVICE_KNOB_KEYS = [
   "logging",
   "gpus",
   "deploy.resources",
+  "deploy.resources.reservations.devices",
 ] as const;
 
 const REQUIRED_FIELD_SET = [...BOOLEAN_FIELDS, ...Object.keys(LITERAL_FIELDS), ...ARRAY_FIELDS].sort();

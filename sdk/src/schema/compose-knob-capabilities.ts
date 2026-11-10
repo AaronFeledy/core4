@@ -27,6 +27,7 @@ export const ComposeServiceKnobKey = Schema.Literals([
   "logging",
   "gpus",
   "deploy.resources",
+  "deploy.resources.reservations.devices",
 ]).annotate({
   identifier: "ComposeServiceKnobKey",
   title: "Compose Service Knob Key",
