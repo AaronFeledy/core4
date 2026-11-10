@@ -45,12 +45,11 @@ if bun run check:compose-coverage > "$COVERAGE_OUTPUT" 2>&1; then
 else
   {
     printf '%s\\n\\n' '## Key path classification needed'
-    printf '%s\\n\\n' 'This PR cannot merge until \`bun run check:compose-coverage\` passes. Fix what it reports in \`sdk/src/landofile/compose-dispositions.ts\`: give each unclassified key path a disposition and remove any entry it flags.'
+    printf '%s\\n\\n' 'This PR cannot merge until \`bun run check:compose-coverage\` passes. Fix what it reports in \`sdk/src/landofile/compose-dispositions.ts\`: give each unclassified key path a disposition and remove any entry it flags. Then run \`bun run codegen:compose-key-matrix\` and push to this branch.'
     printf '%s\\n' '\`\`\`text'
     cat "$COVERAGE_OUTPUT"
     if [ -n "$(tail -c 1 "$COVERAGE_OUTPUT")" ]; then printf '\\n'; fi
-    printf '%s\\n\\n' '\`\`\`'
-    printf 'See [Finish a Compose bump](%s).\\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$BRANCH/docs/contributing/ci.md#finish-a-compose-bump"
+    printf '%s\\n' '\`\`\`'
   } > "$BODY_FILE"
 fi
 printf '\\n' >> "$BODY_FILE"

@@ -45,8 +45,6 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
   const runnerTemp = join(root, "runner-temp");
   const log = join(root, "commands");
   const prBody = join(root, "pr-body");
-  const serverUrl = "https://example.invalid";
-  const repository = scenario.repository ?? "fixture/repository";
   const branch = `automation/${scenario.domain === "tomcat" ? "tomcat" : "compose-go"}-bump`;
   const owned =
     scenario.domain === "tomcat" ? "plugins/service-lando/tomcat/pins.json" : "vendor/compose/pin.json";
@@ -66,8 +64,6 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     GIT_COMMITTER_EMAIL: "fixture@example.invalid",
     PATH: `${bin}:${process.env.PATH}`,
     RUNNER_TEMP: runnerTemp,
-    GITHUB_SERVER_URL: serverUrl,
-    GITHUB_REPOSITORY: repository,
     COVERAGE: scenario.coverage ?? "pass",
     LOG: log,
     MODE: scenario.mode ?? "changed",
@@ -194,8 +190,6 @@ esac`,
       remote,
       branch,
       owned,
-      serverUrl,
-      repository,
       manualCommit,
       git,
       runnerTemp,
@@ -209,8 +203,8 @@ esac`,
           Object.entries(scripts.failureEnv).map(([key, value]) => [
             key,
             value
-              .replaceAll("${{ github.repository }}", repository)
-              .replaceAll("${{ github.server_url }}", serverUrl)
+              .replaceAll("${{ github.repository }}", scenario.repository ?? "fixture/repository")
+              .replaceAll("${{ github.server_url }}", "https://example.invalid")
               .replaceAll("${{ github.run_id }}", "42")
               .replaceAll("${{ github.token }}", "fixture-token"),
           ]),
