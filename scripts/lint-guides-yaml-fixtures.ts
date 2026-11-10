@@ -5,6 +5,7 @@
 import { readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import { expectInvalidMarkers } from "./guides/fixture-marker.ts";
 import { lintYamlDocument } from "./lint-guides-yaml-fence.ts";
 import type { GuideFixtureInventoryEntry, GuideLintDiagnostic } from "./lint-guides.ts";
 
@@ -62,13 +63,7 @@ export const lintFixtureLandofiles = async (
     for (const file of files) {
       const absolutePath = resolve(repoRoot, file.relativePath);
       const content = await Bun.file(absolutePath).text();
-      const markers = content
-        .replace(/^\uFEFF/, "")
-        .split(/\r?\n/)
-        .flatMap((line, index) => {
-          const match = /^\s*# lando-lint: expect-invalid\s+(.+)$/.exec(line);
-          return match === null ? [] : [{ line: index + 1, reason: match[1]?.trim() }];
-        });
+      const markers = expectInvalidMarkers(content);
       for (const marker of markers) {
         if (marker.line === 1) continue;
         diagnostics.push({
