@@ -1,6 +1,11 @@
+import { type ComposeDispositionEntry, composeDispositionFor } from "@lando/sdk/landofile";
+
 export interface ComposeCoverageDiff {
+  /** Schema paths that are neither matrix keys nor nested under a rejected matrix key. */
   readonly missingFromMatrix: ReadonlyArray<string>;
   readonly missingFromSchema: ReadonlyArray<string>;
+  /** Matrix entries nested under a rejected matrix key, which already rejects them. */
+  readonly shadowedByRejectedAncestor: ReadonlyArray<string>;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -155,15 +160,28 @@ export const collectComposeTopLevelKeyPaths = (schema: unknown): ReadonlyArray<s
   return sorted(paths);
 };
 
+const hasRejectedAncestor = (
+  matrix: Readonly<Record<string, ComposeDispositionEntry>>,
+  path: string,
+): boolean => {
+  const segments = path.split(".");
+  return segments
+    .slice(1)
+    .some((_, index) => matrix[segments.slice(0, index + 1).join(".")]?.disposition === "rejected");
+};
+
 export const compareComposeCoverage = (
   schemaPaths: ReadonlyArray<string>,
-  matrixPaths: ReadonlyArray<string>,
+  matrix: Readonly<Record<string, ComposeDispositionEntry>>,
 ): ComposeCoverageDiff => {
   const schema = new Set(schemaPaths);
-  const matrix = new Set(matrixPaths);
+  const matrixPaths = Object.keys(matrix);
   return {
-    missingFromMatrix: sorted(schemaPaths.filter((path) => !matrix.has(path))),
+    missingFromMatrix: sorted(
+      schemaPaths.filter((path) => composeDispositionFor(matrix, path) === undefined),
+    ),
     missingFromSchema: sorted(matrixPaths.filter((path) => !schema.has(path))),
+    shadowedByRejectedAncestor: sorted(matrixPaths.filter((path) => hasRejectedAncestor(matrix, path))),
   };
 };
 

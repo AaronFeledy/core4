@@ -707,6 +707,13 @@
       }
     },
     {
+      "fixture": "docs/guides/networks/fixtures/networks-service-name-alias",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
       "fixture": "docs/guides/networks/fixtures/networks-undeclared",
       "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
     },

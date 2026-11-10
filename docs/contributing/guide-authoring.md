@@ -317,6 +317,44 @@ the reader-facing description of the public artifact and
 [e2e smoke scenarios](../guides/authoring/e2e-smoke-scenarios.mdx) for the
 real-provider layer.
 
+## Register a new fixture
+
+A new directory under `docs/guides/<guide-id>/fixtures/<name>/` is checked
+by four tests outside the guide tooling. `lint:guides`, `dev:guides`,
+`check:guide-coverage`, and `check:public-transcripts` don't run them, so
+finish these steps from the repository root before you push:
+
+1. Record the fixture in the golden corpus, then commit the changed
+   `landofile/test/fixtures/golden-corpus-digests.json`. The update stores a
+   digest for an app that loads, or the error tag for one that fails to load.
+   Only your fixture's entry should change.
+
+   ```sh
+   UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts
+   ```
+
+2. If the fixture is deliberately invalid, keep
+   `# lando-lint: expect-invalid <reason>` on line 1 of its `.lando.yml`, and
+   register it where it applies:
+
+   - It can't compose: add its directory and the tag of the error it fails
+     with to `acquisitionExclusions` in
+     `landofile/test/provenance-invariant.test.ts`. Step 1 records the same
+     tag in the golden file.
+   - Its `.lando.yml` isn't valid authoring input: add its path below
+     `docs/guides/` and a short reason to `INVALID_INPUT_FIXTURES` in
+     `sdk/test/schema/landofile-parity.test.ts`.
+
+   A fixture can need both. A rejected Compose key, for example, fails
+   authoring validation and composition.
+
+3. Run the four tests in one command. Require exit status 0 and a positive
+   test count.
+
+   ```sh
+   bun test landofile/test/pipeline/golden-corpus.test.ts landofile/test/provenance-invariant.test.ts sdk/test/schema/landofile-parity.test.ts core/test/guides/fixture-lint-plan-parity.test.ts
+   ```
+
 ## Register coverage
 
 A guide under `docs/guides/**` needs a `Shipped` row in

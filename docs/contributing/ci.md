@@ -278,6 +278,47 @@ bun test core/test/build/maintenance-workflow.test.ts core/test/build/maintenanc
 
 The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maintenance-workflow-harness.ts` exports isolated real-Git/local-bare-remote fixtures with fake GitHub and domain I/O, plus extracted generated scripts for driver or PTY checks. It changes no global Git configuration or process cwd. Native shell cases skip Windows; YAML checks remain portable.
 
+### Finish a Compose bump
+
+The rolling Compose PR stays red until someone classifies the new schema keys. From the repository root:
+
+1. Check out the rolling branch and list the unclassified paths. The check fails and prints each one.
+
+   ```bash
+   git fetch origin automation/compose-go-bump
+   git checkout automation/compose-go-bump
+   bun run check:compose-coverage
+   ```
+
+2. Classify each listed path in `sdk/src/landofile/compose-dispositions.ts`. Rejecting a key covers everything nested under it, so list only the key itself. The check fails on an entry listed under a rejected key. Nested paths under a normalized or preserved key still need their own entries.
+
+3. Rerun the check. It reads the SDK source, so you don't need to rebuild first. Repeat steps 2 and 3 until it passes.
+
+   ```bash
+   bun run check:compose-coverage
+   ```
+
+4. Regenerate the reference page.
+
+   ```bash
+   bun run codegen:compose-key-matrix
+   ```
+
+5. Build the SDK, then typecheck. The other packages typecheck against the built SDK.
+
+   ```bash
+   bun run --filter='@lando/sdk' build
+   bun run typecheck
+   ```
+
+6. Run the focused tests. All three files must run and pass.
+
+   ```bash
+   bun test core/test/scripts/check-compose-coverage.test.ts landofile/test/compose-rejections.test.ts landofile/test/lint-snapshot.test.ts
+   ```
+
+7. Commit and push to `automation/compose-go-bump`. Later automation runs merge into the branch and never force-push, so your commits stay.
+
 ## Library API and recipe test layers
 
 CI runs the library API and recipe layers as separate branch-protectable jobs:
