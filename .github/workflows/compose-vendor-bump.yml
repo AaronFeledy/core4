@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
           TITLE='compose-vendor-bump automation failure'
           BODY="Workflow run failed: $RUN_URL"
-          ISSUE_NUMBER="$(gh issue list --state open --limit 100 --json number,title --jq '[.[] | select(.title == "compose-vendor-bump automation failure")] | .[0].number // ""')"
+          ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "compose-vendor-bump automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "compose-vendor-bump automation failure")] | .[0].number // ""')"
           if [ -n "$ISSUE_NUMBER" ]; then
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"
           else
