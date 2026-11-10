@@ -6,6 +6,7 @@ import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/s
 import type { EngineDialect } from "../dialect.ts";
 import { extraHostEntries, realizeHostAliases } from "../host-aliases.ts";
 
+import { withoutInertExtensions } from "./compose-knobs-identity.ts";
 import {
   type DeviceRequest,
   type InvalidKnob,
@@ -225,8 +226,14 @@ const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanCompo
  * The provider-neutral knob intent: revalidated canonical values for every
  * declared knob, independent of the engine dialect that later realizes them.
  */
-export const composeKnobIntent = (service: ServicePlan, onInvalid: InvalidKnob): PodmanComposeKnobValues =>
+const composeKnobIntent = (service: ServicePlan, onInvalid: InvalidKnob): PodmanComposeKnobValues =>
   serviceKnobValues(service, (message, details) => onInvalid(message, { service: service.name, ...details }));
+
+const KNOB_TYPE_AST = Schema.toType(PodmanComposeKnobs).ast;
+
+/** Knob intent as container identity: inert `x-*` extension metadata does not participate. */
+export const composeKnobIdentity = (service: ServicePlan, onInvalid: InvalidKnob): unknown =>
+  withoutInertExtensions(KNOB_TYPE_AST, composeKnobIntent(service, onInvalid));
 
 export const realizePodmanComposeKnobs = (
   service: ServicePlan,

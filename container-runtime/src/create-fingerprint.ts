@@ -20,7 +20,7 @@ import {
   containerIntegrationLabels,
 } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
-import { composeKnobIntent } from "./podman/compose-knobs.ts";
+import { composeKnobIdentity } from "./podman/compose-knobs.ts";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
@@ -82,7 +82,7 @@ export const createConfigFingerprint = (
   labels: Readonly<Record<string, string>>,
 ): string => {
   // Canonical intent, not one dialect's request body, so every provider fingerprints the same knobs.
-  const knobs = composeKnobIntent(service, (message, details) => {
+  const knobs = composeKnobIdentity(service, (message, details) => {
     throw new ContainerPlanError(message, details);
   });
   const integrationLabels = containerIntegrationLabels(service.environment, {}, service.extensions);

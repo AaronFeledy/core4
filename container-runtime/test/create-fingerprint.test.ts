@@ -77,6 +77,52 @@ test("excludes listenerAuthority from the container create identity", () => {
   expect(fingerprint({ ...advised, command: ["mongod", "--port", "27018"] }, advisedPlan)).not.toBe(original);
 });
 
+const limited = { deploy: { resources: { limits: { memory: 1024, "x-note": "before" } } } };
+
+test.each([
+  ["limits", { deploy: { resources: { limits: { memory: 1024, "x-note": "after" } } } }],
+  ["resources", { deploy: { resources: { limits: { memory: 1024, "x-note": "before" }, "x-team": "a" } } }],
+  [
+    "reservations and devices",
+    {
+      deploy: {
+        resources: {
+          limits: { memory: 1024, "x-note": "before" },
+          reservations: { "x-why": "gpu", devices: [{ capabilities: ["gpu"], "x-card": "a" }] },
+        },
+      },
+    },
+  ],
+  ["logging", { ...limited, logging: { driver: "json-file", "x-owner": "ops" } }],
+  ["gpus", { ...limited, gpus: [{ count: 1, "x-card": "a" }] }],
+  ["devices", { ...limited, devices: [{ source: "/dev/fuse", "x-why": "mount" }] }],
+])("keeps the create identity when only inert x-* metadata on %s changes", (_, annotated) => {
+  // Given knob intent and the same intent with different Compose extension metadata.
+  const base = (compose: object) => fingerprint({ ...service, extensions: { compose } });
+  const strip = (value: object) =>
+    JSON.parse(JSON.stringify(value, (key, field) => (key.startsWith("x-") ? undefined : field)));
+
+  // Then only runtime values participate in the create identity.
+  expect(base(annotated)).toBe(base(strip(annotated)));
+  expect(base(limited)).toBe(base(strip(limited)));
+});
+
+test.each([
+  ["logging options", { logging: { options: { "x-tag": "a" } } }, { logging: { options: { "x-tag": "b" } } }],
+  ["gpu options", { gpus: [{ options: { "x-mig": "a" } }] }, { gpus: [{ options: { "x-mig": "b" } }] }],
+  ["sysctls", { sysctls: { "x-net": "1" } }, { sysctls: { "x-net": "2" } }],
+  [
+    "limits.memory",
+    { deploy: { resources: { limits: { memory: 1024, "x-note": "a" } } } },
+    { deploy: { resources: { limits: { memory: 2048, "x-note": "a" } } } },
+  ],
+])("changes the create identity when runtime %s change", (_, before, after) => {
+  const first = fingerprint({ ...service, extensions: { compose: before } });
+  const second = fingerprint({ ...service, extensions: { compose: after } });
+
+  expect(first).not.toBe(second);
+});
+
 test.each([
   ["gpus", { gpus: "all" }, { gpus: [{ count: 1 }] }],
   [
