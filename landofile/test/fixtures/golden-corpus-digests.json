@@ -88,8 +88,34 @@
       "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
     },
     {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-pull-policy-always-build",
+      "digest": "a3ae637774e2f5d24a9e3346a3b72fafcee4b1a5116c5275294cd4e603667fee"
+    },
+    {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-pull-policy-daily",
+      "digest": "9668f95efcd2ac07989f6217e40b12284cb0e527e75d2dc8a243252ae9a49ab8"
+    },
+    {
       "fixture": "docs/guides/compose-service-block/fixtures/compose-configs-phpini",
       "digest": "31d47121fc6cd3b48dd655d7fb64f7f87228dcf731f426277748e68ab1579589"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-invalid-cpus",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-limits",
+      "digest": "526984df03aedfa79838f6a0cc228c647d616672e62b2475dbe6b324f1898285"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-mem-limit",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
     },
     {
       "fixture": "docs/guides/compose-service-block/fixtures/compose-service-block-demo",
