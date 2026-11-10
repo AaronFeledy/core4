@@ -106,11 +106,11 @@ The compiled MCP completion journey MUST cover real container stdout/stderr, spl
 
 #### Test execution ownership and selection
 
-`check:test-ownership` enforces this subsection in static CI and `gate:pr`.
+`check:test-ownership` runs in static CI and `gate:pr`. It checks test-file locations, selection ownership, selector matches and committed-workflow bindings; naming and mixed-suite splits are review requirements. Ownership records selection, not successful execution, so a skipped case is not acceptance evidence.
 
 A test file's name MUST state its prerequisites: `*.test.ts` runs without a live engine, native non-Linux host, compiled binary or opt-in variable, and `*.integration.test.ts` needs one of them. A mixed suite MUST be split so its prerequisite-free cases run in unit shards. PR unit shards, local unit runs, timings refresh and default affected-test eligibility MUST consume one unit file set: every Git-visible `*.test.ts` in a workspace `test/` tree (workspaces follow the root manifest) or beside repository scripts, minus files a dedicated selection excludes. A test file anywhere else MUST fail the gate.
 
-Every other test a workflow runs MUST be a named selection in one catalog, invoked by ID through one runner that passes exact file paths to Bun. Workflows MUST NOT run `bun test` directly. Each selection MUST declare the jobs that run it, and the gate MUST prove from the committed workflows that each declared job invokes it. Each selection path MUST match at least one test file. Every `*.integration.test.ts` file MUST be run by a selection or listed as a manual gap with its prerequisites. A filtered invocation such as `--test-name-pattern` MUST NOT count as running a whole file. Generated guide scenarios belong to the guide pipeline (§19.7, §19.11). The Go helper's `*_test.go` files belong to the containerized helper builder.
+Every other test a workflow step runs MUST be a named selection in one catalog, invoked by ID through one runner that passes exact file paths to Bun. Workflows MUST NOT run `bun test` directly. The provider acceptance matrix keeps its own check plan, which its runner executes as data; ownership reads that plan directly. Each selection MUST declare the jobs that run it, and the gate MUST prove from the committed workflows that each declared job invokes it. Each selection path MUST match at least one test file. Every `*.integration.test.ts` file MUST be run by a selection or listed as a manual gap with its prerequisites. A filtered invocation such as `--test-name-pattern` MUST NOT count as running a whole file. Generated guide scenarios belong to the guide pipeline (§19.7, §19.11). The Go helper's `*_test.go` files belong to the containerized helper builder.
 
 Podman Desktop fake-client and remediation cases MUST run in unit shards. Real desktop acceptance MUST remain a separate native macOS/Windows suite with an explicit desktop socket prerequisite; until a scheduled job runs it, it stays a listed manual gap.
 
@@ -130,7 +130,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.4 Quality gates
 
-Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). A selected job MUST pass; only a job the profile excludes MAY skip. A PR cannot merge unless:
+Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
 
 - `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
@@ -179,7 +179,7 @@ Pull requests select a cumulative CI profile from their changed paths. `docs` ru
 
 Scheduled cadences add provider and runtime coverage to the PR gates; a broader compile matrix does not substitute for that live coverage.
 
-The per-PR Linux x64 perf gate MUST also bound TTY renderer process-exit overhead on the compiled artifact: it runs a command that constructs the default renderer both piped and under a PTY, measures whole-process duration through exit, and fails when the TTY median exceeds the piped median by more than 150 ms. This gate adds to the §2.1 startup and first-paint budgets and MUST NOT replace or relax them.
+When selected (§13.6), the Linux x64 perf gate MUST also bound TTY renderer process-exit overhead on the compiled artifact: it runs a command that constructs the default renderer both piped and under a PTY, measures whole-process duration through exit, and fails when the TTY median exceeds the piped median by more than 150 ms. This gate adds to the §2.1 startup and first-paint budgets and MUST NOT replace or relax them.
 
 ### 13.7 Release flow
 

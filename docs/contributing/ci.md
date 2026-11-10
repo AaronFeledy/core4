@@ -108,7 +108,7 @@ The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix 
 
 Name a suite for what it needs. A `*.test.ts` file runs without a live engine and joins the unit shards automatically. A `*.integration.test.ts` file needs an engine socket, a native non-Linux host, a compiled binary or an opt-in variable, so it runs only in a job that provides one. Split a mixed suite and share its fixtures: each provider's fake-client contract lives in `contract.test.ts` and its live cases in `contract.integration.test.ts`. Podman Desktop fake-client cases live in `plugins/provider-podman/test/desktop.test.ts`, and the native desktop contract in `desktop.integration.test.ts`.
 
-Every other test a workflow runs is a named selection in `scripts/test-selections.ts`. A workflow step runs it by ID, and the same command works locally:
+Every other test a workflow step runs is a named selection in `scripts/test-selections.ts`. The provider acceptance matrix is the one exception: its checks live in `scripts/provider-matrix-plan.ts`, and its runner executes them from there. A workflow step runs a selection by ID, and the same command works locally:
 
 ```bash
 bun run test:selection providers-core-live
@@ -331,7 +331,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. The pinned Bun version includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. The wrapper also enables `--disallow-code-generation-from-strings=strict`. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. The pinned Bun version includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. The wrapper also enables `--disallow-code-generation-from-strings=strict`. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.integration.test.ts`.
 
 ## Local Bun profiling
 
