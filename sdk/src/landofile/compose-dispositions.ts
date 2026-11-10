@@ -87,8 +87,9 @@ const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>,
   [
     ["network_mode", "links"],
     {
-      rationale: "Legacy Compose network shortcuts bypass Lando network planning.",
-      remediation: (path) => `Translate ${path} to Lando networks: configuration.`,
+      rationale: "Lando plans each service's networks itself.",
+      remediation: (path) =>
+        `Remove ${path}. Services in one app reach each other by service key; to join another network, declare it under top-level networks: and list it on the service.`,
     },
   ],
   [
@@ -144,7 +145,7 @@ const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>,
       "blkio_config",
     ],
     {
-      rationale: "Lando does not apply Compose memory, CPU, process, or block I/O limits.",
+      rationale: "Lando does not limit service memory, CPU, processes, or block I/O.",
       remediation: removePath,
     },
   ],
@@ -186,11 +187,19 @@ const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>,
     },
   ],
   [
-    ["env_file.format", "env_file.path", "env_file.required"],
+    ["env_file.format", "env_file.path"],
     {
       rationale: "Lando accepts env_file as a path or a list of paths.",
       remediation: (path) =>
         `${path} belongs to the long-form env_file entry. Write the entry as a plain path instead.`,
+    },
+  ],
+  [
+    ["env_file.required"],
+    {
+      rationale: "Lando accepts env_file as a path or a list of paths.",
+      remediation: (path) =>
+        `${path} belongs to the long-form env_file entry. Write the entry as a plain path instead; Lando requires every listed env file to exist.`,
     },
   ],
   [

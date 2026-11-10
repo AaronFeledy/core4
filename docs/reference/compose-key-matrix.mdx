@@ -103,7 +103,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `isolation` | rejected | — | Remove isolation. |
 | `label_file` | rejected | — | Remove label_file and list the labels under labels:. |
 | [`labels`](#labels) | preserved | 1 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `links` | rejected | — | Translate links to Lando networks: configuration. |
+| `links` | rejected | — | Remove links. Services in one app reach each other by service key; to join another network, declare it under top-level networks: and list it on the service. |
 | [`logging`](#logging) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `mac_address` | rejected | — | Remove mac_address. |
 | `mem_limit` | rejected | — | Remove mem_limit. |
@@ -111,7 +111,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `mem_swappiness` | rejected | — | Remove mem_swappiness. |
 | `memswap_limit` | rejected | — | Remove memswap_limit. |
 | `models` | rejected | — | Remove models. |
-| `network_mode` | rejected | — | Translate network_mode to Lando networks: configuration. |
+| `network_mode` | rejected | — | Remove network_mode. Services in one app reach each other by service key; to join another network, declare it under top-level networks: and list it on the service. |
 | [`networks`](#networks) | normalized | 12 | Normalizes into `ServicePlan.networking` |
 | `oom_kill_disable` | rejected | — | Remove oom_kill_disable. |
 | `oom_score_adj` | rejected | — | Remove oom_score_adj. |
@@ -265,7 +265,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `env_file` | normalized | Normalizes into `ServicePlan.environment` |
 | `env_file.format` | rejected | env_file.format belongs to the long-form env_file entry. Write the entry as a plain path instead. |
 | `env_file.path` | rejected | env_file.path belongs to the long-form env_file entry. Write the entry as a plain path instead. |
-| `env_file.required` | rejected | env_file.required belongs to the long-form env_file entry. Write the entry as a plain path instead. |
+| `env_file.required` | rejected | env_file.required belongs to the long-form env_file entry. Write the entry as a plain path instead; Lando requires every listed env file to exist. |
 
 ### `environment`
 
