@@ -49,6 +49,7 @@ import {
   unsupportedHealthcheckTarget,
   validateHealthcheckExecution,
 } from "../healthcheck-attempt.ts";
+import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
@@ -574,6 +575,13 @@ const createContainer = Effect.fnUntraced(function* (
     service.artifact?.kind === "ref" &&
     isMissingImageCreateResponse(response)
   ) {
+    // A Lando-built image exists in no registry; the forced pull that repairs Docker's
+    // inspect-200/create-404 disagreement would only reach for a tag that was never published.
+    if (isProducedArtifact(service)) {
+      return yield* Effect.fail(
+        producedImageMissing(deps.options.ctx, String(service.name), service.artifact.ref),
+      );
+    }
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
     const retry = yield* request(deps, { method: "POST", ...createRequest });
     if (retry.status === 201 || retry.status === 409) return endpoints;
