@@ -3,6 +3,7 @@ import { DateTime } from "effect";
 
 import {
   type ComposeKnobCapabilities,
+  type ComposeServiceKnobKey,
   type ProviderCapabilities,
   ProviderId,
   type ServiceConfig,
@@ -98,7 +99,7 @@ describe("Compose runtime knobs", () => {
     expect(uses).toEqual([{ service: "web", key: "deploy.resources" }]);
   });
 
-  test.each([
+  test.each<readonly [string, Record<string, unknown>, ReadonlyArray<ComposeServiceKnobKey>]>([
     ["limits only", { limits: { cpus: 0.5 } }, ["deploy.resources"]],
     [
       "devices only",

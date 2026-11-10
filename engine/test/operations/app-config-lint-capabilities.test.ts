@@ -6,23 +6,50 @@ import type { CapabilityError } from "@lando/sdk/errors";
 import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result } from "effect";
+import { Effect, Layer, Result } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { assertAuthoredNetworksSupported } from "../../src/planner/compose-capabilities.ts";
 import * as Plugins from "../../src/plugins/registry.ts";
 import { lintLandofileSnapshot } from "../../src/services/landofile-live.ts";
 import * as Planner from "../../src/services/planner.ts";
 
-const lint = (root: string, capabilities: ProviderCapabilities | undefined) =>
+type DeclaredCapabilities = (id: ProviderId) => ProviderCapabilities | undefined;
+
+const declared = (
+  capabilities: ProviderCapabilities | undefined | DeclaredCapabilities,
+): DeclaredCapabilities => (typeof capabilities === "function" ? capabilities : () => capabilities);
+
+const lint = (root: string, capabilities: ProviderCapabilities | undefined | DeclaredCapabilities) =>
   Effect.runPromise(
     Effect.flatMap(PluginRegistry, (registry) =>
       appConfigLint({ cwd: root }).pipe(
         Effect.provideService(PluginRegistry, {
           ...registry,
-          declaredProviderCapabilities: () => capabilities,
+          declaredProviderCapabilities: declared(capabilities),
         }),
       ),
     ).pipe(Effect.provide(Plugins.layer)),
+  );
+
+// Plans with the same declared provider capabilities that lint saw.
+const planWith = (root: string, selected: ProviderCapabilities, capabilities: DeclaredCapabilities) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const snapshot = yield* lintLandofileSnapshot({ cwd: root });
+      if (snapshot.resolved === undefined) throw new Error("Expected a resolved lint snapshot");
+      const landofile = snapshot.resolved;
+      const registry = yield* PluginRegistry;
+      return yield* Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, selected)).pipe(
+        Effect.provide(
+          Planner.layer.pipe(
+            Layer.provide(
+              Layer.succeed(PluginRegistry, { ...registry, declaredProviderCapabilities: capabilities }),
+            ),
+          ),
+        ),
+        Effect.result,
+      );
+    }).pipe(Effect.provide(Plugins.layer)),
   );
 
 test.each([
@@ -101,16 +128,7 @@ test("lint reports all unsupported Compose fields using planner remediation and 
       "services.web.profiles",
       "services.web.read_only",
     ]);
-    const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }));
-    if (snapshot.resolved === undefined) throw new Error("Expected a resolved lint snapshot");
-    const landofile = snapshot.resolved;
-    const planned = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-        Effect.result,
-        Effect.provide(Planner.layer),
-        Effect.provide(Plugins.layer),
-      ),
-    );
+    const planned = await planWith(root, capabilities, () => capabilities);
     expect(Result.isFailure(planned)).toBe(true);
     if (Result.isFailure(planned)) expect(planned.failure._tag).toBe("CapabilityError");
     if (Result.isFailure(planned) && planned.failure._tag === "CapabilityError") {
@@ -182,3 +200,50 @@ test.each([false, true])(
     }
   },
 );
+
+const withoutKnobs = { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: [] } };
+
+test.each([
+  [
+    "names installed providers that declare the knob",
+    { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: ["gpus" as const] } },
+    [],
+    "Remove gpus from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
+  ],
+  [
+    "offers only removal when no installed provider declares the knob",
+    withoutKnobs,
+    [],
+    "Remove gpus from service web.",
+  ],
+  [
+    "names the selected provider's extension namespaces",
+    withoutKnobs,
+    ["compose"],
+    "Remove gpus from service web, or move the intent under providers.compose.",
+  ],
+])("lint and planning remediation %s", async (_name, docker, providerExtensions, remediation) => {
+  // Given a selected provider without the knob, and an installed docker provider.
+  const root = await mkdtemp(join(tmpdir(), "lando-knob-remediation-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: knobfix\nprovider: lando\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    gpus: all\n",
+    );
+    const selected = { ...withoutKnobs, providerExtensions };
+    const capabilities: DeclaredCapabilities = (id) => (id === "docker" ? docker : selected);
+
+    // When
+    const result = await lint(root, capabilities);
+    const planned = await planWith(root, selected, capabilities);
+
+    // Then
+    const finding = result.violations.find((issue) => issue.path.join(".") === "services.web.gpus");
+    expect(finding?.suggestion).toBe(remediation);
+    if (!Result.isFailure(planned) || planned.failure._tag !== "CapabilityError")
+      throw new Error("Expected a capability failure");
+    expect(planned.failure.remediation).toBe(remediation);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

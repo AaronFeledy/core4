@@ -1,7 +1,15 @@
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 
 import { CapabilityError } from "@lando/sdk/errors";
-import type { AppPlan, ProviderCapabilities, ProviderId, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type HostPlatform,
+  type PluginManifest,
+  type ProviderCapabilities,
+  ProviderId,
+  type ServicePlan,
+} from "@lando/sdk/schema";
+import type { PluginRegistry } from "@lando/sdk/services";
 
 import { collectComposeKnobs, findUnsupportedComposeKnob } from "../services/compose-knobs.ts";
 import {
@@ -16,8 +24,70 @@ import {
   collectComposeServiceFields,
   findUnsupportedComposeServiceField,
 } from "../services/compose-service-fields.ts";
+import { contributionId } from "./service-types.ts";
 
 type ComposeServices = Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>;
+
+export interface ProviderAlternative {
+  readonly id: ProviderId;
+  readonly capabilities: ProviderCapabilities;
+}
+
+/** The selected provider plus every installed provider's offline capability declaration. */
+export interface CapabilityContext {
+  readonly provider: ProviderId;
+  readonly capabilities: ProviderCapabilities;
+  readonly alternatives: ReadonlyArray<ProviderAlternative>;
+}
+
+/** Installed providers that declare their capabilities offline for this host. */
+export const providerAlternatives = (
+  registry: Pick<Context.Service.Shape<typeof PluginRegistry>, "declaredProviderCapabilities">,
+  manifests: ReadonlyArray<PluginManifest>,
+  platform: HostPlatform,
+): ReadonlyArray<ProviderAlternative> => {
+  const ids = new Set(
+    manifests.flatMap((manifest) => (manifest.contributes?.providers ?? []).map(contributionId)),
+  );
+  return [...ids].sort().flatMap((raw) => {
+    const id = ProviderId.make(raw);
+    const capabilities = registry.declaredProviderCapabilities?.(id, platform);
+    return capabilities === undefined ? [] : [{ id, capabilities }];
+  });
+};
+
+const joinAlternatives = (actions: ReadonlyArray<string>): string =>
+  actions.length <= 2 ? actions.join(", or ") : `${actions.slice(0, -1).join(", ")}, or ${actions.at(-1)}`;
+
+/**
+ * Remediation for an unsupported Compose key that names only actions that exist: remove the key,
+ * switch to an installed provider that declares support, or use a provider extension namespace the
+ * selected provider accepts.
+ */
+const capabilityRemediation = (
+  context: CapabilityContext,
+  removal: string,
+  supports: (capabilities: ProviderCapabilities) => boolean,
+): string => {
+  const supporting = context.alternatives.filter(
+    (alternative) => alternative.id !== context.provider && supports(alternative.capabilities),
+  );
+  const namespaces = context.capabilities.providerExtensions;
+  const actions = [
+    removal,
+    ...(supporting.length === 0
+      ? []
+      : [
+          `use a provider that supports it: ${supporting
+            .map(({ id }) => `${id} (\`lando setup --provider=${id}\`)`)
+            .join(", ")}`,
+        ]),
+    ...(namespaces.length === 0
+      ? []
+      : [`move the intent under ${namespaces.map((namespace) => `providers.${namespace}`).join(" or ")}`]),
+  ];
+  return `${joinAlternatives(actions)}.`;
+};
 
 export const missingCapability = (
   providerId: ProviderId,
@@ -59,10 +129,10 @@ export const assertAuthoredNetworksSupported = (
 };
 
 export const assertComposeKnobsSupported = (
-  providerId: ProviderId,
-  capabilities: ProviderCapabilities,
+  context: CapabilityContext,
   services: ComposeServices,
 ): Effect.Effect<void, CapabilityError> => {
+  const { provider: providerId, capabilities } = context;
   const unsupported = findUnsupportedComposeKnob(collectComposeKnobs(services), capabilities);
   if (unsupported === undefined) return Effect.void;
   return Effect.fail(
@@ -73,16 +143,20 @@ export const assertComposeKnobsSupported = (
       feature: `compose knob ${unsupported.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      remediation: `Remove ${unsupported.key} from service ${unsupported.service}, choose a provider that declares composeKnobs support for ${unsupported.key}, or move the intent under providers.<id>.`,
+      remediation: capabilityRemediation(
+        context,
+        `Remove ${unsupported.key} from service ${unsupported.service}`,
+        (alternative) => findUnsupportedComposeKnob([unsupported], alternative) === undefined,
+      ),
     }),
   );
 };
 
 export const assertComposeServiceFieldsSupported = (
-  providerId: ProviderId,
-  capabilities: ProviderCapabilities,
+  context: CapabilityContext,
   services: ComposeServices,
 ): Effect.Effect<void, CapabilityError> => {
+  const { provider: providerId, capabilities } = context;
   const use = findUnsupportedComposeServiceField(collectComposeServiceFields(services), capabilities);
   if (use === undefined) return Effect.void;
   return Effect.fail(
@@ -93,16 +167,20 @@ export const assertComposeServiceFieldsSupported = (
       feature: `compose service field ${use.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composeServiceFields support for ${use.family}, or move provider-specific intent under providers.<id>.`,
+      remediation: capabilityRemediation(
+        context,
+        `Remove ${use.key} from service ${use.service}`,
+        (alternative) => findUnsupportedComposeServiceField([use], alternative) === undefined,
+      ),
     }),
   );
 };
 
 export const assertComposeProjectFieldsSupported = (
-  providerId: ProviderId,
-  capabilities: ProviderCapabilities,
+  context: CapabilityContext,
   extensions: AppPlan["extensions"],
 ): Effect.Effect<void, CapabilityError> => {
+  const { provider: providerId, capabilities } = context;
   const use = findUnsupportedComposeProjectField(collectComposeProjectFields(extensions), capabilities);
   if (use === undefined) return Effect.void;
   return Effect.fail(
@@ -112,16 +190,20 @@ export const assertComposeProjectFieldsSupported = (
       feature: `compose project field ${use.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      remediation: `Remove top-level ${use.key}, choose a provider that declares composeProjectFields support for ${use.key}, or move provider-specific intent under providers.<id>.`,
+      remediation: capabilityRemediation(
+        context,
+        `Remove top-level ${use.key}`,
+        (alternative) => findUnsupportedComposeProjectField([use], alternative) === undefined,
+      ),
     }),
   );
 };
 
 export const assertComposePreservedPathsSupported = (
-  providerId: ProviderId,
-  capabilities: ProviderCapabilities,
+  context: CapabilityContext,
   services: ComposeServices,
 ): Effect.Effect<void, CapabilityError> => {
+  const { provider: providerId, capabilities } = context;
   const use = findUnsupportedComposePreservedPath(collectComposePreservedPaths(services), capabilities);
   if (use === undefined) return Effect.void;
   return Effect.fail(
@@ -132,10 +214,24 @@ export const assertComposePreservedPathsSupported = (
       feature: `compose preserved path ${use.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composePreservedPaths support for ${use.key}, or move provider-specific intent under providers.<id>.`,
+      remediation: capabilityRemediation(
+        context,
+        `Remove ${use.key} from service ${use.service}`,
+        (alternative) => findUnsupportedComposePreservedPath([use], alternative) === undefined,
+      ),
     }),
   );
 };
+
+/** Service fields, then preserved paths, then project fields: the first unsupported one fails. */
+export const assertComposeFieldsSupported = (
+  context: CapabilityContext,
+  plan: { readonly services: ComposeServices; readonly extensions: AppPlan["extensions"] },
+): Effect.Effect<void, CapabilityError> =>
+  assertComposeServiceFieldsSupported(context, plan.services).pipe(
+    Effect.andThen(assertComposePreservedPathsSupported(context, plan.services)),
+    Effect.andThen(assertComposeProjectFieldsSupported(context, plan.extensions)),
+  );
 
 export const serviceBindRemediation = (serviceName: string) =>
   `Choose a provider with bind mount support or remove bind mounts from service ${serviceName}.`;

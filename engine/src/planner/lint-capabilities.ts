@@ -19,6 +19,7 @@ import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import { resolveSshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { compileAuthoredMounts } from "./authored-mounts.ts";
 import {
+  type ProviderAlternative,
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
   assertComposeKnobsSupported,
@@ -78,6 +79,7 @@ export const capabilityPath = (
 
 export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(function* (
   resolution: ResolvedLandofile,
+  alternatives: ReadonlyArray<ProviderAlternative>,
 ): Effect.fn.Return<readonly CapabilityIssue[]> {
   const { capabilities, provider, landofile } = resolution;
   if (capabilities === undefined)
@@ -91,6 +93,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
           "Install or select a provider with an offline capability declaration, or run lando start to check runtime capabilities.",
       },
     ];
+  const context = { provider, capabilities, alternatives };
   const issues: CapabilityIssue[] = [];
   const ssh = resolveSshAgentIntent({ landofile, globalConfig: resolution.globalConfig });
   const gpg = resolveGpgAgentIntent({ landofile, globalConfig: resolution.globalConfig });
@@ -117,9 +120,9 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
     if (Predicate.isObject(compose))
       for (const [key, value] of Object.entries(compose)) {
         const services = { [name]: { name, extensions: { compose: { [key]: value } } } };
-        yield* check(assertComposeKnobsSupported(provider, capabilities, services));
-        yield* check(assertComposeServiceFieldsSupported(provider, capabilities, services));
-        yield* check(assertComposePreservedPathsSupported(provider, capabilities, services));
+        yield* check(assertComposeKnobsSupported(context, services));
+        yield* check(assertComposeServiceFieldsSupported(context, services));
+        yield* check(assertComposePreservedPathsSupported(context, services));
       }
     const config = seed.resolution.normalizedConfig;
     yield* check(
@@ -184,9 +187,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
   }
   for (const key of ["configs", "secrets"] as const) {
     if (landofile[key] !== undefined)
-      yield* check(
-        assertComposeProjectFieldsSupported(provider, capabilities, { compose: { [key]: landofile[key] } }),
-      );
+      yield* check(assertComposeProjectFieldsSupported(context, { compose: { [key]: landofile[key] } }));
   }
   const normalized = yield* normalizeNetworks({
     landofile,

@@ -5444,6 +5444,7 @@ const allKnobCapabilities: ProviderCapabilities = {
       "logging",
       "gpus",
       "deploy.resources",
+      "deploy.resources.reservations.devices",
     ],
   },
 };
