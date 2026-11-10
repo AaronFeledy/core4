@@ -247,3 +247,33 @@ test.each([
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["always", "never"])(
+  "lint and planning reject pull_policy: %s without artifact pull",
+  async (policy) => {
+    // Given a provider that cannot pull service images.
+    const root = await mkdtemp(join(tmpdir(), "lando-pull-policy-lint-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        `name: pullfix\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    pull_policy: ${policy}\n`,
+      );
+      const capabilities = { ...TestRuntimeProvider.capabilities, artifactPull: false };
+
+      // When
+      const result = await lint(root, capabilities);
+      const planned = await planWith(root, capabilities, () => capabilities);
+
+      // Then
+      const finding = result.violations.find((issue) => issue.path.join(".") === "services.web.pull_policy");
+      expect(result.valid).toBe(false);
+      expect(finding?.severity).toBe("error");
+      if (!Result.isFailure(planned) || planned.failure._tag !== "CapabilityError")
+        throw new Error("Expected a capability failure");
+      expect(planned.failure.capability).toBe("artifactPull");
+      expect(finding?.suggestion).toBe(planned.failure.remediation);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

@@ -6221,9 +6221,9 @@
   },
   {
     "surface": "schema:ProviderCapabilities",
-    "changeKind": "enum-widened",
+    "changeKind": "enum-changed",
     "path": "$.composeKnobs.supported.items",
-    "justification": "Adds deploy.resources.reservations.devices so a provider declares GPU and device requests separately from the deploy.resources memory, CPU, and process controls. Every previously accepted key keeps its meaning, and a provider that omits the new key fails planning closed for device requests."
+    "justification": "Adds deploy.resources.reservations.devices so a provider declares GPU and device requests separately from the deploy.resources memory, CPU, and process controls; a provider that omits the new key fails planning closed for device requests. Removes pull_policy, which is no longer a runtime knob: the planner normalizes it into ServicePlan.pullPolicy and the engine realizes it through artifact acquisition on every provider. No bundled provider ever declared pull_policy, so no provider declaration loses meaning. Every other key keeps its meaning."
   },
   {
     "surface": "schema:ServiceConfigInput",

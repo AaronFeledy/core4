@@ -31,6 +31,7 @@ import {
 import type { ResolvedLandofile } from "./event-set.ts";
 import { mergeComposeExtension } from "./extensions.ts";
 import { normalizeNetworks } from "./networks.ts";
+import { servicePullPolicy } from "./pull-policy.ts";
 import type { PlannerIssue } from "./resolved-validation.ts";
 import {
   agentSocketCapabilityErrors,
@@ -69,6 +70,7 @@ export const capabilityPath = (
   }
   const field = {
     artifactBuild: "build",
+    artifactPull: "pull_policy",
     bindMounts: "appMount",
     persistentStorage: "storage",
     sharedCrossAppNetwork: "routes",
@@ -175,6 +177,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       gpgForward: gpg.forward && seed.resolution.base === "lando",
     }))
       record(error, error.feature === "lando.gpg-agent" ? ["gpgAgent", "forward"] : ["sshAgent"]);
+    const pullPolicy = servicePullPolicy(config);
     for (const error of serviceResourceCapabilityErrors(provider, capabilities, {
       name,
       bindMounts:
@@ -182,6 +185,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         mounts.some((mount) => mount.type === "bind"),
       artifactBuild: config.build !== undefined && isComposeBuild(config.build),
       persistentStorage: mounts.some((mount) => mount.type === "volume"),
+      ...(pullPolicy === undefined ? {} : { pullPolicy }),
     }))
       record(error);
   }
