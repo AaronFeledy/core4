@@ -158,6 +158,7 @@ import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { managedResourceControl } from "./managed-resource-control.ts";
+import { makeManagedRuntimeCgroupCheck } from "./managed-runtime-cgroup-check.ts";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
@@ -2032,7 +2033,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  doctorChecks: [makeWslMountPropagationCheck(), makeManagedRuntimeSocketPathCheck()],
+  doctorChecks: [
+    makeWslMountPropagationCheck(),
+    makeManagedRuntimeSocketPathCheck(),
+    makeManagedRuntimeCgroupCheck(),
+  ],
   hostMaintainers: [
     {
       id: "lando-runtime-service",
