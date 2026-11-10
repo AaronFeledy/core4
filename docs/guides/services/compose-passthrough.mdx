@@ -83,11 +83,20 @@ Use your chosen host port if you changed the mapping. The response's `Hostname:`
 
 ## See which Compose keys work
 
-The compose passthrough only accepts a subset of Compose service keys. The
-generated key matrix at `docs/reference/compose-key-matrix.mdx` publishes
-every accepted, preserved, and rejected key. If a key is rejected, the
-remediation is to move unsupported provider-specific config under
-`providers.<id>`, or open an issue to grow the subset.
+The compose passthrough accepts a subset of Compose service keys. The
+generated [Compose key matrix](../../reference/compose-key-matrix.mdx) lists
+every accepted, preserved, and rejected key. A rejected key fails
+`lando app:config:lint` and `lando start` with a remediation that names its
+replacement when Lando has one: `mem_limit`, for example, points you to
+`deploy.resources.limits.memory`.
+
+Some preserved keys also need the provider to support them. GPU requests are
+the main case: they work on the `docker` provider only. When the selected
+provider can't apply a key, planning fails with `CapabilityError`, and the
+remediation names each installed provider that can, with the
+`lando setup --provider=<id>` command that switches to it. See
+[Limit memory, CPU, and processes](../config/compose-service-block.mdx#limit-memory-cpu-and-processes)
+and [Give a service a GPU](../config/compose-service-block.mdx#give-a-service-a-gpu).
 
 Compose `hostname` and `domainname` are rejected. Lando sets each container's
 hostname to its container name, `lando-<app>--<service>`. To give a service
