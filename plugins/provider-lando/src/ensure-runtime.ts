@@ -14,6 +14,12 @@ import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.t
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
+import { needsDelegatedRelaunch, verifyServicePlacement } from "./delegated-launch.ts";
+import {
+  type ContainerCgroups,
+  type DelegatedScopeHost,
+  delegatedLaunchEligibility,
+} from "./delegated-scope.ts";
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
@@ -26,6 +32,7 @@ import {
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import {
+  type PodmanServiceScope,
   type PodmanServiceSpec,
   type RuntimeLaunchError,
   buildPodmanServiceArgs,
@@ -64,6 +71,15 @@ export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "private
   readonly recordLaunch?: (
     pid: number,
     spec: PodmanServiceSpec,
+  ) => Effect.Effect<void, ProviderUnavailableError>;
+  /**
+   * Host view for the delegated systemd user scope (Linux). Production always passes it; when it
+   * is omitted the service launches undelegated and its placement is not observed.
+   */
+  readonly delegatedScope?: DelegatedScopeHost;
+  readonly recordPlacement?: (
+    pid: number,
+    containerCgroups: ContainerCgroups,
   ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly setupProgress?: {
     readonly helpers: (
@@ -133,6 +149,7 @@ const mapLaunchLockError = (
 
 const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
   deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+  scope: PodmanServiceScope | undefined,
 ): Effect.fn.Return<number, ProviderUnavailableError> {
   const spec = buildPodmanServiceArgs({
     podmanBin: deps.podmanBin,
@@ -144,7 +161,7 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
   });
 
   yield* deps.admit ?? Effect.void;
-  const pid = yield* deps.serviceRunner.launch(spec).pipe(
+  const pid = yield* deps.serviceRunner.launch(spec, scope).pipe(
     Effect.catch((launchError: RuntimeLaunchError) => {
       const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
       const rootlessError = classifyRootlessFailure(probes.probe(), launchError.stderr);
@@ -247,9 +264,17 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       }
     }
   });
+  const eligibility =
+    deps.delegatedScope === undefined
+      ? undefined
+      : delegatedLaunchEligibility(deps.platform, deps.delegatedScope);
+  const scope: PodmanServiceScope | undefined =
+    eligibility?.eligible === true
+      ? { systemdRun: eligibility.systemdRun, userRuntimeDir: eligibility.userRuntimeDir }
+      : undefined;
   const repair = Effect.gen(function* () {
     yield* deps.setupProgress?.helpers(helpers) ?? helpers;
-    if (yield* linuxRuntimeIsHealthy(deps)) {
+    if ((yield* linuxRuntimeIsHealthy(deps)) && !(yield* needsDelegatedRelaunch(deps, scope))) {
       const adopted =
         deps.generationStore === undefined
           ? true
@@ -300,7 +325,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       });
     }
     let launchedPid: number | undefined;
-    const launch = launchRuntime(deps).pipe(
+    const launch = launchRuntime(deps, scope).pipe(
       Effect.tap((pid) =>
         Effect.sync(() => {
           launchedPid = pid;
@@ -344,10 +369,19 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
               ),
             ),
           );
-    const readiness =
+    const reachable =
       earlyExit === undefined
         ? verifyRuntimeReachable(deps)
         : Effect.raceFirst(verifyRuntimeReachable(deps), earlyExit);
+    // Ready means the launcher has exec'd into Podman, so the observed cgroup is the service's own.
+    const readiness =
+      launchedPid === undefined || deps.delegatedScope === undefined
+        ? reachable
+        : reachable.pipe(
+            Effect.andThen(
+              verifyServicePlacement(deps, { host: deps.delegatedScope, pid: launchedPid, scope }),
+            ),
+          );
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
   const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(

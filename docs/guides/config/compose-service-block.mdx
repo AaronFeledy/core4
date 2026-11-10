@@ -41,7 +41,7 @@ A service-level `networks:` key works too, with one difference from Compose: it 
 
 ## Limit memory, CPU, and processes
 
-Set resource limits under `deploy.resources`, the Compose spelling. The `docker` and `podman` providers apply them. The default `lando` provider doesn't apply them yet, so on it planning fails with `CapabilityError`, and the remediation names the providers that can and the `lando setup --provider=<id>` command that switches to one. Save this as `.lando.yml`:
+Set resource limits under `deploy.resources`, the Compose spelling. The `docker` and `podman` providers apply them. The default `lando` provider applies them on Linux when your user has a systemd user session: Lando then starts its runtime in a systemd user scope where each container gets its own cgroup. On macOS and Windows, and on Linux without a systemd user session, planning fails with `CapabilityError` instead of starting containers without limits. Save this as `.lando.yml`:
 
 ```yaml
 name: limits-demo
@@ -70,6 +70,8 @@ lando exec worker -- cat /sys/fs/cgroup/memory.max
 ```
 
 On a cgroup v2 host the file holds `536870912`, which is 512 MiB. `cpu.max` and `pids.max` in the same directory show the other two limits.
+
+If the `lando` provider rejects the limits on Linux, the remediation says what is missing. Without a systemd user session, run `loginctl enable-linger $USER` (or log in through a systemd session) and start the app again. When the runtime was started before that and still runs containers, the remediation asks you to run `lando poweroff` first, because Lando moves a running runtime only when it has no running containers. The remediation also names each installed provider that applies the limits, with the `lando setup --provider=<id>` command that switches to it. `lando doctor` reports whether the runtime gives containers their own cgroups, and `lando setup --smoke` checks that a container's cgroup holds the limits it asked for.
 
 Lando reads these settings only from `deploy.resources`. The flat Compose keys `mem_limit`, `cpus`, `pids_limit`, and `mem_reservation` are rejected; move each value to `deploy.resources.limits.memory`, `limits.cpus`, `limits.pids`, or `reservations.memory`. `deploy.resources.reservations.cpus` and `reservations.generic_resources` are rejected too, because Compose applies them only to Swarm services. Use `limits.cpus` to cap CPU instead.
 

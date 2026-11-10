@@ -28,31 +28,34 @@ export interface LinuxRuntimeHealthDeps {
 
 const TransitionContainers = Schema.fromJsonString(Schema.Array(Schema.Struct({ State: Schema.String })));
 
+/** Running or paused containers on the service, or undefined when the inventory is unreadable. */
+export const countRunningContainers = (api: PodmanApiClient): Effect.Effect<number | undefined> => {
+  const request = api.request;
+  if (request === undefined) return Effect.succeed(undefined);
+  return request({ method: "GET", path: "/libpod/containers/json?all=true" }).pipe(
+    Effect.flatMap((response) =>
+      response.status >= 200 && response.status < 300
+        ? Schema.decodeUnknownEffect(TransitionContainers)(response.body).pipe(
+            Effect.map(
+              (containers) =>
+                containers.filter(
+                  (container) => container.State === "running" || container.State === "paused",
+                ).length,
+            ),
+          )
+        : Effect.succeed(undefined),
+    ),
+    Effect.timeout("10 seconds"),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+};
+
 const verifyRuntimeDirectoryTransition = Effect.fn("ProviderLando.verifyRuntimeDirectoryTransition")(
   function* (deps: LinuxRuntimeHealthDeps): Effect.fn.Return<void, ProviderUnavailableError> {
     const state = yield* readLaunchState(deps.pidPath);
     const expected = deps.privateRuntimeDir;
     if (state?.env.XDG_RUNTIME_DIR === expected) return;
-    const request = deps.podmanApi.request;
-    const runningContainers =
-      request === undefined
-        ? undefined
-        : yield* request({ method: "GET", path: "/libpod/containers/json?all=true" }).pipe(
-            Effect.flatMap((response) =>
-              response.status >= 200 && response.status < 300
-                ? Schema.decodeUnknownEffect(TransitionContainers)(response.body).pipe(
-                    Effect.map(
-                      (containers) =>
-                        containers.filter(
-                          (container) => container.State === "running" || container.State === "paused",
-                        ).length,
-                    ),
-                  )
-                : Effect.succeed(undefined),
-            ),
-            Effect.timeout("10 seconds"),
-            Effect.catch(() => Effect.succeed(undefined)),
-          );
+    const runningContainers = yield* countRunningContainers(deps.podmanApi);
     if (runningContainers !== 0)
       return yield* Effect.fail(
         new ProviderUnavailableError({

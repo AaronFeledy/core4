@@ -144,13 +144,21 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
-import { introspectProviderCapabilities, mvpProviderCapabilities } from "./capabilities.ts";
+import {
+  declaredProviderLandoCapabilities,
+  introspectProviderCapabilities,
+  mvpProviderCapabilities,
+  withResourceControl,
+} from "./capabilities.ts";
 import type { CatatonitPackage } from "./catatonit-provision.ts";
+import { type DelegatedScopeHost, systemDelegatedScopeHost } from "./delegated-scope.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
 import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
+import { managedResourceControl } from "./managed-resource-control.ts";
+import { makeManagedRuntimeCgroupCheck } from "./managed-runtime-cgroup-check.ts";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
@@ -574,6 +582,11 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
+  /**
+   * Host view for launching the managed Linux service in a delegated systemd user scope and for
+   * declaring `deploy.resources`. Omitted: the service launches undelegated and the knob is withheld.
+   */
+  readonly delegatedScopeHost?: DelegatedScopeHost;
   readonly linuxHostRelease?: LinuxHostRelease;
   readonly readinessPolicy?: RetryPolicy;
   readonly smokeRetryPolicy?: RetryPolicy;
@@ -741,6 +754,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           pidPath: options.providerPidPath,
           ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
+          ...(family === "linux" && options.delegatedScopeHost !== undefined
+            ? { delegatedScope: options.delegatedScopeHost }
+            : {}),
           withLaunchLock: progress === undefined ? withLaunchLock : (body) => body,
           ...(options.runtimeShutdownStore === undefined
             ? {}
@@ -865,10 +881,29 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
   const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) => ensureEffect.pipe(Effect.andThen(effect));
   return Effect.gen(function* () {
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
+    const delegatedScopeHost = family === "linux" ? options.delegatedScopeHost : undefined;
     const capabilities =
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
-        : Effect.succeed(mvpProviderCapabilities(platform, arch));
+        : canEnsure && delegatedScopeHost !== undefined
+          ? managedResourceControl({
+              platform,
+              host: delegatedScopeHost,
+              pidPath: options.providerPidPath,
+              spec: buildPodmanServiceArgs({
+                podmanBin,
+                storageDir: options.runtimeStorageDir,
+                runRoot: options.runtimeRunDir,
+                configDir: options.runtimeConfigDir,
+                socketPath: ensureSocketPath,
+                privateRuntimeDir: undefined,
+              }),
+              serviceRunner,
+              podmanApi,
+            }).pipe(
+              Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
+            )
+          : Effect.succeed(mvpProviderCapabilities(platform, arch));
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
       Effect.map((resolved) => {
         const logSourceBinding = makeProviderLogSourceBinding({
@@ -1694,6 +1729,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                         Effect.scoped(
                           runSmokeReadinessProbe({
                             podmanApi,
+                            resourceLimits:
+                              resolvedCapabilities.composeKnobs?.supported.includes("deploy.resources") ===
+                              true,
                             ...(options.smokeRetryPolicy === undefined
                               ? {}
                               : { retryPolicy: options.smokeRetryPolicy }),
@@ -1995,7 +2033,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  doctorChecks: [makeWslMountPropagationCheck(), makeManagedRuntimeSocketPathCheck()],
+  doctorChecks: [
+    makeWslMountPropagationCheck(),
+    makeManagedRuntimeSocketPathCheck(),
+    makeManagedRuntimeCgroupCheck(),
+  ],
   hostMaintainers: [
     {
       id: "lando-runtime-service",
@@ -2007,7 +2049,8 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
-        declaredCapabilities: mvpProviderCapabilities,
+        declaredCapabilities: (platform, arch) =>
+          declaredProviderLandoCapabilities(platform, arch, systemDelegatedScopeHost),
         resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
         appliedStateInventory: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
@@ -2034,6 +2077,7 @@ export const plugin = definePlugin({
             runtimeConfigDir: paths.runtimeConfigDir,
             providerSocketPath: paths.providerSocketPath,
             providerPidPath: paths.providerPidPath,
+            delegatedScopeHost: systemDelegatedScopeHost,
             artifactDownload: makePluginArtifactDownload(downloader),
             ...(eventService === undefined ? {} : { eventService }),
             nftCacheDir: paths.toolDownloadsDir("nft"),

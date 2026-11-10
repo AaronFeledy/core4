@@ -55,6 +55,8 @@ When the runtime is positively identified as idle, `lando stop` completes host-s
 
 `lando poweroff` stops apps and then the managed runtime. Uninstall tears the runtime down before it removes Lando's private runtime directory.
 
+On Linux, the `managed-runtime-container-cgroups` check reports whether the managed runtime gives each container its own cgroup, which `deploy.resources` limits need. Lando starts the runtime in a systemd user scope when your user has a systemd user session; without one the check warns and names the step that enables it, such as `loginctl enable-linger $USER`. For a running runtime the check reports where the runtime runs now and how many running containers still share its cgroup because they were created before it moved into the scope; recreate those with `lando rebuild`. For an idle runtime it reports what the next launch will do. When the `lando` provider applies `deploy.resources`, `lando setup --smoke` also starts a limited container and checks that its cgroup holds the memory, process, CPU, and memory-reservation values it asked for.
+
 If doctor reports an orphaned runtime process, follow the printed remediation. A rootless child of the verified managed service is part of that service, not an orphan. Doctor gives no kill advice when it cannot read the process ancestry.
 
 ## Verify

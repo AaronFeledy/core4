@@ -135,6 +135,12 @@ export const assertComposeKnobsSupported = (
   const { provider: providerId, capabilities } = context;
   const unsupported = findUnsupportedComposeKnob(collectComposeKnobs(services), capabilities);
   if (unsupported === undefined) return Effect.void;
+  const remediation = capabilityRemediation(
+    context,
+    `Remove ${unsupported.key} from service ${unsupported.service}`,
+    (alternative) => findUnsupportedComposeKnob([unsupported], alternative) === undefined,
+  );
+  const withheld = capabilities.composeKnobs?.withheld?.find((entry) => entry.key === unsupported.key);
   return Effect.fail(
     new CapabilityError({
       message: `Service ${unsupported.service} uses Compose runtime knob ${unsupported.key}, which provider ${String(providerId)} does not support.`,
@@ -143,11 +149,11 @@ export const assertComposeKnobsSupported = (
       feature: `compose knob ${unsupported.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      remediation: capabilityRemediation(
-        context,
-        `Remove ${unsupported.key} from service ${unsupported.service}`,
-        (alternative) => findUnsupportedComposeKnob([unsupported], alternative) === undefined,
-      ),
+      // A provider that withholds the knob only until a host condition is met names that step first.
+      remediation:
+        withheld === undefined
+          ? remediation
+          : `${withheld.remediation} Otherwise, ${remediation.charAt(0).toLowerCase()}${remediation.slice(1)}`,
     }),
   );
 };
