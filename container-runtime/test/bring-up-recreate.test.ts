@@ -482,7 +482,7 @@ describe("Podman publish-port recreate", () => {
     expect(createCalls(fake.calls)[0]?.body).toMatchObject({
       Env: ["PASSWORD=resolved-before"],
       Labels: {
-        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
+        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v4:[a-f0-9]{64}$/u),
       },
     });
     expect(createCalls(fake.calls)[0]?.body).toHaveProperty(

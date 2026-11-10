@@ -304,8 +304,8 @@ describe("Podman Compose knob bring-up realization", () => {
     if (typeof baselineLabels !== "object" || baselineLabels === null)
       throw new TypeError("Expected baseline labels");
     if (typeof knobLabels !== "object" || knobLabels === null) throw new TypeError("Expected knob labels");
-    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
-    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v4:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v4:[a-f0-9]{64}$/u);
     expect(field(knobLabels, CREATE_CONFIG_LABEL)).not.toBe(field(baselineLabels, CREATE_CONFIG_LABEL));
     expect({
       Env: field(withKnobs, "Env"),

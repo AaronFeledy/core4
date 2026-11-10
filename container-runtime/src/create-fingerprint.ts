@@ -20,7 +20,7 @@ import {
   containerIntegrationLabels,
 } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
-import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
+import { composeKnobIntent } from "./podman/compose-knobs.ts";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
@@ -81,10 +81,9 @@ export const createConfigFingerprint = (
   service: ServicePlan,
   labels: Readonly<Record<string, string>>,
 ): string => {
-  const knobs = realizePodmanComposeKnobs(service, {
-    onInvalid: (message, details) => {
-      throw new ContainerPlanError(message, details);
-    },
+  // Canonical intent, not one dialect's request body, so every provider fingerprints the same knobs.
+  const knobs = composeKnobIntent(service, (message, details) => {
+    throw new ContainerPlanError(message, details);
   });
   const integrationLabels = containerIntegrationLabels(service.environment, {}, service.extensions);
   const sshAgentActive = integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true";
@@ -188,5 +187,5 @@ export const createConfigFingerprint = (
     ),
     knobs,
   };
-  return `v3:${sha256Hex(canonicalJson(projection))}`;
+  return `v4:${sha256Hex(canonicalJson(projection))}`;
 };

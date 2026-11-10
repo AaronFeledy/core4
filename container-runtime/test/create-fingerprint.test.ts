@@ -59,7 +59,7 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
-test("excludes listenerAuthority from the v3 container create identity", () => {
+test("excludes listenerAuthority from the container create identity", () => {
   // Given two plans differing only in listenerAuthority.
   const advised: ServicePlan = {
     ...service,
@@ -72,9 +72,31 @@ test("excludes listenerAuthority from the v3 container create identity", () => {
   const changedAdvice = fingerprint(advised, advisedPlan);
 
   // Then listener ownership advice cannot force container recreation, unlike launcher changes.
-  expect(original).toStartWith("v3:");
+  expect(original).toStartWith("v4:");
   expect(changedAdvice).toBe(original);
   expect(fingerprint({ ...advised, command: ["mongod", "--port", "27018"] }, advisedPlan)).not.toBe(original);
+});
+
+test.each([
+  ["gpus", { gpus: "all" }, { gpus: [{ count: 1 }] }],
+  [
+    "reserved devices",
+    { deploy: { resources: { reservations: { devices: [{ capabilities: ["gpu"] }] } } } },
+    { deploy: { resources: { reservations: { devices: [{ capabilities: ["gpu"], count: 1 }] } } } },
+  ],
+  [
+    "resource limits",
+    { deploy: { resources: { limits: { memory: 1024 } } } },
+    { deploy: { resources: { limits: { memory: 2048 } } } },
+  ],
+])("fingerprints %s from knob intent even where libpod does not realize them", (_, before, after) => {
+  // Given knob intent that only some engine dialects realize.
+  const plain = fingerprint(service);
+  const first = fingerprint({ ...service, extensions: { compose: before } });
+  const second = fingerprint({ ...service, extensions: { compose: after } });
+
+  // Then every change in intent changes the create identity, on every provider.
+  expect(new Set([plain, first, second]).size).toBe(3);
 });
 
 test("fingerprints probe identity, execution locus, argv/shell semantics and host cwd", () => {
@@ -116,7 +138,7 @@ describe("desired immutable create config", () => {
   test("pins the mount-list-only default fingerprint bytes", () => {
     // Given the default plan without authored networks or bridge aliases.
     // When / Then the mount-only create projection stays pinned.
-    expect(fingerprint(service)).toBe("v3:ff31e0d13cdd99844ead8b79b3d972ea97ff8f331f26997d674feaa6c3dd4bb8");
+    expect(fingerprint(service)).toBe("v4:8391d67fcfc606a9c5fbe2b72d44c3695bcdc8c22729e500f24fb6fd057f5404");
   });
   test("keeps explicit shared membership attachments and fingerprint byte-identical to the legacy plan", () => {
     // Given
@@ -131,7 +153,7 @@ describe("desired immutable create config", () => {
     // When
     const actual = fingerprint(service, explicit);
     // Then
-    expect(actual).toBe("v3:ff31e0d13cdd99844ead8b79b3d972ea97ff8f331f26997d674feaa6c3dd4bb8");
+    expect(actual).toBe("v4:8391d67fcfc606a9c5fbe2b72d44c3695bcdc8c22729e500f24fb6fd057f5404");
   });
 
   test.each(["membership", "bridge aliases", "authored aliases"])("fingerprints %s changes", (change) => {
@@ -255,7 +277,7 @@ describe("desired immutable create config", () => {
     const actual = fingerprint(updated);
     // Then drift is visible without putting configuration bytes in labels.
     expect(actual).not.toBe(fingerprint(service));
-    expect(actual).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(actual).toMatch(/^v4:[a-f0-9]{64}$/u);
   });
 
   test("normalizes command and entrypoint representations without sorting argv", () => {
@@ -318,7 +340,7 @@ describe("desired immutable create config", () => {
     const lan = fingerprint(published("0.0.0.0"));
     // Then a bind change is visible create-config drift.
     expect(lan).not.toBe(loopback);
-    expect(lan).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(lan).toMatch(/^v4:[a-f0-9]{64}$/u);
   });
 
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {
@@ -352,7 +374,7 @@ describe("desired immutable create config", () => {
     const after = fingerprint(desired);
     // Then redaction cannot collapse distinct desired values or expose raw values in the label.
     expect(after).toBe(before);
-    expect(after).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(after).toMatch(/^v4:[a-f0-9]{64}$/u);
     expect(after).not.toContain("credential-canary");
     expect(after).not.toBe(
       fingerprint({ ...desired, environment: { ...desired.environment, PASSWORD: "${secret:db/other}" } }),
