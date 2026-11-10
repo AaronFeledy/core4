@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 import type { InvocationProgram } from "@lando/landofile/compiled-sites";
@@ -237,7 +238,7 @@ export const compileEventStepProgram = (
           ? Effect.void
           : validateCommand(leaf);
       }),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new EventStepCompileError({
             message: cause.message,

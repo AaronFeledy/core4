@@ -1,5 +1,6 @@
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
@@ -74,7 +75,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
   privateFileAccess,
 }: WriteRecipeMigrationRequest) {
   const content = yield* Effect.fromResult(emitLandofileYamlEither(document)).pipe(
-    Effect.mapError(
+    mapFailures(
       () =>
         new AppConfigMigrateError({
           reason: "encode-failed",
@@ -104,7 +105,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
       ],
     })
     .pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new AppConfigMigrateCommitError({
             phase: error.phase,

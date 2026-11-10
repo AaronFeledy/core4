@@ -459,7 +459,7 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("StopAppError retains its pre-refactor members", () => {
-    assertType<Equal<StopAppError, LegacyStopAppError>>(true);
+    assertType<Equal<StopAppError, LegacyStopAppError | import("@lando/sdk/errors").ProxyError>>(true);
     expect(true).toBe(true);
   });
 

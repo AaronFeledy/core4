@@ -158,6 +158,7 @@ interface HarnessOptions {
   readonly unreadableConsumerState?: boolean;
   readonly beforeApply?: Effect.Effect<void>;
   readonly offline?: boolean;
+  readonly idle?: boolean;
   readonly vanishedServices?: ReadonlyArray<string>;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
@@ -318,7 +319,18 @@ const makeHarness = async (
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
-    getStatus: Effect.sync(() => ({ running: !options.offline })),
+    getStatus: Effect.suspend(() =>
+      options.offline
+        ? Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation: "getStatus",
+              message: "Runtime is unreachable.",
+              remediation: "Restore runtime access.",
+            }),
+          )
+        : Effect.succeed({ state: options.idle ? ("idle" as const) : ("running" as const) }),
+    ),
     appliedPlans: Effect.sync(() =>
       options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan],
     ),
@@ -1830,6 +1842,23 @@ describe("meta:global command effects", () => {
         result.services.every((service) => service.desired === "enabled" && service.status === "unknown"),
       ).toBe(true);
       expect(result.diagnostics.join(" ")).toContain("resource state is unknown");
+    }, options);
+  });
+
+  test("status reports an idle global provider as stopped without an observation diagnostic", async () => {
+    const options = { idle: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.idle = true;
+      harness.calls.inspect.length = 0;
+      const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
+      expect(result.runtimeState).toBe("idle");
+      expect(result.services.map((service) => [service.service, service.status])).toEqual([
+        ["mail", "stopped"],
+        ["proxy", "stopped"],
+      ]);
+      expect(result.diagnostics).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
     }, options);
   });
 

@@ -20,6 +20,7 @@ export interface CommandCatalogEntry {
   readonly plugin?: PluginCommandRow;
   readonly mcpAllowed?: boolean;
   readonly deferred?: DeferredCommandPlan;
+  readonly loadError?: AppCommandIndexPayload["entries"][number]["loadError"];
 }
 export interface CommandCatalog {
   readonly entries: readonly CommandCatalogEntry[];
@@ -105,6 +106,7 @@ export const buildCommandCatalog = (
       add({
         id: command.id,
         summary: command.summary,
+        ...(command.loadError === undefined ? {} : { loadError: command.loadError }),
         source: "tooling",
         hidden: command.hidden,
         tokens: [],

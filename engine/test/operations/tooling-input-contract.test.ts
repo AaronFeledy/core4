@@ -3,10 +3,10 @@ import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import type { ToolingTaskShape } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
-import { compileToolingInvocations } from "../../src/operations/tooling-compile.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { appliedClientFixture } from "./applied-client-fixture.ts";
+import { admitAndCompileTooling as compileToolingInvocations } from "./compile-tooling-fixture.ts";
 
 const source = { path: "/app/.lando.yml", task: "inspect" };
 const original: ToolingTaskShape = { cmd: ["inspect"], args: { first: {}, second: {} } };
@@ -103,7 +103,11 @@ for (const entry of ["direct", "event"] as const) {
     const fixture = appliedClientFixture({
       definitionOverride: {
         toolingForConnection: () => ({
-          psql: { cmd: ["changed"], flags: { mode: { default: "new-default" } } },
+          psql: {
+            cmd: ["changed"],
+            flags: { mode: { default: "new-default" } },
+            vars: { V: { sh: "must-not-run" } },
+          },
         }),
       },
     });

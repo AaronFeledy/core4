@@ -15,6 +15,7 @@ import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { hasResourceOwnershipRecords } from "./resource-ownership-records.ts";
 export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
@@ -40,7 +41,7 @@ export const providerHostInputs = Effect.gen(function* () {
 });
 
 type ProviderPlanStateOptions = AppliedPlanCacheOptions &
-  Omit<ProviderDataPlaneOptions, "api" | "providerId"> & {
+  Omit<ProviderDataPlaneOptions, "api" | "providerId" | "redactorFor"> & {
     readonly ctx: ProviderErrorContext;
     readonly api?: ProviderDataPlaneOptions["api"];
   };
@@ -82,6 +83,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
           api: options.api,
           capabilities: options.capabilities,
           redactor: options.redactor,
+          ...(options.ctx.redactorFor === undefined ? {} : { redactorFor: options.ctx.redactorFor }),
           ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect, Option } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -71,7 +72,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
   },
   (effect, provider) =>
     effect.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof ProviderInternalError && cause.operation === "record-volume-creation"
           ? cause
           : new ProviderInternalError({

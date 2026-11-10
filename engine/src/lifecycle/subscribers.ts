@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -115,7 +116,7 @@ const subscriberEventError = (
 
 const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> => {
   const run = input.getHandler.pipe(
-    Effect.mapError((cause) => subscriberEventError(input, cause)),
+    mapFailures((cause) => subscriberEventError(input, cause)),
     Effect.flatMap((handler) => handler(input.event)),
   );
   if (input.event._tag.startsWith("pre-")) return run;

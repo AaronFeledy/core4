@@ -9,7 +9,7 @@ tags: [docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-`lando help db` lists every database command with a one-line summary, and `lando db:export --help` shows one command's flags. Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target. Over [MCP](../../agent-native/mcp/), agents can list snapshots with `db:snapshots` by default and need an explicit `--allow` for every other `db:*` command.
+`lando help db` lists every database command with a one-line summary, and `lando db:export --help` shows one command's flags. Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target. Over [MCP](../../agent-native/mcp/), agents can list snapshots with `db:snapshots` by default and need an explicit `--allow` for every other `db:*` command. The examples below cover server databases. For file-backed SQLite databases declared with `sqlite.path`, see [Use SQLite with db commands](./sqlite-database.mdx).
 
 Export a backup before importing into a database that contains data. Import can change or delete existing data, and `--yes` skips confirmation. The examples show gzip and zstd alternatives; choose one rather than importing the same dump twice.
 
@@ -125,6 +125,9 @@ report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
 `stderrTail` preserve its exit status and redacted stderr. The tail is limited to
 8 KiB, including its truncation marker. Oversized unfinished lines may be
 suppressed. A provider failure without an exit status does not invent one.
+When the container runtime itself failed, for example because it stopped
+responding, `error.cause` holds that failure with its own `_tag`, message, and
+`remediation`, and `error.remediation` starts with what the runtime says to do.
 Database payloads and stdout are never included in these command failures.
 
 `lando db:*` commands mask only the target database's credential password or
@@ -141,8 +144,10 @@ report `recoverySnapshotId` with recovery guidance. Command failures keep their
 tag and diagnostics. A manual snapshot also remains available when restarting
 the database fails; that failure reports the captured snapshot instead of losing
 its handle. Failures outside command execution may use a different error tag.
-Fix the reported problem before retrying. Restore the snapshot only if recovery
-is needed. A failed capture never invents a snapshot ID.
+Snapshot capture and restore failures caused by the runtime carry it under
+`error.cause` the same way. Fix the reported problem before retrying. Restore
+the snapshot only if recovery is needed. A failed capture never invents a
+snapshot ID.
 
 Import and seed stop with the same diagnostics if their emptiness query fails.
 `--yes` skips confirmation, not a failed database check.

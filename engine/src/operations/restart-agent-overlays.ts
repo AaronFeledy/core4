@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { type AppPlan, type AppRef, SSH_AGENT_SOCKET_NAME } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
@@ -52,7 +53,7 @@ export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppP
       const ssh = yield* Effect.serviceOption(SshService);
       if (Option.isSome(ssh)) {
         const socket = yield* ssh.value.getAgentSocket(plan.id).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new SshAgentTransportError({
                 stage: "worker",
@@ -65,7 +66,7 @@ export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppP
         const globalApp = yield* Effect.serviceOption(GlobalAppService);
         const globalProvider = Option.isSome(globalApp)
           ? yield* globalApp.value.providerId.pipe(
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new SshAgentTransportError({
                     stage: "worker",

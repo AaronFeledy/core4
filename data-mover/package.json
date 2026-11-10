@@ -21,6 +21,7 @@
     ".": "./src/index.ts",
     "./orphaned-snapshots": "./src/orphaned-snapshots.ts",
     "./service": "./src/service.ts",
+    "./snapshot-paths": "./src/snapshot-paths.ts",
     "./testing": "./src/testing.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Effect, Schema } from "effect";
@@ -271,7 +272,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (options:
         return { pluginName: options.name, removed: true };
       }),
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       isInstalledPluginRegistryRejection(cause)
         ? new NotImplementedError({
             message: cause.message,

@@ -1,3 +1,14 @@
+import {
+  ContainerTransportError,
+  type SocketHttpErrorKind,
+  type SocketReadSystemCode,
+} from "./transport-error.ts";
+export {
+  ContainerTransportError,
+  type SocketHttpErrorKind,
+  type SocketReadSystemCode,
+  runtimeRemediation,
+} from "./transport-error.ts";
 export { socketHttpConnection } from "./socket-http-connection.ts";
 
 const textEncoder = new TextEncoder();
@@ -28,35 +39,7 @@ export interface SocketHttpConnection extends AsyncIterable<Bytes> {
   destroy(): void;
 }
 
-export type SocketHttpErrorKind = "connect" | "write" | "read" | "parse" | "http";
-export type SocketReadSystemCode = "ECONNABORTED" | "ECONNRESET" | "EPIPE" | "ETIMEDOUT";
-
 const SOCKET_READ_SYSTEM_CODES = ["ECONNABORTED", "ECONNRESET", "EPIPE", "ETIMEDOUT"] as const;
-
-export class ContainerTransportError extends Error {
-  readonly _tag = "ContainerTransportError";
-  readonly kind: SocketHttpErrorKind;
-  readonly operation: string;
-  readonly systemCode?: SocketReadSystemCode;
-  readonly details?: unknown;
-
-  constructor(input: {
-    readonly kind: SocketHttpErrorKind;
-    readonly operation: string;
-    readonly message: string;
-    readonly systemCode?: SocketReadSystemCode;
-    readonly details?: unknown;
-    readonly cause?: unknown;
-  }) {
-    super(input.message);
-    this.name = "ContainerTransportError";
-    this.kind = input.kind;
-    this.operation = input.operation;
-    if (input.systemCode !== undefined) this.systemCode = input.systemCode;
-    if (input.details !== undefined) this.details = input.details;
-    if (input.cause !== undefined) (this as { cause?: unknown }).cause = input.cause;
-  }
-}
 
 export interface ConnectableSocket {
   once(event: "connect", listener: () => void): unknown;

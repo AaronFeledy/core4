@@ -1,5 +1,6 @@
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -10,7 +11,7 @@ export const decodeScratchLandofile = (
   cwd: string,
 ): Effect.Effect<LoadScopedLandofile, ScratchAppError> =>
   parseLandofile({ file, content, cwd }).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ScratchAppError({
           operation: "materialize",
@@ -21,7 +22,7 @@ export const decodeScratchLandofile = (
     ),
     Effect.flatMap((parsed) =>
       loadAuthoredDocuments([{ file, value: parsed, content }], { file, appRoot: cwd }).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ScratchAppError({
               operation: "materialize",

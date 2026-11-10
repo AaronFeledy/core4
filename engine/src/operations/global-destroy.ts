@@ -59,7 +59,7 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 
   return yield* withGlobalMutation(
     Effect.gen(function* () {
-      const loaded = yield* resolveGlobalTeardown().pipe(
+      const loaded = yield* resolveGlobalTeardown("destroy").pipe(
         Effect.provideService(TeardownProvider, options.providerId),
       );
       const volumes = options.purge ?? false;

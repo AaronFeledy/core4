@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -64,7 +65,7 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
     });
     if (state === undefined) return write;
     return state.withLock(`applied-plan-${plan.id}`, write).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof ProviderUnavailableError
           ? cause
           : new ProviderUnavailableError({

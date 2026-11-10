@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Result, Schema } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -53,7 +54,7 @@ export const inspectInheritedImageUser = (
   input: InspectInheritedImageUserInput,
 ): Effect.Effect<string, ProviderUnavailableError | ProviderInternalError> =>
   input.request({ method: "GET", path: `/images/${encodeURIComponent(input.baseRef)}/json` }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ProviderUnavailableError
         ? cause
         : inspectionError(input, `Unable to inspect inherited image user for ${input.baseRef}.`, cause),

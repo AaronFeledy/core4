@@ -44,7 +44,6 @@ import { resolveConnectionClientTask } from "../planner/connection-client-task.t
 import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
@@ -52,9 +51,9 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
-import { compileToolingInvocations } from "./tooling-compile.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 import { resolveToolingPlan } from "./tooling-plan.ts";
+import { prepareToolingInvocation } from "./tooling-prepare.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
@@ -194,14 +193,14 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     sites: sitesUnder(sites, ["tooling", toolingLookupKey]),
     currentLandofile: landofile,
   });
-  const resolvedTask = yield* resolveToolingTaskShape(client.task, {}, client.sites);
-  const compiled = yield* compileToolingInvocations({
+  const compileOptions = {
     ...options,
     lookupKey: toolingLookupKey,
-    task: resolvedTask,
+    task: client.task,
     source,
     agentEnvAllowlist,
-  });
+  };
+  const compiled = yield* prepareToolingInvocation({ plan, options: compileOptions, sites: client.sites });
   const invocations = compiled.invocations;
   const planValues = yield* registerPlanRedaction(
     plan,

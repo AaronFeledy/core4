@@ -130,9 +130,12 @@ Add `--format=json` when a script or an agent reads the result. Each check repor
   </Scenario>
   <Scenario id="doctor-reports-lando3-checks" render>
     <Step name="doctor">
-      <Run command="lando doctor --format=json" />
-      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "lando3-leftovers" } }} />
-      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "lando3-shadow" } }} />
+      <Run runtime="library" displayCode="lando doctor --format=json" code={`const run = yield* context.runCli(["doctor", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.provider.checks).toEqual(expect.arrayContaining([
+  expect.objectContaining({ name: "lando3-leftovers" }),
+  expect.objectContaining({ name: "lando3-shadow" }),
+]));`} />
     </Step>
   </Scenario>
 </Guide>

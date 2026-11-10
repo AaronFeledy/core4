@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
@@ -145,7 +146,7 @@ export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
         Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(landofile, {
           errors: "all",
           onExcessProperty: "error",
-        }).pipe(Effect.mapError((cause) => validationErrorFromCause(layer.filePath, landofile, cause))),
+        }).pipe(mapFailures((cause) => validationErrorFromCause(layer.filePath, landofile, cause))),
       ),
     );
   }).pipe(

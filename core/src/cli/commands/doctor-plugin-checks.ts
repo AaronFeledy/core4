@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * Plugin-contributed doctor checks.
  *
@@ -116,7 +117,7 @@ export const pluginDoctorReports = Effect.fnUntraced(function* (
                 ),
               ),
               Effect.flatMap(Schema.decodeUnknownEffect(PluginDoctorReports)),
-              Effect.mapError(
+              mapFailures(
                 () =>
                   new PluginDoctorReportInvalidError({
                     message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,

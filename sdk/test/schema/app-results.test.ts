@@ -80,6 +80,13 @@ describe("StartAppResult", () => {
 });
 
 describe("StopAppResult", () => {
+  test.each(["idle", "running"] as const)(
+    "preserves observed runtime state %s",
+    (runtimeState: "idle" | "running") => {
+      const value = { app: "demo", servicesStopped: [], runtimeState };
+      expect(roundTrip(StopAppResult, value)).toEqual(value);
+    },
+  );
   test("outcome may be omitted or present", () => {
     const omitted = { app: "demo", servicesStopped: ["web"] };
     expect(roundTrip(StopAppResult, omitted)).toStrictEqual(omitted);

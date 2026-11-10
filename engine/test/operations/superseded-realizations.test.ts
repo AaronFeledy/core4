@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, LoadScopedLandofile, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { openJournal } from "../../src/operations/accelerated-start-journal.ts";
@@ -8,6 +9,7 @@ import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { byTag, makeHarness, plan } from "./start-progress-topology-support.ts";
+import { stoppedProviderFixtures, stoppedProviderInspection } from "./stopped-provider-support.ts";
 
 const old: AppPlan = {
   ...plan,
@@ -45,6 +47,54 @@ const target = {
   }),
 };
 
+test.each(stoppedProviderFixtures)(
+  "destroy prepares $fixture once across superseded plans and ownership",
+  async (fixture) => {
+    let preparations = 0;
+    const destroyed: string[] = [];
+    const previous = { ...old, stores: [] };
+    const current = { ...desired, stores: [] };
+    const ownership = {
+      appRoot: old.root,
+      ownerKey: appIdentityKey("owner", old.root),
+      providerId: old.provider,
+      appIds: [old.id, desired.id],
+    };
+    const harness = makeHarness({
+      plannedApp: current,
+      appliedPlans: [previous, current],
+      providerCanInspectFileSync: false,
+      resourceOwnership: () => Effect.succeed(ownership),
+      resolveTeardownEvidence: () =>
+        Effect.succeed({ kind: "applied", plan: current, ownership: [ownership] }),
+      onDestroy: (ref) => {
+        destroyed.push(ref.app);
+      },
+      providerOverrides: {
+        getStatus: Effect.sync(() => ({
+          state: preparations === 0 ? ("idle" as const) : ("running" as const),
+        })),
+        ensureReady: Effect.sync(() => {
+          preparations++;
+        }),
+        inspectAppliedFileSync: stoppedProviderInspection(fixture, () => preparations > 0),
+        cleanupOwnedResources: () =>
+          Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+      },
+    });
+    try {
+      const result = await Effect.runPromise(
+        destroyApp({}, { ...target, plan: current }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.outcome).toBe("destroyed");
+      expect(preparations).toBe(1);
+      expect(destroyed.sort()).toEqual([old.id, desired.id].sort());
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  },
+);
+
 test("destroy --volumes after rename reaches old and new names through root ownership", async () => {
   const applied: AppPlan[] = [old];
   const data = new Map([[old.id, "old-data"]]);
@@ -68,7 +118,7 @@ test("destroy --volumes after rename reaches old and new names through root owne
       data.set(plan.id, "new-data");
     },
     providerOverrides: {
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       cleanupOwnedResources: (_root, options) =>
         Effect.sync(() => {
           let removed = 0;
@@ -230,6 +280,56 @@ test.each(
         },
       });
       expect(mutations).toBe(0);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(stoppedProviderFixtures)(
+  "destroy after rename prepares $fixture before checking superseded file sync",
+  async (fixture) => {
+    const applied: AppPlan[] = [old];
+    let running = true;
+    let preparations = 0;
+    // Stops the flow at the first live check once the runtime is prepared.
+    const inspectedWhileReady = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "inspect",
+      message: "inspected after readiness",
+      remediation: "none",
+    });
+    const harness = makeHarness({
+      plannedApp: desired,
+      providerCanInspectFileSync: false,
+      appliedPlans: applied,
+      onApply: (plan) => {
+        applied.push(plan);
+      },
+      providerOverrides: {
+        getStatus: Effect.sync(() => ({ state: running ? ("running" as const) : ("idle" as const) })),
+        ensureReady: Effect.sync(() => {
+          preparations++;
+          running = true;
+        }),
+        inspectAppliedFileSync: stoppedProviderInspection(
+          fixture,
+          () => running,
+          Effect.fail(inspectedWhileReady),
+        ),
+      },
+    });
+    try {
+      await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer), Effect.ignore));
+      // The renamed app still holds its previous realization, as after an interrupted retirement.
+      if (!applied.includes(old)) applied.unshift(old);
+      running = false;
+      preparations = 0;
+      const result = await Effect.runPromise(
+        destroyApp({}, target).pipe(Effect.provide(harness.layer), Effect.flip),
+      );
+      expect(result).toBe(inspectedWhileReady);
+      expect(preparations).toBe(1);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });
     }

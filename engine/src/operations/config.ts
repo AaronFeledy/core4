@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Result, Schema } from "effect";
 
@@ -463,7 +464,7 @@ export const config = Effect.fn("AppOperation.config")(function* (
   for (const message of decoded.success.warnings)
     yield* recordConfigWarning({ code: "LANDO_MESSAGE_WARN", message });
   const merged = yield* Schema.encodeEffect(GlobalConfigView)(decoded.success.config).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ConfigError({
           message: "Failed to project public global config.",

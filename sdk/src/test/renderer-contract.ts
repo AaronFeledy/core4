@@ -1,4 +1,5 @@
 import { Arbitrary, Context, Effect, Layer, type Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { LandoEvent } from "../events/union.ts";
 import {
@@ -30,7 +31,7 @@ export const runRendererContract = Effect.fnUntraced(function* (harness: Rendere
       count: 1,
       size: 1,
     }).pipe(
-      Effect.mapError(
+      mapFailures(
         (details) =>
           new ContractFailure({
             message: "Cannot sample built-in renderer event",

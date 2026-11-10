@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { StateWrite } from "@lando/sdk/services";
@@ -170,7 +171,7 @@ export function changeReceipt(
               return plan.value === null
                 ? Effect.succeed({ _tag: "Remove", result: null })
                 : Schema.decodeUnknownEffect(WindowsSyncHelperReceipt)(plan.value).pipe(
-                    Effect.mapError(stateFailure),
+                    mapFailures(stateFailure),
                     Effect.map((value) => ({ _tag: "Set", value, result: value }) as const),
                   );
             default:
@@ -179,6 +180,6 @@ export function changeReceipt(
         },
       ),
     ),
-    Effect.mapError(stateFailure),
+    mapFailures(stateFailure),
   );
 }

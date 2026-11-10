@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import { type AppPlan, ProviderId, type ServicePlan } from "@lando/sdk/schema";
@@ -22,7 +23,7 @@ export const stopService = Effect.fnUntraced(function* (
     options.eventService === undefined
       ? Effect.void
       : options.eventService.publish(event).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new ProviderInternalError({
                 providerId: options.ctx.providerId,
@@ -61,6 +62,6 @@ export const stopService = Effect.fnUntraced(function* (
   );
   yield* publish(
     PostServiceStopEvent.make({ ...fields, eventName: "post-service-stop", timestamp: yield* DateTime.now }),
-  ).pipe(Effect.mapError((error) => retainShutdownObservations(error, result.shutdownObservations)));
+  ).pipe(mapFailures((error) => retainShutdownObservations(error, result.shutdownObservations)));
   return result;
 });

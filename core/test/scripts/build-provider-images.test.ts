@@ -22,6 +22,17 @@ describe("provider-image manifest", () => {
     expect(volumeWitness?.digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
+  test("pins the sqlite helper image by digest", () => {
+    const sqliteHelper = PROVIDER_IMAGES.images.sqliteHelper;
+    expect(sqliteHelper?.image).toBe("docker.io/alpine/sqlite:3.53.4");
+    expect(sqliteHelper?.digest).toBe(
+      "sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75",
+    );
+    expect(`${sqliteHelper?.image}@${sqliteHelper?.digest}`).toBe(
+      "docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75",
+    );
+  });
+
   test("validates schemaVersion, non-empty image, and digest shape", () => {
     expect(() =>
       validateProviderImageManifest({

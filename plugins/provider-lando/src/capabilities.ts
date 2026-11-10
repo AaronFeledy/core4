@@ -9,6 +9,7 @@ import {
 } from "@lando/container-runtime/capabilities";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import {
@@ -109,7 +110,7 @@ export const introspectProviderCapabilities = (
   platform: HostPlatform,
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
-    Effect.mapError((cause): ProviderCapabilityError | ProviderUnavailableError =>
+    mapFailures((cause): ProviderCapabilityError | ProviderUnavailableError =>
       cause instanceof ProviderInternalError
         ? new ProviderCapabilityError({
             providerId: PROVIDER_ID,

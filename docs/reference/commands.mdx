@@ -564,6 +564,22 @@ Stop the current Lando app.
 
 Aliases: `lando stop`
 
+## `lando apps:gc`
+
+Report or clean up user apps whose folders no longer exist.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--provider` | Inspect and clean up only this provider. |
+| `--prune` | Confirm once, then clean up the reported missing app roots. |
+| `--purge` | Delete data volumes, file-sync copies of app files, and snapshots. |
+| `--purge-caches` | Delete cache volumes. |
+| `--volumes` | Delete data volumes and file-sync copies of app files. |
+| `--yes, -y` | Skip the confirmation prompt. |
+
 ## `lando apps:init`
 
 Generate a new Lando app.
@@ -770,7 +786,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Destination dump file. Use - to write to stdout. |
+| `file` | Destination dump file. SQLite: .sqlite, .sqlite3, .db, or .db3 selects a database copy; optional .gz or .zst compresses it. Use - to write to stdout. |
 
 Flags:
 

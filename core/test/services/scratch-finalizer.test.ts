@@ -172,7 +172,7 @@ const makeRecordingLayer = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),

@@ -5,6 +5,7 @@ import {
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { containsReservedBinding } from "@lando/sdk/expressions";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import { validateRecipeSecretPrompts } from "@lando/sdk/recipes";
@@ -70,7 +71,7 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
     sourceId: `recipe:${request.manifest.id}@${request.manifest.version}`,
     answers: request.answers,
     secretAnswers: references,
-  }).pipe(Effect.mapError(() => blocked("translate")));
+  }).pipe(mapFailures(() => blocked("translate")));
   const service = yield* Effect.serviceOption(RedactionService);
   if (Option.isSome(service)) yield* service.value.registerValues(raw);
   const options = { redactionTokens: raw, sourceEnv: { ...process.env } };
@@ -90,12 +91,12 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
   });
   const translators = yield* Effect.flatMap(ConfigTranslatorRegistry, (registry) => registry.list).pipe(
     Effect.provide(ConfigTranslatorRegistryLayer.layerWith([module])),
-    Effect.mapError(() => blocked("translate")),
+    mapFailures(() => blocked("translate")),
   );
   const translator = translators.find(({ id }) => id === RECIPE_TRANSLATOR_ID);
   if (translator === undefined) return yield* Effect.fail(blocked("translate"));
   const translated = yield* Effect.suspend(() => runConfigTranslator(translator, input)).pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new RecipeInitBlockedError({
           stage: "translate",
@@ -110,7 +111,7 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const mapping = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(output.fragment).pipe(
     Effect.flatMap((value) => Schema.encodeEffect(LandofileAuthoringFragmentNative)(value)),
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
-    Effect.mapError(() => blocked("validate")),
+    mapFailures(() => blocked("validate")),
   );
   if (containsReservedBinding(mapping)) return yield* Effect.fail(blocked("validate"));
   const context = snapshotRecipeInitData(mergeLandofiles([mapping, { name: request.appName }]));
@@ -118,7 +119,7 @@ export const encodeRecipeLandofile = Effect.fnUntraced(function* (
     onExcessProperty: "error",
   }).pipe(
     Effect.map(snapshotRecipeInitData),
-    Effect.mapError(() => blocked("validate")),
+    mapFailures(() => blocked("validate")),
   );
   if (containsSecret(context)) return yield* Effect.fail(blocked("validate"));
   const encode = request.encoder.encode;

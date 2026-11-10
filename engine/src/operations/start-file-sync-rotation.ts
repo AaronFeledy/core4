@@ -1,4 +1,5 @@
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { fileSyncDisposalCommitted } from "@lando/sdk/schema";
@@ -45,7 +46,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
 
   // Drain/dispose always use the recorded applied engine, never the desired selection.
   const oldEngine = yield* acquireFileSyncEngine(prior.engineId).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new FileSyncStartError({
           engineId: prior.engineId,

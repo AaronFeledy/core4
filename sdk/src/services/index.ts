@@ -27,6 +27,7 @@ export * from "./recipe-decomposer.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./scratch.ts";
+export * from "./service-readiness.ts";
 export * from "./state-store.ts";
 export * from "./tunnel.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";

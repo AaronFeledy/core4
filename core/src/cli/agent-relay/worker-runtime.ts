@@ -23,6 +23,7 @@ import {
 import type { RootOverrides } from "@lando/paths";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import { detachStdioWrites, isStdioRendererIO } from "@lando/renderer/io";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AgentSocketUpstream, type AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -141,13 +142,13 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
           extensions: {},
           metadata: { resolvedAt: yield* DateTime.now, source: input.app.root, runtime: 4 },
         };
-        const provider = yield* registry.select(plan).pipe(Effect.mapError(workerError("bridge")));
+        const provider = yield* registry.select(plan).pipe(mapFailures(workerError("bridge")));
         if (provider.openAgentSocketBridge === undefined)
           return yield* Effect.fail(workerError("bridge")(undefined));
         const upstream = yield* Schema.decodeUnknownEffect(AgentSocketUpstream)({
           ...relay.address,
           ...(token === undefined ? {} : { token }),
-        }).pipe(Effect.mapError(workerError("broker")));
+        }).pipe(mapFailures(workerError("broker")));
         return yield* provider
           .openAgentSocketBridge({
             appId: input.plan.id,
@@ -157,7 +158,7 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
             upstream,
             socketName: input.socketName,
           })
-          .pipe(Effect.mapError(workerError("bridge")));
+          .pipe(mapFailures(workerError("bridge")));
       }),
     ),
     Match.exhaustive,
@@ -237,7 +238,7 @@ export const runAgentRelayWorkerProcess = async (
     const readInput = options.readInput ?? (() => new Response(context.io.stdin).text());
     const input = await Effect.runPromise(
       Schema.decodeUnknownEffect(Schema.fromJsonString(AgentRelayWorkerInput))(await readInput()).pipe(
-        Effect.mapError(workerError("worker")),
+        mapFailures(workerError("worker")),
       ),
     );
     await Effect.runPromise(owner.service.registerValues(input.token === undefined ? [] : [input.token]));

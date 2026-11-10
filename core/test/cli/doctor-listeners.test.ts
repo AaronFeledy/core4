@@ -22,6 +22,21 @@ import {
 
 const collect = () => listenerDoctorChecks({ budgetMs: 5000, redact: (value) => value });
 
+test("skips listeners on the idle provider holding the applied app", async () => {
+  await withListenerApp(async (plan) => {
+    const provider = listenerProvider(plan, {
+      getStatus: Effect.succeed({ state: "idle" }),
+      list: () => Effect.die("idle listener checks must not list containers"),
+      execStream: () => Stream.die("idle listener checks must not exec"),
+    });
+    const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
+    expect(result.checks).toEqual([]);
+    expect(result.skipped).toMatchObject([
+      { section: "app-listeners", reason: expect.stringContaining("idle") },
+    ]);
+  });
+});
+
 test("redacts authority advice before returning the structured doctor result", async () => {
   await withListenerApp(async (original) => {
     const web = original.services[ServiceName.make("web")];
@@ -185,7 +200,10 @@ test("selects the applied provider and runs only under --app", async () => {
     });
     expect(withApp.provider.checks.some((check) => check.name === "app-listener")).toBe(false);
     expect(Schema.encodeSync(DoctorReportSchema)(withApp).appListeners?.checks).toHaveLength(1);
-    expect(renderDoctorReport(withApp)).toContain("app-listeners:\napp-listener: pass");
+    expect(renderDoctorReport(withApp)).not.toContain("app-listener: pass");
+    expect(renderDoctorReport(withApp, undefined, { all: true })).toContain(
+      "app-listeners:\napp-listener: pass",
+    );
     expect(renderDoctorReportAsNdjson(withApp)).toContain('"listenerState":"listening"');
     expect(executions).toBe(1);
   });

@@ -131,7 +131,7 @@ const makeInfoLayer = () => {
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -224,7 +224,8 @@ describe("lando info never leaks secret values", () => {
     expect(text).not.toContain(SECRET_VALUE);
     expect(json).not.toContain(SECRET_VALUE);
     expect(json).toContain("postgres");
-    expect(result.services[0]?.creds?.password).toBe(REDACTED);
+    const creds = result.services[0]?.creds;
+    expect(creds !== undefined && "password" in creds ? creds.password : undefined).toBe(REDACTED);
   });
 });
 

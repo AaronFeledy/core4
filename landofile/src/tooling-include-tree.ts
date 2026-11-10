@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { Effect, Result, Schema } from "effect";
@@ -168,7 +169,7 @@ export const resolveEntries = Effect.fnUntraced(function* (
       paths.push(filePath, ...nested.paths);
       referencedFiles.push(...fragment.referencedFiles, ...nested.referencedFiles);
     }).pipe(
-      Effect.mapError((error) => attributeIncludeError(error, entry.origin)),
+      mapFailures((error) => attributeIncludeError(error, entry.origin)),
       Effect.result,
     );
     if (Result.isFailure(result)) {

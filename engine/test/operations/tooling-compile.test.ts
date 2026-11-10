@@ -3,7 +3,7 @@ import { Effect, Schema, Stream } from "effect";
 
 import { PortablePath, ToolingTaskInput, type ToolingTaskShape } from "@lando/sdk/schema";
 
-import { compileToolingInvocations } from "../../src/operations/tooling-compile.ts";
+import { admitAndCompileTooling as compileToolingInvocations } from "./compile-tooling-fixture.ts";
 
 const source = { path: "/app/.lando.yml", task: "task" } as const;
 

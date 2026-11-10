@@ -120,9 +120,10 @@ sources, and building the helper when the selected tests need it.
 
 | Command | Purpose |
 | --- | --- |
-| `bun run gate:pr` | Typecheck, lint, generated-output drift, boundaries, and guide drift against `origin/main` |
+| `bun run gate:pr` | Typecheck, lint, generated-output drift, test ownership, boundaries, and guide drift against `origin/main` |
 | `bun test` | Full test suite; live tests may have additional prerequisites |
-| `bun run test:unit` | Unsharded test pass excluding `*.integration.test.ts` |
+| `bun run test:unit` | Unsharded run of the CI unit file set: every `*.test.ts` outside the dedicated library, recipe, docs and nightly suites |
+| `bun run test:selection <id>` | Run one named CI selection from `scripts/test-selections.ts`, exactly as its workflow job does |
 | `bun run format` | Write Biome formatting changes |
 | `bun run codegen` | Regenerate catalog-owned sources and artifacts |
 | `bun run lint:guides` | Validate executable-guide structure and Landofile examples |

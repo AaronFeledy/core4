@@ -7,6 +7,7 @@ import * as EnvironmentValueResolverLayer from "@lando/engine/services/environme
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 
@@ -358,7 +359,7 @@ const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Cod
   }
 
   return Schema.decodeUnknownEffect(schema)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (decodeError) =>
         new CacheError({
           message: `Cached value for ${key} failed schema decode.`,

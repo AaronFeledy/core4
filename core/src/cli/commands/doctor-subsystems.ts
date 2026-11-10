@@ -27,6 +27,7 @@ import {
   certsCheckContext,
   certsSubsystemId,
 } from "./doctor-certs-status";
+import { idleGlobalProvider } from "./doctor-global-runtime";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
 import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
@@ -71,8 +72,10 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
   const resolver = yield* Effect.serviceOption(HostDnsResolver);
+  const idleProvider = yield* idleGlobalProvider;
 
-  const proxyChecks = proxy === undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
+  const proxyChecks =
+    proxy === undefined || idleProvider !== undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
   const certsCheck =
     certs._tag === "selected"
@@ -88,7 +91,16 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
           fix,
         );
   const sshChecks =
-    ssh === undefined ? [] : [yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix })];
+    ssh === undefined
+      ? []
+      : [
+          yield* sshAgentPostureCheck({
+            ...options.sshAgent,
+            sshService: ssh,
+            fix,
+            ...(idleProvider === undefined ? {} : { idleProvider }),
+          }),
+        ];
   const hostDnsChecks = Option.isNone(resolver)
     ? []
     : [yield* buildHostDnsCheck(fix).pipe(Effect.provideService(HostDnsResolver, resolver.value))];
@@ -97,11 +109,48 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
     checks: [
       ...proxyChecks,
       ...(certsCheck === undefined ? [] : [certsCheck]),
-      ...sshChecks,
+      ...sshChecks.flatMap((check): ReadonlyArray<DoctorSubsystemCheck> => {
+        if (check.context.sidecarSkipped !== "true") return [check];
+        const gpg = check.details?.gpg;
+        if (gpg === undefined) return [];
+        const ready = gpg.upstream.reachable && gpg.keyringExported;
+        return [
+          {
+            name: "gpg-agent",
+            status: ready ? "pass" : "warn",
+            severity: ready ? "info" : "warn",
+            recovery: "manual",
+            context: {
+              subsystem: "gpg-agent",
+              upstreamReachable: String(gpg.upstream.reachable),
+              keyringExported: String(gpg.keyringExported),
+            },
+            solutions: ready
+              ? []
+              : [
+                  {
+                    kind: "manual",
+                    description:
+                      "Restore your host GPG agent and public keyring export, then rerun `lando doctor`.",
+                  },
+                ],
+          },
+        ];
+      }),
       ...hostDnsChecks,
       ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
     ],
     skipped: [
+      ...(idleProvider === undefined
+        ? []
+        : [
+            "router",
+            ...(sshChecks.some((check) => check.context.sidecarSkipped === "true") ? ["ssh-sidecar"] : []),
+          ].map((section) => ({
+            section,
+            status: "skipped" as const,
+            reason: `Provider ${idleProvider} holding the global app is idle; readiness was not inspected.`,
+          }))),
       ...(certsCheck === undefined
         ? [
             {

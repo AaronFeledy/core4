@@ -79,7 +79,7 @@ describe("meta:recipes:list", () => {
 });
 
 describe("meta:recipes:describe", () => {
-  test.each(["toolbox", "rails"])(
+  test.each(["toolbox", "fastapi"])(
     "describes zero-option %s without an authored app-name prompt",
     async (id) => {
       const result = await runCli(["meta", "recipes", "describe", id, "--format", "json"]);

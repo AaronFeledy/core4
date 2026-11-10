@@ -22,10 +22,12 @@ export const sqlCommandFailure = (
     exitCode: evidence.exitCode,
     reason: evidence.reason,
     stderrTail: evidence.stderrTail,
+    ...(evidence.cause === undefined ? {} : { cause: evidence.cause }),
     remediation:
-      evidence.role === "cleanup"
-        ? "Inspect the service logs and resolve cleanup before retrying; the command may already have completed."
-        : "Inspect the service logs, then retry the import, export, or reset.",
+      (evidence.cause?.remediation ?? "Inspect the service logs, then retry the import, export, or reset.") +
+      (evidence.role === "cleanup"
+        ? " Resolve cleanup before retrying; the command may already have completed."
+        : ""),
   });
 
 // Explicit tiers keep public env values out of failure-tail redaction.

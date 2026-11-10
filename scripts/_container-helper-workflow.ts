@@ -6,6 +6,7 @@
 
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
+import { testSelectionCommand } from "./test-selections.ts";
 
 export const CONTAINER_HELPER_JOB_ID = "container-helper";
 export const CONTAINER_HELPER_ARM64_JOB_ID = "container-helper-arm64";
@@ -37,7 +38,7 @@ ${isolateLandoRootsStep}
       - name: Build and test the container helper with Lando
         run: |
           bun run scripts/build-container-helper.ts --test
-          bun test core/test/container-helper/helper.integration.test.ts
+          ${testSelectionCommand("container-helper")}
 
       - name: Upload container helper
         uses: actions/upload-artifact@v6
@@ -81,4 +82,4 @@ ${containerHelperDownloadStep}
         run: bun run codegen
 
       - name: Test the arm64 container helper
-        run: bun test core/test/container-helper/helper.integration.test.ts`;
+        run: ${testSelectionCommand("container-helper")}`;

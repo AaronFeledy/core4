@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { AppPlan, GlobalConfig, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
@@ -34,7 +35,7 @@ export const resolveStartAgentIntent = <Extension, Intent, Error>(
       target.landofile ??
       (eligible && Option.isSome(landofiles)
         ? yield* loadUserLandofileAt(landofiles.value, target.root).pipe(
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new config.error({
                   message: `Unable to resolve the current ${config.label} agent configuration.`,

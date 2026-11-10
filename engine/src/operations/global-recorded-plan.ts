@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { canonicalJson } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, NetworkingPlan, ServicePlan } from "@lando/sdk/schema";
@@ -128,7 +129,7 @@ export const composeGlobalRecordedPlan = Effect.fn("GlobalApp.composeRecordedPla
     if (!Object.hasOwn(desired.services, route.service) || retained.has(String(route.service))) continue;
     const refs = yield* accumulator
       .add(route, { key: `selected global route ${route.hostname}` })
-      .pipe(Effect.mapError((cause) => conflict(cause.message)));
+      .pipe(mapFailures((cause) => conflict(cause.message)));
     routeRefs[index] = refs;
   }
   for (const [index, route] of prior.routes.entries()) {
@@ -136,7 +137,7 @@ export const composeGlobalRecordedPlan = Effect.fn("GlobalApp.composeRecordedPla
     if (!retained.has(id) || !active.has(id) || disabled.has(id)) continue;
     const refs = yield* accumulator
       .add(route, { key: `retained global route for ${id}` })
-      .pipe(Effect.mapError((cause) => conflict(cause.message)));
+      .pipe(mapFailures((cause) => conflict(cause.message)));
     priorIndexes.set(
       index,
       refs.map((ref) => ref.index),

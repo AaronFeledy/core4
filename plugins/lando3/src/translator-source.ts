@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { parseLegacyLandofile } from "@lando/sdk/landofile";
 import type { ConfigTranslateDocument } from "@lando/sdk/schema";
@@ -30,7 +31,7 @@ export const parseSource =
         file,
         content: new TextDecoder().decode(document.bytes),
       }).pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           translateError(
             // Parser messages quote source text, which may contain unknown credentials.
             ports.redactor.redactString(

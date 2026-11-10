@@ -5,6 +5,7 @@ import {
   collectUrlCredentialValues,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { BunSelfReentryError, FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
 import { isSecretEnvName } from "@lando/sdk/secrets";
@@ -215,7 +216,7 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
       }),
     { ...captured, env: input.env ?? captured.env },
   ).pipe(
-    Effect.mapError((error) => {
+    mapFailures((error) => {
       const fields = {
         message: redactor.redactString(error.message),
         remediation: redactor.redactString(error.remediation),

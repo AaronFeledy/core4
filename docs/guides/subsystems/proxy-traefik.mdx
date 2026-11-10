@@ -26,8 +26,12 @@ the app's complete route configuration. Unchanged routes are checked immediately
 without rewriting their files or reissuing current certificates. This confirms
 routing configuration, not the HTTP status your app returns. Routes belong to the
 app folder, so the check also waits until Traefik drops routes that folder
-published under an earlier `name:`. Route files from development builds are
-outside that check; `lando doctor` reports them as `legacy-route-files`. See
+published under an earlier `name:`. Before startup, Lando also removes route files
+it recognizes as output from development builds that named files after the app,
+while preserving all referenced certificate and key files. A recognized route
+doesn't prove that those files still contain Lando's original bytes. This happens automatically on the
+next routed app start or when you run `lando setup`. Files Lando cannot identify
+stay in place; `lando doctor` reports both classes as `legacy-route-files`. See
 [Change an app's name](../landofile/app-name-edge-cases.mdx#change-an-apps-name).
 
 If Traefik cannot confirm the routes within 30 seconds, the command fails with

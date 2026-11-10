@@ -24,6 +24,8 @@ This part defines the single machine-readable deprecation contract for every pub
 
 `ListenerAuthority`, `ServicePlan.listenerAuthority`, and `ServiceFeatureContext.setListenerAuthority` replace the unreleased `startupFailureHint` and `setStartupFailureHint` contracts. The replacement requires updated public-surface fixtures, regenerated schema artifacts, and app-plan cache invalidation, not a deprecation cycle or compatibility adapter. Historical applied plans remain readable for observation and teardown without reconstructing authority.
 
+The unreleased `ToolingVarDefault` and `ToolingVarPrompt` schemas are removed without aliases or a deprecation cycle: a literal var replaces `{ default }`, and a declared flag or arg, or a `vars.<name>.sh` command, replaces `{ prompt }` (§8.5.3). The removal updates the public-surface fixture and schema artifacts.
+
 ### 18.2 The `DeprecationNotice` schema
 
 `DeprecationNotice` is an Effect Schema in `@lando/sdk`, re-exported by `@lando/core/schema`, and published through the §13.2 artifact set.

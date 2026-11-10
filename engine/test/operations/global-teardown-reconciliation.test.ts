@@ -20,7 +20,7 @@ const pending = [
 ] as const;
 
 for (const command of ["stop", "destroy"] as const) {
-  for (const mode of ["complete", "route-failure", "absent", "scoped"] as const) {
+  for (const mode of ["complete", "idle", "route-failure", "absent", "scoped"] as const) {
     test(`${command} clears only proven whole-app resource cleanup (${mode})`, async () => {
       const root = await mkdtemp(join(tmpdir(), "global-teardown-reconciliation-"));
       try {
@@ -28,6 +28,7 @@ for (const command of ["stop", "destroy"] as const) {
         const harness = await globalTeardownHarness(root, {
           ...(mode === "absent" ? {} : { plan: globalPlanAt(appRoot) }),
           routeFailure: mode === "route-failure",
+          ...(mode === "idle" ? { status: Effect.succeed({ state: "idle" as const }) } : {}),
         });
         const result = await Effect.runPromise(
           Effect.gen(function* () {
@@ -51,9 +52,9 @@ for (const command of ["stop", "destroy"] as const) {
         expect(result.outcome._tag).toBe(mode === "route-failure" ? "Failure" : "Success");
         expect(result.receipt.revision).toBe(3);
         expect(result.receipt.pending).toEqual(
-          mode === "complete"
+          mode === "complete" || (mode === "idle" && command === "destroy")
             ? [pending[3]]
-            : mode === "absent"
+            : mode === "absent" || mode === "idle"
               ? pending.filter((entry) => entry.phase !== "routes")
               : pending,
         );

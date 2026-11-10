@@ -274,10 +274,13 @@ for (const phase of phases) {
         expect(byTag(harness.events, "post-app-start")).toEqual([]);
         expect(cleanup).toEqual([]);
         const journal = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-        expect(journal.pending?.phase).toBe(
-          phase === "apply" || phase === "dependency-gate" ? "apply-intent" : "completed",
-        );
-        expect(journal.pending?.sessions).toMatchObject([{ name: "web/app-mount" }]);
+        if (phase === "apply" || phase === "dependency-gate") {
+          expect(journal.pending?.phase).toBe("apply-intent");
+          expect(journal.pending?.sessions).toMatchObject([{ name: "web/app-mount" }]);
+        } else {
+          // The provider applied the plan, so completing the attempt removed its journal.
+          expect(journal.pending).toBeNull();
+        }
         await Effect.runPromise(Scope.close(scope, Exit.void));
         expect(cleanup.sort()).toEqual(["gpg", "host-proxy", "ssh"]);
       } finally {
