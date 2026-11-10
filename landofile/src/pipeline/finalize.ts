@@ -187,12 +187,11 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   );
   const compose = firstComposeRejection(assembled);
   if (compose !== undefined) {
-    const path = compose.documentPath
-      .replace(/\[(\d+)\]/g, ".$1")
-      .split(".")
-      .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
     return yield* Effect.fail(
-      composeKeyRejectedError({ source: valueOriginAt(effectiveOrigins, path).source.file, match: compose }),
+      composeKeyRejectedError({
+        source: valueOriginAt(effectiveOrigins, compose.path).source.file,
+        match: compose,
+      }),
     );
   }
   rememberVersionConstraintEntries(assembled, constraints);

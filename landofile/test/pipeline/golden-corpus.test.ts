@@ -8,30 +8,9 @@ import { Effect, References, Schema } from "effect";
 import type { LandofileRuntimeInputs } from "../../src/ports.ts";
 import { loadLandofileLayers } from "../../src/service.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "../support.ts";
+import { Golden, goldenPath } from "./golden-corpus-expectation.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const goldenPath = join(repoRoot, "landofile/test/fixtures/golden-corpus-digests.json");
-const Valid = Schema.Struct({ digest: Schema.String });
-const Invalid = Schema.Struct({
-  invalid: Schema.Struct({ status: Schema.Literal("invalid"), tag: Schema.String }),
-});
-const Outcome = Schema.Union([Valid, Invalid]);
-const Golden = Schema.Struct({
-  fixtures: Schema.Array(
-    Schema.Union([
-      Schema.Struct({ fixture: Schema.String, ...Valid.fields }),
-      Schema.Struct({ fixture: Schema.String, ...Invalid.fields }),
-    ]),
-  ),
-  intended: Schema.Record(
-    Schema.String,
-    Schema.Struct({
-      before: Outcome,
-      after: Outcome,
-      reason: Schema.String.check(Schema.isMinLength(1)),
-    }),
-  ),
-});
 
 test("every guide app retains its encoded Landofile digest or tagged load failure", async () => {
   // Given
