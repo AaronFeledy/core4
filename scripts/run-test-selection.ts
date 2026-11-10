@@ -40,7 +40,7 @@ export const runTestSelection = async (
       ...(selection.args ?? []),
       ...files.map((path) => `./${path}`),
     ],
-    { cwd: root, env: process.env, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
+    { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   ).exited;
 };
 

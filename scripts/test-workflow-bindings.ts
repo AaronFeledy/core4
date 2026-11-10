@@ -3,9 +3,7 @@ import type { TestOwnershipIssue } from "./test-ownership.ts";
 import { type TestSelection, UNIT_SHARD_COUNT } from "./test-selections.ts";
 
 const record = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : undefined;
+  typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : undefined;
 
 interface WorkflowJob {
   readonly runs: readonly string[];
@@ -40,9 +38,11 @@ const parseJobs = (source: string): ReadonlyMap<string, WorkflowJob> => {
 };
 
 const invokes = (run: string, command: readonly string[]): boolean => {
-  const escaped = command.map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("[\\t ]+");
-  const environment = "(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|[^\\s;&|]+)[\\t ]+)*";
-  return new RegExp(`(?:^|[;&|\\n])[\\t ]*${environment}${escaped}(?=$|[\\s;&|])`, "mu").test(run);
+  const escaped = command
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+    .join(String.raw`[\t ]+`);
+  const environment = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s;&|]+)[\t ]+)*`;
+  return new RegExp(String.raw`(?:^|[;&|\n])[\t ]*${environment}${escaped}(?=$|[\s;&|])`, "mu").test(run);
 };
 
 export const checkWorkflowBindings = async (

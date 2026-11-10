@@ -1,3 +1,5 @@
+import { CI_PLATFORMS } from "./ci-platforms.ts";
+
 export interface TestSelection {
   readonly id: string;
   readonly paths: readonly string[];
@@ -14,16 +16,8 @@ export const NIGHTLY_TIER_TESTS = [
   "core/test/scripts/codegen-ci.test.ts",
   "core/test/build/linux-acceptance-criteria-10-14.test.ts",
 ] as const;
-const platforms = [
-  "darwin-arm64",
-  "darwin-x64",
-  "linux-arm64",
-  "linux-x64",
-  "windows-x64",
-  "windows-arm64",
-] as const;
-const builds = platforms.map((id) => ({ workflow: "ci.yml", job: `build-${id}` }));
-const providers = platforms.map((id) => ({
+const builds = CI_PLATFORMS.map(({ id }) => ({ workflow: "ci.yml", job: `build-${id}` }));
+const providers = CI_PLATFORMS.map(({ id }) => ({
   workflow: "ci.yml",
   job: `provider-integration-${id}${id === "linux-x64" ? "-runner" : ""}`,
 }));

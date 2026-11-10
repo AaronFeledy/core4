@@ -2,6 +2,7 @@
 import { relative, resolve } from "node:path";
 import { collectManifests } from "./boundary/graph.ts";
 import { PROVIDER_ACCEPTANCE_CELLS } from "./provider-matrix-plan.ts";
+import { checkInventoryOwnership } from "./test-ownership-check.ts";
 import {
   TEST_ROOT,
   collectTestFiles,
@@ -90,6 +91,7 @@ const inventorySnapshot = async (options: TestInventoryOptions) => {
       !path.startsWith("scripts/") &&
       !(path.startsWith("core/container-helper/") && path.endsWith("_test.go")),
   );
+  const unknownPaths = new Set(unknown);
   const resolved = selections.map((selection) => ({
     selection,
     files: new Set(resolveTestSelection(selection, files)),
@@ -107,7 +109,7 @@ const inventorySnapshot = async (options: TestInventoryOptions) => {
       )
         owners.push(check.id);
     }
-    if (!unknown.includes(path) && isUnitTest(path, selections)) owners.push("unit");
+    if (!unknownPaths.has(path) && isUnitTest(path, selections)) owners.push("unit");
     if (path in manual && owners.length === 0) owners.push("manual");
     const needs = [...new Set(selected.flatMap((selection) => (selection.needs ? [selection.needs] : [])))];
     if (manual[path]) needs.push(manual[path]);
@@ -126,7 +128,6 @@ export const collectTestInventory = async (
 
 export const checkTestOwnership = async (options: TestInventoryOptions = {}) => {
   const snapshot = await inventorySnapshot(options);
-  const { checkInventoryOwnership } = await import("./test-ownership-check.ts");
   const issues = await checkInventoryOwnership({
     ...snapshot,
     workflowRoot: options.workflowRoot ?? resolve(snapshot.root, ".github/workflows"),

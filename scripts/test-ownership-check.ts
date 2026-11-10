@@ -46,8 +46,9 @@ export const checkInventoryOwnership = async (input: {
         });
     }
   }
+  const files = new Set(input.files);
   for (const path of Object.keys(input.manual)) {
-    if (!input.files.includes(path))
+    if (!files.has(path))
       issues.push({
         code: "MANUAL_STALE",
         paths: [path],
