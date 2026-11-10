@@ -3,8 +3,8 @@ import { DateTime } from "effect";
 
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
-import { realizePodmanComposeKnobs } from "../src/podman/compose-knobs.ts";
 import type { EngineDialect } from "../src/dialect.ts";
+import { realizePodmanComposeKnobs } from "../src/podman/compose-knobs.ts";
 import {
   EMPTY_REALIZATION,
   KNOB_FIXTURES_BY_DIALECT,
