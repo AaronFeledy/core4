@@ -257,7 +257,7 @@ for (const domain of ["tomcat", "compose"] as const) {
     });
 
     if (domain === "compose") {
-      test("publishes and dispatches CI with unclassified key paths and the how-to link when the coverage gate fails", async () => {
+      test("publishes a report that leads with unclassified key paths and the how-to link when the coverage gate fails", async () => {
         // Given
         await using fixture = await createMaintenanceFixture({ domain, coverage: "unclassified" });
         // When
@@ -269,10 +269,13 @@ for (const domain of ["tomcat", "compose"] as const) {
         expect(commands).toContain(`gh pr create --base main --head ${fixture.branch}`);
         expect(commands).toContain(`gh workflow run ci.yml --ref ${fixture.branch}`);
         const body = await fixture.prBody();
-        expect(body).toContain(UNCLASSIFIED_PATH);
-        expect(body).toContain(
+        const listing = body.indexOf(UNCLASSIFIED_PATH);
+        const howTo = body.indexOf(
           `${fixture.serverUrl}/${fixture.repository}/blob/${fixture.branch}/docs/contributing/ci.md#finish-a-compose-bump`,
         );
+        expect(listing).toBeGreaterThan(body.indexOf(REPORT_START));
+        expect(howTo).toBeGreaterThan(listing);
+        expect(body.indexOf(DOMAIN_REPORT)).toBeGreaterThan(howTo);
       });
 
       test("omits the unclassified listing and how-to link when the coverage gate passes", async () => {
@@ -287,21 +290,6 @@ for (const domain of ["tomcat", "compose"] as const) {
         expect(body).not.toContain(UNCLASSIFIED_PATH);
         expect(body).not.toContain("#finish-a-compose-bump");
         expect(body).toContain(DOMAIN_REPORT);
-      });
-
-      test("places the classification section before the schema diff report", async () => {
-        // Given
-        await using fixture = await createMaintenanceFixture({ domain, coverage: "unclassified" });
-        // When
-        const result = await fixture.proposal(render());
-        // Then
-        expect(result.exitCode, result.stderr).toBe(0);
-        const body = await fixture.prBody();
-        const listing = body.indexOf(UNCLASSIFIED_PATH);
-        const howTo = body.indexOf("#finish-a-compose-bump");
-        expect(listing).toBeGreaterThan(body.indexOf(REPORT_START));
-        expect(howTo).toBeGreaterThan(listing);
-        expect(body.indexOf(DOMAIN_REPORT)).toBeGreaterThan(howTo);
       });
     }
 

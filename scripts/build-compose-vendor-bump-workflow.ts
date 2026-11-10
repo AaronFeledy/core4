@@ -45,7 +45,7 @@ if bun run check:compose-coverage > "$COVERAGE_OUTPUT" 2>&1; then
 else
   {
     printf '%s\\n\\n' '## Key path classification needed'
-    printf '%s\\n\\n' 'This PR cannot merge until \`bun run check:compose-coverage\` passes. Give each key path it lists a disposition in \`sdk/src/landofile/compose-dispositions.ts\`.'
+    printf '%s\\n\\n' 'This PR cannot merge until \`bun run check:compose-coverage\` passes. Fix what it reports in \`sdk/src/landofile/compose-dispositions.ts\`: give each unclassified key path a disposition and remove any entry it flags.'
     printf '%s\\n' '\`\`\`text'
     cat "$COVERAGE_OUTPUT"
     if [ -n "$(tail -c 1 "$COVERAGE_OUTPUT")" ]; then printf '\\n'; fi
