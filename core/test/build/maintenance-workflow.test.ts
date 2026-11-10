@@ -4,6 +4,9 @@ import { renderComposeVendorBumpWorkflow } from "../../../scripts/build-compose-
 import { renderTomcatBumpWorkflow } from "../../../scripts/build-tomcat-bump-workflow.ts";
 import { createMaintenanceFixture, workflowScripts } from "./support/maintenance-workflow-harness.ts";
 
+const REPORT_START = "<!-- maintenance-report:start -->";
+const REPORT_END = "<!-- maintenance-report:end -->";
+
 for (const domain of ["tomcat", "compose"] as const) {
   const render = domain === "tomcat" ? renderTomcatBumpWorkflow : renderComposeVendorBumpWorkflow;
   describe.skipIf(process.platform === "win32")(`${domain} generated maintenance shell`, () => {
@@ -88,6 +91,80 @@ for (const domain of ["tomcat", "compose"] as const) {
         expect(commands).not.toContain("gh workflow");
       });
     }
+
+    test("creates a new PR whose body is only the marked report", async () => {
+      // Given
+      await using fixture = await createMaintenanceFixture({ domain });
+      // When
+      const result = await fixture.proposal(render());
+      // Then
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(await fixture.prBody()).toBe(`${REPORT_START}\ncandidate report\n${REPORT_END}\n`);
+    });
+
+    for (const [name, existingPrBody, expected] of [
+      [
+        "keeps hand-written text around the marked report",
+        `Intro\nCloses #12\n\n${REPORT_START}\nstale report\n${REPORT_END}\n\nFooter`,
+        `Intro\nCloses #12\n\n${REPORT_START}\ncandidate report\n${REPORT_END}\n\nFooter\n`,
+      ],
+      [
+        "keeps CRLF hand-written text around the marked report",
+        `Intro\r\nCloses #12\r\n${REPORT_START}\r\nstale report\r\n${REPORT_END}\r\nFooter`,
+        `Intro\r\nCloses #12\r\n${REPORT_START}\ncandidate report\n${REPORT_END}\r\nFooter\n`,
+      ],
+      [
+        "replaces only the first marked report and keeps text between marker pairs",
+        `Intro\n${REPORT_START}\nstale report\n${REPORT_END}\nBetween\n${REPORT_START}\nquoted\n${REPORT_END}\nFooter`,
+        `Intro\n${REPORT_START}\ncandidate report\n${REPORT_END}\nBetween\n${REPORT_START}\nquoted\n${REPORT_END}\nFooter\n`,
+      ],
+      [
+        "keeps shell and printf metacharacters in hand-written text as data",
+        `$(touch pwned) \`id\` %s %d \\n * ? [a] 'q' "d"\n${REPORT_START}\nstale report\n${REPORT_END}\n$HOME \${BRANCH}; exit 9`,
+        `$(touch pwned) \`id\` %s %d \\n * ? [a] 'q' "d"\n${REPORT_START}\ncandidate report\n${REPORT_END}\n$HOME \${BRANCH}; exit 9\n`,
+      ],
+      [
+        "replaces a body whose end marker precedes its start marker",
+        `${REPORT_END}\nnotes\n${REPORT_START}`,
+        `${REPORT_START}\ncandidate report\n${REPORT_END}\n`,
+      ],
+      [
+        "replaces a legacy unmarked body with the marked report",
+        "stale report without markers",
+        `${REPORT_START}\ncandidate report\n${REPORT_END}\n`,
+      ],
+    ] as const) {
+      test(`existing PR edit ${name}`, async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, existingPr: true, existingPrBody });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(await fixture.commands()).toContain("gh pr view 71 --json body --jq .body");
+        expect(await fixture.prBody()).toBe(expected);
+      });
+    }
+
+    test("stops after a rejected PR body read without editing or dispatching", async () => {
+      // Given
+      const stderr = "GraphQL: Resource not accessible by integration (pullRequest)\n";
+      await using fixture = await createMaintenanceFixture({
+        domain,
+        existingPr: true,
+        ghFailure: { operation: "view", exitCode: 34, stderr },
+      });
+      // When
+      const result = await fixture.proposal(render());
+      // Then
+      expect(result.exitCode, result.stderr).toBe(34);
+      expect(result.stderr).toContain(stderr);
+      const commands = await fixture.commands();
+      expect(commands).toContain("gh pr view 71");
+      expect(commands).not.toContain("gh pr edit");
+      expect(commands).not.toContain("gh pr create");
+      expect(commands).not.toContain("gh workflow");
+    });
 
     test("reconciles pending updates without losing manual commits when no newer candidate exists", async () => {
       // Given
