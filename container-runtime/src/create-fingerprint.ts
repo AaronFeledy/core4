@@ -27,6 +27,13 @@ export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
 
 const CREATE_ARTIFACT_IDENTITY = "@lando/container-runtime/create-artifact";
 
+/** The artifact as container identity sees it: provenance metadata never recreates a container. */
+const artifactIdentity = (artifact: ServicePlan["artifact"]) => {
+  if (artifact?.kind !== "ref" || artifact.origin === undefined) return artifact;
+  const { origin: _origin, ...identity } = artifact;
+  return identity;
+};
+
 const artifactInputIdentity = (service: ServicePlan): string => {
   const features = service.extensions["@lando/core/service-features"];
   const steps =
@@ -35,7 +42,7 @@ const artifactInputIdentity = (service: ServicePlan): string => {
       : undefined;
   return sha256Hex(
     canonicalJson({
-      artifact: service.artifact,
+      artifact: artifactIdentity(service.artifact),
       buildSteps: Array.isArray(steps)
         ? steps.filter(
             (step: unknown) =>
@@ -105,7 +112,7 @@ export const createConfigFingerprint = (
   }
   const projection = {
     artifactProvenance: createArtifactIdentity(service),
-    artifact: service.artifact,
+    artifact: artifactIdentity(service.artifact),
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
     init: service.init,

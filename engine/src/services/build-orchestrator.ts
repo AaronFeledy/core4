@@ -105,6 +105,22 @@ const sourceIdentityMatches = (
   );
 };
 
+/**
+ * A recorded produced image is reusable only while it still exists locally. The `never` policy is a
+ * local lookup that cannot contact a registry; any failure there makes the entry a miss, and the
+ * rebuild that follows reports a genuine provider fault itself.
+ */
+const producedImagePresent = (
+  provider: RuntimeProviderShape,
+  complete: { readonly artifactRef?: string | undefined; readonly artifactOrigin?: "build" | undefined },
+): Effect.Effect<boolean> =>
+  complete.artifactOrigin !== "build" || complete.artifactRef === undefined
+    ? Effect.succeed(true)
+    : provider.pullArtifact({ ref: complete.artifactRef, policy: "never" }).pipe(
+        Effect.as(true),
+        Effect.catch(() => Effect.succeed(false)),
+      );
+
 const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (input: {
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly paths: Context.Service.Shape<typeof PathsService>;
@@ -157,7 +173,11 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         phase: step.phase,
         service: service.name,
       });
-      if (complete?.artifactRef !== undefined && sourceIdentityMatches(complete, service, sourceArtifact)) {
+      if (
+        complete?.artifactRef !== undefined &&
+        sourceIdentityMatches(complete, service, sourceArtifact) &&
+        (yield* producedImagePresent(provider, complete))
+      ) {
         yield* publishArtifactBuildStepSkip(events, context, step);
         const digest =
           complete.artifactDigest ??
@@ -168,6 +188,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
           providerId: plan.provider,
           ref: complete.artifactRef,
           ...(digest === undefined ? {} : { digest }),
+          ...(complete.artifactOrigin === undefined ? {} : { origin: complete.artifactOrigin }),
         });
         yield* progress.completeTask(service, `${String(service.name)} cached`);
         return cachedService;
@@ -218,6 +239,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         durationMs: performance.now() - started,
         artifactRef: artifact.ref,
         ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
+        ...(artifact.origin === undefined ? {} : { artifactOrigin: artifact.origin }),
         ...(service.artifact?.kind !== "ref"
           ? {}
           : {

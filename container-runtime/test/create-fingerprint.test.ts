@@ -408,6 +408,20 @@ describe("desired immutable create config", () => {
     expect(actual).toBe(fingerprint(before));
   });
 
+  test("ignores artifact provenance so marking a built image does not recreate its container", () => {
+    // Given the same built image before and after it carries its build provenance.
+    const built: ServicePlan = {
+      ...service,
+      artifact: { kind: "ref", ref: "lando-build-web", digest: "sha256:b" },
+    };
+    const marked: ServicePlan = {
+      ...built,
+      artifact: { kind: "ref", ref: "lando-build-web", digest: "sha256:b", origin: "build" },
+    };
+    // When / Then the create identity is unchanged.
+    expect(fingerprint(marked)).toBe(fingerprint(built));
+  });
+
   test("hashes desired secret references and literal config without consulting redaction state", () => {
     // Given authored secret references and a literal env-file-equivalent value.
     const desired = {

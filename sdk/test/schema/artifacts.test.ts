@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { Schema } from "effect";
 
-import { ArtifactBuildSpec } from "@lando/sdk/schema";
+import { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/schema";
 
 test("ArtifactBuildSpec accepts specInline", () => {
   const decoded = Schema.decodeUnknownSync(ArtifactBuildSpec)({
@@ -33,4 +33,12 @@ test("ArtifactBuildSpec rejects spec together with specInline", () => {
   for (const options of [{}, { onExcessProperty: "error" }] as const) {
     expect(() => Schema.decodeUnknownSync(ArtifactBuildSpec)(input, options)).toThrow();
   }
+});
+
+test("ArtifactRef carries only build provenance", () => {
+  const decode = Schema.decodeUnknownSync(ArtifactRef);
+  // A produced image keeps its provenance through a round trip; a legacy ref has none.
+  expect(decode({ kind: "ref", ref: "lando-build-web", origin: "build" }).origin).toBe("build");
+  expect(decode({ kind: "ref", ref: "nginx:1.27" }).origin).toBeUndefined();
+  expect(() => decode({ kind: "ref", ref: "nginx:1.27", origin: "registry" })).toThrow();
 });

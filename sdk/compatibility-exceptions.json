@@ -6230,5 +6230,17 @@
     "changeKind": "unsupported-construct",
     "path": "$.deploy.anyOf",
     "justification": "deploy.resources.reservations drops cpus and generic_resources. Compose applies both only to Swarm services, and the Landofile now rejects them at their roots with remediation before schema decode, so no accepted Landofile reaches the narrowed shape. Planned and applied state carries deploy only inside the untyped ServicePlan.extensions.compose record, and the provider edge decodes it without excess-property errors, so no persisted record changes meaning."
+  },
+  {
+    "surface": "schema:BuildPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.steps.items.artifact.anyOf",
+    "justification": "Issue #2251 adds optional origin: \"build\" to the ArtifactRef arm so bring-up never pulls an image a Lando build produced. The change is purely additive: every previously accepted artifact still decodes, origin is never required, and records without it keep registry semantics. Schema, build-orchestrator, image-ensure, and bring-up tests cover the marker."
+  },
+  {
+    "surface": "schema:BuildStep",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifact.anyOf",
+    "justification": "Issue #2251 adds optional origin: \"build\" to the ArtifactRef arm so bring-up never pulls an image a Lando build produced. The change is purely additive: every previously accepted artifact still decodes, origin is never required, and records without it keep registry semantics. Schema, build-orchestrator, image-ensure, and bring-up tests cover the marker."
   }
 ]

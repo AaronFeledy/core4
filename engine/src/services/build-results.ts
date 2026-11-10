@@ -4,7 +4,9 @@ import type { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
 
-const BUILD_RESULTS_VERSION = 1;
+// Version 2 records `artifactOrigin`; version 1 entries cannot tell a produced image from an acquired
+// source ref, so they are discarded and rebuilt once.
+const BUILD_RESULTS_VERSION = 2;
 const KEEP_COMPLETE = 10;
 const KEEP_FAIL = 5;
 
@@ -17,6 +19,8 @@ export const BuildResultEntry = Schema.Struct({
   durationMs: Schema.Number,
   artifactRef: Schema.optionalKey(Schema.String),
   artifactDigest: Schema.optionalKey(Schema.String),
+  /** `build` when the provider produced `artifactRef`; absent when the result is an acquired source ref. */
+  artifactOrigin: Schema.optionalKey(Schema.Literal("build")),
   sourceArtifactRef: Schema.optionalKey(Schema.String),
   sourceArtifactDigest: Schema.optionalKey(Schema.String),
   transcriptPath: AbsolutePath,
