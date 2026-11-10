@@ -102,6 +102,8 @@ services:
 
 `always` and `never` win over the command. `lando rebuild` does not pull a `never` service, and it does not fall back to a local copy for an `always` service. With `never`, put the image into your provider first, for example by building or loading it, or the command fails and names the image. When the service also sets `platform:`, Lando pulls that platform.
 
+An image Lando builds, from a `build:` section or from build steps on top of an image, exists only in your provider, so Lando never pulls it, whatever the policy. If it disappears, for example after you prune images, the next start fails, names the service and the image, and tells you to run `lando rebuild -s <service>` to build it again.
+
 `build` needs a Compose `build:` section, and `always` and `never` cannot be combined with one, because the build replaces the image. `build` reruns the build even when its inputs are unchanged, but the build still reuses cached layers and pulls the Dockerfile's `FROM` image only as the builder normally would. The timed Compose policies `daily`, `weekly`, `every_<interval>`, and `refresh` fail planning; use `always`, or run `lando rebuild` when you want a fresh image.
 
 ## See which Compose keys work

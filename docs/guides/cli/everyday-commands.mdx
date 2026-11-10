@@ -122,6 +122,19 @@ Use `lando start --format=json` to inspect the tagged error and remediation.
 Already-pulled images can still work without registry access; see
 [Work offline](../config/offline-dev.mdx).
 
+## Rebuild a missing Lando-built image
+
+Lando never pulls an image it built for a service, because no registry has it.
+If that image is gone, for example after you prune images, `lando start` fails
+before creating the container, names the service and the image, and suggests
+the fix. Run it from the app directory:
+
+```bash
+lando rebuild -s web
+```
+
+Replace `web` with the service the error names.
+
 ## Wait for another command to finish
 
 `start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
