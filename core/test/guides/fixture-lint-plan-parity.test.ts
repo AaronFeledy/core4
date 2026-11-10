@@ -57,7 +57,8 @@ for (const fixture of fixtures) {
         }),
         Effect.result,
       );
-      return { lint, declaration: declarations.at(-1) };
+      // Lint asks for the selected provider first; later queries look for remediation candidates.
+      return { lint, declaration: declarations[0] };
     }).pipe(Effect.provide(catalog), Effect.provide(testStateStoreLayer)),
   );
   if (Result.isSuccess(lint) && !lint.success.valid) {
