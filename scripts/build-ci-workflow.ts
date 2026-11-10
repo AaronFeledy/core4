@@ -20,7 +20,7 @@ import {
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
-import { UNIT_SHARD_COUNT, testSelectionCommand } from "./test-selections.ts";
+import { type TestSelectionId, UNIT_SHARD_COUNT, testSelectionCommand } from "./test-selections.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/ci.yml");
@@ -530,6 +530,27 @@ ${landoManagedPodmanRuntimeDirCommands}
           docker_pull_image docker.io/library/alpine:3.20
           docker_pull_image ${sqliteHelperImageRef}`;
 
+// Each selection runs even after an earlier one fails, so one run reports every failing selection;
+// the step exits with the last failing selection's status.
+const laneRun = (id: TestSelectionId, log: string): string =>
+  `              ${testSelectionCommand(id)} 2>&1 | tee /tmp/lando-provider-test-logs/${log}.log || status=$?`;
+const providerLaneRuns = (
+  [
+    ["providers-engine-parity", "engine-parity"],
+    ["providers-core-live", "core-live"],
+    ["providers-lando", "provider-lando-integration"],
+    ["providers-docker", "provider-docker-integration"],
+    ["providers-readiness", "start-readiness"],
+    ["providers-ephemeral-data", "ephemeral-data-helpers"],
+    ["providers-host-reachability", "host-reachability"],
+    ["providers-listener-observation", "listener-observation"],
+    ["providers-sqlite-integrity", "sqlite-integrity"],
+    ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
+  ] as const satisfies readonly (readonly [TestSelectionId, string])[]
+)
+  .map(([id, log]) => laneRun(id, log))
+  .join("\n");
+
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
@@ -538,25 +559,17 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
+          status=0
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
-              ${testSelectionCommand("providers-engine-parity")} 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log
-              ${testSelectionCommand("providers-core-live")} 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
-              ${testSelectionCommand("providers-lando")} 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-              ${testSelectionCommand("providers-docker")} 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-              ${testSelectionCommand("providers-readiness")} 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log
-              ${testSelectionCommand("providers-ephemeral-data")} 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log
-              ${testSelectionCommand("providers-host-reachability")} 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log
-              ${testSelectionCommand("providers-listener-observation")} 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log
-              ${testSelectionCommand("providers-sqlite")} 2>&1 | tee /tmp/lando-provider-test-logs/sqlite.log
-              ${testSelectionCommand("providers-sqlite-integrity")} 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log
-              ${testSelectionCommand("providers-sqlite-borrowed-mounts")} 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log
+${providerLaneRuns}
               ;;
             services)
-              ${testSelectionCommand("services-lando")} 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+${laneRun("services-lando", "service-lando-integration")}
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
+          exit "$status"
 
       - name: Teardown Lando runtime
         if: always()

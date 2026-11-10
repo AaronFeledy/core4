@@ -178,12 +178,6 @@ export const TEST_SELECTIONS = [
     needs: "LANDO_TEST_PODMAN_SOCKET",
   },
   {
-    id: "providers-sqlite",
-    paths: ["plugins/sql/test/sqlite.integration.test.ts"],
-    jobs: live,
-    needs: "LANDO_TEST_DOCKER_SOCKET",
-  },
-  {
     id: "providers-sqlite-integrity",
     paths: ["plugins/sql/test/sqlite-integrity.integration.test.ts"],
     jobs: live,

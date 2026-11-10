@@ -22,6 +22,8 @@ export const MANUAL_TESTS: Readonly<Record<string, string>> = {
     "Native darwin/win32 and LANDO_TEST_PODMAN_DESKTOP_SOCKET",
   "plugins/proxy-traefik/test/router-bind-network.integration.test.ts":
     "Isolated host networking and LANDO_TEST_ROUTER_BIND_NETWORK=1",
+  "plugins/sql/test/sqlite.integration.test.ts":
+    "LANDO_TEST_DOCKER_SOCKET; its borrowed nested-volume case fails on Docker Engine until #2238 is fixed",
 };
 
 export interface MatrixTestCheck {

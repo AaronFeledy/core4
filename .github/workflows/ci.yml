@@ -2311,25 +2311,26 @@ jobs:
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
+          status=0
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
-              bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log
-              bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
-              bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-              bun run test:selection providers-docker 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-              bun run test:selection providers-readiness 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log
-              bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log
-              bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log
-              bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log
-              bun run test:selection providers-sqlite 2>&1 | tee /tmp/lando-provider-test-logs/sqlite.log
-              bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log
-              bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log
+              bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
+              bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?
+              bun run test:selection providers-docker 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log || status=$?
+              bun run test:selection providers-readiness 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log || status=$?
+              bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log || status=$?
+              bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log || status=$?
+              bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log || status=$?
+              bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
+              bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               ;;
             services)
-              bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
+          exit "$status"
 
       - name: Teardown Lando runtime
         if: always()

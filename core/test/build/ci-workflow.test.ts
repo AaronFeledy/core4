@@ -1378,7 +1378,7 @@ describe("ci workflow", () => {
         };
         const providers = await runSuite("providers");
         expect(providers.status).toBe(0);
-        expect(providers.commands).toEqual([
+        const providerCommands = [
           "run test:selection providers-engine-parity",
           "run test:selection providers-core-live",
           "run test:selection providers-lando",
@@ -1387,16 +1387,16 @@ describe("ci workflow", () => {
           "run test:selection providers-ephemeral-data",
           "run test:selection providers-host-reachability",
           "run test:selection providers-listener-observation",
-          "run test:selection providers-sqlite",
           "run test:selection providers-sqlite-integrity",
           "run test:selection providers-sqlite-borrowed-mounts",
-        ]);
+        ];
+        expect(providers.commands).toEqual(providerCommands);
         const services = await runSuite("services");
         expect(services.status).toBe(0);
         expect(services.commands).toEqual(["run test:selection services-lando"]);
         const failed = await runSuite("providers", 23);
         expect(failed.status).toBe(23);
-        expect(failed.commands).toEqual(["run test:selection providers-engine-parity"]);
+        expect(failed.commands).toEqual(providerCommands);
         expect(failed.stream).toContain("simulated Bun stderr");
         const unknown = await runSuite("unknown");
         expect(unknown.status).toBe(1);
