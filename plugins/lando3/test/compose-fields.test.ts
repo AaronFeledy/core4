@@ -212,9 +212,12 @@ describe("Compose field lowering", () => {
     });
   });
 
-  test.each(["gpus", "deploy"])("warns when fragile capability %s is preserved", (key) => {
+  test.each([
+    ["gpus", "all"],
+    ["deploy", { resources: { limits: { cpus: "0.5" } } }],
+  ])("warns when fragile capability %s is preserved", (key, value) => {
     // Given
-    const input = { [key]: "requested" };
+    const input = { [key]: value };
     // When
     const result = lowerComposeFields(input, ctx, options);
     // Then

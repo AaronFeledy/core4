@@ -52,6 +52,14 @@ const captureInvalid = (
   return calls;
 };
 
+/** Issue paths the untyped-extensions guard reports, e.g. "deploy.resources.limits.cpus". */
+const invalidPaths = (call: InvalidCall | undefined): ReadonlyArray<string> => {
+  const issues = call?.details.issues;
+  return Array.isArray(issues)
+    ? issues.map((issue: { readonly path?: ReadonlyArray<PropertyKey> }) => (issue.path ?? []).join("."))
+    : [];
+};
+
 const BOOLEAN_KNOBS = [
   ["privileged", "Privileged"],
   ["read_only", "ReadonlyRootfs"],
@@ -130,7 +138,8 @@ describe("podman Compose runtime knob value coercion", () => {
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.details).toMatchObject({ knob: "ulimits", bound: "soft" });
+    expect(calls[0]?.details).toMatchObject({ knobs: ["ulimits"] });
+    expect(invalidPaths(calls[0])).toContain("ulimits.nofile.soft");
   });
 
   test("Given null, numeric, and boolean sysctls, when realized, then each is stringified", () => {
@@ -141,12 +150,28 @@ describe("podman Compose runtime knob value coercion", () => {
     });
   });
 
-  for (const stopGracePeriod of [0.5, -1, Number.MAX_SAFE_INTEGER + 1]) {
+  for (const dialect of ["libpod", "docker"] as const) {
+    for (const [stopGracePeriod, timeout] of [
+      [0.4, 0],
+      [0, 0],
+      [-0, 0],
+      [2.9, 2],
+    ] as const) {
+      test(`Given stop_grace_period ${stopGracePeriod}, when realized for ${dialect}, then StopTimeout is ${timeout} whole seconds`, () => {
+        const { topLevel } = realize({ stop_grace_period: stopGracePeriod }, dialect);
+
+        expect(topLevel).toEqual({ StopTimeout: timeout });
+        expect(Object.is(topLevel.StopTimeout, -0)).toBe(false);
+      });
+    }
+  }
+
+  for (const stopGracePeriod of [-0.5, -1, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY]) {
     test(`Given stop_grace_period ${stopGracePeriod}, when realized, then onInvalid rejects it`, () => {
       const calls = captureInvalid({ stop_grace_period: stopGracePeriod });
 
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.details).toMatchObject({ knob: "stop_grace_period", value: stopGracePeriod });
+      expect(calls[0]?.details).toMatchObject({ knobs: ["stop_grace_period"] });
     });
   }
 
@@ -155,7 +180,7 @@ describe("podman Compose runtime knob value coercion", () => {
       const calls = captureInvalid({ shm_size: shmSize });
 
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.details).toMatchObject({ knob: "shm_size", value: shmSize });
+      expect(calls[0]?.details).toMatchObject({ knobs: ["shm_size"] });
     });
   }
 
@@ -265,7 +290,7 @@ describe("Compose deploy.resources and GPU realization", () => {
     const calls = captureInvalid({ deploy: { resources } });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.details).toMatchObject({ knob: "deploy.resources", field });
+    expect(invalidPaths(calls[0])).toContain(`deploy.resources.${field}`);
   });
 
   test("Given gpus all, when realized for docker, then one request asks for every GPU", () => {
@@ -308,6 +333,6 @@ describe("Compose deploy.resources and GPU realization", () => {
     const calls = captureInvalid({ gpus: [{ count: "some" }] }, "docker");
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.details).toMatchObject({ knob: "gpus", value: "some" });
+    expect(invalidPaths(calls[0])).toContain("gpus.0.count");
   });
 });

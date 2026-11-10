@@ -86,7 +86,7 @@ const SHARED_KNOB_FIXTURES = {
     expected: inTopLevel({ StopSignal: "SIGUSR1" }),
   },
   stop_grace_period: {
-    input: { stop_grace_period: 30 },
+    input: { stop_grace_period: 30.9 },
     expected: inTopLevel({ StopTimeout: 30 }),
   },
   security_opt: {

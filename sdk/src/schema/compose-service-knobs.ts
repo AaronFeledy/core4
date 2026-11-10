@@ -82,7 +82,7 @@ export const ComposeServiceKnobFields = {
   ulimits: Schema.optionalKey(
     describeEncodedField(
       ComposeUlimitsField,
-      "Process limits as integer or string scalars, or explicit soft and hard objects; canonicalized to a map of soft and hard limit objects.",
+      "Process limits as integers or integer strings, or explicit soft and hard objects; canonicalized to a map of soft and hard limit objects.",
     ),
   ).annotate({
     description: "Process resource limits; scalar limits canonicalize to explicit soft and hard values.",
