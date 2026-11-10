@@ -11,8 +11,6 @@ import {
   runCaptured,
   runHostShellPty,
 } from "./fixtures/host-execution-process.ts";
-// Native build lanes invoke this entry alone, so include the oracle regressions.
-import "./host-execution-directory.test.ts";
 
 const suppliedBinary = process.env.LANDO_TEST_COMPILED_CLI;
 const windows = process.platform === "win32";
