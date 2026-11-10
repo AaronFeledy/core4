@@ -187,9 +187,9 @@ const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.lit
   (key): key is PodmanKnobKey => Object.hasOwn(PODMAN_COMPOSE_KNOB_REGISTRY, key),
 );
 
-/** Capabilities come from the realizers, never a provider-maintained allowlist. */
 export { resourceControlIssue } from "./compose-knobs-values.ts";
 
+/** Capabilities come from the realizers, never a provider-maintained allowlist. */
 export const composeKnobsForDialect = (dialect: EngineDialect): ReadonlyArray<ComposeServiceKnobKey> =>
   PODMAN_KNOB_KEYS.filter((key) => PODMAN_COMPOSE_KNOB_REGISTRY[key].dialects.includes(dialect));
 
@@ -222,18 +222,19 @@ const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanCompo
   });
 };
 
-/**
- * The provider-neutral knob intent: revalidated canonical values for every
- * declared knob, independent of the engine dialect that later realizes them.
- */
-const composeKnobIntent = (service: ServicePlan, onInvalid: InvalidKnob): PodmanComposeKnobValues =>
-  serviceKnobValues(service, (message, details) => onInvalid(message, { service: service.name, ...details }));
-
 const KNOB_TYPE_AST = Schema.toType(PodmanComposeKnobs).ast;
 
-/** Knob intent as container identity: inert `x-*` extension metadata does not participate. */
+/**
+ * Provider-neutral knob intent as container identity, independent of the engine dialect that
+ * later realizes it: inert `x-*` extension metadata does not participate.
+ */
 export const composeKnobIdentity = (service: ServicePlan, onInvalid: InvalidKnob): unknown =>
-  withoutInertExtensions(KNOB_TYPE_AST, composeKnobIntent(service, onInvalid));
+  withoutInertExtensions(
+    KNOB_TYPE_AST,
+    serviceKnobValues(service, (message, details) =>
+      onInvalid(message, { service: service.name, ...details }),
+    ),
+  );
 
 export const realizePodmanComposeKnobs = (
   service: ServicePlan,

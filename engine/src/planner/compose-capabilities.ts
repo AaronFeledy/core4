@@ -34,7 +34,7 @@ export interface ProviderAlternative {
 }
 
 /** The selected provider plus every installed provider's offline capability declaration. */
-export interface CapabilityContext {
+interface CapabilityContext {
   readonly provider: ProviderId;
   readonly capabilities: ProviderCapabilities;
   readonly alternatives: ReadonlyArray<ProviderAlternative>;
