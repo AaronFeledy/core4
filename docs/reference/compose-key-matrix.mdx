@@ -24,7 +24,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 2 | 11 |
-| Service keys | 57 | 82 | 110 | 249 |
+| Service keys | 57 | 75 | 112 | 244 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -74,11 +74,11 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `cpu_rt_period` | rejected | — | Remove cpu_rt_period. |
 | `cpu_rt_runtime` | rejected | — | Remove cpu_rt_runtime. |
 | `cpu_shares` | rejected | — | Remove cpu_shares. |
-| `cpus` | rejected | — | Remove cpus. |
+| `cpus` | rejected | — | Remove cpus and set deploy.resources.limits.cpus instead. |
 | `cpuset` | rejected | — | Remove cpuset. |
 | `credential_spec` | rejected | — | Remove credential_spec. |
 | [`depends_on`](#depends_on) | normalized | 5 | Normalizes into `ServicePlan.dependsOn` |
-| [`deploy`](#deploy) | preserved | 34 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`deploy`](#deploy) | preserved | 29 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `develop` | rejected | — | Remove develop. Lando shares your project with a service through its app mount (appMount), so no watch rule is needed. |
 | `device_cgroup_rules` | rejected | — | Remove device_cgroup_rules. |
 | [`devices`](#devices) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
@@ -106,8 +106,8 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `links` | rejected | — | Remove links. Services in one app reach each other by service key; to join another network, declare it under top-level networks: and list it on the service. |
 | [`logging`](#logging) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `mac_address` | rejected | — | Remove mac_address. |
-| `mem_limit` | rejected | — | Remove mem_limit. |
-| `mem_reservation` | rejected | — | Remove mem_reservation. |
+| `mem_limit` | rejected | — | Remove mem_limit and set deploy.resources.limits.memory instead. |
+| `mem_reservation` | rejected | — | Remove mem_reservation and set deploy.resources.reservations.memory instead. |
 | `mem_swappiness` | rejected | — | Remove mem_swappiness. |
 | `memswap_limit` | rejected | — | Remove memswap_limit. |
 | `models` | rejected | — | Remove models. |
@@ -116,7 +116,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `oom_kill_disable` | rejected | — | Remove oom_kill_disable. |
 | `oom_score_adj` | rejected | — | Remove oom_score_adj. |
 | `pid` | rejected | — | Remove pid. |
-| `pids_limit` | rejected | — | Remove pids_limit. |
+| `pids_limit` | rejected | — | Remove pids_limit and set deploy.resources.limits.pids instead. |
 | `platform` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | [`ports`](#ports) | normalized | 8 | Normalizes into `ServicePlan.endpoints` |
 | `post_start` | rejected | — | Remove post_start. Run the command from a post-start event instead: list it under events: post-start with cmd: and service:. |
@@ -225,7 +225,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `deploy.resources.limits.pids` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.limits.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.reservations` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.cpus` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.cpus` | rejected | Remove deploy.resources.reservations.cpus. To cap CPU use, set deploy.resources.limits.cpus. |
 | `deploy.resources.reservations.devices` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.reservations.devices.capabilities` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.reservations.devices.count` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
@@ -234,12 +234,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `deploy.resources.reservations.devices.options` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.reservations.devices.options.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.reservations.devices.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.generic_resources` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.generic_resources.discrete_resource_spec` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.generic_resources.discrete_resource_spec.kind` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.generic_resources.discrete_resource_spec.value` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.generic_resources.discrete_resource_spec.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `deploy.resources.reservations.generic_resources.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources` | rejected | Remove deploy.resources.reservations.generic_resources. To reserve a device such as a GPU, list it under deploy.resources.reservations.devices. |
 | `deploy.resources.reservations.memory` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.reservations.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `deploy.resources.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
