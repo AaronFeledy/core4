@@ -213,7 +213,7 @@ Bootstrap levels for these commands are declared once in the §8.1 command regis
 | `meta:global:info` | `global:info` | Report service information; supports `--service` and `--format`. |
 | `meta:global:list` | `global:list` | Report revision, eligibility and policy source for current contributions, declared command ids, and retained owner policies without provider runtime construction. JSON is the canonical machine shape. |
 | `meta:global:logs` | `global:logs` | Stream logs with standard service, follow, tail, and since filters. |
-| `meta:global:rebuild` | `global:rebuild` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); referenced artifacts refresh under §6.13.3 and build results follow §6.13.5. |
+| `meta:global:rebuild` | `global:rebuild` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); referenced artifacts follow the authored acquisition policy and refresh rules in §6.13.3 and build results follow §6.13.5. |
 | `meta:global:reconcile` | `global:reconcile` | Preserve policy, record missing defaults, retry pending cleanup, and regenerate eligible configuration. Never starts services. |
 | `meta:global:restart` | `global:restart` | Stop, then start, then router startup revalidation (§20.6.5). |
 | `meta:global:start` | `global:start` | Start all eligible enabled services or repeated `--service` selections with their dependencies, then publish routes (§20.6.5). Never changes explicit policy. |

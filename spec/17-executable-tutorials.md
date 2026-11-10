@@ -149,6 +149,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - Markdown remains the dominant reader surface.
 - Event assertions reference the canonical event registry.
 - Tabs do not nest and every tab or per-cell override resolves to a declared axis value.
+- Fixture Landofiles without an expect-invalid marker pass native authoring validation. A reasoned expect-invalid marker appears on line 1 and is rejected if the fixture passes that validation.
 
 A binding diagnostic MUST name the guide source path and line, the scenario and resolved variant, and a remediation, and MAY name the related declaration line. It MUST NOT print bound values. Every failure includes a copy-pasteable rerun command (§19.12).
 
