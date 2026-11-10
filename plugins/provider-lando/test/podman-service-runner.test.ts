@@ -276,7 +276,9 @@ describe("PodmanServiceRunner", () => {
         spec.command,
         ...spec.args,
       ]);
-      expect(await Effect.runPromise(runner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false))).toBe(true);
+      expect(await Effect.runPromise(runner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false))).toBe(
+        true,
+      );
       const environ = (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0");
       expect(environ).toContain("XDG_RUNTIME_DIR=/private/scope-runtime");
       const outer = await readFile(launcherEnv, "utf8");
@@ -285,7 +287,9 @@ describe("PodmanServiceRunner", () => {
 
       // And the exit observer still belongs to the launched PID.
       await Effect.runPromise(runner.terminate(pid));
-      expect(await Effect.runPromise(runner.waitForExit?.(pid) ?? Effect.die("exit observer missing"))).not.toBe(0);
+      expect(
+        await Effect.runPromise(runner.waitForExit?.(pid) ?? Effect.die("exit observer missing")),
+      ).not.toBe(0);
     } finally {
       if (previousBus === undefined) Reflect.deleteProperty(process.env, "DBUS_SESSION_BUS_ADDRESS");
       else process.env.DBUS_SESSION_BUS_ADDRESS = previousBus;

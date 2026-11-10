@@ -64,8 +64,8 @@ describe("declared deploy.resources", () => {
   test("declaring it keeps every other libpod knob", () => {
     const base = declaredProviderLandoCapabilities("linux", "x64", host(false));
     const declared = withResourceControl(base, { declared: true });
-    expect(declared.composeKnobs?.supported.filter((key) => key !== "deploy.resources")).toEqual(
-      base.composeKnobs?.supported ?? [],
+    expect(new Set(declared.composeKnobs?.supported)).toEqual(
+      new Set([...(base.composeKnobs?.supported ?? []), "deploy.resources"]),
     );
   });
 });

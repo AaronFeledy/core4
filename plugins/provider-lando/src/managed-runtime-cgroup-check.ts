@@ -37,15 +37,16 @@ const runningContainerPidsOverSocket: RunningContainerPids = (socketPath, env) =
   return request({ method: "GET", path: "/libpod/containers/json" }).pipe(
     Effect.flatMap((response) =>
       response.status >= 200 && response.status < 300
-        ? Schema.decodeUnknownEffect(RunningContainers)(response.body)
-        : Effect.fail(response),
-    ),
-    Effect.map((containers) =>
-      containers.flatMap((container) =>
-        container.State === "running" && container.Pid !== undefined && container.Pid > 0
-          ? [container.Pid]
-          : [],
-      ),
+        ? Schema.decodeUnknownEffect(RunningContainers)(response.body).pipe(
+            Effect.map((containers): ReadonlyArray<number> | undefined =>
+              containers.flatMap((container) =>
+                container.State === "running" && container.Pid !== undefined && container.Pid > 0
+                  ? [container.Pid]
+                  : [],
+              ),
+            ),
+          )
+        : Effect.succeed(undefined),
     ),
     Effect.timeout("5 seconds"),
     Effect.catch(() => Effect.succeed(undefined)),

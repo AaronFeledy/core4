@@ -14,7 +14,7 @@ interface FakeHost {
   readonly executables?: ReadonlyArray<string>;
   readonly files?: Readonly<Record<string, string>>;
   readonly owners?: Readonly<Record<string, number>>;
-  readonly uid?: number;
+  readonly uid?: number | undefined;
 }
 
 const eligibleFiles: Readonly<Record<string, string>> = {
