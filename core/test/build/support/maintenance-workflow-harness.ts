@@ -26,9 +26,8 @@ export type MaintenanceScenario = {
   readonly mode?: "current" | "changed" | "checks-fail" | "update-fail" | "report-fail" | "dispatch-fail";
   readonly pending?: "bump" | "manual-only";
   readonly existingPr?: boolean;
-  readonly existingPrBody?: string;
   readonly ghFailure?: {
-    readonly operation: "list" | "view" | "create" | "edit";
+    readonly operation: "list" | "create" | "edit";
     readonly exitCode: number;
     readonly stderr: string;
   };
@@ -43,7 +42,6 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
   const bin = join(root, "bin");
   const runnerTemp = join(root, "runner-temp");
   const log = join(root, "commands");
-  const prBody = join(root, "pr-body");
   const branch = `automation/${scenario.domain === "tomcat" ? "tomcat" : "compose-go"}-bump`;
   const owned =
     scenario.domain === "tomcat" ? "plugins/service-lando/tomcat/pins.json" : "vendor/compose/pin.json";
@@ -66,8 +64,6 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     LOG: log,
     MODE: scenario.mode ?? "changed",
     EXISTING_PR: scenario.existingPr ? "71" : "",
-    EXISTING_PR_BODY: scenario.existingPrBody ?? "",
-    PR_BODY: prBody,
     GH_FAILURE_OPERATION: scenario.ghFailure?.operation ?? "",
     GH_FAILURE_EXIT_CODE: String(scenario.ghFailure?.exitCode ?? 0),
     GH_FAILURE_STDERR: scenario.ghFailure?.stderr ?? "",
@@ -145,13 +141,6 @@ fi
 case "$1 $2" in
   'api --paginate') printf '%s\\n' "$TAGS" ;;
   'pr list') printf '%s' "$EXISTING_PR" ;;
-  'pr view') printf '%s\\n' "$EXISTING_PR_BODY" ;;
-  'pr create'|'pr edit')
-    previous=''
-    for argument in "$@"; do
-      if [ "$previous" = --body-file ]; then cp "$argument" "$PR_BODY"; fi
-      previous="$argument"
-    done ;;
   'workflow run') if [ "$MODE" = dispatch-fail ]; then exit 37; fi ;;
   'issue list') test -n "$GH_REPO"; printf '%s' "$ISSUES" | jq -r "\${@: -1}" ;;
 esac`,
@@ -207,7 +196,6 @@ esac`,
         });
       },
       commands: () => Bun.file(log).text(),
-      prBody: () => Bun.file(prBody).text(),
       [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true }),
     };
   } catch (error) {
