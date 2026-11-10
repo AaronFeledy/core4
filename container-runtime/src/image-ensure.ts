@@ -12,7 +12,7 @@ import type {
   ProviderErrorContext,
 } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
-import { type PullImageOptions, inspectRequest, pullImage } from "./image-pull.ts";
+import { type PullImageOptions, inspectRequest, neverPullRemediation, pullImage } from "./image-pull.ts";
 import { redactDetails, redactResponseDetails, redactorFor } from "./redact.ts";
 
 export interface EnsureImageOptions<E = never> {
@@ -20,6 +20,8 @@ export interface EnsureImageOptions<E = never> {
   readonly dialect: PullDialect;
   readonly force?: boolean;
   readonly platform?: string;
+  /** The service's acquisition intent; `never` forbids every pull, including a forced one. */
+  readonly pullPolicy?: ServicePlan["pullPolicy"];
   readonly publish?: PullImageOptions<E>["publish"];
 }
 
@@ -102,6 +104,25 @@ const localBuildPlatformError = (
       "Rebuild the image for the pinned platform, or delete the local tag so Lando can pull the matching registry image.",
   });
 
+const neverPullError = (
+  ctx: ProviderErrorContext,
+  reference: string,
+  problem: { readonly message: string; readonly remediation: string },
+): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: ctx.providerId,
+    operation: "apply",
+    message: problem.message,
+    details: redactDetails({ reference, pullPolicy: "never" }, redactorFor(ctx)),
+    remediation: problem.remediation,
+  });
+
+const missingLocalImage = (ctx: ProviderErrorContext, reference: string): ProviderUnavailableError =>
+  neverPullError(ctx, reference, {
+    message: `Container image ${reference} is not present locally, and pull_policy: never forbids pulling it.`,
+    remediation: neverPullRemediation(reference),
+  });
+
 const inspectFailure = (ctx: ProviderErrorContext, response: EngineHttpResponse): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: ctx.providerId,
@@ -130,10 +151,15 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
   if (platform !== undefined && pin === undefined) {
     return yield* Effect.fail(unparseablePlatformError(options.ctx, platform));
   }
-  if (options.force === true) return yield* pull(api, reference, options);
+  const pullAllowed = options.pullPolicy !== "never";
+  if (options.force === true) {
+    if (!pullAllowed) return yield* Effect.fail(missingLocalImage(options.ctx, reference));
+    return yield* pull(api, reference, options);
+  }
 
   const inspectResponse = yield* request(api, options.ctx, inspectRequest(options.dialect, reference));
   if (inspectResponse.status === 404) {
+    if (!pullAllowed) return yield* Effect.fail(missingLocalImage(options.ctx, reference));
     yield* pull(api, reference, options);
     return;
   }
@@ -147,6 +173,13 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
   });
   if (inspectMatchesPlatform(decoded, pin)) return;
   if (inspectRepoDigests(decoded).length > 0) {
+    if (!pullAllowed)
+      return yield* Effect.fail(
+        neverPullError(options.ctx, reference, {
+          message: `Local image ${reference} is ${localPlatformLabel(decoded)} but the service pins ${platform}, and pull_policy: never forbids pulling it.`,
+          remediation: `Load ${reference} for ${platform} into the container engine, or remove pull_policy: never so Lando can pull the matching image.`,
+        }),
+      );
     yield* pull(api, reference, options);
     return;
   }
@@ -156,7 +189,7 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
 export const makeEnsureImage =
   <E = never>(
     api: EngineHttpApi,
-    options: Omit<EnsureImageOptions<E>, "force" | "platform">,
+    options: Omit<EnsureImageOptions<E>, "force" | "platform" | "pullPolicy">,
   ): ((input: {
     readonly service: ServicePlan;
     readonly ref: string;
@@ -168,5 +201,6 @@ export const makeEnsureImage =
       ...options,
       force,
       ...(platform === undefined ? {} : { platform }),
+      ...(service.pullPolicy === undefined ? {} : { pullPolicy: service.pullPolicy }),
     });
   };

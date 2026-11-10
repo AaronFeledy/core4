@@ -1,10 +1,8 @@
 import { Context, DateTime, Effect, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
-import type { ArtifactRef, ProviderError } from "@lando/sdk/services";
+import type { ArtifactRef } from "@lando/sdk/services";
 import {
   BuildOrchestrator,
   EventService,
@@ -16,7 +14,6 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
-import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
@@ -30,6 +27,7 @@ import { findCompleteBuildResult, openScratchBuildResults, recordBuildResult } f
 import { type BuildTaskProgress, makeBuildTaskProgress } from "./build-task-progress.ts";
 import { makeBuildTranscriptPath } from "./build-transcript.ts";
 import { registerPlanRedaction } from "./plan-redaction.ts";
+import { resolveSourceArtifact } from "./source-artifact.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
@@ -80,55 +78,6 @@ const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBu
     buildKey: step.buildKey,
     scratch: isScratchPlan(plan),
   });
-
-const resolveSourceArtifact = (
-  provider: RuntimeProviderShape,
-  service: ServicePlan,
-  options: {
-    readonly refresh: boolean;
-    readonly events: Context.Service.Shape<typeof EventService>;
-    readonly redactor: Pick<Redactor, "redactString">;
-  },
-): Effect.Effect<ArtifactRef | undefined, ProviderError> => {
-  const artifact = service.artifact;
-  if (artifact?.kind !== "ref") return Effect.succeed(undefined);
-  if (!provider.capabilities.artifactPull) {
-    return Effect.succeed(
-      artifact.digest === undefined
-        ? undefined
-        : { providerId: service.provider, ref: artifact.ref, digest: artifact.digest },
-    );
-  }
-  if (!options.refresh) return provider.pullArtifact({ ref: artifact.ref, policy: "missing" });
-  return provider.pullArtifact({ ref: artifact.ref, policy: "always" }).pipe(
-    Effect.catch((error) =>
-      provider.pullArtifact({ ref: artifact.ref, policy: "never" }).pipe(
-        Effect.catch(() => Effect.fail(error)),
-        Effect.tap(() =>
-          Effect.gen(function* () {
-            const message = options.redactor.redactString(
-              `Couldn't refresh ${artifact.ref}, so ${service.name} uses the local copy. ${error.message}`,
-            );
-            yield* recordCommandWarning({
-              code: "LANDO_ARTIFACT_REFRESH_FAILED",
-              message,
-              remediation: "Rebuild again once the registry is reachable to pick up updated images.",
-              context: {
-                service: String(service.name),
-                artifact: options.redactor.redactString(artifact.ref),
-                cause: error._tag,
-              },
-            });
-            if (yield* commandWarningsUseMachineOutput) return;
-            yield* options.events
-              .publish(MessageWarnEvent.make({ body: message, timestamp: yield* timestamp }))
-              .pipe(Effect.catch(() => Effect.void));
-          }),
-        ),
-      ),
-    ),
-  );
-};
 
 const serviceWithResolvedDigest = (
   service: ServicePlan,
@@ -201,7 +150,8 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
       bucket === undefined
         ? undefined
         : yield* bucket.get.pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
-    if (bucket !== undefined) {
+    // pull_policy: build runs the build every time, so a recorded scratch result is never reused.
+    if (bucket !== undefined && service.pullPolicy !== "build") {
       const complete = findCompleteBuildResult(cached ?? [], {
         buildKey: step.buildKey,
         phase: step.phase,

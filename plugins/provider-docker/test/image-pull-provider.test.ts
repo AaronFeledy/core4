@@ -259,6 +259,22 @@ describe("provider-docker pullArtifact", () => {
     expect(fake.requests).toEqual([`GET /images/${encodeURIComponent(mailpitRef)}/json`]);
   });
 
+  test("forwards the requested platform on an artifact pull", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+
+    // When
+    await Effect.runPromise(
+      provider.pullArtifact({ ref: mailpitRef, policy: "always", platform: "linux/arm64" }),
+    );
+
+    // Then
+    expect(fake.requests).toContain(
+      `POST ${buildImagePullRequest(mailpitRef, dockerPullDialect, { platform: "linux/arm64" }).path}`,
+    );
+  });
+
   test("POSTs /images/create and returns providerId docker with the ref", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
