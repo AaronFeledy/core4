@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { isPlainRecord, mergeLandofiles, reset } from "@lando/sdk/landofile";
+import { isPlainRecord, mergeLandofiles, reset, validateConfigTranslateResult } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 import { makeTestTranslator as makeLando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
@@ -48,6 +48,32 @@ test.each(["api: 4, type: lando", "type: lando, services: {image: 'alpine:3.21'}
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ kind: "unsupported", keyPath: ["services", "web", "healthcheck", "user"] }),
     );
+  },
+);
+
+test.each([
+  ["overrides: {privileged: maybe}", ["overrides", "privileged"], "privileged"],
+  ["overrides: {shm_size: 0}", ["overrides", "shm_size"], "greater than 0"],
+  ["overrides: {deploy: {resources: {limits: {cpus: half}}}}", ["overrides", "deploy"], "limits.cpus"],
+])(
+  "reports a legacy Compose knob value Lando 4 cannot realize at its source: %s",
+  async (overrides, path, detail) => {
+    // Given
+    const text = `services: {web: {type: "php:8.3", ${overrides}}}`;
+    const input = documentSet([document(".lando.yml", text)]);
+    const translator = makeLando3ConfigTranslator({
+      decomposers: fakeDecomposers().decomposers,
+      redactor: createRedactor("secrets"),
+    });
+    // When
+    const result = await Effect.runPromise(translator.translate(input));
+    // Then the conversion writes nothing, and core's final validator accepts the located diagnostic.
+    expect(result.outputs).toEqual([]);
+    const finding = result.diagnostics.find((entry) => entry.kind === "unsupported");
+    expect(finding).toMatchObject({ sourceId: ".lando.yml", keyPath: ["services", "web", ...path] });
+    expect(finding?.span).toBeDefined();
+    expect(finding?.message).toContain(detail);
+    expect(Result.isSuccess(validateConfigTranslateResult(input, result))).toBe(true);
   },
 );
 
