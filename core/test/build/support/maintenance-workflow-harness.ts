@@ -155,7 +155,7 @@ case "$1 $2" in
       git add unrelated.txt
       printf 'untracked\\n' > untracked.txt
     fi ;;
-  'test '*) if [ "$MODE" = checks-fail ]; then exit 23; fi ;;
+  'run test:selection') if [ "$MODE" = checks-fail ]; then exit 23; fi ;;
   'run scripts/report-'*)
     if [ "$MODE" = report-fail ]; then exit 24; fi
     printf 'candidate report\\n' ;;
