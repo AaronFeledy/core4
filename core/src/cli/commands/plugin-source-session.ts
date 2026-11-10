@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { PluginPackageOperationError } from "@lando/sdk/errors";
 import { StateStore } from "@lando/sdk/services";
 import { type SourceSession, makeSourceStore } from "@lando/source-acquisition";
@@ -34,7 +35,7 @@ export const withPluginSourceSession = <A, E, R>(
         return makeSourceStore({ stateStore, transports: { npmRegistry: options.npmRegistry } });
       });
       const session = yield* store.session.pipe(
-        Effect.mapError(
+        mapFailures(
           (error) =>
             new PluginPackageOperationError({
               message: `Plugin package resolve failed for ${options.spec}.`,

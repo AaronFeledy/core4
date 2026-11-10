@@ -3,6 +3,7 @@ import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
 import { providerImages } from "@lando/container-runtime/provider-images";
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import {
@@ -78,6 +79,7 @@ import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
+import { providerFailure } from "./provider-failure.ts";
 import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
 import {
   type SnapshotPersistence,
@@ -87,7 +89,6 @@ import {
   removeSnapshotArchive,
   resolveSnapshotInfo,
 } from "./snapshot-catalog.ts";
-export { SNAPSHOT_SIDECAR_VERSION } from "./snapshot-catalog.ts";
 import {
   matchesSnapshotSource,
   physicalVolumeGeneration,
@@ -178,14 +179,6 @@ const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): Data
 const failUnsupported = (from: DataEndpoint, to: DataEndpoint, reason: string) =>
   Effect.fail(unsupported(from, to, reason));
 
-const providerFailure = (operation: string, cause: unknown): DataTransferError =>
-  new DataTransferError({
-    message: `Provider ${operation} failed during data transfer.`,
-    operation,
-    cause,
-    remediation: "Inspect provider diagnostics and retry after the runtime is healthy.",
-  });
-
 const dataHelperImage = providerImages.images.dataHelper;
 
 const resolveDataHelperImage = (
@@ -194,7 +187,7 @@ const resolveDataHelperImage = (
   const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
   if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
   return provider.pullArtifact({ ref: pinnedRef, policy: "missing" }).pipe(
-    Effect.mapError((cause) => providerFailure("pullArtifact", cause)),
+    mapFailures((cause) => providerFailure("pullArtifact", cause)),
     Effect.flatMap((ref) => {
       if (ref.digest !== dataHelperImage.digest) {
         return Effect.fail(
@@ -414,7 +407,7 @@ const snapshotStoreIdentity = (persistence: SnapshotPersistence) =>
     "canonicalize",
   ).pipe(
     Effect.map(({ rootReal }) => sha256Hex(rootReal)),
-    Effect.mapError((cause) => stateFailure("canonicalize", cause)),
+    mapFailures((cause) => stateFailure("canonicalize", cause)),
   );
 
 const resolveAppRoot = Effect.fnUntraced(function* (paths: ReadonlyArray<string>) {
@@ -664,7 +657,7 @@ const volumeRunOwner = Effect.fn("DataMover.volumeRunOwner")(function* (
   app: AppId,
 ) {
   const plans = yield* (provider.appliedPlans ?? Effect.succeed([])).pipe(
-    Effect.mapError((cause) => providerFailure("appliedPlans", cause)),
+    mapFailures((cause) => providerFailure("appliedPlans", cause)),
   );
   const plan = plans.find((candidate) => planDataId(candidate) === app);
   return plan === undefined ? { app } : { app: plan.id, plan };
@@ -712,7 +705,7 @@ const streamFromProvider = (
       }
       return provider
         .copyFromService({ app: endpoint.app, service: endpoint.service }, { sourcePath: endpoint.path })
-        .pipe(Stream.mapError((cause) => providerFailure("copyFromService", cause)));
+        .pipe(mapStreamFailures((cause) => providerFailure("copyFromService", cause)));
     case "volume":
       if (!provider.capabilities.ephemeralMounts) {
         return Stream.fail(
@@ -741,7 +734,7 @@ const streamFromProvider = (
                 serviceCommandFailure("runStream", exitCode, stderrTail, evidence),
             ),
           ),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
           ),
         ),
@@ -759,7 +752,7 @@ const streamFromProvider = (
       }
       return provider
         .exportArtifact({ providerId: providerId(provider.id), ref: endpoint.ref })
-        .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
+        .pipe(mapStreamFailures((cause) => providerFailure("exportArtifact", cause)));
     case "serviceCmd": {
       const command = providerCommandSpec(endpoint.command, endpoint.env);
       return serviceCommandStdout(
@@ -797,7 +790,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         destinationPath: target.path,
         expectedSha256: spec.expectedDigest,
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -810,7 +803,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         prefix: "archive",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -823,7 +816,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         }),
         destinationPath: target.path,
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -844,7 +837,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           prefix: "service",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
@@ -857,7 +850,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
               ...(spec.overwrite === undefined ? {} : { overwrite: spec.overwrite }),
             },
           )
-          .pipe(Effect.mapError((cause) => providerFailure("copyToService", cause)));
+          .pipe(mapFailures((cause) => providerFailure("copyToService", cause)));
         return {
           accelerated: true,
           sizeBytes: staged.verified.sizeBytes,
@@ -871,13 +864,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         return yield* failUnsupported(spec.from, target, "ephemeral mounts are unavailable");
       {
         if (spec.overwrite !== true) {
-          const volumes = yield* provider.listVolumes({ app: target.app, store: target.store }).pipe(
-            Effect.catchIf(
-              (cause) => cause instanceof ProviderUnavailableError,
-              () => Effect.succeed([]),
-            ),
-            Effect.mapError((cause) => providerFailure("listVolumes", cause)),
-          );
+          const volumes = yield* provider
+            .listVolumes({ app: target.app, store: target.store })
+            .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
           if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
             return yield* Effect.fail(
               new DataTargetExistsError({
@@ -895,7 +884,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           prefix: "volume",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
@@ -930,14 +919,14 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           prefix: "artifact",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
         yield* provider
           .importArtifact(
             byteStreamFromHost(staged.path).pipe(
-              Stream.mapError(
+              mapStreamFailures(
                 (cause) =>
                   new ArtifactTransferError({
                     providerId: provider.id,
@@ -949,7 +938,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
               ),
             ),
           )
-          .pipe(Effect.mapError((cause) => providerFailure("importArtifact", cause)));
+          .pipe(mapFailures((cause) => providerFailure("importArtifact", cause)));
         return {
           accelerated: true,
           sizeBytes: staged.verified.sizeBytes,
@@ -965,7 +954,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         prefix: "command",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -1239,7 +1228,7 @@ export const makeDataMoverService = (
           const createdAt = yield* DateTime.now;
           const sources = yield* provider
             .listVolumes({ app: store.app, store: store.store })
-            .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+            .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
           const { source, owner: sourceOwner } = yield* snapshotSourceOwner(sources, store, snapshotId);
           const owner = {
             ...sourceOwner,
@@ -1250,7 +1239,7 @@ export const makeDataMoverService = (
               new SnapshotOwnershipError({
                 message: "Physical snapshot source identity changed before creation.",
                 snapshotId,
-                sourceVolumeInstanceId: opts.metadata.volumeInstanceId,
+                sourceVolumeInstanceId: opts.metadata.volumeInstanceId ?? "unknown",
                 ...(physicalVolumeGeneration(source) === undefined
                   ? {}
                   : { targetVolumeInstanceId: physicalVolumeGeneration(source) }),
@@ -1288,7 +1277,7 @@ export const makeDataMoverService = (
                       rollbackNative = ref;
                     }),
                   ),
-                  Effect.mapError((cause) => providerFailure("snapshotVolume", cause)),
+                  mapFailures((cause) => providerFailure("snapshotVolume", cause)),
                 ),
               )
             : undefined;
@@ -1323,7 +1312,7 @@ export const makeDataMoverService = (
               : yield* collectVerifiedStream({
                   body: byteStreamFromHost(archivePath),
                 }).pipe(
-                  Effect.mapError((error) =>
+                  mapFailures((error) =>
                     error instanceof VerifiedStreamError
                       ? mapVerifiedError(error, {
                           from: { _tag: "volume", app: store.app, store: store.store },
@@ -1381,7 +1370,7 @@ export const makeDataMoverService = (
                 ),
               ),
             ),
-          ).pipe(Effect.mapError((cause) => stateFailure("write-sidecar", cause)));
+          ).pipe(mapFailures((cause) => stateFailure("write-sidecar", cause)));
           yield* events.publish(
             PostVolumeSnapshotEvent.make({
               eventName: "post-volume-snapshot",
@@ -1425,7 +1414,7 @@ export const makeDataMoverService = (
       }
       const targets = yield* provider
         .listVolumes({ app: store.app, store: store.store })
-        .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+        .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
       const target = targets.find(
         (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
       );
@@ -1443,7 +1432,7 @@ export const makeDataMoverService = (
               new SnapshotOwnershipError({
                 message: "Physical snapshot ownership does not match the target volume instance.",
                 snapshotId: info.id,
-                sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+                sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
                 ...(physicalVolumeGeneration(target) === undefined
                   ? {}
                   : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
@@ -1461,7 +1450,7 @@ export const makeDataMoverService = (
           expectedSha256: info.digest,
           expectedSizeBytes: info.sizeBytes,
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError
               ? mapVerifiedError(error, {
                   from: {
@@ -1516,7 +1505,7 @@ export const makeDataMoverService = (
             new SnapshotOwnershipError({
               message: "Physical snapshot ownership does not match the target volume instance.",
               snapshotId: info.id,
-              sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+              sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
               ...(physicalVolumeGeneration(target) === undefined
                 ? {}
                 : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
@@ -1533,7 +1522,7 @@ export const makeDataMoverService = (
           expectedTargetGeneration: targetGeneration,
           overwrite: true,
         })
-        .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
+        .pipe(mapFailures((cause) => providerFailure("restoreVolume", cause)));
     }),
     listSnapshots: Effect.fn("DataMover.listSnapshots")((filter) => listSnapshotInfos(persistence, filter)),
     resolveSnapshot: Effect.fn("DataMover.resolveSnapshot")((reference, scope) =>
@@ -1646,7 +1635,7 @@ export const layerWithPrivateFileAccess: Layer.Layer<
             }),
           );
         }).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new DataTransferError({
                 message: cause.message,

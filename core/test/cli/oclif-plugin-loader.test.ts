@@ -46,6 +46,7 @@ describe("OCLIF user plugin loading", () => {
       LANDO_USER_CONF_ROOT: join(root, "conf"),
       LANDO_USER_CACHE_ROOT: join(root, "cache"),
       LANDO_PROVIDER: "podman",
+      LANDO_TEST_PODMAN_SOCKET: join(root, "no-podman.sock"),
       PATH: "/no-such-path",
       LANDO_DOCTOR_SECTION_BUDGET_MS: "1000",
     };
@@ -66,8 +67,11 @@ describe("OCLIF user plugin loading", () => {
   test("doctor remains self-resilient without loader stderr noise", async () => {
     const result = await runCli(["doctor", "--format", "ndjson"], env);
 
-    expect(result.exitCode).toBe(0);
+    // The selected provider is unreachable, so doctor reports that failure and exits 1
+    // after rendering its full result instead of crashing.
+    expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain('"_tag":"result"');
+    expect(result.stdout).toMatch(/"name":"selected-provider","status":"fail"/);
     expect(result.stderr).not.toContain("loadUserPlugins");
     expect(result.stderr).not.toContain("ENOTDIR");
   });

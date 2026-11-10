@@ -61,7 +61,7 @@ test.each(["stopped", "unavailable", "availability failure", "status failure"])(
       getStatus:
         state === "status failure"
           ? Effect.fail(unavailable)
-          : Effect.succeed({ running: false, message: "stopped" }),
+          : Effect.succeed({ state: "idle", message: "idle (starts on demand)" }),
       list: () => Effect.die("offline runtime must not be listed"),
       listVolumes: () => Effect.die("offline runtime must not be listed"),
     });

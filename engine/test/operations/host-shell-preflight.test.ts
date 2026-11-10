@@ -8,11 +8,11 @@ import { ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
-import { compileToolingInvocations } from "../../src/operations/tooling-compile.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine.ts";
 import * as ProcessRunner from "../../src/services/process-runner.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
+import { admitAndCompileTooling as compileToolingInvocations } from "./compile-tooling-fixture.ts";
 
 const plan: AppPlan = {
   id: AppId.make("preflight"),

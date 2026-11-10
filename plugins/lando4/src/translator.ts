@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * The canonical v4 Landofile codec.
  *
@@ -247,7 +248,7 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
   // is not a Landofile. Only the fragment wire tree reaches the emitter, so
   // lower layers are never flattened.
   const context = yield* decodeShape(input.context, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(
+    mapFailures(
       asTranslateError(
         "The lando4 encoder requires a complete authoring context:",
         "Provide a complete Landofile authoring context before encoding with the lando4 translator.",
@@ -255,7 +256,7 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
     ),
   );
   const contextWire = yield* encodeShape(context).pipe(
-    Effect.mapError(
+    mapFailures(
       asTranslateError(
         "The lando4 encoder requires a complete authoring context:",
         "Provide a complete Landofile authoring context before encoding with the lando4 translator.",
@@ -263,7 +264,7 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
     ),
   );
   yield* decodeRecord(contextWire).pipe(
-    Effect.mapError(
+    mapFailures(
       asTranslateError(
         "The lando4 encoder requires a Landofile mapping at the root:",
         "Pass a root object Landofile (not a scalar or sequence) to the lando4 encoder.",
@@ -274,7 +275,7 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
     Effect.flatMap((value) =>
       Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
     ),
-    Effect.mapError(
+    mapFailures(
       asTranslateError(
         "The lando4 encoder received a non-authoring value:",
         "Pass only Landofile authoring fields to the lando4 encoder.",
@@ -282,7 +283,7 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
     ),
   );
   const record = yield* decodeRecord(wire).pipe(
-    Effect.mapError(
+    mapFailures(
       asTranslateError(
         "The lando4 encoder requires a Landofile mapping at the root:",
         "Pass a root object Landofile (not a scalar or sequence) to the lando4 encoder.",

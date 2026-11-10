@@ -64,10 +64,10 @@ export interface RuntimeServiceSeams {
   readonly apiClient?: (socketPath: string) => EngineHttpApi;
   readonly terminationPolicy?: RetryPolicy;
   readonly privateRuntimeDir?: (runtimeDir: string) => Effect.Effect<string | undefined>;
-  readonly terminatePause?: (privateRuntimeDir: string) => Effect.Effect<void>;
+  readonly terminatePause?: (privateRuntimeDir: string) => Effect.Effect<boolean>;
 }
 
-type TerminationResult = { readonly terminated: boolean; readonly pid?: number };
+type TerminationResult = { readonly terminated: boolean; readonly pid?: number; readonly quiescent?: true };
 
 const pidPattern = /^\d+$/u;
 const emptyArgv: ReadonlyArray<string> = [];
@@ -270,7 +270,10 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
     if (quiescent && exited) {
       const runtimeDir = dirname(dirname(spec.command));
       const privateDir = yield* (seams.privateRuntimeDir ?? managedRuntimeDirForTeardown)(runtimeDir);
-      if (privateDir !== undefined) yield* (seams.terminatePause ?? terminateManagedPause)(privateDir);
+      if (privateDir === undefined) return result;
+      const pause = yield* (seams.terminatePause ?? terminateManagedPause)(privateDir);
+      if (pause === false) return result;
+      return { ...result, quiescent: true };
     }
 
     return result;

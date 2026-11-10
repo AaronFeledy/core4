@@ -2,6 +2,7 @@ import { CONTAINER_HELPER_JOB_ID, containerHelperDownloadStep } from "./_contain
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { landoManagedPodmanTeardownCommands, linuxGuideE2eProviderSetupSteps } from "./build-ci-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
+import { testSelectionCommand } from "./test-selections.ts";
 
 export const serviceListenerMatrixNightlyJob = `
   service-listener-matrix-linux-x64:
@@ -48,7 +49,7 @@ ${linuxGuideE2eProviderSetupSteps}
         shell: bash
         run: |
           set -euo pipefail
-          bun test plugins/service-lando/test/listener-matrix.integration.test.ts --max-concurrency=1 2>&1 | tee "$RUNNER_TEMP/listener-matrix.log"
+          ${testSelectionCommand("nightly-listener-matrix")} 2>&1 | tee "$RUNNER_TEMP/listener-matrix.log"
           grep -E '^SERVICE_LISTENER_MATRIX completed=([1-9][0-9]*)/\\1 cases=.+$' "$RUNNER_TEMP/listener-matrix.log"
 
       - name: Teardown Lando runtime

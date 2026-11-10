@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { type Context, Effect, Schema } from "effect";
 
@@ -9,6 +10,7 @@ import type { Downloader, StateBucket } from "@lando/sdk/services";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import type { ArtifactDownload, ArtifactDownloadResult } from "./runtime-bundle.ts";
+import { type RuntimeShutdownStore, makeRuntimeShutdownStore } from "./runtime-shutdown.ts";
 
 const providerStateError = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({
@@ -53,7 +55,7 @@ export const makePluginArtifactDownload =
         } satisfies ArtifactDownloadResult;
       }),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ProviderUnavailableError({
             providerId: "lando",
@@ -69,6 +71,7 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
   {
     readonly runtimeLock: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
     readonly runtimeGenerationStore: RuntimeGenerationStore;
+    readonly runtimeShutdownStore: RuntimeShutdownStore;
   },
   ProviderUnavailableError
 > {
@@ -83,14 +86,13 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
   } as const;
   const generationBucketValue = yield* ctx.stateStore
     .open(generationBucketSpec)
-    .pipe(
-      Effect.mapError((cause) => providerStateError("Provider runtime state could not be opened.", cause)),
-    );
+    .pipe(mapFailures((cause) => providerStateError("Provider runtime state could not be opened.", cause)));
   if (!isStringStateBucket(generationBucketValue)) {
     return yield* Effect.fail(providerStateError("Provider runtime state returned an invalid bucket."));
   }
 
   return {
+    runtimeShutdownStore: yield* makeRuntimeShutdownStore(ctx.stateStore),
     runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
     runtimeGenerationStore: {
       get: generationBucketValue.get,

@@ -11,13 +11,20 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { GlobalAppService, PathsService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  GlobalAppService,
+  PathsService,
+  RouterService,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const withHarness = async (
   input: { readonly applied?: boolean; readonly orphan?: boolean; readonly online?: boolean },
@@ -110,6 +117,7 @@ const harnessAt = (
       }),
   };
   const layer = Layer.mergeAll(
+    Layer.succeed(StateStore, makeTestStateStore().service),
     LandoEventService.layer,
     Layer.succeed(RouterService, makeTestRouterService()),
     BunFileSystem.layer,

@@ -53,8 +53,8 @@ export interface ProviderAcceptanceCellPlan {
 
 const bunTest = (path: string, testNamePattern?: string): readonly string[] =>
   testNamePattern === undefined
-    ? ["bun", "test", path]
-    : ["bun", "test", path, "--test-name-pattern", testNamePattern];
+    ? ["bun", "test", `./${path}`]
+    : ["bun", "test", `./${path}`, "--test-name-pattern", testNamePattern];
 
 const podmanStorageLifecycleCheck = {
   id: "storage-lifecycle",
@@ -100,7 +100,7 @@ const landoChecks = [
   },
   {
     id: "lando-exec",
-    label: "Exec seam coverage through provider-lando fake API",
+    label: "Exec lifecycle coverage against a live Podman service",
     command: bunTest("plugins/provider-lando/test/exec.integration.test.ts"),
   },
   {

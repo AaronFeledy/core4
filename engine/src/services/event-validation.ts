@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Cause, Effect, Schema } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
@@ -41,7 +42,7 @@ export const decodeDeliverableEvent = (
   eventName: string,
 ): Effect.Effect<LandoEvent, EventError> =>
   Schema.decodeUnknownEffect(DeliverableEventSchema)(event, { onExcessProperty: "error" }).pipe(
-    Effect.mapError((cause) => eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
+    mapFailures((cause) => eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
     Effect.catchCauseIf(Cause.hasDies, (cause) =>
       Effect.fail(eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
     ),

@@ -1,4 +1,5 @@
 import { compileServiceProbe } from "@lando/container-runtime/service-probe";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HealthcheckError, HealthcheckTargetUnsupportedError, ServiceExecError } from "@lando/sdk/errors";
 import { type AppPlan, type HealthcheckPlan, type ServiceName, probeTargetError } from "@lando/sdk/schema";
 import {
@@ -127,7 +128,7 @@ export const prepareHealthcheckAttempt = Effect.fnUntraced(function* (input: {
     return {
       rendered: command.join(" "),
       run: Effect.suspend(() => process.run({ cmd, args, cwd, capture: true, ...signalOption })).pipe(
-        Effect.mapError(hostFailure),
+        mapFailures(hostFailure),
       ),
     };
   }

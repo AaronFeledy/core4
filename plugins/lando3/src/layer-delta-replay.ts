@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import {
   decodeLandofileAuthoringLayer,
@@ -49,7 +50,7 @@ export const replayDecodedDeltas = Effect.fnUntraced(function* (
   for (const [index, prefix] of prefixes.entries()) {
     let candidate = emitted[index]?.fragment ?? {};
     const expectedOverlay = yield* decodeLandofileAuthoringLayer(prefix.layer, prefix.desired).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ConfigTranslateError({
             message: `Invalid desired ${prefix.layer} prefix.`,

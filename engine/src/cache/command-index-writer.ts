@@ -28,7 +28,7 @@ import {
   encodeAppCommandIndex,
   normalizeAppCommandAliasPolicy,
 } from "./command-index.ts";
-import { commandScriptFingerprints } from "./command-script-freshness.ts";
+import { type CommandScriptFingerprint, commandScriptFingerprints } from "./command-script-freshness.ts";
 import { appCommandCachePath, appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
 export { readDataIdentityFingerprint } from "./command-index-source.ts";
 
@@ -70,6 +70,7 @@ export interface WriteAppCommandCacheOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;
   readonly now?: () => number;
+  readonly sourceScripts?: readonly CommandScriptFingerprint[];
 }
 
 interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
@@ -149,7 +150,7 @@ const writeAppCommandCacheTask = async (
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
   const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
-  const sourceScripts = await commandScriptFingerprints(appRoot);
+  const sourceScripts = options.sourceScripts ?? (await commandScriptFingerprints(appRoot));
   const contentHash = await sourceContentHash(
     source,
     sourceLocalIncludePaths,

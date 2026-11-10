@@ -232,6 +232,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | - | - | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
 | - | - | `lando sources:gc` remote source cache report and prune | `docs/guides/cli/sources-gc.mdx` | Shipped |
+| - | - | `lando apps:gc` missing-folder app cleanup and retained file-sync data | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | - | - | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | - | - | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
 | - | - | service timezone configuration | `docs/guides/services/timezone.mdx` | Shipped |
@@ -299,6 +300,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |
 | L3-PARITY-05 | US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` | Shipped |
 | L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| - | - | SQLite file target for db import, export, snapshot, restore, and reset | `docs/guides/tooling/sqlite-database.mdx` | Shipped |
 | - | - | orphaned native snapshot inspection (`meta:snapshots:gc`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | - | - | streaming dumps through stdout and stdin (`db:export -`, `db:import -`, `db:seed -`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | - | - | git worktree as its own app with a seeded database | `docs/guides/tooling/git-worktrees.mdx` | Shipped |

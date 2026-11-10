@@ -35,6 +35,19 @@ const normalizeSignature = (value: string): string =>
     .trim()
     .replace(/;$/, "");
 
+test("host maintenance teardown receives the contributing plugin's confined state store", () => {
+  const file = join(repoRoot, "sdk/src/plugins/module.ts");
+  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  const contract = source.statements.find(
+    (statement): statement is ts.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) && statement.name.text === "HostMaintenanceContribution",
+  );
+  const teardown = contract?.members.find((member) => member.name?.getText(source) === "teardown");
+  expect(teardown === undefined ? undefined : normalizeSignature(teardown.getText(source))).toBe(
+    normalizeSignature(publicSurface.hostMaintenanceTeardownSignature),
+  );
+});
+
 // Every `Context.Service` contract lives in its own module under `sdk/src/services/`; `index.ts`
 // only re-exports them. Parse the whole directory so a shape extracted into a named interface in
 // one module still resolves when the class that references it sits in the same or another module.

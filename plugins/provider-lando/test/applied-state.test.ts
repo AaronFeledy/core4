@@ -20,7 +20,7 @@ describe("provider-lando applied plan inspection versioning", () => {
 
     expect(opens).toHaveLength(1);
     expect(opens[0]?.version).toBe(APPLIED_STATE_VERSION);
-    expect(APPLIED_STATE_VERSION).toBe(4);
+    expect(APPLIED_STATE_VERSION).toBe(5);
     // Same migration function identity as container-runtime export.
     expect(opens[0]?.onVersionMismatch).toBe(migrateAppliedPlan);
   });

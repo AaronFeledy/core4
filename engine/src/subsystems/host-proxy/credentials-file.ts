@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -34,7 +35,7 @@ export const writeHostProxyCredentials = (
       ? write.pipe(Effect.provideService(PrivateFileAccessService, access.value))
       : Effect.scoped(write.pipe(Effect.provide(PrivateFileAccessService.layer)));
   }).pipe(
-    Effect.mapError(
+    mapFailures(
       () =>
         new HostProxyTransportUnavailableError({
           message: "Cannot prepare private host-proxy credentials.",

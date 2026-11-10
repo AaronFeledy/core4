@@ -16,7 +16,7 @@ test.each([
       recorded.push(command);
       return {
         exitCode: command.includes(
-          `plugins/provider-${wrapper}/test/anonymous-volume-lifecycle.integration.test.ts`,
+          `./plugins/provider-${wrapper}/test/anonymous-volume-lifecycle.integration.test.ts`,
         )
           ? 1
           : 0,
@@ -29,7 +29,7 @@ test.each([
   expect(recorded).toContainEqual([
     "bun",
     "test",
-    `plugins/provider-${wrapper}/test/anonymous-volume-lifecycle.integration.test.ts`,
+    `./plugins/provider-${wrapper}/test/anonymous-volume-lifecycle.integration.test.ts`,
   ]);
   expect(report.checks.find((check) => check.id === "storage-lifecycle")?.outcome).toBe("failed");
   expect(report.outcome).toBe("failed");

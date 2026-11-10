@@ -20,7 +20,7 @@ Executable components are allowed only in the guide discovery roots:
 - `docs/guides/**/*.mdx`
 - `recipes/<id>/README.mdx`
 
-Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. Unrelated regressions belong under `test/scenarios/`.
+Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. Unrelated regressions belong in the owning workspace package's `test/` tree.
 
 ### 19.2 Model and artifact
 
@@ -156,7 +156,7 @@ Schema round-trip, generated-test typecheck, source-mapper fixtures, public-tran
 
 ### 19.11 Test layer position
 
-Per-PR CI runs all scenario-layer variants on every §13.5 compile target, including `windows-arm64`, and the e2e smoke subset on Linux x64. Nightly CI runs all e2e variants on the §13.6 nightly platforms. The weekly matrix runs e2e variants against every applicable provider (§13.6). A guide-scenario job MUST emit enough per-step output to distinguish a hang from slow progress before its timeout is tuned; a cap reached with no attributable step output is a defect in the job, not evidence for a longer cap.
+Per-PR CI runs scenario-layer variants on the platforms the selected CI profile includes (§13.6) and the e2e smoke subset on Linux x64 whenever guide scenarios run. Broad CI runs scenario-layer variants on every §13.5 compile target, including `windows-arm64`. Nightly CI runs all e2e variants on the §13.6 nightly platforms. The weekly matrix runs e2e variants against every applicable provider (§13.6). A guide-scenario job MUST emit enough per-step output to distinguish a hang from slow progress before its timeout is tuned; a cap reached with no attributable step output is a defect in the job, not evidence for a longer cap.
 
 Scenario variants SHOULD remain below 30 seconds p95 and e2e smoke below 5 minutes p95, excluding separately measured provider setup. These budgets are advisory until §13 perf coverage includes guide scenarios, at which point they become merge gates. Authors MUST constrain axis fan-out with platform and cell overrides rather than silently dropping cells.
 

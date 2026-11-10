@@ -339,7 +339,7 @@ describe("meta:doctor combined report", () => {
   test("renderDoctorReport surfaces provider section, every subsystem, and global-app section", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    const text = renderDoctorReport(report);
+    const text = renderDoctorReport(report, undefined, { all: true });
 
     expect(text).toContain("selected-provider: pass");
     for (const name of ["network-trust", "subsystems"]) {
@@ -457,7 +457,7 @@ describe("meta:doctor combined report", () => {
       command: "meta:doctor",
       resultSchema: metaDoctorSpec.resultSchema,
       io: textIo,
-      render: renderDoctorReport,
+      render: (value, ctx) => renderDoctorReport(value, ctx, { all: true }),
       formatError: ({ error }) => String(error),
     });
     expect(textIo.stdoutLines().join("")).toContain("buildSecrets: true");
@@ -855,7 +855,7 @@ describe("meta:doctor combined report", () => {
     );
 
     expect(report.deprecations?.entries).toEqual([]);
-    expect(renderDoctorReport(report)).toContain(
+    expect(renderDoctorReport(report, undefined, { all: true })).toContain(
       "No deprecations were used or triggered at runtime for the app.",
     );
   });

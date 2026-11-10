@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, type Scope, Stream, absurd } from "effect";
 
@@ -12,9 +13,9 @@ export type DumpCompression = "gzip" | "zstd" | "none";
 const GZIP_MAGIC = [0x1f, 0x8b] as const;
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
 
-export const isGzipPath = (path: string): boolean => basename(path).endsWith(".gz");
+export const isGzipPath = (path: string): boolean => basename(path).toLowerCase().endsWith(".gz");
 
-export const isZstdPath = (path: string): boolean => basename(path).endsWith(".zst");
+export const isZstdPath = (path: string): boolean => basename(path).toLowerCase().endsWith(".zst");
 
 export const compressionFromExportPath = (path: string): DumpCompression => {
   if (isZstdPath(path)) return "zstd";
@@ -43,8 +44,10 @@ const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return output;
 };
 
+const DUMP_PREFIX_LIMIT = 16;
+
 export const collectDumpPrefix = (chunk: Uint8Array, prefix: Uint8Array): Uint8Array =>
-  prefix.byteLength >= 4 ? prefix : appendBytes(prefix, chunk);
+  prefix.byteLength >= DUMP_PREFIX_LIMIT ? prefix : appendBytes(prefix, chunk);
 
 const streamThrough = (
   source: ReadableStream<Uint8Array>,
@@ -104,7 +107,7 @@ export const writeDumpTransform = (
         destinationPath: destPath,
         mode: 0o600,
       }).pipe(
-        Effect.mapError(() =>
+        mapFailures(() =>
           dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
         ),
       );

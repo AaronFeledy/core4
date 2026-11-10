@@ -57,6 +57,9 @@ export const StopAppResult = Schema.Struct({
     description: "Name of the stopped app; when only applied state remains, its app id or root.",
   }),
   outcome: Schema.optionalKey(StopAppOutcome),
+  runtimeState: Schema.optionalKey(Schema.Literals(["idle", "running"])).annotate({
+    description: "Provider runtime state observed before stopping the app, when known.",
+  }),
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),

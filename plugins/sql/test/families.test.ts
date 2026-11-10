@@ -334,18 +334,18 @@ describe("family command builders", () => {
 });
 
 describe("dump path helpers", () => {
-  test("isGzipPath is true only when the basename ends with .gz", () => {
+  test("isGzipPath is true only when the basename ends with .gz, in any case", () => {
     expect(isGzipPath("/tmp/dump.sql.gz")).toBe(true);
     expect(isGzipPath("dump.sql.gz")).toBe(true);
-    expect(isGzipPath("dump.SQL.GZ")).toBe(false);
+    expect(isGzipPath("dump.SQL.GZ")).toBe(true);
     expect(isGzipPath("dump.gz.sql")).toBe(false);
     expect(isGzipPath("archive.gz/dump.sql")).toBe(false);
   });
 
-  test("isZstdPath is true only when the basename ends with .zst", () => {
+  test("isZstdPath is true only when the basename ends with .zst, in any case", () => {
     expect(isZstdPath("/tmp/dump.sql.zst")).toBe(true);
     expect(isZstdPath("dump.sql.zst")).toBe(true);
-    expect(isZstdPath("dump.SQL.ZST")).toBe(false);
+    expect(isZstdPath("dump.SQL.ZST")).toBe(true);
     expect(isZstdPath("dump.zst.sql")).toBe(false);
     expect(isZstdPath("archive.zst/dump.sql")).toBe(false);
   });

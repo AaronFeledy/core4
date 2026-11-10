@@ -48,7 +48,7 @@ import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
 import type { PrivilegeService } from "../services/process.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";
-import type { LandoPluginContext } from "./index.ts";
+import type { LandoPluginContext, PluginStateStore } from "./index.ts";
 
 export type RuntimeProviderFactoryRequirements =
   | PathsService
@@ -84,6 +84,7 @@ export interface HostMaintenanceContribution {
   readonly teardown?: (input: {
     readonly paths: HostRuntimePaths;
     readonly platform: HostPlatform;
+    readonly stateStore: PluginStateStore;
   }) => Effect.Effect<HostTeardownResult, never>;
   readonly uninstall?: {
     readonly plan: (input: HostUninstallInput) => Effect.Effect<ReadonlyArray<HostUninstallStep>, never>;

@@ -14,6 +14,7 @@ import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
+import { expectSqliteRecipePlan } from "../_support/sqlite-recipe.ts";
 
 interface CanonicalAnswers {
   readonly name: string;
@@ -85,11 +86,6 @@ const EXPECTED_PRIMARY_SERVICE: Readonly<Record<string, string | undefined>> = {
   joomla: "appserver",
   mean: "api",
 };
-
-const buildAnswers = (entry: CanonicalAnswers): Record<string, string> => ({
-  name: entry.name,
-  ...(entry.extras ?? {}),
-});
 
 const providerCapabilities = {
   artifactBuild: true,
@@ -193,13 +189,20 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
     );
   });
 
-  for (const recipe of BUNDLED_RECIPES) {
+  for (const { recipe, sqlite } of [
+    ...BUNDLED_RECIPES.map((recipe) => ({ recipe, sqlite: false })),
+    ...BUNDLED_RECIPES.filter(({ id }) => ["laravel", "django", "rails"].includes(id)).map((recipe) => ({
+      recipe,
+      sqlite: true,
+    })),
+  ]) {
     const recipeId = recipe.id;
     const answersEntry = CANONICAL_ANSWERS[recipeId];
     if (answersEntry === undefined) continue;
 
-    test(`bundled recipe ${recipeId}: parse + render + discover + plan`, async () => {
-      const answers = buildAnswers(answersEntry);
+    test(`bundled recipe ${recipeId}${sqlite ? " SQLite" : ""}: parse + render + discover + plan`, async () => {
+      const answers: Record<string, string> = { name: answersEntry.name, ...answersEntry.extras };
+      if (sqlite) answers.database = "sqlite";
 
       const manifest = recipe.manifest;
       expect(manifest.id, `[${recipeId}] manifest.id mismatch`).toBe(recipeId);
@@ -249,6 +252,7 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
           });
 
           const appPlan = await planLandofile(landofile);
+          if (sqlite) expectSqliteRecipePlan(appPlan, recipeId);
           expect(appPlan.name, `[${recipeId}] AppPlanner.plan returned wrong app name`).toBe(
             answersEntry.name,
           );

@@ -1,1 +1,5 @@
 name: scripts-bad
+tooling:
+  healthy:
+    service: :host
+    cmd: echo healthy-task

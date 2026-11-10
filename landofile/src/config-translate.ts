@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
@@ -84,7 +85,7 @@ export const runConfigTranslator: (
   },
   (effect, translator) =>
     effect.pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new ConfigTranslateError({
             message: error.message,

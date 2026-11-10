@@ -10,6 +10,32 @@ const resolution = (landofile: Parameters<typeof hostShellIssues>[0]["landofile"
   services: [],
 });
 
+test.each([":host", "web"])("checks vars.sh only for host task targets (%s)", (service) => {
+  const landofile = { tooling: { t: { service, cmd: "echo body", vars: { V: { sh: "echo ${HOME}" } } } } };
+  const issues = hostShellIssues(resolution(landofile), []);
+  expect(issues.map((issue) => [issue.rule, issue.path])).toEqual(
+    service === ":host" ? [["landofile.host-shell", ["tooling", "t", "vars", "V", "sh"]]] : [],
+  );
+  expect(planningHostShellIssues(resolution(landofile), [])).toEqual([]);
+});
+
+test.each([":host", "web"])("checks explicit var target instead of task target (%s)", (service) => {
+  const landofile = {
+    tooling: {
+      t: {
+        service,
+        cmd: "echo body",
+        vars: {
+          HOST: { sh: "echo ${HOME}", service: ":host" },
+          CONTAINER: { sh: "echo ${HOME}", service: "web" },
+        },
+      },
+    },
+  };
+  const issues = hostShellIssues(resolution(landofile), []);
+  expect(issues.map((issue) => issue.path)).toEqual([["tooling", "t", "vars", "HOST", "sh"]]);
+});
+
 test("lints internal include tasks, which still run from event and task steps", () => {
   // Given a hidden include task that uses POSIX-only syntax
   const landofile = rememberInternalToolingTasks(

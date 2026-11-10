@@ -3,14 +3,32 @@
  * Refresh committed `.bun-test-timings.json` from the collected shard file set.
  *
  * Native `bun test --shard` balances from this file.
- * The collector excludes integration tests except the three fake-client provider contract suites, plus suites owned by dedicated jobs and the nightly tier.
+ * The ownership inventory supplies the same unit file set to local and CI runs.
  */
 import { mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { SHARD_RUNTIME_FLAGS, TEST_TIMINGS_FILE, collectShardedTestFiles } from "./test-shards.ts";
+import {
+  SHARD_RUNTIME_FLAGS,
+  TEST_TIMINGS_FILE,
+  collectShardedTestFiles,
+  testFileArguments,
+} from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
+
+export const timingRefreshCommand = (
+  files: readonly string[],
+  timingsFile: string = TEST_TIMINGS_FILE,
+): readonly string[] => [
+  process.execPath,
+  "--no-orphans",
+  "test",
+  ...SHARD_RUNTIME_FLAGS,
+  `--timings=${timingsFile}`,
+  "--update-timings",
+  ...testFileArguments(files),
+];
 
 interface RefreshOptions {
   readonly files: ReadonlyArray<string>;
@@ -67,19 +85,7 @@ export const refreshTestTimings = async ({
   const candidatePath = resolve(candidateRoot, "candidate.json");
   try {
     console.error(`[update-test-timings] measuring ${files.length} files -> ${TEST_TIMINGS_FILE}`);
-    const exitCode = await execute(
-      // Measure under the shards' per-test timeout so slow tests are timed, not killed.
-      [
-        process.execPath,
-        "--no-orphans",
-        "test",
-        ...SHARD_RUNTIME_FLAGS,
-        `--timings=${candidatePath}`,
-        "--update-timings",
-        ...files,
-      ],
-      repoRoot,
-    );
+    const exitCode = await execute(timingRefreshCommand(files, candidatePath), repoRoot);
     if (exitCode !== 0) return exitCode;
     validateCandidate(await readFile(candidatePath, "utf8"), files);
     await rename(candidatePath, resolve(repoRoot, TEST_TIMINGS_FILE));

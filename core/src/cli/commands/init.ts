@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import type { ProcessRunner } from "@lando/sdk/services";
@@ -68,7 +69,7 @@ export const initApp = Effect.fn("InitApp.run")(function* (options: InitAppOptio
   const store = options.recipeSourceStore ?? (yield* retainedRecipeSourceStore(options.registryUrl)).store;
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      const sources = yield* store.session.pipe(mapFailures((error) => mapSourceAcquisitionError(error)));
       return yield* runInitWithSources({ ...options, sources });
     }),
   );

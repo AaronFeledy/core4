@@ -1,5 +1,6 @@
 import { Effect, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
+import { mapFailures } from "../command-result/failure.ts";
 import { HttpTrustError } from "../errors/http-client.ts";
 import { ContractFailure } from "./_shared.ts";
 
@@ -59,7 +60,7 @@ export const runHttpClientFailureContract = Effect.fnUntraced(function* (
   const url = "https://contract.test/status/503";
   yield* harness.serveStatus(url, 503);
   const response = yield* service.get(url).pipe(
-    Effect.mapError(
+    mapFailures(
       (details) =>
         new ContractFailure({
           message: "HttpClient rejected an HTTP 503 response",

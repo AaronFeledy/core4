@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan } from "@lando/sdk/schema";
@@ -62,7 +63,7 @@ export const cancelWedgedExec = Effect.fnUntraced(function* (session: {
       });
       if (response.status < 200 || response.status >= 300) return yield* Effect.fail(unavailable());
       const state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ExecState))(response.body).pipe(
-        Effect.mapError(unavailable),
+        mapFailures(unavailable),
       );
       return state.Running;
     }).pipe(
@@ -73,7 +74,7 @@ export const cancelWedgedExec = Effect.fnUntraced(function* (session: {
         }),
       ),
     ),
-  ).pipe(Effect.mapError(unavailable));
+  ).pipe(mapFailures(unavailable));
   if (Exit.isFailure(observed)) return yield* Effect.failCause(observed.cause);
   if (observed.value)
     return yield* Effect.fail(

@@ -1,8 +1,11 @@
-import { mkdir, readFile, readlink, rm } from "node:fs/promises";
+import { mkdir, readlink, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, normalize, parse } from "node:path";
+import { readLinuxBootId } from "@lando/container-runtime/podman/managed-status-io";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect } from "effect";
 
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 
 import { launchStatePath } from "./runtime-launch-state.ts";
@@ -57,7 +60,7 @@ const generationError = (message: string, details: object, cause?: unknown) =>
     operation: "setup",
     message,
     remediation: "Verify the managed runtime directory and /proc are accessible, then retry the command.",
-    details,
+    details: redactDetails(details, standaloneSecretsRedactor({ ...process.env })),
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -90,7 +93,7 @@ const readGenerationPart = (
 ): Effect.Effect<string, ProviderUnavailableError> =>
   effect.pipe(
     Effect.map((value) => value.trim()),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       generationError("Failed to read the current Linux runtime generation.", { path }, cause),
     ),
     Effect.filterOrFail(
@@ -108,11 +111,7 @@ export const readLinuxRuntimeGenerationState = Effect.fnUntraced(function* (
   deps: LinuxRuntimeGenerationDeps,
 ): Effect.fn.Return<LinuxRuntimeGenerationState, ProviderUnavailableError> {
   const bootId = yield* readGenerationPart(
-    deps.bootIdReader?.() ??
-      Effect.tryPromise({
-        try: () => readFile("/proc/sys/kernel/random/boot_id", "utf8"),
-        catch: (cause) => cause,
-      }),
+    deps.bootIdReader?.() ?? readLinuxBootId(),
     "/proc/sys/kernel/random/boot_id",
   );
   const pidNamespace = yield* readGenerationPart(
@@ -121,9 +120,7 @@ export const readLinuxRuntimeGenerationState = Effect.fnUntraced(function* (
   );
   const generation = `${bootId}\n${pidNamespace}`;
   const marker = yield* deps.generationStore.get.pipe(
-    Effect.mapError((cause) =>
-      generationError("Failed to read the Lando runtime generation marker.", {}, cause),
-    ),
+    mapFailures((cause) => generationError("Failed to read the Lando runtime generation marker.", {}, cause)),
   );
   const filesystem = deps.filesystem ?? liveFilesystem;
   if (marker === null) return { kind: "missing", generation, filesystem };
@@ -142,7 +139,7 @@ export const adoptHealthyRuntimeGeneration = (
           return Effect.succeed(true);
         case "missing":
           return deps.generationStore.set(state.generation).pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               generationError("Failed to adopt the healthy Lando runtime generation.", {}, cause),
             ),
             Effect.as(true),
@@ -164,7 +161,7 @@ export const applyLinuxRuntimeGenerationState = (
         state.filesystem
           .removeFile(path)
           .pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               generationError("Failed to remove stale Lando runtime launch metadata.", { path }, cause),
             ),
           ),
@@ -181,14 +178,14 @@ export const applyLinuxRuntimeGenerationState = (
     );
   }
   return state.filesystem.resetRunRoot(deps.runRoot).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       generationError("Failed to reset the stale Lando runtime runroot.", { runRoot: deps.runRoot }, cause),
     ),
     Effect.andThen(
       deps.generationStore
         .set(state.generation)
         .pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             generationError("Failed to record the current Lando runtime generation.", {}, cause),
           ),
         ),

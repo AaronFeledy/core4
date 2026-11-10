@@ -109,7 +109,7 @@ export const harness = (
     ...TestRuntimeProvider,
     id: "lando",
     isAvailable: Effect.succeed(options.online ?? true),
-    getStatus: Effect.succeed({ running: options.online ?? true }),
+    getStatus: Effect.succeed({ state: options.online === false ? ("idle" as const) : ("running" as const) }),
     list: () => (options.online === false ? Effect.die("offline list") : Effect.sync(observed)),
     stop: () => Effect.die("selected stop must remove by exact observed identity"),
     removeObservedService: (observation: ServiceRuntimeInfo) =>

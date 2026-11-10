@@ -62,6 +62,7 @@ const cases = [
   { name: "a service is running", containers: ["running", "exited"], providers: ["lando"], status: "active" },
   { name: "the runtime is unreachable", containers: [], providers: [], status: "unknown" },
   { name: "only another provider responds", containers: [], providers: ["docker"], status: "unknown" },
+  { name: "its managed provider is idle", containers: [], providers: [], status: "stopped", idle: true },
 ] as const;
 
 for (const fixture of cases) {
@@ -98,6 +99,7 @@ for (const fixture of cases) {
                 apps: appsFromContainerList(containers),
                 confirmedProviderIds: fixture.providers,
                 ownedAppIds: containers.length > 0 ? [appId] : [],
+                idleProviderIds: "idle" in fixture ? ["lando"] : [],
               }),
             }),
           ),

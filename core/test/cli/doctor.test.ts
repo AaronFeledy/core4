@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
@@ -296,11 +297,12 @@ describe("meta:doctor command", () => {
     expect(check.solutions).toEqual([]);
   });
 
-  test("non-running provider produces a warn check with a manual lando setup solution", async () => {
+  test("idle managed runtime passes and skips live probes without starting it", async () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      getStatus: Effect.succeed({ running: false, message: "podman socket unavailable" }),
+      getStatus: Effect.succeed({ state: "idle" as const }),
+      ensureReady: Effect.die("doctor must never start an idle runtime"),
     };
     const result = await Effect.runPromise(
       doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
@@ -311,33 +313,39 @@ describe("meta:doctor command", () => {
 
     expect(text).not.toContain("engineId: mutagen");
 
-    expect(check.status).toBe("warn");
-    expect(check.severity).toBe("warn");
+    expect(check.status).toBe("pass");
+    expect(check.severity).toBe("info");
     const runtime = check.runtime as Record<string, unknown>;
     expect(runtime.running).toBe(false);
-    expect(runtime.message).toBe("podman socket unavailable");
+    expect(result.checks.find((entry) => entry.name === "selected-provider")?.runtimeStatus).toBe(
+      "idle (starts on demand)",
+    );
     const solutions = check.solutions as Array<Record<string, unknown>>;
-    expect(solutions.length).toBeGreaterThanOrEqual(1);
-    const setupSolution = solutions.find((solution) => solution.command === "lando setup");
-    expect(setupSolution).toBeDefined();
-    expect(setupSolution?.kind).toBe("manual");
-    expect(setupSolution?.description).toContain("lando setup");
+    expect(solutions).toEqual([]);
+    expect(result.checks.find((entry) => entry.name === "runtime-service")?.status).toBe("pass");
+    expect(result.skipped?.map((entry) => entry.section)).toEqual(
+      expect.arrayContaining(["exec-umask", "container-died-events", "oom"]),
+    );
 
     const complete = resultEnvelope(ndjson).result as Record<string, unknown>;
-    expect(complete.warned).toBe(3);
+    expect(complete.warned).toBe(0);
     expect(complete.failed).toBe(0);
 
-    expect(text).toContain("selected-provider: warn");
-    expect(text).toContain("severity: warn");
-    expect(text).toContain("solution[manual]:");
-    expect(text).toContain("lando setup");
+    expect(text).toContain("selected-provider: pass");
   });
 
-  test("non-running docker provider produces a warn check with lando setup --provider=docker", async () => {
+  test("failed Docker status preserves its own remediation without a self diagnosis", async () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "docker",
-      getStatus: Effect.succeed({ running: false, message: "docker daemon unavailable" }),
+      getStatus: Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "docker",
+          operation: "getStatus",
+          message: "docker daemon unavailable",
+          remediation: "Start Docker Desktop and retry.",
+        }),
+      ),
     };
     const result = await Effect.runPromise(
       doctorWithoutPluginChecks({ env: {} }).pipe(
@@ -349,24 +357,17 @@ describe("meta:doctor command", () => {
     const check = firstCheckPayload(ndjson);
     const selected = result.checks[0] as DoctorCheck;
 
-    expect(check.status).toBe("warn");
-    expect(check.severity).toBe("warn");
+    expect(check.status).toBe("fail");
+    expect(check.severity).toBe("error");
     expect(check.providerId).toBe("docker");
     expect(selected.selection?.source).toBe("config");
     expect(selected.selection?.inputs.config).toBe("docker");
     const runtime = check.runtime as Record<string, unknown>;
     expect(runtime.running).toBe(false);
     const solutions = check.solutions as Array<Record<string, unknown>>;
-    expect(solutions.length).toBeGreaterThanOrEqual(1);
-    const setupSolution = solutions.find((solution) => solution.command === "lando setup --provider=docker");
-    expect(setupSolution).toBeDefined();
-    expect(setupSolution?.kind).toBe("manual");
-    expect(setupSolution?.description).toContain("lando setup --provider=docker");
-    expect(solutions.find((solution) => solution.command === "lando setup")).toBeUndefined();
-
-    expect(text).toContain("selected-provider: warn");
-    expect(text).toContain("lando setup --provider=docker");
-    expect(text).not.toMatch(/solution\[manual\]:[\s\S]*lando setup(?! --provider)/u);
+    expect(solutions).toEqual([{ kind: "manual", description: "Start Docker Desktop and retry." }]);
+    expect(result.selfChecks ?? []).toEqual([]);
+    expect(text).toContain("selected-provider: fail");
   });
 
   test("consumes the latest setup readiness summary with redacted failure remediation", async () => {

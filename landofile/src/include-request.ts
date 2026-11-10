@@ -1,4 +1,5 @@
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
 import type { IncludeEntry } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
@@ -76,7 +77,7 @@ export const acquireIncludeRequest = Effect.fnUntraced(
     );
     return { fragment, parsed };
   },
-  (effect, request) => effect.pipe(Effect.mapError((error) => attributeIncludeError(error, request.origin))),
+  (effect, request) => effect.pipe(mapFailures((error) => attributeIncludeError(error, request.origin))),
   (effect, request, ctx) =>
     ctx.observeInclude === undefined
       ? effect

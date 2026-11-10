@@ -521,6 +521,7 @@ import {
   TomcatServiceConfig,
   VarnishServiceConfig,
 } from "./services/index.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -530,6 +531,7 @@ import {
   ToolingInputValues,
   ToolingInvocationInput,
 } from "./tooling-input.ts";
+import { ToolingRunSummary, ToolingRunTarget } from "./tooling-run-summary.ts";
 import {
   ShareStopAppResult,
   TunnelCapabilities,
@@ -751,10 +753,13 @@ const basePublicSchemaRegistry = schemaRegistry({
   NormalizedToolingFlag,
   NormalizedToolingArg,
   ToolingInputDeclaration,
+  ToolingRunSummary,
+  ToolingRunTarget,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
+  SqliteTargetConfig,
   PhpComposerConfig,
   LogSource,
   LogSourceId,

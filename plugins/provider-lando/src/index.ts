@@ -1,7 +1,9 @@
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 import { withContainerHelper } from "./convenience-helper.ts";
+import { providerStatus } from "./provider-status.ts";
 
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -149,11 +151,7 @@ import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import {
-  buildManagedRuntimeServiceSpec,
-  managedRuntimePodmanArgv0,
-  terminateOwnedRuntimeService,
-} from "./managed-runtime-service.ts";
+import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
   validateManagedSocketPathLength,
@@ -177,6 +175,8 @@ import {
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import { teardownManagedRuntime } from "./runtime-shutdown-teardown.ts";
+import type { RuntimeShutdownStore } from "./runtime-shutdown.ts";
 import {
   type RuntimeServiceStatus,
   probeRuntimeServiceStatus,
@@ -584,6 +584,7 @@ export interface ProviderLayerOptions {
   /** Lando user-data root; file-mode bind copies live beneath it. */
   readonly userDataRoot?: string;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
+  readonly runtimeShutdownStore?: RuntimeShutdownStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
 
@@ -741,6 +742,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
           withLaunchLock: progress === undefined ? withLaunchLock : (body) => body,
+          ...(options.runtimeShutdownStore === undefined
+            ? {}
+            : { admit: options.runtimeShutdownStore.admit }),
           ...(options.runtimeGenerationStore === undefined
             ? {}
             : { generationStore: options.runtimeGenerationStore }),
@@ -1388,7 +1392,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               policy: "missing",
             }).pipe(
               Effect.asVoid,
-              Effect.mapError((cause) =>
+              mapFailures((cause) =>
                 cause instanceof ProviderUnavailableError
                   ? cause
                   : new ProviderUnavailableError({
@@ -1707,9 +1711,22 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         }),
         getStatus: rejectIntelMacHost(platform, arch).pipe(
           Effect.andThen(
-            podmanApi === undefined
-              ? Effect.fail(makeUnavailable("getStatus"))
-              : podmanApi.info.pipe(Effect.as({ running: true, message: "runtime socket reachable" })),
+            providerStatus({
+              api: podmanApi,
+              platform: family,
+              machine: machineRunner,
+              ...(options.runtimeShutdownStore === undefined
+                ? {}
+                : { receipt: options.runtimeShutdownStore.read }),
+              managedPaths:
+                canEnsure && runtimeBinDir !== undefined
+                  ? {
+                      runtimeBinDir,
+                      providerSocketPath: ensureSocketPath,
+                      providerPidPath: options.providerPidPath,
+                    }
+                  : undefined,
+            }),
           ),
         ),
         getVersions: Effect.sync(() => ({
@@ -1981,8 +1998,7 @@ export const plugin = definePlugin({
   hostMaintainers: [
     {
       id: "lando-runtime-service",
-      teardown: ({ paths, platform }) =>
-        terminateOwnedRuntimeService(buildManagedRuntimeServiceSpec({ ...paths, platform })),
+      teardown: teardownManagedRuntime,
     },
   ],
   runtimeProviders: new Map([

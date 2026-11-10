@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * Mutagen-backed accelerated file sync for the managed Lando provider on
  * native Windows. The production contribution binds verified provider targets
@@ -225,7 +226,7 @@ export const layer = Layer.effect(
           binDir: paths.binDir,
           toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
           force: setupOptions.force,
-        }).pipe(Effect.provideService(Downloader, downloader), Effect.mapError(provisionError)),
+        }).pipe(Effect.provideService(Downloader, downloader), mapFailures(provisionError)),
     });
   }),
 );
@@ -254,7 +255,7 @@ export const layerForContext = (ctx: LandoPluginContext) =>
           ),
           Effect.provideService(Downloader, downloader),
           Effect.provideService(ProcessRunner, runner),
-          Effect.mapError(provisionError),
+          mapFailures(provisionError),
         );
       if (paths.platform !== "win32") return makeFileSyncEngine({ setup });
 

@@ -167,7 +167,7 @@ describe("doctor chaos: provider path", () => {
     const check = result.checks.find((entry) => entry.name === "selected-provider");
     expect(check?.status).toBe("fail");
     expect(check?.context.statusProbe).toBe("failure");
-    expect(result.selfChecks?.map((entry) => entry.section)).toContain("provider-status");
+    expect((result.selfChecks ?? []).map((entry) => entry.section)).not.toContain("provider-status");
   });
 
   test("bounds a hanging provider status probe and keeps answering", async () => {

@@ -1,4 +1,5 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Option, type Scope, Stream } from "effect";
 
@@ -89,7 +90,7 @@ export const scopedDockerLogFileAccess = (
       : options.api.stream(input);
 
   const helperPath = options.resolveHelper.pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new ProviderUnavailableError({
           providerId,

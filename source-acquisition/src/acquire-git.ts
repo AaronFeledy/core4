@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { SourceAcquisitionError, acquisitionError, displaySource } from "./errors.ts";
 import { isLiteralGitRef } from "./locator.ts";
@@ -115,7 +116,7 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
           if (error.kind !== "fetch-failed" || acquisition.onStaleFallback === undefined)
             return yield* Effect.fail(error);
           const previous = yield* refs.get.pipe(
-            Effect.mapError((cause) => acquisitionError("cache", "git ref", cause)),
+            mapFailures((cause) => acquisitionError("cache", "git ref", cause)),
           );
           if (previous === null) return yield* Effect.fail(error);
           const snapshot = yield* storage.open(

@@ -1,4 +1,5 @@
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
@@ -148,7 +149,7 @@ export const setupSpec: LandoCommandSpec<
       if (globalApp._tag === "Some") {
         const { root } = yield* globalApp.value.paths;
         yield* ensureAppPlacement({ kind: "global", id: "global", root }, selectedProvider).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof AppPlacementError
               ? new AppPlacementError({
                   app: error.app,

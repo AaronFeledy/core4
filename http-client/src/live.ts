@@ -1,4 +1,5 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
 import { REDACTED } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
@@ -150,7 +151,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
               Context.merge(layerContext, fiber.context),
               fiber.getRef(NetworkTrust),
               env,
-            ).pipe(Effect.mapError((cause) => transportError(safeRequest, cause)));
+            ).pipe(mapFailures((cause) => transportError(safeRequest, cause)));
             const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];
             const trust = resolved === undefined ? undefined : withWindowsHostTrust(resolved, hostCaPems);
             const body = yield* requestBody(request);

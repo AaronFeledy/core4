@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 // `ManagedFileService`: the single chokepoint for Lando-owned writes into
 // the user's working tree. It renders + encodes content, applies an ownership
 // marker (`file` mode) or a fenced region (`block` mode), records a durable
@@ -1064,7 +1065,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
       Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
       Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
       Effect.map((state) => state?.entries ?? []),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ManagedFileError({
             reason: "io",
@@ -1127,7 +1128,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
         ...(mode === undefined ? {} : { mode }),
         privateFileAccess: options.privateFileAccess.enforce,
       }).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ManagedFileError({
               reason: "io",
@@ -1164,7 +1165,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
             return f(entries).pipe(Effect.map((outcome) => planLedgerStateWrite(entries, outcome)));
           }),
         ),
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           isManagedFileError(cause)
             ? cause
             : new ManagedFileError({

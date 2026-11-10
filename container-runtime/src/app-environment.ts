@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppSelector, ProviderError } from "@lando/sdk/services";
 import { Effect, Redacted, Schema } from "effect";
@@ -38,7 +39,7 @@ export const readAppEnvironment = Effect.fn("RuntimeProvider.readAppEnvironment"
     });
   const get = (path: EngineHttpRequest["path"]) =>
     request({ method: "GET", path }).pipe(
-      Effect.mapError(
+      mapFailures(
         () =>
           new ProviderUnavailableError({
             providerId: ctx.providerId,
@@ -66,7 +67,7 @@ export const readAppEnvironment = Effect.fn("RuntimeProvider.readAppEnvironment"
     filters: JSON.stringify({ label: [`${APP_LABEL}=${target.app}`] }),
   });
   const body = yield* get(`/containers/json?${query}`);
-  const containers = yield* Schema.decodeUnknownEffect(Containers)(body).pipe(Effect.mapError(malformed));
+  const containers = yield* Schema.decodeUnknownEffect(Containers)(body).pipe(mapFailures(malformed));
   const current = new Set(
     containers
       .filter((container) => container.Labels?.[APP_LABEL] === target.app)
@@ -88,7 +89,7 @@ export const readAppEnvironment = Effect.fn("RuntimeProvider.readAppEnvironment"
     if (cached === undefined) {
       const inspected = yield* get(`/containers/${encodeURIComponent(container.Id)}/json`);
       if (inspected === undefined) continue;
-      const config = yield* Schema.decodeUnknownEffect(Container)(inspected).pipe(Effect.mapError(malformed));
+      const config = yield* Schema.decodeUnknownEffect(Container)(inspected).pipe(mapFailures(malformed));
       cached = { app: target.app, provider: ctx.providerId, env: config.Config.Env ?? [] };
       environments.set(container.Id, cached);
     }

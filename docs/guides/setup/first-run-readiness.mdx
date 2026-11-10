@@ -47,11 +47,15 @@ Later commands stay on Docker without repeating the flag. See [What persists](./
 
 ## What doctor checks
 
-Doctor probes the managed runtime. If the runtime stopped, the next command that creates or starts containers, such as `lando start`, starts it again. Commands that only read or remove what already exists, such as `lando logs`, `lando stop`, and `lando destroy`, use the runtime as it is: they never start, repair, or download anything, and they report an unreachable runtime instead of guessing at its state.
+Doctor probes the managed runtime without launching it. On macOS and Windows, an absent API endpoint plus a managed machine inspected as stopped reports `idle (starts on demand)` and passes without setup remediation. Checks that need live containers are skipped; host-side checks continue. HTTP, protocol, permission, and timeout failures remain failures even if the machine appears stopped.
+
+On Linux and WSL, an absent API reports idle when Lando's shutdown receipt records a quiescent shutdown or comes from an earlier boot. Every runtime launch invalidates that evidence before starting the service. Doctor passes `selected-provider` for an idle runtime, and `lando list` reports apps as `stopped`. A missing or unreadable receipt, a launch during this boot without a completed shutdown, or live managed processes leaves runtime state unknown. A process scan alone cannot prove workloads stopped. Observation commands and `lando stop` do not launch the runtime.
+
+When the runtime is positively identified as idle, `lando stop` completes host-side cleanup without launching it. `lando destroy`, including `--root`, prepares the managed provider holding the app's resources whether it reports idle or its status cannot be read. That includes a crash, `wsl --terminate`, or the first poweroff after an upgrade without shutdown evidence. Lando waits for the runtime to answer before inspecting or removing resources; a preparation failure stops cleanup with that error. `lando apps:gc --prune` uses the same behavior. Observation commands such as `lando logs` never launch or repair a runtime; neither does `lando stop`.
 
 `lando poweroff` stops apps and then the managed runtime. Uninstall tears the runtime down before it removes Lando's private runtime directory.
 
-If doctor reports an orphaned runtime process, follow the printed remediation.
+If doctor reports an orphaned runtime process, follow the printed remediation. A rootless child of the verified managed service is part of that service, not an orphan. Doctor gives no kill advice when it cannot read the process ancestry.
 
 ## Verify
 

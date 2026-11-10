@@ -51,10 +51,14 @@ Use `type: mailpit` when this app needs its own capture server.
       <UseFixture name="mailhog-legacy" />
     </Step>
     <Step name="inspect">
-      <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mailhog\"" } }} />
-      <Run command="lando doctor --deprecations" />
-      <Verify command="lando doctor --deprecations" expect={{ stdout: { regex: "mailhog" } }} />
+      <Run runtime="library" displayCode="lando app:config --format=json" code={`const config = yield* context.runCli(["app:config", "--format=json"]);
+expect(config.exitCode).toBe(0);
+expect(JSON.parse(config.stdout).result.landofile.services.inbox.type).toBe("mailhog");`} />
+      <Run runtime="library" displayCode="lando doctor --deprecations --format=json" code={`const run = yield* context.runCli(["doctor", "--deprecations", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.deprecations.entries).toContainEqual(
+  expect.objectContaining({ kind: "service-type", id: "mailhog" }),
+);`} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

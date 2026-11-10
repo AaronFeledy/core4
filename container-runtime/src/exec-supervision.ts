@@ -1,4 +1,4 @@
-import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
@@ -73,9 +73,9 @@ export const supervisedExecStream = (
         return yield* Effect.fail(failure("container-inspect"));
       const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
         response.body,
-      ).pipe(Effect.mapError((cause) => failure("container-inspect", cause)));
+      ).pipe(mapFailures((cause) => failure("container-inspect", cause)));
       const helper = yield* resolveContainerHelper(helperTarget).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ServiceExecError({
               providerId: options.ctx.providerId,

@@ -49,7 +49,7 @@ test.each(
                 },
           ),
         providerOverrides: {
-          getStatus: Effect.succeed({ running: true }),
+          getStatus: Effect.succeed({ state: "running" as const }),
           cleanupOwnedResources: () =>
             Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
         },
@@ -65,7 +65,8 @@ test.each(
   expect(Exit.isSuccess(result)).toBe(true);
   expect(harness.calls).toContain("drain");
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe(operation === "stop" ? phase : "completed");
+  if (operation === "stop") expect(pending?.phase).toBe(phase);
+  else expect(pending).toBeNull();
 });
 
 test.each(["preparing", "sessions-ready"] as const)(
@@ -98,9 +99,10 @@ test.each(["preparing", "sessions-ready"] as const)(
     expect(Exit.isFailure(failed) && Cause.hasInterrupts(failed.cause)).toBe(true);
     const interrupted = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
     expect(interrupted.pending?.phase).toBe(phase);
+    expect(interrupted.pending?.attemptId).toBe(before.pending?.attemptId);
     await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
     const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-    expect(after.pending).toMatchObject({ attemptId: before.pending?.attemptId, phase: "completed" });
+    expect(after.pending).toBeNull();
     expect(harness.sessions).toHaveLength(1);
     expect(harness.calls.some((call) => /^(create|terminate):/.test(call))).toBe(false);
   },
@@ -146,7 +148,7 @@ test.each([...phases])(
     // Then it converges without terminating, duplicating, or reseeding history.
     expect(Exit.isSuccess(result)).toBe(true);
     const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-    expect(pending).toMatchObject({ attemptId: harness.attemptId, phase: "completed" });
+    expect(pending).toBeNull();
     expect(harness.sessions).toHaveLength(acceleratedPlan.fileSync.length);
     expect(harness.calls.filter((call) => /^(terminate|create):/.test(call))).toEqual([]);
   },
@@ -170,7 +172,7 @@ test.each([...phases])("destroy disposes unfinished %s in writer-safe order", as
   const harness = await Effect.runPromise(pendingHarness(phase));
   // When destroy is requested.
   const result = await Effect.runPromiseExit(destroyApp({}, target).pipe(Effect.provide(harness.layer)));
-  // Then disposal completes before provider destruction and the tombstone is written.
+  // Then disposal completes before provider destruction and the journal is removed.
   expect(Exit.isSuccess(result)).toBe(true);
   expect(
     harness.calls.filter((call) =>
@@ -178,7 +180,7 @@ test.each([...phases])("destroy disposes unfinished %s in writer-safe order", as
     ),
   ).toEqual(["drain", "dispose", "dispose-targets", "complete", "destroy:false"]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending).toMatchObject({ attemptId: harness.attemptId, phase: "completed" });
+  expect(pending).toBeNull();
 });
 
 for (const [name, operation] of [
@@ -199,7 +201,7 @@ for (const [name, operation] of [
       // Then the pending attempt finishes before the requested flow succeeds.
       expect(Exit.isSuccess(result)).toBe(true);
       const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-      expect(pending?.phase).toBe("completed");
+      expect(pending).toBeNull();
       expect(
         harness.calls.some((call) => call.startsWith("terminate:") || call === "create:one-way-replica"),
       ).toBe(false);
@@ -234,10 +236,8 @@ test.each(["none", "history"] as const)(
     expect(harness.calls).toContain("recover");
     expect(harness.calls.some((call) => /^(create|terminate|dispose)/.test(call))).toBe(false);
     const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-    expect(after.pending).toMatchObject({
-      attemptId: before.pending?.attemptId,
-      phase: recoverMissing === "history" ? "completed" : "apply-intent",
-    });
+    if (recoverMissing === "history") expect(after.pending).toBeNull();
+    else expect(after.pending).toMatchObject({ attemptId: before.pending?.attemptId, phase: "apply-intent" });
     if (recoverMissing === "history") expect(harness.calls).toContain("flush:recovered");
   },
 );
@@ -287,7 +287,7 @@ test.each(phases.flatMap((phase) => (["owned", "absent"] as const).map((evidence
                   },
             ),
           providerOverrides: {
-            getStatus: Effect.succeed({ running: true }),
+            getStatus: Effect.succeed({ state: "running" as const }),
             cleanupOwnedResources: () =>
               Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
           },
@@ -316,7 +316,7 @@ test.each(["preparing", "sessions-ready"] as const)(
     // No session was ever created, so there is nothing to drain or dispose in the engine.
     expect(harness.calls).toEqual(["quiesce-retained", "dispose-targets", "destroy:false"]);
     const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-    expect(pending?.phase).toBe("completed");
+    expect(pending).toBeNull();
   },
 );
 
@@ -349,12 +349,13 @@ test("failed provider apply retains sessions and the next start resumes the same
   expect(Exit.isFailure(failed)).toBe(true);
   expect(harness.calls).not.toContain("drain");
   const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
+  expect(before.pending?.phase).toBe("apply-intent");
   // When start retries the retained attempt.
   const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
   // Then history survives and the same attempt completes.
   expect(Exit.isSuccess(result)).toBe(true);
   const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(after.pending).toMatchObject({ attemptId: before.pending?.attemptId, phase: "completed" });
+  expect(after.pending).toBeNull();
   expect(harness.calls.filter((call) => /^(create|terminate):/.test(call))).toEqual([]);
 });
 import { literalTestLandofile } from "../compiled-landofile.ts";

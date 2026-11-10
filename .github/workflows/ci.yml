@@ -69,13 +69,16 @@ jobs:
 
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
-        run: bun test state-store/test/state-store/private-file-access.test.ts
+        run: bun run test:selection windows-private-file-access
 
       - name: Host Bun Shell dialect conformance
-        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
+        run: bun run test:selection shell-dialect
 
       - name: Lint
         run: bun run lint
+
+      - name: Test ownership inventory
+        run: bun run check:test-ownership
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -250,10 +253,10 @@ jobs:
         run: bun run codegen
 
       - name: Test native process signal handling
-        run: bun test core/test/cli/process-signals.test.ts
+        run: bun run test:selection process-signals
 
       - name: Test exec umask behavior
-        run: bun test container-runtime/test/exec-umask.test.ts
+        run: bun run test:selection exec-umask
 
   docs-build:
     needs: [selection]
@@ -281,7 +284,7 @@ jobs:
         run: bun run docs:check
 
       - name: Test docs
-        run: bun run docs:test
+        run: bun run test:selection docs
 
       - name: Build docs
         run: bun run docs:build
@@ -339,7 +342,7 @@ jobs:
         run: bun run codegen
 
       - name: Run cross-file isolation regressions
-        run: bun run test:unit:isolation
+        run: bun run test:selection unit-isolation
 
       - name: Report job timing
         if: always()
@@ -380,7 +383,7 @@ jobs:
       - name: Build and test the container helper with Lando
         run: |
           bun run scripts/build-container-helper.ts --test
-          bun test core/test/container-helper/helper.integration.test.ts
+          bun run test:selection container-helper
 
       - name: Upload container helper
         uses: actions/upload-artifact@v6
@@ -427,7 +430,7 @@ jobs:
         run: bun run codegen
 
       - name: Test the arm64 container helper
-        run: bun test core/test/container-helper/helper.integration.test.ts
+        run: bun run test:selection container-helper
   schema-snapshot:
     needs: [selection]
     if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
@@ -563,7 +566,7 @@ jobs:
         run: bun run codegen
 
       - name: Run library API tests
-        run: bun test core/test/library sdk/test/library
+        run: bun run test:selection library
 
       - name: Report job timing
         if: always()
@@ -618,7 +621,7 @@ jobs:
         run: bun run codegen
 
       - name: Run recipe test layer
-        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
+        run: bun run test:selection recipes
 
       - name: Report job timing
         if: always()
@@ -1009,6 +1012,10 @@ jobs:
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/postgres:18
+          pull_image docker.io/library/httpd:2.4-alpine
+          pull_image docker.io/library/redis:7
+          pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
           pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           pull_image docker.io/getmeili/meilisearch:v1.11
@@ -1024,6 +1031,8 @@ jobs:
           pull_image docker.io/valkey/valkey:8
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
+          docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e smoke guide scenarios
         env:
@@ -1273,17 +1282,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: darwin-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload darwin-arm64 binary
         if: always()
@@ -1356,17 +1365,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: darwin-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1439,17 +1448,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: linux-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload linux-arm64 binary
         if: always()
@@ -1522,17 +1531,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: linux-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload linux-x64 binary
         if: always()
@@ -1602,17 +1611,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: windows-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload windows-x64 binary
         if: always()
@@ -1682,17 +1691,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: windows-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload windows-arm64 binary
         if: always()
@@ -1933,11 +1942,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2004,11 +2013,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2075,11 +2084,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2102,7 +2111,7 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [ubuntu-26.04]
-        suite: [providers, services]
+        suite: [providers, engine, services]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
@@ -2264,6 +2273,10 @@ jobs:
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/postgres:18
+          pull_image docker.io/library/httpd:2.4-alpine
+          pull_image docker.io/library/redis:7
+          pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
           pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           pull_image docker.io/getmeili/meilisearch:v1.11
@@ -2279,14 +2292,16 @@ jobs:
           pull_image docker.io/valkey/valkey:8
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
+          docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Run provider integration tests
         env:
@@ -2296,17 +2311,28 @@ jobs:
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
+          status=0
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
-              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
-              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
+              bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              ;;
+            engine)
+              bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?
+              bun run test:selection providers-docker 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log || status=$?
+              bun run test:selection providers-readiness 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log || status=$?
+              bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log || status=$?
+              bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log || status=$?
+              bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log || status=$?
+              bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
+              bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               ;;
             services)
-              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
+          exit "$status"
 
       - name: Teardown Lando runtime
         if: always()
@@ -2454,11 +2480,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2525,11 +2551,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()

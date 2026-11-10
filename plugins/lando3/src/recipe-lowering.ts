@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError, Lando3UnsupportedRecipeError } from "@lando/sdk/errors";
 import { isPlainRecord, landofileLayerRank, mergeLandofiles } from "@lando/sdk/landofile";
 import type {
@@ -193,7 +194,7 @@ export const lowerRecipeViews = Effect.fnUntraced(function* (
       const decomposed = yield* decomposer
         .decompose({ producer: decomposer.producer, options: mapped.options, secrets: {} })
         .pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new ConfigTranslateError({
                 translator: "lando3",
@@ -284,7 +285,7 @@ export const recipeLayerOutputs: (
       Effect.flatMap((value) =>
         Schema.encodeEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
       ),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ConfigTranslateError({
             message: `Invalid directive fragment at ${layer}.`,

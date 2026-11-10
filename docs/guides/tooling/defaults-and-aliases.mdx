@@ -53,6 +53,8 @@ Here, `build` uses every default. `lint` targets `worker`, runs from `/app/tools
 
 Task-local values win first. Values from included tooling fragments come next. App-wide `toolingDefaults` fill whatever remains.
 
+`toolingDefaults.vars` holds literals only. Put a var computed by a shell command, `vars.<name>: { sh: <command> }`, on the task that reads it; see [Compute a value with a shell command](./flags-and-args.mdx#compute-a-value-with-a-shell-command). A task var of the same name, literal or computed, replaces the default.
+
 ## Remap a command
 
 Use `commandAliases.custom` to give a canonical command an app-specific shortcut. The canonical id stays put, so scripts can keep using it.

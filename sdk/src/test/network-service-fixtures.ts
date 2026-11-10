@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { AppId, type HealthcheckPlan, ServiceName } from "../schema/index.ts";
 import { ContractFailure } from "./_shared.ts";
@@ -25,11 +26,11 @@ export const runCaContract = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void, ContractFailure> {
   yield* requireCaContract(typeof ca.id === "string" && ca.id.length > 0, "id is a non-empty string", ca.id);
 
-  yield* ca.setup({ force: false }).pipe(Effect.mapError((d) => caContractFailure("setup resolves", d)));
+  yield* ca.setup({ force: false }).pipe(mapFailures((d) => caContractFailure("setup resolves", d)));
 
   const certResult = yield* ca
     .issueCert({ cn: "test.lndo.site", sans: ["*.test.lndo.site"] })
-    .pipe(Effect.mapError((d) => caContractFailure("issueCert resolves", d)));
+    .pipe(mapFailures((d) => caContractFailure("issueCert resolves", d)));
 
   yield* requireCaContract(
     typeof certResult.certPath === "string" && certResult.certPath.length > 0,
@@ -49,7 +50,7 @@ export const runCaContract = Effect.fnUntraced(function* (
 
   yield* ca
     .setup({ force: false, skipTrustInstall: true })
-    .pipe(Effect.mapError((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
+    .pipe(mapFailures((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
 });
 
 export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
@@ -104,11 +105,11 @@ export const runSshServiceContract = Effect.fnUntraced(function* (
     ssh.id,
   );
 
-  yield* ssh.setup({ force: false }).pipe(Effect.mapError((d) => sshContractFailure("setup resolves", d)));
+  yield* ssh.setup({ force: false }).pipe(mapFailures((d) => sshContractFailure("setup resolves", d)));
 
   const socketResult = yield* ssh
     .getAgentSocket(AppId.make("contract-test-app"))
-    .pipe(Effect.mapError((d) => sshContractFailure("getAgentSocket resolves", d)));
+    .pipe(mapFailures((d) => sshContractFailure("getAgentSocket resolves", d)));
 
   yield* requireSshContract(
     typeof socketResult.socketPath === "string" && socketResult.socketPath.length > 0,
@@ -118,7 +119,7 @@ export const runSshServiceContract = Effect.fnUntraced(function* (
 
   yield* ssh
     .setup({ force: true })
-    .pipe(Effect.mapError((d) => sshContractFailure("setup with force:true resolves", d)));
+    .pipe(mapFailures((d) => sshContractFailure("setup with force:true resolves", d)));
 });
 
 export const makeTestSshService = (): SshServiceShape & {
@@ -183,7 +184,7 @@ export const runHealthcheckContract = Effect.fnUntraced(function* (
 
   const result = yield* runner
     .run(testPlan, AppId.make("contract-test-app"), ServiceName.make("web"))
-    .pipe(Effect.mapError((d: HealthcheckRunError) => healthcheckContractFailure("run resolves", d)));
+    .pipe(mapFailures((d: HealthcheckRunError) => healthcheckContractFailure("run resolves", d)));
 
   yield* requireHealthcheckContract(
     typeof result.healthy === "boolean",
@@ -251,7 +252,7 @@ export const runScannerContract = Effect.fnUntraced(function* (
 
   const scanResult = yield* scanner
     .scan(testAppId)
-    .pipe(Effect.mapError((d) => scannerContractFailure("scan resolves", d)));
+    .pipe(mapFailures((d) => scannerContractFailure("scan resolves", d)));
 
   yield* requireScannerContract(
     scanResult.appId === testAppId,
@@ -266,7 +267,7 @@ export const runScannerContract = Effect.fnUntraced(function* (
 
   const collisions = yield* scanner
     .detectCollisions([testAppId])
-    .pipe(Effect.mapError((d) => scannerContractFailure("detectCollisions resolves", d)));
+    .pipe(mapFailures((d) => scannerContractFailure("detectCollisions resolves", d)));
 
   yield* requireScannerContract(Array.isArray(collisions), "detectCollisions result is an array", collisions);
 });

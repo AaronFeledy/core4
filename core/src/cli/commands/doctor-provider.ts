@@ -4,6 +4,7 @@ import {
   type ProviderCapabilities as ProviderCapabilitiesShape,
 } from "@lando/sdk/schema";
 
+import type { ProviderError, ProviderStatus } from "@lando/sdk/services";
 import type {
   DoctorCheck,
   DoctorRuntime,
@@ -17,11 +18,9 @@ import type { PluginDoctorProvider } from "./doctor-plugin-checks";
 import { orphanPidsFromRuntimeMessage, orphanRemediation } from "./doctor-runtime-service";
 import { type DoctorSelfFailureReason, describeDoctorFailure, redactDoctorMessage } from "./doctor-self";
 
-export interface ProviderStatusShape {
-  readonly running: boolean;
-  readonly message?: string;
+export type ProviderStatusShape = ProviderStatus & {
   readonly orphanPids?: ReadonlyArray<number>;
-}
+};
 
 export const DOCTOR_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof ProviderCapabilitiesShape
@@ -109,6 +108,7 @@ export const diagnosePrimaryProvider = (input: {
   };
   readonly status: ProviderStatusShape;
   readonly statusProbe: DoctorSelfFailureReason | undefined;
+  readonly statusFailure?: ProviderError;
   readonly runtimeVersion: string | undefined;
   readonly bundleVersion: string | undefined;
   readonly selection: DoctorSelectionRecord;
@@ -121,13 +121,16 @@ export const diagnosePrimaryProvider = (input: {
   }
 
   const runtimeMessage =
-    statusProbe === undefined
-      ? (status.message ?? (status.running ? "running" : "stopped"))
+    input.statusFailure?.message ??
+    (statusProbe === undefined
+      ? status.state === "idle"
+        ? "idle (starts on demand)"
+        : (status.message ?? "running")
       : statusProbe === "timeout"
         ? "unreachable (status probe timed out)"
-        : "unknown (status probe failed)";
+        : "unknown (status probe failed)");
   const runtime: DoctorRuntime = {
-    running: status.running,
+    running: statusProbe === undefined && status.state === "running",
     ...(status.message === undefined ? {} : { message: status.message }),
     ...(input.runtimeVersion === undefined ? {} : { version: input.runtimeVersion }),
   };
@@ -156,7 +159,7 @@ export const diagnosePrimaryProvider = (input: {
   if (!statusKnown) {
     checkStatus = "fail";
     severity = "error";
-  } else if (status.running && !hasOrphans) {
+  } else if (!hasOrphans) {
     checkStatus = "pass";
     severity = "info";
   } else {
@@ -166,7 +169,16 @@ export const diagnosePrimaryProvider = (input: {
 
   const solutions: DoctorSolution[] = [];
   if (hasOrphans) solutions.push(orphanRemediation(orphanPids));
-  if (!(statusKnown && status.running)) solutions.push(setupRemediationFor(provider.id));
+  if (!statusKnown)
+    solutions.push(
+      input.statusFailure?.remediation
+        ? { kind: "manual", description: input.statusFailure.remediation }
+        : setupRemediationFor(provider.id),
+    );
+  if (input.statusFailure !== undefined) {
+    context.message = input.statusFailure.message;
+    context.failure = input.statusFailure._tag;
+  }
 
   return {
     check: {

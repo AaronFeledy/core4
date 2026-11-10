@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { Effect } from "effect";
 
 import type { RuntimeProviderShape } from "@lando/sdk/services";
@@ -23,6 +24,17 @@ const HOST_PROXY_REMEDIATION: DoctorSolution = {
   description:
     "The app's host-proxy transport is unreachable. Run `lando restart` from the app to recreate its authenticated bridge.",
   command: "lando restart",
+};
+const WORKER_STOPPED: DoctorSolution = {
+  kind: "manual",
+  description: "The app's host-proxy worker is not running. Run `lando start` in the app to restart it.",
+  command: "lando start",
+};
+const PRIVATE_DIRECTORY_REQUIRED: DoctorSolution = {
+  kind: "manual",
+  description:
+    "The host proxy requires a socket owned by you inside a non-symlink, owner-only (0700) run directory. Restore directory ownership and private access, then run `lando start` for this app on the host.",
+  command: "lando start",
 };
 
 const containerGatewayMatches = (containerUrl: string, gateway: string): boolean => {
@@ -113,9 +125,26 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
     );
   }
   if (record.transport === "unix-socket" && !bridgedGuestSocket) {
-    const controlProbe = yield* probeWorker(record);
     const socketMetadata =
       record.socketPath === undefined ? undefined : yield* fileSystem.socketMetadata(record.socketPath);
+    const privateDirectory =
+      record.socketPath === undefined
+        ? undefined
+        : yield* fileSystem.socketMetadata(dirname(record.socketPath));
+    const directoryPrivate =
+      socketMetadata?.privateDirectory === true ||
+      (privateDirectory?.type === "directory" && privateDirectory.owned && privateDirectory.mode === 0o700);
+    if (doctor.runtimeIdle === true)
+      return {
+        ...baseCheck(
+          doctor,
+          { ...context, privateRunDirectory: String(directoryPrivate), reachability: "skipped" },
+          directoryPrivate ? "pass" : "warn",
+          directoryPrivate ? [] : [PRIVATE_DIRECTORY_REQUIRED],
+        ),
+        name: "host-proxy-privacy",
+      };
+    const controlProbe = yield* probeWorker(record);
     const reachable =
       controlProbe === "live" &&
       socketMetadata?.type === "socket" &&
@@ -136,16 +165,14 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
       reachable ? "pass" : "warn",
       reachable
         ? []
-        : [
-            {
-              kind: "manual",
-              description:
-                "The host proxy requires a socket owned by you inside a non-symlink, owner-only (0700) run directory. Restore directory ownership and private access, then run `lando start` for this app on the host.",
-              command: "lando start",
-            },
-          ],
+        : directoryPrivate && (socketMetadata === undefined || socketMetadata.owned)
+          ? [WORKER_STOPPED]
+          : [PRIVATE_DIRECTORY_REQUIRED],
     );
   }
+
+  if (doctor.runtimeIdle === true)
+    return skipped(`Provider ${doctor.provider.id} is idle; host-proxy reachability was not probed.`);
 
   const containerTarget = bridgedGuestSocket
     ? record.socketPath === undefined
@@ -170,7 +197,7 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
       doctor,
       { ...context, reachability: "unreachable", failure: "control-probe-failed" },
       "warn",
-      [HOST_PROXY_REMEDIATION],
+      [WORKER_STOPPED],
     );
   }
   if (!bridgedGuestSocket && gateway === undefined) {

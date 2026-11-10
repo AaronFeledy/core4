@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileLockMismatchError } from "@lando/sdk/errors";
 import { displaySource } from "@lando/source-acquisition";
 import { Effect } from "effect";
@@ -25,7 +26,7 @@ export const fetchGit = async (
       if (resolved !== undefined) {
         return Effect.runPromise(
           session.materializeGit({ url: parsed.cloneUrl, commit: resolved }).pipe(
-            Effect.mapError((error) => {
+            mapFailures((error) => {
               if (error.expected === undefined || error.actual === undefined)
                 return mapSourceAcquisitionError(error);
               return new LandofileLockMismatchError({

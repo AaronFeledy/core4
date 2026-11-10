@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import {
@@ -113,7 +114,7 @@ export class PluginContributionGraph extends Context.Service<
         const rawCandidates: GraphCertificateAuthorityCandidate[] = [];
         for (const [index, layer] of policy.layers.entries()) {
           const context = yield* Layer.buildWithScope(layer, scope).pipe(
-            Effect.mapError((cause) => bootstrapFailure(`Failed to build plugins.layers[${index}].`, cause)),
+            mapFailures((cause) => bootstrapFailure(`Failed to build plugins.layers[${index}].`, cause)),
           );
           const authority = Context.getOption(context, CertificateAuthority);
           if (Option.isSome(authority)) {
