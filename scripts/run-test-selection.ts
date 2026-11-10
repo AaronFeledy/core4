@@ -32,13 +32,21 @@ export const runTestSelection = async (
   const files = resolveTestSelection(selection, await collectTestFiles(root));
   if (files.length === 0) throw new TestSelectionError("empty", id);
   console.error(`[test:selection] ${id}: ${files.length} files`);
+  // Trees go to Bun as `./dir` so it keeps its own file order, as the workflow steps
+  // this replaces did; files and globs are passed as the exact files they resolve to.
+  const targets = selection.paths.flatMap((selector) =>
+    selector.endsWith("/")
+      ? [`./${selector.slice(0, -1)}`]
+      : resolveTestSelection({ ...selection, paths: [selector] }, files).map((path) => `./${path}`),
+  );
   return Bun.spawn(
     [
       process.execPath,
-      "--no-orphans",
+      ...(selection.noOrphans ? ["--no-orphans"] : []),
       "test",
       ...(selection.args ?? []),
-      ...files.map((path) => `./${path}`),
+      ...(selection.ignore ?? []).map((pattern) => `--path-ignore-patterns=${pattern}`),
+      ...new Set(targets),
     ],
     { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   ).exited;

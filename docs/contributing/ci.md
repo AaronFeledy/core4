@@ -114,7 +114,7 @@ Every other test a workflow step runs is a named selection in `scripts/test-sele
 bun run test:selection providers-core-live
 ```
 
-The runner resolves the selection to exact files and starts Bun once. To run a new integration suite in CI, add it to a selection, emit `bun run test:selection <id>` from the workflow generator, and run `bun run codegen`.
+The runner starts Bun once with exact paths: listed files, the files a glob matches, and `./dir` for a tree so Bun keeps its own file order. To run a new integration suite in CI, add it to a selection, emit `bun run test:selection <id>` from the workflow generator, and run `bun run codegen`.
 
 Inspect ownership without starting tests:
 

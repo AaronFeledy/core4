@@ -5,6 +5,8 @@ export interface TestSelection {
   readonly paths: readonly string[];
   readonly ignore?: readonly string[];
   readonly args?: readonly string[];
+  /** Run as `bun --no-orphans test`, killing every descendant on exit; live suites keep their daemons. */
+  readonly noOrphans?: true;
   readonly unit?: "exclude";
   readonly runner?: "go";
   readonly jobs: readonly { readonly workflow: string; readonly job: string }[];
@@ -209,11 +211,13 @@ export const TEST_SELECTIONS = [
     id: "docs",
     paths: ["docs/test/"],
     ignore: ["**/*.integration.test.ts"],
+    noOrphans: true,
     unit: "exclude",
     jobs: [{ workflow: "ci.yml", job: "docs-build" }],
   },
   {
     id: "unit-isolation",
+    noOrphans: true,
     paths: [
       "core/test/cli/doctor.test.ts",
       "core/test/cli/doctor-report.test.ts",

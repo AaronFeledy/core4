@@ -54,6 +54,26 @@ test("resolves exact paths and propagates a failing Bun result without running s
   expect(await Bun.file(receipt).text()).toBe("selected\n");
 });
 
+test("runs a tree selector through Bun's directory walk with ignore patterns and no suffix matches", async () => {
+  await using fixture = await createTestSelectionFixture();
+  const receipt = join(fixture.root, "receipt.txt");
+  const source = (label: string) => `import { test } from "bun:test";
+    import { appendFileSync } from "node:fs";
+    test(${JSON.stringify(label)}, () => appendFileSync(${JSON.stringify(receipt)}, ${JSON.stringify(`${label}\n`)}));`;
+  await fixture.put("pkg/test/tree.test.ts", source("tree"));
+  await fixture.put("pkg/test/live.integration.test.ts", source("ignored"));
+  await fixture.put("other/pkg/test/tree.test.ts", source("suffix"));
+  const selection: TestSelection = {
+    id: "tree",
+    paths: ["pkg/test/"],
+    ignore: ["**/*.integration.test.ts"],
+    jobs: [],
+  };
+  const { code, output } = await runCapturedSelection(fixture.root, selection);
+  expect(code, output).toBe(0);
+  expect(await Bun.file(receipt).text()).toBe("tree\n");
+});
+
 test("rejects unknown, empty, and Go selections before spawning Bun", async () => {
   await using fixture = await createTestSelectionFixture();
   const selections = [
