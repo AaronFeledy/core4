@@ -12,6 +12,10 @@ export interface ExpressionContext {
   readonly proxy?: Readonly<Record<string, unknown>> | undefined;
   readonly global?: Readonly<Record<string, unknown>> | undefined;
   readonly vars?: Readonly<Record<string, unknown>> | undefined;
+  readonly flags?: Readonly<Record<string, string | boolean>> | undefined;
+  readonly args?: Readonly<Record<string, string>> | undefined;
+  readonly raw?: readonly string[] | undefined;
+  readonly task?: Readonly<Record<string, string>> | undefined;
   /** Already-resolved recipe option values supplied by the caller; performs no lookup and runs no recipe code. */
   readonly options?: Readonly<Record<string, unknown>> | undefined;
   /** Recipe option values read from a Landofile's own `recipe.options`; performs no lookup and runs no recipe code. */
@@ -35,6 +39,10 @@ export const ExpressionContext: Schema.Codec<ExpressionContext> = Schema.Struct(
   proxy: Schema.optionalKey(UnknownRecord),
   global: Schema.optionalKey(UnknownRecord),
   vars: Schema.optionalKey(UnknownRecord),
+  flags: Schema.optionalKey(Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Boolean]))),
+  args: Schema.optionalKey(StringRecord),
+  raw: Schema.optionalKey(Schema.Array(Schema.String)),
+  task: Schema.optionalKey(StringRecord),
   options: Schema.optionalKey(
     UnknownRecord.annotate({
       description:

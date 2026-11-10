@@ -53,7 +53,10 @@ describe("runtime-service uninstall execution", () => {
           ...sandboxUninstallIo(root),
         }).pipe(
           Effect.provide(
-            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+            Layer.succeed(
+              HostMaintenanceRegistry,
+              HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+            ),
           ),
         ),
       );

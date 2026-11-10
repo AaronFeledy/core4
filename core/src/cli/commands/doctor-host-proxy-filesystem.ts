@@ -15,7 +15,7 @@ export interface HostProxyDoctorFileSystemShape {
   readonly readRoot: (path: string) => Effect.Effect<HostProxyDoctorRootState>;
   readonly socketMetadata: (path: string) => Effect.Effect<
     | {
-        readonly type: "socket" | "other";
+        readonly type: "socket" | "directory" | "other";
         readonly mode: number;
         readonly owned: boolean;
         readonly privateDirectory: boolean;
@@ -54,7 +54,7 @@ export class HostProxyDoctorFileSystem extends Context.Service<
             const metadata = await lstat(path);
             const directory = await lstat(dirname(path));
             return {
-              type: metadata.isSocket() ? "socket" : "other",
+              type: metadata.isSocket() ? "socket" : metadata.isDirectory() ? "directory" : "other",
               mode: metadata.mode & 0o777,
               owned: metadata.uid === process.getuid?.(),
               privateDirectory:

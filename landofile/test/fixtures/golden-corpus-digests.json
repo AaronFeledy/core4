@@ -53,7 +53,7 @@
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/missing-front-matter",
-      "digest": "6c888bdc32825b680c353e10e63b052c20746b501869941a8ae22a66b2b39acf"
+      "digest": "d0722959d0a417a54487a7a507bda33f46ac5aa45f63a69866e3f0352189a20e"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/raw-help",
@@ -118,6 +118,10 @@
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-dynamic-vars",
+      "digest": "633927713bf54ca9ab4cf97e541c6b91925e0ecb38ceae75e60a817a5f6713b1"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-event-tooling",
       "digest": "67f450cca3d98d73e3758805c3935025bc40ce9407d4b6b6480ac89f788d8a47"
     },
@@ -131,6 +135,10 @@
     {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-pgport",
       "digest": "9af58cc2876625db8d252f8d3e0135ff558c57f81bd7bdc5d8189b911f9e3a14"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-scripts",
+      "digest": "8915d062ed66e315386002f280dc0ab4abec22ca9c1602ccb1f3bc0c005f8686"
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-include",
@@ -256,6 +264,10 @@
     {
       "fixture": "docs/guides/defaults-and-aliases/fixtures/tooling-defaults",
       "digest": "1f56920584d949d4ccbc2d7b392e327d44bb72581ed56fac16f98be05d40c64b"
+    },
+    {
+      "fixture": "docs/guides/doctor-walkthrough/fixtures/unstarted-app",
+      "digest": "56039f296791a3f63e48c3bedd601e0537e5607a01b7d90c8652867f5bbcf63c"
     },
     {
       "fixture": "docs/guides/dotnet/fixtures/dotnet-demo",
@@ -392,7 +404,7 @@
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
-      "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
+      "digest": "b3a974bf52f825c0a4dd86d96cc9ac4d0aa29a8315d70d1b9ad54a9738801e90"
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/help-forwarding",

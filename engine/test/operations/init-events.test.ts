@@ -179,7 +179,8 @@ describe("app initialization lifecycle events", () => {
     await Effect.runPromise(runAppInitEvents(plan).pipe(Effect.provide(eventRuntime(executed, published))));
 
     // Then
-    expect(executed).toEqual(["pre-init", "post-init"]);
+    // Each step's interpolated tag binds as one quoted shell word.
+    expect(executed).toEqual(["'pre-init'", "'post-init'"]);
     expect(published.filter((tag) => tag === "pre-init" || tag === "post-init")).toEqual([
       "pre-init",
       "post-init",

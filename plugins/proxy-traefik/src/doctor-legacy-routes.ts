@@ -4,6 +4,7 @@ import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import { Effect } from "effect";
 
+import { recognizeLegacyRouteFile } from "./legacy-route-content.ts";
 import { dynamicConfigDir, joinFor } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 import { isOwnerLayoutRouteFile, isRouteFileName } from "./route-file-metadata.ts";
@@ -20,7 +21,12 @@ const readOptional = <A>(read: () => Promise<A>): Effect.Effect<A | undefined> =
     Effect.orDie,
   );
 
-const legacyReport = (files: ReadonlyArray<string>, platform: ProxyPaths["platform"]): PluginDoctorReport => {
+/** A comma-joined list cut at a whole path so it fits a plugin doctor context value. */
+const fileClass = (
+  key: "generated" | "unrecognized",
+  files: ReadonlyArray<string>,
+): Record<string, string> => {
+  if (files.length === 0) return {};
   let listed = "";
   let included = 0;
   for (const file of files) {
@@ -31,41 +37,51 @@ const legacyReport = (files: ReadonlyArray<string>, platform: ProxyPaths["platfo
   }
   const truncated = included < files.length;
   return {
-    name: "legacy-route-files",
-    status: "warn",
-    severity: "warn",
-    runtimeStatus: "legacy-route-files",
-    context: {
-      proxyId: "traefik",
-      legacyCount: String(files.length),
-      files: listed,
-      ...(truncated ? { truncated: "true" } : {}),
-    },
-    solutions: [
-      {
-        kind: "manual",
-        description: truncated
-          ? "Manually delete the listed legacy route files, then run `lando doctor` again to list the remaining files."
-          : "Manually delete the legacy route files listed in this report.",
-      },
-      ...(platform === "win32"
-        ? [
-            {
-              kind: "manual" as const,
-              description:
-                "After deleting the files, restart the global app so Traefik reloads its file provider.",
-              command: "lando global:restart",
-            },
-          ]
-        : []),
-      {
-        kind: "manual",
-        description:
-          "Then republish the routes you still need: run `lando start` in a user app, `lando global:start` for global services, or start the scratch app again with its scratch command.",
-      },
-    ],
+    [`${key}Count`]: String(files.length),
+    [`${key}Files`]: listed,
+    ...(truncated ? { [`${key}FilesTruncated`]: "true" } : {}),
   };
 };
+
+const REPUBLISH =
+  "start the apps whose routes you still need: `lando start` in a user app, `lando global:start` for global services, or the scratch app's own command.";
+
+const legacyReport = (
+  generated: ReadonlyArray<string>,
+  unrecognized: ReadonlyArray<string>,
+  platform: ProxyPaths["platform"],
+): PluginDoctorReport => ({
+  name: "legacy-route-files",
+  status: "warn",
+  severity: unrecognized.length > 0 ? "warn" : "info",
+  runtimeStatus: "legacy-route-files",
+  context: {
+    proxyId: "traefik",
+    ...fileClass("generated", generated),
+    ...fileClass("unrecognized", unrecognized),
+  },
+  solutions: [
+    ...(generated.length > 0
+      ? [
+          {
+            kind: "manual" as const,
+            description:
+              "These route files use the layout an older Lando wrote and keep publishing hostnames no app can withdraw. Lando removes them on the next routed app start; run `lando setup` to remove them now. Each app republishes its own routes when it starts.",
+            command: "lando setup",
+          },
+        ]
+      : []),
+    ...(unrecognized.length > 0
+      ? [
+          {
+            kind: "manual" as const,
+            description: `Lando does not recognize these route files as its own, so it leaves them alone. Delete the ones you no longer need${platform === "win32" ? ", run `lando global:restart` so Traefik reloads its route configuration," : ""} then ${REPUBLISH}`,
+            ...(platform === "win32" ? { command: "lando global:restart" } : {}),
+          },
+        ]
+      : []),
+  ],
+});
 
 export const legacyRouteFilesCheck: PluginDoctorCheckContribution = {
   id: "legacy-route-files",
@@ -84,16 +100,22 @@ export const legacyRouteFilesCheck: PluginDoctorCheckContribution = {
         return readOptional(() => readFile(path, "utf8")).pipe(
           Effect.map((content) => {
             if (content === undefined) return undefined;
-            return isOwnerLayoutRouteFile(name, content) ? undefined : name;
+            return isOwnerLayoutRouteFile(name, content)
+              ? undefined
+              : {
+                  path,
+                  generated: recognizeLegacyRouteFile(name, content) !== undefined,
+                };
           }),
         );
       },
       { concurrency: "unbounded" },
-    ).pipe(Effect.map((items) => items.filter((name): name is string => name !== undefined)));
+    ).pipe(Effect.map((items) => items.filter((item) => item !== undefined)));
     if (legacy.length === 0) return [];
     return [
       legacyReport(
-        legacy.map((file) => joinFor(paths)(directory, file)),
+        legacy.filter((file) => file.generated).map((file) => file.path),
+        legacy.filter((file) => !file.generated).map((file) => file.path),
         platform,
       ),
     ];

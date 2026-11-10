@@ -11,7 +11,7 @@ import { Effect, Result, Schema } from "effect";
 import { templateSource } from "./expression-source.ts";
 import { captureTemplate } from "./invocation-captures.ts";
 
-export const INVOCATION_SCOPES = ["event", "vars", "item", "key"] as const;
+export const INVOCATION_SCOPES = ["event", "vars", "item", "key", "flags", "args", "raw", "task"] as const;
 
 /** Only executable declaration positions can retain invocation-time expressions. */
 export const executableExpressionPath = (path: readonly (string | number)[]): boolean => {

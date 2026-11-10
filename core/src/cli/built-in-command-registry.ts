@@ -41,6 +41,7 @@ import { appShellSpec } from "./command-specs/app/shell";
 import { sshSpec } from "./command-specs/app/ssh";
 import { startSpec } from "./command-specs/app/start";
 import { stopSpec } from "./command-specs/app/stop";
+import { appsGcSpec } from "./command-specs/apps/gc";
 import { initSpec } from "./command-specs/apps/init";
 import { listSpec } from "./command-specs/apps/list";
 import { poweroffSpec } from "./command-specs/apps/poweroff";
@@ -192,6 +193,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
         "Run `lando init` through the native CLI.",
       ),
       listSpec,
+      appsGcSpec,
       poweroffSpec,
       appsScratchDestroySpec,
       appsScratchGcSpec,

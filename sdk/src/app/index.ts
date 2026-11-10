@@ -274,6 +274,7 @@ export type StartAppError =
 export type StopAppOptions = {};
 
 export type StopAppError =
+  | ProxyError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | AppPlannerError

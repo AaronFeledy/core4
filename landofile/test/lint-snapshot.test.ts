@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
 import { getSourceDocuments } from "../src/pipeline/source-table.ts";
 import type { TemplateEngineInputs } from "../src/ports.ts";
+import { loadLandofileLayers } from "../src/service.ts";
 import * as TsLoader from "../src/ts-loader.ts";
 import * as Validation from "../src/validation.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -32,6 +33,162 @@ const lint = () =>
   );
 
 describe("retained lint snapshot", () => {
+  test.each([
+    {
+      declaration:
+        "toolingIncludes:\n  frag:\n    file: tasks.yml\n    vars:\n      WHO:\n        sh: echo inc\n",
+      path: ["toolingIncludes", "frag", "vars", "WHO"],
+      line: 6,
+      column: 7,
+    },
+    {
+      declaration:
+        "includes:\n  - source: tasks.yml\n    kind: tooling\n    namespace: frag\n    vars:\n      WHO:\n        sh: echo inc\n",
+      path: ["includes", 0, "vars", "WHO"],
+      line: 7,
+      column: 7,
+    },
+  ])(
+    "reports invalid include vars at $path and retains independent fragments (#2212)",
+    async ({ declaration, path, line, column }) => {
+      await write(".lando.yml", `name: snapshot\n${declaration}`);
+      await write(".lando.local.yml", "includes: [good.yml]\n");
+      await write("good.yml", "services:\n  web:\n    primary: wrong\n");
+      const { result } = await lint();
+      expect(result.app).toBe("snapshot");
+      expect(result.violations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            rule: "landofile.validation",
+            path,
+            line,
+            column,
+            source: { file: join(root, ".lando.yml"), layer: "canonical", path },
+          }),
+          expect.objectContaining({
+            path: ["services", "web", "primary"],
+            source: { file: join(root, "good.yml"), layer: "local", path: ["services", "web", "primary"] },
+          }),
+        ]),
+      );
+      expect(result.violations).toHaveLength(2);
+      const failure = await Effect.runPromise(
+        loadLandofileLayers(root, join(root, ".lando.yml"), {
+          ports: makeTestLandofilePorts(root),
+          stateStore: makeTestLandofileStateStore(),
+          templates: { modules: [] },
+        }).pipe(Effect.flip),
+      );
+      expect(failure).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [expect.objectContaining({ path })],
+      });
+    },
+  );
+  test("reports refused tooling keys once at each authored location (#2211)", async () => {
+    await write(
+      ".lando.yml",
+      [
+        "name: snapshot",
+        "tooling:",
+        "  t:",
+        "    cmd: echo hi",
+        "    deps: [other]",
+        "    vars:",
+        "      D:",
+        "        default: hi",
+        "events:",
+        "  pre-start:",
+        "    - cmd: echo hi",
+        "      platforms: [linux]",
+        "",
+      ].join("\n"),
+    );
+    const { result } = await lint();
+    expect(result.violations).toEqual([
+      expect.objectContaining({
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["events", "pre-start", 0, "platforms"],
+        line: 12,
+        column: 7,
+      }),
+      expect.objectContaining({
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["tooling", "t", "deps"],
+        line: 5,
+        column: 5,
+      }),
+      expect.objectContaining({
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["tooling", "t", "vars", "D", "default"],
+        line: 8,
+        column: 9,
+        suggestion: "Write the value directly: vars.D: <value>.",
+        source: {
+          file: join(root, ".lando.yml"),
+          layer: "canonical",
+          path: ["tooling", "t", "vars", "D", "default"],
+        },
+      }),
+    ]);
+  });
+  test("reports a refused key from a tooling include once, beside a root refusal", async () => {
+    await write(
+      ".lando.yml",
+      [
+        "name: snapshot",
+        "tooling:",
+        "  t:",
+        "    cmd: echo hi",
+        "    deps: [other]",
+        "toolingIncludes:",
+        "  frag:",
+        "    file: frag.yml",
+        "",
+      ].join("\n"),
+    );
+    await write("frag.yml", ["tooling:", "  u:", "    cmd: echo hi", "    sources: [a]", ""].join("\n"));
+    const { result } = await lint();
+    expect(result.violations.map((violation) => [violation.reason, violation.path])).toEqual([
+      ["NotImplementedError", ["tooling", "t", "deps"]],
+      ["NotImplementedError", ["tooling", "u", "sources"]],
+    ]);
+  });
+
+  test("reports a refused key that a merge directive hides from its fragment, at its effective path", async () => {
+    await write(
+      ".lando.yml",
+      ["name: snapshot", "tooling:", "  t:", "    cmd: echo hi", "    deps: [other]", ""].join("\n"),
+    );
+    await write(
+      ".lando.local.yml",
+      ["tooling: !override", "  u:", "    cmd: echo hi", "    sources: [a]", ""].join("\n"),
+    );
+    const { result } = await lint();
+    const refusals = result.violations.filter((violation) => violation.reason === "NotImplementedError");
+    expect(refusals.map((violation) => violation.path)).toContainEqual(["tooling", "u", "sources"]);
+    expect(new Set(refusals.map((violation) => JSON.stringify(violation.path))).size).toBe(refusals.length);
+    expect(result.violations.some((violation) => violation.path.length === 0)).toBe(false);
+  });
+
+  test("keeps a deferred-scope refusal that the tooling scan did not raise", async () => {
+    await write(
+      ".lando.yml",
+      ["name: snapshot", "tooling:", "  s:", "    cmd: echo {{ sources }}", ""].join("\n"),
+    );
+    const { result } = await lint();
+    expect(result.violations).toEqual([
+      expect.objectContaining({
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        message: expect.stringContaining("Invocation scope sources"),
+      }),
+    ]);
+  });
+
   test("reports a rejected Compose key once, at its field", async () => {
     await write(
       ".lando.yml",

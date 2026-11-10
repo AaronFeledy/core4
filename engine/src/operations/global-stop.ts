@@ -117,7 +117,9 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
         if (selection === undefined) {
           const router = yield* RouterService;
           yield* router.removeRoutes(routeOwnerFromGlobalTeardown(loaded));
-          yield* recordGlobalResourceCleanup();
+          yield* "cleanup" in receipt && receipt.cleanup === "routes"
+            ? recordGlobalRouteCleanup()
+            : recordGlobalResourceCleanup();
         }
         return withShutdownObservations(
           {

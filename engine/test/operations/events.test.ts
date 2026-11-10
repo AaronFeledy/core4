@@ -456,8 +456,8 @@ describe("runAppEvent tooling-step kernel", () => {
 
     // Then
     expect(invocations.map(({ cwd, commands }) => ({ cwd, command: commands[0]?.[2] }))).toEqual([
-      { cwd: "/workspace/loop", command: 'inspect-web "$@"' },
-      { cwd: "/workspace/loop", command: 'inspect-db "$@"' },
+      { cwd: "/workspace/loop", command: "inspect-'web' \"$@\"" },
+      { cwd: "/workspace/loop", command: "inspect-'db' \"$@\"" },
       { cwd: "/workspace/deferred", command: 'cleanup "$@"' },
     ]);
   });
@@ -699,25 +699,25 @@ describe("runAppEvent tooling-step kernel", () => {
         service: undefined,
         cwd: undefined,
         env: undefined,
-        commands: [["sh", "-c", 'exact-a "$@"', "lando-tooling"]],
+        commands: [["sh", "-c", "'exact'-'a' \"$@\"", "lando-tooling"]],
       },
       {
         service: undefined,
         cwd: undefined,
         env: undefined,
-        commands: [["sh", "-c", 'exact-b "$@"', "lando-tooling"]],
+        commands: [["sh", "-c", "'exact'-'b' \"$@\"", "lando-tooling"]],
       },
       {
         service: "svc-17",
         cwd: "/tmp/17",
         env: { VALUE: "17" },
-        commands: [["sh", "-c", 'first-17 "$@"', "lando-tooling"]],
+        commands: [["sh", "-c", "first-'17' \"$@\"", "lando-tooling"]],
       },
       {
         service: "svc-17",
         cwd: "/tmp/17",
         env: { VALUE: "17" },
-        commands: [["sh", "-c", 'second-17 "$@"', "lando-tooling"]],
+        commands: [["sh", "-c", "second-'17' \"$@\"", "lando-tooling"]],
       },
     ]);
   });

@@ -1,4 +1,4 @@
-import { ToolingInputDeclaration } from "@lando/sdk/schema";
+import { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { PluginCommandDiagnostic } from "./plugin-command-catalog";
 
@@ -65,7 +65,11 @@ export const HelpCommandDescriptor = Schema.Union([
   Schema.Struct({
     ...fields,
     source: Schema.Literal("tooling"),
+    loadError: Schema.optionalKey(PluginCommandDiagnostic),
     input: Schema.optionalKey(ToolingInputDeclaration),
+    runs: Schema.optionalKey(ToolingRunSummary).annotate({
+      description: "Bounded summary of what this task runs.",
+    }),
   }),
   Schema.Struct({
     ...fields,

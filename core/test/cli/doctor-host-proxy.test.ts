@@ -103,7 +103,13 @@ const runDoctor = (
     doctor(env === undefined ? {} : { env }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            buildRegistry({
+              ...provider,
+              list: (filter) => (filter.app === undefined ? Effect.succeed([]) : provider.list(filter)),
+            }),
+          ),
           Layer.succeed(ConfigService, ConfigService.of(buildConfigService(userDataRoot))),
           Layer.succeed(PathsService, makeLandoPaths({ userDataRoot, platform: "linux", env: {} })),
         ),

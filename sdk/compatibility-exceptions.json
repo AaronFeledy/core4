@@ -1,5 +1,179 @@
 [
   {
+    "surface": "schema:VolumeLocator",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Adds explicit native presence to volume observations for interrupted missing-root disposal recovery. Every previous locator remains accepted with presence omitted; omission does not prove absence. The new absent arm forbids a live identity, while the present arm preserves optional provenance. This is a derived provider observation, not persisted lifecycle state. Schema and provider tests cover absent, present without provenance, transport failures, and contradictory identity."
+  },
+  {
+    "surface": "schema:ToolingVar",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #2004 intentionally removes the unreleased default and prompt tooling var object forms. Literals and sh remain. The loader rejects removed forms before decode with form-specific NotImplementedError remediation; no deprecated aliases remain. Tooling round 2 A1 adds optional service and sensitive:true to sh vars. Explicit targets reset task placement, and sensitive captures register before the next var; focused schema, preparation, and host-shell tests cover these additions."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.vars.additionalProperties",
+    "justification": "Issue #2004 intentionally narrows task vars to literals and sh, removing unreleased default and prompt forms. Pre-decode rejection and focused schema and invocation tests cover the new contract."
+  },
+  {
+    "surface": "schema:ToolingDefaultsShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingDefaults.vars.additionalProperties",
+    "justification": "Issue #2004 restricts toolingDefaults vars to literals: a shell-computed default would run for every task in that task's own target even when unread, so computed vars belong on the task. The unreleased object forms (sh, default, prompt) were never documented there; the schema test pins the literal-only contract."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "#2169 adds a distinct script provenance arm carrying file and front-matter path. Lint findings retain physical script locations; all existing provenance arms remain unchanged."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.appConfig.violations.items.source.anyOf",
+    "justification": "#2169 adds script provenance to config lint findings reused by doctor --app. All previous source arms remain valid and the new script arm preserves file and front-matter paths."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "#2169 intentionally extends lint output with the script provenance arm. Physical script files and front-matter paths become observable without changing existing source arms or persisted state."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "#2169 adds script.front-matter and script.host-shell diagnostics to config lint. Existing rules remain valid; callers can now distinguish script metadata and executable body failures. These findings are observations, not persisted state."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.additionalErrors.items.issues.items.rule.anyOf",
+    "justification": "#2169 extends the shared validation rule registry with two script rules. Existing include diagnostics are unchanged; nested error contracts inherit the additive rule union."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.additionalErrors.items.issues.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.issues.items.rule.anyOf",
+    "justification": "#2169 extends the shared validation rule registry with two script rules. Existing include diagnostics are unchanged; nested error contracts inherit the additive rule union."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.issues.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.appConfig.violations.items.rule.anyOf",
+    "justification": "#2169 makes doctor --app reuse script.front-matter and script.host-shell findings from config lint. Existing findings remain valid and script sources retain physical locations."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.globalConfig.error.issues.items.rule.anyOf",
+    "justification": "#2169 extends ConfigLintRuleId with two script rules. Global config errors inherit the shared issue contract without changing their producers or accepted configuration."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "union-widened",
+    "path": "$.globalConfig.error.issues.items.source.anyOf",
+    "justification": "#2169 adds the script layer to the shared issue provenance contract. Existing global-config provenance is unchanged; doctor inherits the additive source arm."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.rule.anyOf",
+    "justification": "#2169 intentionally adds two script diagnostic rule ids to lint output so malformed scripts no longer report a valid configuration. Existing rule ids remain valid; findings are not persisted."
+  },
+  {
+    "surface": "schema:ConfigLintRuleDescriptor",
+    "changeKind": "enum-widened",
+    "path": "$.stages.items",
+    "justification": "#2169 adds the script stage for metadata and body inspection independent of Landofile resolution. Existing stage values remain valid."
+  },
+  {
+    "surface": "schema:ConfigLintRuleId",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "#2169 adds script.front-matter and script.host-shell to the annotated rule registry. The existing literals and descriptions remain unchanged."
+  },
+  {
+    "surface": "schema:ComposedCompiledLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:ParsedPendingSite",
+    "changeKind": "unsupported-construct",
+    "path": "$.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
+    "surface": "schema:SourceCompiledLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.pendingSites.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+  },
+  {
     "surface": "command:meta:plugin:unlink",
     "changeKind": "property-removed",
     "path": "$.restoredPath",
@@ -111,7 +285,7 @@
     "surface": "command:cli:help",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed #2053 machine-help addition: built-in and plugin descriptor arms accept optional ordered input flags and args, including declared defaults, choices, spellings and positional stdio. Required descriptor fields and the tooling input/revision arm are unchanged, and catalog producers still omit inputs. Built-in and fixture-plugin CLI regressions cover the new target payload; the schema snapshot test verifies publication of both catalog and target shapes. The conservative classifier cannot descend through this anyOf change. #2103 removes the never-again-produced `unknown-command` reason from the unavailable `toolingMetadata` arm: a task a fresh index lacks is an UnknownCommandError, so that arm now lists only the cache-state reasons."
+    "justification": "Reviewed #2053 machine-help addition: built-in and plugin descriptor arms accept optional ordered input flags and args, including declared defaults, choices, spellings and positional stdio. Required descriptor fields and the tooling input/revision arm are unchanged, and catalog producers still omit inputs. Built-in and fixture-plugin CLI regressions cover the new target payload; the schema snapshot test verifies publication of both catalog and target shapes. The conservative classifier cannot descend through this anyOf change. #2103 removes the never-again-produced `unknown-command` reason from the unavailable `toolingMetadata` arm: a task a fresh index lacks is an UnknownCommandError, so that arm now lists only the cache-state reasons. #2136 adds optional bounded ToolingRunSummary metadata to tooling targets, with no required-field or input-declaration change. Cached task and live-script machine-help regressions cover propagation and redaction."
   },
   {
     "surface": "command:app:config:lint",
@@ -6038,5 +6212,11 @@
       "store": "snapshot-sidecar",
       "version": 2
     }
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "enum-widened",
+    "path": "$.runtimeState",
+    "justification": "Adds `idle`: an installed managed runtime that is not running and starts on demand now reports its services as stopped instead of `unavailable`, so scripts can tell \"nothing is running\" from \"the runtime cannot be observed\". `available` and `unavailable` keep their meaning. This is a derived observation in a command result, not persisted state."
   }
 ]

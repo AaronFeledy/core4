@@ -7,6 +7,7 @@ import { RecordedMachineOwnership, SetupMachineOwnership } from "./setup-machine
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
+import { parseManagedMachineState } from "@lando/container-runtime/podman/managed-status";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -856,27 +857,10 @@ ConvertTo-Json -InputObject $rows -Compress`;
       }),
     ),
     inspect: runMachineCommand(spawn, command, ["machine", "inspect", machineName], "inspect", platform).pipe(
-      Effect.flatMap((stdout) =>
-        Effect.try({
-          try: (): PodmanMachineStatus => {
-            const machines = JSON.parse(stdout) as unknown;
-            const machine = Array.isArray(machines) ? machines[0] : machines;
-            if (typeof machine !== "object" || machine === null) {
-              return "missing";
-            }
-            const state = "State" in machine ? machine.State : "state" in machine ? machine.state : undefined;
-            return typeof state === "string" && /running/i.test(state) ? "running" : "stopped";
-          },
-          catch: (cause) =>
-            new ProviderUnavailableError({
-              providerId: PROVIDER_ID,
-              operation: "inspect",
-              message: "Failed to parse `podman machine inspect` output.",
-              remediation: "Verify the Podman machine state and rerun `lando setup`.",
-              cause,
-            }),
-        }),
-      ),
+      Effect.flatMap((stdout) => {
+        const state = parseManagedMachineState(stdout);
+        return state instanceof ProviderUnavailableError ? Effect.fail(state) : Effect.succeed(state);
+      }),
       Effect.catch((cause) => {
         const raw = cause.cause;
         if (typeof raw !== "object" || raw === null) {

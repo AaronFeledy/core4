@@ -430,9 +430,10 @@ describe("terminateManagedPause", () => {
       nsByPid: { 4242: "user:[2]" },
       environByPid: { 4242: pauseEnviron(privateDir) },
     });
-    await run(
+    const completed = await run(
       terminateManagedPause(privateDir, { fs, process: processSeam(true, killed), getuid: () => ourUid }),
     );
+    expect(completed).toBe(true);
     expect(killed).toEqual([{ pid: 4242, signal: "SIGKILL" }]);
     expect(fs.unlinked).toEqual([pausePath, nsPath]);
   });
@@ -450,6 +451,25 @@ describe("terminateManagedPause", () => {
       terminateManagedPause(privateDir, { fs, process: processSeam(true, killed), getuid: () => ourUid }),
     );
     expect(killed).toEqual([]);
+    expect(fs.unlinked).toEqual([]);
+  });
+
+  test("a failed pause kill cannot authorize a stopped receipt", async () => {
+    const fs = makePauseFs({
+      pausePid: "4242",
+      statusByPid: { 4242: pauseStatus(ourUid) },
+      nsSelf: "user:[1]",
+      nsByPid: { 4242: "user:[2]" },
+      environByPid: { 4242: pauseEnviron(privateDir) },
+    });
+    const completed = await run(
+      terminateManagedPause(privateDir, {
+        fs,
+        getuid: () => ourUid,
+        process: { isAlive: () => Effect.succeed(true), kill: () => Effect.fail(new Error("EPERM")) },
+      }),
+    );
+    expect(completed).toBe(false);
     expect(fs.unlinked).toEqual([]);
   });
 

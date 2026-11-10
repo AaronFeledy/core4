@@ -1,4 +1,5 @@
 import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
+import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { GlobalConfigSources } from "../services/config.ts";
@@ -181,6 +182,7 @@ export const makeRuntimeProviderRegistry = (
                 }),
           } satisfies typeof contribution,
           context,
+          pluginStateRoot,
         };
       });
 
@@ -275,8 +277,18 @@ export const makeRuntimeProviderRegistry = (
           },
         ),
         list: providerIds,
-        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
-          const ids = yield* providerIds;
+        hasRecordedOwnership: Effect.fn("RuntimeProviderRegistry.hasRecordedOwnership")((id: ProviderId) =>
+          contributionFor(id).pipe(
+            Effect.flatMap(({ pluginStateRoot }) =>
+              hasResourceOwnershipRecords(id, pluginStateRoot).pipe(mapFailures(redactFailure)),
+            ),
+          ),
+        ),
+        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (
+          root: AbsolutePath,
+          providerId?: ProviderId,
+        ) {
+          const ids = providerId === undefined ? yield* providerIds : [providerId];
           const plans = yield* Effect.forEach(ids, (id) =>
             contributionFor(id).pipe(
               Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),

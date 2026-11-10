@@ -5,6 +5,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 
 import { managedPodmanChildEnv } from "@lando/container-runtime/podman/managed-invocation";
 import { prepareManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { readProcessDescendant } from "@lando/container-runtime/podman/managed-status-io";
 import { Effect } from "effect";
 
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
@@ -84,6 +85,7 @@ export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
   readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
+  readonly isDescendant?: (pid: number, ancestor: number) => Effect.Effect<boolean | undefined>;
   readonly findMatchingServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly findManagedServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
@@ -256,6 +258,7 @@ export const makeSystemPodmanServiceRunner = (
               ),
             );
       }),
+    isDescendant: readProcessDescendant,
     isAlive: (pid) =>
       Effect.sync(() => {
         try {

@@ -11,6 +11,7 @@ import {
 } from "../global-app/reconciliation.ts";
 import type { GlobalResolution } from "../global-app/resolution.ts";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 import { classifyGlobalCleanupInventory, dependencyError } from "./global-policy-cleanup-evidence.ts";
 import type { GlobalPolicyChangeResult } from "./global-policy.ts";
 import { resolveGlobalStopSelection, resolveGlobalTeardown } from "./global-teardown.ts";
@@ -81,11 +82,7 @@ export const cleanupDisabledGlobalResources = Effect.fn("GlobalPolicy.cleanupDis
       return { receipt, causes };
     }
     const resolved = teardown.success;
-    const online = yield* Effect.result(
-      Effect.gen(function* () {
-        return (yield* resolved.provider.isAvailable) && (yield* resolved.provider.getStatus).running;
-      }),
-    );
+    const online = yield* Effect.result(runtimeOnline(resolved.provider));
     if (online._tag === "Failure" || !online.success) {
       if (online._tag === "Failure") causes.push(online.failure);
       yield* pending(

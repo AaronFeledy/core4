@@ -52,7 +52,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
   });
   for (const group of plan.groups) yield* registry.select(group.providerId);
   const fileSync =
-    target === undefined || provider === undefined
+    target === undefined || provider === undefined || plan.missingStart !== undefined
       ? undefined
       : yield* prepareDestroyFileSync(target, provider);
   const events = yield* EventService;
@@ -91,6 +91,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       proxy: target !== undefined && Option.isSome(proxy),
     },
     work: Effect.fnUntraced(function* (tree) {
+      yield* plan.missingStart?.terminate ?? Effect.void;
       const retired = yield* plan.retire ?? Effect.succeed(undefined);
       const targetRetired = target !== undefined && retired?.appIds.includes(target.app.id) === true;
       if (fileSync?.applicable === true) yield* tree.startTask("file-sync");
@@ -177,6 +178,11 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         >([remove, cleanupDestroyHostState(plan, tree)]);
       }
       if (fileSync !== undefined && !targetRetired) yield* fileSync.complete;
+      if (plan.missingStart !== undefined) {
+        yield* plan.missingStart.removeTargets;
+        yield* plan.missingStart.complete;
+        changed = true;
+      }
       if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {
@@ -232,8 +238,8 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
 export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(function* (plan: TeardownPlan) {
   const target = plan.target;
   const work = Effect.gen(function* () {
-    if (target === undefined) return yield* executeLocked(plan);
     const registry = yield* RuntimeProviderRegistry;
+    if (target === undefined) return yield* executeLocked(plan);
     const provider = yield* registry.select(target.plan);
     const stateStore = yield* StateStore;
     const context = yield* Effect.context<Effect.Services<ReturnType<typeof executeLocked>>>();

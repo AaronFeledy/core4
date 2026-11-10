@@ -2,6 +2,10 @@ import { GLOBAL_POLICY_VERSION, GlobalPolicy } from "@lando/engine/global-app/en
 import { INCLUDE_LOCKFILE_VERSION, LockEntriesSchema } from "@lando/landofile/include-lockfile";
 import { Schema } from "effect";
 import {
+  RUNTIME_SHUTDOWN_VERSION,
+  RuntimeShutdownReceipt,
+} from "../../container-runtime/src/podman/runtime-shutdown.ts";
+import {
   RESOURCE_OWNERSHIP_VERSION,
   ResourceOwnershipInventory,
 } from "../../container-runtime/src/resource-ownership.ts";
@@ -39,6 +43,7 @@ import {
   drainTransitions,
   receiptTransitions as sessionReceiptTransitions,
 } from "../../plugins/file-sync-mutagen/src/session-ledger.ts";
+import { shutdownTransitions } from "../../plugins/provider-lando/src/runtime-shutdown.ts";
 import {
   PUBLISHED_CONTAINER_RECEIPT_VERSION,
   PublishedContainerReceiptSchema,
@@ -113,6 +118,13 @@ interface InternalPersistedStore {
 // not a versioned StateStore bucket, so it does not belong in this registry.
 export const INTERNAL_PERSISTED_STORES = [
   {
+    id: "runtime-shutdown",
+    schema: RuntimeShutdownReceipt,
+    version: RUNTIME_SHUTDOWN_VERSION,
+    source: { file: "plugins/provider-lando/src/runtime-shutdown.ts", schema: "RuntimeShutdownReceipt" },
+    lifecycle: shutdownTransitions,
+  },
+  {
     id: "sqlite-snapshot-sidecar",
     schema: SqliteSnapshotInfo,
     version: SNAPSHOT_INFO_VERSION,
@@ -180,7 +192,7 @@ export const INTERNAL_PERSISTED_STORES = [
     schema: PendingStart,
     version: PENDING_START_VERSION,
     source: { file: "engine/src/operations/accelerated-start-record.ts", schema: "PendingStart" },
-    lifecycle: pendingStartTransitions,
+    lifecycle: { fields: { phase: pendingStartTransitions } },
   },
   {
     id: "global-reconciliation",

@@ -136,6 +136,16 @@ const DOCKER_CTX_BASE = {
     "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
 } as const;
 
+const unreachableDocker = (error: ProviderUnavailableError) =>
+  new ProviderUnavailableError({
+    providerId: error.providerId,
+    operation: "getStatus",
+    message: error.message,
+    remediation:
+      "Start Docker Desktop or Docker Engine, verify access to the configured Docker socket, then retry the command.",
+    cause: error,
+  });
+
 const DOCKER_CTX: ProviderErrorContext = { ...DOCKER_CTX_BASE, env: {} };
 
 const dockerContextForEnv = (env: ProviderErrorContext["env"]): ProviderErrorContext => ({
@@ -595,12 +605,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: dockerApi.info.pipe(
-        Effect.as({ running: true, message: "ready" }),
-        Effect.catch((error) =>
-          Effect.succeed({
-            running: false,
-            message: error instanceof Error ? error.message : "Docker Engine is not reachable.",
-          }),
+        Effect.as({ state: "running" as const, message: "ready" }),
+        mapFailures((error) =>
+          error instanceof ProviderUnavailableError ? unreachableDocker(error) : error,
         ),
       ),
       getVersions: dockerApi.info.pipe(

@@ -87,7 +87,14 @@ for (const operation of ["stop", "destroy"] as const) {
       ...TestRuntimeProvider,
       id: "lando",
       isAvailable: Effect.succeed(true),
-      getStatus: Effect.succeed({ running: false, message: "offline" }),
+      getStatus: Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "test",
+          operation: "getStatus",
+          message: "offline",
+          remediation: "Restore runtime access.",
+        }),
+      ),
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           mutations += 1;

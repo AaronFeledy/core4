@@ -30,6 +30,12 @@ const sampleRules = {
     summary: "Provider capability checks against the offline declaration.",
     examplePaths: ["services.web.ports"],
   },
+  "script.front-matter": {
+    stages: ["script"],
+    severities: ["error"],
+    summary: "Invalid script metadata.",
+    examplePaths: [".lando/scripts/deploy.bun.sh:flags.verbose"],
+  },
 } as const satisfies ConfigLintRuleRegistry;
 
 test("anchor ids replace dots with hyphens", () => {
@@ -48,6 +54,9 @@ test("renders one anchored table row per rule", () => {
   );
   expect(page).toContain('<span id="env-file-read">` env-file.read `</span>');
   expect(page).toContain("| error or warning |");
+  expect(page).toContain(
+    '| <span id="script-front-matter">` script.front-matter `</span> | error | Invalid script metadata. | ` .lando/scripts/deploy.bun.sh:flags.verbose ` | ` script ` |',
+  );
 });
 
 test("renders backtick spans in summaries as code", () => {

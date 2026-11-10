@@ -11,7 +11,9 @@ const PendingStartPhase = Schema.Literals(["preparing", "sessions-ready", "apply
  * effect already holds is settled. Only `lando stop` and `lando destroy` abandon an
  * open attempt; `lando start` completes only after the provider applied the plan.
  */
-export const pendingStartTransitions = defineTransitions<typeof PendingStartPhase.Type>()({
+export const pendingStartTransitions = defineTransitions<
+  typeof PendingStartPhase.Type | "absent" | "foreign"
+>()({
   "record-sessions": {
     from: ["preparing"],
     to: "sessions-ready",
@@ -22,8 +24,12 @@ export const pendingStartTransitions = defineTransitions<typeof PendingStartPhas
     to: "apply-intent",
     settledIn: ["apply-intent", "completed"],
   },
-  complete: { from: ["apply-intent"], to: "completed", settledIn: ["completed"] },
-  abandon: { from: ["preparing", "sessions-ready", "apply-intent"], to: "completed" },
+  complete: { from: ["apply-intent", "completed"], to: "absent", settledIn: ["absent"] },
+  abandon: {
+    from: ["preparing", "sessions-ready", "apply-intent", "completed"],
+    to: "absent",
+    settledIn: ["absent"],
+  },
 });
 
 export type PendingStartStep = Exclude<keyof typeof pendingStartTransitions.edges, "abandon">;
@@ -79,8 +85,8 @@ export const pendingStartBucketSpec = (key: string) =>
     },
   }) as const;
 export const digest = (value: unknown): string => sha256Hex(JSON.stringify(value));
-export const journalRecovery = (path: string) =>
-  `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase. Journal: \`${path}\`.`;
+export const journalRecovery = (path?: string) =>
+  `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase.${path === undefined ? "" : ` Journal: \`${path}\`.`}`;
 
 export const sameStartIdentity = (previous: PendingStart, planned: PendingStart) =>
   previous.providerId === planned.providerId &&

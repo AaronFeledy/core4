@@ -436,7 +436,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
     isAvailable: Effect.succeed(true),
     planSetup: (_options) => Effect.succeed({ providerId: TEST_PROVIDER_ID, changes: [] }),
     setup: (_plan, _options) => Effect.void,
-    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
     buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),

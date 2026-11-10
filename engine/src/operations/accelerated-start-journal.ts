@@ -129,30 +129,24 @@ export const beginOrResumeAcceleratedStart = Effect.fnUntraced(function* (plan: 
     .pipe(mapFailures(storeError("Unable to persist accelerated-start intent.")));
   const advance = (step: PendingStartStep) =>
     bucket
-      .mutate((current): Effect.Effect<StateWrite<PendingStart, void>, FileSyncStartError> => {
-        if (current === null || current.attemptId !== record.attemptId || !sameStartIdentity(current, record))
-          return Effect.fail(journalError("Accelerated-start journal ownership changed."));
-        const verdict = pendingStartTransitions.step(step, current.phase);
-        switch (verdict._tag) {
-          case "Advance":
-            return Effect.succeed({
-              _tag: "Set",
-              value: { ...current, phase: verdict.to },
-              result: undefined,
-            });
-          case "Settled":
-            return Effect.succeed({ _tag: "Keep", result: undefined });
-          case "Illegal":
-            return Effect.fail(
-              journalError(
-                illegalTransitionMessage(`Accelerated-start attempt ${record.attemptId}`, step, verdict),
-                undefined,
-                bucket.path,
-              ),
-            );
-        }
+      .transition({
+        transitions: pendingStartTransitions,
+        operation: step,
+        state: (current) => {
+          if (current === null) return "absent";
+          if (current.attemptId !== record.attemptId || !sameStartIdentity(current, record)) return "foreign";
+          return current.phase;
+        },
+        next: (to, current) =>
+          to === "absent" || to === "foreign" || current === null ? null : { ...current, phase: to },
+        illegal: (verdict) =>
+          journalError(
+            illegalTransitionMessage(`Accelerated-start attempt ${record.attemptId}`, step, verdict),
+            undefined,
+            bucket.path,
+          ),
       })
-      .pipe(mapFailures(storeError("Unable to advance accelerated-start intent.")));
+      .pipe(Effect.asVoid, mapFailures(storeError("Unable to advance accelerated-start intent.")));
   return {
     attemptId: record.attemptId,
     ...(record === planned ? {} : { resumedFrom: record.phase }),

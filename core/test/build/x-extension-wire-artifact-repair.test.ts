@@ -28,6 +28,7 @@ import {
   evolveHistoricalToolingShorthand,
   evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import {
@@ -123,7 +124,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     ),
     source,
   );
-  const evolved = evolveHistoricalSqliteTarget(projected);
+  const evolved = evolveHistoricalToolingVars(evolveHistoricalSqliteTarget(projected));
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };

@@ -1,5 +1,6 @@
-import { mkdir, readFile, readlink, rm } from "node:fs/promises";
+import { mkdir, readlink, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, normalize, parse } from "node:path";
+import { readLinuxBootId } from "@lando/container-runtime/podman/managed-status-io";
 import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect } from "effect";
@@ -110,11 +111,7 @@ export const readLinuxRuntimeGenerationState = Effect.fnUntraced(function* (
   deps: LinuxRuntimeGenerationDeps,
 ): Effect.fn.Return<LinuxRuntimeGenerationState, ProviderUnavailableError> {
   const bootId = yield* readGenerationPart(
-    deps.bootIdReader?.() ??
-      Effect.tryPromise({
-        try: () => readFile("/proc/sys/kernel/random/boot_id", "utf8"),
-        catch: (cause) => cause,
-      }),
+    deps.bootIdReader?.() ?? readLinuxBootId(),
     "/proc/sys/kernel/random/boot_id",
   );
   const pidNamespace = yield* readGenerationPart(

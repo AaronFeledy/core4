@@ -9,10 +9,9 @@ import { Effect } from "effect";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 
 import { runBracketedInvocations } from "./tooling-bracket.ts";
-import { compileToolingInvocations } from "./tooling-compile.ts";
+import { prepareToolingInvocation } from "./tooling-prepare.ts";
 
 export interface EventToolingInvocation {
   readonly plan: AppPlan;
@@ -38,11 +37,10 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
     task,
     sites: sitesUnder(invocationAuthorityForPlan(plan)?.sites ?? [], ["tooling", name]),
   });
-  const resolved = yield* resolveToolingTaskShape(client.task, {}, client.sites);
-  return yield* compileToolingInvocations({
+  const options = {
     name,
     lookupKey: name,
-    task: resolved,
+    task: client.task,
     input: input.input,
     ...(input.expectedInputRevision === undefined
       ? {}
@@ -52,7 +50,8 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
       path: toolingSourcePathForPlan(plan, name),
       task: name,
     },
-  }).pipe(
+  };
+  return yield* prepareToolingInvocation({ plan, options, sites: client.sites }).pipe(
     Effect.flatMap((compiled) =>
       runBracketedInvocations({
         plan,

@@ -78,6 +78,12 @@ export const normalizeToolingTask = (
   };
   const service = serviceRef(task.service);
   if (Result.isFailure(service)) return Result.fail(service.failure);
+  for (const [key, variable] of Object.entries(task.vars ?? {})) {
+    if (typeof variable !== "object") continue;
+    const target = serviceRef(variable.service);
+    if (Result.isFailure(target))
+      return fail(`tooling.${name}.vars.${key}.service: ${target.failure.message}`);
+  }
   const env = { ...task.env };
   if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
   const steps: NormalizedToolingStep[] = [];

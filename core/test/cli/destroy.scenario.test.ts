@@ -275,7 +275,7 @@ const makeDestroyLayer = (
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(

@@ -47,6 +47,88 @@ const registryLayer = Layer.effect(
 
 test.each([
   {
+    content: "tooling:\n  t:\n    cmd: echo hi\n    deps: [other]\n    sources: [src]\n",
+    findings: [
+      {
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["tooling", "t", "deps"],
+        line: 5,
+        column: 5,
+      },
+      {
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["tooling", "t", "sources"],
+        line: 6,
+        column: 5,
+      },
+    ],
+  },
+  {
+    content: "toolingIncludes:\n  frag:\n    file: tasks.yml\n    vars:\n      WHO:\n        sh: echo inc\n",
+    findings: [
+      { rule: "landofile.validation", path: ["toolingIncludes", "frag", "vars", "WHO"], line: 6, column: 7 },
+    ],
+  },
+])(
+  "returns located tooling load findings through appConfigLint (#2211, #2212): $content",
+  async ({ content, findings }) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-refused-"));
+    try {
+      await writeFile(join(root, ".lando.yml"), `name: refused\n${content}`);
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.violations).toEqual(
+        findings.map((finding) =>
+          expect.objectContaining({
+            ...finding,
+            source: { file: join(root, ".lando.yml"), layer: "canonical", path: finding.path },
+          }),
+        ),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("lint reports dynamic var reference rules without making them planning checks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-dynamic-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: dynamic",
+        "tooling:",
+        "  inspect:",
+        "    service: ':host'",
+        "    cmd: echo body",
+        "    dir: '{{ vars.V }}'",
+        "    vars:",
+        "      A: '{{ vars.V }}'",
+        "      V:",
+        "        sh: echo computed",
+        "",
+      ].join("\n"),
+    );
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    expect(result.valid).toBe(false);
+    expect(
+      result.violations.filter((issue) => issue.rule === "landofile.tooling").map((issue) => issue.path),
+    ).toEqual([
+      ["tooling", "inspect", "dir"],
+      ["tooling", "inspect", "vars", "A"],
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  {
     label: "authored task",
     tooling: "tooling:\n  run:\n    cmd: echo authored\n    service: ':host'\n",
     message:

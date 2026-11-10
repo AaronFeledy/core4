@@ -1,5 +1,6 @@
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
+import { MANAGED_RUNTIME_BUNDLE_MARKER as MARKER_FILE } from "@lando/container-runtime/podman/managed-status";
 
 import { Clock, Effect } from "effect";
 
@@ -82,7 +83,6 @@ const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
-export const MARKER_FILE = ".runtime-installed-version";
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 const isZip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;

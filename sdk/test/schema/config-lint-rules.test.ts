@@ -7,6 +7,8 @@ describe("config lint rule contracts", () => {
     test.each([
       { rule: "landofile.nope", accepted: false },
       { rule: "landofile.hostname", accepted: true },
+      { rule: "script.front-matter", accepted: true },
+      { rule: "script.host-shell", accepted: true },
     ])(
       `${schema === ConfigLintViolation ? "ConfigLintViolation" : "ValidationIssue"} validates rule $rule`,
       ({ rule, accepted }) => {
@@ -23,6 +25,20 @@ describe("config lint rule contracts", () => {
       },
     );
   }
+
+  test("decodes script source locations on config findings", () => {
+    const source = { layer: "script", file: "/app/.lando/scripts/deploy.bun.sh", path: ["flags", "verbose"] };
+    const result = Schema.decodeUnknownResult(ConfigLintViolation)({
+      rule: "script.front-matter",
+      severity: "error",
+      path: source.path,
+      message: "Invalid flag.",
+      source,
+      line: 4,
+      column: 5,
+    });
+    expect(Result.getOrThrow(result)).toMatchObject({ source, line: 4, column: 5 });
+  });
 
   test("publishes a description for each hostname rule literal", () => {
     const published = getJsonSchema("ConfigLintViolation");
