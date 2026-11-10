@@ -1,6 +1,6 @@
 // Hand-written independently of the production registry. Both the realizer and
-// final-request suites consume this table, while the provider-podman declaration
-// test diffs its keys against the published capability set.
+// final-request suites consume these tables per engine dialect, while the
+// declaration test diffs each dialect's keys against its published capability set.
 export interface KnobRealization {
   readonly hostConfig: Record<string, unknown>;
   readonly topLevel: Record<string, unknown>;
@@ -30,7 +30,7 @@ const inQuery = (fragment: Record<string, string>): KnobRealization => ({
   query: fragment,
 });
 
-export const KNOB_FIXTURES = {
+const SHARED_KNOB_FIXTURES = {
   restart: {
     input: { restart: "unless-stopped" },
     expected: inHostConfig({ RestartPolicy: { Name: "unless-stopped" } }),
@@ -109,6 +109,56 @@ export const KNOB_FIXTURES = {
     input: { logging: { driver: "json-file", options: { "max-size": "10m" } } },
     expected: inHostConfig({ LogConfig: { Type: "json-file", Config: { "max-size": "10m" } } }),
   },
+  "deploy.resources": {
+    input: {
+      deploy: {
+        resources: {
+          limits: { memory: 268_435_456, cpus: "0.5", pids: 100 },
+          reservations: { memory: 134_217_728 },
+        },
+      },
+    },
+    expected: inHostConfig({
+      Memory: 268_435_456,
+      NanoCpus: 500_000_000,
+      PidsLimit: 100,
+      MemoryReservation: 134_217_728,
+    }),
+  },
 } satisfies Record<string, KnobFixture>;
+
+// Docker Engine honors device requests verbatim; Podman's compat API ignores
+// everything but CDI device names, so libpod declares neither knob.
+const DOCKER_ONLY_KNOB_FIXTURES = {
+  gpus: {
+    input: { gpus: [{ driver: "nvidia", device_ids: ["0", "1"], capabilities: ["compute"] }] },
+    expected: inHostConfig({
+      DeviceRequests: [
+        { Driver: "nvidia", Count: 0, DeviceIDs: ["0", "1"], Capabilities: [["compute", "gpu"]] },
+      ],
+    }),
+  },
+  "deploy.resources.reservations.devices": {
+    input: {
+      deploy: {
+        resources: {
+          reservations: {
+            devices: [{ driver: "nvidia", count: 1, capabilities: ["gpu"], options: { mode: "compute" } }],
+          },
+        },
+      },
+    },
+    expected: inHostConfig({
+      DeviceRequests: [{ Driver: "nvidia", Count: 1, Capabilities: [["gpu"]], Options: { mode: "compute" } }],
+    }),
+  },
+} satisfies Record<string, KnobFixture>;
+
+export const KNOB_FIXTURES_BY_DIALECT: Readonly<
+  Record<"libpod" | "docker", Readonly<Record<string, KnobFixture>>>
+> = {
+  libpod: SHARED_KNOB_FIXTURES,
+  docker: { ...SHARED_KNOB_FIXTURES, ...DOCKER_ONLY_KNOB_FIXTURES },
+};
 
 export const EMPTY_REALIZATION: KnobRealization = { hostConfig: {}, topLevel: {}, query: {} };

@@ -128,3 +128,123 @@ export const logConfig = (logging: LoggingKnob | undefined, fail: InvalidKnob) =
     ...(options === undefined ? {} : { Config: options }),
   };
 };
+
+interface ResourcesKnob {
+  readonly limits?:
+    | {
+        readonly cpus?: number | string | undefined;
+        readonly memory?: number | undefined;
+        readonly pids?: number | string | undefined;
+      }
+    | undefined;
+  readonly reservations?: { readonly memory?: number | undefined } | undefined;
+}
+
+const DECIMAL_TEXT = /^[+-]?(?:\d+\.?\d*|\.\d+)$/u;
+const RESOURCES_KNOB = "deploy.resources";
+
+// Compose applies a memory value only when it is set to more than zero; zero means no limit.
+const memoryBytes = (field: string, value: number | undefined, fail: InvalidKnob): number | undefined => {
+  if (value === undefined || value === 0) return undefined;
+  return safeInteger(value) !== undefined && value > 0
+    ? value
+    : fail(`Compose runtime knob \`${RESOURCES_KNOB}.${field}\` requires a non-negative byte size.`, {
+        knob: RESOURCES_KNOB,
+        field,
+        value,
+      });
+};
+
+const nanoCpus = (value: number | string | undefined, fail: InvalidKnob): number | undefined => {
+  if (value === undefined) return undefined;
+  const cpus = typeof value === "number" ? value : DECIMAL_TEXT.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isFinite(cpus) || cpus < 0) {
+    return fail(`Compose runtime knob \`${RESOURCES_KNOB}.limits.cpus\` requires a non-negative number.`, {
+      knob: RESOURCES_KNOB,
+      field: "limits.cpus",
+      value,
+    });
+  }
+  return cpus === 0 ? undefined : Math.round(cpus * 1e9);
+};
+
+// Compose sets a process limit only when it is above zero; 0 and -1 both mean no limit.
+const pidsLimit = (value: number | string | undefined, fail: InvalidKnob): number | undefined => {
+  if (value === undefined) return undefined;
+  const pids =
+    typeof value === "number" ? value : INTEGER_TEXT.test(value) ? Number.parseInt(value, 10) : Number.NaN;
+  if (safeInteger(pids) === undefined) {
+    return fail(`Compose runtime knob \`${RESOURCES_KNOB}.limits.pids\` requires an integer.`, {
+      knob: RESOURCES_KNOB,
+      field: "limits.pids",
+      value,
+    });
+  }
+  return pids > 0 ? pids : undefined;
+};
+
+export const resourceControls = (
+  resources: ResourcesKnob | undefined,
+  fail: InvalidKnob,
+): Record<string, number> | undefined => {
+  if (resources === undefined) return undefined;
+  const controls = Object.entries({
+    Memory: memoryBytes("limits.memory", resources.limits?.memory, fail),
+    NanoCpus: nanoCpus(resources.limits?.cpus, fail),
+    PidsLimit: pidsLimit(resources.limits?.pids, fail),
+    MemoryReservation: memoryBytes("reservations.memory", resources.reservations?.memory, fail),
+  }).filter((entry): entry is [string, number] => entry[1] !== undefined);
+  return controls.length === 0 ? undefined : Object.fromEntries(controls);
+};
+
+interface DeviceRequestKnob {
+  readonly capabilities?: ReadonlyArray<string> | undefined;
+  readonly count?: number | string | undefined;
+  readonly device_ids?: ReadonlyArray<string> | undefined;
+  readonly driver?: string | undefined;
+  readonly options?: Readonly<Record<string, string | number | boolean | null>> | undefined;
+}
+
+// Compose reads a request with neither count nor device_ids as every device, and "all" as -1.
+const deviceCount = (knob: string, request: DeviceRequestKnob, fail: InvalidKnob): number => {
+  const { count } = request;
+  if (count === undefined) return request.device_ids === undefined ? -1 : 0;
+  if (typeof count === "number") return count;
+  if (count.toLowerCase() === "all") return -1;
+  const parsed = INTEGER_TEXT.test(count) ? Number.parseInt(count, 10) : Number.NaN;
+  return (
+    safeInteger(parsed) ??
+    fail(`Compose runtime knob \`${knob}\` requires a count of "all" or an integer.`, {
+      knob,
+      value: count,
+    })
+  );
+};
+
+const deviceRequest = (knob: string, request: DeviceRequestKnob, fail: InvalidKnob) => {
+  const options = scalarTextMap(request.options);
+  return {
+    ...(request.driver === undefined ? {} : { Driver: request.driver }),
+    Count: deviceCount(knob, request, fail),
+    ...(request.device_ids === undefined ? {} : { DeviceIDs: request.device_ids }),
+    Capabilities: [request.capabilities ?? []],
+    ...(options === undefined ? {} : { Options: options }),
+  };
+};
+
+export type DeviceRequest = ReturnType<typeof deviceRequest>;
+
+/** Compose adds the `gpu` capability to every `gpus` request; `all` is one request for every GPU. */
+export const gpuDeviceRequests = (
+  gpus: "all" | ReadonlyArray<DeviceRequestKnob> | undefined,
+  fail: InvalidKnob,
+): ReadonlyArray<DeviceRequest> | undefined =>
+  (gpus === "all" ? [{ count: "all" }] : gpus)?.map((request) =>
+    deviceRequest("gpus", { ...request, capabilities: [...(request.capabilities ?? []), "gpu"] }, fail),
+  );
+
+export const reservedDeviceRequests = (
+  devices: ReadonlyArray<DeviceRequestKnob> | undefined,
+  fail: InvalidKnob,
+): ReadonlyArray<DeviceRequest> | undefined =>
+  devices?.map((request) => deviceRequest(`${RESOURCES_KNOB}.reservations.devices`, request, fail));

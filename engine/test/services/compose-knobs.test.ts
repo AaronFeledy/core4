@@ -98,6 +98,33 @@ describe("Compose runtime knobs", () => {
     expect(uses).toEqual([{ service: "web", key: "deploy.resources" }]);
   });
 
+  test.each([
+    ["limits only", { limits: { cpus: 0.5 } }, ["deploy.resources"]],
+    [
+      "devices only",
+      { reservations: { devices: [{ capabilities: ["gpu"] }] } },
+      ["deploy.resources.reservations.devices"],
+    ],
+    [
+      "controls and devices",
+      { limits: { pids: 100 }, reservations: { memory: 1024, devices: [{ capabilities: ["gpu"] }] } },
+      ["deploy.resources", "deploy.resources.reservations.devices"],
+    ],
+    ["extensions only", { limits: { "x-note": 1 }, "x-team": "a" }, []],
+  ])(
+    "Given deploy resources with %s, when uses are collected, then controls and devices are separate keys",
+    (_name, resources, keys) => {
+      // Given
+      const services = { web: servicePlan("web", { deploy: { resources } }) };
+
+      // When
+      const uses = collectComposeKnobs(services);
+
+      // Then
+      expect(uses).toEqual(keys.map((key) => ({ service: "web", key })));
+    },
+  );
+
   test("Given shuffled unsupported knobs, when support is checked repeatedly, then the first failure is stable", () => {
     // Given
     const alphaForward = servicePlan("alpha", {
