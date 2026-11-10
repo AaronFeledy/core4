@@ -1728,6 +1728,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                         Effect.scoped(
                           runSmokeReadinessProbe({
                             podmanApi,
+                            resourceLimits:
+                              resolvedCapabilities.composeKnobs?.supported.includes("deploy.resources") ===
+                              true,
                             ...(options.smokeRetryPolicy === undefined
                               ? {}
                               : { retryPolicy: options.smokeRetryPolicy }),
