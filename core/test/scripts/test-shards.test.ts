@@ -4,10 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { timingRefreshCommand } from "../../../scripts/update-test-timings.ts";
 
+import { NIGHTLY_TIER_TESTS, UNIT_SHARD_COUNT } from "../../../scripts/test-selections.ts";
 import {
-  NIGHTLY_TIER_TESTS,
   TEST_TIMINGS_FILE,
-  UNIT_SHARD_COUNT,
   collectShardedTestFiles,
   isShardedUnitTest,
   localUnitTestCommand,

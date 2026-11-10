@@ -12,11 +12,11 @@
  * Balance comes from `bun test --shard --timings=.bun-test-timings.json`.
  */
 import { resolve } from "node:path";
-import { collectTestInventory, testOwnership } from "./test-ownership.ts";
+import { collectTestInventory, isUnitTest } from "./test-ownership.ts";
+import { UNIT_SHARD_COUNT } from "./test-selections.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
-export const UNIT_SHARD_COUNT = 3;
 export const TEST_TIMINGS_FILE = ".bun-test-timings.json";
 
 export const unitShardCommands = (): ReadonlyArray<string> =>
@@ -24,8 +24,6 @@ export const unitShardCommands = (): ReadonlyArray<string> =>
     { length: UNIT_SHARD_COUNT },
     (_, index) => `bun run test:unit:shard ${index + 1}/${UNIT_SHARD_COUNT}`,
   );
-
-export { NIGHTLY_TIER_TESTS } from "./test-ownership.ts";
 
 /**
  * `--parallel` implies `--isolate` unless `--no-isolate`. This suite shares
@@ -40,10 +38,12 @@ export { NIGHTLY_TIER_TESTS } from "./test-ownership.ts";
 // CI matrix runners can spend more than Bun's default 5s in a subprocess-based test.
 export const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
-export const isShardedUnitTest = (path: string): boolean => testOwnership(path)?.owner === "unit";
+export const isShardedUnitTest = isUnitTest;
 
 export const collectShardedTestFiles = async (root: string = REPO_ROOT): Promise<ReadonlyArray<string>> =>
-  (await collectTestInventory(root)).filter((entry) => entry.owner === "unit").map((entry) => entry.path);
+  (await collectTestInventory({ root }))
+    .filter((entry) => entry.owners.includes("unit"))
+    .map((entry) => entry.path);
 
 export const testFileArguments = (files: readonly string[]): readonly string[] =>
   files.map((path) => `./${path}`);

@@ -10,6 +10,7 @@ import {
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { PROVIDER_IMAGES } from "./build-provider-images.ts";
 import {
   CI_PLATFORMS,
   type CiPlatform,
@@ -19,7 +20,7 @@ import {
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
-import { UNIT_SHARD_COUNT } from "./test-shards.ts";
+import { UNIT_SHARD_COUNT, testSelectionCommand } from "./test-selections.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/ci.yml");
@@ -95,10 +96,10 @@ ${setupBunSteps}
 
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
-        run: bun test state-store/test/state-store/private-file-access.test.ts
+        run: ${testSelectionCommand("windows-private-file-access")}
 
       - name: Host Bun Shell dialect conformance
-        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
+        run: ${testSelectionCommand("shell-dialect")}
 
       - name: Lint
         run: bun run lint
@@ -162,10 +163,10 @@ ${setupBunSteps}
 ${codegenStep}
 
       - name: Test native process signal handling
-        run: bun test core/test/cli/process-signals.test.ts
+        run: ${testSelectionCommand("process-signals")}
 
       - name: Test exec umask behavior
-        run: bun test container-runtime/test/exec-umask.test.ts
+        run: ${testSelectionCommand("exec-umask")}
 `;
 };
 
@@ -217,7 +218,7 @@ ${setupBunSteps}
 ${codegenStep}
 
       - name: Run cross-file isolation regressions
-        run: bun run test:unit:isolation
+        run: ${testSelectionCommand("unit-isolation")}
 
 ${timingNoticeStep("test-isolation-linux-x64", 10)}
 `;
@@ -265,17 +266,17 @@ ${renderSmokeCommands(platform)}
         env:
           LANDO_RELEASE_TARGET: ${platform.id}
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${platform.binaryName}
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: ${testSelectionCommand("compiled-opentui")}
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: ${testSelectionCommand("compiled-host-execution")}
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: ${testSelectionCommand("compiled-renderer-output")}
 
       - name: Upload ${platform.id} binary
         if: always()
@@ -307,7 +308,7 @@ ${codegenStep}
         run: bun run docs:check
 
       - name: Test docs
-        run: bun run docs:test
+        run: ${testSelectionCommand("docs")}
 
       - name: Build docs
         run: bun run docs:build
@@ -386,12 +387,11 @@ export const landoManagedPodmanTeardownCommands = `${landoManagedPodmanRuntimeDi
 
 const contractProviderTestSteps = `      - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.test.ts plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.test.ts plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.test.ts plugins/provider-podman/test/contract.integration.test.ts
-          bun test core/test/cli/host-terminal.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts`;
+          ${testSelectionCommand("provider-contract-sdk")}
+          ${testSelectionCommand("provider-contract-lando")}
+          ${testSelectionCommand("provider-contract-docker")}
+          ${testSelectionCommand("provider-contract-podman")}
+          ${testSelectionCommand("provider-capabilities")}`;
 
 export const landoRuntimeSocketPath = '"$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"';
 
@@ -414,6 +414,10 @@ export const landoRootlessPrereqSteps = `      - name: Provision rootless runtim
           fi
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
+
+const sqliteHelper = PROVIDER_IMAGES.images.sqliteHelper;
+if (sqliteHelper === undefined) throw new Error("PROVIDER_IMAGES is missing the sqliteHelper pin");
+const sqliteHelperImageRef = `${sqliteHelper.image}@${sqliteHelper.digest}`;
 
 const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -504,6 +508,10 @@ ${landoManagedPodmanRuntimeDirCommands}
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/postgres:18
+          pull_image docker.io/library/httpd:2.4-alpine
+          pull_image docker.io/library/redis:7
+          pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
           pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           pull_image docker.io/getmeili/meilisearch:v1.11
@@ -518,7 +526,9 @@ ${landoManagedPodmanRuntimeDirCommands}
           pull_image docker.io/library/traefik:v3.3
           pull_image docker.io/valkey/valkey:8
           docker_pull_image docker.io/library/node:22-alpine
-          docker_pull_image docker.io/library/node:22`;
+          docker_pull_image docker.io/library/node:22
+          docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image ${sqliteHelperImageRef}`;
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
@@ -530,13 +540,20 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
           set -o pipefail
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
-              bun test container-runtime/test/fake-engine-parity.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log
-              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
-              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              ${testSelectionCommand("providers-engine-parity")} 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log
+              ${testSelectionCommand("providers-core-live")} 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
+              ${testSelectionCommand("providers-lando")} 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+              ${testSelectionCommand("providers-docker")} 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              ${testSelectionCommand("providers-readiness")} 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log
+              ${testSelectionCommand("providers-ephemeral-data")} 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log
+              ${testSelectionCommand("providers-host-reachability")} 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log
+              ${testSelectionCommand("providers-listener-observation")} 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log
+              ${testSelectionCommand("providers-sqlite")} 2>&1 | tee /tmp/lando-provider-test-logs/sqlite.log
+              ${testSelectionCommand("providers-sqlite-integrity")} 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log
+              ${testSelectionCommand("providers-sqlite-borrowed-mounts")} 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log
               ;;
             services)
-              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              ${testSelectionCommand("services-lando")} 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
@@ -1032,7 +1049,7 @@ ${setupBunSteps}
 ${codegenStep}
 
       - name: Run library API tests
-        run: bun test core/test/library sdk/test/library
+        run: ${testSelectionCommand("library")}
 
 ${timingNoticeStep("library-api-tests/${{ matrix.runs-on }}", 15)}
 
@@ -1054,7 +1071,7 @@ ${setupBunSteps}
 ${codegenStep}
 
       - name: Run recipe test layer
-        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
+        run: ${testSelectionCommand("recipes")}
 
 ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 
