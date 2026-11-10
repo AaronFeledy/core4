@@ -24,6 +24,12 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 
+import {
+  type DelegatedScopeHost,
+  delegatedLaunchEligibility,
+  delegatedScopeRemediation,
+} from "./delegated-scope.ts";
+
 const PROVIDER_ID = "lando";
 
 export const agentSocketDeliveryForPlatform = (
@@ -48,11 +54,40 @@ const podmanInfoRootless = (info: unknown): boolean | undefined => {
 
 export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER_ID);
 
-// The managed service stays in the cgroup that launched it, which is rarely delegated, so Podman
-// starts containers without their own cgroup and resource limits would not apply (#2257).
-const managedRuntimeComposeKnobs = composeKnobsForDialect("libpod").filter(
-  (key) => key !== "deploy.resources",
-);
+const libpodComposeKnobs = composeKnobsForDialect("libpod");
+// Podman gives a container its own cgroup, and so applies `deploy.resources`, only when the
+// service runs in a cgroup delegated to the user. That holds for a managed Linux service started
+// in a delegated systemd user scope; it is unverified for machine-backed hosts and unknown for an
+// external socket, so the knob stays withheld unless resource control is established.
+const withheldResourceComposeKnobs = libpodComposeKnobs.filter((key) => key !== "deploy.resources");
+
+/** Whether containers get their own cgroups, deciding the `deploy.resources` knob. */
+export type ResourceControl =
+  | { readonly declared: true }
+  | { readonly declared: false; readonly remediation?: string };
+
+export const withResourceControl = (
+  capabilities: ProviderCapabilities,
+  control: ResourceControl,
+): ProviderCapabilities => ({
+  ...capabilities,
+  composeKnobs: control.declared
+    ? { supported: libpodComposeKnobs }
+    : {
+        supported: withheldResourceComposeKnobs,
+        ...(control.remediation === undefined
+          ? {}
+          : { withheld: [{ key: "deploy.resources", remediation: control.remediation }] }),
+      },
+});
+
+/** Resource control the next managed Linux launch provides, from a few host stat/reads. */
+export const linuxResourceControl = (platform: HostPlatform, host: DelegatedScopeHost): ResourceControl => {
+  const eligibility = delegatedLaunchEligibility(platform, host);
+  return eligibility.eligible
+    ? { declared: true }
+    : { declared: false, remediation: delegatedScopeRemediation(eligibility.reason) };
+};
 
 /**
  * Service-level Compose fields that stay undeclared so the planner's
@@ -95,7 +130,7 @@ export const providerLandoCapabilitiesForPlatform = (
     tlsCertificates: "lando",
     rootless,
     composeSpec: "native",
-    composeKnobs: { supported: managedRuntimeComposeKnobs },
+    composeKnobs: { supported: withheldResourceComposeKnobs },
     composeServiceFields: { supported: ["labels", "configs"] },
     authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
@@ -110,6 +145,21 @@ export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilit
 export const windowsMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("win32");
 export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): ProviderCapabilities =>
   providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch));
+
+/**
+ * Offline declaration for the managed runtime on this host: Linux declares `deploy.resources`
+ * when the next launch can run in a delegated systemd user scope; macOS and Windows withhold it.
+ */
+export const declaredProviderLandoCapabilities = (
+  platform: HostPlatform,
+  arch?: string,
+  host?: DelegatedScopeHost,
+): ProviderCapabilities => {
+  const capabilities = mvpProviderCapabilities(platform, arch);
+  return hostPlatformFamily(platform) === "linux" && host !== undefined
+    ? withResourceControl(capabilities, linuxResourceControl(platform, host))
+    : capabilities;
+};
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
