@@ -260,7 +260,7 @@ Normal codegen is offline: it checks local hashes and template invariants and de
 
 When a run fails, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open.
 
-The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. A marker counts only when it starts a line, so a sentence can quote one. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. If the body has no markers, or a marker was deleted or broken, the next run replaces the whole body with the marked report.
+The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. A marker counts only when it starts a line, so a sentence can quote one. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. The section ends at the first end marker and starts at the nearest start marker above it. If no start marker comes before the first end marker, the next run replaces the whole body with the marked report.
 
 Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
 

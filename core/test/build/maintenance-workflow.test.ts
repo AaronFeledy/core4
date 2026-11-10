@@ -9,11 +9,13 @@ const REPORT_END = "<!-- maintenance-report:end -->";
 const DOMAIN_REPORT = "candidate report\n";
 const UNCLASSIFIED_PATH = "  - services.*.fixture_unclassified\n";
 
-// The first marked report in a published body. A marker counts only at the start of a line.
+// The marked report in a published body: it ends at the first end-marker line and starts at the
+// nearest start-marker line above it.
 const markedReport = (body: string): string => {
   const padded = `\n${body}`;
-  const start = padded.indexOf(`\n${REPORT_START}\n`) + REPORT_START.length + 2;
-  return padded.slice(start, padded.indexOf(`\n${REPORT_END}`, start) + 1);
+  const end = padded.indexOf(`\n${REPORT_END}`);
+  const start = padded.lastIndexOf(`\n${REPORT_START}\n`, end) + REPORT_START.length + 2;
+  return padded.slice(start, end + 1);
 };
 
 for (const domain of ["tomcat", "compose"] as const) {
@@ -145,6 +147,11 @@ for (const domain of ["tomcat", "compose"] as const) {
         "ignores markers quoted inside a line of hand-written text",
         `Owns \`${REPORT_START}\` to \`${REPORT_END}\`.\n${REPORT_START}\nstale report\n${REPORT_END}\nFooter`,
         `Owns \`${REPORT_START}\` to \`${REPORT_END}\`.\n${REPORT_START}\ncandidate report\n${REPORT_END}\nFooter\n`,
+      ],
+      [
+        "keeps text that follows a start marker with no end marker of its own",
+        `Intro\n${REPORT_START}\nnotes\n${REPORT_START}\nstale report\n${REPORT_END}\nFooter`,
+        `Intro\n${REPORT_START}\nnotes\n${REPORT_START}\ncandidate report\n${REPORT_END}\nFooter\n`,
       ],
       [
         "replaces a body whose end marker precedes its start marker",
