@@ -69,7 +69,7 @@ services:
     port: 9090
 ```
 
-Lando bakes a reviewed, upstream-based `conf/server.xml` into every catalog image, including when `port:` is omitted or set to `8080`. Each supported major pairs an exact image version and immutable multiarch digest with its matching Apache configuration. Only the active HTTP connector's port is customized. Apache notices, listeners, realms, valves, shutdown settings, deployment defaults, and commented AJP/TLS examples stay intact. No startup script rewrites the config, and your `command:` and `entrypoint:` stay yours.
+Lando bakes a reviewed, upstream-based `conf/server.xml` into every catalog image, including when `port:` is omitted or set to `8080`. Each supported major pairs an exact image version and immutable multiarch digest with its matching Apache configuration. Lando sets the active HTTP connector's port and adds one `RemoteIpValve` so Tomcat sees the router's scheme and port. Apache notices, listeners, realms, upstream valves, shutdown settings, deployment defaults, and commented AJP/TLS examples stay intact. No startup script rewrites the config, and your `command:` and `entrypoint:` stay yours.
 
 Port `8005` fails during planning on a catalog image. Tomcat reserves it for the shutdown listener in that owned `server.xml`, so HTTP cannot share it. A custom `image:` or `build.context` drops that reservation because you own the configuration; match your Connector to `port:` yourself. Lando never appends flags to an authored `command:` or `entrypoint:`. When startup fails with a custom image or build, remediation names the setting your image must supply, such as `<Connector port="8081">` in `server.xml` for `port: 8081`.
 

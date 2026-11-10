@@ -57,15 +57,31 @@ export const reportTomcatUpdate = (previous: TomcatSnapshot, candidate: TomcatSn
     const after = candidate.pins.majors[major];
     const oldXml = previous.configs[major];
     const newXml = candidate.configs[major];
+    if (JSON.stringify(before) === JSON.stringify(after) && oldXml === newXml) {
+      lines.push(`- **${major}**: ${after.version}; unchanged.`);
+      continue;
+    }
     const classification =
       oldXml === newXml
         ? "baseline byte-identical"
         : activeConfig(oldXml) === activeConfig(newXml)
           ? "comments-only bytes changed; review notices"
           : "active configuration or formatting changed; review required";
+    let release: string;
+    if (before.version !== after.version) {
+      release = `${before.version} → ${after.version}`;
+    } else if (before.indexDigest !== after.indexDigest) {
+      release = `${after.version} image rebuilt`;
+    } else {
+      release = after.version;
+    }
+    const index =
+      before.indexDigest === after.indexDigest
+        ? `\`${after.indexDigest}\` (unchanged)`
+        : `\`${before.indexDigest}\` → \`${after.indexDigest}\``;
     lines.push(
-      `- **${major}**: ${before.version} → ${after.version}; ${classification}.`,
-      `  Index: \`${before.indexDigest}\` → \`${after.indexDigest}\`.`,
+      `- **${major}**: ${release}; ${classification}.`,
+      `  Index: ${index}.`,
       `  Apache: https://github.com/apache/tomcat/commit/${after.upstreamCommit}`,
       `  Baseline SHA-256: \`${after.configSha256}\`.`,
     );
@@ -89,7 +105,7 @@ export const reportTomcatUpdate = (previous: TomcatSnapshot, candidate: TomcatSn
     "",
     "## Lando customization (unchanged)",
     "",
-    "Only the reviewed active HTTP connector's port is parameterized. The default is 8080. ROOT.xml is a separate build step. Listeners, realms, valves, deployment defaults and Apache notices come from the paired baseline. No whitespace-normalized semantic-equivalence claim is made.",
+    "Lando parameterizes the reviewed active HTTP connector's port, which defaults to 8080, and adds a RemoteIpValve that reads X-Forwarded-Proto and X-Forwarded-Port. ROOT.xml is a separate build step. Everything else, including the Apache notices, comes from the paired baseline. No whitespace-normalized semantic-equivalence claim is made.",
     "",
   );
   return lines.join("\n");
