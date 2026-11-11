@@ -252,7 +252,7 @@ describe("mkcert CertificateAuthority issuance", () => {
     "%s before setup states the missing binary, runs no mkcert command, and creates no root",
     async (operation) => {
       await withCa({}, async ({ harness, runner, ca }) => {
-        const effect = operation === "root" ? ca.root : ca.issueCert(SPEC);
+        const effect: Effect.Effect<unknown, CaError> = operation === "root" ? ca.root : ca.issueCert(SPEC);
         const error = failure(await Effect.runPromiseExit(effect));
         expect(error).toMatchObject({ _tag: "CaError", caId: "mkcert" });
         expect(error.remediation).toContain("`lando setup`");
@@ -272,7 +272,7 @@ describe("mkcert CertificateAuthority issuance", () => {
         await rm(rootPath(harness));
         const before = issuingCalls(runner).length;
         // When
-        const effect = operation === "root" ? ca.root : ca.issueCert(SPEC);
+        const effect: Effect.Effect<unknown, CaError> = operation === "root" ? ca.root : ca.issueCert(SPEC);
         const error = failure(await Effect.runPromiseExit(effect));
         // Then
         expect(error).toMatchObject({ _tag: "CaError", caId: "mkcert" });

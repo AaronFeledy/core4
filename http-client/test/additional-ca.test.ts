@@ -100,13 +100,14 @@ const source = LocalCaTrustSource.of({
   trusted: Effect.succeed(false),
 });
 
-const recordedFetch = (seen: Array<RequestInit | undefined>): typeof fetch => {
-  const impl: typeof fetch = (_input, init) => {
-    seen.push(init);
-    return Promise.resolve(new Response("ok", { status: 200 }));
-  };
-  return impl;
-};
+const recordedFetch = (seen: Array<RequestInit | undefined>): typeof fetch =>
+  Object.assign(
+    (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      seen.push(init);
+      return Promise.resolve(new Response("ok", { status: 200 }));
+    },
+    { preconnect: () => {} },
+  );
 
 const get = (url: string, seen: Array<RequestInit | undefined>) =>
   Effect.scoped(

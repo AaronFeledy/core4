@@ -84,18 +84,20 @@ describe("combined doctor certificate and network-trust wiring", () => {
     // Then
     expect(report.subsystems.checks.map((check) => check.name)).toEqual([
       "router",
+      "certs",
       "ssh",
       "host-dns",
       "network-trust",
       "legacy-snapshot-catalogs",
       "filesystem-watch",
     ]);
-    expect(report.skipped).toContainEqual({
-      section: "certs",
-      status: "skipped",
-      reason: expect.any(String),
+    expect(report.subsystems.checks.find((check) => check.name === "certs")).toMatchObject({
+      name: "certs",
+      status: "pass",
+      context: { subsystemId: "mkcert-selected", ready: "true", certsTrusted: "true" },
     });
-    expect(report.subsystems.checks[3]).toMatchObject({
+    expect(report.skipped?.some((entry) => entry.section === "certs")).toBe(false);
+    expect(report.subsystems.checks[4]).toMatchObject({
       name: "network-trust",
       status: "pass",
       severity: "info",
@@ -113,7 +115,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
         options: {},
         provider: Effect.succeed({ checks: [] }),
         deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "injected-ca" }),
+        certs: Effect.succeed({ _tag: "selected", id: "injected-ca", trusted: true }),
         subsystems: (options) => subsystemDoctor(options).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
     );
@@ -121,12 +123,12 @@ describe("combined doctor certificate and network-trust wiring", () => {
     // Then
     expect(report.version).toBe(CORE_VERSION);
     expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
-    expect(report.subsystems.checks.find((check) => check.name === "certs")).toBeUndefined();
-    expect(report.skipped).toContainEqual({
-      section: "certs",
-      status: "skipped",
-      reason: expect.any(String),
+    expect(report.subsystems.checks.find((check) => check.name === "certs")).toMatchObject({
+      name: "certs",
+      status: "pass",
+      context: { subsystemId: "injected-ca", ready: "true", certsTrusted: "true" },
     });
+    expect(report.skipped?.some((entry) => entry.section === "certs")).toBe(false);
   });
 
   test("DoctorReportSchema requires version", () => {
