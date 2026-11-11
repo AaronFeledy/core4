@@ -23,13 +23,12 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Clock, DateTime, Effect, Layer, Schema } from "effect";
+import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import {
   compileTestLandofile,
   toolingExecutionLayer,
   toolingValueResolverLayer,
 } from "./support/compiled-landofile.ts";
-
-import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("gointtest");

@@ -22,12 +22,12 @@ import { assertUnderRoot } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
 import { includeReadError } from "./include-read-error.ts";
 import { prepareIncludeAcquisition } from "./load-acquisition.ts";
-import type { LandofileLoadPolicy } from "./load-expression-file.ts";
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
   type ResolveLandofileLoadExpressionError,
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
+import type { LandofileLoadPolicy } from "./load-expression-file.ts";
+import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import { parseLandofile } from "./parser.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   ExpressionTemplate,
   type ExpressionTemplate as ExpressionTemplateType,
 } from "@lando/sdk/expressions";
+import { Schema } from "effect";
 
 describe("ExpressionTemplate schema", () => {
   test("round-trips a recursive expression tree", () => {

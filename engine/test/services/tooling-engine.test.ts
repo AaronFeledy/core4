@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
@@ -22,6 +20,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";

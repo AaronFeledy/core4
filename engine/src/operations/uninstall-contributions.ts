@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import { causeMessage } from "@lando/sdk/errors";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import type {
@@ -9,6 +7,7 @@ import type {
   UninstallStepResult,
 } from "@lando/sdk/schema";
 import type { PrivilegeService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import type { HostMaintenanceRegistryShape } from "../runtime/host-maintenance";
 import type { UninstallMode, UninstallPlanStep, UninstallStepOutcome } from "./uninstall.ts";

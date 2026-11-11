@@ -1,10 +1,9 @@
+import { describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, spyOn, test } from "bun:test";
 import { Cause, Effect, Fiber } from "effect";
 
 import { tryCacheHit } from "../src/downloader-cache.ts";

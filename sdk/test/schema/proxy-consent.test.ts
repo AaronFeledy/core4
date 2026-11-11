@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { JsonSchema, Schema } from "effect";
-
 import { GlobalConfig, LandofileShape, ProxyConfig } from "@lando/sdk/schema";
+import { JsonSchema, Schema } from "effect";
 
 test.each([
   {

@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
+import { Effect } from "effect";
 
 export interface IptablesForwardReaders {
   readonly readIptablesLegacyForward: () => Promise<string | undefined>;

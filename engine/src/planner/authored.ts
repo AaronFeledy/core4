@@ -1,6 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type ServiceConfig,
@@ -9,6 +7,7 @@ import {
   serviceAppMount,
   validationIssue,
 } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
@@ -27,6 +26,7 @@ import { serviceHomeIntent } from "./home.ts";
 import { servicePullPolicy } from "./pull-policy.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { plannedContainerDestination } from "./storage.ts";
+
 export { applyAuthoredHealthcheck } from "./authored-probes.ts";
 
 export const validateAuthoredAppMount = (

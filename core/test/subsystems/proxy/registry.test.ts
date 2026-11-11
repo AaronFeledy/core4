@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Redacted, Result, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
+import {
+  CertificateAuthorityResolver,
+  type CertificateAuthorityResolverShape,
+} from "@lando/engine/plugins/certificate-authority-resolver";
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
+import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
+import {
+  type RouterServiceRegistration,
+  RouterServiceRegistry,
+  makeRouterServiceRegistry,
+} from "@lando/engine/subsystems/proxy/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginContext, LandoPluginModule } from "@lando/sdk/plugins";
@@ -17,18 +24,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import {
-  CertificateAuthorityResolver,
-  type CertificateAuthorityResolverShape,
-} from "@lando/engine/plugins/certificate-authority-resolver";
-import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
-import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
-import {
-  type RouterServiceRegistration,
-  RouterServiceRegistry,
-  makeRouterServiceRegistry,
-} from "@lando/engine/subsystems/proxy/registry";
+import { Context, Effect, Layer, Redacted, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { makeTestManagedFileStore } from "../../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../../src/testing/state-store.ts";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";

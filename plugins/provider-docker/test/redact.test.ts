@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { Effect } from "effect";
-
 import { type DockerApiClient, makeRuntimeProvider } from "@lando/provider-docker";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 test.each([
   [500, "ProviderUnavailableError"],

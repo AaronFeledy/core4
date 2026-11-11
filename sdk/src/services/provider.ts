@@ -1,6 +1,4 @@
 import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
-import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
-
 import type {
   AppResolveError,
   ArtifactBuildError,
@@ -66,17 +64,20 @@ import type {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
+import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
 import type {
   DestroyOutcome,
   FileSyncQuiesceResult,
   ObservedServiceRemoval,
 } from "../schema/service-shutdown.ts";
+
 export type {
   DestroyOutcome,
   FileSyncQuiesceResult,
   ObservedServiceRemoval,
 } from "../schema/service-shutdown.ts";
+
 import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =

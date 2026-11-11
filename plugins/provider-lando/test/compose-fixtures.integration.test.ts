@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, Effect, Exit, Layer, Stream } from "effect";
-
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import { loadLandofileFile } from "@lando/engine/services/landofile-live";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { AppPlanner } from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
@@ -15,20 +18,15 @@ import {
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
-import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
 import {
   type AppPlan,
   ServiceName,
+  landoServiceHomeStoreName as homeStoreName,
   landoAppNetworkName,
   landoAuthoredNetworkName,
   landoServiceContainerName,
 } from "@lando/sdk/schema";
-
-import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-import * as BunFileSystem from "@lando/engine/services/file-system";
-import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { AppPlanner } from "@lando/engine/services/planner";
+import { Cause, Effect, Exit, Layer, Stream } from "effect";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";

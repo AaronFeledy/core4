@@ -1,10 +1,8 @@
 import { createServer } from "node:net";
-
-import { Duration, Effect } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { errnoCode } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
+import { Duration, Effect } from "effect";
 
 import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import type { BindOutcome, ForwardOutcome } from "./port-acquisition.ts";

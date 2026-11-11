@@ -1,4 +1,10 @@
 import { mapFailures } from "@lando/sdk/command-result";
+import type { PluginDoctorCheckContribution, PluginDoctorCheckInput } from "@lando/sdk/plugins";
+import {
+  PluginDoctorReport,
+  type ProviderCapabilities as ProviderCapabilitiesShape,
+} from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 /**
  * Plugin-contributed doctor checks.
  *
@@ -8,13 +14,6 @@ import { mapFailures } from "@lando/sdk/command-result";
  * cannot take the doctor run down.
  */
 import { Effect, Schema } from "effect";
-
-import type { PluginDoctorCheckContribution, PluginDoctorCheckInput } from "@lando/sdk/plugins";
-import {
-  PluginDoctorReport,
-  type ProviderCapabilities as ProviderCapabilitiesShape,
-} from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
 
 import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract";
 import { providerKindFor } from "./doctor-contract";

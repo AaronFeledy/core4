@@ -4,8 +4,8 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, type ValidationFix, ValidationIssue } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
-import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 
 const commandFix: ValidationFix = {
   edits: [

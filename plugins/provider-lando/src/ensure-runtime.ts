@@ -1,21 +1,16 @@
 import { dirname } from "node:path";
 import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
-import { mapFailures } from "@lando/sdk/command-result";
-import { Duration, Effect, Exit } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { writeFileAtomic } from "@lando/state-store/atomic";
-
-import { rejectIntelMacHost } from "./host-support.ts";
-import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.ts";
-import type { ArtifactDownload } from "./runtime-bundle.ts";
-
+import { Duration, Effect, Exit } from "effect";
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
 import { needsDelegatedRelaunch, verifyServicePlacement } from "./delegated-launch.ts";
 import { type DelegatedScopeHost, delegatedLaunchEligibility } from "./delegated-scope.ts";
+import { rejectIntelMacHost } from "./host-support.ts";
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
@@ -26,6 +21,7 @@ import {
   verifyReplacedServiceTransition,
 } from "./linux-runtime-health.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
+import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import {
   type PodmanServiceScope,
@@ -40,6 +36,7 @@ import {
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
+import type { ArtifactDownload } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { writeLaunchState } from "./runtime-launch-state.ts";
 import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";

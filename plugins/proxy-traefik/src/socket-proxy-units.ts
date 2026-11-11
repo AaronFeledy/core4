@@ -12,6 +12,7 @@ import {
 } from "./socket-proxy-script.ts";
 
 export { POLKIT_RULE_PATH, SOCKET_UNIT_PATHS };
+
 const SYSTEMD_UNIT_DIR = "/etc/systemd/system" as const;
 
 export const PROXYD_CANDIDATES = [

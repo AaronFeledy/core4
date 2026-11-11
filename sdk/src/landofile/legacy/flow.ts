@@ -119,12 +119,12 @@ export class LegacyInlineParser {
         s.nextLine();
         s.significant();
         s.structural();
-        if (s.done || /[,\[\]{}]/.test(s.char)) break;
+        if (s.done || /[,[\]{}]/.test(s.char)) break;
         const breaks = s.position().line - line;
         text = text.trimEnd() + (breaks === 1 ? " " : "\n".repeat(breaks - 1));
       }
       const char = s.char;
-      if (flow && /[,\[\]{}]/.test(char)) break;
+      if (flow && /[,[\]{}]/.test(char)) break;
       if (char === "#" && (s.offset === start || /\s/.test(s.content[s.offset - 1] ?? ""))) break;
       if (
         char === ":" &&

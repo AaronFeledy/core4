@@ -12,8 +12,8 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
-import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
+import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { scriptHostLayer } from "./tooling-bun-script-support.ts";
 
 const frameText = (frame: StreamFrameSinkFrame) =>

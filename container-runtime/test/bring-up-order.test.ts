@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
-
 import { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -10,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";

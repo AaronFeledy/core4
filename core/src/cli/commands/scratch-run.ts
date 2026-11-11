@@ -1,7 +1,16 @@
+import { withAgentContextEnv } from "@lando/engine/config/agent-env";
+import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
+import { execServiceCommand } from "@lando/engine/operations/exec";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import {
+  acquireScratchAppWithPlan,
+  detachScratchApp,
+  findPrimaryServiceName,
+  readScratchLandofile,
+} from "@lando/engine/scratch-app/service";
+import { RedactionService } from "@lando/redaction/service";
+import { writeDiagnosticLine } from "@lando/renderer/output";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Option, Schema } from "effect";
-import { CliInvocation } from "../../runtime/invocation-context";
-
 import {
   type AppPlacementError,
   type DebuggerHostUnavailableError,
@@ -21,19 +30,8 @@ import {
   type ScratchAppService,
   type StateStore,
 } from "@lando/sdk/services";
-
-import { withAgentContextEnv } from "@lando/engine/config/agent-env";
-import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
-import { execServiceCommand } from "@lando/engine/operations/exec";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import {
-  acquireScratchAppWithPlan,
-  detachScratchApp,
-  findPrimaryServiceName,
-  readScratchLandofile,
-} from "@lando/engine/scratch-app/service";
-import { RedactionService } from "@lando/redaction/service";
-import { writeDiagnosticLine } from "@lando/renderer/output";
+import { Effect, Option, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { finishCommandProgress } from "../command-progress";
 import { withInheritedStdinRawMode } from "../exec-host-io";
 import type { ScratchRunOptions } from "./scratch-run-input";

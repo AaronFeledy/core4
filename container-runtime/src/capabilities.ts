@@ -1,15 +1,14 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Schema } from "effect";
-
 import { ProviderCapabilityError } from "@lando/sdk/errors";
-import { ProviderCapabilities } from "@lando/sdk/schema";
 import {
   type AgentSocketDelivery,
   type AgentSocketProviderCapabilities,
   type HostPlatform,
+  ProviderCapabilities,
   type ProviderCapabilities as ProviderCapabilitiesShape,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { redactDetails, standaloneSecretsRedactor } from "./redact.ts";
 
 export type HostProxyCapabilities = NonNullable<ProviderCapabilitiesShape["hostProxy"]>;

@@ -1,8 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
-
 import { SqlCommandFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { executeDbCommand } from "../src/execute.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps, sqlResult } from "./support/fakes.ts";

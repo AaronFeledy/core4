@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
+import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE, globalServices } from "@lando/proxy-traefik";
 import {
   AbsolutePath,
   AppId,
@@ -14,8 +13,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-
-import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE, globalServices } from "@lando/proxy-traefik";
+import { DateTime, Effect, Schema } from "effect";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");

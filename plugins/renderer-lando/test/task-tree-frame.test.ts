@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import { TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
+import { Schema } from "effect";
 
 import { wrapFrameLines } from "../src/task-tree-frame.ts";
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";

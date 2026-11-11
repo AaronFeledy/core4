@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { canonicalJson, sha256Hex } from "../digest/index.ts";
-import { RecipeContentDigest } from "../schema/recipe-identity.ts";
 import type { RecipeManifest, RecipePrompt } from "../schema/recipe.ts";
+import { RecipeContentDigest } from "../schema/recipe-identity.ts";
 
 /**
  * Declarative recipe inputs that form versioned identity. The digest field and

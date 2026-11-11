@@ -1,10 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Queue, Schema, Stdio, Stream } from "effect";
-
-import { NotImplementedError } from "@lando/sdk/errors";
-import type { McpServeOptions } from "@lando/sdk/schema";
-import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
-
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { McpCommandEntry } from "@lando/mcp/registry";
@@ -12,6 +6,10 @@ import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { NotImplementedError } from "@lando/sdk/errors";
+import type { McpServeOptions } from "@lando/sdk/schema";
+import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { Effect, Fiber, Layer, Queue, Schema, Stdio, Stream } from "effect";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";

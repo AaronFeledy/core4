@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
+import { Cause, Effect, Exit } from "effect";
 
 import { makeRuntimeProvider } from "../src/index.ts";
 import {

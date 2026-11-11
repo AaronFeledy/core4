@@ -1,8 +1,7 @@
-import { Effect } from "effect";
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-
-import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { Effect } from "effect";
 
 import { type DelegatedScopeHost, observeServicePlacement, processCgroupPath } from "./delegated-scope.ts";
 import { countRunningContainers } from "./linux-runtime-health.ts";

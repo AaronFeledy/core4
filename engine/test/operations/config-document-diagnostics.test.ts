@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
-import { runSetVerb, runUnsetVerb } from "../../src/config-write/verbs.ts";
 import { recordConfigWarning } from "../../src/config/config-warnings.ts";
+import { runSetVerb, runUnsetVerb } from "../../src/config-write/verbs.ts";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 
 const io = {

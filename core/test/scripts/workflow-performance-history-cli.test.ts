@@ -1,8 +1,7 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { expect, test } from "bun:test";
 
 test("history CLI retains malformed prior JSON as an incompatible row", async () => {
   const root = await mkdtemp(join(tmpdir(), "workflow-history-cli-"));

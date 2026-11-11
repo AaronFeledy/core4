@@ -1,10 +1,8 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-
-import { Effect } from "effect";
-
 import type { HostMaintenanceContribution, HostUninstallInput } from "@lando/sdk/plugins";
 import type { HostUninstallStep } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   SOCKET_PROXY_EXIT_NEEDS_FLOCK,

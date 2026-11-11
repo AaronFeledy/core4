@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ARTIFACT_REFRESH_EXTENSION, STOCK_TAG_REFRESH_AFTER_MS } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import {
   acquireReferencedArtifact,
   decideArtifactPull,

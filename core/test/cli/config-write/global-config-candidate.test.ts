@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { installEngineComposition } from "@lando/engine/composition";
 import type { SourceTransports } from "@lando/source-acquisition";
 import { Effect } from "effect";
-import { compileGlobalConfigDocument } from "../../../src/cli/commands/meta/global-config-document.ts";
 import {
   globalConfigEdit,
   globalConfigSet,
   globalConfigUnset,
 } from "../../../src/cli/commands/meta/global-config.ts";
+import { compileGlobalConfigDocument } from "../../../src/cli/commands/meta/global-config-document.ts";
 import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 const previous = globalThis.__landoEngineCompositionInputs;

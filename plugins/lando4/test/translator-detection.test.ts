@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { lando4ConfigTranslator } from "../src/translator.ts";
 import { LEGACY, LOCAL, canonicalOnly, makeDetectInput } from "./lando4-translator-fixtures.ts";

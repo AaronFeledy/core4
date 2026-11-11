@@ -1,8 +1,5 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Context, Effect, Layer, Predicate, Result, Schema, Scope } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
 import { type FileSyncSelectionError, FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineContribution, FileSyncEngineContributionLayer } from "@lando/sdk/plugins";
 import {
@@ -20,6 +17,8 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Layer, Predicate, Result, Schema, Scope } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { makeLandoPluginContext } from "./context.ts";
 import { PluginContributionGraph } from "./contribution-graph.ts";
@@ -28,6 +27,7 @@ import {
   collectFileSyncCandidates,
   fileSyncCandidateMetadata,
 } from "./file-sync-candidates.ts";
+
 export { collectFileSyncCandidates } from "./file-sync-candidates.ts";
 
 import {
@@ -35,6 +35,7 @@ import {
   type FileSyncSelectionPolicy,
   selectFileSyncCandidate,
 } from "./file-sync-selection.ts";
+
 export {
   type FileSyncBindMountPerformance,
   type FileSyncCandidateDefinition,

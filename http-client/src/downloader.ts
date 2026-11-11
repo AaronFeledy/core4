@@ -1,4 +1,5 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { Downloader, EventService } from "@lando/sdk/services";
 /**
  * Verified-artifact Downloader over Effect's `HttpClient`.
  *
@@ -9,8 +10,6 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
  */
 import { Effect, Layer, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
-
-import { Downloader, EventService } from "@lando/sdk/services";
 
 import { makeDownloaderEvents } from "./downloader-events.ts";
 import { makeDownloaderService } from "./downloader-service.ts";

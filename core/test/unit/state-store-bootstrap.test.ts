@@ -8,11 +8,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Schema } from "effect";
-
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type DurableStateBucketSpec, StateStore } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 

@@ -3,17 +3,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
-import { ConfigService, PathsService } from "@lando/sdk/services";
-
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
+import { landoServiceContainerName } from "@lando/sdk/schema";
+import { ConfigService, PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
-
-import { landoServiceContainerName } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
+import { listServices, listServicesWithPrune, renderAppsListResult } from "../../src/cli/commands/list.ts";
 import {
   type AppsListEntry,
   appsFromContainerList,
@@ -24,7 +21,6 @@ import {
   isNamedPipeSocketPath,
   mergeAppsListEntries,
 } from "../../src/cli/commands/list-discovery.ts";
-import { listServices, listServicesWithPrune, renderAppsListResult } from "../../src/cli/commands/list.ts";
 
 const fakeConfigService = (dataRoot: string) =>
   Layer.succeed(

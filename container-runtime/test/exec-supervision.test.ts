@@ -5,9 +5,9 @@ import { DateTime, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect"
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { execDataFrames, execEofFrame, execSignalFrame } from "../src/exec-control.ts";
 import { supervisedExecStream } from "../src/exec-supervision.ts";
+import { execStream as dispatchExecStream } from "../src/podman/exec.ts";
 import { execStream as plainExecStream } from "../src/podman/exec-transport.ts";
 import { rememberContainerHasShell, rememberExecUmask } from "../src/podman/exec-umask.ts";
-import { execStream as dispatchExecStream } from "../src/podman/exec.ts";
 
 const ctx = { providerId: "docker", remediation: "Reconnect the provider.", env: {} };
 const service = ServiceName.make("web");

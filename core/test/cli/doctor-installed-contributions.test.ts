@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Schema } from "effect";
-
 import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { bundledPluginModules } from "@lando/engine/composition";
@@ -11,9 +9,10 @@ import { PluginContributionGraph } from "@lando/engine/plugins/contribution-grap
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { ProviderId } from "@lando/sdk/schema";
+import { Effect, Layer, Schema } from "effect";
+import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract.ts";
-import { doctor } from "../../src/cli/commands/doctor.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const report = '{ name: "installed-healthy", status: "pass", severity: "info", context: {}, solutions: [] }';

@@ -3,6 +3,7 @@ import type { Effect, Scope } from "effect";
 import type { SourceAcquisitionError } from "./errors.ts";
 import type { GcOptions, SourceGcReport } from "./gc-schema.ts";
 import type { NpmPackageDist, NpmPackument } from "./npm.ts";
+
 export type { NpmPackageDist, NpmPackument, NpmPackumentVersion } from "./npm.ts";
 
 export type GitPin = { readonly kind: "git"; readonly url: string; readonly commit: string };
@@ -99,10 +100,10 @@ export interface SourceSession {
     options?: MaterializeOptions,
   ) => Effect.Effect<SourceSnapshot<GitPin>, SourceAcquisitionError>;
   readonly registerRoot: (lockfile: string) => Effect.Effect<void, SourceAcquisitionError>;
-  readonly resolveNpm: (locator: { readonly name: string; readonly selector?: string }) => Effect.Effect<
-    NpmPin,
-    SourceAcquisitionError
-  >;
+  readonly resolveNpm: (locator: {
+    readonly name: string;
+    readonly selector?: string;
+  }) => Effect.Effect<NpmPin, SourceAcquisitionError>;
   readonly materializeNpm: (
     pin: NpmPin,
     options?: MaterializeOptions,

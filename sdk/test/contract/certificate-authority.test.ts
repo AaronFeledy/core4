@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Redacted } from "effect";
-
 import {
   ContractFailure,
   TEST_CERTIFICATES,
@@ -8,6 +6,7 @@ import {
   makeTestCertificateAuthority,
   runCaContract,
 } from "@lando/sdk/test";
+import { Effect, Exit, Redacted } from "effect";
 
 describe("CertificateAuthority contract", () => {
   test("TestCertificateAuthority satisfies runCaContract", async () => {

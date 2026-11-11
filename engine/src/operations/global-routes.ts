@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import type { GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
 import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { routerEnabled } from "../config/router-config.ts";
 import { withGlobalRoutePublication } from "../global-app/activation-scope.ts";

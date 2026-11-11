@@ -1,5 +1,3 @@
-import { DateTime, Effect, Option } from "effect";
-
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
@@ -27,8 +25,8 @@ import {
   type RuntimeProviderShape,
   type StateStore,
 } from "@lando/sdk/services";
-
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Option } from "effect";
 
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
@@ -38,9 +36,9 @@ import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { recordedSessionInventory } from "./accelerated-start-resume.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent, runAppInitEvents } from "./events.ts";
+import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
-import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { resolveLandofileEventPlan } from "./landofile-events.ts";
 import { idleStopEventPlan, stopIdleApp } from "./stop-idle.ts";
 

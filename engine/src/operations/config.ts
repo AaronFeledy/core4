@@ -1,22 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
+import { mergeGlobalConfigSources } from "@lando/paths/config-sources";
+import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Result, Schema } from "effect";
-
 import {
   ConfigError,
   type LandoCommandError,
   LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { GlobalConfigView } from "@lando/sdk/schema";
-
-import { makeLandoPaths } from "@lando/paths";
-import { mergeGlobalConfigSources } from "@lando/paths/config-sources";
-import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
-import { validationIssue } from "@lando/sdk/schema";
+import { GlobalConfigView, validationIssue } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
+import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
+import { recordConfigWarning } from "../config/config-warnings.ts";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import type { EditorRunner } from "../config-write/editor.ts";
 import {
@@ -26,8 +24,6 @@ import {
 } from "../config-write/key-schema.ts";
 import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import type { ValueType } from "../config-write/write-core";
-import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
-import { recordConfigWarning } from "../config/config-warnings.ts";
 import { GlobalConfigSources } from "../services/config.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.

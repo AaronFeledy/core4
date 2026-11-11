@@ -1,5 +1,4 @@
-import { Semaphore } from "effect";
-import { Effect, Exit, Ref, Scope } from "effect";
+import { Effect, Exit, Ref, Scope, Semaphore } from "effect";
 
 /**
  * Per-handle lifecycle controller. It owns a single managed start scope under

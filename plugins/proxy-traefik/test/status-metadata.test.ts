@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { AppId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { renderRouteFileMetadata } from "../src/route-file-metadata.ts";
 import { persistedStatus } from "../src/status.ts";

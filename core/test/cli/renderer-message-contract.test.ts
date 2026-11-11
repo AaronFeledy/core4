@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
-import { StreamFrame } from "@lando/sdk/schema";
-import { Renderer } from "@lando/sdk/services";
-
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "@lando/renderer/runtime";
+import { StreamFrame } from "@lando/sdk/schema";
+import { Renderer } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const landoService = (io: RendererIO) =>

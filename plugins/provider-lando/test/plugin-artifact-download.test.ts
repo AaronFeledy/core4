@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { DownloadChecksumError, DownloadFetchError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type DownloaderShape, OnlineAcquisition } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 
 import { makePluginArtifactDownload } from "../src/plugin-runtime.ts";
 

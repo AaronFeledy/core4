@@ -1,7 +1,5 @@
 import { stat } from "node:fs/promises";
 import { type IncomingMessage, request as httpRequest } from "node:http";
-import { Effect, Schema } from "effect";
-
 import {
   HostProxyAuthenticationError,
   HostProxyBackpressureError,
@@ -11,6 +9,7 @@ import {
   HostProxyTransportUnavailableError,
   causeMessage,
 } from "@lando/sdk/errors";
+import { Effect, Schema } from "effect";
 
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
 import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";

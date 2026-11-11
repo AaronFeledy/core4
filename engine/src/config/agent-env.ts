@@ -5,11 +5,12 @@ import {
   HOST_PROXY_ENV_PREFIXES,
 } from "@lando/container-runtime/container-helper/env-policy";
 import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
+
 export {
   AGENT_CONTEXT_ENV_ALLOWLIST,
   AGENT_ENV_VALUE_MUST_BE_ONE,
-  HOST_PROXY_ENV_PREFIXES,
   HOST_PROXY_ENV_NAMES,
+  HOST_PROXY_ENV_PREFIXES,
 } from "@lando/container-runtime/container-helper/env-policy";
 
 export type { HostEnv };

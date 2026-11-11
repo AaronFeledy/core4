@@ -1,24 +1,26 @@
 import { describe, expect, test } from "bun:test";
-// allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
-import { Effect, Layer } from "effect";
-
-import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
-import {
-  CertificateAuthority,
-  HealthcheckRunner,
-  RouterService,
-  SshService,
-  UrlScanner,
-} from "@lando/sdk/services";
-import { TestRouterService, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
-
 import * as CertificateAuthorityLayer from "@lando/engine/subsystems/certs/api";
 import * as HealthcheckRunnerLayer from "@lando/engine/subsystems/healthcheck/api";
 import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
 import * as UrlScannerLayer from "@lando/engine/subsystems/scanner/api";
 import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
+import {
+  CertificateAuthority,
+  HealthcheckRunner,
+  RouterService,
+  RuntimeProviderRegistry,
+  SshService,
+  UrlScanner,
+} from "@lando/sdk/services";
+import {
+  TestRouterService,
+  TestRuntimeProvider,
+  makeTestRouterService,
+  makeTestSshService,
+} from "@lando/sdk/test";
+// allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
+import { Effect, Layer } from "effect";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import {

@@ -1,15 +1,13 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeUserAppResolution } from "@lando/landofile/app-resolution";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-
-import { describe, expect, test } from "bun:test";
-import { type Context, Effect } from "effect";
 
 import { AbsolutePath, type LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
-
-import { makeUserAppResolution } from "@lando/landofile/app-resolution";
+import { type Context, Effect } from "effect";
 
 const makeResolution = () =>
   makeUserAppResolution({

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Schema } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
 import type {
   PrivilegeService,
@@ -9,15 +7,15 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
-import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
-import { routeOwner } from "./route-owner-fixture.ts";
-
+import { type Context, Effect, Schema } from "effect";
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
-import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
+import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
 import { PROXYD_CANDIDATES, SOCKET_UNIT_PATHS } from "../src/socket-proxy-install.ts";
+import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });

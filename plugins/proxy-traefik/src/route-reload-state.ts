@@ -1,9 +1,7 @@
-import { Effect, Schema } from "effect";
-
 import { certificatePairIsCurrent as isCurrent } from "@lando/sdk/certificates";
-
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { type AppRouteOwner, type CertificateName, certificateNameForHostname } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 const AckSchema = Schema.Struct({ digest: Schema.String });
 type Ack = typeof AckSchema.Type;

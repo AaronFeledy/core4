@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { TestClock } from "effect/testing";
 import { renderTraefikDashboardConfig } from "../src/dashboard.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import {
   appCertificateFiles,
   dashboardConfigFile,
@@ -11,7 +12,6 @@ import {
   defaultTlsFile,
   routeFile,
 } from "../src/proxy-paths.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { renderTraefikDefaultTlsConfig, renderTraefikDynamicConfig } from "../src/routing.ts";
 import { certificatePem, privateKeyPem } from "./current-certificate-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";

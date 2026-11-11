@@ -1,11 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Exit, Fiber, Layer, Redacted } from "effect";
-import { TestClock } from "effect/testing";
-
 import { CREATE_CONFIG_LABEL } from "@lando/container-runtime/create-fingerprint";
 import { commonContainerLabels } from "@lando/container-runtime/plan";
 import { makeLandoPaths } from "@lando/paths";
@@ -25,6 +21,8 @@ import {
 import { CertificateAuthority, type CertificateSpec, PathsService } from "@lando/sdk/services";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Exit, Fiber, Layer, Redacted } from "effect";
+import { TestClock } from "effect/testing";
 
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import {

@@ -1,9 +1,8 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { type Context, Effect } from "effect";
-
 import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, type ServiceShutdownObservation, landoOwnedNetworkNames } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {

@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-
-import { Effect, Layer, Schema } from "effect";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { MalformedCliFlagValueError } from "@lando/sdk/errors";
+import { Effect, Layer, Schema } from "effect";
 import {
   clearActiveCommandInvocation,
   resetActiveCommandInvocation,

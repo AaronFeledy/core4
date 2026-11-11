@@ -84,6 +84,7 @@ import type {
 } from "../errors/index.ts";
 
 type LandofileNotFoundError = LandofileMissingError | LandofileFormConflictError;
+
 import type {
   AbsolutePath,
   AppPlan,
@@ -115,11 +116,12 @@ import type {
   TunnelTarget,
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
-export type { EndpointRef, ServiceConnection, ServiceState, StartedService } from "../schema/index.ts";
+
 export type {
   AppRemoteEntry,
   AppRemoteMutationResult,
   DestroyAppResult,
+  EndpointRef,
   ExecAppResult,
   InfoAppAgentEnv,
   InfoAppHostProxy,
@@ -127,11 +129,15 @@ export type {
   LandofileEventsOutcome,
   RebuildAppResult,
   RestartAppResult,
+  ServiceConnection,
+  ServiceState,
   ShareStopAppResult,
   StartAppResult,
+  StartedService,
   StopAppResult,
   ToolingResult,
 } from "../schema/index.ts";
+
 import type {
   AppPlanner,
   CacheService,

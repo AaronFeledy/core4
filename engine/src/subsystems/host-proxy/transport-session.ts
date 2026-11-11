@@ -1,10 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
-
-import type { AppRef } from "@lando/sdk/schema";
-
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
+import type { AppRef } from "@lando/sdk/schema";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyOpenCallExecutor, HostProxyRunLandoExecutor } from "./dispatch.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";

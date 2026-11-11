@@ -1,5 +1,5 @@
-import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 export type ComposeKnobUse = {

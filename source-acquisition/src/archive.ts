@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { SourceAcquisitionError } from "./errors.ts";
+
 export type { ArchiveTransport } from "./types.ts";
 
 const safeEntryPath = (entryName: string): string => {

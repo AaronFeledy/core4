@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import { stringifyBoundedJson } from "@lando/mcp/bounded-json";
+import { Effect } from "effect";
 
 const before = process.memoryUsage().arrayBuffers;
 const encoded = await Effect.runPromise(stringifyBoundedJson({ ok: true }, "small payload"));

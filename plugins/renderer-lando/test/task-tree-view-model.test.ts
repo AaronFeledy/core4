@@ -9,8 +9,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   TaskCompleteEvent,
   TaskDetailEvent,
@@ -21,6 +19,7 @@ import {
 } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 

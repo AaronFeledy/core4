@@ -1,13 +1,12 @@
 import { join } from "node:path";
+import { APPLIED_STATE_VERSION, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Option, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
 import type { LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { FileSystem } from "@lando/sdk/services";
-
-import { APPLIED_STATE_VERSION, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import { Effect, Option, Schema } from "effect";
 
 import type { AppsListEntry } from "./list-discovery";
 

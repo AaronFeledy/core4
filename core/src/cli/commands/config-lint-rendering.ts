@@ -15,9 +15,7 @@ const renderViolation = (violation: ConfigLintViolation, landofilePath?: string)
           landofilePath === undefined
             ? violation.source.file
             : // Same POSIX form as script help; the "at" line keeps the native absolute path.
-              relative(dirname(landofilePath), violation.source.file)
-                .split(sep)
-                .join("/"),
+              relative(dirname(landofilePath), violation.source.file).split(sep).join("/"),
         )
       : formatPath(violation.path);
   const lines = [

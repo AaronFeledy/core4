@@ -1,6 +1,5 @@
-import { PassThrough } from "node:stream";
-
 import { describe, expect, test } from "bun:test";
+import { PassThrough } from "node:stream";
 
 import { PromptCancelledError } from "../../../src/recipes/prompts/driver.ts";
 import { createLineReader } from "../../../src/recipes/prompts/io.ts";

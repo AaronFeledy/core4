@@ -8,7 +8,6 @@
  * `ServicePlan`; the app-feature engine (`app-feature.ts`) mutates the already
  * resolved per-service drafts across the whole app.
  */
-import { DateTime } from "effect";
 
 import type {
   DatabaseConnection,
@@ -25,6 +24,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceMountIntent,
 } from "@lando/sdk/services";
+import { DateTime } from "effect";
 
 export interface BaseSeed {
   readonly name: ServicePlan["name"];

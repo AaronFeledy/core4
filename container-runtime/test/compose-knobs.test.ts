@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import type { EngineDialect } from "../src/dialect.ts";
 import { realizePodmanComposeKnobs } from "../src/podman/compose-knobs.ts";

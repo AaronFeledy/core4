@@ -9,8 +9,8 @@ import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError } from "./include-guard.ts";
 import { fetchLocal, fetchUser } from "./include-local.ts";
 import { stageFragmentLock } from "./include-lockfile.ts";
-import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
+import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { classify, normalizeInclude } from "./include-source.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 

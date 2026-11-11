@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { Effect, Result } from "effect";
 import { consumeSites } from "../src/compiled-sites.ts";
-import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
   PLAN_SERVICE_EXPRESSION_SCOPES,

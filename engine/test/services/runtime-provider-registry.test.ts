@@ -2,10 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import * as VerifiedDownloader from "@lando/http-client/downloader";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
@@ -23,8 +19,13 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+
 import * as PluginRegistryLayer from "../../src/plugins/registry";
 import * as RuntimeProviderRegistryLayer from "../../src/providers/registry";
 import { GlobalConfigSources } from "../../src/services/config.ts";

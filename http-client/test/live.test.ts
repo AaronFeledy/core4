@@ -4,18 +4,15 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { ConfigError } from "@lando/sdk/errors";
+import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
+import { testCaPem } from "@lando/sdk/test";
 import { Cause, Duration, Effect, Exit, Fiber, Layer, Schema, Stream, Tracer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { ConfigError } from "@lando/sdk/errors";
-import { GlobalConfig } from "@lando/sdk/schema";
-import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
-
-import { testCaPem } from "@lando/sdk/test";
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
 

@@ -1,6 +1,3 @@
-import { DateTime, Effect, Option, Schema } from "effect";
-import { serviceContainerName } from "../plan.ts";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -9,7 +6,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
-
+import { DateTime, Effect, Option, Schema } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import type {
   EngineHttpApi,
@@ -21,7 +18,7 @@ import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts
 import type { ExecSupervisionOptions } from "../exec-supervision.ts";
 import { APP_ROOT_LABEL } from "../labels.ts";
 import { containerOwnershipLabels } from "../native-ownership.ts";
-import { fingerprintInspectPublishPorts } from "../plan.ts";
+import { fingerprintInspectPublishPorts, serviceContainerName } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { runObservationFromInspectState } from "../run-observation.ts";
 import {

@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import {
   type GlobalStartOptions,
   type GlobalStartResult,
@@ -9,6 +7,7 @@ import {
 import { renderGlobalStartResult } from "../../../commands/meta/global-start";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
 import { serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { Flags } from "../../../spec/metadata";
 
 export const globalStartOptionsFromInput = (input: unknown): GlobalStartOptions => {
   const signal = extractSpecAbortSignal(input);

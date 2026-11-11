@@ -1,5 +1,3 @@
-import { Effect, Predicate } from "effect";
-
 import { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import {
   type ComposeDisposition,
@@ -8,6 +6,7 @@ import {
   composeTopLevelDispositions,
   isLandofileOverride,
 } from "@lando/sdk/landofile";
+import { Effect, Predicate } from "effect";
 import { type DispositionTrieNode, compileDispositionTrie, matchDispositionChild } from "./rejection-trie.ts";
 
 /** Object keys and array indexes from the document root; service names may contain any character. */

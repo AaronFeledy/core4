@@ -17,13 +17,6 @@
  * allow: SIZE_OK — acceptance bullets stay collocated in one discoverable suite.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
-
-import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
-import { CommandResultEnvelope } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
-
 import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpDispatchDeps, type McpExecute, dispatchTool } from "@lando/mcp/dispatch";
@@ -37,6 +30,11 @@ import {
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
+import type { LandoEvent } from "@lando/sdk/events";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 import { bundledMcpRegistry } from "./plugin-fixture";

@@ -1,7 +1,4 @@
 import { join } from "node:path";
-
-import { Effect, Schema, type Scope } from "effect";
-
 import { ToolManifest } from "@lando/sdk/schema";
 import type { Downloader } from "@lando/sdk/services";
 import type { ToolError } from "@lando/sdk/tool-provisioning";
@@ -13,6 +10,7 @@ import {
   resolveHostKey,
   toolVersionMarkerPath,
 } from "@lando/sdk/tool-provisioning";
+import { Effect, Schema, type Scope } from "effect";
 
 import manifestData from "../mutagen-versions.json" with { type: "json" };
 

@@ -1,15 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Context, Effect, Schema } from "effect";
-
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-
 import { testCaPem } from "@lando/sdk/test";
+import { Context, Effect, Schema } from "effect";
 import {
   loadCaPems,
   resolveServiceNetworkInject,

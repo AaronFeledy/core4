@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { LandoEvent } from "../events/union.ts";
 import { AppRef } from "./networking.ts";

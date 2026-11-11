@@ -10,8 +10,6 @@ import {
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-
 import {
   ProviderCapabilityError,
   ProviderInternalError,
@@ -23,6 +21,7 @@ import {
   type ProviderCapabilities,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   type DelegatedScopeHost,

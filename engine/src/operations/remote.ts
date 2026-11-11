@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
-
-import { Effect, Schema } from "effect";
-
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { parseLandofile } from "@lando/landofile/parser";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
@@ -40,10 +40,7 @@ import {
   type RemoteSourceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { parseLandofile } from "@lando/landofile/parser";
-import { findDiscoveredLandofilePath } from "@lando/landofile/service";
+import { Effect, Schema } from "effect";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 
 export const RemoteListResultSchema = Schema.Array(AppRemoteEntry);

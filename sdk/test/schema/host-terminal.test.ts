@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { HostTerminal } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("HostTerminal", () => {
   test("accepts attached terminal identity and positive dimensions", () => {

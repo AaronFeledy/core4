@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { compareArtifactSets } from "../../../scripts/check-schema-compatibility.ts";
+import { parseCompatibilityExceptions } from "../../../scripts/schema-compatibility/exceptions.ts";
+import { INTERNAL_PERSISTED_STORES } from "../../../scripts/schema-compatibility/internal-stores.ts";
+import { loadBasePersistedStoreVersions } from "../../../scripts/schema-compatibility/store-versions.ts";
 import {
   type SchemaArtifact,
   loadWorkingSchemaArtifacts,
 } from "../../../scripts/schema-compatibility-artifacts.ts";
-import { parseCompatibilityExceptions } from "../../../scripts/schema-compatibility/exceptions.ts";
-import { INTERNAL_PERSISTED_STORES } from "../../../scripts/schema-compatibility/internal-stores.ts";
-import { loadBasePersistedStoreVersions } from "../../../scripts/schema-compatibility/store-versions.ts";
 
 const surface = "persisted:scratch-registry";
 const artifact = (statuses: readonly string[], version: number) => ({

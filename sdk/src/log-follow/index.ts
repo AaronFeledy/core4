@@ -543,5 +543,5 @@ export const logFollowLineChunks = <E, R>(
     ),
   );
 
-export { makeMemoryLogFileAccess } from "./memory.ts";
 export type { MemoryLogFileAccess } from "./memory.ts";
+export { makeMemoryLogFileAccess } from "./memory.ts";

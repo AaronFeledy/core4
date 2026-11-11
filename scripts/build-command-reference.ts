@@ -244,4 +244,4 @@ const main = async (): Promise<void> => {
 
 if (import.meta.main) await main();
 
-export { renderPage, assertUniversalFlags };
+export { assertUniversalFlags, renderPage };

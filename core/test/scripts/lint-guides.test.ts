@@ -1,12 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
-
 import { buildPublicTranscript, parseGuideScenarioAst } from "../../../scripts/build-guide-scenarios.ts";
-import { classifiedFormFor, validateClassified } from "../../../scripts/lint-guides-yaml-fence.ts";
-import { lintFixtureLandofiles } from "../../../scripts/lint-guides-yaml-fixtures.ts";
 import {
   type GuideFixtureInventoryEntry,
   checkScenarioSourceMap,
@@ -16,6 +13,8 @@ import {
   lintGuideTranscripts,
   lintGuides,
 } from "../../../scripts/lint-guides.ts";
+import { classifiedFormFor, validateClassified } from "../../../scripts/lint-guides-yaml-fence.ts";
+import { lintFixtureLandofiles } from "../../../scripts/lint-guides-yaml-fixtures.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/lint/guides");

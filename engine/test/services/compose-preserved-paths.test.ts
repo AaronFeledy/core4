@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import {
   type ComposePreservedPathCapabilities,
   type ProviderCapabilities,
@@ -8,6 +6,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import {
   collectComposePreservedPaths,

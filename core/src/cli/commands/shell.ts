@@ -1,14 +1,9 @@
+import { withAgentContextEnv } from "@lando/engine/config/agent-env";
+import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
+import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
-import { createPayloadRedactor } from "@lando/sdk/secrets";
-/**
- * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
- *
- * Service mode runs a login shell in the requested service via provider execStream
- * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
- * interactive Bun Shell line REPL.
- */
-import { DateTime, Effect, Option, Queue, Schema, Stream } from "effect";
-
+import { isStdioRendererIO } from "@lando/renderer/io";
+import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
   type DeprecatedSurfaceError,
@@ -17,6 +12,7 @@ import {
   ToolingExecError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   type CommandSpec,
@@ -30,12 +26,14 @@ import {
   SecretStore,
   ShellRunner,
 } from "@lando/sdk/services";
-
-import { withAgentContextEnv } from "@lando/engine/config/agent-env";
-import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
-import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
-import { isStdioRendererIO } from "@lando/renderer/io";
-import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
+/**
+ * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
+ *
+ * Service mode runs a login shell in the requested service via provider execStream
+ * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
+ * interactive Bun Shell line REPL.
+ */
+import { DateTime, Effect, Option, Queue, Schema, Stream } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { loadUserLandofile } from "../app-resolution";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";

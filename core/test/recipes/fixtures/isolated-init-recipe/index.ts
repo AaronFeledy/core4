@@ -1,2 +1,2 @@
-export * from "./manifest.ts";
 export * from "./decomposer.ts";
+export * from "./manifest.ts";

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Result, Schema } from "effect";
-import { RecordedMachineOwnership } from "../src/setup-machine-ownership.ts";
 import { persistSetupState, providerStatePath, setupProviderLando } from "../src/setup.ts";
+import { RecordedMachineOwnership } from "../src/setup-machine-ownership.ts";
 
 test.each([
   { name: "lando", createdByLando: false },

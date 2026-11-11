@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import {
   LandofileEmitError,
   emitLandofileYaml,
   emitLandofileYamlEither,
   parseLandofile,
 } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const roundTrip = (value: Record<string, unknown>): Promise<unknown> =>
   Effect.runPromise(parseLandofile({ file: ".lando.yml", content: emitLandofileYaml(value), cwd: "/tmp" }));

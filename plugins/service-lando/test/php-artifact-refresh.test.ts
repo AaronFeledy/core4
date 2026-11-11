@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { composeService } from "@lando/engine/services/feature";
 import {
   ARTIFACT_REFRESH_EXTENSION,
@@ -9,6 +7,7 @@ import {
   ServiceConfig,
   ServiceName,
 } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { PHP_FEATURE_ID, phpServiceFeature } from "../src/services/php.ts";
 import { phpResolution } from "./support/php-resolution.ts";

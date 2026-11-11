@@ -2,19 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath } from "@lando/sdk/schema";
-import { makePluginStateStore } from "@lando/state-store/plugin";
-import { makeStateStore } from "@lando/state-store/service";
-import { withRuntimeShutdownReceipt } from "../src/runtime-shutdown-teardown.ts";
-import { makeRuntimeShutdownStore } from "../src/runtime-shutdown.ts";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
-import { Deferred, Duration, Effect, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { makePluginStateStore } from "@lando/state-store/plugin";
+import { makeStateStore } from "@lando/state-store/service";
+
+import { Deferred, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import type { ExecConmonReaper } from "../src/exec-conmon.ts";
 import {
   type FsSeam,
@@ -24,6 +20,9 @@ import {
   terminateOwnedRuntimeService,
   verifyOwnedRuntimePid,
 } from "../src/managed-runtime-service.ts";
+import { makeRuntimeShutdownStore } from "../src/runtime-shutdown.ts";
+import { withRuntimeShutdownReceipt } from "../src/runtime-shutdown-teardown.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const run = <A>(effect: Effect.Effect<A, never>): Promise<A> => Effect.runPromise(effect);
 

@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
-
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 const importSpecifiersOf = (source: string): string[] =>
   Array.from(

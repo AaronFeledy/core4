@@ -1,9 +1,5 @@
-import { Readable, Writable } from "node:stream";
-
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit, Option, Redacted } from "effect";
-
+import { Readable, Writable } from "node:stream";
 import type { PromptAnswer, PromptSpec } from "@lando/sdk/schema";
 import type {
   ConfirmSpec,
@@ -18,6 +14,7 @@ import {
   type InteractionServiceSpec,
   runInteractionContract,
 } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Option, Redacted } from "effect";
 
 import { makeInteractionService } from "../../src/interaction/service.ts";
 import { makeTestInteractionService } from "../../src/testing/interaction.ts";

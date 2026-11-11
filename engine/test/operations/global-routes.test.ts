@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { GlobalAppError, ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -12,6 +10,7 @@ import {
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { DateTime, Effect } from "effect";
 
 import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";

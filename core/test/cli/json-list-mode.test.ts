@@ -2,10 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Schema } from "effect";
-
 import { listSelectableResultKeys } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 

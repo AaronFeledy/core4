@@ -1,5 +1,5 @@
-import { ComposeServiceFieldKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import { ComposeServiceFieldKey } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 export type ComposeServiceFieldUse = {

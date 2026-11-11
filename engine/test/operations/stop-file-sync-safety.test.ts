@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
-import { DateTime, Effect, Exit } from "effect";
-
 import {
   AbsolutePath,
   type FileSyncSessionInfo,
@@ -10,6 +8,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { DateTime, Effect, Exit } from "effect";
 
 import { stopAppForTarget } from "../../src/operations/stop.ts";
 import { makeHarness, plan } from "./destroy-progress-topology-support.ts";

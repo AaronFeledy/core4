@@ -1,8 +1,5 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
-
-import { Effect } from "effect";
-
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -21,6 +18,7 @@ import type {
   ProviderRuntimeSnapshot,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 
 export type AppliedStateProvider = Pick<
@@ -344,6 +342,10 @@ export const resolveAppliedPlanEvidence = (
           return Effect.fail(orphanRefusal);
         case "absent":
           return Effect.succeed(undefined);
+        default: {
+          const exhaustive: never = evidence;
+          return exhaustive;
+        }
       }
     }),
   );

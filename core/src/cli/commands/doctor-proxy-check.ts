@@ -1,13 +1,10 @@
 import { join } from "node:path";
-
-import { Effect, Result, Schema } from "effect";
-
-import { PortNumber, ROUTER_LAST_RESORT_HTTPS_PORT, ROUTER_LAST_RESORT_HTTP_PORT } from "@lando/sdk/schema";
-import { FileSystem, PathsService, type RouterService } from "@lando/sdk/services";
-
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
+import { PortNumber, ROUTER_LAST_RESORT_HTTPS_PORT, ROUTER_LAST_RESORT_HTTP_PORT } from "@lando/sdk/schema";
+import { FileSystem, PathsService, type RouterService } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 import type { DoctorSolution } from "./doctor-contract";
 import {
   type DoctorSubsystemCheck,

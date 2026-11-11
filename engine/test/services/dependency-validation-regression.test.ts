@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
-
-import { Effect, Result } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 
 import { validateServiceDependencies } from "../../src/services/dependency-validation.ts";
 

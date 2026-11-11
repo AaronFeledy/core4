@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { REDIS_FEATURE_ID, redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";

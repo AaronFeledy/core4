@@ -19,6 +19,13 @@ import {
 } from "./php-via.ts";
 import { assertPhpXdebugSupported, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
 
+export {
+  PHP_BASELINE_INI_PATH,
+  PHP_BASELINE_STEP_ID,
+  PHP_SECURITY_BASELINE,
+  renderPhpBaselineIni,
+} from "./php-baseline.ts";
+export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
 export { PHP_FEATURE_ID, PHP_FEATURE_PRIORITY, phpServiceFeature } from "./php-feature.ts";
 export {
   PHP_APT_PACKAGE_PINS,
@@ -31,15 +38,13 @@ export {
   PHP_PREREQUISITES_STEP_ID,
   phpPrerequisitesBuildKeyInputs,
 } from "./php-prerequisites.ts";
-export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
 export {
-  PHP_BASELINE_INI_PATH,
-  PHP_BASELINE_STEP_ID,
-  PHP_SECURITY_BASELINE,
-  renderPhpBaselineIni,
-} from "./php-baseline.ts";
-export { PHP_FPM_LOG_SOURCES, SUPPORTED_PHP_VERSIONS, type SupportedPhpVersion } from "./php-via.ts";
-export { PHP_LISTENER, PHP_LISTENERS } from "./php-via.ts";
+  PHP_FPM_LOG_SOURCES,
+  PHP_LISTENER,
+  PHP_LISTENERS,
+  SUPPORTED_PHP_VERSIONS,
+  type SupportedPhpVersion,
+} from "./php-via.ts";
 export const APP_MOUNT_TARGET = "/app";
 const PhpVersion = Schema.Literals(SUPPORTED_PHP_VERSIONS);
 const PHP_ARTIFACTS = Object.fromEntries(

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { VALKEY_FEATURE_ID, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
@@ -114,4 +113,5 @@ describe("valkey ServiceType", () => {
     expect(plan.user).toBe("valkey");
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

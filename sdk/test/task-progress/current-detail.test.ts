@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Deferred, Effect, Fiber } from "effect";
-
 import type { LandoEvent } from "@lando/sdk/services";
 import { CurrentTaskDetail, makeTaskTree, withCurrentTaskDetail } from "@lando/sdk/task-progress";
+import { Deferred, Effect, Fiber } from "effect";
 
 test("task detail bindings isolate concurrent children, restore nested bindings, and stop after settlement", async () => {
   const events: LandoEvent[] = [];

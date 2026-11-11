@@ -1,6 +1,4 @@
-import { SchemaIssue } from "effect";
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { integerTextCheck } from "./compose-knob-scalars.ts";
 import { layerMerge } from "./layer-merge.ts";
 

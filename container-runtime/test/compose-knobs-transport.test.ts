@@ -1,12 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -15,6 +12,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";

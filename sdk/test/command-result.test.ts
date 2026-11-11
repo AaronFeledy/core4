@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Predicate, Schema } from "effect";
-
 import {
   buildCommandResultEnvelope,
   encodeCommandResult,
@@ -12,6 +10,7 @@ import {
 import { ComposeKeyRejectedError, LandofileVersionConstraintError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, type CommandTrace, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Predicate, Schema } from "effect";
 
 class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("ExampleTaggedError", {
   message: Schema.String,

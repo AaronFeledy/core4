@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { Effect, Exit, Fiber, Redacted, Schema } from "effect";
-
 import { CaError } from "@lando/sdk/errors";
 import { CertificateName } from "@lando/sdk/schema";
 import { TEST_CERTIFICATES, runCaContract } from "@lando/sdk/test";
+import { Effect, Exit, Fiber, Redacted, Schema } from "effect";
 
 import { mkcertInstallPath } from "../src/provision.ts";
 import {

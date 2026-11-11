@@ -1,9 +1,8 @@
 import { SCRATCH_ID_LABEL, SCRATCH_LABEL } from "@lando/container-runtime/labels";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Context, Effect, Layer, Option } from "effect";
-
 import { ScratchAppError } from "@lando/sdk/errors";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Context, Effect, Layer, Option } from "effect";
 import { runtimeOnline } from "../providers/runtime-observation.ts";
 
 const CANONICAL_SCRATCH_ID = /^scratch-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6}$/u;

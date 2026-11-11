@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -10,6 +8,7 @@ import type {
   ServiceTypeInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import {
   MAX_SERVICE_TYPE_EXTENDS_DEPTH,

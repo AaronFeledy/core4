@@ -8,6 +8,7 @@ import { hostDisablesColor, isDumbTerminal } from "./color.ts";
 import { guardedWrite, isOutputBlocked, isOutputBroken } from "./native-stdio.ts";
 import { outputStreams } from "./output-streams.ts";
 
+export type { RendererNarrationIO } from "@lando/sdk/renderer";
 export {
   BROKEN_PIPE_EXIT_CODE,
   detachStdioWrites,
@@ -16,8 +17,6 @@ export {
   onStdioBrokenPipe,
   writeStdioLine,
 } from "./native-stdio.ts";
-
-export type { RendererNarrationIO } from "@lando/sdk/renderer";
 export interface RendererIO extends RendererContractIO {
   readonly stdin?: ReadableStream<Uint8Array>;
   readonly stdinIsTTY?: boolean;

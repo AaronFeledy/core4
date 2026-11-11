@@ -1,9 +1,7 @@
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
-import { layerMerge } from "./layer-merge.ts";
-
+import { Effect, Schema, SchemaTransformation } from "effect";
 import { ComposeScalarMap, ComposeScalarMapField } from "./compose-knob-maps.ts";
 import { ComposeByteSizeField, integerTextCheck } from "./compose-knob-scalars.ts";
+import { layerMerge } from "./layer-merge.ts";
 
 const ExtensionFields = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown);
 const ScalarOption = Schema.Union([Schema.String, Schema.Number, Schema.Null]);

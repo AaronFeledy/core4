@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Schema } from "effect";
-
 import { GlobalAppError, GlobalServiceCollisionError } from "@lando/sdk/errors";
 import {
   type GlobalServiceContribution,
@@ -11,6 +9,7 @@ import {
   type ProviderCapabilities,
   type ServiceConfig,
 } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import { emptyGlobalPolicy, prepareGlobalPolicy } from "../../src/global-app/enablement.ts";
 

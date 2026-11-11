@@ -1,14 +1,14 @@
-import { DateTime, Effect, Option, Schema } from "effect";
-
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { DeprecationService } from "@lando/sdk/services";
+import { DateTime, Effect, Option, Schema } from "effect";
 import {
   serviceFeatureApply,
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 import { resolveMailListeners } from "./_mail-listeners.ts";
+
 export { MAILHOG_LISTENER } from "./_mail-listeners.ts";
 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";

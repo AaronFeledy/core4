@@ -1,9 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { runtimeLayoutPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import { hostPlatformFamily } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   type DelegatedScopeHost,

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "@lando/provider-lando";
+import { Effect } from "effect";
 import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
 
 const runner = (status: PodmanMachineStatus, calls: string[]): PodmanMachineRunner => ({

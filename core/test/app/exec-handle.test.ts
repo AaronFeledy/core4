@@ -1,14 +1,12 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Layer, Stream } from "effect";
-
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { Renderer, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { Effect, Layer, Stream } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
 test("App handle exec passes provider stderr through the captured library Renderer", async () => {

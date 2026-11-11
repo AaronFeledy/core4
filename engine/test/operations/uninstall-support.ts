@@ -1,13 +1,12 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { rm } from "node:fs/promises";
+import type { UninstallOptions } from "../../src/operations/uninstall.ts";
 import {
   type RemoveRuntimeDirDeps,
   defaultRemoveRuntimeDir,
 } from "../../src/operations/uninstall-runtime-dir.ts";
-import type { UninstallOptions } from "../../src/operations/uninstall.ts";
 
 export const privateRuntimeTestDeps = (runtimeDir: string): RemoveRuntimeDirDeps => {
   const privateDir = join(dirname(runtimeDir), "test-session-runtime");

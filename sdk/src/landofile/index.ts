@@ -2,62 +2,15 @@
 // filesystem, or CLI). `@lando/core/landofile` re-exports for in-tree writers.
 
 export {
-  emitLandofileYaml,
-  emitLandofileYamlEither,
-  LANDOFILE_LEADING_COMMENT_BLOCKS,
-  type LandofileLeadingCommentBlock,
-} from "./emit.ts";
-export {
-  compareKeyPaths,
-  declaredConfigTranslateSourceIds,
-  validateConfigTranslateInput,
-  validateConfigTranslateResult,
-} from "./config-translate.ts";
-export { LandofileEmitError } from "./errors.ts";
-export { decodeLandofileLayer, type LandofileLayerValidator } from "./layer-decode.ts";
-export { directivePathProblem } from "./directive-paths.ts";
-export { decodeLandofileAuthoringLayer } from "./authoring-layer-decode.ts";
-export {
-  override,
-  reset,
-  isLandofileOverride,
-  isLandofileReset,
-  isMergeDirective,
-} from "./merge-directives.ts";
-export {
+  LANDOFILE_MERGE_DIRECTIVE,
   LandofileOverride,
   LandofileReset,
-  LANDOFILE_MERGE_DIRECTIVE,
 } from "../schema/landofile-directive.ts";
-export type { LandofileOverlayInput, LandofileDecodedOverlay } from "../schema/landofile-overlay.ts";
-export { splitComposeCommand, type SplitCommand } from "./compose-command.ts";
-export { LANDOFILE_LAYER_ORDER, landofileLayerRank } from "./layer-order.ts";
-export {
-  type RouteFilterIdentity,
-  isPlainRecord,
-  mergeLandofiles,
-  mergeValues,
-  mergeValuesWithOrigins,
-  routeFilterIdentity,
-  routeFilterMatches,
-} from "./overlay-merge.ts";
-export {
-  withValueOrigins,
-  valueOriginAt,
-  type ValueOrigins,
-  type ValueWithOrigins,
-} from "./overlay-origins.ts";
-export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
-export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
-export {
-  parseRouteHostname,
-  parseRoutePathPrefix,
-  parseRouteShorthand,
-  routeMatchKey,
-  routeInputObject,
-  routeInputKey,
-  expandRouteSchemes,
-} from "./route-input.ts";
+export { encodeLandofileSourceValue } from "../schema/landofile-directive-codec.ts";
+export type { LandofileDecodedOverlay, LandofileOverlayInput } from "../schema/landofile-overlay.ts";
+export type { ImportRefValue as ImportRef } from "../schema/landofile-reference.ts";
+export { decodeLandofileAuthoringLayer } from "./authoring-layer-decode.ts";
+export { type SplitCommand, splitComposeCommand } from "./compose-command.ts";
 export {
   type ComposeDisposition,
   type ComposeDispositionEntry,
@@ -68,22 +21,29 @@ export {
   composeTopLevelDispositions,
 } from "./compose-dispositions.ts";
 export {
-  detectLandofileTags,
-  type LandofileTag,
-  type LandofileTagOccurrence,
-  type LoadHint,
-  parseLandofile,
-  type ParseOptions,
-} from "./parser.ts";
-
+  compareKeyPaths,
+  declaredConfigTranslateSourceIds,
+  validateConfigTranslateInput,
+  validateConfigTranslateResult,
+} from "./config-translate.ts";
+export { directivePathProblem } from "./directive-paths.ts";
 export {
+  LANDOFILE_LEADING_COMMENT_BLOCKS,
+  type LandofileLeadingCommentBlock,
+  emitLandofileYaml,
+  emitLandofileYamlEither,
+} from "./emit.ts";
+export { LandofileEmitError } from "./errors.ts";
+export {
+  type FlowMappingRemediationOptions,
   GENERIC_FLOW_MAPPING_REMEDIATION,
   flowMappingRemediation,
-  type FlowMappingRemediationOptions,
 } from "./flow-mapping-remediation.ts";
-export type { ImportRefValue as ImportRef } from "../schema/landofile-reference.ts";
+export { type LandofileLayerValidator, decodeLandofileLayer } from "./layer-decode.ts";
+export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
+export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
+export { LANDOFILE_LAYER_ORDER, landofileLayerRank } from "./layer-order.ts";
 export {
-  isLegacyTagged,
   LEGACY_TAGGED,
   type LegacyAliasNode,
   type LegacyDocument,
@@ -97,9 +57,48 @@ export {
   type LegacySequenceNode,
   type LegacySourcePosition,
   type LegacySourceSpan,
-  type LegacyTagged,
   type LegacyTagOccurrence,
+  type LegacyTagged,
   type LegacyTree,
+  isLegacyTagged,
   parseLegacyLandofile,
 } from "./legacy/index.ts";
-export { encodeLandofileSourceValue } from "../schema/landofile-directive-codec.ts";
+export {
+  isLandofileOverride,
+  isLandofileReset,
+  isMergeDirective,
+  override,
+  reset,
+} from "./merge-directives.ts";
+export {
+  type RouteFilterIdentity,
+  isPlainRecord,
+  mergeLandofiles,
+  mergeValues,
+  mergeValuesWithOrigins,
+  routeFilterIdentity,
+  routeFilterMatches,
+} from "./overlay-merge.ts";
+export {
+  type ValueOrigins,
+  type ValueWithOrigins,
+  valueOriginAt,
+  withValueOrigins,
+} from "./overlay-origins.ts";
+export {
+  type LandofileTag,
+  type LandofileTagOccurrence,
+  type LoadHint,
+  type ParseOptions,
+  detectLandofileTags,
+  parseLandofile,
+} from "./parser.ts";
+export {
+  expandRouteSchemes,
+  parseRouteHostname,
+  parseRoutePathPrefix,
+  parseRouteShorthand,
+  routeInputKey,
+  routeInputObject,
+  routeMatchKey,
+} from "./route-input.ts";

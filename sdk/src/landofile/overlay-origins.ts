@@ -23,7 +23,9 @@ export const withValueOrigins = <Source>(
     const plain = isLandofileOverride(input) ? input.value : input;
     const children = new Map<string | number, ValueOrigins<Source>>();
     if (Array.isArray(plain)) {
-      plain.forEach((entry, index) => children.set(index, visit(entry, [...path, index])));
+      plain.forEach((entry, index) => {
+        children.set(index, visit(entry, [...path, index]));
+      });
     } else if (isPlainRecord(plain) && !isLandofileReset(plain)) {
       for (const [key, entry] of Object.entries(plain)) children.set(key, visit(entry, [...path, key]));
     }

@@ -2,13 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { layer as makeProviderLayer } from "@lando/provider-lando";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { Effect } from "effect";
-
-import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { declaredProviderLandoCapabilities, withResourceControl } from "../src/capabilities.ts";
 import type { DelegatedScopeHost } from "../src/delegated-scope.ts";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";

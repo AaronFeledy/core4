@@ -10,12 +10,10 @@ import {
   SnapshotInfo,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
+import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
-import { emptySnapshots } from "./data-mover-support.ts";
-
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
@@ -26,6 +24,7 @@ import {
   recoveryHarness,
   target as retainedTarget,
 } from "./accelerated-start-recovery-support.ts";
+import { emptySnapshots } from "./data-mover-support.ts";
 import {
   byTag,
   destroyTreeId,

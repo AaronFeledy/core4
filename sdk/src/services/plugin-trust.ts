@@ -2,6 +2,7 @@ import { Context, type Effect } from "effect";
 
 import type { ConfigError } from "../errors/index.ts";
 import type { PluginTrustState } from "../schema/index.ts";
+
 export type { PluginTrustState } from "../schema/index.ts";
 
 export class PluginTrustStore extends Context.Service<

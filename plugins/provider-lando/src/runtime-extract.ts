@@ -1,11 +1,9 @@
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 import { MANAGED_RUNTIME_BUNDLE_MARKER as MARKER_FILE } from "@lando/container-runtime/podman/managed-status";
-
-import { Clock, Effect } from "effect";
-
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { Clock, Effect } from "effect";
 
 import {
   type CatatonitPackage,

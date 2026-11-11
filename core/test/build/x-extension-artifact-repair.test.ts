@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 

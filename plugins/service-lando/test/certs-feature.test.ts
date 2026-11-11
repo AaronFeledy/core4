@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option, Schema } from "effect";
+import { composeService } from "@lando/engine/services/feature";
 
 import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-
-import { composeService } from "@lando/engine/services/feature";
+import { Cause, Effect, Option, Schema } from "effect";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const LANDO_CERTS_FEATURE_ID = "lando.certs";

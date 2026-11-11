@@ -3,11 +3,9 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
-
-import { Effect } from "effect";
-
 import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
 import type { ConfirmSpec, PromptAnswers, SelectSpec } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";

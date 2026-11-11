@@ -6,8 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { Cause, Effect, Exit } from "effect";
-
 import {
   type ArtifactDownload,
   PodmanMachinePrerequisiteError,
@@ -32,6 +30,7 @@ import {
 } from "@lando/provider-lando";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
 
 const podmanCommand = (version: string) => ({ version: Effect.succeed(version) });
@@ -93,7 +92,6 @@ describe("provider-lando setup", () => {
 
   test("fails with remediation when the Podman socket is not reachable", async () => {
     const previousSocket = process.env.LANDO_TEST_PODMAN_SOCKET;
-    // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
     delete process.env.LANDO_TEST_PODMAN_SOCKET;
 
     try {
@@ -115,7 +113,6 @@ describe("provider-lando setup", () => {
       }
     } finally {
       if (previousSocket === undefined) {
-        // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
         delete process.env.LANDO_TEST_PODMAN_SOCKET;
       } else {
         process.env.LANDO_TEST_PODMAN_SOCKET = previousSocket;
@@ -747,7 +744,6 @@ describe("provider-lando setup", () => {
 
   test("publishes task.fail and task.tree.complete when the Podman socket is unreachable", async () => {
     const previousSocket = process.env.LANDO_TEST_PODMAN_SOCKET;
-    // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
     delete process.env.LANDO_TEST_PODMAN_SOCKET;
     const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     try {
@@ -774,7 +770,6 @@ describe("provider-lando setup", () => {
       expect(treeComplete?.failed).toBeGreaterThanOrEqual(1);
     } finally {
       if (previousSocket === undefined) {
-        // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
         delete process.env.LANDO_TEST_PODMAN_SOCKET;
       } else {
         process.env.LANDO_TEST_PODMAN_SOCKET = previousSocket;

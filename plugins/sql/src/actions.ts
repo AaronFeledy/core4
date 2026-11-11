@@ -1,5 +1,3 @@
-import { Effect, type Scope, Stream } from "effect";
-
 import type { VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -20,6 +18,7 @@ import {
   type VolumeRef,
 } from "@lando/sdk/schema";
 import type { ExecChunk } from "@lando/sdk/services";
+import { Effect, type Scope, Stream } from "effect";
 import { checkedSqlExecution } from "./checked-execution.ts";
 
 import type { DumpCompression } from "./compression.ts";

@@ -2,19 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AppId, ServiceName, type TunnelSession } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { encodeFrame } from "@lando/state-store/codec";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Effect, Layer } from "effect";
 
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
-import { TUNNEL_REGISTRY_VERSION, migrateTunnelRegistryEntries } from "../../src/tunnel/registry-migrate.ts";
 import { reconcileTunnelRegistry, recordTunnelSession } from "../../src/tunnel/registry.ts";
+import { TUNNEL_REGISTRY_VERSION, migrateTunnelRegistryEntries } from "../../src/tunnel/registry-migrate.ts";
 
 const stateStoreLayer = Layer.merge(
   StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer)),

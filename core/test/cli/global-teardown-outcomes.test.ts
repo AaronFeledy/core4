@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Schema } from "effect";
-
 import { GlobalDestroyResultSchema, globalDestroy } from "@lando/engine/operations/global-destroy";
 import { GlobalStopResultSchema, globalStop } from "@lando/engine/operations/global-stop";
 import { AbsolutePath, AppId, type VolumeInfo } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
 import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";

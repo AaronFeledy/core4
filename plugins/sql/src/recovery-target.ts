@@ -1,10 +1,7 @@
 import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
 import { isProviderError } from "@lando/redaction/provider-error";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Option } from "effect";
-
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
 import type {
   SnapshotMetadata,
   VolumeIdentity,
@@ -12,7 +9,9 @@ import type {
   VolumeLocator,
   VolumeRef,
 } from "@lando/sdk/schema";
+import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
 import type { VolumeInitialization } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
 import type { SqlMover } from "./actions.ts";
 import { normalizeCommandFailure } from "./command-failure.ts";

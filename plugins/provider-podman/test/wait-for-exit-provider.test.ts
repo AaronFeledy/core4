@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import {
@@ -15,6 +13,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
+import { DateTime, Effect } from "effect";
 import { persistAppliedPlan } from "../src/applied-state.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 

@@ -1,8 +1,8 @@
 /** `lando restart` result rendering. */
-import type { RestartAppResult } from "@lando/sdk/app";
 
 import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import { type SummaryDocument, formatQuietSummary } from "@lando/renderer/summary";
+import type { RestartAppResult } from "@lando/sdk/app";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, unambiguousHostHttpUrls } from "./connection-summary";

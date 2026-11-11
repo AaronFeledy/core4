@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
-import { Cause, DateTime, Duration, Effect, Exit } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -13,6 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Duration, Effect, Exit } from "effect";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";

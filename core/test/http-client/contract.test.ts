@@ -1,18 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Duration, Effect, Layer, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientError from "effect/http/HttpClientError";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
+import { RequestPolicy, layerWith } from "@lando/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import {
   type HttpClientContractHarness,
   type HttpClientContractRequestPolicy,
   runHttpClientContract,
 } from "@lando/sdk/test";
-
-import { RequestPolicy, layerWith } from "@lando/http-client/live";
-import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import { DateTime, Duration, Effect, Layer, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

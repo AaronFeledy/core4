@@ -1,14 +1,20 @@
+import { compileInspectedAppCommands, scriptLoadError } from "@lando/engine/cache/command-compiler";
+import {
+  readDataIdentityFingerprint,
+  writeAppCommandCacheStrict,
+} from "@lando/engine/cache/command-index-writer";
+import { fingerprintsFromInspection } from "@lando/engine/cache/command-script-freshness";
 import {
   commandWarningsUseMachineOutput,
   recordCommandWarning,
 } from "@lando/engine/landofile/command-warnings";
+import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
+import { publishHostShellWarnings } from "@lando/engine/operations/host-shell-warnings";
+import { plannedServiceArtifact } from "@lando/engine/operations/planned-service-artifact";
+import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
+import { type BunShellScriptDiscoveryError, inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
-import { MessageWarnEvent } from "@lando/sdk/events";
-import { createRedactor } from "@lando/sdk/secrets";
-import { EventService } from "@lando/sdk/services";
-/** Rebuilds the app plan and command index caches without contacting the provider. */
-import { DateTime, Effect, Option, Schema } from "effect";
-
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
   CommandAliasConflictError,
@@ -19,29 +25,20 @@ import type {
   SubscriberLevelMismatchError,
 } from "@lando/sdk/errors";
 import { type CacheError, ToolingCompileError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
+  EventService,
   LandofileService,
   PluginRegistry,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
+/** Rebuilds the app plan and command index caches without contacting the provider. */
+import { DateTime, Effect, Option, Schema } from "effect";
 import { loadUserLandofile } from "../app-resolution";
 import { commandAliasRegistrationError } from "../command-alias-policy";
-
-import { compileInspectedAppCommands, scriptLoadError } from "@lando/engine/cache/command-compiler";
-import {
-  readDataIdentityFingerprint,
-  writeAppCommandCacheStrict,
-} from "@lando/engine/cache/command-index-writer";
-import { fingerprintsFromInspection } from "@lando/engine/cache/command-script-freshness";
-import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
-import { publishHostShellWarnings } from "@lando/engine/operations/host-shell-warnings";
-import { plannedServiceArtifact } from "@lando/engine/operations/planned-service-artifact";
-import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { type BunShellScriptDiscoveryError, inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { BUILT_IN_COMMAND_IDS } from "../generated/command-ids";
 
 export interface AppCacheRefreshOptions {

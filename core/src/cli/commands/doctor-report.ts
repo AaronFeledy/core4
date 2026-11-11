@@ -5,10 +5,9 @@
  * without requiring app bootstrap.
  */
 import { join } from "node:path";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { DateTime, Effect, Layer, Option } from "effect";
-
+import { appConfigLint } from "@lando/engine/operations/app-config-lint";
+import { CORE_VERSION } from "@lando/engine/version";
+import { findAppRoot } from "@lando/landofile/discovery";
 import { type ConfigLintResult, MAILHOG_DEPRECATION_NOTICE } from "@lando/sdk/schema";
 import {
   type ConfigService,
@@ -20,12 +19,9 @@ import {
   type RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
-
-import { appConfigLint } from "@lando/engine/operations/app-config-lint";
 import type { TaskTreeController } from "@lando/sdk/task-progress";
-
-import { CORE_VERSION } from "@lando/engine/version";
-import { findAppRoot } from "@lando/landofile/discovery";
+import { DateTime, Effect, Layer, Option } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";

@@ -13,15 +13,15 @@ import {
   type AppIdentity,
   type AppRef,
   type CurrentExecutableAppPlan,
+  LANDO_HOST_EVENT_ENV,
   type LoadScopedLandofile,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
   landoNetworkingPlan,
   normalizeAppSlug,
+  validationIssue,
 } from "@lando/sdk/schema";
-import { validationIssue } from "@lando/sdk/schema";
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import {
   type AppPlannerError,
   CacheService,
@@ -65,8 +65,8 @@ import {
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
-import { withCommittedLiteralDigests } from "./authored-literals.ts";
 import { planServiceDrafts } from "./authored.ts";
+import { withCommittedLiteralDigests } from "./authored-literals.ts";
 import {
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,

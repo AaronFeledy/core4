@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -8,6 +6,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   commandHealthcheck,

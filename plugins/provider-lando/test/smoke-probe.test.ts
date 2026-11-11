@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Duration, Effect, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
+import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
-
-import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { Deferred, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { ProviderLandoSmokeError, type SmokeOperation, runSmokeReadinessProbe } from "../src/smoke-probe.ts";
 
 const retryPolicy: RetryPolicy = {

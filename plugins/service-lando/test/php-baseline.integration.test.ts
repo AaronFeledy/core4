@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
+import { SUPPORTED_PHP_VERSIONS } from "../src/services/php.ts";
 import {
   PHP_SECURITY_BASELINE,
   phpBaselineIniCommand,
   renderPhpBaselineIni,
 } from "../src/services/php-baseline.ts";
 import { type PhpVia, phpImageFor } from "../src/services/php-via.ts";
-import { SUPPORTED_PHP_VERSIONS } from "../src/services/php.ts";
 
 const dockerHost = process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
 const servingModes = ["apache", "fpm"] as const satisfies ReadonlyArray<Exclude<PhpVia, "cli">>;

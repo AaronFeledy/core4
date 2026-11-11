@@ -1,8 +1,6 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-
 import {
   isManagedPodmanLaunchStage,
   managedPodmanChildEnv,
@@ -11,15 +9,15 @@ import {
 } from "@lando/container-runtime/podman/managed-invocation";
 import { prepareManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { readProcessDescendant } from "@lando/container-runtime/podman/managed-status-io";
-import { Effect } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 import type { PodmanServiceSpec } from "./podman-service-args.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
-export { buildPodmanServiceArgs, type PodmanServiceSpec } from "./podman-service-args.ts";
+export { type PodmanServiceSpec, buildPodmanServiceArgs } from "./podman-service-args.ts";
 
 const launchRemediation =
   "The Lando runtime service failed to launch. Run `lando doctor` to inspect the runtime, then rerun the command; run `lando setup` if the runtime is not installed.";

@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { ExpressionTemplate } from "../expressions/ast.ts";
-import { LandofileSourceValue } from "./landofile-source.ts";
 import { LandofileShape } from "./landofile.ts";
+import { LandofileSourceValue } from "./landofile-source.ts";
 import { AbsolutePath } from "./primitives.ts";
 import { ValidationIssuePath, ValidationIssueSource } from "./validation-issue.ts";
 

@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-
-import { Cause, Duration, Effect, Exit } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
+import { Cause, Duration, Effect, Exit } from "effect";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import {
   type PodmanServiceRunner,

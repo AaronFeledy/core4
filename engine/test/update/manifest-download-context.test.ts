@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
-
 import { DownloadFetchError } from "@lando/sdk/errors";
 import { Downloader, OnlineAcquisition } from "@lando/sdk/services";
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
 import { defaultFetchManifestBytes, fetchBytes } from "../../src/update/manifest.ts";
 
 test.each([true, false])("the update manifest bridge carries acquisition context (%s)", async (enabled) => {

@@ -1,9 +1,7 @@
 import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
-import { Context, Effect, Layer, Result, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import { GlobalConfigSources } from "../services/config.ts";
-
+import { redactProviderError } from "@lando/redaction/provider-error";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
   NoProviderInstalledError,
@@ -24,14 +22,14 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-
-import { redactProviderError } from "@lando/redaction/provider-error";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { GlobalConfigSources } from "../services/config.ts";
 import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { TeardownProvider } from "./app-placement.ts";
 import {

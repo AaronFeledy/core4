@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestDownloader } from "@lando/engine/testing/downloader";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -10,9 +6,11 @@ import { makeLandoPaths } from "@lando/paths";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { AppPlanSanitizer, ContainerHelperAssets, Downloader, PathsService } from "@lando/sdk/services";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
+import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { manifest, plugin } from "../src/index.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;

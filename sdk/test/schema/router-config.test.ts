@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { GlobalConfig, LandofileShape, ProxyConfig, RouterConfig } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const decodeRouter = Schema.decodeUnknownSync(RouterConfig);
 const decodeRouterStrict = Schema.decodeUnknownSync(RouterConfig, { onExcessProperty: "error" });

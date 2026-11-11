@@ -1,6 +1,6 @@
 import { SshAgentTransportError } from "@lando/sdk/errors";
-import { sshAgentEligibleServices } from "../subsystems/ssh-agent/overlay.ts";
 import { resolveSshAgentIntent, sshAgentPlanExtension } from "../subsystems/ssh/intent.ts";
+import { sshAgentEligibleServices } from "../subsystems/ssh-agent/overlay.ts";
 import { resolveStartAgentIntent } from "./start-agent-intent.ts";
 
 export const resolveStartSshAgentIntent = resolveStartAgentIntent({

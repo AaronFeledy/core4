@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer, Result, Schema } from "effect";
-
 import { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -247,4 +246,5 @@ test("rejects expression-produced template text instead of evaluating it again",
     expect(result.failure.message).toContain("{{ app.name }}");
   }
 });
+
 import { planTestLandofile } from "../compiled-landofile.ts";

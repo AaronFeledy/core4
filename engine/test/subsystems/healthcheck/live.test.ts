@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
 import { runHealthcheckContract } from "@lando/sdk/test";
+import { Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
 import {

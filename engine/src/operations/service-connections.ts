@@ -22,7 +22,7 @@ import { connectionActivity } from "./connection-state.ts";
 import { clientConnectionUrls, connectionHost, connectionUrl } from "./connection-url.ts";
 import { projectRouteConnections } from "./route-connections.ts";
 
-export { serviceStateOf, connectionActivity } from "./connection-state.ts";
+export { connectionActivity, serviceStateOf } from "./connection-state.ts";
 
 const endpointRef = ({ port, transport, names, primary }: LogicalEndpoint): EndpointRef => ({
   port,

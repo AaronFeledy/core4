@@ -9,6 +9,7 @@ import { gc as runGc } from "./gc.ts";
 import { resolveSourcesStoreRoot, sourceRecords } from "./records.ts";
 import { io, makeStorage } from "./storage.ts";
 import type { SourceSession, SourceStore, SourceStoreOptions } from "./types.ts";
+
 export { SourceAcquisitionError, displaySource } from "./errors.ts";
 export type * from "./types.ts";
 export const makeSourceStore = (input: SourceStoreOptions): SourceStore => {

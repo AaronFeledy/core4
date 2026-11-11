@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import {
   EXEC_UMASK_COMPENSATION,
   EXEC_UMASK_PROBE_COMMAND,
@@ -8,6 +6,7 @@ import {
 } from "@lando/container-runtime/podman/exec-umask";
 import type { AppId, ServiceName } from "@lando/sdk/schema";
 import type { CommandSpec, ExecResult, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import type {
   DoctorCheck,

@@ -1,15 +1,14 @@
 import { JsonSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import { listLayerMergeRules } from "../landofile/layer-merge-trie.ts";
-import { pruneUnusedDefinitions } from "./json-schema-definitions.ts";
-import { getLayerMergeRule } from "./layer-merge.ts";
-
 import {
   type DeprecationNotice,
   formatDeprecationNotice,
   getSchemaDeprecation,
   validateDeprecationNotice,
 } from "./deprecation.ts";
+import { pruneUnusedDefinitions } from "./json-schema-definitions.ts";
+import { getLayerMergeRule } from "./layer-merge.ts";
 
 type JsonObject = Record<string, unknown>;
 type SchemaLike = Schema.Top;
@@ -427,7 +426,9 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
 
 const validateJsonSchemaDeprecations = (value: unknown, path: string, invalidPaths: string[]): void => {
   if (Array.isArray(value)) {
-    value.forEach((child, index) => validateJsonSchemaDeprecations(child, `${path}[${index}]`, invalidPaths));
+    value.forEach((child, index) => {
+      validateJsonSchemaDeprecations(child, `${path}[${index}]`, invalidPaths);
+    });
     return;
   }
   if (value === null || typeof value !== "object") return;
@@ -459,7 +460,9 @@ const collectJsonSchemaDeprecations = (
   entries: Array<SchemaDeprecationEntry>,
 ): void => {
   if (Array.isArray(value)) {
-    value.forEach((child, index) => collectJsonSchemaDeprecations(child, `${path}[${index}]`, entries));
+    value.forEach((child, index) => {
+      collectJsonSchemaDeprecations(child, `${path}[${index}]`, entries);
+    });
     return;
   }
   if (value === null || typeof value !== "object") return;

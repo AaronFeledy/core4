@@ -9,8 +9,8 @@ import * as DiskStateStore from "@lando/state-store/service";
 import { DateTime, Effect, Exit } from "effect";
 import { packSqliteTarFile } from "../src/sqlite-archive.ts";
 import { sqliteSnapshotStore } from "../src/sqlite-path.ts";
-import { copySqliteSnapshotArchive } from "../src/sqlite-snapshot-transfer.ts";
 import { persistSqliteSnapshot } from "../src/sqlite-snapshot.ts";
+import { copySqliteSnapshotArchive } from "../src/sqlite-snapshot-transfer.ts";
 
 const roots: string[] = [];
 afterEach(async () => {

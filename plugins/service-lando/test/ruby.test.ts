@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   RUBY_FEATURE_ID,
@@ -289,4 +288,5 @@ describe("ruby:3.3 ServiceType", () => {
     );
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

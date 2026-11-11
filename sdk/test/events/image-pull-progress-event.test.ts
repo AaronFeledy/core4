@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime, Schema } from "effect";
-
 import { ImagePullProgressEvent, LandoEvent } from "@lando/sdk/events";
+import { DateTime, Schema } from "effect";
 
 const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-07-08T03:30:00Z");
 const timestamp = DateTime.formatIso(FIXED_TIMESTAMP);

@@ -4,12 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { loadInstalledPlugin } from "@lando/engine/plugins/installed-plugin-loader";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { importAuthorModule } from "@lando/landofile/author-modules";
 import { PluginLoadError } from "@lando/sdk/errors";
-import { Effect } from "effect";
-
-import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ProcessRunner } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { pluginBuild } from "../../src/cli/commands/plugin-build.ts";
 
 const temporaryDeclarationArtifacts = async (source: string): Promise<ReadonlyArray<string>> =>

@@ -1,8 +1,14 @@
 import { dirname } from "node:path";
-import { escapeDiagnosticText } from "../diagnostic-text.ts";
-
-import { Effect, Schema } from "effect";
-
+import { scopedLandofileRuntimeInputs, verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
+import type {
+  IncludeVerifyReport,
+  IncludeVerifyStatus,
+  LandofileIncludeDeps,
+} from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import type {
   ComposeKeyRejectedError,
   Lando3LandofileDetected,
@@ -22,17 +28,8 @@ import type {
 } from "@lando/sdk/errors";
 import { TaggedErrorJson } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
-
-import { scopedLandofileRuntimeInputs, verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
-import type {
-  IncludeVerifyReport,
-  IncludeVerifyStatus,
-  LandofileIncludeDeps,
-} from "@lando/landofile/includes";
-import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
-import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
-import { findDiscoveredLandofilePath } from "@lando/landofile/service";
+import { Effect, Schema } from "effect";
+import { escapeDiagnosticText } from "../diagnostic-text.ts";
 
 export type {
   IncludeVerifyEntry,

@@ -1,9 +1,8 @@
-import { Schema } from "effect";
+import { csi } from "@lando/renderer/palette";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-
-import { csi } from "@lando/renderer/palette";
+import { Schema } from "effect";
 import { TASK_DETAIL_TAIL_CAPACITY, TaskDetailRing } from "./task-detail-ring.ts";
 import {
   SPINNER_FRAMES,
@@ -15,7 +14,7 @@ import {
   styleFrame,
 } from "./task-tree-render.ts";
 
-export { csi, TASK_DETAIL_TAIL_CAPACITY, TaskDetailRing };
+export { TASK_DETAIL_TAIL_CAPACITY, TaskDetailRing, csi };
 
 const DEFAULT_EXPANDED_LINE_LIMIT = 1000;
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);

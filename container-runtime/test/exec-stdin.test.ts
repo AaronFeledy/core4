@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
-import { DateTime, Duration, Effect, Stream } from "effect";
-
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -12,6 +10,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
+import { DateTime, Duration, Effect, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { exec, execStream } from "../src/podman/exec-transport.ts";

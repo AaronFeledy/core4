@@ -146,7 +146,10 @@ export const mergeGlobalConfigSources = (layers: readonly ConfigLayer[]): Merged
         const capture = (input: unknown, at: readonly (string | number)[]): void => {
           origins.set(JSON.stringify(at), { layer: origin.layer, path: at });
           if (configRecord(input)) for (const [child, v] of Object.entries(input)) capture(v, [...at, child]);
-          else if (Array.isArray(input)) input.forEach((v, index) => capture(v, [...at, index]));
+          else if (Array.isArray(input))
+            input.forEach((v, index) => {
+              capture(v, [...at, index]);
+            });
         };
         capture(entry, path);
         result[key] = entry;

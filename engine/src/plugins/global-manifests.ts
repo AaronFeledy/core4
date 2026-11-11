@@ -1,6 +1,5 @@
-import { Context, type Effect } from "effect";
-
 import type { PluginManifest } from "@lando/sdk/schema";
+import { Context, type Effect } from "effect";
 
 export interface GlobalPluginManifestsShape {
   readonly list: Effect.Effect<ReadonlyArray<PluginManifest>>;

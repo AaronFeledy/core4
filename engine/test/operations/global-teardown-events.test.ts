@@ -11,7 +11,7 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import type { LandoEvent } from "@lando/sdk/services";
+import type { AppliedTeardownEvidence, LandoEvent } from "@lando/sdk/services";
 import {
   EventService,
   PathsService,
@@ -19,7 +19,6 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import type { AppliedTeardownEvidence } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Stream } from "effect";

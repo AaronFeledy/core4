@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test";
-
-import { Context, Effect, Layer, Queue, Stream } from "effect";
-
-import { EventError } from "@lando/sdk/errors";
-import { type EventFor, EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
-
 import {
   makeBootstrapLifecycleTracker,
   superviseBootstrapLayer,
 } from "@lando/engine/runtime/bootstrap-lifecycle";
 import * as LandoEventService from "@lando/engine/services/event-service";
+import { EventError } from "@lando/sdk/errors";
+import { type EventFor, EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { Context, Effect, Layer, Queue, Stream } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const stubEventService = (

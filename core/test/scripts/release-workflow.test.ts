@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { renderReleaseWorkflow } from "../../../scripts/build-release-workflow.ts";
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms.ts";

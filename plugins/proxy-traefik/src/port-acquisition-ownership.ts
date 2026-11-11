@@ -1,9 +1,7 @@
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
-
-import type { ProbedAcquisition } from "./port-acquisition-helpers.ts";
+import { Effect } from "effect";
 import { type BindOutcome, probeBind } from "./port-acquisition.ts";
+import type { ProbedAcquisition } from "./port-acquisition-helpers.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { readHelperHopTargets } from "./socket-proxy-install.ts";
 

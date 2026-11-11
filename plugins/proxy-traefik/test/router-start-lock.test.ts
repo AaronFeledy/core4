@@ -1,18 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Semaphore } from "effect";
-
 import { FileNotFoundError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import { routeOwner } from "./route-owner-fixture.ts";
-
+import { Deferred, Effect, Fiber, Semaphore } from "effect";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
-import { defaultDomainFile, routeFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { defaultDomainFile, routeFile } from "../src/proxy-paths.ts";
 import { routeReloadLockKey } from "../src/route-reload-state.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 const app = routeOwner("race");
 const paths = { platform: "win32", globalAppRoot: "/lando/global" } as const;

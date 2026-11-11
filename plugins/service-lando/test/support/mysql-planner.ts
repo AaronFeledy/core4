@@ -1,12 +1,10 @@
-import { Effect, Layer } from "effect";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
-import { compileTestLandofile } from "./compiled-landofile.ts";
-
+import { Effect, Layer } from "effect";
 import { services } from "../../src/index.ts";
+import { compileTestLandofile } from "./compiled-landofile.ts";
 
 const providerCapabilities = {
   artifactBuild: true,

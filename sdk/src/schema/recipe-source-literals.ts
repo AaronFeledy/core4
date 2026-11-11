@@ -4,8 +4,8 @@ import { evaluateExpressionEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { expressionInterpolationsTouchOnlyScopes, expressionScopeMembers } from "../expressions/scopes.ts";
 import type { LandofileSourceValue } from "./landofile-source.ts";
-import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 import type { RecipeSource } from "./recipe-source.ts";
+import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 
 export const validateSourceConfig = (
   source: RecipeSource,

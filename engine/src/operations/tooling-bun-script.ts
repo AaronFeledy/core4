@@ -1,13 +1,12 @@
-import { Clock, Effect, Option } from "effect";
-import { HostExecutionDefaults } from "../services/host-execution-context.ts";
+import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
+import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
 
 import type { ToolingResult } from "@lando/sdk/app";
 import { ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 import type { Environment, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, EventService, ShellRunner } from "@lando/sdk/services";
-
-import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
-import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
+import { Clock, Effect, Option } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { validateHostShellScript } from "../services/host-shell-validation.ts";
 import { resolveScriptPath, runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";

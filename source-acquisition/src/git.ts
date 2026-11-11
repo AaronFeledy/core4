@@ -8,6 +8,7 @@ import { SourceAcquisitionError, acquisitionError, displaySource } from "./error
 import { type GitNetworkProjection, type GitTransportOptions, withGitTrust } from "./git-trust.ts";
 import { isLiteralGitRef } from "./locator.ts";
 import type { GitTransport } from "./types.ts";
+
 export type { GitTransport } from "./types.ts";
 
 /** HTTP(S) uses resolved Lando trust; SSH/scp URLs use SSH configuration unchanged. */

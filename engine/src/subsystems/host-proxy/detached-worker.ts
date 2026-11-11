@@ -1,16 +1,14 @@
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-import { DateTime, Effect, Schema } from "effect";
-
-import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
-import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
-import { AppPlan, type AppRef } from "@lando/sdk/schema";
-
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
+import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
+import { AppPlan, type AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Schema } from "effect";
 import { hostProxyWorkerEntry } from "../../composition.ts";
 import { acquireWorker, terminateWorker, workerSessionLifetime } from "../detached-worker/lifecycle.ts";
 import { DetachedWorkerLogError } from "../detached-worker/log.ts";
@@ -19,8 +17,8 @@ import {
   DetachedWorkerStartupError,
 } from "../detached-worker/process.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
-import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
+import type { HostProxyShimTarget } from "./transport-shim.ts";
 import {
   type HostProxyWorkerSpawner,
   defaultSpawnWorker,
@@ -30,7 +28,6 @@ import {
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 import { registerHostProxyCredentials, reuseHostProxyWorker } from "./worker-reuse.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
-import { publishWorkerRecord } from "./worker-state-file.ts";
 import {
   readWorkerRecord,
   removeOwnedHostProxyWorkerState,
@@ -38,6 +35,7 @@ import {
   withWorkerRecordLock,
   workerStatePath,
 } from "./worker-state.ts";
+import { publishWorkerRecord } from "./worker-state-file.ts";
 
 export interface DetachedHostProxyWorkerOptions {
   readonly app: AppRef;

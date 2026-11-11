@@ -1,11 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect";
-
 import {
   CommandInputValidationError,
   CommandStdioError,
@@ -13,6 +10,7 @@ import {
   SqlDumpIncompleteError,
   SqlDumpNotFoundError,
 } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { ensureDumpFile, prepareImportDump } from "../src/dump-file.ts";
 import { ensureExportDestination } from "../src/export-destination.ts";

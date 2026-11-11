@@ -1,5 +1,3 @@
-import { Flags } from "../../spec/metadata";
-
 import type { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import type { DoctorOptions } from "../../commands/doctor";
 import { resilientDoctorReport } from "../../commands/doctor-bootstrap";
@@ -11,9 +9,9 @@ import {
 } from "../../commands/doctor-report";
 import { countDoctorChecks } from "../../commands/doctor-report-counts";
 import type { RenderContext } from "../../renderer-boundary";
-
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   const signal = extractSpecAbortSignal(input);

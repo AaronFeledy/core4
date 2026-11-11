@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { AppId } from "@lando/sdk/schema";
 import { ContractFailure, TestSshService, makeTestSshService, runSshServiceContract } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 describe("SshService contract", () => {
   test("TestSshService satisfies runSshServiceContract", async () => {

@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -35,6 +33,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { bundledPluginModules } from "../../src/composition.ts";
 import { globalPolicyBucket, readGlobalPolicy } from "../../src/global-app/enablement.ts";

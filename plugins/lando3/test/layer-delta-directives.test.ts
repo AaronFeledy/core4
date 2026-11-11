@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { decodeLandofileLayer, mergeLandofiles, override, reset } from "@lando/sdk/landofile";
 import { Effect } from "effect";
-import { replayDecodedDeltas } from "../src/layer-delta-replay.ts";
 import { planLayerDeltas } from "../src/layer-delta.ts";
+import { replayDecodedDeltas } from "../src/layer-delta-replay.ts";
 
 test("mapping removals preserve every decoded prefix without relocation", () => {
   const desired = [

@@ -1,8 +1,7 @@
 import { test } from "bun:test";
-import { Effect } from "effect";
-
 import { resolveBuiltContainerHelperForTest } from "@lando/container-runtime/testing/exec-supervision";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
 const liveDesktopSocket = process.env.LANDO_TEST_PODMAN_DESKTOP_SOCKET;

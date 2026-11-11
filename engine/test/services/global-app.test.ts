@@ -2,13 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { parseLandofile } from "@lando/landofile/parser";
 
 import { GlobalDistConflictError, GlobalLandofilePathConflictError } from "@lando/sdk/errors";
 import { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
 import { GlobalAppService } from "@lando/sdk/services";
-
-import { parseLandofile } from "@lando/landofile/parser";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import * as GlobalAppServiceLayer from "../../src/global-app/service.ts";
 import * as LandoConfigService from "../../src/services/config.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -27,10 +26,8 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
     process.env.LANDO_USER_CONF_ROOT = confRoot;
     return await run(dataRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: process.env delete is required so Bun does not coerce undefined to the string "undefined".
     if (previousData === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousData;
-    // biome-ignore lint/performance/noDelete: process.env delete is required so Bun does not coerce undefined to the string "undefined".
     if (previousConf === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
     await rm(dataRoot, { recursive: true, force: true });

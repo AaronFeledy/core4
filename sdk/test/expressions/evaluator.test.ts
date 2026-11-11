@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
-
 import {
   type ExpressionContext,
   type ExpressionNode,
@@ -9,6 +7,7 @@ import {
   evaluateTemplateEither,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
+import { Result } from "effect";
 
 const filePath = "/app/.lando.yml";
 

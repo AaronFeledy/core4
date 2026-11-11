@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
@@ -11,6 +8,7 @@ import {
   SqlServiceAmbiguousError,
   SqlServiceNotFoundError,
 } from "@lando/sdk/errors";
+import { Schema } from "effect";
 
 describe("SqlServiceNotFoundError", () => {
   test("encodes and decodes with _tag intact when a requested service is missing", () => {

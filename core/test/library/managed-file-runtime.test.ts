@@ -1,14 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { makeLandoRuntime } from "@lando/core";
 import { type ManagedFile, PortablePath } from "@lando/core/schema";
 import { ManagedFileService } from "@lando/core/services";
+import { Effect } from "effect";
 
 describe("library makeLandoRuntime managed-file surface", () => {
   test("applies a managed file under an isolated base and re-reads status", async () => {

@@ -1,10 +1,9 @@
 import { constants } from "node:fs";
 import { chmod, copyFile, mkdir, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import { Effect } from "effect";
-
 import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
 import type { HostProxyContainerTarget } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 export type HostProxyShimTarget = HostProxyContainerTarget;
 

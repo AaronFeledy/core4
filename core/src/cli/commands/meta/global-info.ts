@@ -1,5 +1,10 @@
-import { Effect } from "effect";
-
+import { selectGlobalServices } from "@lando/engine/operations/global-common";
+import {
+  type LoadGlobalPlanServices,
+  type LoadObservedGlobalPlanError,
+  loadObservedGlobalPlan,
+} from "@lando/engine/operations/global-plan";
+import { infoForPlan } from "@lando/engine/operations/info";
 import type { InfoAppError } from "@lando/sdk/app";
 import type {
   ComposeKeyRejectedError,
@@ -8,14 +13,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { AppPlan, InfoAppResult } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
-
-import { selectGlobalServices } from "@lando/engine/operations/global-common";
-import {
-  type LoadGlobalPlanServices,
-  type LoadObservedGlobalPlanError,
-  loadObservedGlobalPlan,
-} from "@lando/engine/operations/global-plan";
-import { infoForPlan } from "@lando/engine/operations/info";
+import { Effect } from "effect";
 import type { RenderContext } from "../../renderer-boundary";
 import { renderInfoAppResult } from "../info-render";
 

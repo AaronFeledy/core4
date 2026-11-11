@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit } from "effect";
 
 import { isIntelMacHost } from "../src/host-support.ts";
 import { makeRuntimeProvider } from "../src/index.ts";

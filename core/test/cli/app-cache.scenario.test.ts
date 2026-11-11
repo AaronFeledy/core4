@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Layer, Result } from "effect";
-
 import { refreshAppCache, renderAppCacheRefreshResult } from "@lando/core/cli/operations";
 import {
   AbsolutePath,
@@ -14,10 +12,10 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
-import { CacheError } from "@lando/sdk/errors";
-
 import { appCommandCachePath } from "@lando/engine/cache/paths";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { CacheError } from "@lando/sdk/errors";
+import { Cause, DateTime, Effect, Layer, Result } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -302,4 +300,5 @@ describe("lando app:cache:refresh", () => {
     });
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

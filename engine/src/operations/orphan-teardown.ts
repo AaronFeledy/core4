@@ -1,5 +1,3 @@
-import { DateTime, Effect, Option } from "effect";
-
 import {
   isGlobalScopedVolume,
   teardownVolumeClasses,
@@ -21,6 +19,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Option } from "effect";
 
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";

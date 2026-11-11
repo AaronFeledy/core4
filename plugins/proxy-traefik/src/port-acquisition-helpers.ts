@@ -1,10 +1,8 @@
-import { Effect, absurd } from "effect";
-
 import { RouterPortPinMismatch } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
+import { Effect, absurd } from "effect";
 
 import { type OccupiedPortHolderFields, fieldsFromPortHolder } from "./occupied-port-warning.ts";
-import { ownedRouterPorts } from "./port-acquisition-ownership.ts";
 import {
   type AcquisitionFingerprint,
   type BindOutcome,
@@ -20,6 +18,7 @@ import {
   probeBind,
   uniquePorts,
 } from "./port-acquisition.ts";
+import { ownedRouterPorts } from "./port-acquisition-ownership.ts";
 import { identifyAnyPortHolder, systemdUnitForPid } from "./preferred-host-ports-linux.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { normalizeRouterBindAddress } from "./router-bind-address.ts";

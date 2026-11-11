@@ -1,21 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, type Exit } from "effect";
-
 import * as sdkErrors from "@lando/sdk/errors";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
 import type { ServiceName } from "@lando/sdk/schema";
+import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { Cause, Effect, type Exit } from "effect";
 import { buildTraefikServiceConfig } from "../src/global-services/traefik.ts";
-import {
-  LANDO_SOCKET_PROXY_HOLDER_LABEL,
-  socketProxyPolkitHeader,
-  socketProxyUnitHeader,
-} from "../src/socket-proxy-helper.ts";
-import { SOCKET_UNIT_PATHS } from "../src/socket-proxy-units.ts";
-import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
-
-import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
-import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import {
   type BindOutcome,
   DEFAULT_HTTPS_TRY_LIST,
@@ -24,11 +12,20 @@ import {
   LOOPBACK_HOST,
   type SchemeProbe,
 } from "../src/port-acquisition.ts";
+import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
+import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { resolvePublishedRouterBindAddress } from "../src/router-bind-address.ts";
+import {
+  LANDO_SOCKET_PROXY_HOLDER_LABEL,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "../src/socket-proxy-helper.ts";
+import { SOCKET_UNIT_PATHS } from "../src/socket-proxy-units.ts";
+import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;

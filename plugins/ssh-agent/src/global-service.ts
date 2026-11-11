@@ -4,12 +4,9 @@
  * Loads default host key files and publishes the agent inside the managed runtime.
  */
 import { join } from "node:path";
-
-import { Effect, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import {
   SSH_AGENT_DIRECTORY,
   SSH_AGENT_HOST_DIRECTORY,

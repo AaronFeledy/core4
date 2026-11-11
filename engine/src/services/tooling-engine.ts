@@ -1,5 +1,3 @@
-import { Effect, Layer } from "effect";
-
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
@@ -10,13 +8,13 @@ import {
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { HostExecutionDefaults } from "./host-execution-context.ts";
-
+import { Effect, Layer } from "effect";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);

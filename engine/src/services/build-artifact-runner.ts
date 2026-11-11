@@ -1,8 +1,7 @@
 import { retainCreateArtifactIdentity } from "@lando/container-runtime/create-fingerprint";
-import { Effect, Predicate } from "effect";
-
 import type { AppPlan, ArtifactRef as PlannedArtifactRef, ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect, Predicate } from "effect";
 
 import { artifactBuildStepsFor } from "./build-key.ts";
 

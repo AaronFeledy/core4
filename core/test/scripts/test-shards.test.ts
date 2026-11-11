@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { timingRefreshCommand } from "../../../scripts/update-test-timings.ts";
-
 import { NIGHTLY_TIER_TESTS, UNIT_SHARD_COUNT } from "../../../scripts/test-selections.ts";
 import {
   TEST_TIMINGS_FILE,
@@ -15,6 +13,7 @@ import {
   shardedUnitTestCommand,
   unitShardCommands,
 } from "../../../scripts/test-shards.ts";
+import { timingRefreshCommand } from "../../../scripts/update-test-timings.ts";
 
 const repoRoot = new URL("../../..", import.meta.url);
 

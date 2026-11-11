@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import * as Schema from "effect/Schema";
 
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";

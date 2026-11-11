@@ -1,7 +1,6 @@
-import { Result } from "effect";
-
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 import { type DatabaseConnection, canonicalSqlitePath } from "@lando/sdk/schema";
+import { Result } from "effect";
 
 import { type SqlFamily, familyFromServiceType } from "./families.ts";
 

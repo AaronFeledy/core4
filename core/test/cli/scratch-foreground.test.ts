@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber } from "effect";
-
 import { AbsolutePath } from "@lando/core/schema";
+import { Effect, Fiber } from "effect";
 
 import {
   renderScratchStartResult,

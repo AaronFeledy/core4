@@ -7,9 +7,9 @@ import { variantFileSuffix } from "../variant";
 import { type RedactionEnvironment, redactPublicTranscript } from "./redaction";
 
 export {
+  type RedactionEnvironment,
   redactPublicTranscript,
   redactPublicTranscriptText,
-  type RedactionEnvironment,
 } from "./redaction";
 
 export const decodePublicTranscriptEither = (

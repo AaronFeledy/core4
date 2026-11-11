@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
 import type { ScanAttempt } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
 import {

@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import {
@@ -10,6 +8,7 @@ import {
   type ServiceType,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";

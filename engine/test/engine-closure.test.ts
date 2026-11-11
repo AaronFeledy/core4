@@ -1,10 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { EventService, SecretStore } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import { scanModuleEdges } from "../../scripts/module-edge-scan.ts";
 

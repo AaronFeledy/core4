@@ -28,7 +28,7 @@ const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
 const isMisplacedComposeSurfaceKey = (
   key: string,
 ): key is keyof typeof MISPLACED_COMPOSE_SURFACE_REMEDIATION =>
-  Object.prototype.hasOwnProperty.call(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
+  Object.hasOwn(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
 export const valueAtPath = (value: unknown, path: ValidationIssuePath): unknown => {
   const unwrap = (entry: unknown): unknown => {

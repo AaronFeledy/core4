@@ -5,8 +5,6 @@ import { basename, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { CONTAINER_HELPER_ARCHES } from "@lando/container-runtime/container-helper";
-import { Effect } from "effect";
-
 import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
 import {
@@ -14,14 +12,15 @@ import {
   CONTAINER_HELPER_SOURCE_ROOT,
   containerHelperSourceDigest,
 } from "@lando/container-runtime/container-helper/source";
+import { Effect } from "effect";
 
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { compiledBinaryBundleConfig } from "./compiled-binary-bundle.ts";
 import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
 import { WINDOWS_BRANDING, windowsPeVersion } from "./windows-branding.ts";
 
-export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
 export { createOpenTuiPruningPlugin, resolveOpenTuiNativeImport } from "./compiled-binary-bundle.ts";
+export { CompiledBinaryVersionError } from "./compiled-binary-version.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_OUTFILE = resolve(REPO_ROOT, "core/dist/lando");

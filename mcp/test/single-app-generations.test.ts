@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Context, Effect } from "effect";
-
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
+import { Context, Effect } from "effect";
 
 import { singleAppGenerations } from "../src/apps.ts";
 

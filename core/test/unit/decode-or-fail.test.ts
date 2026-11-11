@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
+import { decodeOrFail } from "@lando/landofile/decode";
+import { validationErrorFromCause } from "@lando/landofile/validation";
 import {
   BunShellScriptFrontMatterError,
   RecipeManifestValidationError,
@@ -13,9 +13,7 @@ import {
   formatValidationIssueLine,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
-
-import { decodeOrFail } from "@lando/landofile/decode";
-import { validationErrorFromCause } from "@lando/landofile/validation";
+import { Effect, Result, Schema } from "effect";
 
 const issuesWithMessages = (cause: unknown, fallback: string) =>
   validationIssuesFromCause(cause, { fallback });

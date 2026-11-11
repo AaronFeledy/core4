@@ -1,5 +1,5 @@
-import { ComposePreservedPathKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import { ComposePreservedPathKey } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 type ComposePreservedPathUse = {

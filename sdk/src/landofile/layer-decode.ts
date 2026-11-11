@@ -1,8 +1,8 @@
 import { Effect, Schema } from "effect";
 import { mapFailures } from "../command-result/failure.ts";
 import { type LandofileParseError, LandofileValidationError } from "../errors/landofile.ts";
-import type { LandofileDecodedOverlay, LandofileOverlayValue } from "../schema/landofile-overlay.ts";
 import { LandofileShape, SERVICE_CONFIG_ALIASES } from "../schema/landofile.ts";
+import type { LandofileDecodedOverlay, LandofileOverlayValue } from "../schema/landofile-overlay.ts";
 import { validationIssuesFromCause } from "../schema/validation-issue.ts";
 import { type DirectivePath, canonicalDirectivePath, directivePathProblem } from "./directive-paths.ts";
 import { isLandofileOverride, isMergeDirective, override, reset } from "./merge-directives.ts";

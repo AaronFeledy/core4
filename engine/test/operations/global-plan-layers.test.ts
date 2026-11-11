@@ -2,9 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
+import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, PluginManifest, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -14,9 +15,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import { type GlobalPolicy, globalPolicyBucket } from "../../src/global-app/enablement.ts";
 import {
   type LoadGlobalPlanResult,
@@ -25,8 +24,6 @@ import {
 } from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
-
-import { makeLandoPaths } from "@lando/paths";
 
 const withGlobalFiles = async <A>(
   use: (fixture: {

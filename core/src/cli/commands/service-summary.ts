@@ -1,6 +1,5 @@
-import type { StartedService } from "@lando/sdk/schema";
-
 import type { SummaryTone } from "@lando/renderer/summary";
+import type { StartedService } from "@lando/sdk/schema";
 import { scopedConnectionText } from "./connection-summary";
 
 export const summaryToneFromTable = (

@@ -1,6 +1,5 @@
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { type EventFor, EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { Effect, Layer, Queue, Stream } from "effect";
 
 type RecordingHarness = {
   readonly events: Array<LandoEvent>;

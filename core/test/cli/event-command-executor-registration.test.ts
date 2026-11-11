@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Context, Effect, Schema } from "effect";
-
 import { RedactionService, createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
+import { Context, Effect, Schema } from "effect";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 

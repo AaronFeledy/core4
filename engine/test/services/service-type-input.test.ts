@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer, Schema } from "effect";
-
 import { PluginLoadError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType, type ServiceTypeInput } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { type Context, Effect, Layer, Schema } from "effect";
 
 import { resolveHostFacts } from "../../src/planner/service-types.ts";
 import { planApp } from "../plan-app.ts";
@@ -74,4 +73,5 @@ describe("service type resolve input", () => {
     expect(captured[0]?.capabilities).toBe(capabilities);
   });
 });
+
 import { compileTestLandofile } from "../compiled-landofile.ts";

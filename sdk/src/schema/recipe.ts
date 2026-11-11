@@ -2,8 +2,7 @@ import { Schema } from "effect";
 
 import { DeprecationNotice } from "./deprecation.ts";
 import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
-import { RecipeId, RecipeVersion } from "./recipe-identity.ts";
-import { RecipeOptionValue } from "./recipe-identity.ts";
+import { RecipeId, RecipeOptionValue, RecipeVersion } from "./recipe-identity.ts";
 import { RecipeMigration, RecipeSnapshot } from "./recipe-snapshot.ts";
 import type { RecipeSource } from "./recipe-source.ts";
 

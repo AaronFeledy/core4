@@ -1,11 +1,10 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { MINIMUM_PODMAN_VERSION } from "@lando/container-runtime/podman/version-floor";
 import { layer as makeProviderLayer } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import { withPing } from "./podman-api-fixtures.ts";
 
 const recordingApi = (info: unknown): { readonly api: PodmanApiClient; readonly calls: string[] } => {

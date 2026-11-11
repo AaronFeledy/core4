@@ -13,10 +13,6 @@
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Semaphore } from "effect";
-
-import { Cause, type Context, Effect, Layer, Option, Redacted } from "effect";
-
 import {
   ChoicesUnavailableError,
   InteractionCancelledError,
@@ -48,6 +44,7 @@ import {
   type SecretSpec,
   type SelectSpec,
 } from "@lando/sdk/services";
+import { Cause, type Context, Effect, Layer, Option, Redacted, Semaphore } from "effect";
 
 import {
   type ChoicesCommandRunner,

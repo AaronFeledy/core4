@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { probeSshAgent } from "@lando/engine/subsystems/ssh-agent/agent-probe";
 import {
   type HostAgentDiscoveryOptions,
@@ -10,7 +11,6 @@ import {
   runtimeSshAgentReady,
   sidecarSocketCheck,
 } from "@lando/engine/subsystems/ssh-agent/session";
-import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { SshAgentUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {

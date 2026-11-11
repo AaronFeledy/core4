@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import type { HealthcheckTargetUnsupportedError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -9,6 +7,7 @@ import {
   effectiveReadiness,
   probeTargetError,
 } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { gateId, gateNodeId } from "./dependency-gates.ts";
 import { type ScheduleEdge, type ScheduleGraph, runDependencySchedule } from "./dependency-schedule.ts";

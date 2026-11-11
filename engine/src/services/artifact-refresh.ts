@@ -1,10 +1,9 @@
-import { Effect, Result, Schema } from "effect";
-
 import { sha256Hex } from "@lando/sdk/digest";
 import type { StateStoreError } from "@lando/sdk/errors";
-import { ARTIFACT_REFRESH_EXTENSION, ArtifactRefreshIntent } from "@lando/sdk/schema";
 import type { ProviderExtensionConfig } from "@lando/sdk/schema";
+import { ARTIFACT_REFRESH_EXTENSION, ArtifactRefreshIntent } from "@lando/sdk/schema";
 import type { StateBucket, StateStore } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 export const PULL_CHECK_VERSION = 1;
 

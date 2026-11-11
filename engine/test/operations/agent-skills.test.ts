@@ -1,13 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, type Scope } from "effect";
-
-import type { ManagedFileError } from "@lando/sdk/errors";
-import { ManagedFileService } from "@lando/sdk/services";
-
 import {
   ManagedFileServiceFactory,
   layerFactory,
@@ -15,6 +9,9 @@ import {
   makeManagedFileService,
 } from "@lando/managed-file/service";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
+import type { ManagedFileError } from "@lando/sdk/errors";
+import { ManagedFileService } from "@lando/sdk/services";
+import { Effect, type Scope } from "effect";
 
 import {
   AGENT_SKILLS_SKILL_BODY,

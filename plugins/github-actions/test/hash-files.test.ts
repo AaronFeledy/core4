@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Result } from "effect";
 import { admitHashCatalogue } from "../src/contexts/hash-files.ts";
+
 const source = { file: ".github/workflows/test.yml", line: 12 };
 const digest = (text: string) => new Bun.CryptoHasher("sha256").update(text).digest("hex");
 const catalogue = {

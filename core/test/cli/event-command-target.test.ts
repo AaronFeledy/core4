@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Context, DateTime, Effect, Exit, Result, Schema } from "effect";
-
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { PluginDescriptorMismatchError, PluginLoadError, ToolingCommandLookupError } from "@lando/sdk/errors";
 import type { ExecutableCommandLoader, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ToolingTaskShape } from "@lando/sdk/schema";
+import { Cause, Context, DateTime, Effect, Exit, Result, Schema } from "effect";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { loadPluginSpec, resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 

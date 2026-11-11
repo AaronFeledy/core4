@@ -1,18 +1,15 @@
+import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Context, Effect, Layer, Schema, Stream } from "effect";
-
 import { MKCERT_TOOL_VERSION, mkcertInstallPath, mkcertInstalledVersionPath } from "@lando/ca-mkcert";
+import { prepareServiceCertificates } from "@lando/engine/lifecycle/service-certificates";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { AbsolutePath, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ProcessRunner } from "@lando/sdk/services";
 import { TEST_CERTIFICATES, TestRuntimeProvider } from "@lando/sdk/test";
-
-import { prepareServiceCertificates } from "@lando/engine/lifecycle/service-certificates";
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { literalLandofile } from "../_support/value-contracts.ts";
 

@@ -1,22 +1,22 @@
 import type { Effect, Layer } from "effect";
-import type { SecretStoreUnavailableError } from "../errors/secret.ts";
-import type { AbsolutePath, ResourceOwnership } from "../schema/index.ts";
-
 import type {
   ProviderCapabilityError,
   ProviderUnavailableError,
   ProxyError,
   SshError,
 } from "../errors/index.ts";
+import type { SecretStoreUnavailableError } from "../errors/secret.ts";
 import type { RendererContribution } from "../renderer/index.ts";
 import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
+  AbsolutePath,
   AppPlan,
   AppliedStateInventory,
   HostPlatform,
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  ResourceOwnership,
   ServiceConfig,
 } from "../schema/index.ts";
 import type {

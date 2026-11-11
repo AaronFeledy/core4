@@ -1,8 +1,5 @@
-import { Struct } from "effect";
-import { SchemaIssue } from "effect";
-import { Result, Schema } from "effect";
-
 import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue, Struct } from "effect";
 import type { EngineDialect } from "../dialect.ts";
 import { extraHostEntries, realizeHostAliases } from "../host-aliases.ts";
 

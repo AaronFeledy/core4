@@ -2,14 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { AppLockTimeoutError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { EventService, PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import {
   APP_LOCK_HOLDERS_ENV,

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { CommandWarnings, makeCommandWarnings } from "@lando/engine/landofile/command-warnings";
 import { ConfirmationPrompt } from "@lando/engine/operations/confirmation-prompt";
 import { LandofileParseError } from "@lando/sdk/errors";
 import { LandofileService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild";
 import { restartSpec } from "../../src/cli/command-specs/app/restart";

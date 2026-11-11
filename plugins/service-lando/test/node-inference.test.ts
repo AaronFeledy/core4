@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { node22ServiceType, nodeServiceType, resolveNodeInference } from "../src/services/node.ts";
 

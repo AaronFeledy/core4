@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { TRAEFIK_DASHBOARD_PRIORITY, renderTraefikDashboardConfig } from "../../src/dashboard.ts";
 import traefikGlobalService, {

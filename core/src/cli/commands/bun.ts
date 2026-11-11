@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
-
 import { Renderer } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { ChildOutput } from "../child-output.ts";
 import { bunSelfRun, bunSelfX } from "./bun-self-runner";
 

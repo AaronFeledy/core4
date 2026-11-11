@@ -6,8 +6,8 @@ import {
   type ValidationIssuePath,
   formatValidationIssuePath,
 } from "@lando/sdk/schema";
-import { secretReferenceFix } from "./secret-reference-fix.ts";
 import { SECRET_BINDING_SITES } from "./secret-reference.ts";
+import { secretReferenceFix } from "./secret-reference-fix.ts";
 import { valueAtPath } from "./validation-suggestions.ts";
 
 interface UnsupportedSecretReferenceInput {

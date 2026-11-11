@@ -1,12 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { Effect } from "effect";
-
-import { NotImplementedError, causeMessage } from "@lando/sdk/errors";
-import type { PromptSpec } from "@lando/sdk/schema";
-
 import {
   PLUGIN_NEW_TEMPLATE_IDS,
   type PluginNewResult,
@@ -14,10 +7,13 @@ import {
   type PluginScaffoldInput,
   materializePluginScaffold,
 } from "@lando/engine/operations/plugin-scaffold";
-
+import { NotImplementedError, causeMessage } from "@lando/sdk/errors";
+import type { PromptSpec } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
 import { parseAnswerFlags } from "../../recipes/prompts/index";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 export interface PluginNewOptions {
   readonly name?: string | undefined;
