@@ -164,6 +164,7 @@ test.each([
   { name: "backticks restart quoting", value: 'echo "`printf %s ${secret:TOKEN}`"', expected: undefined },
 ])("rewrites only quoting contexts that keep the expansion exact: $name", ({ value, expected }) => {
   const result = unsupportedSecretReference({ source, value, references: ["TOKEN"], document: {} });
+  if (expected === undefined) expect(result.fix).toBeUndefined();
   expect(result.fix?.edits.at(-1)?.value).toEqual(expected);
 });
 

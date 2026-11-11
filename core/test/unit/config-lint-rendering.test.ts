@@ -127,7 +127,10 @@ describe("config lint multiline suggestions", () => {
         fix: { edits: [{ op: "set", path: ["tooling", "bad\n\u001b"], value: "bad\u009b\nvalue" }] },
       }),
     ]);
-    expect(finding?.split("\n").at(-1)).toBe('       | tooling.bad\\u000a\\u001b: "bad\\u009b\\nvalue"');
+    expect(finding?.split("\n").slice(2)).toEqual([
+      '    fix: Did you mean "image"?',
+      '       | tooling.bad\\u000a\\u001b: "bad\\u009b\\nvalue"',
+    ]);
   });
 
   test.each([

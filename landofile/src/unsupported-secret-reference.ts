@@ -1,4 +1,3 @@
-// allow: SIZE_OK — one exhaustive site-to-suggestion table; splitting it would fragment the remediation matrix.
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import {
@@ -9,6 +8,7 @@ import {
 } from "@lando/sdk/schema";
 import { SECRET_BINDING_SITES } from "./secret-reference.ts";
 import { secretReferenceFix } from "./secret-reference-fix.ts";
+import { secretVariableNames } from "./secret-variable-names.ts";
 import { valueAtPath } from "./validation-suggestions.ts";
 
 interface UnsupportedSecretReferenceInput {
@@ -23,11 +23,6 @@ interface UnsupportedSecretReferenceInput {
   readonly defaultServiceType?: string;
 }
 
-const usableName = (candidate: unknown): candidate is string =>
-  typeof candidate === "string" &&
-  /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) &&
-  candidate !== "LANDO" &&
-  !candidate.startsWith("LANDO_");
 const list = (values: readonly string[], type: "conjunction" | "disjunction" = "conjunction") =>
   new Intl.ListFormat("en", { type }).format(values);
 const genericSuggestion = () =>
@@ -47,23 +42,7 @@ export const unsupportedSecretReference = (
   const match = executionSiteAt(path);
   const site = match?.site;
   const relative = match?.relativePath ?? [];
-  const names = new Map<string, string>();
-  const used = new Set<string>();
-  for (const reference of new Set(input.references)) {
-    const key =
-      typeof path.at(-1) === "number" ? input.value.slice(0, input.value.indexOf("=")) : path.at(-1);
-    const candidates = site === "build-arg" ? [key, reference] : [reference];
-    let name = candidates.find(
-      (candidate): candidate is string => usableName(candidate) && !used.has(candidate),
-    );
-    if (name === undefined) {
-      let index = 1;
-      while (used.has(index === 1 ? "SECRET" : `SECRET_${index}`)) index++;
-      name = index === 1 ? "SECRET" : `SECRET_${index}`;
-    }
-    names.set(reference, name);
-    used.add(name);
-  }
+  const names = secretVariableNames(input, path, site);
   const environmentNames = [...names.values()];
   const name = list(environmentNames);
   const shell = list(environmentNames.map((name) => `$${name}`));

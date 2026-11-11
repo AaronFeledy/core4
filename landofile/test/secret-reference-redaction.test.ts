@@ -117,6 +117,8 @@ test.each(cases)(
     const machineIssues = Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(envelope.result);
     // Then
     expect(failure.issues).toHaveLength(1);
+    expect(textIssues).toHaveLength(1);
+    expect(machineIssues).toHaveLength(1);
     expect(failure.issues[0]?.fix).toEqual(fix);
     expect(textIssues[0]?.fix).toEqual(fix);
     expect(machineIssues[0]?.fix).toEqual(fix);
