@@ -40,7 +40,6 @@ const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Pro
   try {
     return await run(cacheRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
     if (previous === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
     else process.env.LANDO_USER_CACHE_ROOT = previous;
     await rm(cacheRoot, { recursive: true, force: true });
@@ -931,7 +930,6 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id)).toEqual(["app:build"]);
       } finally {
-        // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
         if (previous === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
         else process.env.LANDO_USER_CACHE_ROOT = previous;
       }

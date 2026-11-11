@@ -54,6 +54,10 @@ const removeHostProxyClaim = (
             removeRunDir(app, options.paths),
           ).pipe(Effect.as("terminated" as const));
         }
+        default: {
+          const exhaustive: never = state;
+          return exhaustive;
+        }
       }
     }),
   );

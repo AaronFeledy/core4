@@ -236,6 +236,10 @@ export const makeScratchRegistry = (store: StateStore["Service"]): ScratchRegist
                 return { _tag: "Set", value: remaining, result: undefined };
               case "Set":
                 return { _tag: "Set", value: sortById([...remaining, plan.value]), result: undefined };
+              default: {
+                const exhaustive: never = plan;
+                return exhaustive;
+              }
             }
           }),
         );

@@ -32,8 +32,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
       const observed = yield* provider.locateVolume(ref);
       const identity = observed.identity;
       if (
-        !identity ||
-        identity.origin !== "created" ||
+        identity?.origin !== "created" ||
         identity.nativeName !== fact.nativeName ||
         identity.generation !== fact.generation ||
         identity.ownerRoot !== fact.ownerRoot

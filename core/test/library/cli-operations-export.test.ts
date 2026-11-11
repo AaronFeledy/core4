@@ -149,10 +149,8 @@ describe("@lando/core/cli/operations package export", () => {
         expect(failure.output).toContain("is not available here");
       }
     } finally {
-      // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
       if (previousUserConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
       else process.env.LANDO_USER_CONF_ROOT = previousUserConfRoot;
-      // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
       if (previousUserDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
       else process.env.LANDO_USER_DATA_ROOT = previousUserDataRoot;
       await rm(userDataRoot, { recursive: true, force: true });

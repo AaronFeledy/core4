@@ -130,6 +130,10 @@ export function makeAppliedPlanStore(
               return Effect.succeed(read.plan);
             case "unreadable":
               return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path, appId }));
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
+            }
           }
         }),
       );
@@ -196,6 +200,10 @@ export function makeAppliedPlanStore(
             );
           case "readable":
             return Effect.succeed(read.plans);
+          default: {
+            const exhaustive: never = read;
+            return exhaustive;
+          }
         }
       }),
     );
@@ -212,6 +220,10 @@ export function makeAppliedPlanStore(
             case "readable": {
               const plan = read.plans?.[appId];
               return plan === undefined ? { status: "missing" } : { status: "readable", plan };
+            }
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
             }
           }
         }),
@@ -237,6 +249,10 @@ export function makeAppliedPlanStore(
               return { plans: Object.values(read.plans ?? {}), unreadable: [] };
             case "unreadable":
               return { plans: [], unreadable: [{ path: read.path }] };
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
+            }
           }
         }),
       ),

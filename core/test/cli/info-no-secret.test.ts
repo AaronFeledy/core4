@@ -205,7 +205,6 @@ describe("lando info never leaks secret values", () => {
 
   afterEach(() => {
     if (previous === undefined) {
-      // biome-ignore lint/performance/noDelete: env cleanup must remove the key (Bun coerces undefined to the string "undefined" otherwise)
       delete process.env.LANDO_SECRET_DB_PASSWORD;
     } else {
       process.env.LANDO_SECRET_DB_PASSWORD = previous;

@@ -144,6 +144,10 @@ export const adoptHealthyRuntimeGeneration = (
           );
         case "changed":
           return Effect.succeed(false);
+        default: {
+          const exhaustive: never = state;
+          return exhaustive;
+        }
       }
     }),
   );

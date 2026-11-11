@@ -206,7 +206,6 @@ describe("lando logs redaction boundary", () => {
 
   afterEach(() => {
     if (previous === undefined) {
-      // biome-ignore lint/performance/noDelete: env cleanup must remove the key (Bun coerces undefined to "undefined")
       delete process.env.LANDO_SECRET_LOG_PASSWORD;
     } else {
       process.env.LANDO_SECRET_LOG_PASSWORD = previous;

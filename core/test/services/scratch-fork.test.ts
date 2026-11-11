@@ -186,13 +186,10 @@ const withTempProject = async <T>(
     return await run(dir);
   } finally {
     process.chdir(previousCwd);
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousCacheRoot === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
     await rm(dir, { recursive: true, force: true });

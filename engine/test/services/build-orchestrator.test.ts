@@ -172,13 +172,11 @@ const withTempUserRoots = async <T>(run: () => Promise<T>): Promise<T> => {
     return await run();
   } finally {
     if (previousCacheRoot === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
       delete process.env.LANDO_USER_CACHE_ROOT;
     } else {
       process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
     }
     if (previousDataRoot === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
       delete process.env.LANDO_USER_DATA_ROOT;
     } else {
       process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
