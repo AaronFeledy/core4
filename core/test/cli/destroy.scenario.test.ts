@@ -656,7 +656,7 @@ describe("lando destroy", () => {
       Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer))),
     );
     expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], snapshotsRemoved: 0 });
-    expectRecordedBracket(harness, "inventory", { outcome: "unchanged", children: ["provider"] });
+    expectRecordedBracket(harness, "inventory", { outcome: "unchanged", children: ["provider", "routes"] });
     expect(harness.destroyCalls).toEqual([]);
     expect(harness.mutations.indexOf("inventory")).toBeLessThan(harness.mutations.indexOf("post-destroy"));
   });
@@ -1170,7 +1170,7 @@ describe("lando destroy", () => {
         expect(harness.mutations).toContain("remove:orphan");
         expectRecordedBracket(harness, "orphans", {
           outcome: "destroyed",
-          children: ["snapshots", "provider"],
+          children: ["snapshots", "provider", "routes"],
         });
       });
     },

@@ -28,14 +28,14 @@ const PUBLISHED_COMPOSE_SERVICE_KNOB_KEY_ORDER = [
   "group_add",
   "read_only",
   "platform",
-  "pull_policy",
   "logging",
   "gpus",
   "deploy.resources",
+  "deploy.resources.reservations.devices",
 ] as const;
 
-/** Sole documented capability-key → ServiceConfig field exception. */
-const CAPABILITY_KEY_TO_FIELD = (key: string): string => (key === "deploy.resources" ? "deploy" : key);
+/** Documented capability-key → ServiceConfig field exception: both deploy keys live under `deploy`. */
+const CAPABILITY_KEY_TO_FIELD = (key: string): string => (key.startsWith("deploy.") ? "deploy" : key);
 
 const FIELD_TO_CAPABILITY_KEY = (field: string): string => (field === "deploy" ? "deploy.resources" : field);
 
@@ -68,7 +68,9 @@ describe("Compose knob capability ↔ ServiceConfig parity", () => {
     const capabilityKeys = new Set<string>(ComposeServiceKnobKey.literals);
 
     // When / Then — present on ServiceConfig and covered by a capability key
-    expect(authoringKnobFields).toHaveLength(ComposeServiceKnobKey.literals.length);
+    expect(authoringKnobFields).toHaveLength(
+      new Set(ComposeServiceKnobKey.literals.map(CAPABILITY_KEY_TO_FIELD)).size,
+    );
     for (const field of authoringKnobFields) {
       expect(serviceFields.has(field)).toBe(true);
       expect(capabilityKeys.has(FIELD_TO_CAPABILITY_KEY(field))).toBe(true);

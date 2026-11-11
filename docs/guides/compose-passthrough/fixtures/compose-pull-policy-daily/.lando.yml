@@ -1,0 +1,7 @@
+name: compose-pull-policy-daily
+services:
+  api:
+    type: compose
+    image: ghcr.io/example/api:latest
+    appMount: false
+    pull_policy: daily

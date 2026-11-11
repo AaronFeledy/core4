@@ -27,6 +27,7 @@ import {
   FileSyncEngine,
   LandofileService,
   PathsService,
+  RouterService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/core/services";
@@ -46,7 +47,7 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -275,6 +276,13 @@ const makeStopLayer = (
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...TestRouterService,
+        removeRoutes: () => Effect.sync(() => void events.push("routes:withdraw")),
+      }),
+    ),
+    Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -344,6 +352,7 @@ describe("lando stop", () => {
       "post-service-stop",
       "post-app-stop",
       "post-stop",
+      "routes:withdraw",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan: harness.currentPlan });

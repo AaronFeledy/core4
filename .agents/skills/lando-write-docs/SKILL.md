@@ -199,7 +199,7 @@ Prose carries meaning. Components only execute: `<Run>`, `<Verify>`, `<Cleanup>`
 - Litmus: strip every JSX tag. What remains is still a guide.
 
 Fixtures: `docs/guides/<guide-id>/fixtures/<name>/`. Every dir must be referenced by `<UseFixture>`.
-New fixture dir: also register it in the fixture corpora (golden digests, invalid-fixture lists). Guide gates do not check them. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.
+New fixture dir: record it in the golden corpus with `UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts` and commit the digest change; guide gates do not run that test. A deliberately invalid fixture also carries `# lando-lint: expect-invalid <reason>` on line 1; no test keeps a hand-edited list. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.
 
 Test provider does not boot real containers. Prefer `app:config`, lint, init, modeled events. `exec` needs stubbed exec or e2e. Zero-scenario guides are valid for host-bound topics.
 

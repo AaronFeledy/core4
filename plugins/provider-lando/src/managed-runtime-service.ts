@@ -1,7 +1,10 @@
 import { readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { managedPodmanGlobalArgs } from "@lando/container-runtime/podman/managed-invocation";
+import {
+  isManagedPodmanLaunchStage,
+  managedPodmanGlobalArgs,
+} from "@lando/container-runtime/podman/managed-invocation";
 import {
   managedRuntimeDirForTeardown,
   terminateManagedPause,
@@ -121,9 +124,6 @@ const parsePid = (raw: string): number | undefined => {
   return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
 };
 
-const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
-  actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
-
 const ownedRuntimePid = Effect.fnUntraced(function* (
   spec: ManagedRuntimeServiceSpec,
   processSeam: ProcessSeam,
@@ -138,7 +138,7 @@ const ownedRuntimePid = Effect.fnUntraced(function* (
   if (!alive) return undefined;
 
   const argv = yield* processSeam.readCmdline(pid).pipe(Effect.catch(() => Effect.succeed(emptyArgv)));
-  return sameArgv(argv, [spec.command, ...spec.args]) ? pid : undefined;
+  return isManagedPodmanLaunchStage(argv, [spec.command, ...spec.args]) ? pid : undefined;
 });
 
 const bestEffortUnlink = (fsSeam: FsSeam, path: string): Effect.Effect<void> =>

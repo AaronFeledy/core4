@@ -34,6 +34,7 @@ const realized = serviceWithArtifact(declared, {
   providerId: plan.provider,
   ref: "lando-build-lando-web-fixture",
   digest: "sha256:built-fixture",
+  origin: "build",
 });
 const applied: AppPlan = { ...desired, services: { ...desired.services, [web.name]: realized } };
 

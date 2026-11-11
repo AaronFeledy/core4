@@ -20,7 +20,7 @@ export const defaultSmokeRetryPolicy: RetryPolicy = {
   timeout: Duration.seconds(30),
 };
 
-export type SmokeOperation = "base-image" | "run" | "build" | "health";
+export type SmokeOperation = "base-image" | "run" | "build" | "health" | "resource-limits";
 
 export class ProviderLandoSmokeError extends ProviderUnavailableError {
   readonly smokeOperation: SmokeOperation;
@@ -50,6 +50,8 @@ export interface SmokeProbeDeps {
   readonly podmanApi: PodmanApiClient;
   readonly baseImage?: string;
   readonly retryPolicy?: RetryPolicy;
+  /** Verify `deploy.resources` mappings inside a container; set when the provider declares the knob. */
+  readonly resourceLimits?: boolean;
 }
 
 export const smokeRemediation = (operation: SmokeOperation): string => {
@@ -62,6 +64,8 @@ export const smokeRemediation = (operation: SmokeOperation): string => {
       return "Check container namespace, exec, and healthcheck support, then rerun `lando setup --smoke`.";
     case "run":
       return "Check the OCI runtime and cgroup configuration, then rerun `lando setup --smoke`.";
+    case "resource-limits":
+      return "Containers did not get their own cgroup limits. Run `lando doctor` to inspect where the managed runtime places containers; if the runtime still runs containers started before it moved to a delegated systemd user scope, run `lando poweroff`, then rerun `lando setup --smoke`.";
   }
 };
 
@@ -138,13 +142,17 @@ export const ensureSmokeBaseImage = Effect.fn("ProviderLando.ensureSmokeBaseImag
 
 export const removeSmokeResource = (
   deps: SmokeProbeDeps,
-  operation: "run" | "build" | "health",
+  operation: "run" | "build" | "health" | "resource-limits",
   path: `/${string}`,
 ) => smokeApiRequest(deps, operation, { method: "DELETE", path }).pipe(Effect.ignore);
 
 export const acquireSmokeContainer = (
   deps: SmokeProbeDeps,
-  input: { readonly operation: "run" | "health"; readonly name: string; readonly body: unknown },
+  input: {
+    readonly operation: "run" | "health" | "resource-limits";
+    readonly name: string;
+    readonly body: unknown;
+  },
 ) =>
   Effect.acquireRelease(
     smokeApiRequest(deps, input.operation, {
@@ -186,7 +194,11 @@ export const acquireSmokeContainer = (
       ),
   );
 
-export const startSmokeContainer = (deps: SmokeProbeDeps, operation: "run" | "health", name: string) =>
+export const startSmokeContainer = (
+  deps: SmokeProbeDeps,
+  operation: "run" | "health" | "resource-limits",
+  name: string,
+) =>
   smokeApiRequest(deps, operation, {
     method: "POST",
     path: `/containers/${encodeURIComponent(name)}/start`,

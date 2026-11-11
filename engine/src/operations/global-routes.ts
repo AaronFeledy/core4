@@ -22,12 +22,13 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
   beforeRoutes?: Effect.Effect<void, GlobalAppError>,
 ): Effect.fn.Return<void, ProxyApplyError | ProviderError | GlobalAppError> {
   if (outcome.failed.size > 0) return;
+  const withdraw = router.removeRoutes(routeOwnerFromPlan(plan)).pipe(Effect.catch(() => Effect.void));
   return yield* withGlobalRoutePublication(
     Effect.gen(function* () {
       if (plan.routes.length === 0 || !routerEnabled(plan)) {
         yield* beforeRoutes ?? Effect.void;
         // Best-effort: a route-free or router-disabled plan must not leave previously published hostnames live.
-        yield* router.removeRoutes(routeOwnerFromPlan(plan)).pipe(Effect.catch(() => Effect.void));
+        yield* withdraw;
         return;
       }
       const { started } = outcome;
@@ -47,6 +48,11 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       );
       const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));
       yield* beforeRoutes ?? Effect.void;
+      if (routes.length === 0) {
+        // An empty selection removes the definition; it never publishes an empty route set.
+        yield* withdraw;
+        return;
+      }
       yield* router.applyRoutes(routes, routeOwnerFromPlan(plan));
     }),
   );

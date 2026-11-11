@@ -14,7 +14,7 @@ import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
 import { bringUp } from "./support/service-creation.ts";
 
-import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
+import { KNOB_FIXTURES_BY_DIALECT } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
@@ -142,7 +142,7 @@ describe("Podman Compose knob create request", () => {
       // Then
       expect(field(field(request.body, "HostConfig"), "Init")).toBe(init);
     });
-    const fixtures = new Map(Object.entries(KNOB_FIXTURES));
+    const fixtures = new Map(Object.entries(KNOB_FIXTURES_BY_DIALECT[dialect.engine]));
     for (const knob of composeKnobsForDialect(dialect.engine)) {
       test(`${dialect.engine}: ${knob} produces its expected Engine request fields`, async () => {
         const fixture = fixtures.get(knob);

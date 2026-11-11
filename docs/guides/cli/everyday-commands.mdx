@@ -71,7 +71,9 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`. Stock PHP tags are also checked about weekly on start. A PHP security release on a floating tag is one of those pulls, and `lando rebuild` checks it immediately. See [Pick up a PHP security release](../services/php-security-updates.mdx).
+Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. A service's `pull_policy` takes precedence: `never` is never pulled, and a failed pull of an `always` service fails the command; see [Control when the image is pulled](../services/compose-passthrough.mdx#control-when-the-image-is-pulled). Stock PHP tags, which have no explicit pull policy, are also checked about weekly on start. A PHP security release on a floating tag is one of those pulls, and `lando rebuild` checks it immediately. See [Pick up a PHP security release](../services/php-security-updates.mdx). Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+
+`lando stop` also withdraws the app's published hostnames, so the proxy stops sending requests to containers that no longer exist. `lando start` publishes them again. `lando restart` and `lando rebuild` keep the hostnames published while they stop and start the app, and they stay published if the start that follows fails. If no router is selected, `lando stop` warns that the routes were left in place and still stops the app.
 
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
@@ -121,6 +123,19 @@ then authenticate again if the registry requires it.
 Use `lando start --format=json` to inspect the tagged error and remediation.
 Already-pulled images can still work without registry access; see
 [Work offline](../config/offline-dev.mdx).
+
+## Rebuild a missing Lando-built image
+
+Lando never pulls an image it built for a service, because no registry has it.
+If that image is gone, for example after you prune images, `lando start` fails
+before creating the container, names the service and the image, and suggests
+the fix. Run it from the app directory:
+
+```bash
+lando rebuild -s web
+```
+
+Replace `web` with the service the error names.
 
 ## Wait for another command to finish
 

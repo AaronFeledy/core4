@@ -596,6 +596,7 @@ describe("scratchRun", () => {
       expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.artifact).toEqual({
         kind: "ref",
         ref: "web:built",
+        origin: "build",
       });
     });
   });
@@ -952,7 +953,7 @@ describe("scratch run cleanup and warm repeats", () => {
       // Identical resolved image build inputs across runs — content-addressed recipe render.
       const firstInputs = serviceBuildInputs(firstPlan);
       expect(serviceBuildInputs(secondPlan)).toEqual(firstInputs);
-      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "toolbox:built" });
+      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "toolbox:built", origin: "build" });
 
       const afterRuns = await Effect.runPromise(
         scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),

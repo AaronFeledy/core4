@@ -24,6 +24,7 @@ import {
   toAppFeatureDraft,
 } from "./extensions.ts";
 import { serviceHomeIntent } from "./home.ts";
+import { servicePullPolicy } from "./pull-policy.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { plannedContainerDestination } from "./storage.ts";
 export { applyAuthoredHealthcheck } from "./authored-probes.ts";
@@ -164,6 +165,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],
       authoredArtifact,
+      pullPolicy: servicePullPolicy(service),
       authored,
       homeIntent: serviceHomeIntent({
         service: {

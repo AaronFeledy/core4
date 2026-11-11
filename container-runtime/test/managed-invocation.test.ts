@@ -3,10 +3,13 @@ import { createHash } from "node:crypto";
 
 import {
   MANAGED_SOCKET_PATH_MAX_BYTES,
+  isManagedPodmanLaunchStage,
   managedLaunchStatePath,
   managedPodmanChildEnv,
   managedPodmanGlobalArgs,
   managedPodmanOverlayEnv,
+  managedPodmanScopeArgv,
+  managedPodmanScopeLauncherEnv,
   managedSocketPathByteLength,
   privateRuntimeDirName,
   withoutPodmanRedirectsDefined,
@@ -163,5 +166,61 @@ describe("privateRuntimeDirName and launch state path", () => {
     expect(managedLaunchStatePath("/data/runtime/run/podman.pid")).toBe(
       "/data/runtime/run/podman.pid.launch.json",
     );
+  });
+});
+
+describe("delegated scope launch", () => {
+  const podmanArgv = ["/data/runtime/bin/podman", "--root", "/data/$x/storage", "system", "service"];
+  const launch = {
+    systemdRun: "/usr/bin/systemd-run",
+    expandEnvironmentFlag: true,
+    privateRuntimeDir: "/run/user/1000/lando-ab",
+  };
+
+  test("wraps the exact podman argv in a delegated user scope that restores the private runtime dir", () => {
+    expect(managedPodmanScopeArgv(launch, podmanArgv)).toEqual([
+      "/usr/bin/systemd-run",
+      "--user",
+      "--scope",
+      "--quiet",
+      "--collect",
+      "-p",
+      "Delegate=yes",
+      "--expand-environment=no",
+      "--description=Lando managed Podman runtime",
+      "--",
+      "/usr/bin/env",
+      "XDG_RUNTIME_DIR=/run/user/1000/lando-ab",
+      ...podmanArgv,
+    ]);
+    expect(managedPodmanScopeArgv({ ...launch, expandEnvironmentFlag: false }, podmanArgv)).not.toContain(
+      "--expand-environment=no",
+    );
+  });
+
+  test("the launcher reaches the user manager through the real runtime dir and gets no bus address", () => {
+    const env = managedPodmanScopeLauncherEnv(
+      managedPodmanChildEnv(
+        { XDG_RUNTIME_DIR: "/run/user/1000/lando-ab", DISABLE_HC_SYSTEMD: "true" },
+        { HOME: "/home/u", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus" },
+      ),
+      "/run/user/1000",
+    );
+    expect(env).toEqual({ HOME: "/home/u", XDG_RUNTIME_DIR: "/run/user/1000", DISABLE_HC_SYSTEMD: "true" });
+  });
+
+  test("recognizes the launched pid at every exec stage and nothing else", () => {
+    const wrapper = managedPodmanScopeArgv(launch, podmanArgv);
+    const envStage = wrapper.slice(wrapper.indexOf("/usr/bin/env"));
+    for (const stage of [wrapper, envStage, podmanArgv]) {
+      expect(isManagedPodmanLaunchStage(stage, podmanArgv, launch.privateRuntimeDir)).toBe(true);
+      expect(isManagedPodmanLaunchStage(stage, podmanArgv)).toBe(true);
+    }
+    expect(isManagedPodmanLaunchStage(envStage, podmanArgv, "/run/user/1000/lando-other")).toBe(false);
+    expect(isManagedPodmanLaunchStage([...envStage, "--extra"], podmanArgv)).toBe(false);
+    expect(isManagedPodmanLaunchStage(["/bin/sh", "--", ...envStage], podmanArgv)).toBe(false);
+    expect(
+      isManagedPodmanLaunchStage(["/usr/bin/systemd-run", "--user", "--", ...envStage], podmanArgv),
+    ).toBe(false);
   });
 });

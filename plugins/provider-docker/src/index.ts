@@ -629,6 +629,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           ctx: DOCKER_CTX,
           dialect: dockerPullDialect,
           ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+          ...(spec.platform === undefined ? {} : { platform: spec.platform }),
         }).pipe(
           Effect.map((result) => ({
             providerId: ProviderId.make(PROVIDER_ID),

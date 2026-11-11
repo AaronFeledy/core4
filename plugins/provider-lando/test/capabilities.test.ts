@@ -79,10 +79,10 @@ describe("provider-lando capabilities", () => {
     }
   });
   test.each(["linux", "darwin", "win32"] as const)(
-    "%s declares only its dialect realizations",
+    "%s declares its dialect realizations except resource controls its runtime cannot enforce",
     (platform) => {
       expect(mvpProviderCapabilities(platform).composeKnobs?.supported).toEqual(
-        composeKnobsForDialect("libpod"),
+        composeKnobsForDialect("libpod").filter((key) => key !== "deploy.resources"),
       );
     },
   );

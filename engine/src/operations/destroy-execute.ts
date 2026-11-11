@@ -2,7 +2,7 @@ import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import { type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
@@ -17,6 +17,7 @@ import {
   cleanupDestroyHostState,
   cleanupDestroyWorkers,
   destroyPlannedProvider,
+  destroyRoutesTaskDeclared,
 } from "./destroy-provider.ts";
 import { removeSnapshots } from "./destroy-snapshots.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
@@ -94,7 +95,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       snapshots: plan.snapshots.length > 0,
       provider: hasProvider,
       hostProxy: target !== undefined,
-      proxy: target !== undefined && Option.isSome(proxy),
+      proxy: destroyRoutesTaskDeclared(plan, proxy),
     },
     work: Effect.fnUntraced(function* (tree) {
       yield* plan.missingStart?.terminate ?? Effect.void;
