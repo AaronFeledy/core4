@@ -61,13 +61,12 @@ export const buildArtifactRefreshDoctorCheck = (input: {
   };
 };
 
-export const collectArtifactRefreshDoctorCheck = (input: {
+export const collectArtifactRefreshDoctorCheck = Effect.fnUntraced(function* (input: {
   readonly runtimeId: string;
   readonly now: number;
   readonly provider: { readonly id: string; readonly displayName: string; readonly version: string };
   readonly selection?: DoctorSelectionRecord;
-}) =>
-  Effect.gen(function* () {
+}) {
     const store = yield* Effect.serviceOption(StateStore);
     if (store._tag === "None") return undefined;
     const checks = yield* openPullChecks(store.value).pipe(
@@ -76,4 +75,4 @@ export const collectArtifactRefreshDoctorCheck = (input: {
     );
     if (checks === null) return undefined;
     return buildArtifactRefreshDoctorCheck({ ...input, checks });
-  });
+ });

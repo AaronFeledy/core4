@@ -102,7 +102,7 @@ export const recordPullCheck = (
     })
     .pipe(Effect.asVoid);
 
-export const acquireReferencedArtifact = <A, E>(input: {
+export const acquireReferencedArtifact = Effect.fnUntraced(function* <A, E>(input: {
   readonly pull: (policy: "always" | "missing" | "never") => Effect.Effect<A, E>;
   readonly forced: boolean;
   readonly refreshAfterMs: number | undefined;
@@ -110,12 +110,10 @@ export const acquireReferencedArtifact = <A, E>(input: {
   readonly now: number;
   readonly onChecked: Effect.Effect<void, unknown>;
   readonly onFallback: (error: E) => Effect.Effect<void, unknown>;
-}): Effect.Effect<A, E> =>
-  Effect.gen(function* () {
+}) {
     if (!input.forced && input.refreshAfterMs === undefined) return yield* input.pull("missing");
 
-    const refreshed = (fallback?: A) =>
-      Effect.gen(function* () {
+    const refreshed = Effect.fnUntraced(function* (fallback?: A) {
         const pulled = yield* Effect.result(input.pull("always"));
         if (Result.isSuccess(pulled)) {
           yield* input.onChecked.pipe(Effect.catch(() => Effect.void));
@@ -131,7 +129,7 @@ export const acquireReferencedArtifact = <A, E>(input: {
           return local.success;
         }
         return yield* Effect.fail(pulled.failure);
-      });
+    });
 
     if (input.forced) return yield* refreshed();
 
@@ -150,4 +148,4 @@ export const acquireReferencedArtifact = <A, E>(input: {
     });
     if (action === "reuse-local") return local.success;
     return yield* refreshed(local.success);
-  });
+ });
