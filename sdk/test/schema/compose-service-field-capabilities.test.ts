@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { ComposeServiceFieldCapabilities, ComposeServiceFieldKey } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("ComposeServiceFieldKey", () => {
   test("publishes the complete service-level Compose field set", () => {

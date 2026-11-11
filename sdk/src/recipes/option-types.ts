@@ -1,8 +1,8 @@
 import { Result, Schema } from "effect";
 import { RecipeDecomposeError } from "../errors/recipe.ts";
+import type { RecipeManifest } from "../schema/recipe.ts";
 import { RecipeOptionValue, type RecipeSourceKind } from "../schema/recipe-identity.ts";
 import type { RecipeOptionType } from "../schema/recipe-snapshot.ts";
-import type { RecipeManifest } from "../schema/recipe.ts";
 import { validateSnapshotTemplate } from "./snapshot-template.ts";
 
 /**

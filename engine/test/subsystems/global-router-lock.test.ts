@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Deferred, Effect, Fiber, Layer, Semaphore, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { ProxySetupError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
@@ -11,6 +9,7 @@ import { EventService, GlobalAppService, PathsService, RouterService, StateStore
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { Deferred, Effect, Fiber, Layer, Semaphore, Stream } from "effect";
 
 import { type GlobalMutationServices, withGlobalMutation } from "../../src/global-app/mutation.ts";
 import { appMutationLockKey } from "../../src/operations/app-mutation-lock.ts";

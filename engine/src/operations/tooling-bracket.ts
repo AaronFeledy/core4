@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import type { LandofileEventName } from "@lando/sdk/schema";
 import type {
   EnvironmentValueResolver,
@@ -7,6 +5,7 @@ import type {
   ToolingEngine,
   ToolingEngineResult,
 } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import type { EventRuntimeError } from "../tooling/event-errors.ts";
 import { runAppEvent } from "./events.ts";

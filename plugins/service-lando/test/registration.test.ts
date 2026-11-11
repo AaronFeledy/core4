@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 
 import { globalServices, services } from "../src/index.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";

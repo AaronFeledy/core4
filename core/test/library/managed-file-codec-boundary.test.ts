@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 // Import-boundary assertion for `managed-file/codecs.ts`: no `LandoRuntime`,
 // Effect bootstrap layers, or `@oclif/core` in the static import graph.

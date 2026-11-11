@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import { FileIoError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -16,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { commonContainerLabels, containerHostConfigFragment } from "../src/plan.ts";
 import { composePath, renderCompose } from "../src/podman/compose.ts";

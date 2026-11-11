@@ -1,12 +1,10 @@
+import { expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect } from "effect";
+import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
 
 import { LandofileImportRefMisuseError } from "@lando/sdk/errors";
-
-import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
+import { Effect } from "effect";
 import { PEM, discoverFailure, withApp } from "./landofile-load-expression-support.ts";
 
 const ACCEPTING_KEYS = ["ca", "cas", "certificate-authority", "certificate-authorities"] as const;

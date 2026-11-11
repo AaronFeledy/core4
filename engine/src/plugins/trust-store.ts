@@ -2,13 +2,11 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Layer, Option } from "effect";
-
 import { ConfigError, type StateStoreError } from "@lando/sdk/errors";
 import { PathsService, type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Option } from "effect";
 
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 

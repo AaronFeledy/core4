@@ -104,7 +104,10 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
   const observe = ({
     target,
     initial,
-  }: { readonly target: ReadinessTarget; readonly initial: ServiceRuntimeInfo }) =>
+  }: {
+    readonly target: ReadinessTarget;
+    readonly initial: ServiceRuntimeInfo;
+  }) =>
     Effect.suspend(() =>
       actors.get(String(target.service))?.row !== undefined
         ? Effect.void

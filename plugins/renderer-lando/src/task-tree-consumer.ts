@@ -1,8 +1,6 @@
-import { Semaphore } from "effect";
-import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
-
 import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { DateTime, Effect, Fiber, Layer, Option, Queue, Semaphore } from "effect";
 
 import { renderLandoLine } from "./format.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
@@ -12,8 +10,8 @@ import {
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
-import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
+import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type LiveRegionHandle, makeTaskTreeSubstrateHandler } from "./task-tree-substrate-handler.ts";
 import { createToolingStatusPainter } from "./tooling-status.ts";
 import { makeTranscriptTailController } from "./transcript-tail-controller.ts";

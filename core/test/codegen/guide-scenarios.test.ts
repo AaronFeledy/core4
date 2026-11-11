@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { GuideFrontmatterValidationError, GuideHiddenScenarioReasonError } from "@lando/core/errors";
 import {

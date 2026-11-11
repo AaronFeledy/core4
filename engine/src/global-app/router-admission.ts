@@ -1,7 +1,6 @@
-import { Context, Effect } from "effect";
-
 import type { AppPlan } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
+import { Context, Effect } from "effect";
 
 export type GlobalRouterStartupPlan = Pick<AppPlan, "services" | "router" | "requires">;
 

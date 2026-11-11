@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import {
   acceptCompatibilityExceptions,

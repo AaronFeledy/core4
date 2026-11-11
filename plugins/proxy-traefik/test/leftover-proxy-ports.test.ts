@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import type { HostPlatform } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   type LoopbackPortReaders,

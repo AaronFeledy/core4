@@ -1,5 +1,4 @@
-import type { PluginManifest } from "@lando/sdk/schema";
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import type { PluginRegistry } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
 import {

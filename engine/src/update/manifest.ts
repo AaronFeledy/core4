@@ -2,12 +2,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-
-import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
-
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DownloadFetchError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -19,6 +16,7 @@ import {
 import { Downloader, StateStore, type StateWrite } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
+import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 import { resolveUserDataRoot } from "../config/roots";
 import * as LandoEventService from "../services/event-service";
 import {

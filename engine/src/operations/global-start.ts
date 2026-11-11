@@ -1,7 +1,5 @@
-import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
-import { DateTime, Effect, Schema } from "effect";
-
 import { routerEnabled } from "@lando/engine/config/router-config";
+import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 import {
   recordGlobalRouterStartupPlan,
   routerBackingServices,
@@ -11,7 +9,8 @@ import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 import { requireSelectableGlobalRouter } from "@lando/engine/operations/global-consumer-admission";
-
+import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
+import type { LoadGlobalPlanError } from "@lando/engine/operations/global-plan";
 import { reconcileGlobalSiblings } from "@lando/engine/operations/global-retained-plan";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
@@ -30,8 +29,8 @@ import type {
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
   ServiceNotReadyError,
+  ToolingExecError,
 } from "@lando/sdk/errors";
-import type { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import { StartAppResult } from "@lando/sdk/schema";
 import {
@@ -46,11 +45,9 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { DateTime, Effect, Schema } from "effect";
 import { prepareProvider } from "../providers/prepared.ts";
 import { globalAppRef, selectGlobalServices, withGlobalLifecycleEvents } from "./global-common";
-
-import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
-import type { LoadGlobalPlanError } from "@lando/engine/operations/global-plan";
 
 const now = () => DateTime.nowUnsafe();
 

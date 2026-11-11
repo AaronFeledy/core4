@@ -1,11 +1,11 @@
 import { Result } from "effect";
 import { optionValueMatchesDescriptor } from "../recipes/option-types.ts";
 import type { PromptValidate } from "./prompt.ts";
+import type { RecipePrompt } from "./recipe.ts";
 import type { RecipeOptionValue } from "./recipe-identity.ts";
 import type { RecipeOptionType } from "./recipe-snapshot.ts";
-import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 import type { RecipeSource, RecipeSourcePrompt } from "./recipe-source.ts";
-import type { RecipePrompt } from "./recipe.ts";
+import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 
 const validDescriptor = (type: RecipeOptionType): boolean => {
   switch (type.kind) {

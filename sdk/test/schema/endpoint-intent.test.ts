@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { BindAddress, EndpointInput, EndpointPlan, PortNumber, RoutePlan } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const decodeInput = Schema.decodeUnknownResult(EndpointInput, { onExcessProperty: "error" });
 const decodePlan = Schema.decodeUnknownResult(EndpointPlan, { onExcessProperty: "error" });

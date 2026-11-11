@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
 import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
-
-import { $ } from "bun";
-
 import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
+import { $ } from "bun";
 import {
   type DeprecationReleaseOffender,
   type DeprecationReleaseResult,

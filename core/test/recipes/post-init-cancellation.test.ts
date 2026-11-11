@@ -10,8 +10,10 @@ import { initApp } from "../../src/cli/commands/init";
 import { RecipeInitPostInitError } from "../../src/recipes/init-pipeline";
 import { runBoundPostInit } from "../../src/recipes/init-pipeline/post-init";
 import * as postInitRuntime from "../../src/recipes/post-init/runtime";
-import { createDefaultChoicesCommandRunner } from "../../src/recipes/prompts/choices-command";
-import { defaultChoicesCommandSpawner } from "../../src/recipes/prompts/choices-command";
+import {
+  createDefaultChoicesCommandRunner,
+  defaultChoicesCommandSpawner,
+} from "../../src/recipes/prompts/choices-command";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { prepareTestSource, testSource } from "./fixtures/prepared-source";
 

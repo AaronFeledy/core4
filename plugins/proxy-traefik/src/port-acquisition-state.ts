@@ -1,10 +1,13 @@
-import { Effect } from "effect";
-
 import { ProxyError } from "@lando/sdk/errors";
-
-import { foreignSocketProxyNotice } from "./socket-proxy-helper.ts";
-
+import { Effect } from "effect";
 import { occupiedHopNotices } from "./occupied-port-warning.ts";
+import {
+  type AcquisitionDecision,
+  DESIRED_HTTPS_PORT,
+  DESIRED_HTTP_PORT,
+  chooseHelperBindPorts,
+  isOurSocketHelperHolder,
+} from "./port-acquisition.ts";
 import {
   type ProbedAcquisition,
   classifyOrFail,
@@ -27,15 +30,9 @@ import {
   readAcquisitionState,
   writeAcquisitionState,
 } from "./port-acquisition-record.ts";
-import {
-  type AcquisitionDecision,
-  DESIRED_HTTPS_PORT,
-  DESIRED_HTTP_PORT,
-  chooseHelperBindPorts,
-  isOurSocketHelperHolder,
-} from "./port-acquisition.ts";
 import { routingStateFile } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { foreignSocketProxyNotice } from "./socket-proxy-helper.ts";
 import {
   classifySocketProxy,
   isSocketProxyInstalled,

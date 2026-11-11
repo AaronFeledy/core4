@@ -1,7 +1,4 @@
 import * as os from "node:os";
-
-import { type Context, Effect } from "effect";
-
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import {
   LandofileValidationError,
@@ -9,7 +6,8 @@ import {
   type PluginManifestError,
   ServiceTypeCollisionError,
 } from "@lando/sdk/errors";
-import type { LogSource, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
+import type { EndpointPlan, LogSource, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import type {
   PluginRegistry,
   ServiceType,
@@ -17,15 +15,14 @@ import type {
   ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
-
-import { validationIssue } from "@lando/sdk/schema";
-import type { EndpointPlan } from "@lando/sdk/schema";
+import { type Context, Effect } from "effect";
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
 import type { ApplicationConfig, PreparedServiceComposition } from "../services/feature-preparation.ts";
 import type { ServiceHomeIntent } from "./home.ts";
 import type { ServiceConfigSource } from "./service-config-files.ts";
+
 export { servicePlanError, serviceTypeCollision } from "./service-errors.ts";
 
 export type ContributionRef = string | { readonly id: string };

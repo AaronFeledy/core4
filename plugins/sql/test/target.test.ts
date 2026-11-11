@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
-
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import { Result } from "effect";
 
 import { resolveSqlTarget, sqlCandidates } from "../src/target.ts";
 

@@ -1,6 +1,5 @@
-import { Effect, Redacted } from "effect";
-
 import { type AppRouteOwner, type RoutePlan, certificateNameForHostname } from "@lando/sdk/schema";
+import { Effect, Redacted } from "effect";
 
 import {
   TRAEFIK_CONTAINER_CERTIFICATE_DIR,

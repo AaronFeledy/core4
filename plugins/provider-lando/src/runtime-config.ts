@@ -1,9 +1,7 @@
 import { chmod, lstat, mkdir, readFile } from "node:fs/promises";
-
-import { Effect } from "effect";
-
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
+import { Effect } from "effect";
 
 export interface WriteManagedRuntimeContainersConfOptions {
   readonly runtimeBinDir: string;

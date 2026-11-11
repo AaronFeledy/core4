@@ -3,11 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect } from "effect";
-
 import { sha256Hex } from "@lando/sdk/digest";
 import { ProcessRunner } from "@lando/sdk/services";
+import { Effect } from "effect";
 import {
   UpdateChecksumSignatureVerificationError,
   UpdateChecksumVerificationError,

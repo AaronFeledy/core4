@@ -7,11 +7,11 @@ import { serialize } from "node:v8";
 import { AbsolutePath, AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
 import { DateTime, Effect, Schema } from "effect";
 import { readCachedAppPlan } from "../../src/cache/app-plan.ts";
+import { decodeAppCommandIndex } from "../../src/cache/command-index.ts";
 import {
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
-import { decodeAppCommandIndex } from "../../src/cache/command-index.ts";
 import { appPlanCachePath, appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 

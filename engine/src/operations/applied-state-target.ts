@@ -1,6 +1,6 @@
 import { basename } from "node:path";
-import { Effect } from "effect";
-
+import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
@@ -16,9 +16,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { findAppRoot } from "@lando/landofile/discovery";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { Effect } from "effect";
 import {
   type ResolvedAppTarget,
   loadUserLandofileAt,

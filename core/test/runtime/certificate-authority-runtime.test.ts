@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 import { AmbiguousCertificateAuthoritiesError, NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { CertificateAuthority } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const authorityLayer = (id: string) =>

@@ -1,14 +1,12 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
-import { PortablePath } from "@lando/sdk/schema";
 import type { LandofileShape, ToolingDefaultsShape } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";

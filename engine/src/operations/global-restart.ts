@@ -1,17 +1,14 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
-import { Effect, Ref } from "effect";
-
-import type { ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
-import type { RouterService } from "@lando/sdk/services";
-
+import { globalCreateProviderId } from "@lando/engine/global-app/placement";
 import {
   type GlobalRouterStartupPlan,
   revalidateAppliedGlobalRouterStartup,
   withGlobalRouterStartupPlanObserver,
 } from "@lando/engine/global-app/router-admission";
-
-import { globalCreateProviderId } from "@lando/engine/global-app/placement";
 import { hasDebuggerConsumer } from "@lando/engine/subsystems/debugger-host";
+import type { ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
+import type { RouterService } from "@lando/sdk/services";
+import { Effect, Ref } from "effect";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { requireSelectableGlobalRouter } from "./global-consumer-admission";
 import { installAndLoadGlobalPlan } from "./global-install";

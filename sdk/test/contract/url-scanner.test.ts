@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { AppId, AppPlan } from "@lando/sdk/schema";
 import { ContractFailure, TestUrlScanner, makeTestUrlScanner, runScannerContract } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 describe("UrlScanner contract", () => {
   test("records options when a plan is passed to scan", async () => {

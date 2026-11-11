@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import { buildUninstallPlan, uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import type { ManagedProviderMachineClassification } from "@lando/engine/runtime/managed-provider-machine";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>

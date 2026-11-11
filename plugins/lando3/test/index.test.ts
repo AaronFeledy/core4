@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { testPorts } from "./fixtures/test-ports.ts";
-
 import { type Lando3TranslatorPorts, makeConfigTranslators, makeLando3Plugin } from "../src/index.ts";
+import { testPorts } from "./fixtures/test-ports.ts";
 
 const ports: Lando3TranslatorPorts = testPorts({ decomposers: new Map() });
 

@@ -1,13 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
-
-import { Cause, Effect, Exit, Fiber, Queue, Stream } from "effect";
-
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
-import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import type { ExecTarget, RuntimeProviderShape } from "@lando/sdk/services";
+import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Fiber, Queue, Stream } from "effect";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
 
 test("waits for an app-step dependency before dispatching its dependent", async () => {

@@ -1,19 +1,16 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Arbitrary, Effect, Option, Schema } from "effect";
-
 import { makeTestRuntime } from "@lando/core/testing";
 import type { AppConfigResult } from "@lando/engine/operations/app-config-result";
 import type { GlobalPolicyChangeResult } from "@lando/engine/operations/global-policy";
 import type { LogsAppResult } from "@lando/engine/operations/logs";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, LandofileShape, StreamFrame, TunnelSession } from "@lando/sdk/schema";
-
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Arbitrary, Effect, Option, Schema } from "effect";
 import { builtInCommandEntries, resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { compiledCommandTransportOptions } from "../../src/cli/compiled-runtime.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

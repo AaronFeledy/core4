@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
-
 import {
   type ContainerBuildHttpRequest,
   buildContainerArtifact,
@@ -20,6 +18,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("build-app");
@@ -310,7 +309,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
   const error = new ProviderUnavailableError({
     providerId,
     operation: "buildArtifact",
-    message: `/build?t=x&buildargs={\"TOKEN\":\"${rawSecret}\"}`,
+    message: `/build?t=x&buildargs={"TOKEN":"${rawSecret}"}`,
     details: { path: `/build?t=x&buildargs=%7B%22TOKEN%22%3A%22${encodedSecret}%22%7D` },
     remediation: "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
   });

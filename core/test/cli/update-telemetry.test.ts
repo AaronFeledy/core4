@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { update } from "@lando/engine/operations/update";
 import { LandoCommandError } from "@lando/sdk/errors";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
@@ -11,6 +8,7 @@ import {
   recordUpdateOutcomeTelemetry,
   updateOutcomeFromError,
 } from "@lando/telemetry/events";
+import { Cause, Effect, Exit } from "effect";
 
 const makeTelemetry = () => {
   const records: Array<{ readonly event: string; readonly data: Readonly<Record<string, unknown>> }> = [];

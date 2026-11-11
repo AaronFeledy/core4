@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { redisServiceType } from "../src/services/redis.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";

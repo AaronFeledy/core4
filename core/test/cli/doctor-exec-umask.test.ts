@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   EXEC_UMASK_CHECK_NAME,

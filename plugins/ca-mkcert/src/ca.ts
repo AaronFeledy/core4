@@ -17,7 +17,6 @@
  * removed whether issuance succeeds, fails, or is interrupted: the authority
  * keeps no copy.
  */
-import { type Context, Effect } from "effect";
 
 import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
@@ -30,6 +29,7 @@ import type {
 import { CertificateAuthority, Downloader } from "@lando/sdk/services";
 import { type ToolError, resolveHostKey } from "@lando/sdk/tool-provisioning";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { type Context, Effect } from "effect";
 
 import { makeIssueCert, makeIssueInto } from "./issuance.ts";
 import { CA_ID, type MkcertContext, caError, failureDetail, makeRunMkcert } from "./mkcert-command.ts";

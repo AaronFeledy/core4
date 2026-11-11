@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Stream } from "effect";
-
 import type { AppPlan } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
+import { Effect, Stream } from "effect";
 
 import {
   windowsStdinExec,

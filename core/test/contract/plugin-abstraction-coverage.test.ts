@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import ts from "@typescript/typescript6";
-
 import * as sdkTest from "@lando/sdk/test";
+import ts from "@typescript/typescript6";
 
 /**
  * Plugin contract-kit layer-coverage gate.

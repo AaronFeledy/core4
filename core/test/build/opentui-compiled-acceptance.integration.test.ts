@@ -3,7 +3,6 @@ import { copyFile, mkdir, mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
-import { removeAcceptanceRoot, withAcceptanceCleanup } from "./fixtures/opentui-acceptance-cleanup.ts";
 import {
   capturedTranscript,
   cleanEnv,
@@ -14,6 +13,7 @@ import {
   readProbe,
   scrubPtyNoise,
 } from "./fixtures/opentui-acceptance.ts";
+import { removeAcceptanceRoot, withAcceptanceCleanup } from "./fixtures/opentui-acceptance-cleanup.ts";
 import { runPrompt } from "./fixtures/opentui-prompt.ts";
 
 const binaryPath = process.env.LANDO_OPENTUI_ACCEPTANCE_BINARY;

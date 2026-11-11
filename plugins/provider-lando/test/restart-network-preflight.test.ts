@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   CREATE_CONFIG_LABEL,
   retainCreateArtifactIdentity,
@@ -18,6 +16,7 @@ import {
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import { windowsMachineNetworkPlan } from "../src/windows-machine-network.ts";
 

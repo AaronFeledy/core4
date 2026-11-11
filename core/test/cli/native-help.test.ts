@@ -1,11 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { Effect } from "effect";
 import { suggestCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
 import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
 import { metaEventsFollowSpec } from "../../src/cli/command-specs/meta/events/follow.ts";

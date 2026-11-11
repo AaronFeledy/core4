@@ -1,18 +1,15 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { APP_CONFIG_MCP_UNSAFE_IDS } from "@lando/mcp/allowlist";
+import type { McpCommandEntry } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { runCli } from "../../../../src/cli/index.ts";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Result } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-
-import { APP_CONFIG_MCP_UNSAFE_IDS } from "@lando/mcp/allowlist";
-import type { McpCommandEntry } from "@lando/mcp/registry";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 import { BuiltInCommandCatalog } from "../../../../src/cli/built-in-command-catalog-service.ts";
 import { builtInCommandEntries } from "../../../../src/cli/built-in-command-registry.ts";
 import { metaMcpSpec } from "../../../../src/cli/command-specs/meta/mcp.ts";
@@ -26,6 +23,7 @@ import {
   resolveMcpOptions,
   validateMcpAllowlistIds,
 } from "../../../../src/cli/commands/meta/mcp.ts";
+import { runCli } from "../../../../src/cli/index.ts";
 
 const entry = (id: string, summary: string): McpCommandEntry => ({
   spec: { id, summary } as McpCommandEntry["spec"],

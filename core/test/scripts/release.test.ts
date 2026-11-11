@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { UpdateManifestSchema } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { buildUpdateManifest, updateChannelForReleaseVersion } from "../../../scripts/build-update-manifest";
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";

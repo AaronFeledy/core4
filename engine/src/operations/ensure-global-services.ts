@@ -1,10 +1,10 @@
-import { DateTime, Effect, Exit } from "effect";
-import { type GlobalMutationServices, withGlobalMutation } from "../global-app/mutation.ts";
-
 import type {
+  DebuggerHostUnavailableError,
+  EnvironmentValueResolutionError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  PlanReplanRequiredError,
   PluginManifestError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
@@ -15,6 +15,7 @@ import type {
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   type AppPlanner,
   type BuildError,
@@ -25,13 +26,7 @@ import {
   type PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import type {
-  DebuggerHostUnavailableError,
-  EnvironmentValueResolutionError,
-  PlanReplanRequiredError,
-} from "@lando/sdk/errors";
-import type { EnvironmentValueResolver } from "@lando/sdk/services";
+import { DateTime, Effect, Exit } from "effect";
 import {
   captureGlobalEnsureInputs,
   forgetGlobalEnsure,
@@ -40,6 +35,7 @@ import {
   observeWarmGlobalServices,
   rememberGlobalEnsure,
 } from "../global-app/ensure-cache.ts";
+import { type GlobalMutationServices, withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { captureGlobalStartupAdmission } from "../global-app/startup-admission.ts";

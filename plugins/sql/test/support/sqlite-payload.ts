@@ -11,10 +11,7 @@ import type { SqlCommandDeps } from "../../src/command-types.ts";
 import { makeSqlTestDeps } from "./fakes.ts";
 
 export const sqlitePayloadFixture = async (
-  options: {
-    readonly integrity?: string;
-    readonly exists?: boolean;
-  } = {},
+  options: { readonly integrity?: string; readonly exists?: boolean } = {},
 ) => {
   const harness = makeSqlTestDeps({ password: "secret", initiallyRunning: false });
   const stateStore = await Effect.runPromise(StateStore.pipe(Effect.provide(DiskStateStore.layer)));

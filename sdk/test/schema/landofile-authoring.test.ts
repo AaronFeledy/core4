@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { override, reset } from "@lando/sdk/landofile";
-import { getJsonSchema } from "@lando/sdk/schema";
 import * as Public from "@lando/sdk/schema";
+import { getJsonSchema } from "@lando/sdk/schema";
 import { SchemaAST as AST, Effect, Result, Schema, SchemaTransformation } from "effect";
 
 // ==== AST derivation contracts

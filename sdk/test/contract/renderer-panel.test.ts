@@ -1,14 +1,12 @@
-import { join } from "node:path";
-
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
-
+import { join } from "node:path";
 import {
   PANEL_RESPONSE_MAX_BYTES,
   decodePanelView,
   encodePanelView,
   runRendererPanelContract,
 } from "@lando/sdk/test";
+import { Effect, Exit } from "effect";
 
 const fixturesDir = join(import.meta.dir, "../fixtures/panels");
 

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { emitLandofileYamlEither, parseLandofile } from "@lando/sdk/landofile";
 import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragment } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { lando4ConfigTranslator } from "../src/translator.ts";
 

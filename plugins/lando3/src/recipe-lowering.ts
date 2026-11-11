@@ -18,9 +18,9 @@ import {
   unsupportedRecipe,
 } from "./diagnostics.ts";
 import { type LegacyPrefixView, requiredOptionViews } from "./effective-views.ts";
+import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { replayDecodedDeltas } from "./layer-delta-replay.ts";
 import { equal, record, sorted } from "./layer-delta-values.ts";
-import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
 import type { LoweredServicePrefix } from "./service-lowering.ts";

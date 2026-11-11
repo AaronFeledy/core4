@@ -1,11 +1,10 @@
-import { Flags } from "../../../spec/metadata";
-
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
 import { ConfigLintResult } from "@lando/sdk/schema";
 import type { PluginRegistry } from "@lando/sdk/services";
 import type { Effect } from "effect";
 import { renderConfigLintResult } from "../../../commands/app-config-lint";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const appConfigLintSpec: LandoCommandSpec<
   ConfigLintResult,

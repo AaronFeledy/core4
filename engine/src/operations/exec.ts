@@ -1,5 +1,3 @@
-import { Effect, type Option, type Stream } from "effect";
-
 import type { ExecAppOptions, ExecAppResult, ExecAppError as SdkExecAppError } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
@@ -17,12 +15,13 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { HostExecutionDefaults } from "../services/host-execution-context.ts";
+import { Effect, type Option, type Stream } from "effect";
+import { withAgentContextEnv } from "../config/agent-env.ts";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
-import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";

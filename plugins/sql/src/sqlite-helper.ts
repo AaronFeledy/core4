@@ -18,8 +18,8 @@ import type { SqlPlanService } from "./views.ts";
 export {
   copyHostFile,
   hostFileSize,
-  requireSqliteDatabaseHeader,
   removeSqliteHelperScratch,
+  requireSqliteDatabaseHeader,
   sqliteScratchFile,
 } from "./sqlite-helper-files.ts";
 export { runSqliteHelper } from "./sqlite-helper-run.ts";

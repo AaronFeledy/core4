@@ -1,4 +1,5 @@
 import { sha256Hex } from "@lando/sdk/digest";
+
 export { normalizeAppSlug } from "@lando/sdk/schema";
 
 export const DEFAULT_PROXY_DOMAIN = "lndo.site";

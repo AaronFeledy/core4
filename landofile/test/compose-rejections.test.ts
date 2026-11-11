@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
-
 import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
   override,
 } from "@lando/sdk/landofile";
+import { LandofileShape } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { compileDispositionTrie, matchDispositionPath } from "../src/compose/rejection-trie.ts";
 import {
   analyzeComposeRejections,
@@ -361,4 +359,5 @@ describe("Compose rejection analysis", () => {
     expect(error.filePath).toBe("/tabs.yml");
   });
 });
+
 import { parseLandofile, reset } from "@lando/sdk/landofile";

@@ -1,6 +1,6 @@
 import type { ProcessRunner } from "@lando/sdk/services";
-import { Effect } from "effect";
 import type { Context } from "effect";
+import { Effect } from "effect";
 import { type PrivateFileAccess, PrivateFileAccessService } from "../src/private-file-access.ts";
 
 type PrivateFileAccessProcessRunner = Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;

@@ -1,6 +1,5 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
-
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 
 import { windowsBindWorkerIdentity } from "../src/services/php-via.ts";
 

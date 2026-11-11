@@ -10,8 +10,8 @@ import {
 } from "@lando/source-acquisition/gc";
 import { Effect, Schema } from "effect";
 
-export { SourceGcReportSchema as SourceGcReportResultSchema };
 export type { SourceGcReport };
+export { SourceGcReportSchema as SourceGcReportResultSchema };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

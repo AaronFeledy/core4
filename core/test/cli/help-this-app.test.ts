@@ -1,11 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { Effect } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -21,6 +19,7 @@ import {
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";

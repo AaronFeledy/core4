@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 

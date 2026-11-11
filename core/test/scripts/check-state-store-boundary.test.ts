@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { stateStoreRule } from "../../../scripts/boundary/rules/state-store.ts";
 import { checkStateStoreBoundary } from "../../../scripts/check-state-store-boundary.ts";

@@ -6,8 +6,8 @@ import { readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { expectInvalidMarkers } from "./guides/fixture-marker.ts";
-import { lintYamlDocument } from "./lint-guides-yaml-fence.ts";
 import type { GuideFixtureInventoryEntry, GuideLintDiagnostic } from "./lint-guides.ts";
+import { lintYamlDocument } from "./lint-guides-yaml-fence.ts";
 
 const FIXTURE_FULL_NAMES = new Set([".lando.yml", ".lando.yaml"]);
 const FIXTURE_FRAGMENT_PATTERN = /^\.lando\..+\.ya?ml$/i;

@@ -202,6 +202,10 @@ const resolveCell = (
         case "Inline":
         case "UseFixture":
           return component;
+        default: {
+          const exhaustive: never = component;
+          return exhaustive;
+        }
       }
     }),
   });

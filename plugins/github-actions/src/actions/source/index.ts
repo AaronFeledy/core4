@@ -1,13 +1,13 @@
+export { cacheVerifiedSource, loadCachedSource } from "./cache.ts";
 export { ActionSourceError } from "./errors.ts";
+export type { FixtureFile, SourceReceipt, TrustedSourceManifest, VerifiedActionSource } from "./fixture.ts";
 export {
-  sourceCapabilities,
   sourceCacheIdentity,
+  sourceCapabilities,
   sourceLimits,
   verifyFixtureSource,
 } from "./fixture.ts";
-export type { FixtureFile, SourceReceipt, TrustedSourceManifest, VerifiedActionSource } from "./fixture.ts";
 export { loadActionMetadata } from "./metadata.ts";
-export { parseActionReference, resolveFixtureReference } from "./reference.ts";
 export type {
   ActionReference,
   ActionSourcePolicy,
@@ -17,4 +17,4 @@ export type {
   ResolvedRepositoryReference,
   TrustedFixtureResolution,
 } from "./reference.ts";
-export { cacheVerifiedSource, loadCachedSource } from "./cache.ts";
+export { parseActionReference, resolveFixtureReference } from "./reference.ts";

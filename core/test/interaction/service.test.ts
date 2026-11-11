@@ -1,15 +1,11 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
 import { ReadStream } from "node:tty";
-
-import { afterEach, describe, expect, test } from "bun:test";
-
-import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted, type Scope } from "effect";
-
-import { ChoicesUnavailableError } from "@lando/sdk/errors";
-import { Logger, Renderer } from "@lando/sdk/services";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
+import { ChoicesUnavailableError } from "@lando/sdk/errors";
+import { Logger, Renderer } from "@lando/sdk/services";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted, type Scope } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { resetInteractivePromptDegradationForTest } from "../../src/interaction/interactive-driver.ts";
 import {

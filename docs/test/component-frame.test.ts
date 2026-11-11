@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { afterEach, describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { componentFramePropsFor } from "../src/components/component-frame.ts";
 

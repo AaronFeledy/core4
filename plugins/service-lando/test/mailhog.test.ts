@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Option, Schema } from "effect";
+import type { DeprecationUse } from "@lando/sdk/schema";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import type { DeprecationUse } from "@lando/sdk/schema";
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
 import type { DeprecationSummaryEntry, ServiceType } from "@lando/sdk/services";
 import { DeprecationService } from "@lando/sdk/services";
+import { Effect, Layer, Option, Schema } from "effect";
 import {
   MAILHOG_FEATURE_ID,
   MAILHOG_IMAGE,

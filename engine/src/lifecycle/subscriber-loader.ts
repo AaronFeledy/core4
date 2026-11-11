@@ -1,9 +1,8 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
-import { Effect, Predicate } from "effect";
-import type { Scope } from "effect";
-
 import { type EventError, PluginLoadError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
+import type { Scope } from "effect";
+import { Effect, Predicate } from "effect";
 import type { LandoPluginContext } from "../plugins/context.ts";
 
 import type { IndexedSubscriber } from "./subscriber-index.ts";

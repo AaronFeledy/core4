@@ -1,8 +1,7 @@
-import { DateTime, Effect } from "effect";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
-
-import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
+import { DateTime, Effect } from "effect";
 import { renderDoctorResultAsNdjson } from "./doctor";
 import { renderGlobalAppDoctorResultAsNdjson } from "./doctor-global-app";
 import { renderMcpDoctorResultAsNdjson } from "./doctor-mcp";

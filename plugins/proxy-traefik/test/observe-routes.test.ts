@@ -3,8 +3,8 @@ import { Effect } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { HttpClientError, TransportError } from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import {
   acquisition,
   app,

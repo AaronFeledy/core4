@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { TestClock } from "effect/testing";
-
-import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -11,6 +7,9 @@ import { RedactionService } from "@lando/redaction/service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
+import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
 import {
@@ -18,7 +17,6 @@ import {
   collectDoctorReport,
   doctorReport,
 } from "../../src/cli/commands/doctor-report.ts";
-import { doctor } from "../../src/cli/commands/doctor.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer";
 
 /**

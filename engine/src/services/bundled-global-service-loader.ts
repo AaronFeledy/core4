@@ -1,4 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
+import { GlobalAppError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { ServiceConfig } from "@lando/sdk/schema";
 /**
  * Bundled-first global-service module loader.
  *
@@ -18,10 +21,6 @@ import { mapFailures } from "@lando/sdk/command-result";
  * dynamic-import loader.
  */
 import { Effect, Schema } from "effect";
-
-import { GlobalAppError } from "@lando/sdk/errors";
-import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { ServiceConfig } from "@lando/sdk/schema";
 
 import { bundledPluginModules } from "../composition.ts";
 import {

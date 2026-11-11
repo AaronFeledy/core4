@@ -15,9 +15,9 @@ import { Effect, Schema } from "effect";
 import { TRAEFIK_DIAGNOSTICS_ID } from "../diagnostics.ts";
 import { AcquisitionState } from "../port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../ports.ts";
+import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
 import { acquisitionStateFile } from "../proxy-paths.ts";
 import type { ProxyPaths } from "../proxy-types.ts";
-import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
 import {
   DEFAULT_ROUTER_BIND_ADDRESS,
   normalizeRouterBindAddress,

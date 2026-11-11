@@ -1,9 +1,8 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import corePackage from "../../package.json";
 import { buildCliBundle } from "./cli-bundle.ts";

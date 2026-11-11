@@ -1,6 +1,3 @@
-import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
-import { Args, Flags } from "../../../spec/metadata";
-
 import type { ScratchHandle } from "@lando/sdk/services";
 import {
   ScratchHandleResultSchema,
@@ -9,7 +6,9 @@ import {
   scratchIdFromInput,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 
 export const keepVolumesFromInput = (input: unknown): boolean =>
   booleanFlag(specFlagsOf(input), "keep-volumes");

@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { type AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
 import { Effect, Exit, Schema, Stream } from "effect";
-
-import { serviceContainerName } from "@lando/container-runtime/plan";
 
 import {
   type LiveAppLifecycle,

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option, Schema } from "effect";
-
 import { AppFeatureSelectorMatchedNothingError, PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import {
   type Environment,
@@ -16,6 +14,7 @@ import type {
   AppFeatureServiceView,
   ServiceType,
 } from "@lando/sdk/services";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";

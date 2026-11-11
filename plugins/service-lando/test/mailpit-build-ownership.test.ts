@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { AppFeatureMutationConflictError, MailpitMsmtpBaseFamilyError } from "@lando/sdk/errors";
 import { ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -8,9 +6,10 @@ import type {
   AppFeatureServiceMutators,
   AppFeatureServiceView,
 } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { mailpitWireFeature } from "../src/app-features/mailpit.ts";
-import { PHP_RUNTIME_POLICY_KEY } from "../src/services/php-runtime-policy.ts";
 import { PHP_FEATURE_ID } from "../src/services/php.ts";
+import { PHP_RUNTIME_POLICY_KEY } from "../src/services/php-runtime-policy.ts";
 import { phpResolution } from "./support/php-resolution.ts";
 
 const view = (serviceName: string, input: Readonly<Record<string, unknown>>): AppFeatureServiceView => {

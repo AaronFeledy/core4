@@ -1,8 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -16,6 +12,7 @@ import {
   ProviderId,
   appIdentityKey,
 } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -27,8 +24,10 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";

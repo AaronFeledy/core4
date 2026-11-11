@@ -1,10 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import type { ListenerObservation } from "@lando/sdk/schema";
-import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
-import { PROVIDER_LABEL } from "../labels.ts";
-import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
-import { observeTcpListener } from "../listener-observation.ts";
-
 import {
   EnvironmentValueResolutionError,
   PlanReplanRequiredError,
@@ -15,6 +9,7 @@ import {
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
+import type { ListenerObservation, VolumeCreationFact } from "@lando/sdk/schema";
 import {
   type AppPlan,
   type AppRef,
@@ -29,8 +24,7 @@ import {
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
-
-import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
@@ -50,6 +44,9 @@ import {
   validateHealthcheckExecution,
 } from "../healthcheck-attempt.ts";
 import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
+import { PROVIDER_LABEL } from "../labels.ts";
+import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
+import { observeTcpListener } from "../listener-observation.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,

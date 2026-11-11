@@ -6,10 +6,10 @@
  * runtime create a missing source: a missing file fails instead of turning
  * into an empty directory inside the container.
  */
-import { Effect, Schema } from "effect";
 
 import { CertificateName, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 const LANDO_CERTS_FEATURE_ID = "lando.certs" as const;
 const LANDO_CERTS_FEATURE_PRIORITY = 1000;

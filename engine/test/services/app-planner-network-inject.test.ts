@@ -1,23 +1,18 @@
+import { expect, test } from "bun:test";
 import { createHash as createNodeHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
-
-import { testCaPem } from "@lando/sdk/test";
+import { TestRuntimeProvider, testCaPem } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
-
-import { TestRuntimeProvider } from "@lando/sdk/test";
 
 const PEM_INDEX = { global: 1, project: 0, inline: 2, outside: 3 } as const;
 const PEM = (name: keyof typeof PEM_INDEX): string => testCaPem(PEM_INDEX[name]);

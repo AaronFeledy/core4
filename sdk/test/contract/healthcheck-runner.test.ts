@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import {
   ContractFailure,
@@ -8,6 +6,7 @@ import {
   makeTestHealthcheckRunner,
   runHealthcheckContract,
 } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 describe("HealthcheckRunner contract", () => {
   test("TestHealthcheckRunner satisfies runHealthcheckContract", async () => {

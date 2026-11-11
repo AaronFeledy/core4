@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Context, Effect, Layer, Result } from "effect";
-
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { AppId, appIdentityKey } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService } from "@lando/sdk/services";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 

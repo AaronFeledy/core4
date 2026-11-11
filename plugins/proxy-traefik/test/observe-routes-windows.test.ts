@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import {
   acquisitionStateFile,
   appCertificateFiles,
@@ -9,7 +10,6 @@ import {
   defaultTlsFile,
   routeFile,
 } from "../src/proxy-paths.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acknowledge, routeReloadDigest } from "../src/route-reload-state.ts";
 import { renderTraefikDynamicConfig } from "../src/routing.ts";
 import { acquisition, app, makeAckStore, makeObserveFixture, route } from "./observe-routes-fixture.ts";

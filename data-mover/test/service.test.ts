@@ -1,24 +1,8 @@
+import { describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import { describe, expect, spyOn, test } from "bun:test";
-import {
-  Cause,
-  Context,
-  Deferred,
-  Effect,
-  Fiber,
-  Layer,
-  Option,
-  Queue,
-  Schema,
-  type Scope,
-  Stream,
-} from "effect";
-import { TestClock } from "effect/testing";
-
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
@@ -70,11 +54,26 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
+import { TestClock } from "effect/testing";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 import { makeDataMoverService } from "../src/service.ts";
 import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
@@ -3096,11 +3095,7 @@ describe("DataMover helpers", () => {
 });
 
 describe("BunDataMover.layer hostPath -> hostPath directory transfers", () => {
-  const countingProviderLayer = (counters: {
-    pullArtifact: number;
-    run: number;
-    runStream: number;
-  }) =>
+  const countingProviderLayer = (counters: { pullArtifact: number; run: number; runStream: number }) =>
     Layer.succeed(
       RuntimeProvider,
       RuntimeProvider.of({

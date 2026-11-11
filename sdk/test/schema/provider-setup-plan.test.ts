@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { ProviderSetupConsentDeniedError } from "@lando/sdk/errors";
 import { ProviderId, ProviderSetupPlan } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("ProviderSetupPlan", () => {
   test("round-trips the closed Ubuntu 26.04 uidmap change", () => {

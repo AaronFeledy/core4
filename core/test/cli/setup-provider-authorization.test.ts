@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import { ProviderId, type ProviderSetupPlan } from "@lando/sdk/schema";
 import type { InteractionServiceShape } from "@lando/sdk/services";
+import { Cause, Effect } from "effect";
 import { authorizeProviderSetupPlan } from "../../src/cli/command-specs/meta/setup-provider-authorization.ts";
 
 const plan: ProviderSetupPlan = {

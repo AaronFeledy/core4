@@ -1,7 +1,3 @@
-import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-import { Args, Flags } from "../../spec/metadata";
-
 import {
   type ExecAppError,
   type ExecAppServices,
@@ -9,7 +5,9 @@ import {
   execAppRedactionTokens,
 } from "@lando/engine/operations/exec";
 import { isStdioRendererIO } from "@lando/renderer/io";
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { wordsBeforeSeparator } from "../../command-tail";
 import { renderExecAppResult } from "../../commands/exec";
@@ -18,6 +16,7 @@ import { isEnvelopeResultFormat } from "../../format-flags";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Args, Flags } from "../../spec/metadata";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
   typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";

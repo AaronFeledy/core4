@@ -1,5 +1,3 @@
-import { Schema } from "effect";
-
 import {
   HostProxyAuthenticationError,
   HostProxyBackpressureError,
@@ -7,6 +5,7 @@ import {
   HostProxyRecursionError,
   HostProxyTransportUnavailableError,
 } from "@lando/sdk/errors";
+import { Schema } from "effect";
 
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
 import { HOST_PROXY_MAX_FRAME_BYTES, type WireResponse } from "./transport-wire.ts";

@@ -1,15 +1,14 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { mapFailures } from "@lando/sdk/command-result";
-import { type Context, DateTime, Duration, Effect, Stream } from "effect";
-
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import type { FileSyncDisposalPhase, FileSyncSessionSpec, FileSyncSessionStatus } from "@lando/sdk/schema";
 import type { ProcessResult, ProcessRunner, StateBucket } from "@lando/sdk/services";
+import { type Context, DateTime, Duration, Effect, Stream } from "effect";
 
 import type { MutagenClient, MutagenSessionRecord } from "./mutagen-client.ts";
 import { mutagenHostInstallPath, readInstalledMutagenStatus } from "./provision.ts";
@@ -382,7 +381,7 @@ const statusOf = (session: InspectedSession): FileSyncSessionStatus =>
         (session.beta.scanProblems?.length ?? 0) > 0 ||
         (session.alpha.transitionProblems?.length ?? 0) > 0 ||
         (session.beta.transitionProblems?.length ?? 0) > 0 ||
-        !!session.lastError ||
+        session.lastError ||
         !activeStatuses.has(session.status)
       ? "errored"
       : "running";

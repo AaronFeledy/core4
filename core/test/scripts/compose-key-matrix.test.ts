@@ -1,8 +1,4 @@
 import { expect, test } from "bun:test";
-import remarkMdx from "remark-mdx";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
-
 import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
@@ -10,6 +6,9 @@ import {
   composeTagDispositions,
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
+import remarkMdx from "remark-mdx";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import {
   ComposeKeyMatrixError,
   assertMatrixInvariants,

@@ -146,6 +146,7 @@ const makeFixture = async (
         Effect.andThen(planScratchRegistryWrite(entries.get(write[1].id), ...write)),
         Effect.map((plan) => {
           if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+          return undefined;
         }),
       ),
     remove: (id) =>

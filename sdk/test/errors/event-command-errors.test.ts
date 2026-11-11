@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { CommandInputValidationError, CommandStdioError, ToolingCommandLookupError } from "@lando/sdk/errors";
+import { Result, Schema } from "effect";
 
 describe("CommandStdioError", () => {
   test("preserves stream refusal and read diagnostics through the public schema", () => {

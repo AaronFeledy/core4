@@ -2,16 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Schema } from "effect";
-
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import { makeUnavailableRouter } from "@lando/engine/subsystems/proxy/api";
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyError } from "@lando/sdk/errors";
 import { StreamFrame } from "@lando/sdk/schema";
 import { PathsService, RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
-
-import * as BunFileSystem from "@lando/engine/services/file-system";
-import { makeUnavailableRouter } from "@lando/engine/subsystems/proxy/api";
+import { Effect, Layer, Schema } from "effect";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";

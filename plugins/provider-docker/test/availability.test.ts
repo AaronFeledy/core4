@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import {
   dockerApiVersionUnavailable,
   negotiateDockerApiVersion,
 } from "@lando/container-runtime/docker/api-version";
 import { layer as makeProviderLayer } from "@lando/provider-docker";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 describe("provider-docker isAvailable", () => {
   test("reports available when the Docker daemon responds to /info", async () => {

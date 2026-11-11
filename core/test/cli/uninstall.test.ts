@@ -3,9 +3,6 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import { Effect, Layer } from "effect";
-
 import {
   type DiscoveredApp,
   buildUninstallPlan,
@@ -14,6 +11,7 @@ import {
 } from "@lando/engine/operations/uninstall";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer } from "effect";
 import {
   metaUninstallSpec as declarativeUninstallSpec,
   uninstallOptionsFromInput,

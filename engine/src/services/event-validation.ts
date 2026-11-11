@@ -1,9 +1,8 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Cause, Effect, Schema } from "effect";
-
 import { EventError } from "@lando/sdk/errors";
 import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { EventWaitSpec, LandoEvent } from "@lando/sdk/services";
+import { Cause, Effect, Schema } from "effect";
 
 export const eventError = (event: string, message: string, cause?: unknown): EventError =>
   new EventError({

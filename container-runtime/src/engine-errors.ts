@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { ServiceSelector } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { redactDetails, redactResponseDetails, redactString, redactorFor, withApiReason } from "./redact.ts";

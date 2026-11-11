@@ -1,10 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Predicate } from "effect";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 type LaneId = "goal" | "qa" | "code-quality" | "security" | "context-history";
 type InconclusiveClass = "timeout" | "empty-output" | "instructions-only" | "no-repo-access";

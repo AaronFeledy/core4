@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { GlobalConfig, ProxyConfig } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const decodeDefault = Schema.decodeUnknownSync(GlobalConfig);
 const decodeStrict = Schema.decodeUnknownSync(GlobalConfig, { onExcessProperty: "error" });

@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { LANDO4_TRANSLATOR_ID, configTranslators } from "@lando/lando4";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { createStandaloneRedactor } from "@lando/redaction/service";
@@ -10,11 +9,11 @@ import type { ConfigTranslateError, RecipeDecomposeError } from "@lando/sdk/erro
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
-
+import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: drupalDecomposer,
   defaults: drupalDefaults,

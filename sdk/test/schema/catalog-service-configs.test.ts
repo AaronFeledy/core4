@@ -14,6 +14,7 @@ import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
+import { Schema } from "effect";
 
 const strictDecode = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown) =>
   Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);

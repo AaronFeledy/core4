@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Layer } from "effect";
-
 import { isLocalProbeHost } from "@lando/http-client/local-ca-trust";
 import { CertificateAuthority } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import { LOCAL_CA_UNTRUSTED_CODE, layer, warnIfLocalCaUntrusted } from "../../src/http/local-ca-trust.ts";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";

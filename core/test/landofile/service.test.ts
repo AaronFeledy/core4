@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileService } from "@lando/core/services";
+import { Cause, Effect, Exit } from "effect";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {

@@ -1,5 +1,3 @@
-import { DateTime, Effect, Result, Schema } from "effect";
-
 import { TunnelTargetUnresolvedError } from "@lando/sdk/errors";
 import { type DownloadRequest, type TunnelSession, TunnelTarget } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
@@ -12,6 +10,7 @@ import type {
   TunnelServiceProbeRecord,
   TunnelServiceToolProvisionRecord,
 } from "@lando/sdk/test";
+import { DateTime, Effect, Result, Schema } from "effect";
 
 const TUNNEL_SECRET = "TUNNEL-CONTRACT-SECRET-7f2e";
 const TIMESTAMP = DateTime.makeUnsafe("2026-06-01T00:00:00.000Z");

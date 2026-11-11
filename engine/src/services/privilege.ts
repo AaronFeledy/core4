@@ -1,9 +1,7 @@
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
 import type { ProcessResult } from "@lando/sdk/services";
 import { PrivilegeService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 interface PrivilegeSpawnOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;

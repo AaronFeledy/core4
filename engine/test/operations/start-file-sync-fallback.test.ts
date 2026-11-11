@@ -1,12 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { provideFileSyncEngine } from "../file-sync-engine.ts";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
-
 import { containerHostConfigFragment } from "@lando/container-runtime/plan";
 import {
   EventError,
@@ -31,11 +27,12 @@ import {
 } from "@lando/sdk/schema";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
-
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
 import { readJournal, readPendingAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import { resolveFileSyncMountPlan } from "../../src/operations/file-sync-plan.ts";
-import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { makeHarness, plan, runStart, web } from "./start-progress-topology-support.ts";
 
 const acceleratedService: ServicePlan = {

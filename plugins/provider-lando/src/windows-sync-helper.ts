@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { decodeImageInspectDigest, parseImageReference } from "@lando/container-runtime/dialect";
+import {
+  type EngineHttpRequest,
+  type PodmanApiClient,
+  buildContainerRemoveRequest,
+} from "@lando/container-runtime/engine-api";
 import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
 import {
   buildVolumePruneRequest,
@@ -7,19 +12,12 @@ import {
 } from "@lando/container-runtime/podman/volume-prune";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { Duration, Effect, Predicate } from "effect";
-import { changeReceipt, openReceipt, stateFailure } from "./windows-sync-helper-receipt.ts";
-
-import {
-  type EngineHttpRequest,
-  type PodmanApiClient,
-  buildContainerRemoveRequest,
-} from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import { fileSyncVolumeName } from "@lando/sdk/schema";
+import { Duration, Effect, Predicate } from "effect";
+import { changeReceipt, openReceipt, stateFailure } from "./windows-sync-helper-receipt.ts";
 
 const TARGET_PATH = "/sync";
 const ENTRYPOINT = ["sh", "-c"] as const;

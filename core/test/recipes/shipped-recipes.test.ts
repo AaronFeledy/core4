@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { decomposeBuiltinRecipe } from "../_support/recipe-output.ts";

@@ -1,9 +1,8 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { mergeAppliedPlan } from "./plan.ts";
 

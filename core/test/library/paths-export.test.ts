@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import corePackage from "../../package.json";
 

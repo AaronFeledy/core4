@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import {
   InvalidPodmanMachineNameError,
   UnsupportedPodmanSocketError,
@@ -15,6 +13,7 @@ import {
 } from "@lando/provider-podman";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
+import { Cause, Effect } from "effect";
 
 const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "agentSocket", "fileSyncTargets"];
 

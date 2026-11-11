@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { type PodmanMachineRunner, setupProviderLando } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 import {
   type MachineSpawnResult,

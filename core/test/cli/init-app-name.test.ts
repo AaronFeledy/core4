@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { RecipePrompt } from "@lando/sdk/schema";
-
-import { appNamePromptChrome } from "../../src/cli/commands/init-app-name-chrome.ts";
 import { defaultAppNameFromCwd, withAppNameDefault } from "../../src/cli/commands/init-app-name.ts";
+import { appNamePromptChrome } from "../../src/cli/commands/init-app-name-chrome.ts";
 
 describe("defaultAppNameFromCwd", () => {
   test("uses a kebab-case folder name as-is", () => {

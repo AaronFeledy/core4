@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-import { Result, Schema } from "effect";
-
-import { BuildBlock } from "@lando/sdk/schema";
-
 import { composeServiceDispositions } from "@lando/sdk/landofile";
+import { BuildBlock } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue } from "effect";
 
 const supportedBuildKeys = ["args", "context", "dockerfile", "dockerfile_inline", "target"] as const;
 const decodeOptions = [{}, { onExcessProperty: "error" }] as const;

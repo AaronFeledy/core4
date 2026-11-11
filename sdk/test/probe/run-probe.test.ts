@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Duration, Effect, Fiber, Schema } from "effect";
-import { TestClock } from "effect/testing";
-
 import {
   type ClassifyFn,
   ProbeError,
@@ -14,6 +11,8 @@ import {
   runProbe,
   toSchedule,
 } from "@lando/sdk/probe";
+import { Cause, Duration, Effect, Fiber, Schema } from "effect";
+import { TestClock } from "effect/testing";
 
 const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(TestClock.layer())));

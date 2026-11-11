@@ -173,8 +173,8 @@ ${landoRootlessPrereqSteps}
       - name: Prepare provider via lando setup against the published manifest
         run: |
           test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
-          mkdir -p "\$XDG_RUNTIME_DIR"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
           dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
       - name: Verify the published bundle downloaded, verified, and installed
@@ -434,7 +434,7 @@ ${regenerateDerivedSourcesStep}
           test -n "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_URL:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_SHA256:-}"
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
           dist/${linuxArm64.binaryName} setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
@@ -462,7 +462,7 @@ ${regenerateDerivedSourcesStep}
             '  if test -n "$XDG_FROM_LAUNCH"; then export XDG_RUNTIME_DIR="$XDG_FROM_LAUNCH"; fi' \
             'fi' \
             "export CONTAINERS_CONF=\\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\\"" \
-            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\\"\\$@\\\"" \
+            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\"\\$@\\"" \
             > "$wrapper"
           chmod 0755 "$wrapper"
           case "$wrapper" in /*) ;; *) echo "wrapper must be absolute" >&2; exit 1 ;; esac

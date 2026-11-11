@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import type { ScratchSummary } from "@lando/sdk/services";
 import {
   ScratchListResultSchema,
@@ -8,6 +6,7 @@ import {
   scratchListFormatFromInput,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>> = {
   resultSchema: ScratchListResultSchema,

@@ -2,16 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
-import { rememberLocalIncludePaths } from "@lando/landofile/include-provenance";
-import { ServiceName } from "@lando/sdk/schema";
-
 import {
   invalidateAppToolingCaches,
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
+
+import { rememberLocalIncludePaths } from "@lando/landofile/include-provenance";
+import { ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-command-index-writer-"));

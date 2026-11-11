@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { RecipeManifestParseError, RecipeManifestValidationError } from "@lando/sdk/errors";
 import { parseLandofile } from "@lando/sdk/landofile";
+import { Cause, Effect, Exit } from "effect";
 
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { source: nodePostgresRecipeSource, manifest: nodePostgresRecipeManifest } =
   bundledRecipe("node-postgres");
+
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 import { validateRecipeManifestObject } from "../../src/recipes/manifest/service.ts";
 

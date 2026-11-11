@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { Effect, Exit } from "effect";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   decodeProviderCapabilities,
@@ -15,9 +13,9 @@ import {
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
-import { ProviderCapabilities } from "@lando/sdk/schema";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect, Exit } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "fileSyncTargets"];

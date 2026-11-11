@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { parseLandofile } from "@lando/sdk/landofile";
-import { ConfigTranslateSourceId, LandofileAuthoringShape, PortablePath } from "@lando/sdk/schema";
 import type { ConfigTranslateDocument } from "@lando/sdk/schema";
+import { ConfigTranslateSourceId, LandofileAuthoringShape, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import {
   LANDO3_TRANSLATOR_ID,

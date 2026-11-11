@@ -331,13 +331,13 @@ export const decodeLando3Landofile = (value: unknown): Lando3DecodeResult => {
     ancestors.add(node);
     const ast = structuralAst(shape, node);
     if (Array.isArray(node)) {
-      node.forEach((item: unknown, index) =>
+      node.forEach((item: unknown, index) => {
         visit(
           item,
           [...path, index],
           ast?._tag === "Arrays" ? (ast.elements[index] ?? ast.rest[0]) : undefined,
-        ),
-      );
+        );
+      });
     } else if (Predicate.isObject(node) && !isLegacyTagged(node)) {
       const selected =
         path.length === 2 && path[0] === "services" && shape !== undefined ? serviceAst(node) : ast;

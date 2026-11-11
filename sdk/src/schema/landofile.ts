@@ -1,6 +1,4 @@
-import { SchemaIssue } from "effect";
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import validRange from "semver/ranges/valid.js";
 
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
@@ -20,7 +18,9 @@ import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+
 export { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -47,7 +47,8 @@ import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
-export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
+
+export { ToolingArgShape, ToolingFlagShape } from "./tooling-input.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -70,8 +71,8 @@ const keyedMerge = (identity: Extract<LayerMergeRule, { kind: "keyed" }>["identi
   onMatch: "merge",
 });
 
-export { EndpointInput } from "./endpoint.ts";
 export { BuildBlock } from "./build-block.ts";
+export { EndpointInput } from "./endpoint.ts";
 export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */

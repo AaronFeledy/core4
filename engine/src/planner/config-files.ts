@@ -1,12 +1,10 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect, Predicate } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect, Predicate } from "effect";
 import { bindSource } from "./authored-mount-entry.ts";
 
 type ComposeConfigFileInput = {

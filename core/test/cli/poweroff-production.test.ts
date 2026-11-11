@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { globalPlanAt, globalTeardownHarness } from "@lando/engine/testing/global-teardown";
@@ -12,6 +10,7 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer, Queue, Stream } from "effect";
 import { poweroffSpec } from "../../src/cli/command-specs/apps/poweroff";
 import { type PoweroffOptions, poweroff } from "../../src/cli/commands/poweroff";
 

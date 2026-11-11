@@ -36,8 +36,8 @@ import { redactDetails } from "./redact.ts";
 import { listNativeSnapshots } from "./snapshot-images.ts";
 import { removeAllStaleVolumeHolders, sweepStaleDataHelpers } from "./stale-data-helpers.ts";
 import { makeAttachDecoder } from "./streams.ts";
-import { extractFirstTarFile } from "./tar-file-stream.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
+import { extractFirstTarFile } from "./tar-file-stream.ts";
 import {
   type MountedVolumeTarget,
   type NativeVolumeIdentityResolution,
@@ -48,16 +48,17 @@ import {
   resolveNativeVolumeIdentity,
 } from "./volume-observation.ts";
 import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
+
 export {
   VOLUME_OWNER_LABEL,
   VOLUME_SELECTOR_LABEL,
   volumeOwnershipLabels,
 } from "./volume-ownership.ts";
-import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
-export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
-export { dataHelperImage, sqliteHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
-import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stream } from "effect";
+import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
+
+export { dataHelperImage, sqliteHelperImage, volumeWitnessImage } from "./helper-images.ts";
+export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 
 import {
   annotateFailureRole,
@@ -68,7 +69,6 @@ import {
   mapStreamFailures,
   mergeFailure,
 } from "@lando/sdk/command-result";
-
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
@@ -96,6 +96,7 @@ import type {
   ProviderError,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stream } from "effect";
 
 export interface DataPlaneHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";

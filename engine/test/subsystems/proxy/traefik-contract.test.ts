@@ -2,12 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Redacted } from "effect";
-
 import { makeTraefikRouterService } from "@lando/proxy-traefik";
 import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 import { makeTestCertificateAuthority, runRouterServiceContractSuite } from "@lando/sdk/test";
+import { Effect, Redacted } from "effect";
 import * as BunFileSystem from "../../../src/services/file-system.ts";
 import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { McpConfig, McpServeOptions } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("MCP concurrency schemas", () => {
   test("mcp-config-max-concurrent accepts positive integers", () => {

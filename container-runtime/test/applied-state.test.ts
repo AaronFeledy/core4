@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import {
   APPLIED_STATE_VERSION,
   appliedPlanPath,
@@ -22,6 +20,7 @@ import {
 } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
+import { DateTime, Effect, Schema } from "effect";
 import { legacyPlan, service } from "./fixtures/environment-values.ts";
 
 interface OpenCall {

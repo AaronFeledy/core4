@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Queue, Schema, Stream } from "effect";
-
 import { dataHelperImage } from "@lando/container-runtime/data-plane";
 import {
   APP_LABEL,
@@ -43,6 +41,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Effect, Layer, Queue, Schema, Stream } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 // Live proof for the provider data plane (#1448): snapshot, restore, and removal run against the

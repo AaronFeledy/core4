@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
-
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { RouterService, ToolingEngine, physicalVolumeLockKey } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";

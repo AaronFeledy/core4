@@ -2,10 +2,8 @@ import { expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import { writeFileAtomic } from "@lando/state-store/atomic";
+import { Effect } from "effect";
 import { finalizePluginInstall, validatePluginManifest } from "../../src/operations/plugin-install.ts";
 
 test("reports the offending key path when a plugin manifest contains an excess key", async () => {

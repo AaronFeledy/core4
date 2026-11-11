@@ -1,8 +1,7 @@
-import { type Effect, Layer, Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { type Effect, Layer, Schema } from "effect";
 
 import { appFeatures } from "./app-features/index.ts";
 import { SERVICE_FEATURE_IDS, serviceFeatures as bundledServiceFeatures } from "./features/index.ts";
@@ -59,9 +58,9 @@ import { ruby33ServiceType } from "./services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "./services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
 import {
-  tomcat9ServiceType,
   tomcat10ServiceType,
   tomcat11ServiceType,
+  tomcat9ServiceType,
   tomcatServiceType,
 } from "./services/tomcat.ts";
 import { valkeyServiceType } from "./services/valkey.ts";
@@ -148,11 +147,8 @@ export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> =
 
 export const serviceFeatures: ReadonlyMap<string, ServiceFeatureDefinition> = bundledServiceFeatures;
 
-export { appFeatures };
-
-export { SERVICE_FEATURE_IDS } from "./features/index.ts";
-
 export {
+  SERVICE_FEATURE_IDS,
   landoAppMountFeature,
   landoBootFeature,
   landoCertsFeature,
@@ -164,6 +160,7 @@ export {
   landoUserFeature,
   landoUserIdFeature,
 } from "./features/index.ts";
+export { appFeatures };
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,

@@ -3,13 +3,20 @@ import {
   recordGlobalResourceCleanup,
   recordGlobalRouteCleanup,
 } from "@lando/engine/global-app/reconciliation";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import {
+  executeGlobalStopSelection,
+  executeGlobalTeardown,
+  globalTeardownAppRef,
+  resolveGlobalStopSelection,
+  resolveGlobalTeardown,
+} from "@lando/engine/operations/global-teardown";
 
 import { type EventError, GlobalAppError, type ProxyError } from "@lando/sdk/errors";
 
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import { AbsolutePath, type ProviderId, StopAppOutcome, StopAppResult } from "@lando/sdk/schema";
 import { EventService, FileSystem, GlobalAppService, RouterService } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import { makeGlobalAppServiceForRoot } from "../global-app/service.ts";
 import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
 import { type RouteWithdrawal, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
@@ -21,14 +28,6 @@ import { RouterServiceRegistry, layerSelected } from "../subsystems/proxy/regist
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { withGlobalLifecycleEvents } from "./global-common";
 import { withShutdownObservations } from "./shutdown-observations.ts";
-
-import {
-  executeGlobalStopSelection,
-  executeGlobalTeardown,
-  globalTeardownAppRef,
-  resolveGlobalStopSelection,
-  resolveGlobalTeardown,
-} from "@lando/engine/operations/global-teardown";
 
 const now = () => DateTime.nowUnsafe();
 

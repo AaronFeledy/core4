@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const resolvePluginsRoot = Effect.fnUntraced(function* (
   options: { readonly userDataRoot?: string; readonly pluginsRoot?: string },

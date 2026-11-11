@@ -1,11 +1,9 @@
-import { Effect, Redacted } from "effect";
-
 import type { CaError } from "@lando/sdk/errors";
 import { type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, CertificateSpec } from "@lando/sdk/services";
-
-import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
+import { Effect, Redacted } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 import { routeOwner } from "./route-owner-fixture.ts";
 

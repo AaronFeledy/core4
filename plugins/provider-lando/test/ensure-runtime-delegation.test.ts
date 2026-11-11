@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Duration, Effect } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Duration, Effect } from "effect";
 import type { DelegatedScopeHost } from "../src/delegated-scope.ts";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import {

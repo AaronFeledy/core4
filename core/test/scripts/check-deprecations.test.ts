@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { checkDeprecationReleaseGate, checkDeprecationTsdoc } from "../../../scripts/check-deprecations.ts";
 

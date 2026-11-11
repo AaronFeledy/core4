@@ -11,11 +11,12 @@
  * explicit conversion request resolves this loader, and the literal specifier
  * stays traceable for `bun build --compile`.
  */
-import { Schema } from "effect";
+
+import type { ConfigTranslatorLoader } from "@lando/sdk/plugins";
 
 import { definePlugin } from "@lando/sdk/plugins";
-import type { ConfigTranslatorLoader } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export const PLUGIN_NAME = "@lando/lando4" as const;
 

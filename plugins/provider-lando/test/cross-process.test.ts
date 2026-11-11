@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { access, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Schema } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -31,6 +28,7 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
+import { DateTime, Effect, Schema } from "effect";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 import { decodeNetworkCreate } from "./network-fixture.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";

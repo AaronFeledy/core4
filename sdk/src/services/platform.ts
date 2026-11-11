@@ -1,6 +1,4 @@
 import { Context, type Effect, type Scope } from "effect";
-import type { AppId } from "../schema/primitives.ts";
-
 import type {
   AppPlacementError,
   HealthcheckError,
@@ -33,6 +31,7 @@ import type {
   ScanVerdict,
   ServiceName,
 } from "../schema/index.ts";
+import type { AppId } from "../schema/primitives.ts";
 
 export class RouterService extends Context.Service<
   RouterService,

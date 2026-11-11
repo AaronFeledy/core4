@@ -2,10 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import * as LandofileRuntime from "@lando/engine/services/landofile-live";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { makeLandoPaths } from "@lando/paths";
@@ -19,6 +15,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import "../../src/runtime/engine-composition.ts";
 
 test("a retained LandofileService uses acquisition intent from each discover caller", async () => {

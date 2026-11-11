@@ -1,13 +1,12 @@
 /** In-memory `Downloader` double: production `makeDownloaderService` over a stub Effect `HttpClient`. */
+
+import { type DownloaderEvents, makeDownloaderService } from "@lando/http-client/downloader";
+import { createSecretRedactor } from "@lando/sdk/secrets";
+import type { DownloaderShape, LandoEvent } from "@lando/sdk/services";
 import { Effect, Queue } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { createSecretRedactor } from "@lando/sdk/secrets";
-import type { DownloaderShape, LandoEvent } from "@lando/sdk/services";
-
-import { type DownloaderEvents, makeDownloaderService } from "@lando/http-client/downloader";
 
 export interface TestDownloaderHandle {
   readonly service: DownloaderShape;

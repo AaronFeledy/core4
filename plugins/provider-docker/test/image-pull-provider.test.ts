@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
 import type { DockerApiClient, DockerHttpRequest, DockerHttpResponse } from "@lando/provider-docker";
@@ -13,6 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");

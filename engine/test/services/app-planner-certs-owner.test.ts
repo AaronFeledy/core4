@@ -1,13 +1,11 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { type AppPlan, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { serviceCertificatesOwnerDir } from "../../src/lifecycle/service-certificate-paths.ts";

@@ -4,8 +4,8 @@ import { failureOutcomeFromCause, identityRedactor } from "@lando/sdk/command-re
 import { AppId } from "@lando/sdk/schema";
 import { Effect, Exit, Stream } from "effect";
 import { makeProviderDataPlane } from "../../src/data-plane.ts";
-import type { HelperBehavior } from "./fake-engine-state.ts";
 import { FakeEngine } from "./fake-engine.ts";
+import type { HelperBehavior } from "./fake-engine-state.ts";
 import { storageLifecycleClient } from "./storage-lifecycle.ts";
 
 const socket = process.env.LANDO_TEST_PODMAN_SOCKET;

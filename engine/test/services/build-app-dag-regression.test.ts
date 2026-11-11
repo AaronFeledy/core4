@@ -1,11 +1,9 @@
 import { expect, test } from "bun:test";
-
-import { Effect, Queue, Stream } from "effect";
-
 import { AppId, ServiceName } from "@lando/sdk/schema";
-import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Queue, Stream } from "effect";
 import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
 
 test("fails a cyclic app build through the tagged provider error boundary", async () => {

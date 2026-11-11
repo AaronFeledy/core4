@@ -1,6 +1,6 @@
 import { type LandoEvent, PostMcpCallEvent, PreMcpCallEvent } from "@lando/sdk/events";
-import { REDACTED } from "@lando/sdk/secrets";
 import type { Redactor } from "@lando/sdk/secrets";
+import { REDACTED } from "@lando/sdk/secrets";
 import { DateTime } from "effect";
 import type { McpDispatchDeps } from "./dispatch";
 

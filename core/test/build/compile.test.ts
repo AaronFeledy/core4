@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { copyFile, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { providerImages } from "@lando/container-runtime/provider-images";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
 import { withFifoChild } from "../cli/stdio-file-status-support.ts";

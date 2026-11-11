@@ -4,15 +4,14 @@
  * Resolves a recipe id through the Lando recipe registry, then delegates the
  * resulting git or tarball resolution through SourceSession.
  */
-import { Schema } from "effect";
-
-import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
-import { RecipeRegistryResponse } from "@lando/sdk/schema";
-import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@lando/sdk/schema";
 
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 
+import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
+import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@lando/sdk/schema";
+import { RecipeRegistryResponse } from "@lando/sdk/schema";
 import { type SourceSession, displaySource } from "@lando/source-acquisition";
+import { Schema } from "effect";
 import { resolveGitRecipeSource } from "./git-source";
 import type { ResolvedRecipe } from "./source";
 import { resolveTarballRecipeSource } from "./tarball-source";

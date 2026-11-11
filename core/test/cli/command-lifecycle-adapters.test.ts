@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { Effect, Layer, Queue, Stream } from "effect";
-
-import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
-
 import * as tooling from "@lando/engine/operations/tooling";
 import { effectiveBootstrapForCommand } from "@lando/engine/runtime/cli-options";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { Effect, Layer, Queue, Stream } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";

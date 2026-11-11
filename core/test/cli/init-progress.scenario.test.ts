@@ -1,11 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { LandoEvent } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 

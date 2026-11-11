@@ -88,7 +88,7 @@ export const collectSnapshotTemplateViolations = (node: ExpressionNode): Readonl
           visit(segment.expr, `${path}.segments[${index}].expr`, depth + 1);
           return;
         default:
-          return segment satisfies never;
+          segment satisfies never;
       }
     });
   };
@@ -101,10 +101,14 @@ export const collectSnapshotTemplateViolations = (node: ExpressionNode): Readonl
       case "Literal":
         return;
       case "ArrayLiteral":
-        current.elements.forEach((child, i) => visit(child, `${path}.elements[${i}]`, depth + 1));
+        current.elements.forEach((child, i) => {
+          visit(child, `${path}.elements[${i}]`, depth + 1);
+        });
         return;
       case "ObjectLiteral":
-        current.entries.forEach((entry, i) => visit(entry.value, `${path}.entries[${i}].value`, depth + 1));
+        current.entries.forEach((entry, i) => {
+          visit(entry.value, `${path}.entries[${i}].value`, depth + 1);
+        });
         return;
       case "Path":
         if (current.head !== "options") violations.push({ path: `${path}.head`, reason: "template-scope" });
@@ -117,7 +121,9 @@ export const collectSnapshotTemplateViolations = (node: ExpressionNode): Readonl
       case "Call":
         if (!SNAPSHOT_HELPER_ALLOWLIST.has(current.callee))
           violations.push({ path: `${path}.callee`, reason: "helper-forbidden" });
-        current.args.forEach((child, i) => visit(child, `${path}.args[${i}]`, depth + 1));
+        current.args.forEach((child, i) => {
+          visit(child, `${path}.args[${i}]`, depth + 1);
+        });
         return;
       case "Conditional":
         visit(current.test, `${path}.test`, depth + 1);

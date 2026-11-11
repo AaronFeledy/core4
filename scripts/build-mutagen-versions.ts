@@ -24,10 +24,8 @@
  * the one download.
  */
 import { resolve } from "node:path";
-
-import { Schema } from "effect";
-
 import { ToolManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const PLUGIN_ROOT = resolve(REPO_ROOT, "plugins/file-sync-mutagen");

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   CliCommandErrorEvent,
   CliCommandInitEvent,
@@ -16,9 +16,7 @@ import {
 import type { RendererIO } from "@lando/sdk/renderer";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
@@ -217,14 +215,10 @@ describe("lifecycle-backed task session", () => {
     const controller = new FakeController();
     let acquisitions = 0;
     await Effect.runPromise(
-      drive(
-        io,
-        () => {
-          acquisitions += 1;
-          return Promise.resolve(controller);
-        },
-        [cliInit("app:info", "inv-1")],
-      ),
+      drive(io, () => {
+        acquisitions += 1;
+        return Promise.resolve(controller);
+      }, [cliInit("app:info", "inv-1")]),
     );
     expect(acquisitions).toBe(0);
     expect(controller.calls).toEqual([]);
@@ -235,14 +229,10 @@ describe("lifecycle-backed task session", () => {
     const controller = new FakeController();
     let acquisitions = 0;
     await Effect.runPromise(
-      drive(
-        io,
-        () => {
-          acquisitions += 1;
-          return Promise.resolve(controller);
-        },
-        [cliInit("app:start", "inv-1")],
-      ),
+      drive(io, () => {
+        acquisitions += 1;
+        return Promise.resolve(controller);
+      }, [cliInit("app:start", "inv-1")]),
     );
     expect(acquisitions).toBe(1);
     expect(footerTexts(controller)[0]).toBe("╭─ start");
@@ -308,20 +298,16 @@ describe("lifecycle-backed task session", () => {
     const controller = new FakeController();
     let acquisitions = 0;
     await Effect.runPromise(
-      drive(
-        io,
-        () => {
-          acquisitions += 1;
-          return Promise.resolve(controller);
-        },
-        [
-          cliInit("apps:init", "inv-1"),
-          cliInit("meta:setup", "inv-2"),
-          cliInit("app:destroy", "inv-3"),
-          cliInit("mysql", "inv-4"),
-          cliInit("app:start", "inv-6", "inv-5"),
-        ],
-      ),
+      drive(io, () => {
+        acquisitions += 1;
+        return Promise.resolve(controller);
+      }, [
+        cliInit("apps:init", "inv-1"),
+        cliInit("meta:setup", "inv-2"),
+        cliInit("app:destroy", "inv-3"),
+        cliInit("mysql", "inv-4"),
+        cliInit("app:start", "inv-6", "inv-5"),
+      ]),
     );
     expect(acquisitions).toBe(0);
     expect(controller.calls).toEqual([]);

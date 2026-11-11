@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-import { compileTestLandofile } from "./support/compiled-landofile.ts";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
-
 import { renderCompose as renderDockerCompose } from "@lando/provider-docker";
 import { renderCompose as renderLandoCompose } from "@lando/provider-lando";
+import { type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AppPlanner } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import { services } from "../src/index.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 const providerLandoCapabilities = {
   artifactBuild: true,
@@ -231,4 +229,5 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

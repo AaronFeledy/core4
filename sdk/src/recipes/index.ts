@@ -1,13 +1,18 @@
 /** Pure recipe identity, snapshot, migration, option, and secret contract logic. */
 import { Result } from "effect";
-import type { RecipeSourceKind } from "../schema/recipe-identity.ts";
 import type { RecipeManifest } from "../schema/recipe.ts";
+import type { RecipeSourceKind } from "../schema/recipe-identity.ts";
 import { validateMigrationChain } from "./migration-chain.ts";
 import { recipeMigratability } from "./option-types.ts";
 
+export {
+  type CompiledRecipeManifest,
+  RECIPE_SOURCE_VARIANT_BUDGET,
+  type RecipeSourceCompileContext,
+  RecipeSourceCompileError,
+  compileRecipeSource,
+} from "../schema/recipe-source-compiler.ts";
 export * from "./content-digest.ts";
-export * from "./provenance.ts";
-export * from "./snapshot-template.ts";
 export {
   canonicalJson,
   classifyHunk,
@@ -16,14 +21,9 @@ export {
   validateMigrationChain,
 } from "./migration-chain.ts";
 export * from "./option-types.ts";
+export * from "./provenance.ts";
 export * from "./secret-disposition.ts";
-export {
-  compileRecipeSource,
-  RecipeSourceCompileError,
-  RECIPE_SOURCE_VARIANT_BUDGET,
-  type RecipeSourceCompileContext,
-  type CompiledRecipeManifest,
-} from "../schema/recipe-source-compiler.ts";
+export * from "./snapshot-template.ts";
 
 /**
  * Extend snapshot migratability with full declarative migration-chain validation.

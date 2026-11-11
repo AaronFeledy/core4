@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { VolumeCreationFact, VolumeInitializationRecord } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const identity = {
   coordinationKey: "daemon/data",

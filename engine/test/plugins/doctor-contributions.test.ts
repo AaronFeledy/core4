@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import type { LoadedPluginContribution } from "@lando/engine/plugins/contribution-graph";
 import { pluginDoctorCheckIndex } from "@lando/engine/plugins/doctor-contributions";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 
 const manifest = Schema.decodeSync(PluginManifest)({ name: "@example/doctor", version: "1.0.0", api: 4 });
 const node = (module: Readonly<Record<string, unknown>>): LoadedPluginContribution => ({

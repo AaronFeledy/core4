@@ -1,16 +1,14 @@
 import { deserialize, serialize } from "node:v8";
-import { sha256Hex } from "@lando/sdk/digest";
-
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
-import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
-import { canonicalCacheJson } from "./canonical.ts";
-import { isAppCommandIndexPayload } from "./command-index-validation.ts";
-import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
-
 import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
+import { sha256Hex } from "@lando/sdk/digest";
+import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
+import { canonicalCacheJson } from "./canonical.ts";
+import { isAppCommandIndexPayload } from "./command-index-validation.ts";
+import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 export const COMMAND_INDEX_SCHEMA_VERSION = 9n;
 

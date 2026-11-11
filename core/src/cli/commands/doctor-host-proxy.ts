@@ -1,11 +1,9 @@
 import { resolve } from "node:path";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { Clock, Duration, Effect, Option } from "effect";
-
 import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
 import { sanitizeAppName } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";
+import { Clock, Duration, Effect, Option } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type {
   DoctorCheck,
   DoctorProviderKind,

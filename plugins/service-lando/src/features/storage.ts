@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const LANDO_STORAGE_FEATURE_ID = "lando.storage" as const;
 export const LANDO_STORAGE_FEATURE_PRIORITY = 500;

@@ -1,12 +1,10 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
+import { createHash } from "node:crypto";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   MSSQL_FEATURE_ID,

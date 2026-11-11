@@ -81,9 +81,7 @@ export interface FakeNpmRegistry {
   setRegistry: (registry: string) => void;
 }
 
-export const makeFakeNpmRegistry = (input?: {
-  readonly registry?: string;
-}): FakeNpmRegistry => {
+export const makeFakeNpmRegistry = (input?: { readonly registry?: string }): FakeNpmRegistry => {
   let registry = input?.registry ?? "https://registry.npmjs.org/";
   const packuments = new Map<string, NpmPackument | undefined>();
   const tarballs = new Map<string, Uint8Array>();

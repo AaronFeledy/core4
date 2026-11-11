@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   TRAEFIK_DIAGNOSTICS_CONTAINER_DIR,

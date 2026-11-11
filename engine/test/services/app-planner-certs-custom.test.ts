@@ -1,12 +1,10 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { AppPlan, LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import {
   certificateAuthorityGraph,
   makeUntouchableResolver,

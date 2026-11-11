@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
-import { Stream } from "effect";
+import { Effect, Stream } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
-import { failReadiness } from "../../src/operations/service-readiness-error.ts";
 import { waitForServiceReadiness } from "../../src/operations/service-readiness.ts";
+import { failReadiness } from "../../src/operations/service-readiness-error.ts";
 import { failureOf, runExitUnderClock, successOf } from "../subsystems/healthcheck/support.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 

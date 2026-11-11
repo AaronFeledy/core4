@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -13,8 +12,8 @@ import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { requireSelectableRouter } from "./global-consumer-admission.ts";
-import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
+import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import {
   ensureStartTransactionConsistent,
   preflightStartAppDrain,
@@ -27,9 +26,9 @@ import {
   withVolumeTransitionNotices,
 } from "./volume-transition-notice.ts";
 
-export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
 export type { StartManagedScope } from "./start-file-sync.ts";
+export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 
 export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (
   options: StartAppOptions | undefined,

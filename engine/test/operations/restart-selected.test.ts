@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import { commonContainerLabels } from "@lando/container-runtime/plan";
 import {
   ProviderUnavailableError,
@@ -17,9 +15,10 @@ import {
   type ServicePlan,
   type ServiceRunObservation,
 } from "@lando/sdk/schema";
-import { RouterService, type ServiceRuntimeFields } from "@lando/sdk/services";
 import type { ApplyOptions, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { RouterService, type ServiceRuntimeFields } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { restartApp } from "../../src/operations/restart.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";

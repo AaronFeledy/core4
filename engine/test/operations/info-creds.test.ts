@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -20,6 +18,7 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { infoForPlan } from "../../src/operations/info.ts";
 

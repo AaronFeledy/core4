@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -27,8 +24,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 

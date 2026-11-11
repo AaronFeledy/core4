@@ -1,9 +1,8 @@
 export const SSH_AGENT_FEATURE_ID = "lando.ssh-agent" as const;
 
-import { Layer } from "effect";
-
 import { SshError } from "@lando/sdk/errors";
 import { SshService } from "@lando/sdk/services";
+import { Layer } from "effect";
 import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { SshService };

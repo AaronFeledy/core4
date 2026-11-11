@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import mailpitGlobalService from "../../src/global-services/mailpit.ts";
 import {

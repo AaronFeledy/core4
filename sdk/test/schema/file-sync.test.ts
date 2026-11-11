@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { JsonSchema, Result, Schema } from "effect";
-
 import {
   type AppRef,
   FileSyncEngineCapabilities,
@@ -14,6 +11,7 @@ import {
   ServiceName,
   getJsonSchema,
 } from "@lando/sdk/schema";
+import { JsonSchema, Result, Schema } from "effect";
 
 const APP_REF: typeof AppRef.Encoded = {
   kind: "user",

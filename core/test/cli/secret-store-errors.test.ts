@@ -16,11 +16,11 @@ import {
   PluginManifest,
   StartAppResult,
 } from "@lando/sdk/schema";
-import { LandofileService } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   AppPlanner,
   BuildOrchestrator,
+  LandofileService,
   PathsService,
   RouterService,
   SecretStore,

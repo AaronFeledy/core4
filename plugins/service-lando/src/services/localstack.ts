@@ -1,8 +1,7 @@
-import { Effect, Schema } from "effect";
-
 import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   commandHealthcheck,

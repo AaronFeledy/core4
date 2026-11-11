@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Context, Effect, Layer, Option, Schema } from "effect";
-
 import {
   ConfigTranslatorConflictError,
   PluginDescriptorMismatchError,
@@ -9,6 +7,7 @@ import {
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
+import { Cause, Context, Effect, Layer, Option, Schema } from "effect";
 
 import * as ConfigTranslatorRegistryLayer from "../../src/plugins/config-translator-registry.ts";
 import { PluginContributionGraph } from "../../src/plugins/contribution-graph.ts";

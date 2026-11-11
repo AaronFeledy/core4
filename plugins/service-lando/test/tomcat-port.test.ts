@@ -2,17 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Schema } from "effect";
-
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { AbsolutePath, AppId, type AppPlan, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
-  tomcat9ServiceType,
   tomcat10ServiceType,
   tomcat11ServiceType,
+  tomcat9ServiceType,
   tomcatServiceType,
 } from "../src/services/tomcat.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";

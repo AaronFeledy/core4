@@ -1,9 +1,10 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
 import { CommandContribution } from "./command-contribution.ts";
+
 export { CommandContribution } from "./command-contribution.ts";
+
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
 import { FileSyncEngineCapabilities } from "./file-sync-engine.ts";

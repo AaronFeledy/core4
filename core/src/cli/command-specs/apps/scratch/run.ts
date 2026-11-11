@@ -1,6 +1,4 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Args, Flags } from "../../../spec/metadata";
-
 import { StreamFrame } from "@lando/sdk/schema";
 import {
   type ScratchRunError,
@@ -15,6 +13,7 @@ import { attachExecHostIo, toolingHostStdin } from "../../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 import { execInputUsesCliHostIo } from "../../app/exec";
 
 export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunError, ScratchRunServices> = {

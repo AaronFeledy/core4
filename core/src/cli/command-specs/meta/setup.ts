@@ -1,24 +1,3 @@
-import { RedactionService } from "@lando/redaction/service";
-import { mapFailures } from "@lando/sdk/command-result";
-/**
- * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
- *
- * Provider precedence is flag, environment, configuration, interactive choice, default.
- */
-import { Effect, Schema } from "effect";
-import type * as HttpClient from "effect/http/HttpClient";
-import { CliInvocation } from "../../../runtime/invocation-context";
-
-import { AppPlacementError } from "@lando/sdk/errors";
-import {
-  ConfigService,
-  type Downloader,
-  GlobalAppService,
-  InteractionService,
-  PrivilegeService,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
-
 import { config as writeConfig } from "@lando/engine/operations/config";
 import {
   SetupProviderSwitchResultSchema,
@@ -33,7 +12,26 @@ import {
 } from "@lando/engine/providers/precedence";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { NetworkTrust } from "@lando/http-client/network-trust";
+import { RedactionService } from "@lando/redaction/service";
 import { formatSummary } from "@lando/renderer/summary";
+import { mapFailures } from "@lando/sdk/command-result";
+import { AppPlacementError } from "@lando/sdk/errors";
+import {
+  ConfigService,
+  type Downloader,
+  GlobalAppService,
+  InteractionService,
+  PrivilegeService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
+/**
+ * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
+ *
+ * Provider precedence is flag, environment, configuration, interactive choice, default.
+ */
+import { Effect, Schema } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";

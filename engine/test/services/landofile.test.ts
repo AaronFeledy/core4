@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
 import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
 import {
@@ -13,9 +11,9 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { PortablePath, ServiceName } from "@lando/sdk/schema";
-import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { PortablePath, ServiceName, formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -61,7 +59,7 @@ describe("LandofileService layer", () => {
           join(dir, file),
           file.endsWith(".ts")
             ? `export default { name: "layer-${order}", lando: ">=${order}.0.0" };\n`
-            : `name: layer-${order}\nlando: \">=${order}.0.0\"\n`,
+            : `name: layer-${order}\nlando: ">=${order}.0.0"\n`,
         );
       }
       process.chdir(dir);

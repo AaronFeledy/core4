@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import { MANAGED_SOCKET_PATH_MAX_BYTES } from "@lando/container-runtime/podman/managed-invocation";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { HostPlatform } from "@lando/sdk/schema";
 import { PluginDoctorReport } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 
 import {
   MANAGED_SOCKET_DATA_ROOT_SUFFIX,

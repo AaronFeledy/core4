@@ -8,11 +8,6 @@
 // real runtime client with no silent fake fallback.
 
 import { posix as pathPosix } from "node:path";
-
-import { Effect } from "effect";
-import type { Context, Scope } from "effect";
-import type * as HttpClient from "effect/http/HttpClient";
-
 import { EventError, ManagedFileError } from "@lando/sdk/errors";
 import type { RenderEvent } from "@lando/sdk/events";
 import type {
@@ -29,6 +24,9 @@ import type {
   ManagedFileService,
   StateStoreShape,
 } from "@lando/sdk/services";
+import type { Context, Scope } from "effect";
+import { Effect } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import { type PluginStateStore, makePluginStateStore } from "./context-state.ts";
 

@@ -1,14 +1,12 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { CaError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, CertificateName, PortablePath } from "@lando/sdk/schema";
 import { CertificateAuthority, PathsService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import {

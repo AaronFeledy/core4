@@ -1,11 +1,8 @@
-import { Context, Effect, Layer } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import type { AppRef, GlobalConfig, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { literalTestLandofile } from "../compiled-landofile.ts";
-
+import { Context, Effect, Layer } from "effect";
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import {
   type GraphCertificateAuthorityCandidate,
@@ -14,6 +11,7 @@ import {
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 export const makeUntouchableResolver = () => {
   let calls = 0;

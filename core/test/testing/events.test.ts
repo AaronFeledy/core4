@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { TestClock } from "effect/testing";
+import * as LandoEventService from "@lando/engine/services/event-service";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
+import { TestClock } from "effect/testing";
 import { expectEvent } from "../../src/testing/events.ts";
 
 describe("expectEvent", () => {

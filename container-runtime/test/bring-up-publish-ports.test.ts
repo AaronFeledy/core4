@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -11,6 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect, Schema } from "effect";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { SERVICE_PUBLISH_PORT_MIN, type ServicePublishProbe } from "../src/service-publish-ports.ts";
@@ -212,9 +211,7 @@ describe("create-body service publish ports", () => {
     expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({
       publication: { bindAddress: "127.0.0.1" },
     });
-    expect(
-      "hostPort" in (plan.services[serviceName]?.endpoints[0] as { publication: object }).publication,
-    ).toBe(false);
+    expect(plan.services[serviceName]?.endpoints[0]).not.toHaveProperty(["publication", "hostPort"]);
     expect(createHostPort(fake.calls)).toBe(String(SERVICE_PUBLISH_PORT_MIN));
   });
 
@@ -255,9 +252,7 @@ describe("create-body service publish ports", () => {
     expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({
       publication: { bindAddress: "127.0.0.1" },
     });
-    expect(
-      "hostPort" in (plan.services[serviceName]?.endpoints[0] as { publication: object }).publication,
-    ).toBe(false);
+    expect(plan.services[serviceName]?.endpoints[0]).not.toHaveProperty(["publication", "hostPort"]);
   });
 
   test("an explicit hostPort is untouched", async () => {

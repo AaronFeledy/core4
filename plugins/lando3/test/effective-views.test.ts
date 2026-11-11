@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { parseLegacyLandofile } from "@lando/sdk/landofile";
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import type { Lando3Source, Lando3SourceLayer } from "../src/contract.ts";
 import { foldToTargetLayers, legacyPrefixViews, requiredOptionViews } from "../src/effective-views.ts";

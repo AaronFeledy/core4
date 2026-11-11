@@ -7,19 +7,18 @@
  * (deferred / installed / unavailable / satisfied) and returns the resulting
  * status. These are the side-effecting "steps" the command orchestration drives.
  */
+
+import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { NetworkTrust } from "@lando/http-client/network-trust";
 import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
 import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
-
 import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
-
-import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
-import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
-import { NetworkTrust } from "@lando/http-client/network-trust";
+import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import {
   type SetupReadinessRuntimeService,

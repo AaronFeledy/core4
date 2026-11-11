@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 test("ArtifactBuildSpec accepts specInline", () => {
   const decoded = Schema.decodeUnknownSync(ArtifactBuildSpec)({

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
+import { Effect, Schema } from "effect";
 
 import { MINIO_FEATURE_ID, minioServiceFeature, minioServiceType } from "../src/services/minio.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";

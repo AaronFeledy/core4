@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import {
   installSupervisedExecFixture,
@@ -28,9 +25,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
+import { DateTime, Effect, Schema, Stream } from "effect";
 import { appliedPlanPath } from "../src/applied-state.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("crossprocessapp");

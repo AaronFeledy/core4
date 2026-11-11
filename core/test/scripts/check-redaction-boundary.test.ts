@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { redactionRule } from "../../../scripts/boundary/rules/redaction.ts";
 import { checkRedactionBoundary } from "../../../scripts/check-redaction-boundary.ts";

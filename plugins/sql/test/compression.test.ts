@@ -1,11 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { SqlDumpCompressionError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import {
   collectDumpPrefix,

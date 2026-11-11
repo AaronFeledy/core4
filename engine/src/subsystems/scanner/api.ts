@@ -13,10 +13,10 @@
  * - This module keeps the explicit degraded-mode layer for contexts where no
  *   runtime provider is available.
  */
-import { Layer } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { UrlScanner } from "@lando/sdk/services";
+import { Layer } from "effect";
 import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { UrlScanner };

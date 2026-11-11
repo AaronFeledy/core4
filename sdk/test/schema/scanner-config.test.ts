@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import * as SDK from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("ScannerConfig", () => {
   test.each([false, {}, { path: "/healthz", okCodes: [200, 301], retries: 3, timeout: 5000 }])(

@@ -1,12 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { TestClock } from "effect/testing";
-
-import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
-
+import { RedactionService } from "@lando/redaction/service";
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
-
-import { RedactionService } from "@lando/redaction/service";
+import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { testRedactionLayer } from "../redaction.ts";
 

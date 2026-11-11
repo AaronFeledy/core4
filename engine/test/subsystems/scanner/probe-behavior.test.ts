@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import { AppId as AppIdSchema, ServiceName } from "@lando/sdk/schema";
 import { runScannerContract } from "@lando/sdk/test";
+import { Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
 import * as scanModule from "../../../src/subsystems/scanner/scan-target.ts";

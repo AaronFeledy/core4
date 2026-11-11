@@ -1,12 +1,9 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
-
-import { Effect, Match, type Stream } from "effect";
-
 import { CommandInputValidationError, CommandStdioError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
-
 import type { EnvironmentValue } from "@lando/sdk/schema";
 import { isUsableExactRedactionValue } from "@lando/sdk/secrets";
+import { Effect, Match, type Stream } from "effect";
 import type { DbAction, DbCommandInput } from "./command-types.ts";
 import { type DumpCompression, compressionFromExportPath } from "./compression.ts";
 import { classifySqlPlan } from "./environment.ts";

@@ -1,4 +1,4 @@
-import { constants, accessSync, existsSync, readFileSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
 
 import { MANAGED_SCOPE_ENV_BIN } from "@lando/container-runtime/podman/managed-invocation";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";

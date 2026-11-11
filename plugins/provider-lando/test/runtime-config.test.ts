@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { constants } from "node:fs";
 import {
   access,
@@ -13,8 +14,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { writeManagedRuntimeContainersConf } from "../src/runtime-config.ts";

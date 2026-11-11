@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/(^|[^:])\/\/[^\n]*/gu, "$1");

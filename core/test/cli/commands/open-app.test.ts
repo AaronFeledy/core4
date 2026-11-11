@@ -3,9 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import { invokeOperation } from "@lando/core/cli/operations";
 import { HostProxyOpenerError } from "@lando/engine/services/host-opener";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
-import { Cause, DateTime, Effect, Exit, Layer, Result, Stream } from "effect";
-
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -24,8 +22,8 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit, Layer, Result, Stream } from "effect";
 
 import {
   type OpenAppOptions,
@@ -62,7 +60,7 @@ const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
 };
 
 const record = (failOnUrl?: string) => ({
-  commands: new Array<readonly string[]>(),
+  commands: [] as (readonly string[])[],
   events: [] as { tag: string; url: string }[],
   failOnUrl,
 });

@@ -1,8 +1,7 @@
-import { Effect, Predicate } from "effect";
-
 import { NotImplementedError } from "@lando/sdk/errors";
 import { isLandofileOverride } from "@lando/sdk/landofile";
 import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { Effect, Predicate } from "effect";
 
 export const UNSUPPORTED_REMEDIATION = "Remove the section; this surface is not supported.";
 

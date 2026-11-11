@@ -10,7 +10,9 @@ import type {
   ConfigTranslatorShape,
 } from "../services/index.ts";
 import { type ConfigTranslatorEncodeSample, checkAuthoringLaws } from "./config-translator-authoring.ts";
+
 export type { ConfigTranslatorEncodeSample } from "./config-translator-authoring.ts";
+
 import { ContractFailure, isNonEmptyString } from "./_shared.ts";
 
 const stableUnknown = (value: unknown): unknown => {

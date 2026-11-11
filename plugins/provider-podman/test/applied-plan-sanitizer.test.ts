@@ -10,8 +10,8 @@ import { networkOwnershipLabels } from "@lando/container-runtime/native-ownershi
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as AppPlanSanitizerLayer from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
 import { hostProxyRunLandoFeature } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { withSshAgentOverlay } from "@lando/engine/subsystems/ssh-agent/overlay";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "@lando/engine/subsystems/ssh/intent";
+import { withSshAgentOverlay } from "@lando/engine/subsystems/ssh-agent/overlay";
 import type { PodmanApiClient } from "@lando/provider-podman";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
@@ -29,10 +29,9 @@ import {
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect } from "effect";
-import { makeRuntimeProvider } from "./provider-fixture.ts";
-
 import { loadAppliedPlan } from "../src/applied-state.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("overlay-app");

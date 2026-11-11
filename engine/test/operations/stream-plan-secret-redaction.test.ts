@@ -3,9 +3,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
@@ -30,6 +27,8 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 
 import { execApp } from "../../src/operations/exec.ts";
 import { followLogsForPlan } from "../../src/operations/logs.ts";
@@ -300,5 +299,6 @@ describe("live plan-secret redaction", () => {
     expect(io.stdout() + io.stderr()).not.toContain(slashPassword);
   });
 });
+
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";

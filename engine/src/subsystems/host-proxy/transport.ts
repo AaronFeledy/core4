@@ -1,9 +1,8 @@
 import { createServer } from "node:http";
-import { Effect, type Scope } from "effect";
+import { RedactionService } from "@lando/redaction/service";
 
 import { type HostProxySocketStaleError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
-
-import { RedactionService } from "@lando/redaction/service";
+import { Effect, type Scope } from "effect";
 import { writeHostProxyCredentials } from "./credentials-file.ts";
 import { type HostProxyInFlightRequest, makeHostProxyRunLandoHandler } from "./transport-handler.ts";
 import { closeHostProxyServer, removeSessionState } from "./transport-lifecycle.ts";
@@ -30,15 +29,15 @@ export {
   isHostProxyRunLandoEnvName,
   stripHostProxyRunLando,
 } from "./transport-feature.ts";
-export { connectHostProxyRunLando, sendHostProxyRunLando } from "./transport-protocol.ts";
-export type { HostProxyRunLandoClientRequest, HostProxyTransportError } from "./transport-protocol.ts";
 export { cleanupHostProxyRunLandoState } from "./transport-lifecycle.ts";
-export { hostProxyRunLandoStateDir } from "./transport-session.ts";
+export type { HostProxyRunLandoClientRequest, HostProxyTransportError } from "./transport-protocol.ts";
+export { connectHostProxyRunLando, sendHostProxyRunLando } from "./transport-protocol.ts";
 export type {
   HostProxyRunLandoSession,
   HostProxyRunLandoSessionOptions,
   HostProxyTransportKind,
 } from "./transport-session.ts";
+export { hostProxyRunLandoStateDir } from "./transport-session.ts";
 
 export const createHostProxyRunLandoSession = (
   options: HostProxyRunLandoSessionOptions,

@@ -1,6 +1,4 @@
 import { configRedactionTokens } from "../../../commands/config-redaction";
-import { Args } from "../../../spec/metadata";
-
 import {
   GLOBAL_CONFIG_SUBCOMMANDS,
   type GlobalConfigOptions,
@@ -11,6 +9,7 @@ import {
 import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { formatFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { Args } from "../../../spec/metadata";
 import {
   formatFlag as configFormatFlag,
   dryRunFlag,

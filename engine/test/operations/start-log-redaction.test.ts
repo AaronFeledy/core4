@@ -1,8 +1,4 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer, Option, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { RedactionService } from "@lando/redaction/service";
@@ -17,6 +13,9 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { Effect, Layer, Option, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { startApp } from "../../src/operations/start.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";

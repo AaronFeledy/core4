@@ -9,8 +9,8 @@ import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/gpg-agent/intent.ts";
-import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
+import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 for (const prepareExit of [0, 1]) {
@@ -164,4 +164,5 @@ for (const prepareExit of [0, 1]) {
     }
   });
 }
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

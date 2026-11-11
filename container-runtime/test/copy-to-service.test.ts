@@ -1,13 +1,11 @@
+import { afterEach, expect, test } from "bun:test";
 import { appendFileSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Redactor } from "@lando/sdk/secrets";
-
-import { afterEach, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Effect } from "effect";
 import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {

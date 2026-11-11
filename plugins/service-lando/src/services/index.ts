@@ -1,5 +1,5 @@
-export { apacheServiceType } from "./apache.ts";
 export { assertConnectionProjections } from "./_connection-helpers.ts";
+export { apacheServiceType } from "./apache.ts";
 export { composeServiceType } from "./compose.ts";
 export { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "./dotnet.ts";
 export { elasticsearch8ServiceType, elasticsearchServiceType } from "./elasticsearch.ts";

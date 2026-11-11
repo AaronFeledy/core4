@@ -1,11 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
-
 import { InstallOwnershipError } from "@lando/engine/install/owned-executable";
 import {
   type UpdateChecksumSignatureVerifier,
@@ -27,6 +24,7 @@ import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
 import { updateOptionsFromInput, updateSpec } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";

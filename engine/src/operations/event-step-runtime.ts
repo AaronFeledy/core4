@@ -1,31 +1,28 @@
-import { mapFailures } from "@lando/sdk/command-result";
-// allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
-import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
-
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
-import { Clock, type Context, Effect, Option } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   LandofileEventStepFailedError,
   ToolingCompileError,
   ToolingDisabledError,
   causeMessage,
 } from "@lando/sdk/errors";
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
+import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
+// allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
 import {
+  EnvironmentValueResolver,
   type EventService,
+  ProcessRunner,
   RuntimeProviderRegistry,
   ShellRunner,
   ToolingEngine,
   type ToolingEngineResult,
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { eventStepLabel } from "./event-step-identity.ts";
-
-import type { ExpressionContext } from "@lando/sdk/expressions";
+import { Clock, type Context, Effect, Option } from "effect";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { effectiveToolingForPlan, toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
@@ -39,6 +36,7 @@ import type {
   ToolingStepRunners,
 } from "../tooling/step-runner.ts";
 import { publishEventOutputProgress } from "./event-output-progress.ts";
+import { eventStepLabel } from "./event-step-identity.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";

@@ -1,12 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Result } from "effect";
-
-import { describe, expect, test } from "bun:test";
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, Exit } from "effect";
-
 import { makeLandoRuntime } from "@lando/core";
 import {
   ConfigResultSchema,
@@ -20,6 +15,8 @@ import {
   renderConfigResult,
   renderGlobalPolicyChangeResult,
 } from "@lando/core/cli/operations";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Exit, Result } from "effect";
 
 import corePackage from "../../package.json";
 
@@ -152,10 +149,8 @@ describe("@lando/core/cli/operations package export", () => {
         expect(failure.output).toContain("is not available here");
       }
     } finally {
-      // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
       if (previousUserConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
       else process.env.LANDO_USER_CONF_ROOT = previousUserConfRoot;
-      // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
       if (previousUserDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
       else process.env.LANDO_USER_DATA_ROOT = previousUserDataRoot;
       await rm(userDataRoot, { recursive: true, force: true });

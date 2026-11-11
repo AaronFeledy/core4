@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { Deferred, Effect, Fiber } from "effect";
-
-import { certificateDir, dynamicConfigDir, joinFor } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { certificateDir, dynamicConfigDir, joinFor } from "../src/proxy-paths.ts";
 import { routeReloadLockKey } from "../src/route-reload-state.ts";
 import { legacyContent, legacyHttpContent, legacyName } from "./legacy-route-fixture.ts";
 import { makeHarness } from "./proxy-tls-harness.ts";

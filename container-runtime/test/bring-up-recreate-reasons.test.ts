@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
-import { DateTime } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -12,6 +10,7 @@ import {
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import { HOST_PROXY_SESSION_LABEL, HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";

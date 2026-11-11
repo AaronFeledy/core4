@@ -1,10 +1,7 @@
-import { resolveCommandCompletion } from "@lando/sdk/command-result";
-import type { DeprecationNotice } from "@lando/sdk/schema";
-import { DeprecationService } from "@lando/sdk/services";
-import { DateTime, Effect, Layer } from "effect";
-import { commandDescriptorNotice } from "./command-catalog";
-
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import type { RendererIO } from "@lando/renderer/io";
+import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import type {
   CommandInputValidationError,
   CommandStdioError,
@@ -12,11 +9,11 @@ import type {
   LandoRuntimeBootstrapError,
 } from "@lando/sdk/errors";
 import type { ExecutableCommandInput, ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { Renderer } from "@lando/sdk/services";
-
-import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import type { DeprecationNotice } from "@lando/sdk/schema";
+import { DeprecationService, Renderer } from "@lando/sdk/services";
+import { DateTime, Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../runtime/layer";
+import { commandDescriptorNotice } from "./command-catalog";
 import {
   type CommandStdioStdin,
   commandStdioRequest,
@@ -36,12 +33,14 @@ import { validateEventCommandInput } from "./event-command-input";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { tryPluginCommandHelp } from "./plugin-command-help";
 import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
+
 export { pluginFlagDefinitions } from "./plugin-flag-definitions";
 export {
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "./plugin-owned-command-input";
+
 import type { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { CommandPayloadStdout } from "./command-payload-stdout";

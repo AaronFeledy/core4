@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import {
   type RecipesListResult,
   RecipesListResultSchema,
@@ -7,6 +5,7 @@ import {
   renderRecipesListResult,
 } from "../../../commands/recipes";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   resultSchema: RecipesListResultSchema,

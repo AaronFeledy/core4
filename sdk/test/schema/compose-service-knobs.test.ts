@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-import { JsonSchema, Result, Schema, SchemaRepresentation } from "effect";
-
 import { ServiceConfig, getJsonSchema } from "@lando/sdk/schema";
+import { JsonSchema, Result, Schema, SchemaIssue, SchemaRepresentation } from "effect";
 import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
 
 describe("Compose map input contracts", () => {

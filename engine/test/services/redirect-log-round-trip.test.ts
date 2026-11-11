@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Schema, Stream } from "effect";
-
 import { AbsolutePath, AppId, AppPlan, type LogSource, LogSourceId, ServiceName } from "@lando/sdk/schema";
 import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Schema, Stream } from "effect";
 
 import { runtimeFollowLogSources } from "../../src/services/redirect-log-sources";
 

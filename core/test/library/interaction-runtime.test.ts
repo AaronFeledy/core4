@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { makePromiseInteractionPrompter } from "../../src/interaction/prompter.ts";
 import { withInteractionServiceOverride } from "../../src/interaction/testing-override.ts";

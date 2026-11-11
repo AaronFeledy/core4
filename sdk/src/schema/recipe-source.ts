@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { DeprecationNotice } from "./deprecation.ts";
 import { LandofileSourceValue } from "./landofile-source.ts";
 import { PromptChoice, PromptType } from "./prompt.ts";
+import { RecipeFile, RecipePostInitAction, RecipeRequires, RecipeSecretDisposition } from "./recipe.ts";
 import {
   RecipeContentDigest,
   RecipeId,
@@ -12,7 +13,6 @@ import {
   RecipeVersion,
 } from "./recipe-identity.ts";
 import { RecipeOptionType, RecipeSnapshotAsset } from "./recipe-snapshot.ts";
-import { RecipeFile, RecipePostInitAction, RecipeRequires, RecipeSecretDisposition } from "./recipe.ts";
 
 // ==== Public author input, distinct from historical snapshot data
 export const RecipeSourcePrompt = Schema.Struct({

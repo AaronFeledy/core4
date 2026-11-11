@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import {
   type GuideScenarioAst,

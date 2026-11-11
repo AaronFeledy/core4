@@ -8,6 +8,7 @@ import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema"
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: fastapiDecomposer,
   defaults: fastapiDefaults,

@@ -9,8 +9,8 @@ import {
   type CapturedHostExecutionContext,
   captureScopedHostExecutionContext,
 } from "./host-execution-context.ts";
-import * as BunProcessRunner from "./process-runner.ts";
 import type { ProcessRedactionCarrier } from "./process-runner.ts";
+import * as BunProcessRunner from "./process-runner.ts";
 import { runnerEnvRedaction } from "./runner-redaction.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 

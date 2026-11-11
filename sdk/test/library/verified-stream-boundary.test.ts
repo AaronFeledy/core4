@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
-
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 describe("@lando/sdk/verified-stream import boundary", () => {
   test("stays independent of core runtime and OCLIF", async () => {

@@ -1,11 +1,4 @@
 import { resolve } from "node:path";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { Effect, Schema } from "effect";
-
-import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
-import type { ConfigService } from "@lando/sdk/services";
-
 import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
@@ -13,6 +6,10 @@ import {
   assertInsidePluginsRoot,
   isPluginLinkConflictCause,
 } from "@lando/engine/operations/plugin-link";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import type { ConfigService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { resolvePluginsRoot } from "./plugin-roots";
 
 export class PluginLinkConflictError extends Schema.TaggedError<PluginLinkConflictError>()(

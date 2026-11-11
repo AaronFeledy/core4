@@ -1,10 +1,8 @@
-import { request as httpRequest } from "node:http";
 import type { IncomingMessage } from "node:http";
-
-import { Duration, Effect, Schema } from "effect";
-
+import { request as httpRequest } from "node:http";
 import { runProbe } from "@lando/sdk/probe";
 import { AppPlan } from "@lando/sdk/schema";
+import { Duration, Effect, Schema } from "effect";
 import type { WorkerClaim } from "../detached-worker/claim.ts";
 import { terminateWorker } from "../detached-worker/lifecycle.ts";
 

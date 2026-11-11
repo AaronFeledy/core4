@@ -72,7 +72,7 @@ export const PHP_PREREQUISITES_COMMAND = [
   "apt-get update",
   `apt-get install -y --no-install-recommends ${aptPackageArguments.join(" ")}`,
   "docker-php-ext-configure gd --with-freetype --with-jpeg",
-  `docker-php-ext-install -j\"$(nproc)\" ${PHP_EXTENSIONS_TO_BUILD.join(" ")}`,
+  `docker-php-ext-install -j"$(nproc)" ${PHP_EXTENSIONS_TO_BUILD.join(" ")}`,
   `mkdir -p ${PHP_APT_MANIFEST_PATH.slice(0, PHP_APT_MANIFEST_PATH.lastIndexOf("/"))}`,
   `dpkg-query -W -f='\${Package}=\${Version}\\n' | LC_ALL=C sort > ${PHP_APT_MANIFEST_PATH}`,
   "rm -rf /var/lib/apt/lists/*",

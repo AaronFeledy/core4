@@ -13,9 +13,6 @@ import {
   supervisedExecFixtureOptions,
 } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
-import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
-import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -31,6 +28,7 @@ import {
   renderCompose,
   makeRuntimeProvider as runtimeProviderFactory,
 } from "@lando/provider-docker";
+import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -48,6 +46,7 @@ import {
   runProviderStartRetentionContract,
   runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 import { metadata, providerId, serviceName } from "./support/contract-plan.ts";
 import { makeProviderLayer, testPluginState } from "./support/contract-provider-layer.ts";

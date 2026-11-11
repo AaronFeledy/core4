@@ -1,5 +1,3 @@
-import { Effect, Stream } from "effect";
-
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -9,6 +7,7 @@ import {
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { DataMover, type DataMoverShape } from "@lando/sdk/services";
+import { Effect, Stream } from "effect";
 
 export interface TestDataMoverHandle {
   readonly service: DataMoverShape;

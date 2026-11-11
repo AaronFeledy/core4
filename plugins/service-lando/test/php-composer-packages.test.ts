@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-
-import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
+import { Schema } from "effect";
 import {
   PHP_COMPOSER_COMMAND,
   PHP_COMPOSER_PACKAGES_STEP_ID,
@@ -14,6 +11,7 @@ import {
   php85ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({

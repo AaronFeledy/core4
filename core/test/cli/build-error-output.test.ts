@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
-
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Effect, Layer } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { formatCommandError } from "../../src/cli/spec/command-spec.ts";
 

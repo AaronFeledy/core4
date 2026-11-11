@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
+import { decodeGlobalConfigFile } from "@lando/engine/config/global-config";
+import { resolveNotifyConfig as projectNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
+import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
+import { makeCachedSubscriberHandler } from "@lando/engine/lifecycle/subscriber-loader";
+import { makeLandoPluginContext } from "@lando/engine/plugins/context";
 import {
   ConfigError,
   PluginLoadError,
@@ -11,17 +12,13 @@ import {
 } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
-
-import { decodeGlobalConfigFile } from "@lando/engine/config/global-config";
-import { resolveNotifyConfig as projectNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
-import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
-import { makeCachedSubscriberHandler } from "@lando/engine/lifecycle/subscriber-loader";
-import { makeLandoPluginContext } from "@lando/engine/plugins/context";
 import { makeStateStore } from "@lando/state-store/service";
+import { Cause, Effect, Exit, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
-import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const resolveNotifyConfig = (config: GlobalConfig, commandIds: ReadonlySet<string>) =>
   Effect.fromResult(decodeGlobalConfigFile(config, "/config.yml", { commandIds })).pipe(

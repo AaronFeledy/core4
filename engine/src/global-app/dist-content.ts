@@ -26,7 +26,7 @@ const formatScalar = (value: string | number | boolean | null): string => {
   if (
     value === "" ||
     /^\s|\s$/.test(value) ||
-    /[#[\]\{\}\n\r\t]/.test(value) ||
+    /[#[\]{}\n\r\t]/.test(value) ||
     /^[A-Za-z_][A-Za-z0-9_-]*:(?:\s|$)/.test(value) ||
     (value.startsWith("'") && value.endsWith("'")) ||
     (value.startsWith('"') && value.endsWith('"')) ||

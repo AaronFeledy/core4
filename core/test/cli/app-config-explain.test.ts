@@ -11,6 +11,7 @@ import {
   renderAppConfigExplainResult,
 } from "../../src/cli/commands/app-config-explain.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { producer: lampProducer } = bundledRecipe("lamp");
 
 const PRODUCER_YAML = (overrides: Partial<typeof lampProducer> = {}): string => {
