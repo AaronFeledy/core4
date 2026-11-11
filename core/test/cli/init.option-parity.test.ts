@@ -297,11 +297,15 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("selenium/standalone-chromium:155.0-20261010");
       expect(yaml).toContain("vendor/bin/phpunit");
       expect(yaml).toContain("SIMPLETEST_DB");
+      expect(yaml).not.toContain("store: app");
       expect(yaml).not.toContain("extends: drupal");
       const landofile = await discoverFrom(result.directory);
-      expect(landofile.services?.[ServiceName.make("appserver")]?.webroot).toBe(
-        PortablePath.make("/app/web"),
-      );
+      const appserver = landofile.services?.[ServiceName.make("appserver")];
+      expect(appserver?.webroot).toBe(PortablePath.make("/app/web"));
+      expect(appserver?.storage).toEqual(["/app"]);
+      expect(appserver?.appMount).toMatchObject({
+        includes: ["vendor", "node_modules", "tmp"],
+      });
       expect(landofile.tooling?.["drupal-contrib-scaffold"]).toBeDefined();
       expect(landofile.tooling?.phpunit).toBeDefined();
     });

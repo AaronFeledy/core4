@@ -21,18 +21,18 @@ build, and it does not edit the extension's `composer.json`. After
 ```bash
 lando drupal-contrib-scaffold
 lando drush --version
-lando phpunit --version
+lando phpunit -- --version
 ```
 
 The Drupal site lives at `/app`. The extension is bind-mounted at
 `/app/web/modules|themes|profiles/custom/<project>`. Vendor and core stay in
 the named volume; they are not copied to the host.
 
-The site `composer.json` requires `drupal/core-recommended`,
-`drupal/core-dev`, and Drush at the `drupal` constraint, plus a path
-repository pointing at the extension mount so the extension's `require` and
-`require-dev` resolve. The scaffold does not `composer require` the extension
-package itself.
+The site `composer.json` requires `drupal/core-recommended` and
+`drupal/core-dev` at the `drupal` constraint. Drush is unconstrained so
+Composer picks a compatible release. A path repository pointing at the
+extension mount lets the extension's `require` and `require-dev` resolve. The
+scaffold does not `composer require` the extension package itself.
 
 ## Generated services
 

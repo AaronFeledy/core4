@@ -36,7 +36,7 @@ build, because the mounts are not there yet:
 ```sh
 lando drupal-contrib-scaffold
 lando drush --version
-lando phpunit --version
+lando phpunit -- --version
 lando phpcs --version
 ```
 
@@ -46,11 +46,12 @@ already exist under `web/`, it still writes `web/core` and `web/index.php`.
 Interrupted copies can be rerun. A finished tree refuses to scaffold again.
 
 The site `composer.json` lives only in the volume. It requires
-`drupal/core-recommended`, `drupal/core-dev`, and Drush at the `drupal`
-constraint, plus a path repository that points at the mount. That path repo
-lets the extension's `require` and `require-dev` resolve. The scaffold does
-not `composer require` the extension package, so Drupal does not discover it
-twice. The extension `composer.json` is never edited.
+`drupal/core-recommended` and `drupal/core-dev` at the `drupal` constraint.
+Drush is unconstrained so Composer picks a compatible release. A path
+repository that points at the mount lets the extension's `require` and
+`require-dev` resolve. The scaffold does not `composer require` the extension
+package, so Drupal does not discover it twice. The extension `composer.json`
+is never edited.
 
 Vendor and core stay in the container volume. There is no gitignored host-dir
 layout in this version. Point the IDE at the extension checkout.

@@ -31,7 +31,7 @@ After start, scaffold the site. Composer runs then, not during image build:
 ```sh
 lando drupal-contrib-scaffold
 lando drush --version
-lando phpunit --version
+lando phpunit -- --version
 lando composer --version
 ```
 

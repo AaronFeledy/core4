@@ -166,6 +166,7 @@ describe("the decomposed Drupal contrib Landofile on the native load path", () =
       expect(services.appserver?.webroot).toBe("/app/web");
       expect(services.appserver?.appMount).toEqual({
         target: `/app/web/${type}s/custom/${project}`,
+        includes: ["vendor", "node_modules", "tmp"],
       });
       expect(services.chrome?.type).toBe("compose");
       expect(services.chrome?.image).toBe("selenium/standalone-chromium:155.0-20261010");
