@@ -28,7 +28,12 @@ export const formatStructuredIssue = (issue: unknown): string | undefined => {
     authored !== undefined && authored !== where ? ` (authored ${escapeDiagnosticText(authored)})` : "";
   const line = `${location}${where.length === 0 ? "" : `${where}: `}${message}${hint}${original}`;
   const fix = Reflect.get(issue, "fix");
-  return Schema.is(ValidationFix)(fix)
-    ? [line, ...formatValidationFixEdits(fix).map((edit) => `       | ${edit}`)].join("\n")
-    : line;
+  if (!Schema.is(ValidationFix)(fix)) return line;
+  // The suggestion is part of the message line here, so the edits are their own labelled block.
+  return [
+    line,
+    ...formatValidationFixEdits(fix).map(
+      (edit, index) => `${index === 0 ? "    fix: " : "       | "}${edit}`,
+    ),
+  ].join("\n");
 };

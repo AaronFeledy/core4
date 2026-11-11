@@ -105,6 +105,22 @@ describe("config lint multiline suggestions", () => {
     ]);
   });
 
+  test("labels the first edit when a finding has no suggestion", () => {
+    const { suggestion: _suggestion, ...violation } = excessKey({
+      fix: {
+        edits: [
+          { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
+          { op: "set", path: ["tooling", "deploy", "cmd"], value: "echo $TOKEN" },
+        ],
+      },
+    });
+    const [finding] = renderConfigLintViolations([violation]);
+    expect(finding?.split("\n").slice(2)).toEqual([
+      '    fix: tooling.deploy.env.TOKEN: "${secret:TOKEN}"',
+      '       | tooling.deploy.cmd: "echo $TOKEN"',
+    ]);
+  });
+
   test("escapes controls in edit paths and values without forging lines", () => {
     const [finding] = renderConfigLintViolations([
       excessKey({

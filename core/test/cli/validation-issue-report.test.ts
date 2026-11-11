@@ -39,7 +39,7 @@ describe("validation issue rendering", () => {
     const text = renderPlainBugReport(buildBugReport({ error, context: { commandId: "app:start" } }));
     expect(text).toContain(
       [
-        '       | tooling.deploy.env.TOKEN: "${secret:TOKEN}"',
+        '    fix: tooling.deploy.env.TOKEN: "${secret:TOKEN}"',
         "       | events.post-start[0]:",
         '       |   cmd: "echo $TOKEN"',
         "       |   env:",
@@ -54,7 +54,7 @@ describe("validation issue rendering", () => {
       fix: { edits: [{ op: "set", path: ["bad\n\u001b"], value: { cmd: "echo\u009b" } }] },
     });
     expect(text?.split("\n").slice(1)).toEqual([
-      "       | bad\\u000a\\u001b:",
+      "    fix: bad\\u000a\\u001b:",
       '       |   cmd: "echo\\u009b"',
     ]);
   });

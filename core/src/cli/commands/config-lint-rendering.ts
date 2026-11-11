@@ -39,13 +39,11 @@ const renderViolation = (violation: ConfigLintViolation, landofilePath?: string)
   } else if (scopeText.length > 0) {
     lines.push(`    scopes: ${scopeText}`);
   }
-  if (violation.suggestion !== undefined) {
-    for (const [index, line] of violation.suggestion.split("\n").entries()) {
-      lines.push(`${index === 0 ? "    fix: " : "       | "}${escapeDiagnosticText(line)}`);
-    }
-  }
-  if (violation.fix !== undefined)
-    lines.push(...formatValidationFixEdits(violation.fix).map((line) => `       | ${line}`));
+  const guidance = [
+    ...(violation.suggestion?.split("\n").map(escapeDiagnosticText) ?? []),
+    ...(violation.fix === undefined ? [] : formatValidationFixEdits(violation.fix)),
+  ];
+  lines.push(...guidance.map((line, index) => `${index === 0 ? "    fix: " : "       | "}${line}`));
   return lines.join("\n");
 };
 
