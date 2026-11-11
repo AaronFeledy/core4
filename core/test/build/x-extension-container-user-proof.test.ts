@@ -17,6 +17,7 @@ import {
   schemaAt,
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-values-proof.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
@@ -188,8 +189,10 @@ test.each([
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(
     jsonEquals(
-      evolveHistoricalSwarmReservations(
-        evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+      evolveHistoricalComposeKnobValues(
+        evolveHistoricalSwarmReservations(
+          evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+        ),
       ),
       current,
     ),

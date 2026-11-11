@@ -32,6 +32,7 @@ import {
   schemaAt,
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-values-proof.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
@@ -70,37 +71,39 @@ const repairedLandofile = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalSwarmReservations(
-    evolveHistoricalToolingVars(
-      evolveHistoricalToolingWrapper(
-        evolveHistoricalUploadDirs(
-          evolveHistoricalConsolePort(
-            evolveHistoricalToolingSensitivity(
-              evolveHistoricalAppMountAcceleration(
-                evolveHistoricalToolingShorthand(
-                  evolveHistoricalEnvironment(
-                    evolveHistoricalEndpointMetadata(
-                      evolveHistoricalServicePort(
-                        evolveHistoricalTimestamps(
-                          evolveHistoricalContainerUser(
-                            evolveHistoricalReadiness(
-                              evolveHistoricalShorthand(
-                                evolveHistoricalNetworks(
-                                  evolveHistoricalNativeInit(repairedLandofile()),
-                                  "bare",
+  evolveHistoricalComposeKnobValues(
+    evolveHistoricalSwarmReservations(
+      evolveHistoricalToolingVars(
+        evolveHistoricalToolingWrapper(
+          evolveHistoricalUploadDirs(
+            evolveHistoricalConsolePort(
+              evolveHistoricalToolingSensitivity(
+                evolveHistoricalAppMountAcceleration(
+                  evolveHistoricalToolingShorthand(
+                    evolveHistoricalEnvironment(
+                      evolveHistoricalEndpointMetadata(
+                        evolveHistoricalServicePort(
+                          evolveHistoricalTimestamps(
+                            evolveHistoricalContainerUser(
+                              evolveHistoricalReadiness(
+                                evolveHistoricalShorthand(
+                                  evolveHistoricalNetworks(
+                                    evolveHistoricalNativeInit(repairedLandofile()),
+                                    "bare",
+                                  ),
                                 ),
                               ),
                             ),
+                            "bare",
                           ),
-                          "bare",
                         ),
                       ),
                     ),
+                    "bare",
                   ),
-                  "bare",
                 ),
+                "bare",
               ),
-              "bare",
             ),
           ),
         ),
