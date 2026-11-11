@@ -18,7 +18,9 @@ There is no top-level `lando cache:refresh` alias. Use the `app:` form.
 
 You do not need this command to make your commands show up or update. Lando keeps the command index current on its own; see [Commands update themselves](#commands-update-themselves).
 
-To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands, including unavailable scripts. A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. The same run prints refresh warnings: `LANDO_HOST_SHELL_SYNTAX` for a host task whose `cmd` or `vars.<name>.sh` is written in POSIX-only syntax, and `LANDO_SCRIPT_INVALID` for a script with invalid metadata. `lando app:config:lint` reports those too.
+To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands, including unavailable scripts. `result.services` lists every planned service. A registry image has `artifact.kind` `ref` and `artifact.ref`, the tag a later start or rebuild uses. A service Lando builds has `artifact.kind` `build`, and `contentHash` when the plan has one. The result omits build context, arguments, and inline source. After the app is running, `lando info --format=json` reports that same identity under `services[].artifact`. Refresh does not pull the image or start the service.
+
+A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. The same run prints refresh warnings: `LANDO_HOST_SHELL_SYNTAX` for a host task whose `cmd` or `vars.<name>.sh` is written in POSIX-only syntax, and `LANDO_SCRIPT_INVALID` for a script with invalid metadata. `lando app:config:lint` reports those too.
 
 ## Commands update themselves
 

@@ -11,7 +11,7 @@ Stock PHP tags are checked against the registry about once a week. `lando start`
 
 Official images publish a security release under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx), including the PHP 8.6 release-candidate tag until GA. A custom `image:` or replacement build is not on this weekly check. Rebuild it yourself when you want a new base.
 
-The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host, and start the app first if it is not running. The Landofile below is written by hand. On an app created by `lando init`, keep the `recipe:` block and change only the `type:` or `via:` under `services`, so the recipe's other services stay.
+The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host. `lando exec` needs the app running. Reading the planned tag does not require a running app. The Landofile below is written by hand. On an app created by `lando init`, keep the `recipe:` block and change only the `type:` or `via:` under `services`, so the recipe's other services stay.
 
 ```yaml
 name: php-patch-demo
@@ -21,9 +21,40 @@ services:
     primary: true
 ```
 
+## See the planned tag
+
+`app:config` shows the Landofile, and `app:config:lint` validates it. Neither plans an image. `lando app:cache:refresh --format=json` plans the app without starting it. Each service is under `result.services`, and a registry image is `artifact.ref`. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. `artifact.kind` is `build` when Lando builds the service instead of pulling a tag.
+
+```sh
+lando app:config:lint --format=json
+lando app:config --format=json
+lando app:cache:refresh --format=json
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="php-patch-demo" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Run command="lando app:config --format=json" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ref\":\\s*\"php:8\\.4-apache-bookworm\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
 ```sh
 lando start
 ```
+
+`lando info --format=json` reports the running artifact under `services[].artifact`. The ref matches the plan. A digest is there when the pull recorded one.
 
 ## Check the CLI build
 
@@ -56,34 +87,6 @@ lando exec web -- curl -fsS localhost/version.php
 ```
 
 With `via: cli` there is no web server. `php -v` is the only check.
-
-## Check the Landofile
-
-`app:config` shows what the Landofile declares, and `app:config:lint` validates it without contacting a provider. Neither prints the tag a rebuild will pull. Confirm the declared `type:` and any `image:` first:
-
-```sh
-lando app:config:lint --format=json
-lando app:config --format=json
-```
-
-Once the app is up, `lando info --format=json` reports the artifact each service actually runs under `services[].artifact`, so that is where to read the resolved image tag.
-
-<Guide>
-  <Scenario id="reader-path" render>
-    <Step name="scaffold">
-      <UseFixture name="php-patch-demo" />
-    </Step>
-    <Step name="check-config">
-      <Run command="lando app:config:lint --format=json" />
-      <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
-    </Step>
-    <Step name="cleanup">
-      <Cleanup />
-    </Step>
-  </Scenario>
-</Guide>
 
 ## Rebuild the app
 
