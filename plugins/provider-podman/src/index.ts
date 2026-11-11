@@ -794,6 +794,7 @@ const assembleRuntimeProvider = (
       displayName: "Podman Runtime Provider (user-installed)",
       version: "0.0.0",
       platform,
+      runtimeIdentity: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
       capabilities: {
         ...resolvedCapabilities,
         ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),

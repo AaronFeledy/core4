@@ -142,6 +142,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
     const context = redactedBuildContext(redactor, plan, service);
     const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
       refresh: input.refresh,
+      stateStore,
       events,
       redactor,
     });

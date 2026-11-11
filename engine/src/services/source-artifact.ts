@@ -8,13 +8,21 @@ import type {
   EventService,
   ProviderError,
   RuntimeProviderShape,
+  StateStore,
 } from "@lando/sdk/services";
 import { type Context, DateTime, Effect } from "effect";
-
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
+import {
+  acquireReferencedArtifact,
+  openPullChecks,
+  pullCheckKey,
+  readArtifactRefreshAfterMs,
+  recordPullCheck,
+} from "./artifact-refresh.ts";
 
 interface SourceArtifactOptions {
   readonly refresh: boolean;
+  readonly stateStore: Context.Service.Shape<typeof StateStore>;
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly redactor: Pick<Redactor, "redactString">;
 }
@@ -87,14 +95,49 @@ export const resolveSourceArtifact = (
   const platform = serviceImagePlatform(service);
   const pull = (policy: ArtifactPullPolicy) =>
     provider.pullArtifact({ ref: artifact.ref, policy, ...(platform === undefined ? {} : { platform }) });
-  const { policy, localFallback } = acquisitionPolicy(service, options.refresh);
-  if (!localFallback) return pull(policy);
-  return pull(policy).pipe(
-    Effect.catch((error) =>
-      pull("never").pipe(
-        Effect.catch(() => Effect.fail(error)),
-        Effect.tap(() => warnRefreshFallback(service, artifact, error, options)),
+  if (service.pullPolicy !== undefined) {
+    const { policy, localFallback } = acquisitionPolicy(service, options.refresh);
+    if (!localFallback) return pull(policy);
+    return pull(policy).pipe(
+      Effect.catch((error) =>
+        pull("never").pipe(
+          Effect.catch(() => Effect.fail(error)),
+          Effect.tap(() => warnRefreshFallback(service, artifact, error, options)),
+        ),
       ),
-    ),
-  );
+    );
+  }
+  const refreshAfterMs = readArtifactRefreshAfterMs(service.extensions);
+  return Effect.gen(function* () {
+    const runtimeId = provider.runtimeIdentity ?? `${provider.id}:${provider.platform}`;
+    const key = pullCheckKey({ runtimeId, platform: provider.platform, ref: artifact.ref });
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const checks = yield* openPullChecks(options.stateStore).pipe(
+      Effect.flatMap((bucket) => bucket.get),
+      Effect.catch(() => Effect.succeed(null)),
+    );
+    const onChecked =
+      refreshAfterMs === undefined
+        ? Effect.void
+        : Effect.gen(function* () {
+            const checkedAt = DateTime.toEpochMillis(yield* DateTime.now);
+            const bucket = yield* openPullChecks(options.stateStore);
+            yield* recordPullCheck(bucket, key, {
+              ref: artifact.ref,
+              platform: provider.platform,
+              runtimeId,
+              checkedAt,
+              afterMs: refreshAfterMs,
+            });
+          });
+    return yield* acquireReferencedArtifact({
+      pull,
+      forced: options.refresh,
+      refreshAfterMs,
+      checkedAt: checks?.[key]?.checkedAt,
+      now,
+      onChecked,
+      onFallback: (error) => warnRefreshFallback(service, artifact, error, options),
+    });
+  });
 };

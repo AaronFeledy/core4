@@ -17,7 +17,7 @@ Starting an app you already ran before works offline, as long as its images were
 
 The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
 
-`lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
+`lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is on the envelope's top-level `warnings` array, next to `result`, with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
 
 An image Lando built for a service is never pulled, online or offline. If it's missing, the command fails and tells you to run `lando rebuild -s <service>`. That rebuild needs whatever the build itself needs, such as its base image and any packages it downloads.
 

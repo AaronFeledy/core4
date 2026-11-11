@@ -6,6 +6,7 @@ export * from "./agent-forwarding.ts";
 export * from "./app-plan.ts";
 export * from "./app-results.ts";
 export * from "./applied-state.ts";
+export * from "./artifact-refresh.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./certificate-authority-contribution.ts";

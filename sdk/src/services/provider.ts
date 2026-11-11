@@ -423,6 +423,8 @@ export class RuntimeProvider extends Context.Service<
     readonly displayName: string;
     readonly version: string;
     readonly platform: HostPlatform;
+    /** Engine endpoint this provider talks to. Pull checks are keyed by it, not by provider id alone. */
+    readonly runtimeIdentity?: string;
     readonly capabilities: ProviderCapabilities;
 
     readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
