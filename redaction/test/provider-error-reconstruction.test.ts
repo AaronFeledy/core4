@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { taggedErrorJson } from "@lando/sdk/command-result";
 import * as Errors from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 import { isProviderError, redactProviderError } from "../src/provider-error.ts";
 import { createStandaloneRedactor } from "../src/service.ts";
@@ -84,4 +84,21 @@ test.each(errors)("reconstructs $_tag without credential fields or nested cause"
 test("rejects unknown tags and incomplete provider-shaped objects", () => {
   expect(isProviderError({ ...base, _tag: "UntrustedError" })).toBe(false);
   expect(isProviderError({ _tag: "ProviderUnavailableError", message: canary })).toBe(false);
+});
+
+test("preserves and redacts ArtifactBuildError build context", () => {
+  const redactor = createStandaloneRedactor("secrets", { authoritativeTokens: [canary] });
+  const error = new Errors.ArtifactBuildError({
+    ...base,
+    service: canary,
+    transcriptPath: AbsolutePath.make(`/tmp/${canary}/build.log`),
+    outputTail: `tail ${canary}`,
+  });
+
+  const safe = redactProviderError(error, redactor);
+
+  expect(safe._tag).toBe("ArtifactBuildError");
+  expect(safe.service).toBe("[redacted]");
+  expect(safe.transcriptPath).toBe(AbsolutePath.make("/tmp/[redacted]/build.log"));
+  expect(safe.outputTail).toBe("tail [redacted]");
 });
