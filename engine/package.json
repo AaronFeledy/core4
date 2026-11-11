@@ -278,16 +278,8 @@
     "./testing/state-store": "./src/testing/state-store.ts",
     "./version": "./src/version.ts"
   },
-  "files": [
-    "./src",
-    "./dist",
-    "!./dist/**/*.tsbuildinfo"
-  ],
-  "keywords": [
-    "lando",
-    "engine",
-    "runtime"
-  ],
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
+  "keywords": ["lando", "engine", "runtime"],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "@lando/http-client": "workspace:*",

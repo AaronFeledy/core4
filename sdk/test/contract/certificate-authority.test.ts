@@ -52,9 +52,12 @@ describe("CertificateAuthority contract", () => {
       ...ca,
       root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootB, trusted: true }),
       issueCert: (spec: Parameters<typeof ca.issueCert>[0]) =>
-        ca
-          .issueCert(spec)
-          .pipe(Effect.map((issued) => ({ ...issued, root: { certificate: TEST_CERTIFICATES.rootB, trusted: true } }))),
+        ca.issueCert(spec).pipe(
+          Effect.map((issued) => ({
+            ...issued,
+            root: { certificate: TEST_CERTIFICATES.rootB, trusted: true },
+          })),
+        ),
     };
     // When
     const exit = await Effect.runPromiseExit(runCaContract(mismatched));
